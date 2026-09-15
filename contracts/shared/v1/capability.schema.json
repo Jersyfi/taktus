@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Capability",
+  "description": "What an adapter can do, named by function and never by product. Lowercase dotted segments, at least two: the first names the area, the rest narrow it (code.edit, vcs.pullrequest, channel.chat, workspace.isolated). Processes, frames and anchors reference capabilities only; mapping a capability to a concrete adapter is configuration.",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9_-]*)+$",
+  "$defs": {
+    "pattern": {
+      "title": "CapabilityPattern",
+      "description": "A capability that may be narrowed by a qualifier after a colon (vcs.push:protected) and may use * as a whole segment or qualifier (net.egress:*, code.*). Used where a set of capabilities is denied or anchored.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.([a-z][a-z0-9_-]*|\\*))+(:([a-z0-9_-]+|\\*))?$"
+    }
+  }
+}

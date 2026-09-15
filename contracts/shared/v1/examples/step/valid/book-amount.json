@@ -1,0 +1,16 @@
+{
+  "id": "book-amount",
+  "method": "rule",
+  "reason": "the booked amount must equal the document total, the order and the payment received; that is a check, not a judgement",
+  "rejected": [
+    {
+      "method": "llm",
+      "why": "a number produced by a language model never reaches the accounting journal"
+    }
+  ],
+  "exactness": "exact",
+  "depends_on": [
+    "propose-amount",
+    "assign-cost-centre"
+  ]
+}

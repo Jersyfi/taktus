@@ -1,0 +1,25 @@
+{
+  "id": "cmd_01J8R2A9F3K6QW7N4V5B8XYZCD",
+  "channel": "channel.chat",
+  "identity": "idn_7f3a2c",
+  "org_path": [
+    "acme",
+    "engineering",
+    "platform",
+    "taktus"
+  ],
+  "intent": {
+    "raw": "Turn issue 412 into a pull request, level 3.",
+    "recognised": "run.issue_to_pullrequest"
+  },
+  "context": {
+    "thread": "t-8841",
+    "issue": "412"
+  },
+  "reply_to": {
+    "channel": "channel.chat",
+    "address": "room-platform",
+    "thread": "t-8841"
+  },
+  "received_at": "2026-09-15T21:04:12Z"
+}

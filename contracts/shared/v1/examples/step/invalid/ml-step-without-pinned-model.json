@@ -1,0 +1,7 @@
+{
+  "id": "assign-cost-centre",
+  "method": "ml",
+  "reason": "six fixed classes",
+  "rejected": [],
+  "exactness": "sourced"
+}

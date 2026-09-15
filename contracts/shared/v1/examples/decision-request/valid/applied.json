@@ -1,0 +1,43 @@
+{
+  "id": "DR-2026-014",
+  "raised_by": {
+    "run": "run_17342",
+    "step": "roadmap-consistency"
+  },
+  "class": "strategic",
+  "situation": "The chat connector fails W-03 under load; everything else for 0.2.0 is done.",
+  "question": "Does 0.2.0 ship without the chat connector?",
+  "options": [
+    {
+      "id": "A",
+      "proposal": "Ship 0.2.0 without the chat connector.",
+      "consequence": "Decision requests reach people by CLI only for one more version.",
+      "effort": "none",
+      "recommended": true
+    },
+    {
+      "id": "B",
+      "proposal": "Hold 0.2.0 until the chat connector passes conformance.",
+      "consequence": "About two weeks later.",
+      "effort": "two weeks",
+      "recommended": false
+    }
+  ],
+  "blocking": [
+    "issue#412",
+    "issue#418"
+  ],
+  "channel": {
+    "connector": "channel.chat",
+    "address": "room-platform",
+    "thread": "t-9012"
+  },
+  "due": "2026-09-22",
+  "status": "applied",
+  "answer_raw": "yes, ship it, but mention the gap in the release notes",
+  "answer_interpreted": {
+    "option": "A",
+    "modifications": "release notes name the missing connector"
+  },
+  "outcome": "DEC-0031"
+}

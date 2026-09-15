@@ -1,0 +1,20 @@
+{
+  "id": "anc-payment-release",
+  "class": "legal",
+  "act": "release a payment above 10,000 EUR",
+  "applies_to": {
+    "actions": [
+      "payment.release:*"
+    ],
+    "risk_classes": [
+      "financial.high"
+    ]
+  },
+  "scope": {
+    "tenant": "acme",
+    "jurisdiction": "DE"
+  },
+  "decider": {
+    "role": "finance.lead"
+  }
+}
