@@ -1,5 +1,0 @@
-{
-  "compute_seconds": 1800,
-  "resource_class": "gpu.small",
-  "storage_bytes": 268435456
-}

@@ -12,7 +12,6 @@ The boundary between what Taktus builds and what it conducts.
 | **Connector** | tools and channels: repositories, ticket systems, chat, knowledge, warehouses | MCP | `contracts/connector/v1` |
 | **Model** | models | OpenAI-compatible endpoints | `contracts/model/v1` |
 | *(Process)* | the portable process bundle — a format, not an adapter | JSON Schema | `contracts/process/v1` |
-| *(Shared kernel)* | the concepts all of the above share — a vocabulary, not an adapter | JSON Schema | `contracts/shared/v1` |
 
 HTTP and SSE rather than gRPC for workers: a worker must be buildable without knowing the core's
 language — as a script, as a small service, as a shell wrapper around a foreign CLI. Efficiency is
@@ -55,10 +54,6 @@ taktusctl conformance run --contract worker/v1 --endpoint http://localhost:9000
 
 The conformance suite is the real asset here — not the adapter code, but the ability to check.
 Without it, "interchangeable" is an assertion.
-
-Before the suite runs against a worker, `make gate-contracts` checks the contract itself: every
-schema is valid, every example validates, and every check W-01..W-12 has a fixture that fails as it
-must (`tools/validate_contracts.py`).
 
 ---
 

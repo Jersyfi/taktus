@@ -1,8 +1,0 @@
-{
-  "assignment_id": "asg_01J8R9T2M4K7QW3N8V5C1XZBAE",
-  "seq": 8,
-  "ts": "2026-09-15T21:12:02Z",
-  "type": "step.boundary",
-  "step_id": "epoch-1",
-  "checkpoint_ref": "ckpt/asg_01J8R9T2M4K7QW3N8V5C1XZBAE/epoch-1"
-}

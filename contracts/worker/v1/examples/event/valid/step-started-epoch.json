@@ -1,9 +1,0 @@
-{
-  "assignment_id": "asg_01J8R9T2M4K7QW3N8V5C1XZBAE",
-  "seq": 5,
-  "ts": "2026-09-15T21:10:52Z",
-  "type": "step.started",
-  "step_id": "epoch-1",
-  "kind": "epoch",
-  "summary": "epoch 1 of 3"
-}

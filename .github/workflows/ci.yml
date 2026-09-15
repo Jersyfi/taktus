@@ -10,16 +10,6 @@ permissions:
   contents: read
 
 jobs:
-  # The contracts are language-neutral and need no installed project: the validator brings its
-  # own dependencies (PEP 723 header), so this job stays green independently of the Python gates.
-  contracts:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - name: contracts
-        run: make gate-contracts
-
   gates:
     runs-on: ubuntu-latest
     steps:

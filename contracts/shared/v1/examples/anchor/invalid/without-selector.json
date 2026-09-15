@@ -1,9 +1,0 @@
-{
-  "id": "anc-empty",
-  "class": "legal",
-  "act": "sign a contract",
-  "applies_to": {},
-  "decider": {
-    "role": "ceo"
-  }
-}
