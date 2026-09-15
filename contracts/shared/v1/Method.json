@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Method.json",
   "title": "Method",
   "description": "The kind of method that produces a step's result. Eight kinds are available. Four of them are reproducible: rule and wait exactly, statistics given the same data, ml and neural at a pinned version and seed. llm and worker are variable and require a fallback. Six kinds produce a result and carry an exactness class; wait and human produce none and carry no class (ADR-0018). See docs/architecture/methods.md and ADR-0004.",
   "type": "string",

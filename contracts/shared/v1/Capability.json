@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Capability.json",
   "title": "Capability",
   "description": "What an adapter can do, named by function and never by product. Lowercase dotted segments, at least two: the first names the area, the rest narrow it (code.edit, vcs.pullrequest, channel.chat, workspace.isolated). Processes, frames and anchors reference capabilities only; mapping a capability to a concrete adapter is configuration.",
   "type": "string",

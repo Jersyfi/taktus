@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Command.json",
   "title": "Command",
   "description": "The normalised entry into the one execution path. A chat message, a CLI invocation, a schedule and a webhook all produce this object. No command exists without an authenticated identity; replies go back to the channel it came from. See docs/architecture/control-plane.md.",
   "type": "object",
@@ -7,7 +8,7 @@
     "id": { "type": "string", "minLength": 1 },
     "channel": {
       "description": "The channel capability the command arrived through: channel.chat, channel.cli, channel.web, channel.repo, channel.time, channel.event. A capability, never a product name.",
-      "$ref": "capability.schema.json"
+      "$ref": "Capability.json"
     },
     "identity": {
       "description": "The single authenticated Taktus identity of the sender. An opaque identifier, not a name or an address.",
@@ -40,7 +41,7 @@
     "reply_to": {
       "type": "object",
       "properties": {
-        "channel": { "$ref": "capability.schema.json" },
+        "channel": { "$ref": "Capability.json" },
         "address": { "type": "string", "minLength": 1 },
         "thread": { "type": "string" }
       },

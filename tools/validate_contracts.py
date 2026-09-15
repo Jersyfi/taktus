@@ -10,16 +10,17 @@ nothing but this file.
 
 Checks, in order:
 
-1. every `*.schema.json` is a valid JSON Schema 2020-12 document and every `$ref` in it resolves;
+1. every schema (`contracts/<family>/<version>/<Concept>.json`) is a valid JSON Schema 2020-12
+   document, carries the `$id` its path prescribes (ADR-0019), and every `$ref` in it resolves;
 2. every `openapi.yaml` is OpenAPI 3.1 and every `$ref` in it resolves;
 3. every example under `examples/<target>/valid/` validates against its target;
 4. every example under `examples/<target>/invalid/` fails — by schema, or for transcripts by one of
    the stream rules below — and every conformance check W-01..W-12 has at least one such example;
 5. every target has at least two valid examples.
 
-The target of an examples directory is its name: for the shared kernel the schema file stem
-(`step` -> `step.schema.json`), for a contract the definition in kebab-case
-(`assignment-state` -> `worker.schema.json#/$defs/AssignmentState`).
+The target of an examples directory is its name in kebab-case: for the shared kernel the schema
+file (`exactness-class` -> `ExactnessClass.json`), for a contract the definition
+(`assignment-state` -> `Worker.json#/$defs/AssignmentState`).
 
 The stream rules are the executable reading of the conformance checks that cannot be expressed in
 JSON Schema. The conformance suite (tests/conformance, next pull request) is the authority against a
@@ -46,6 +47,7 @@ from referencing.jsonschema import DRAFT202012
 
 ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS = ROOT / "contracts"
+NAMESPACE = "https://taktus.eu/contracts/"  # ADR-0019: the $id of a schema is its path under here
 CHECKS = [f"W-{n:02d}" for n in range(1, 13)]
 MIN_VALID_EXAMPLES = 2
 
@@ -85,7 +87,11 @@ def load_yaml(path: Path) -> Any:
 
 
 def schema_files() -> list[Path]:
-    return sorted(CONTRACTS.glob("*/v*/*.schema.json"))
+    return sorted(CONTRACTS.glob("*/v*/*.json"))
+
+
+def expected_id(path: Path) -> str:
+    return NAMESPACE + path.relative_to(CONTRACTS).as_posix()
 
 
 def openapi_files() -> list[Path]:
@@ -93,18 +99,15 @@ def openapi_files() -> list[Path]:
 
 
 def build_registry(schemas: dict[Path, Json]) -> SchemaRegistry:
-    """Register every schema under its file URI, so that relative `$ref`s resolve like paths."""
+    """Register every schema under the `$id` its path prescribes and under its file URI. Relative
+    `$ref`s therefore resolve the same way from the namespace and from disk, which is the point of
+    ADR-0019: the served URL of a schema is its repository path."""
     registry: SchemaRegistry = Registry()
     for path, schema in schemas.items():
         resource = DRAFT202012.create_resource(schema)
+        registry = registry.with_resource(uri=expected_id(path), resource=resource)
         registry = registry.with_resource(uri=file_uri(path), resource=resource)
     return registry
-
-
-def with_id(path: Path, schema: Json) -> Json:
-    """The schemas carry no `$id` until the project namespace is settled; in memory the file URI
-    serves as base so that `$ref`s resolve relative to the file."""
-    return {"$id": file_uri(path), **schema}
 
 
 def walk_refs(node: Any, pointer: str = "") -> Iterator[tuple[str, str]]:
@@ -132,7 +135,10 @@ def check_schemas(schemas: dict[Path, Json], registry: SchemaRegistry, report: R
         except SchemaError as error:
             report.fail(str(rel), f"not a valid 2020-12 schema: {error.message}")
             continue
-        resolver = registry.resolver(base_uri=file_uri(path))
+        if schema.get("$id") != expected_id(path):
+            report.fail(str(rel), f"$id must be {expected_id(path)}, found {schema.get('$id')!r}")
+            continue
+        resolver = registry.resolver(base_uri=expected_id(path))
         broken = []
         for pointer, ref in walk_refs(schema):
             try:
@@ -195,15 +201,15 @@ def kebab_to_pascal(name: str) -> str:
 def target_ref(examples_dir: Path, target: str, schemas: dict[Path, Json]) -> str | None:
     """Map an examples directory name to the URI of the schema it exercises."""
     version_dir = examples_dir.parent
-    single = version_dir / f"{target}.schema.json"
+    definition = kebab_to_pascal(target)
+    single = version_dir / f"{definition}.json"
     if single in schemas:
-        return file_uri(single)
+        return expected_id(single)
     for path, schema in schemas.items():
         if path.parent != version_dir:
             continue
-        definition = kebab_to_pascal(target)
         if definition in schema.get("$defs", {}):
-            return f"{file_uri(path)}#/$defs/{definition}"
+            return f"{expected_id(path)}#/$defs/{definition}"
     return None
 
 
@@ -376,7 +382,7 @@ def first_stream_violation(transcript: Json) -> str | None:
 
 
 def main() -> int:
-    schemas = {path: with_id(path, load_json(path)) for path in schema_files()}
+    schemas = {path: load_json(path) for path in schema_files()}
     if not schemas:
         print("no schemas found under contracts/")
         return 1

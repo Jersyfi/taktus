@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Anchor.json",
   "title": "Anchor",
   "description": "An act that stays with a person regardless of the autonomy level of the rest of the process. Legal anchors cover legally binding acts; strategic anchors cover direction. An anchor halts the run at a step boundary and raises a decision request. Every organisation defines its own set; the set can be reduced but never emptied. The decider is a role, never a named person. See docs/architecture/governance.md and ADR-0008.",
   "type": "object",
@@ -18,7 +19,7 @@
         "actions": {
           "description": "Tool actions, as capability patterns.",
           "type": "array",
-          "items": { "$ref": "capability.schema.json#/$defs/pattern" },
+          "items": { "$ref": "Capability.json#/$defs/pattern" },
           "minItems": 1,
           "uniqueItems": true
         },

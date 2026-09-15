@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/DecisionRequest.json",
   "title": "DecisionRequest",
   "description": "The planned question about direction during normal operation, distinct from an escalation. Same shape across every process and every channel: situation, question, options with exactly one recommendation, what is blocked, a deadline. A free-text answer is never acted on silently: it is interpreted, reflected back and confirmed before it is applied. See docs/architecture/governance.md and ADR-0008.",
   "type": "object",
@@ -45,7 +46,7 @@
     "channel": {
       "type": "object",
       "properties": {
-        "connector": { "$ref": "capability.schema.json" },
+        "connector": { "$ref": "Capability.json" },
         "address": { "type": "string", "minLength": 1 },
         "thread": { "type": "string" }
       },

@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/worker/v1/Worker.json",
   "title": "Worker contract v1",
   "description": "Every request and response body of the worker contract, and every event on the stream. Workers execute; they do not decide. Transport and endpoints are in openapi.yaml, the rationale in ADR-0007, the prose in README.md. Shared concepts are referenced from contracts/shared/v1 and never redefined here.",
   "$defs": {
@@ -43,7 +44,7 @@
         "contract": { "const": "worker/v1" },
         "capabilities": {
           "type": "array",
-          "items": { "$ref": "../../shared/v1/capability.schema.json" },
+          "items": { "$ref": "../../shared/v1/Capability.json" },
           "minItems": 1,
           "uniqueItems": true
         },
@@ -69,7 +70,7 @@
             "resource_classes": {
               "description": "Resource classes the worker can report compute in. Required with kind compute.",
               "type": "array",
-              "items": { "$ref": "../../shared/v1/consumption.schema.json#/$defs/resourceClass" },
+              "items": { "$ref": "../../shared/v1/Consumption.json#/$defs/resourceClass" },
               "minItems": 1,
               "uniqueItems": true
             },
@@ -166,7 +167,7 @@
         "workspace": { "$ref": "#/$defs/Workspace" },
         "documents": {
           "type": "array",
-          "items": { "$ref": "../../shared/v1/artifact.schema.json" }
+          "items": { "$ref": "../../shared/v1/Artifact.json" }
         },
         "checkpoint_ref": { "$ref": "#/$defs/CheckpointRef" }
       },
@@ -178,16 +179,16 @@
       "description": "The ceiling, not a suggestion. The worker receives only the tools in allowed_tools; forbidden narrows further by pattern.",
       "type": "object",
       "properties": {
-        "autonomy_level": { "$ref": "../../shared/v1/autonomy-level.schema.json" },
+        "autonomy_level": { "$ref": "../../shared/v1/AutonomyLevel.json" },
         "allowed_tools": {
           "type": "array",
-          "items": { "$ref": "../../shared/v1/capability.schema.json" },
+          "items": { "$ref": "../../shared/v1/Capability.json" },
           "minItems": 1,
           "uniqueItems": true
         },
         "forbidden": {
           "type": "array",
-          "items": { "$ref": "../../shared/v1/capability.schema.json#/$defs/pattern" },
+          "items": { "$ref": "../../shared/v1/Capability.json#/$defs/pattern" },
           "uniqueItems": true
         },
         "max_steps": { "type": "integer", "minimum": 1 },
@@ -202,7 +203,7 @@
       "description": "What the assignment may consume, per consumption kind. At least one kind. Checked against the estimate before the first step; a step that would breach a limit does not start.",
       "type": "object",
       "properties": {
-        "currency": { "$ref": "../../shared/v1/consumption.schema.json#/$defs/currencyAmounts" },
+        "currency": { "$ref": "../../shared/v1/Consumption.json#/$defs/currencyAmounts" },
         "quota": {
           "type": "object",
           "properties": {
@@ -215,7 +216,7 @@
           "type": "object",
           "properties": {
             "seconds": { "type": "number", "exclusiveMinimum": 0 },
-            "resource_class": { "$ref": "../../shared/v1/consumption.schema.json#/$defs/resourceClass" }
+            "resource_class": { "$ref": "../../shared/v1/Consumption.json#/$defs/resourceClass" }
           },
           "required": ["seconds", "resource_class"],
           "additionalProperties": false
@@ -296,7 +297,7 @@
       "title": "Estimate",
       "description": "Response of POST /v1/estimate. May be rough; must exist. confidence low is a valid answer. The quantities are those of the shared Consumption schema; a worker that uses none of them still states steps and wall_seconds.",
       "type": "object",
-      "allOf": [{ "$ref": "../../shared/v1/consumption.schema.json#/$defs/quantities" }],
+      "allOf": [{ "$ref": "../../shared/v1/Consumption.json#/$defs/quantities" }],
       "properties": {
         "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
         "wall_seconds": { "type": "integer", "minimum": 0 },
@@ -347,7 +348,7 @@
         "assignment_id": { "$ref": "#/$defs/AssignmentId" },
         "artifacts": {
           "type": "array",
-          "items": { "$ref": "../../shared/v1/artifact.schema.json" }
+          "items": { "$ref": "../../shared/v1/Artifact.json" }
         }
       },
       "required": ["assignment_id", "artifacts"],
@@ -438,8 +439,8 @@
       "properties": {
         "type": { "const": "tool.called" },
         "step_id": { "$ref": "#/$defs/StepId" },
-        "tool": { "$ref": "../../shared/v1/capability.schema.json" },
-        "arguments_digest": { "$ref": "../../shared/v1/artifact.schema.json#/$defs/digest" },
+        "tool": { "$ref": "../../shared/v1/Capability.json" },
+        "arguments_digest": { "$ref": "../../shared/v1/Artifact.json#/$defs/digest" },
         "refused": { "type": "boolean", "default": false },
         "reason": { "description": "Why the call was refused.", "type": "string" }
       },
@@ -468,8 +469,8 @@
       "type": "object",
       "allOf": [
         { "$ref": "#/$defs/EventBase" },
-        { "$ref": "../../shared/v1/consumption.schema.json#/$defs/quantities" },
-        { "$ref": "../../shared/v1/consumption.schema.json#/$defs/atLeastOneQuantity" }
+        { "$ref": "../../shared/v1/Consumption.json#/$defs/quantities" },
+        { "$ref": "../../shared/v1/Consumption.json#/$defs/atLeastOneQuantity" }
       ],
       "properties": {
         "type": { "const": "consumption.reported" },
@@ -503,7 +504,7 @@
         "step_id": { "$ref": "#/$defs/StepId" },
         "artifact_id": { "type": "string", "minLength": 1 },
         "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]*$" },
-        "digest": { "$ref": "../../shared/v1/artifact.schema.json#/$defs/digest" },
+        "digest": { "$ref": "../../shared/v1/Artifact.json#/$defs/digest" },
         "media_type": { "type": "string" },
         "size_bytes": { "type": "integer", "minimum": 0 },
         "uri": { "type": "string", "minLength": 1 }

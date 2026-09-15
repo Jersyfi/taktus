@@ -6,7 +6,7 @@ pull request) uses the same files as fixtures.
 ## Layout
 
 ```
-examples/<definition>/valid/<name>.json          validates against worker.schema.json#/$defs/<Definition>
+examples/<definition>/valid/<name>.json          validates against Worker.json#/$defs/<Definition>
 examples/<definition>/invalid/<name>.json        must fail
 examples/<definition>/invalid/W-NN-<name>.json   must fail, and is the fixture for conformance check W-NN
 ```

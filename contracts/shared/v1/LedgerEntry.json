@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/LedgerEntry.json",
   "title": "LedgerEntry",
   "description": "One link of the content-free hash chain (ADR-0006). The entry references what happened and where the content is; it stores no payload, no personal data and no secret. The ledger is the single source for every metric. The first entry of a chain has prev_hash null.",
   "type": "object",
@@ -13,11 +14,11 @@
     },
     "prev_hash": {
       "description": "Hash of the previous entry; null only for the first entry.",
-      "oneOf": [{ "$ref": "artifact.schema.json#/$defs/digest" }, { "type": "null" }]
+      "oneOf": [{ "$ref": "Artifact.json#/$defs/digest" }, { "type": "null" }]
     },
     "hash": {
       "description": "Hash over this entry without the hash field itself, computed as the ledger component documents.",
-      "$ref": "artifact.schema.json#/$defs/digest"
+      "$ref": "Artifact.json#/$defs/digest"
     },
     "refs": {
       "description": "What the entry is about. Identifiers only.",
@@ -45,7 +46,7 @@
       "minProperties": 1,
       "additionalProperties": false
     },
-    "method": { "$ref": "method.schema.json" },
+    "method": { "$ref": "Method.json" },
     "model": {
       "description": "The model used, pinned as name@version.",
       "type": "string",
@@ -56,14 +57,14 @@
       "type": "string",
       "minLength": 1
     },
-    "consumption": { "$ref": "consumption.schema.json" },
+    "consumption": { "$ref": "Consumption.json" },
     "outcome": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*$"
     },
     "content_digest": {
       "description": "Digest of the referenced content, so that the reference is verifiable without the content.",
-      "$ref": "artifact.schema.json#/$defs/digest"
+      "$ref": "Artifact.json#/$defs/digest"
     }
   },
   "required": ["seq", "ts", "kind", "prev_hash", "hash", "refs"],

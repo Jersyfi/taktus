@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Artifact.json",
   "title": "Artifact",
   "description": "A result that is data, not prose: a patch, a document, a dataset, a model file, a report. Referenced by digest so that the ledger can point at content without storing it (ADR-0006). The same shape describes an input document, because the output of one step is the input of the next.",
   "type": "object",

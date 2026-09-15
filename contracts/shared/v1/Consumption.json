@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Consumption.json",
   "title": "Consumption",
   "description": "The raw quantities one step used or is expected to use. Nothing here is converted into money; the control plane derives the normalised Takt from these quantities (docs/architecture/accounting.md). At least one quantity is present. compute_seconds is meaningless without its resource_class.",
   "type": "object",

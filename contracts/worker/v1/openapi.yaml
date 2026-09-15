@@ -5,7 +5,7 @@ info:
   summary: HTTP for control, Server-Sent Events for the event stream.
   description: |
     An execution unit is connected to Taktus through this interface. Workers execute; they do
-    not decide. Every body is defined in worker.schema.json and referenced from here, so that
+    not decide. Every body is defined in Worker.json and referenced from here, so that
     a worker written in any language validates against one definition.
 
     Errors use RFC 9457 problem details (application/problem+json).
@@ -26,7 +26,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "./worker.schema.json#/$defs/Capabilities"
+                $ref: "./Worker.json#/$defs/Capabilities"
 
   /v1/estimate:
     post:
@@ -41,14 +41,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "./worker.schema.json#/$defs/EstimateRequest"
+              $ref: "./Worker.json#/$defs/EstimateRequest"
       responses:
         "200":
           description: The estimate.
           content:
             application/json:
               schema:
-                $ref: "./worker.schema.json#/$defs/Estimate"
+                $ref: "./Worker.json#/$defs/Estimate"
         "400":
           $ref: "#/components/responses/BadRequest"
 
@@ -68,14 +68,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "./worker.schema.json#/$defs/Assignment"
+              $ref: "./Worker.json#/$defs/Assignment"
       responses:
         "201":
           description: Recorded. Status is `accepted`, or `finished` with outcome `rejected`.
           content:
             application/json:
               schema:
-                $ref: "./worker.schema.json#/$defs/AssignmentState"
+                $ref: "./Worker.json#/$defs/AssignmentState"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -103,7 +103,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "./worker.schema.json#/$defs/AssignmentState"
+                $ref: "./Worker.json#/$defs/AssignmentState"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -144,7 +144,7 @@ paths:
             text/event-stream:
               schema:
                 description: A sequence of SSE messages; each `data` field is one Event.
-                $ref: "./worker.schema.json#/$defs/Event"
+                $ref: "./Worker.json#/$defs/Event"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -165,14 +165,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "./worker.schema.json#/$defs/StopRequest"
+              $ref: "./Worker.json#/$defs/StopRequest"
       responses:
         "202":
           description: The stop is requested. Status is `stopping`, or `finished` if it already was.
           content:
             application/json:
               schema:
-                $ref: "./worker.schema.json#/$defs/AssignmentState"
+                $ref: "./Worker.json#/$defs/AssignmentState"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -192,7 +192,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "./worker.schema.json#/$defs/ArtifactList"
+                $ref: "./Worker.json#/$defs/ArtifactList"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -232,13 +232,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "./worker.schema.json#/$defs/Health"
+                $ref: "./Worker.json#/$defs/Health"
         "503":
           description: Not ready. Same body, status `not_ready`.
           content:
             application/json:
               schema:
-                $ref: "./worker.schema.json#/$defs/Health"
+                $ref: "./Worker.json#/$defs/Health"
 
 components:
   parameters:
@@ -247,11 +247,11 @@ components:
       in: path
       required: true
       schema:
-        $ref: "./worker.schema.json#/$defs/AssignmentId"
+        $ref: "./Worker.json#/$defs/AssignmentId"
 
   responses:
     BadRequest:
-      description: The body does not validate against worker.schema.json.
+      description: The body does not validate against Worker.json.
       content:
         application/problem+json:
           schema:

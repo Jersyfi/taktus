@@ -24,3 +24,4 @@ ADR wins.
 | [0016](ADR-0016-explicit-architecture.md) | Explicit Architecture: cut by component | accepted |
 | [0017](ADR-0017-decision-requests-in-the-repository.md) | Decision requests as a repository mechanism | accepted |
 | [0018](ADR-0018-exactness-applies-to-result-producing-steps.md) | Exactness classes apply to result-producing steps only | accepted |
+| [0019](ADR-0019-contract-identity.md) | Contract identity | accepted |

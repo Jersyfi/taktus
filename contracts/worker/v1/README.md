@@ -8,7 +8,7 @@ Rationale: [ADR-0007](../../../docs/adr/ADR-0007-worker-contract.md).
 
 | File | Contents |
 |---|---|
-| [`worker.schema.json`](worker.schema.json) | every body and every event, as JSON Schema 2020-12; shared concepts are referenced from [`contracts/shared/v1`](../../shared/v1) |
+| [`Worker.json`](Worker.json) | every body and every event, as JSON Schema 2020-12; shared concepts are referenced from [`contracts/shared/v1`](../../shared/v1) |
 | [`openapi.yaml`](openapi.yaml) | the endpoints, with every body referencing the schema |
 | [`examples/`](examples/) | valid examples per definition and the must-fail fixtures for the conformance checks below |
 

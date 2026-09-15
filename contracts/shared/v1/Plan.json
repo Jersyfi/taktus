@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Plan.json",
   "title": "Plan",
   "description": "What is to be achieved, with what, by when and at which autonomy level, developed in dialogue before anything runs. Commissioning is an explicit, recorded act: a plan does not slide into execution. A plan ends either in a one-off run or in a new process version. See docs/architecture/control-plane.md.",
   "type": "object",
@@ -11,11 +12,11 @@
       "minLength": 1
     },
     "goal": { "type": "string", "minLength": 1 },
-    "autonomy_level": { "$ref": "autonomy-level.schema.json" },
+    "autonomy_level": { "$ref": "AutonomyLevel.json" },
     "due": { "type": "string", "format": "date-time" },
     "steps": {
       "type": "array",
-      "items": { "$ref": "step.schema.json" },
+      "items": { "$ref": "Step.json" },
       "minItems": 1
     },
     "results_in": {
