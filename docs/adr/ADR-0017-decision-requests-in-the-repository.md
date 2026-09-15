@@ -119,11 +119,10 @@ Fixed, in this order, enforced by `.github/pull_request_template.md`:
 2. **Decisions required** — either `None` or one line per decision: ID, title, category, issue.
    Near the top, never at the end.
 3. Everything else — notes, how the definition of done is met, anything a reviewer needs.
-4. **A short German summary for the owner**, repeating the decisions line.
 
-The repository language stays English, including every file under `docs/decisions/`. The German
-summary exists for the owner's convenience and repeats; it never carries anything that is not in
-the English text above it.
+The language is English throughout: the description, the issue, and every file under
+`docs/decisions/`. An answer given in another language is recorded in English, with the original
+quoted.
 
 ### 8. Enforcement
 - `tools/check_decisions.py`, run as `make gate-decisions`, part of `make gates` and of CI. It fails

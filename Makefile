@@ -32,6 +32,9 @@ gate-docs: ## A contract or behaviour change must touch its documentation
 gate-secrets: ## No secret value may ever enter this public repository
 	gitleaks detect --no-banner --redact
 
+gate-decisions: ## Decision requests are complete, recorded, and a blocking one keeps its pull request a draft
+	$(UV) run tools/check_decisions.py
+
 lint: ## Static analysis and types
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
@@ -40,6 +43,6 @@ lint: ## Static analysis and types
 generate: ## Regenerate the shared kernel and API types from contracts/
 	$(UV) run python tools/generate.py
 
-gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets test ## Everything CI runs
+gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions test ## Everything CI runs
 
-.PHONY: help install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets lint generate gates
+.PHONY: help install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions lint generate gates
