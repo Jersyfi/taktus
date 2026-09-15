@@ -1,0 +1,23 @@
+{
+  "contract": "worker/v1",
+  "capabilities": [
+    "shell.script",
+    "shell.sandboxed",
+    "workspace.isolated"
+  ],
+  "consumption": {
+    "kinds": [
+      "compute"
+    ],
+    "resource_classes": [
+      "cpu.small"
+    ]
+  },
+  "supports": {
+    "native_pause": false,
+    "step_boundary_signal": true,
+    "streaming_events": true,
+    "estimate": true
+  },
+  "max_concurrent_assignments": 8
+}

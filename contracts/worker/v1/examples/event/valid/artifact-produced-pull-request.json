@@ -1,0 +1,13 @@
+{
+  "assignment_id": "asg_01J8R3K5Q2N7VX9M4T6B0DPHWE",
+  "seq": 12,
+  "ts": "2026-09-15T21:11:03Z",
+  "type": "artifact.produced",
+  "step_id": "s2",
+  "artifact_id": "art-pr-412",
+  "kind": "vcs.pullrequest",
+  "digest": "sha256:2d845c926bc9d0b2a6fc7f8775c07e0c0517bee059e6851e9ca72dd0b52cc1cf",
+  "media_type": "application/json",
+  "size_bytes": 2048,
+  "uri": "/v1/assignments/asg_01J8R3K5Q2N7VX9M4T6B0DPHWE/artifacts/art-pr-412"
+}

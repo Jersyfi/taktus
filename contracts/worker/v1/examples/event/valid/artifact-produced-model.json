@@ -1,0 +1,13 @@
+{
+  "assignment_id": "asg_01J8R9T2M4K7QW3N8V5C1XZBAE",
+  "seq": 11,
+  "ts": "2026-09-15T21:14:01Z",
+  "type": "artifact.produced",
+  "step_id": "epoch-2",
+  "artifact_id": "art-model-1",
+  "kind": "model",
+  "digest": "sha256:049346da55de45021706be816e8d5317b2ab320e785d2ba96f22b63acddb7053",
+  "media_type": "application/octet-stream",
+  "size_bytes": 4194304,
+  "uri": "/v1/assignments/asg_01J8R9T2M4K7QW3N8V5C1XZBAE/artifacts/art-model-1"
+}

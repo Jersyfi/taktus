@@ -1,0 +1,7 @@
+{
+  "confidence": "low",
+  "compute_seconds": 30,
+  "resource_class": "cpu.small",
+  "wall_seconds": 30,
+  "steps": 1
+}

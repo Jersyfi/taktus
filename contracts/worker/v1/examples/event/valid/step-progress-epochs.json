@@ -1,0 +1,13 @@
+{
+  "assignment_id": "asg_01J8R9T2M4K7QW3N8V5C1XZBAE",
+  "seq": 6,
+  "ts": "2026-09-15T21:12:00Z",
+  "type": "step.progress",
+  "step_id": "epoch-1",
+  "message": "epoch 1 done, loss 0.41",
+  "progress": {
+    "current": 1,
+    "total": 3,
+    "unit": "epochs"
+  }
+}
