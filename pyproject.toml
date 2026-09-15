@@ -1,0 +1,52 @@
+[project]
+name = "taktus"
+version = "0.0.0"
+description = "An operating layer for a business"
+requires-python = ">=3.13"
+license = { file = "LICENSE" }
+
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "pydantic>=2",
+  "sqlalchemy>=2",
+  "psycopg[binary,pool]",
+  "alembic",
+  "httpx",
+  "structlog",
+  "opentelemetry-sdk",
+  "opentelemetry-exporter-otlp",
+  "mcp",
+  "typer",
+  "jsonschema",
+  "pgvector",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest", "pytest-asyncio", "testcontainers[postgres]",
+  "mypy", "ruff", "import-linter", "coverage",
+]
+
+[project.scripts]
+taktusd = "taktus.composition.daemon:main"
+taktusctl = "taktus.adapters.driving.cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "RUF"]
+
+[tool.mypy]
+strict = true
+packages = ["taktus"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

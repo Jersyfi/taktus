@@ -1,0 +1,144 @@
+# Blueprint: product development
+# A curated bundle of processes, required capabilities, governance rules and value criteria.
+# A template, not a corset — every instance is adapted to the organisation.
+# See docs/usecases/AF-01-dev-orchestration.md
+
+apiVersion: taktus.eu/process-bundle/v1
+kind: Blueprint
+metadata:
+  id: dev-orchestration
+  name: Product development
+  domain: engineering
+  maturity: draft            # draft | experimental | verified | reference
+
+# Capabilities, never product names. Mapping to an adapter is configuration.
+requires:
+  connectors:
+    - capability: repository.issues
+    - capability: repository.pullrequests
+    - capability: repository.pipelines
+    - capability: chat.threads
+  workers:
+    - capability: code.edit
+    - capability: code.test
+    - capability: workspace.isolated
+  models:
+    - purpose: triage        # cheap or local
+    - purpose: reasoning     # strong, for planning and review
+
+# What stays with a person regardless of the autonomy level.
+# Configurable per tenant: another organisation will draw this line elsewhere.
+anchors:
+  strategic:
+    - scope.change
+    - feature.accept_or_reject
+    - version.assignment
+    - architecture.decision
+    - release.any
+    - licensing_or_pricing
+    - public_communication
+  legal: []
+
+processes:
+  - id: P-01
+    name: Roadmap control
+    autonomy: 3
+    triggers: [ { schedule: daily }, { event: roadmap.changed } ]
+    steps:
+      - { id: read-roadmap, method: rule }
+      - { id: read-state,   method: rule }
+      - { id: diff,         method: llm, reason: "reconcile stated intent against real state; no rule can express it", exactness: sourced }
+      - { id: apply,        method: rule, exactness: exact }
+    slo: { freshness: 24h }
+
+  - id: P-02
+    name: Refinement
+    autonomy: 3
+    triggers: [ { event: issue.opened, filter: "missing acceptance criteria" } ]
+    steps:
+      - { id: gather-context, method: rule }
+      - { id: refine,         method: llm, reason: "derive acceptance criteria from context and codebase", exactness: sourced }
+      - { id: write,          method: rule }
+
+  - id: P-03
+    name: Implementation
+    autonomy: 4
+    triggers: [ { event: issue.ready, condition: "capacity.available" } ]
+    steps:
+      - { id: admit,     method: rule, exactness: exact }   # admission control against limits
+      - { id: implement, method: worker, exactness: tolerant }
+      - { id: verify,    method: rule, exactness: exact }   # CI is the gate, not the worker's opinion
+      - { id: open-pr,   method: rule }
+    guardrails:
+      - no_push_to_protected_branches
+      - ci_must_be_green
+      - max_steps: 40
+
+  - id: P-04
+    name: Review
+    autonomy: 3
+    triggers: [ { event: pullrequest.opened } ]
+    steps:
+      - { id: review, method: llm, reason: "judgement against principles and ADRs; not a rule set", exactness: sourced }
+      - { id: post,   method: rule }
+      - { id: merge,  method: rule, policy: "ci_green && no_contract_change && no_principle_violation" }
+
+  - id: P-05
+    name: Intake and triage
+    autonomy: 3
+    triggers: [ { event: issue.opened }, { event: discussion.created }, { event: chat.mention } ]
+    steps:
+      # starts on an llm; the maturation loop is expected to move this to `ml`
+      - { id: classify, method: llm, reason: "bug, feature, out of scope — judgement, not a rule", exactness: tolerant,
+          maturation: { candidate: ml, min_labelled_cases: 500 } }
+      - { id: route,    method: rule }
+      - { id: escalate, method: human, when: "classification == feature || affects.scope" }
+
+  - id: P-06
+    name: Consistency check
+    autonomy: 3
+    triggers: [ { event: merge }, { schedule: nightly } ]
+    steps:
+      - { id: collect,      method: rule }
+      - { id: detect-drift, method: llm, reason: "hold the intent of an ADR against the implementation", exactness: sourced }
+      - { id: file-issues,  method: rule }
+
+  - id: P-07
+    name: Quality reports
+    autonomy: 4
+    triggers: [ { schedule: weekly } ]
+    steps:
+      - { id: loadtest,        method: rule }
+      - { id: collect-metrics, method: rule, exactness: exact }
+      - { id: narrate,         method: llm, reason: "turn numbers into a position the reader can act on", exactness: sourced }
+      - { id: publish,         method: rule }
+
+  - id: P-08
+    name: Decision request
+    autonomy: anchor
+    triggers: [ { event: anchor.hit } ]
+    steps:
+      - { id: compose,     method: llm, reason: "phrase options with consequence and a recommendation", exactness: sourced }
+      - { id: post-thread, method: rule }
+      - { id: await,       method: wait }
+      - { id: interpret,   method: llm, reason: "read a free-text answer", exactness: tolerant }
+      - { id: confirm,     method: human }        # the interpretation is confirmed, never assumed
+      - { id: record,      method: rule }         # entry in the decision register
+
+  - id: P-09
+    name: Milestone report
+    autonomy: 4
+    triggers: [ { event: milestone.reached } ]
+
+  - id: P-10
+    name: Repository hygiene
+    autonomy: 4
+    triggers: [ { schedule: daily } ]
+    guardrails:
+      - auto_merge_only: [patch, minor]
+      - major_requires_anchor: true
+
+value_criteria:
+  cost: [ ai_consumption, compute, infrastructure, rework ]
+  benefit: [ engineering_hours_saved, lead_time_reduction, defects_prevented, business_relevance ]
+  revert_analysis: true

@@ -1,0 +1,20 @@
+# Licensing intent
+
+This repository is public and under a reservation of all rights (see LICENSE).
+
+The intent is to publish Taktus as Fair Source or Source Available before version 1.0.0. The exact
+model is not settled; it is tied to the accounting basis
+(docs/adr/ADR-0010-accounting.md), which is still being calibrated.
+
+Planned split at the time of release:
+
+- **Control plane** — the chosen Fair Source or Source Available model. Free with the complete
+  feature set for non-commercial use; self-hosting unrestricted, no feature gate, no licence key, no
+  telemetry.
+- **contracts/ and the reference adapters** — licensed more permissively, so that third parties may
+  build adapters and pass them on. A contract you are not allowed to implement freely is not a
+  contract.
+
+Until the decision is made, no third-party contributions are accepted. An accepted outside
+contribution would belong to its author under unclear terms and would bind any later licence change
+to their agreement.

@@ -1,0 +1,42 @@
+.DEFAULT_GOAL := help
+UV ?= uv
+
+help: ## Show targets
+	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-20s\033[0m %s\n",$$1,$$2}'
+
+install: ## Create the environment
+	$(UV) sync --all-extras
+
+test: ## Unit and domain tests
+	$(UV) run pytest
+
+gate-arch: ## Adapter obligation, component boundaries, no product names in the core
+	$(UV) run lint-imports
+	$(UV) run pytest tests/architecture
+
+gate-conformance: ## Contract conformance suite
+	$(UV) run pytest tests/conformance
+
+gate-governance: ## Anchors hold, limits never breach, least privilege
+	$(UV) run pytest tests/governance
+
+gate-exactness: ## `exact` steps never take their final value from a variable method
+	$(UV) run pytest tests/exactness
+
+gate-docs: ## A contract or behaviour change must touch its documentation
+	$(UV) run python tools/checkdocs.py
+
+gate-secrets: ## No secret value may ever enter this public repository
+	gitleaks detect --no-banner --redact
+
+lint: ## Static analysis and types
+	$(UV) run ruff check .
+	$(UV) run ruff format --check .
+	$(UV) run mypy
+
+generate: ## Regenerate the shared kernel and API types from contracts/
+	$(UV) run python tools/generate.py
+
+gates: lint gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets test ## Everything CI runs
+
+.PHONY: help install test gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets lint generate gates

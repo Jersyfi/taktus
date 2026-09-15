@@ -1,0 +1,47 @@
+name: ci
+
+# CI validates. CI never deploys.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The repository is public. A finding is handled as rotate-first,
+      # never as a false positive to silence.
+      - name: secrets
+        uses: gitleaks/gitleaks-action@v2
+
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+
+      - name: lint and types
+        run: make lint
+
+      - name: architecture
+        run: make gate-arch
+
+      - name: conformance
+        run: make gate-conformance
+
+      - name: governance
+        run: make gate-governance
+
+      - name: exactness
+        run: make gate-exactness
+
+      - name: documentation freshness
+        run: make gate-docs
+
+      - name: test
+        run: make test

@@ -1,0 +1,27 @@
+# build
+dist/
+build/
+*.egg-info/
+
+# generated — see docs/architecture/project-structure.md
+src/taktus/shared/generated/
+api/openapi.yaml
+web/build/
+node_modules/
+
+# environment — never commit a secret value
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kubeconfig*
+
+# tooling
+.venv/
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.DS_Store
