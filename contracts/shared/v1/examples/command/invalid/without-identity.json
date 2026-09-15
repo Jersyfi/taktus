@@ -1,0 +1,15 @@
+{
+  "id": "cmd_01J8R2C1H5M8SY9Q6X7D0ABCEF",
+  "channel": "channel.cli",
+  "org_path": [
+    "acme"
+  ],
+  "intent": {
+    "raw": "deploy"
+  },
+  "reply_to": {
+    "channel": "channel.cli",
+    "address": "tty-3"
+  },
+  "received_at": "2026-09-15T21:04:12Z"
+}

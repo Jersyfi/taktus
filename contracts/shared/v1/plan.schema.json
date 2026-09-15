@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Plan",
+  "description": "What is to be achieved, with what, by when and at which autonomy level, developed in dialogue before anything runs. Commissioning is an explicit, recorded act: a plan does not slide into execution. A plan ends either in a one-off run or in a new process version. See docs/architecture/control-plane.md.",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "command_id": {
+      "description": "The command this plan answers.",
+      "type": "string",
+      "minLength": 1
+    },
+    "goal": { "type": "string", "minLength": 1 },
+    "autonomy_level": { "$ref": "autonomy-level.schema.json" },
+    "due": { "type": "string", "format": "date-time" },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "step.schema.json" },
+      "minItems": 1
+    },
+    "results_in": {
+      "description": "What the plan produces when commissioned.",
+      "type": "string",
+      "enum": ["run", "process_version"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "commissioned", "withdrawn"]
+    },
+    "commissioned": {
+      "description": "The recorded act. Present exactly when the status is commissioned.",
+      "type": "object",
+      "properties": {
+        "by": { "description": "Identity of the person who commissioned.", "type": "string", "minLength": 1 },
+        "at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["by", "at"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["id", "command_id", "goal", "autonomy_level", "steps", "results_in", "status"],
+  "additionalProperties": false,
+  "if": { "properties": { "status": { "const": "commissioned" } } },
+  "then": { "required": ["commissioned"] },
+  "else": { "not": { "required": ["commissioned"] } }
+}

@@ -1,0 +1,7 @@
+{
+  "assignment_id": "asg_01J8R9T2M4K7QW3N8V5C1XZBAE",
+  "seq": 9,
+  "ts": "2026-09-15T21:12:03Z",
+  "type": "decision.made",
+  "rationale": "validation loss stopped improving; three epochs are enough"
+}

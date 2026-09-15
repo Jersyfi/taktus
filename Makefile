@@ -10,6 +10,9 @@ install: ## Create the environment
 test: ## Unit and domain tests
 	$(UV) run pytest
 
+gate-contracts: ## Schemas are valid 2020-12, examples validate, must-fail examples fail
+	$(UV) run tools/validate_contracts.py
+
 gate-arch: ## Adapter obligation, component boundaries, no product names in the core
 	$(UV) run lint-imports
 	$(UV) run pytest tests/architecture
@@ -37,6 +40,6 @@ lint: ## Static analysis and types
 generate: ## Regenerate the shared kernel and API types from contracts/
 	$(UV) run python tools/generate.py
 
-gates: lint gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets test ## Everything CI runs
+gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets test ## Everything CI runs
 
-.PHONY: help install test gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets lint generate gates
+.PHONY: help install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets lint generate gates

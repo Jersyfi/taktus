@@ -1,0 +1,11 @@
+{
+  "assignment_id": "asg_01J8R3K5Q2N7VX9M4T6B0DPHWE",
+  "seq": 8,
+  "ts": "2026-09-15T21:10:41Z",
+  "type": "tool.called",
+  "step_id": "s2",
+  "tool": "net.egress",
+  "arguments_digest": "sha256:970155324baf808756904f137ec53e5dcbaafe5ba64118e411b314a55b3758d2",
+  "refused": true,
+  "reason": "net.egress:* is forbidden by the frame"
+}

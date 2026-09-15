@@ -1,0 +1,13 @@
+{
+  "seq": 3,
+  "ts": "2026-09-16T02:14:09Z",
+  "kind": "step.finished",
+  "prev_hash": "sha256:aeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e",
+  "hash": "sha256:40093ead2c5f20a05dfd08796e7f24d7b8ccf0b2345f71d0fdb80c493e331a07",
+  "refs": {
+    "run_id": "run_17342"
+  },
+  "payload": {
+    "diff": "--- a/file\n+++ b/file"
+  }
+}

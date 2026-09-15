@@ -1,0 +1,7 @@
+{
+  "confidence": "high",
+  "compute_seconds": 5400,
+  "resource_class": "gpu.small",
+  "wall_seconds": 5700,
+  "steps": 4
+}

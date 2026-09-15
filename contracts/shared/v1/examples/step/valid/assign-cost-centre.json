@@ -1,0 +1,27 @@
+{
+  "id": "assign-cost-centre",
+  "method": "ml",
+  "reason": "six fixed classes, fourteen months of training data, 99.1% accuracy on the held-out set, roughly 300 times cheaper than a language model, reproducible at a pinned version",
+  "rejected": [
+    {
+      "method": "llm",
+      "why": "expensive and variable, no benefit over six fixed classes"
+    },
+    {
+      "method": "rule",
+      "why": "document wording too inconsistent for a rule set"
+    }
+  ],
+  "exactness": "sourced",
+  "model": "cost-centre-clf@3.2.0",
+  "fallback": {
+    "when": "confidence < 0.9",
+    "to": "human"
+  },
+  "requires": [
+    "ml.classify"
+  ],
+  "depends_on": [
+    "extract-document-fields"
+  ]
+}

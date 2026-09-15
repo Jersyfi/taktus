@@ -1,0 +1,94 @@
+{
+  "assignment": {
+    "assignment_id": "asg_01J8RB4C6D8E0F2G4H6J8K0LMNP",
+    "task": {
+      "goal": "Run the repository's documentation freshness check.",
+      "acceptance": [
+        "exit code 0"
+      ],
+      "inputs": {
+        "command": "make gate-docs"
+      }
+    },
+    "context": {
+      "workspace": {
+        "kind": "git",
+        "ref": "main"
+      }
+    },
+    "frame": {
+      "autonomy_level": 2,
+      "allowed_tools": [
+        "shell.script"
+      ],
+      "max_steps": 1,
+      "deadline": "2026-09-15T22:00:00Z"
+    },
+    "limits": {
+      "compute": {
+        "seconds": 600,
+        "resource_class": "cpu.small"
+      }
+    },
+    "callback": {
+      "events": "sse"
+    }
+  },
+  "estimate": {
+    "confidence": "low",
+    "compute_seconds": 30,
+    "resource_class": "cpu.small",
+    "wall_seconds": 30,
+    "steps": 1
+  },
+  "events": [
+    {
+      "assignment_id": "asg_01J8RB4C6D8E0F2G4H6J8K0LMNP",
+      "seq": 1,
+      "ts": "2026-09-15T21:10:05Z",
+      "type": "step.started",
+      "step_id": "run",
+      "kind": "shell",
+      "summary": "make gate-docs"
+    },
+    {
+      "assignment_id": "asg_01J8RB4C6D8E0F2G4H6J8K0LMNP",
+      "seq": 2,
+      "ts": "2026-09-15T21:10:05Z",
+      "type": "tool.called",
+      "step_id": "run",
+      "tool": "shell.script",
+      "arguments_digest": "sha256:cdedb2ca229446817866dac0080b1053a6c70392a716e84d83c8423210c3d450"
+    },
+    {
+      "assignment_id": "asg_01J8RB4C6D8E0F2G4H6J8K0LMNP",
+      "seq": 3,
+      "ts": "2026-09-15T21:10:31Z",
+      "type": "artifact.produced",
+      "step_id": "run",
+      "artifact_id": "art-log-1",
+      "kind": "log",
+      "digest": "sha256:ced8848f7aad470226e155fe222f21966dcc31a281c7c99ccccc37820b2efd0f",
+      "media_type": "text/plain",
+      "size_bytes": 1440,
+      "uri": "/v1/assignments/asg_01J8RB4C6D8E0F2G4H6J8K0LMNP/artifacts/art-log-1"
+    },
+    {
+      "assignment_id": "asg_01J8RB4C6D8E0F2G4H6J8K0LMNP",
+      "seq": 4,
+      "ts": "2026-09-15T21:10:31Z",
+      "type": "consumption.reported",
+      "step_id": "run",
+      "compute_seconds": 26,
+      "resource_class": "cpu.small"
+    },
+    {
+      "assignment_id": "asg_01J8RB4C6D8E0F2G4H6J8K0LMNP",
+      "seq": 5,
+      "ts": "2026-09-15T21:10:32Z",
+      "type": "assignment.finished",
+      "outcome": "succeeded",
+      "summary": "exit code 0"
+    }
+  ]
+}

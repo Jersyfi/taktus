@@ -1,0 +1,7 @@
+{
+  "id": "triage-ticket",
+  "method": "llm",
+  "reason": "ticket text is free-form",
+  "rejected": [],
+  "exactness": "tolerant"
+}

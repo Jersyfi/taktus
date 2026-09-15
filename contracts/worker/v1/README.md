@@ -6,6 +6,15 @@ this contract. **Workers execute. They do not decide.**
 Transport: HTTP for control, Server-Sent Events for the event stream, JSON Schema as the definition.
 Rationale: [ADR-0007](../../../docs/adr/ADR-0007-worker-contract.md).
 
+| File | Contents |
+|---|---|
+| [`worker.schema.json`](worker.schema.json) | every body and every event, as JSON Schema 2020-12; shared concepts are referenced from [`contracts/shared/v1`](../../shared/v1) |
+| [`openapi.yaml`](openapi.yaml) | the endpoints, with every body referencing the schema |
+| [`examples/`](examples/) | valid examples per definition and the must-fail fixtures for the conformance checks below |
+
+Where this text and the schema disagree, the schema is the finding and this text is corrected.
+`make gate-contracts` checks the schema and every example.
+
 ---
 
 ## 1. Endpoints
@@ -18,8 +27,11 @@ Rationale: [ADR-0007](../../../docs/adr/ADR-0007-worker-contract.md).
 | `GET` | `/v1/assignments/{id}/events` | event stream (SSE, resumable) |
 | `GET` | `/v1/assignments/{id}` | current state |
 | `POST` | `/v1/assignments/{id}/stop` | request a stop at the next step boundary |
-| `GET` | `/v1/assignments/{id}/artifacts` | collect result artifacts |
+| `GET` | `/v1/assignments/{id}/artifacts` | list result artifacts |
+| `GET` | `/v1/assignments/{id}/artifacts/{artifact_id}` | fetch one artifact's bytes |
 | `GET` | `/v1/health` | readiness |
+
+Errors are RFC 9457 problem details. A rejected assignment is not an error; see section 3.
 
 ---
 
@@ -36,9 +48,10 @@ concrete adapter is configuration.
     "workspace.isolated", "shell.sandboxed"
   ],
   "consumption": {
-    "kinds": ["quota"],
+    "kinds": ["quota", "currency"],
     "window_seconds": 18000,
-    "unit": "session-units"
+    "unit": "session-units",
+    "currencies": ["eur"]
   },
   "supports": {
     "native_pause": false,
@@ -50,11 +63,16 @@ concrete adapter is configuration.
 }
 ```
 
-`consumption.kinds` is any of `currency`, `quota`, `compute`. A subscription-backed worker reports
-`quota` and describes its window; a training worker reports `compute` with a resource class. The
-control plane converts none of it into money — it derives the normalised **Takt**
-(`docs/architecture/accounting.md`). An exhausted window is not *more expensive*, it *blocks*, and
-that is a different state.
+`consumption.kinds` is any of `currency`, `quota`, `compute`. Each kind brings its own detail:
+`quota` needs `window_seconds` and `unit`, `compute` needs `resource_classes`, `currency` needs
+`currencies`. A subscription-backed worker reports `quota` and describes its window; a training
+worker reports `compute` with its resource classes. The control plane converts none of it into money
+— it derives the normalised **Takt** (`docs/architecture/accounting.md`). An exhausted window is not
+*more expensive*, it *blocks*, and that is a different state.
+
+Of the four `supports` flags only `native_pause` varies. `step_boundary_signal`, `streaming_events`
+and `estimate` are constant `true`: without them sections 4 to 6 cannot be satisfied. They are
+declared so that a reader of the response sees the obligation.
 
 ---
 
@@ -62,9 +80,13 @@ that is a different state.
 
 ```json
 {
-  "assignment_id": "asg_01J...",
+  "assignment_id": "asg_01J8R3K5Q2N7VX9M4T6B0DPHWE",
   "task": { "goal": "…", "acceptance": ["…"], "inputs": {} },
-  "context": { "workspace": { "kind": "git", "ref": "…" }, "documents": [] },
+  "context": {
+    "workspace": { "kind": "git", "ref": "main", "location": "/workspace/repo" },
+    "documents": [],
+    "checkpoint_ref": "…"
+  },
   "frame": {
     "autonomy_level": 3,
     "allowed_tools": ["code.edit", "code.test", "vcs.branch"],
@@ -72,64 +94,92 @@ that is a different state.
     "max_steps": 40,
     "deadline": "2026-09-16T04:00:00Z"
   },
-  "limits": { "currency": { "eur": 4.0 }, "quota": { "units": 120 }, "compute": { "gpu_seconds": 7200 } },
-  "credentials": [ { "name": "GH_TOKEN", "injected_as": "env" } ],
+  "limits": {
+    "currency": { "eur": 4.0 },
+    "quota": { "units": 120 },
+    "compute": { "seconds": 7200, "resource_class": "gpu.small" }
+  },
+  "credentials": [ { "name": "VCS_TOKEN", "injected_as": "env" } ],
   "callback": { "events": "sse" }
 }
 ```
 
-**Credentials are injected at runtime and never stored by the worker.** No credential appears in an
-event, an artifact or a log. A worker that violates this fails conformance.
+The control plane chooses the `assignment_id`. `context.checkpoint_ref` is present only when the
+assignment resumes an earlier one; the worker continues after that checkpoint and produces no
+artifact it produced before it.
 
-**Least privilege:** the worker receives only the tools in `allowed_tools`. `frame` is a ceiling, not
-a suggestion.
+**Credentials travel as names.** The execution adapter injects the value into the worker's
+environment at runtime; the value never passes through this contract, never appears in an event, an
+artifact or a log, and is never stored by the worker. A worker that violates this fails conformance.
+
+**Least privilege:** the worker receives only the tools in `allowed_tools`; `forbidden` narrows
+further by pattern. `frame` is a ceiling, not a suggestion.
+
+**Rejection.** If the estimate does not fit `limits`, or the frame cannot be honoured, the worker
+does not start. The response to `POST /v1/assignments` is the assignment state with `status:
+"finished"` and `outcome: "rejected"`, and the stream carries exactly one event —
+`assignment.finished` with the same outcome and a reason. Rejection is a state, not an HTTP error,
+so that the ledger sees it through the same stream as everything else.
 
 ---
 
 ## 4. Events
 
-Each event carries `assignment_id`, `seq`, `ts`, `type`. The stream is resumable from `seq`.
+Each event carries `assignment_id`, `seq`, `ts`, `type`. `seq` starts at 1 and increases by exactly
+1. On the wire the SSE `id` field carries `seq`, the SSE `event` field carries `type`, and the SSE
+`data` field carries the event as one line of JSON. A client resumes by sending the last `seq` it
+has seen — in the standard `Last-Event-ID` header or as the `after` query parameter — and receives
+everything after it. A worker honours both.
 
 | Type | Required content |
 |---|---|
-| `step.started` | `step_id`, `kind`, `summary` |
-| `step.progress` | `step_id`, `message` |
-| `tool.called` | `tool`, `arguments_digest` (**hashed, never in clear**) |
+| `step.started` | `step_id`, `kind`, `summary` — `kind` names the class of work in one token: `plan`, `edit`, `test`, `shell`, `epoch` |
+| `step.progress` | `step_id`, `message`; optionally `progress: {current, total, unit}` for work measured in units such as epochs |
+| `tool.called` | `tool` (a capability), `arguments_digest` (**`sha256:` + hex, never in clear**); `refused: true` with a `reason` when the tool lies outside the frame |
 | `decision.made` | `rationale` — why this path |
-| `consumption.reported` | `step_id`, and any of `tokens_in`/`tokens_out`/`cost_eur`/`quota_units`/`compute_seconds` with `resource_class` |
+| `consumption.reported` | `step_id`, and any of `tokens_in` / `tokens_out` / `currency` / `quota_units` / `compute_seconds` with `resource_class` |
 | `step.boundary` | `step_id`, `checkpoint_ref` — **a stop may take effect here** |
 | `artifact.produced` | `artifact_id`, `kind`, `digest` |
-| `assignment.finished` | `outcome`: `succeeded` · `failed` · `stopped` · `rejected` |
+| `assignment.finished` | `outcome`: `succeeded` · `failed` · `stopped` · `rejected`; `checkpoint_ref` when stopped, `reason` when failed or rejected |
 
 `consumption.reported` comes **per step**, not at the end. A worker that only settles up at the end
-makes admission control impossible.
+makes admission control impossible. `currency` is a map by ISO 4217 code in lowercase,
+`{"eur": 0.42}`, the same shape as in `limits`.
 
 `step.boundary` is the most important event in the contract: it is the promise that at most one step
 of work can be lost.
+
+A tool outside `allowed_tools`, or matching `forbidden`, is **refused, not ignored**: the worker emits
+`tool.called` with `refused: true` and does not execute it. That is how the refusal becomes visible
+to the ledger.
 
 ---
 
 ## 5. Estimation
 
+The request body is the assignment without `credentials` and `callback`; an estimate needs no secret.
+
 ```json
 POST /v1/estimate
 → { "confidence": "low|medium|high",
     "tokens_in": 40000, "tokens_out": 12000,
-    "cost_eur": 3.2, "quota_units": 90, "compute_seconds": 5400,
-    "resource_class": "gpu.small",
+    "currency": { "eur": 3.2 }, "quota_units": 90,
+    "compute_seconds": 5400, "resource_class": "gpu.small",
     "wall_seconds": 600, "steps": 12 }
 ```
 
 An estimate may be rough. It must exist. Without it there is no admission control and therefore no
-limit guarantee. `confidence: "low"` is a valid answer; a missing endpoint is not.
+limit guarantee. `confidence: "low"` is a valid answer; a missing endpoint is not. `confidence`,
+`wall_seconds` and `steps` are always present; the quantities are those the worker's consumption
+kinds cover. A shell script with no model and no tokens still answers.
 
 ---
 
 ## 6. Stopping
 
 `POST /stop` requests a stop at the **next** step boundary. The running step may finish up to a hard
-ceiling. The worker emits `step.boundary`, then `assignment.finished` with `outcome: "stopped"` and a
-checkpoint to resume from.
+ceiling — `ceiling_seconds` in the request, or the worker's own. The worker emits `step.boundary`,
+then `assignment.finished` with `outcome: "stopped"` and the same `checkpoint_ref` to resume from.
 
 A worker that aborts immediately and discards the running step violates the contract.
 
@@ -159,6 +209,12 @@ taktusctl conformance run --contract worker/v1 --endpoint http://localhost:9000
 A passed suite plus a passed removal test is maturity *verified*. Production processes at autonomy
 level 3 and above may only use adapters at *verified* or above.
 
+**Fixtures.** `examples/<definition>/valid/` holds what a conforming worker produces;
+`examples/<definition>/invalid/W-NN-*.json` holds one violation per check. Checks that concern a
+whole stream — W-03 to W-07, W-10, W-11 — use the `Transcript` shape: the assignment, the estimate
+the worker gave for it, and every event in order. `tools/validate_contracts.py` applies the stream
+rules to those fixtures; the conformance suite applies them to a live worker.
+
 ---
 
 ## 8. Two proof cases
@@ -174,4 +230,4 @@ epochs rather than tool calls, the result a model artifact with metrics. If it c
 contract, the contract only serves coding — and method maturation
 ([ADR-0004](../../../docs/adr/ADR-0004-method-selection.md)) would have no path into execution.
 
-Both are part of the conformance suite from `0.1.0`.
+Both are part of the conformance suite from `0.1.0`. Both appear in `examples/transcript/valid/`.

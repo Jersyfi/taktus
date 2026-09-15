@@ -1,0 +1,10 @@
+{
+  "tokens_in": 40000,
+  "tokens_out": 12000,
+  "currency": {
+    "eur": 3.2
+  },
+  "quota_units": 90,
+  "wall_seconds": 600,
+  "steps": 12
+}

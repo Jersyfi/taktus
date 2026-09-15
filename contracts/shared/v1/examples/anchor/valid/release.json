@@ -1,0 +1,17 @@
+{
+  "id": "anc-release",
+  "class": "strategic",
+  "act": "publish a release",
+  "applies_to": {
+    "actions": [
+      "vcs.release",
+      "vcs.push:protected"
+    ],
+    "processes": [
+      "release-train"
+    ]
+  },
+  "decider": {
+    "role": "product.owner"
+  }
+}
