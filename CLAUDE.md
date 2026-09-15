@@ -159,7 +159,7 @@ A misunderstood sentence in the documentation becomes wrong code later.
 
 1. violates no guiding principle,
 2. passes the architecture tests,
-3. passes the conformance suite if it touches a contract,
+3. passes `make gate-contracts` and the conformance suite if it touches a contract,
 4. does not break the removal test,
 5. every new step carries method, reason and exactness class,
 6. has tests at the right level,
