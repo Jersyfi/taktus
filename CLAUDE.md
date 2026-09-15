@@ -58,8 +58,9 @@ Full detail: `docs/architecture/methods.md`.
 
 ## 4. Exactness
 
-Every step carries an exactness class that limits which methods may produce its result: `exact`,
-`sourced`, `tolerant`, `free`.
+Every step that produces a result carries an exactness class that limits which methods may
+produce it: `exact`, `sourced`, `tolerant`, `free`. Steps of kind `wait` and `human` produce none
+and carry no class (ADR-0018).
 
 **For `exact` there is no exception:** AI methods may propose and prepare, never produce the final
 value. A number produced by a language model never reaches the accounting journal. CI enforces it.
@@ -161,7 +162,7 @@ A misunderstood sentence in the documentation becomes wrong code later.
 2. passes the architecture tests,
 3. passes `make gate-contracts` and the conformance suite if it touches a contract,
 4. does not break the removal test,
-5. every new step carries method, reason and exactness class,
+5. every new step carries method and reason, and an exactness class if it produces a result,
 6. has tests at the right level,
 7. carried its documentation along,
 8. introduced no secret value,

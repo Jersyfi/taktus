@@ -1,8 +1,9 @@
 {
   "id": "await-ci",
   "method": "wait",
-  "reason": "the pipeline result arrives as an event; nothing is produced here, only awaited",
+  "reason": "the pipeline result arrives as an event",
   "rejected": [],
+  "exactness": "exact",
   "depends_on": [
     "open-pull-request"
   ]

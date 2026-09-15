@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Method",
-  "description": "The kind of method that produces a step's result. Eight kinds are available. Four of them are reproducible: rule and wait exactly, statistics given the same data, ml and neural at a pinned version and seed. llm and worker are variable and require a fallback. See docs/architecture/methods.md and ADR-0004.",
+  "description": "The kind of method that produces a step's result. Eight kinds are available. Four of them are reproducible: rule and wait exactly, statistics given the same data, ml and neural at a pinned version and seed. llm and worker are variable and require a fallback. Six kinds produce a result and carry an exactness class; wait and human produce none and carry no class (ADR-0018). See docs/architecture/methods.md and ADR-0004.",
   "type": "string",
   "enum": ["rule", "statistics", "ml", "neural", "llm", "worker", "human", "wait"],
   "$defs": {
@@ -16,6 +16,18 @@
       "description": "Methods that are reproducible only at a pinned model version. A step using one of these names its model.",
       "type": "string",
       "enum": ["ml", "neural"]
+    },
+    "producing": {
+      "title": "ProducingMethod",
+      "description": "Methods that produce a result. A step using one of these carries an exactness class (ADR-0018).",
+      "type": "string",
+      "enum": ["rule", "statistics", "ml", "neural", "llm", "worker"]
+    },
+    "nonProducing": {
+      "title": "NonProducingMethod",
+      "description": "Methods that produce no result: wait passes on what arrives, human is itself the authority. A step using one of these carries no exactness class (ADR-0018).",
+      "type": "string",
+      "enum": ["human", "wait"]
     },
     "exactAdmissible": {
       "title": "ExactAdmissibleMethod",

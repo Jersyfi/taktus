@@ -19,7 +19,8 @@ ADR wins.
 | [0011](ADR-0011-process-bundles.md) | Process bundles, optionally mirrored to Git | accepted |
 | [0012](ADR-0012-licensing.md) | Licensing and repository visibility | **open — owner decides** |
 | [0013](ADR-0013-business-critical.md) | Taktus is business-critical: what follows | accepted |
-| [0014](ADR-0014-exactness.md) | Exactness classes | accepted |
+| [0014](ADR-0014-exactness.md) | Exactness classes | accepted, amended by 0018 |
 | [0015](ADR-0015-bottlenecks.md) | Measure waiting, report the marginal value of a change | accepted |
 | [0016](ADR-0016-explicit-architecture.md) | Explicit Architecture: cut by component | accepted |
 | [0017](ADR-0017-decision-requests-in-the-repository.md) | Decision requests as a repository mechanism | accepted |
+| [0018](ADR-0018-exactness-applies-to-result-producing-steps.md) | Exactness classes apply to result-producing steps only | accepted |

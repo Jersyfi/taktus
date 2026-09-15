@@ -86,6 +86,10 @@ Say so up front, or the first month reads as a broken promise.
 Some results must never be wrong. Others should vary. The exactness class **limits which methods may
 produce the result.**
 
+It applies to every step that produces a result: `rule`, `statistics`, `ml`, `neural`, `llm`,
+`worker`. A `wait` step produces none — it passes on what arrives — and a `human` step is itself
+the authority. Neither carries a class (ADR-0018).
+
 | Class | Meaning | Admissible for the result | Example |
 |---|---|---|---|
 | `exact` | provably correct, machine-checkable | `rule` or `statistics` only. AI may propose and prepare, never produce the final value | booking amount, tax code, balance, payment amount |

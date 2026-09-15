@@ -66,7 +66,7 @@ A process is a **directed graph of steps**, not a script and not a prompt.
 - **reason** for the choice and the **alternatives rejected**
 - a **fallback** for any method that can vary
 - an **exactness class** — `exact`, `sourced`, `tolerant`, `free` — limiting which methods may
-  produce the result
+  produce the result; on every step that produces one, never on `wait` or `human` (ADR-0018)
 
 See [methods.md](methods.md). The choice is measured continuously and Taktus proposes changes.
 

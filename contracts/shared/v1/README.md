@@ -10,9 +10,9 @@ One schema per concept. No product name, no Python assumption, no transport deta
 |---|---|---|
 | [`command.schema.json`](command.schema.json) | the normalised entry into the one execution path | no command without an identity; the reply goes back to a channel capability |
 | [`plan.schema.json`](plan.schema.json) | what, with what, by when, at which autonomy level | commissioning is a recorded act: `commissioned` is present exactly when the status says so |
-| [`step.schema.json`](step.schema.json) | one node of a process graph | method, reason, rejected alternatives and exactness on every step; a fallback on `llm` and `worker`; a pinned model on `ml` and `neural`; `exact` admits `rule` and `statistics` only |
-| [`method.schema.json`](method.schema.json) | the eight method kinds | plus the subsets `variable`, `pinned`, `exactAdmissible` |
-| [`exactness-class.schema.json`](exactness-class.schema.json) | how wrong a result may be | `exact`, `sourced`, `tolerant`, `free` |
+| [`step.schema.json`](step.schema.json) | one node of a process graph | method, reason and rejected alternatives on every step; exactness on every result-producing step and never on `wait` or `human` (ADR-0018); a fallback on `llm` and `worker`; a pinned model on `ml` and `neural`; `exact` admits `rule` and `statistics` only |
+| [`method.schema.json`](method.schema.json) | the eight method kinds | plus the subsets `variable`, `pinned`, `producing`, `nonProducing`, `exactAdmissible` |
+| [`exactness-class.schema.json`](exactness-class.schema.json) | how wrong a result may be | `exact`, `sourced`, `tolerant`, `free`; carried by result-producing steps only |
 | [`capability.schema.json`](capability.schema.json) | what an adapter can do, by function | lowercase dotted, at least two segments, so that a bare product name never validates; `pattern` adds qualifiers and `*` |
 | [`autonomy-level.schema.json`](autonomy-level.schema.json) | the role a person plays in the loop | 1 to 4 |
 | [`anchor.schema.json`](anchor.schema.json) | an act that stays with a person | legal or strategic; at least one selector; the decider is a role |

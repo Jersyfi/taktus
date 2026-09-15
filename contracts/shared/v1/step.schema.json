@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Step",
-  "description": "One node of a process graph. Every step carries its method, the reason for the choice, the alternatives rejected, its exactness class and, for any method that can vary, a fallback. Two rules from ADR-0014 and ADR-0004 are enforced here: a step classed exact takes its result from rule or statistics only, and a step on llm or worker names a fallback. A step on ml or neural pins its model version, because that is what makes it reproducible.",
+  "description": "One node of a process graph. Every step carries its method, the reason for the choice, the alternatives rejected and, for any method that can vary, a fallback. Every step that produces a result carries its exactness class; wait and human produce none and carry no class (ADR-0018). Two rules from ADR-0014 and ADR-0004 are enforced here: a step classed exact takes its result from rule or statistics only, and a step on llm or worker names a fallback. A step on ml or neural pins its model version, because that is what makes it reproducible.",
   "type": "object",
   "properties": {
     "id": {
@@ -28,7 +28,10 @@
         "additionalProperties": false
       }
     },
-    "exactness": { "$ref": "exactness-class.schema.json" },
+    "exactness": {
+      "description": "How wrong the result may be. Required for every result-producing method, absent for wait and human (ADR-0018).",
+      "$ref": "exactness-class.schema.json"
+    },
     "fallback": {
       "description": "Where the step goes when the chosen method is not good enough. Mandatory for llm and worker.",
       "type": "object",
@@ -61,9 +64,17 @@
       "uniqueItems": true
     }
   },
-  "required": ["id", "method", "reason", "rejected", "exactness"],
+  "required": ["id", "method", "reason", "rejected"],
   "additionalProperties": false,
   "allOf": [
+    {
+      "if": { "properties": { "method": { "$ref": "method.schema.json#/$defs/producing" } } },
+      "then": { "required": ["exactness"] }
+    },
+    {
+      "if": { "properties": { "method": { "$ref": "method.schema.json#/$defs/nonProducing" } } },
+      "then": { "not": { "required": ["exactness"] } }
+    },
     {
       "if": { "properties": { "method": { "$ref": "method.schema.json#/$defs/variable" } } },
       "then": { "required": ["fallback"] }
@@ -73,7 +84,7 @@
       "then": { "required": ["model"] }
     },
     {
-      "if": { "properties": { "exactness": { "const": "exact" } } },
+      "if": { "required": ["exactness"], "properties": { "exactness": { "const": "exact" } } },
       "then": { "properties": { "method": { "$ref": "method.schema.json#/$defs/exactAdmissible" } } }
     }
   ]
