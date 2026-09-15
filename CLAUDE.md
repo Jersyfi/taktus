@@ -110,15 +110,27 @@ a seam in the wrong place.
 
 ## 8. Final human control
 
-Two classes of anchor keep an act with a person regardless of the autonomy level:
+Two classes of anchor keep an act with a person regardless of the autonomy level: **legal
+anchors** for legally binding acts, **strategic anchors** for direction. Every organisation
+defines its own set; it can be reduced but never emptied. An anchor halts the run at a step
+boundary and raises a **decision request**. A free-text answer is never acted on silently: the
+interpretation is reflected back and confirmed first (ADR-0008).
 
-- **Legal anchors** — legally binding acts.
-- **Strategic anchors** — direction: scope, accepting or rejecting a feature, version assignment,
-  architectural change, releases, licensing and pricing, anything communicated publicly.
+**For this repository the anchors are concrete.** `docs/decisions/anchors.md` lists what the owner
+decides and what a session decides and records. Test every question against it before raising it.
 
-Every organisation defines its own anchors, and the set can be reduced but never emptied. An anchor
-halts the run at a step boundary and raises a **decision request**. A free-text answer is never acted
-on silently: the interpretation is reflected back and confirmed first.
+Everything a pull request tells the owner is one of four categories (ADR-0017):
+
+| Category | Meaning | Effect |
+|---|---|---|
+| **DEFECT** | the repository contradicts itself or is wrong | corrected here, recorded under `docs/decisions/`, never asked |
+| **NOTE** | information, nothing to answer | stated under "Notes", never phrased as a question |
+| **NON-BLOCKING** | a choice is pending; work continues on a marked provisional answer | a file under `docs/decisions/open/` and an issue; the pull request may merge |
+| **BLOCKING** | continuing would produce work that must be thrown away | the same, and the pull request **stays a draft** until answered |
+
+A request has seven sections and must be decidable by a person who has read neither the diff nor
+the session nor any ADR. The answer becomes a `DEC-NNNN` record. `make gate-decisions` enforces
+the shape; CI enforces the draft.
 
 ---
 
@@ -166,4 +178,6 @@ A misunderstood sentence in the documentation becomes wrong code later.
 6. has tests at the right level,
 7. carried its documentation along,
 8. introduced no secret value,
-9. carries an ADR if it has architectural effect.
+9. carries an ADR if it has architectural effect,
+10. names every decision it raises by ID and category near the top of its description, and
+    stays a draft while one is blocking.
