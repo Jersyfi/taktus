@@ -9,7 +9,7 @@ Configuration references secret *names*. The operator creates the secrets.
 
 | Name | Purpose | Used in | Rotation |
 |---|---|---|---|
-| *(maintained from `0.1.0`)* | | | |
+| `GITHUB_TOKEN` | lets the secret scan in CI read the commits of a pull request | `.github/workflows/ci.yml`, step `secrets` | none needed: GitHub creates it per workflow run and revokes it when the run ends; it is never stored |
 
 ## Rule for every session in this repository
 

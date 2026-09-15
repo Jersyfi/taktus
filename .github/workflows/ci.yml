@@ -45,15 +45,21 @@ jobs:
 
   gates:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       # The repository is public. A finding is handled as rotate-first,
-      # never as a false positive to silence.
+      # never as a false positive to silence. The action needs the workflow's own token to read
+      # the commits of a pull request; that token is created by GitHub per run, not stored here.
       - name: secrets
         uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: astral-sh/setup-uv@v5
       - run: make install
@@ -74,7 +80,9 @@ jobs:
         run: make gate-exactness
 
       - name: documentation freshness
-        run: make gate-docs
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: make gate-docs BASE="$BASE"
 
       - name: decisions
         run: make gate-decisions

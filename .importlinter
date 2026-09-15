@@ -2,7 +2,9 @@
 # There is no compiler enforcing these boundaries, so these contracts are the architecture.
 
 [importlinter]
-root_packages = taktus
+root_packages =
+    taktus
+include_external_packages = True
 
 [importlinter:contract:layers]
 name = Dependencies point inward

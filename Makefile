@@ -8,26 +8,26 @@ install: ## Create the environment
 	$(UV) sync --all-extras
 
 test: ## Unit and domain tests
-	$(UV) run pytest
+	$(UV) run tools/gate.py test tests
 
 gate-contracts: ## Schemas are valid 2020-12, examples validate, must-fail examples fail
 	$(UV) run tools/validate_contracts.py
 
 gate-arch: ## Adapter obligation, component boundaries, no product names in the core
 	$(UV) run lint-imports
-	$(UV) run pytest tests/architecture
+	$(UV) run tools/gate.py architecture tests/architecture
 
 gate-conformance: ## Contract conformance suite
-	$(UV) run pytest tests/conformance
+	$(UV) run tools/gate.py conformance tests/conformance
 
 gate-governance: ## Anchors hold, limits never breach, least privilege
-	$(UV) run pytest tests/governance
+	$(UV) run tools/gate.py governance tests/governance
 
 gate-exactness: ## `exact` steps never take their final value from a variable method
-	$(UV) run pytest tests/exactness
+	$(UV) run tools/gate.py exactness tests/exactness
 
 gate-docs: ## A contract or behaviour change must touch its documentation
-	$(UV) run python tools/checkdocs.py
+	$(UV) run tools/checkdocs.py $(if $(BASE),--base $(BASE))
 
 gate-secrets: ## No secret value may ever enter this public repository
 	gitleaks detect --no-banner --redact
