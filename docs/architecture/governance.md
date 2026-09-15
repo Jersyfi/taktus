@@ -95,6 +95,11 @@ it in their sleep by the third one.
 3. **Blocked work is visible.** Whatever waits on an answer appears in the decider's view and in the
    run history. An unanswered request is never a silent stall.
 
+The Taktus project applies the same mechanism to its own repository: which questions reach the
+owner is listed in [`docs/decisions/anchors.md`](../decisions/anchors.md), the shape and the return
+path are in [ADR-0017](../adr/ADR-0017-decision-requests-in-the-repository.md), and the register is
+[`docs/decisions/`](../decisions/README.md).
+
 ### 3.3 Against escalation
 
 | | Decision request | Escalation |

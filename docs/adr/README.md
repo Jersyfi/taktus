@@ -22,3 +22,4 @@ ADR wins.
 | [0014](ADR-0014-exactness.md) | Exactness classes | accepted |
 | [0015](ADR-0015-bottlenecks.md) | Measure waiting, report the marginal value of a change | accepted |
 | [0016](ADR-0016-explicit-architecture.md) | Explicit Architecture: cut by component | accepted |
+| [0017](ADR-0017-decision-requests-in-the-repository.md) | Decision requests as a repository mechanism | accepted |

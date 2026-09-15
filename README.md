@@ -88,6 +88,7 @@ you see the domain, not the framework.
 | [docs/architecture/contracts.md](docs/architecture/contracts.md) | Worker, connector and model contracts; maturity levels |
 | [docs/architecture/project-structure.md](docs/architecture/project-structure.md) | Components, tree, dependency rules, conventions |
 | [docs/adr/README.md](docs/adr/README.md) | 16 architecture decisions with the alternatives rejected |
+| [docs/decisions/](docs/decisions/README.md) | The project's decision register: which questions reach the owner, and what was answered |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones `0.1.0` to `1.0.0` |
 | [docs/usecases/](docs/usecases/) | The worked use cases |
 
