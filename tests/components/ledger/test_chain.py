@@ -121,4 +121,4 @@ async def test_the_ledger_records_in_sequence_and_verifies() -> None:
         assert [e.seq for e in await ledger.entries("t", "run_1")] == [1, 2]
         assert (await ledger.verify("t")).intact
     async with persistence.transaction("other"):
-        assert await ledger.entries("other") == (), "one chain per tenant"
+        assert list(await ledger.entries("other")) == [], "one chain per tenant"

@@ -9,19 +9,23 @@ write there is — no component writes into another's repository (ADR-0016).
 **Every call names its tenant** (ADR-0020). The tenant is an explicit parameter, never a default
 and never read from a context variable by business code: a repository cannot be called without
 one, and the adapter refuses a tenant other than the one the open transaction was opened for.
+An aggregate that carries its tenant as a field (a run does) carries the one it is stored
+under; storing it under another is refused the same way.
 
 **Every call happens inside a unit of work.** The application layer opens one with
 `transaction(tenant)`; everything the repositories and the ledger store do inside the block is
-one transaction, committed at the end of the block and rolled back on an exception. A
-repository used outside a block raises `NoTransaction`, and blocks do not nest: one use case,
-one transaction. Neither an adapter nor the domain opens one.
+one transaction, committed at the end of the block and rolled back on an exception. A store
+that raises inside the block spoils the transaction: nothing of it is committed even if the
+error is caught, and the block's end raises `SpoiltTransaction`. A repository used outside a
+block raises `NoTransaction`, and blocks do not nest: one use case, one transaction. Neither
+an adapter nor the domain opens one.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from contextlib import AbstractAsyncContextManager
-from typing import Protocol
+from typing import Any, Protocol, Self
 
 from taktus.shared.v1 import LedgerEntry
 
@@ -48,11 +52,41 @@ class NestedTransaction(PersistenceError):
     """A unit of work was opened inside another one."""
 
 
+class SpoiltTransaction(PersistenceError):
+    """A store raised inside the unit of work and the error was caught there. Nothing of the
+    block is committed — a database aborts the transaction at the first failed statement —
+    and the block's end says so rather than returning as if it had committed."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "a store raised inside this unit of work; the transaction was rolled back and "
+            "nothing of it was committed"
+        )
+
+
+class DuplicateSequence(PersistenceError):
+    """An entry was appended under a sequence number the tenant's chain already has."""
+
+    def __init__(self, tenant: Tenant, seq: int) -> None:
+        super().__init__(f"the chain of tenant {tenant!r} already has an entry with seq {seq}")
+
+
 class Identified(Protocol):
     """What a repository needs from an aggregate: its identifier."""
 
     @property
     def id(self) -> str: ...
+
+
+class Stored(Identified, Protocol):
+    """What an adapter needs from an aggregate on top of its identifier: the way to and from
+    its JSON document. An adapter never imports a component's class (ADR-0003); the
+    composition root binds the class, the adapter stores the document."""
+
+    def document(self) -> dict[str, Any]: ...
+
+    @classmethod
+    def model_validate(cls, obj: Any) -> Self: ...
 
 
 class Repository[T: Identified](Protocol):
@@ -70,7 +104,9 @@ class LedgerStore(Protocol):
     changed or removed. The chain's rules — sequence, links, hashes — belong to the ledger
     component; the store keeps order, and it keeps two writers of one chain apart."""
 
-    async def append(self, tenant: Tenant, entry: LedgerEntry) -> None: ...
+    async def append(self, tenant: Tenant, entry: LedgerEntry) -> None:
+        """Raises `DuplicateSequence` when the chain already has the entry's seq."""
+        ...
 
     async def last(self, tenant: Tenant) -> LedgerEntry | None:
         """The newest entry of the tenant's chain. Inside a transaction that then appends, the

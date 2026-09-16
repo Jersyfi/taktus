@@ -41,7 +41,7 @@ async def test_a_committed_transaction_round_trips_through_the_snapshot(tmp_path
         assert stored is not None and stored.title == "second write wins"
         assert await again.get("t1", "nope") is None
         assert len(await again.list("t1")) == 1
-        assert await MemoryLedgerStore(second).entries("t1") == (entry,)
+        assert list(await MemoryLedgerStore(second).entries("t1")) == [entry]
         assert (await MemoryLedgerStore(second).entries("t1"))[0].document()["prev_hash"] is None
     async with second.transaction("t2"):
         assert await again.list("t2") == [], "another tenant sees nothing"

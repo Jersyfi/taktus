@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from taktus.adapters.driven.memory.persistence import MemoryPersistence, Stored
-from taktus.ports.persistence import Tenant
+from taktus.adapters.driven.memory.persistence import MemoryPersistence
+from taktus.ports.persistence import Stored, Tenant, WrongTenant
 
 
 class MemoryRepository[T: Stored]:
@@ -24,7 +24,11 @@ class MemoryRepository[T: Stored]:
         return self._persistence.table(self._kind, tenant).get(id)
 
     async def put(self, tenant: Tenant, item: T) -> None:
-        self._persistence.current(tenant).puts[(self._kind, item.id)] = item
+        transaction = self._persistence.current(tenant)
+        own = item.document().get("tenant")
+        if own is not None and own != tenant:
+            raise WrongTenant(own, tenant)
+        transaction.puts[(self._kind, item.id)] = item
 
     async def list(self, tenant: Tenant) -> Sequence[T]:
         transaction = self._persistence.current(tenant)

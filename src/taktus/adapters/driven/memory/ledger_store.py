@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
-from taktus.ports.persistence import Tenant
+from taktus.ports.persistence import DuplicateSequence, Tenant
 from taktus.shared.v1 import LedgerEntry
 
 
@@ -15,7 +15,14 @@ class MemoryLedgerStore:
         self._persistence = persistence
 
     async def append(self, tenant: Tenant, entry: LedgerEntry) -> None:
-        self._persistence.current(tenant).appended.append(entry)
+        transaction = self._persistence.current(tenant)
+        taken = {e.seq for e in self._persistence.chain(tenant)} | {
+            e.seq for e in transaction.appended
+        }
+        if entry.seq in taken:
+            transaction.spoilt = True  # as a database would: the transaction is done for
+            raise DuplicateSequence(tenant, entry.seq)
+        transaction.appended.append(entry)
 
     async def last(self, tenant: Tenant) -> LedgerEntry | None:
         transaction = self._persistence.current(tenant)
@@ -26,4 +33,4 @@ class MemoryLedgerStore:
 
     async def entries(self, tenant: Tenant) -> Sequence[LedgerEntry]:
         transaction = self._persistence.current(tenant)
-        return (*self._persistence.chain(tenant), *transaction.appended)
+        return [*self._persistence.chain(tenant), *transaction.appended]

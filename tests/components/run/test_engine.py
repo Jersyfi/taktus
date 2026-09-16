@@ -567,7 +567,7 @@ async def test_a_plan_with_an_unexecutable_step_is_refused_before_anything_runs(
         await h.start()
     async with h.persistence.transaction(TENANT):
         assert await h.runs.list(TENANT) == []
-        assert await h.ledger.entries(TENANT) == ()
+        assert list(await h.ledger.entries(TENANT)) == []
 
 
 async def test_a_from_reference_must_name_a_dependency() -> None:

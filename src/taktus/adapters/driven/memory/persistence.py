@@ -16,25 +16,20 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, Self
+from typing import Any
 
 from taktus.adapters.driven.memory import _snapshot
-from taktus.ports.persistence import NestedTransaction, NoTransaction, Tenant, WrongTenant
+from taktus.ports.persistence import (
+    NestedTransaction,
+    NoTransaction,
+    SpoiltTransaction,
+    Stored,
+    Tenant,
+    WrongTenant,
+)
 from taktus.shared.v1 import LedgerEntry
 
 LEDGER = "ledger"
-
-
-class Stored(Protocol):
-    """What the memory store needs from an aggregate: its id, and the way to and from JSON."""
-
-    @property
-    def id(self) -> str: ...
-
-    def document(self) -> dict[str, Any]: ...
-
-    @classmethod
-    def model_validate(cls, obj: Any) -> Self: ...
 
 
 @dataclass
@@ -42,6 +37,7 @@ class Transaction:
     tenant: Tenant
     puts: dict[tuple[str, str], Any] = field(default_factory=dict)  # (kind, id) → item
     appended: list[LedgerEntry] = field(default_factory=list)
+    spoilt: bool = False
 
 
 class MemoryPersistence:
@@ -65,6 +61,8 @@ class MemoryPersistence:
         token = self._current.set(transaction)
         try:
             yield
+            if transaction.spoilt:
+                raise SpoiltTransaction
             await self._commit(transaction)
         finally:
             self._current.reset(token)

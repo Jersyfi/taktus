@@ -9,7 +9,7 @@ dependencies = [
   "fastapi",
   "uvicorn[standard]",
   "pydantic>=2",
-  "sqlalchemy>=2",
+  "sqlalchemy[asyncio]>=2",
   "psycopg[binary,pool]",
   "alembic",
   "httpx",
