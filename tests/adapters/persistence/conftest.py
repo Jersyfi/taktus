@@ -1,24 +1,19 @@
 """One suite, two implementations of the persistence port.
 
 Every test in this directory takes the `backend` fixture and runs once against the in-memory
-adapter and once against PostgreSQL in a container. The assertions are the same; if the two
-disagree, the port is a leaky abstraction and that is the finding. PostgreSQL comes from
-testcontainers, migrated once per session; when Docker is not available the PostgreSQL half
-skips and says so. `TAKTUS_TEST_DATABASE_URL` points the suite at an existing, empty database
-instead of a container.
+adapter and once against PostgreSQL in a container (`postgres_url`, tests/conftest.py). The
+assertions are the same; if the two disagree, the port is a leaky abstraction and that is the
+finding. When Docker is not available the PostgreSQL half skips and says so.
 """
 
 from __future__ import annotations
 
 import os
-import shutil
-import subprocess
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
-from alembic import command
 from sqlalchemy import create_engine, text
 
 from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
@@ -27,49 +22,10 @@ from taktus.adapters.driven.postgres import (
     PostgresPersistence,
     PostgresRepository,
 )
-from taktus.adapters.driven.postgres.migrate import configuration
 from taktus.adapters.driven.postgres.url import for_sqlalchemy
 from taktus.ports.persistence import LedgerStore, Repository, Stored, UnitOfWork
 
 IMPLEMENTATIONS = ("memory", "postgres")
-
-
-def docker_available() -> str | None:
-    """None when Docker can run a container, otherwise the reason it cannot."""
-    if shutil.which("docker") is None:
-        return "docker is not on the path"
-    try:
-        completed = subprocess.run(
-            ["docker", "info"],  # noqa: S607
-            capture_output=True,
-            timeout=20,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return "docker info did not answer within 20 seconds"
-    if completed.returncode != 0:
-        return "the Docker daemon is not reachable (docker info failed)"
-    return None
-
-
-@pytest.fixture(scope="session")
-def postgres_url() -> Iterator[str]:
-    """A migrated database for the whole session: an existing one from the environment, or a
-    container. Tests keep apart through fresh tenants, so nothing is cleaned between them."""
-    given = os.environ.get("TAKTUS_TEST_DATABASE_URL")
-    if given:
-        command.upgrade(configuration(given), "head")
-        yield given
-        return
-    reason = docker_available()
-    if reason is not None:
-        pytest.skip(f"PostgreSQL tests need Docker for a container: {reason}")
-    from testcontainers.community.postgres import PostgresContainer
-
-    with PostgresContainer("postgres:16-alpine", driver=None) as container:
-        url = container.get_connection_url()
-        command.upgrade(configuration(url), "head")
-        yield url
 
 
 @dataclass
