@@ -16,8 +16,9 @@ doctor: ## Report the tooling state; non-zero if a required tool is missing
 install: need-uv ## Create the environment
 	$(UV) sync --all-extras
 
-test: need-uv ## Unit and domain tests
-	$(UV) run tools/gate.py test tests
+# The gate directories run under their own targets; `make gates` runs every test exactly once.
+test: need-uv ## Unit and domain tests — everything under tests/ that is not a gate
+	$(UV) run tools/gate.py test tests $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
 
 gate-contracts: need-uv ## Schemas are valid 2020-12, examples validate, must-fail examples fail
 	$(UV) run tools/validate_contracts.py

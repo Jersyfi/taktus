@@ -66,6 +66,8 @@ taktus/
 │   │       ├── connectors/{github,chat,http}/
 │   │       └── models/{openai_compatible,anthropic,ollama}/
 │   │
+│   ├── conformance/                 # the contract suite — a client of adapters, no part of the core
+│   │
 │   └── composition/                 # composition root, dependency wiring, role runners
 │
 ├── workers/                         # separate deployables behind the worker contract
@@ -89,7 +91,7 @@ taktus/
 │   └── integration/ contract/ security/ resilience/ fixtures/
 │
 ├── docs/{architecture,adr,usecases,roadmap.md}
-├── tools/                           # checkdocs, generators
+├── tools/                           # gates, checkdocs, preflight, generators
 ├── pyproject.toml  Makefile  .importlinter
 └── CLAUDE.md  README.md  LICENSE  NOTICE  CONTRIBUTING.md  CREDENTIALS.md
 ```
@@ -100,12 +102,19 @@ taktus/
 
 ```
 composition          → everything
-adapters.driving     → components.*.application, ports, shared
+adapters.driving     → components.*.application, ports, shared, conformance
 adapters.driven      → ports, shared
+conformance          → contracts only                    — nothing in src/taktus
 workers/*            → contracts only                    — NEVER src/taktus
 components.X         → components.X, ports, shared
 shared               → nothing
 ```
+
+`conformance` is the executable reading of a contract, run against a live adapter. It is a
+client, as a foreign control plane would be, and therefore imports nothing from the control
+plane; `taktusctl conformance` (a driving adapter) is its entry point, and `tests/conformance` its
+gate. It ships in the wheel together with `contracts/`, so that a third party can run it without
+the rest of Taktus.
 
 `tests/architecture` fails on:
 

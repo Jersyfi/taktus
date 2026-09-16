@@ -51,7 +51,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         "a tool or a make target",
-        r"(tools/[^/]+\.py|Makefile)",
+        r"(tools/[^/]+\.(?:py|sh)|Makefile)",
         ("tools/README.md",),
     ),
     Rule(
