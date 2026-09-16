@@ -20,17 +20,18 @@ dependencies = [
   "typer",
   "jsonschema",
   "pgvector",
+  "pyyaml",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest", "pytest-asyncio", "testcontainers[postgres]",
-  "mypy", "types-jsonschema", "ruff", "import-linter", "coverage",
+  "mypy", "types-jsonschema", "types-pyyaml", "ruff", "import-linter", "coverage",
 ]
 
 [project.scripts]
 taktusd = "taktus.composition.daemon:main"
-taktusctl = "taktus.adapters.driving.cli.main:app"
+taktusctl = "taktus.composition.taktusctl:main"
 
 [build-system]
 requires = ["hatchling"]
