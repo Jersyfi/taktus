@@ -86,6 +86,7 @@ you see the domain, not the framework.
 | [docs/architecture/throughput.md](docs/architecture/throughput.md) | Blocked-time accounts, bottlenecks, marginal value of raising a limit |
 | [docs/architecture/accounting.md](docs/architecture/accounting.md) | Consumption measurement and the Takt as a unit |
 | [docs/architecture/contracts.md](docs/architecture/contracts.md) | Worker, connector and model contracts; maturity levels |
+| [contracts/worker/v1/CONFORMANCE.md](contracts/worker/v1/CONFORMANCE.md) | How to check a worker of your own against the contract |
 | [docs/architecture/project-structure.md](docs/architecture/project-structure.md) | Components, tree, dependency rules, conventions |
 | [docs/adr/README.md](docs/adr/README.md) | 19 architecture decisions with the alternatives rejected |
 | [docs/decisions/](docs/decisions/README.md) | The project's decision register: which questions reach the owner, and what was answered |
@@ -106,7 +107,7 @@ you see the domain, not the framework.
 | Migrations | Alembic |
 | ML bench | scikit-learn, PyTorch, sentence-transformers — as a worker, never in the core |
 | Architecture enforcement | `import-linter` contracts, run in CI |
-| Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers` |
+| Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers`; `make doctor` says what is missing |
 | Observability | OpenTelemetry from day one |
 | Web | SvelteKit, embedded into the image |
 | Deployment | Docker Compose for self-hosting, Kubernetes for scale |

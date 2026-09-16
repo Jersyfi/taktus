@@ -47,3 +47,15 @@ forbidden_modules =
     uvicorn
     alembic
     mcp
+
+[importlinter:contract:conformance-stands-alone]
+name = The conformance suite imports nothing from the control plane
+type = forbidden
+source_modules =
+    taktus.conformance
+forbidden_modules =
+    taktus.components
+    taktus.ports
+    taktus.adapters
+    taktus.composition
+    taktus.shared

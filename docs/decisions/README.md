@@ -14,3 +14,4 @@ creates its record here. `make gate-decisions` checks both.
 | [0002](DEC-0002-exactness-and-non-producing-steps.md) | Exactness and non-producing steps | DEFECT | corrected: exactness applies to result-producing steps only (ADR-0018) |
 | [0003](DEC-0003-where-the-stream-rules-live.md) | Where the stream rules live | NOTE | reclassified: a placement, not a decision |
 | [0004](DEC-0004-ci-red-on-empty-targets.md) | CI red on empty targets | BLOCKING | answered: every gate is made meaningful on an empty target |
+| [0005](DEC-0005-w12-is-not-a-suite-check.md) | W-12 is not a check the suite can run | DEFECT | corrected: the suite runs W-01 to W-11 and reports the removal test as pending |

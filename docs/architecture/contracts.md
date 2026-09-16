@@ -56,9 +56,17 @@ taktusctl conformance run --contract worker/v1 --endpoint http://localhost:9000
 The conformance suite is the real asset here — not the adapter code, but the ability to check.
 Without it, "interchangeable" is an assertion.
 
+The suite lives in `src/taktus/conformance/` and imports nothing from the control plane; it talks
+to a worker over HTTP and SSE as a foreign control plane would. It runs W-01 to W-11 against a
+live endpoint and reports W-12, the removal test, as *pending* until processes exist to remove an
+adapter from. Its report states which half of *verified* it proves. How a third party runs it
+against a worker of their own: [`contracts/worker/v1/CONFORMANCE.md`](../../contracts/worker/v1/CONFORMANCE.md).
+`make gate-conformance` proves the suite itself: the reference worker passes it in both profiles,
+and for every fault the reference worker can inject the suite fails on exactly that check.
+
 Before the suite runs against a worker, `make gate-contracts` checks the contract itself: every
 schema is valid and carries the `$id` its path prescribes, every example validates, and every check
-W-01..W-12 has a fixture that fails as it must (`tools/validate_contracts.py`).
+W-01..W-12 has a fixture (`tools/validate_contracts.py`).
 
 Every schema is identified by `https://taktus.eu/contracts/<family>/v1/<Concept>.json` — its path
 under `contracts/` behind the project's domain. A released v1 schema is immutable; changes become
@@ -73,7 +81,7 @@ example, not a requirement. The core runs with all of them removed — it simply
 
 | Family | Adapter | Why this one |
 |---|---|---|
-| Worker | `script` | the trivial worker. **Mandatory from day one:** a contract a shell script cannot satisfy is built around one specific coding agent. |
+| Worker | `script` | the trivial worker. **Mandatory from day one:** a contract a shell script cannot satisfy is built around one specific coding agent. Exists (`workers/script/`), passes the suite; its `longrun` profile has the shape of the second proof case and trains nothing. |
 | Worker | `mlbench` | training, evaluation, embeddings, classical ML. The second proof case: hours of runtime, a GPU held, a model artifact returned. |
 | Worker | `claudecode` | the first real coding worker |
 | Worker | `codex` | the second real coding worker; validates the contract against a second vendor |

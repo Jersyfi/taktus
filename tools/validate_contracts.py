@@ -14,22 +14,24 @@ Checks, in order:
    document, carries the `$id` its path prescribes (ADR-0019), and every `$ref` in it resolves;
 2. every `openapi.yaml` is OpenAPI 3.1 and every `$ref` in it resolves;
 3. every example under `examples/<target>/valid/` validates against its target;
-4. every example under `examples/<target>/invalid/` fails — by schema, or for transcripts by one of
-   the stream rules below — and every conformance check W-01..W-12 has at least one such example;
+4. every example under `examples/<target>/invalid/` fails by schema, and every conformance check
+   W-01..W-12 has at least one fixture named after it;
 5. every target has at least two valid examples.
 
 The target of an examples directory is its name in kebab-case: for the shared kernel the schema
 file (`exactness-class` -> `ExactnessClass.json`), for a contract the definition
 (`assignment-state` -> `Worker.json#/$defs/AssignmentState`).
 
-The stream rules are the executable reading of the conformance checks that cannot be expressed in
-JSON Schema. The conformance suite (tests/conformance, next pull request) is the authority against a
-live worker; these rules exist so that its fixtures are known good or known bad before it exists.
+One target is different. A `transcript` fixture is a whole stream, and what makes it invalid is
+a stream rule — the order or completeness of its events — which no schema can express. This
+tool checks that such a fixture is schema-valid, which it must be to exercise a stream rule at
+all, and leaves the rule to the conformance suite: `tests/conformance` applies the same rules to
+these fixtures and to a live worker (`src/taktus/conformance/rules.py`). This file imports
+nothing from the suite, so that it stays runnable on its own.
 """
 
 from __future__ import annotations
 
-import fnmatch
 import json
 import re
 import sys
@@ -260,8 +262,6 @@ def check_examples(schemas: dict[Path, Json], registry: SchemaRegistry, report: 
             for path in valid:
                 instance = load_json(path)
                 why = first_error(validator, instance)
-                if why is None and target == "transcript":
-                    why = first_stream_violation(instance)
                 if why is None:
                     report.ok(str(path.relative_to(ROOT)))
                 else:
@@ -269,113 +269,24 @@ def check_examples(schemas: dict[Path, Json], registry: SchemaRegistry, report: 
             for path in invalid:
                 instance = load_json(path)
                 why = first_error(validator, instance)
-                if why is None and target == "transcript":
-                    why = first_stream_violation(instance)
                 name = path.relative_to(ROOT)
-                if why is None:
+                match = re.match(r"(W-\d{2})-", path.name)
+                if match:
+                    covered.add(match.group(1))
+                if target == "transcript":
+                    if why is None:
+                        report.ok(f"{name} is schema-valid; its stream rule is tests/conformance's")
+                    else:
+                        report.fail(str(name), f"a transcript fixture must be schema-valid: {why}")
+                elif why is None:
                     report.fail(str(name), "must fail but validates")
                 else:
                     report.ok(f"{name} fails as it must ({why})")
-                    match = re.match(r"(W-\d{2})-", path.name)
-                    if match:
-                        covered.add(match.group(1))
     missing = [check for check in CHECKS if check not in covered]
     if missing:
         report.fail("conformance coverage", "no must-fail example for " + ", ".join(missing))
     else:
         report.ok(f"every check {CHECKS[0]}..{CHECKS[-1]} has a must-fail example")
-
-
-# --- stream rules --------------------------------------------------------------------------------
-
-
-def matches_pattern(tool: str, pattern: str) -> bool:
-    """`*` stands for a whole segment or qualifier; a pattern without qualifier matches any."""
-    if ":" in pattern:
-        return fnmatch.fnmatchcase(tool, pattern)
-    base = tool.split(":", 1)[0]
-    return fnmatch.fnmatchcase(base, pattern)
-
-
-def exceeds_limits(estimate: Json, limits: Json) -> str | None:
-    for code, amount in estimate.get("currency", {}).items():
-        ceiling = limits.get("currency", {}).get(code)
-        if ceiling is not None and amount > ceiling:
-            return f"currency {code} {amount} > {ceiling}"
-    if "quota" in limits and estimate.get("quota_units", 0) > limits["quota"]["units"]:
-        return f"quota {estimate['quota_units']} > {limits['quota']['units']}"
-    compute = limits.get("compute")
-    if compute and estimate.get("resource_class") == compute["resource_class"]:
-        if estimate.get("compute_seconds", 0) > compute["seconds"]:
-            return f"compute {estimate['compute_seconds']} > {compute['seconds']}"
-    return None
-
-
-def first_stream_violation(transcript: Json) -> str | None:
-    """The executable reading of W-03..W-07, W-10 and W-11 for a fixture. Returns the first
-    violated rule, or None."""
-    assignment = transcript["assignment"]
-    events = transcript["events"]
-    frame = assignment["frame"]
-
-    foreign = [e["seq"] for e in events if e["assignment_id"] != assignment["assignment_id"]]
-    if foreign:
-        return f"events {foreign} carry a foreign assignment_id"
-
-    seqs = [e["seq"] for e in events]
-    if seqs != list(range(1, len(events) + 1)):  # W-03
-        return f"W-03 seq is not gapless from 1: {seqs}"
-
-    last = events[-1]
-    if last["type"] != "assignment.finished":
-        return "the last event is not assignment.finished"
-    if any(e["type"] == "assignment.finished" for e in events[:-1]):
-        return "assignment.finished is not the last event"
-
-    outcome = last["outcome"]
-    excess = exceeds_limits(transcript["estimate"], assignment["limits"])
-    if excess and (outcome != "rejected" or len(events) != 1):  # W-10
-        return f"W-10 estimate exceeds limits ({excess}) but the stream did not reject first"
-    if outcome == "rejected":
-        return None if len(events) == 1 else "a rejected assignment emits exactly one event"
-
-    started = [e["step_id"] for e in events if e["type"] == "step.started"]
-    if len(started) > frame["max_steps"]:
-        return f"{len(started)} steps started, frame allows {frame['max_steps']}"
-
-    reported = {e["step_id"] for e in events if e["type"] == "consumption.reported"}
-    unreported = [s for s in started if s not in reported]
-    if unreported:  # W-04
-        return f"W-04 no consumption.reported for step(s) {unreported}"
-
-    boundaries = [e for e in events if e["type"] == "step.boundary"]
-    if not boundaries:  # W-05
-        return "W-05 no step.boundary in the stream"
-
-    if outcome == "stopped":  # W-06
-        before = events[-2] if len(events) > 1 else None
-        if before is None or before["type"] != "step.boundary":
-            return "W-06 stopped without a step.boundary directly before assignment.finished"
-        if before["checkpoint_ref"] != last.get("checkpoint_ref"):
-            return "W-06 checkpoint_ref of assignment.finished differs from the boundary's"
-
-    allowed = set(frame["allowed_tools"])
-    forbidden = frame.get("forbidden", [])
-    for event in (e for e in events if e["type"] == "tool.called"):  # W-07
-        tool = event["tool"]
-        outside = tool not in allowed or any(matches_pattern(tool, p) for p in forbidden)
-        if outside and not event.get("refused", False):
-            return f"W-07 tool {tool} is outside the frame and was not refused (seq {event['seq']})"
-
-    digests: dict[str, int] = {}
-    for event in (e for e in events if e["type"] == "artifact.produced"):  # W-11
-        if event["digest"] in digests:
-            return (
-                f"W-11 artifact digest {event['digest'][:19]}… emitted twice "
-                f"(seq {digests[event['digest']]} and {event['seq']})"
-            )
-        digests[event["digest"]] = event["seq"]
-    return None
 
 
 # --- main ----------------------------------------------------------------------------------------

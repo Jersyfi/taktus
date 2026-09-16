@@ -206,16 +206,22 @@ taktusctl conformance run --contract worker/v1 --endpoint http://localhost:9000
 | W-11 | resuming from a checkpoint produces no duplicate artifact |
 | W-12 | the adapter passes the removal test: removing it breaks no process |
 
-A passed suite plus a passed removal test is maturity *verified*. Production processes at autonomy
-level 3 and above may only use adapters at *verified* or above.
+The suite runs W-01 to W-11 against a live worker and reports W-12 as *pending*: the removal test
+takes the adapter out of running processes, which a suite talking to one endpoint cannot do, and
+which needs processes to exist (DEC-0005). A passed suite plus a passed removal test is maturity
+*verified*. Production processes at autonomy level 3 and above may only use adapters at
+*verified* or above.
+
+How to run the suite against a worker of your own, what each check means in plain words and what
+a failure tells you to fix: [CONFORMANCE.md](CONFORMANCE.md).
 
 **Fixtures.** `examples/<definition>/valid/` holds what a conforming worker produces;
 `examples/<definition>/invalid/W-NN-*.json` holds one violation per check. Checks that concern a
 whole stream — W-03 to W-07, W-10, W-11 — use the `Transcript` shape: the assignment, the estimate
-the worker gave for it, and every event in order. `tools/validate_contracts.py` applies the stream
-rules to those fixtures; the conformance suite applies them to a live worker.
-
----
+the worker gave for it, and every event in order. The stream rules that judge them live in the
+suite (`src/taktus/conformance/rules.py`) and are applied to the fixtures by `tests/conformance`
+and to a live worker by `taktusctl conformance run`. `tools/validate_contracts.py` checks that
+every fixture is schema-valid and that every check has one.
 
 ## 8. Two proof cases
 
