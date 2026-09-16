@@ -199,6 +199,11 @@ def taktusctl() -> str:
     return path
 
 
+# The command line colours its usage errors where the terminal allows it; CI's does, and the
+# escape codes would split the words the assertions look for.
+PLAIN = {"NO_COLOR": "1", "TERM": "dumb"}
+
+
 def test_taktusctl_run_executes_the_example_and_resumes_in_a_later_invocation(
     worker_endpoint: str, tmp_path: Path
 ) -> None:
@@ -253,6 +258,12 @@ def test_taktusctl_run_refuses_an_invalid_bundle(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("missing", ["--process"])
 def test_taktusctl_run_needs_a_process(missing: str) -> None:
-    completed = subprocess.run([taktusctl(), "run"], capture_output=True, text=True, check=False)  # noqa: S603
+    completed = subprocess.run(  # noqa: S603
+        [taktusctl(), "run"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **PLAIN},
+    )
     assert completed.returncode == 2
     assert missing in completed.stderr
