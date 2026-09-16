@@ -136,7 +136,8 @@ the shape; CI enforces the draft.
 
 ## 9. Working rules
 
-- **One pull request per change.** Conventional Commits.
+- **One pull request per change.** Conventional Commits. Pull requests are squash-merged; the pull
+  request title becomes the commit on `main` and follows Conventional Commits.
 - **No secret value** ever enters this repository, a file, a log or a message. Configuration
   references secret **names**; the operator creates them. `CREDENTIALS.md` lists name, purpose,
   where it is used and how to rotate it — never values. **The repository is public.**
