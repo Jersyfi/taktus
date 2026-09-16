@@ -42,8 +42,8 @@ step carries method, exactness class and consumption.
 
 **Done so far:** the contracts as executable JSON Schema with the shared kernel (#1) · the
 decision register and the owner's anchors (#3) · the conformance suite for the worker contract,
-runnable by a third party against a live worker, proven to fail on every injected fault · the
-`script` worker in both profiles · `taktusctl conformance run` · `import-linter` contracts with
+runnable by a third party against a live worker, proven to fail on every injected fault, the
+`script` worker in both profiles and `taktusctl conformance run` (#4) · `import-linter` contracts with
 `make gate-arch`, and `tests/architecture` still empty. Not yet: the control plane, `mlbench`,
 the execution adapters, the `github` connector, the CLI channel, OpenTelemetry, the architecture
 tests.

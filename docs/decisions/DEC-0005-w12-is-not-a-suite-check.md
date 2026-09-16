@@ -1,7 +1,7 @@
 # DEC-0005 — W-12 is not a check the suite can run
 
 **Category:** DEFECT
-**Raised in:** the pull request that adds the conformance suite for the worker contract (branch `claude/worker-conformance-suite-01d67a`)
+**Raised in:** [#4](https://github.com/Jersyfi/taktus/pull/4), which adds the conformance suite for the worker contract
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -83,5 +83,4 @@ it proves (`contracts/worker/v1/README.md` §7, `docs/architecture/contracts.md`
 `contracts/worker/v1/CONFORMANCE.md` §7).
 **What changed in substance:** nothing. No check was added, removed or weakened; no worker is
 marked *verified*; the removal test still has to be built and passed before any adapter is.
-**Recorded in:** the pull request that adds the conformance suite for the worker contract
-(branch `claude/worker-conformance-suite-01d67a`)
+**Recorded in:** [#4](https://github.com/Jersyfi/taktus/pull/4)
