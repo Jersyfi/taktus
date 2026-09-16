@@ -12,4 +12,8 @@ the `hash` field, then serialised canonically: keys sorted, no whitespace, non-A
 is, encoded as UTF-8. The hash is `sha256:` followed by the SHA-256 of those bytes in lowercase
 hex. Anyone with the entries and this paragraph can recompute the chain; no key and no secret is
 involved, which is the point.
+
+Verification walks the sequence numbers, the links and the hashes. It does not judge the
+timestamps: they are part of what is hashed, so an altered one is found, but their order across
+several instances is a matter of clocks, not of the chain.
 """

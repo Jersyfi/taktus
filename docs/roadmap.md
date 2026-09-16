@@ -43,10 +43,13 @@ step carries method, exactness class and consumption.
 **Done so far:** the contracts as executable JSON Schema with the shared kernel (#1) · the
 decision register and the owner's anchors (#3) · the conformance suite for the worker contract,
 runnable by a third party against a live worker, proven to fail on every injected fault, the
-`script` worker in both profiles and `taktusctl conformance run` (#4) · `import-linter` contracts with
-`make gate-arch`, and `tests/architecture` still empty. Not yet: the control plane, `mlbench`,
-the execution adapters, the `github` connector, the CLI channel, OpenTelemetry, the architecture
-tests.
+`script` worker in both profiles and `taktusctl conformance run` (#4) · the first vertical slice
+of the control plane: command, plan, process version as a validated graph, run with step
+atomicity and admission control, the content-free ledger with verification, the worker port and
+its HTTP adapter, `taktusctl run` against the reference worker, in memory; the architecture
+tests, `tests/exactness` real, the shared kernel bound to Python and checked (#5). Not yet:
+persistence in the database, the REST API, governance and anchors, `mlbench`, the execution
+adapters, the `github` connector, OpenTelemetry export (spans exist, nothing collects them).
 
 ### `0.2.0` — governance, limits, availability
 Autonomy levels 1–3 per process **and per action class** · anchors, configurable per tenant ·

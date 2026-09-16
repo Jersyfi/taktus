@@ -15,6 +15,7 @@ layers =
     taktus.components
     taktus.ports
     taktus.shared
+    taktus.wire
 
 [importlinter:contract:components-independent]
 name = Components never import each other
@@ -59,3 +60,38 @@ forbidden_modules =
     taktus.adapters
     taktus.composition
     taktus.shared
+
+[importlinter:contract:driven-adapters-see-only-ports]
+name = Driven adapters never import a component
+type = forbidden
+source_modules =
+    taktus.adapters.driven
+forbidden_modules =
+    taktus.components
+    taktus.composition
+    taktus.conformance
+    taktus.adapters.driving
+
+[importlinter:contract:driving-adapters-are-wired-not-wiring]
+name = Driving adapters never build their own dependencies
+type = forbidden
+source_modules =
+    taktus.adapters.driving
+forbidden_modules =
+    taktus.adapters.driven
+    taktus.composition
+
+[importlinter:contract:wire-stands-alone]
+name = Wire formats stand alone
+type = forbidden
+source_modules =
+    taktus.wire
+forbidden_modules =
+    taktus.components
+    taktus.ports
+    taktus.adapters
+    taktus.composition
+    taktus.conformance
+    taktus.shared
+    httpx
+    pydantic

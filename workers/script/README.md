@@ -17,6 +17,12 @@ One file, standard library only, nothing from `src/taktus`:
 python3 workers/script/worker.py --port 9000
 ```
 
+Two things talk to it from this repository, both through `uv run` because `taktusctl` lives in
+the project environment: the conformance suite, `uv run taktusctl conformance run --contract
+worker/v1 --endpoint http://localhost:9000`, and the control plane, `uv run taktusctl run
+--process examples/processes/six-times-seven.yaml`, which hands this worker the `worker` steps
+of a process bundle (`examples/README.md`).
+
 ## Two profiles
 
 | `--profile` | Steps | Runtime | Consumption | Artifacts |

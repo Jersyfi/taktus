@@ -3,9 +3,13 @@
 #
 # `tools/preflight.sh uv gitleaks` checks that every named tool is on the path. On a miss it
 # prints the tool, what it is for, and the one command that installs it, and exits 1 — instead
-# of `make: uv: No such file or directory`. `tools/preflight.sh --doctor` reports every tool the
-# repository knows and exits 1 if a required one is missing. Every make target depends on the
-# tools it needs through `need-<tool>` (Makefile).
+# of `make: uv: No such file or directory`. Every make target depends on the tools it needs
+# through `need-<tool>` (Makefile).
+#
+# `tools/preflight.sh --doctor` reports two levels and says which is incomplete: the system
+# tools (uv, gitleaks; node is optional), and the project environment — the tools the gates
+# actually invoke through `uv run` (ruff, mypy, pytest, lint-imports, taktusctl), which live
+# in .venv and not on the path. Exit 1 if either level is incomplete.
 #
 # POSIX sh, so that it runs before any of the tools it checks for.
 
@@ -72,9 +76,27 @@ check() {
     return 1
 }
 
+project_env() {
+    echo "${UV_PROJECT_ENVIRONMENT:-.venv}"
+}
+
+# The tools the gates run through `uv run`; each must exist in the project environment.
+PROJECT_TOOLS="ruff mypy pytest lint-imports taktusctl"
+
+project_purpose() {
+    case "$1" in
+        ruff) echo "lint and format (make lint)" ;;
+        mypy) echo "types (make lint)" ;;
+        pytest) echo "every test gate and make test" ;;
+        lint-imports) echo "architecture contracts (make gate-arch)" ;;
+        taktusctl) echo "the command line; tests/conformance and tests/integration run it" ;;
+        *) echo "" ;;
+    esac
+}
+
 doctor() {
     status=0
-    echo "tooling"
+    echo "system tools"
     for tool in uv gitleaks node; do
         need="$(required "$tool")"
         if present "$tool"; then
@@ -88,11 +110,30 @@ doctor() {
         fi
     done
     if [ "$status" -ne 0 ]; then
-        echo "a required tool is missing; make gates cannot run"
+        echo "  -> incomplete: a required system tool is missing; make gates cannot run"
     else
-        echo "every required tool is present"
+        echo "  -> complete"
     fi
-    return "$status"
+    env_status=0
+    env_dir="$(project_env)"
+    echo "project environment ($env_dir)"
+    for tool in $PROJECT_TOOLS; do
+        if [ -x "$env_dir/bin/$tool" ]; then
+            printf '  %-8s %-13s %s\n' "ok" "$tool" "$(project_purpose "$tool")"
+        else
+            printf '  %-8s %-13s %s\n' "missing" "$tool" "$(project_purpose "$tool")"
+            env_status=1
+        fi
+    done
+    if [ "$env_status" -ne 0 ]; then
+        echo "  -> incomplete: run \`make install\` (every gate target does this itself when needed)"
+    else
+        echo "  -> complete"
+    fi
+    if [ "$status" -ne 0 ] || [ "$env_status" -ne 0 ]; then
+        return 1
+    fi
+    return 0
 }
 
 if [ "$#" -eq 0 ]; then

@@ -188,7 +188,7 @@ A worker that aborts immediately and discards the running step violates the cont
 ## 7. Conformance
 
 ```
-taktusctl conformance run --contract worker/v1 --endpoint http://localhost:9000
+uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhost:9000
 ```
 
 | # | Check |
@@ -220,7 +220,7 @@ a failure tells you to fix: [CONFORMANCE.md](CONFORMANCE.md).
 whole stream — W-03 to W-07, W-10, W-11 — use the `Transcript` shape: the assignment, the estimate
 the worker gave for it, and every event in order. The stream rules that judge them live in the
 suite (`src/taktus/conformance/rules.py`) and are applied to the fixtures by `tests/conformance`
-and to a live worker by `taktusctl conformance run`. `tools/validate_contracts.py` checks that
+and to a live worker by `uv run taktusctl conformance run`. `tools/validate_contracts.py` checks that
 every fixture is schema-valid and that every check has one.
 
 ## 8. Two proof cases
