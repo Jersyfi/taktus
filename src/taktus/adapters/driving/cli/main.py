@@ -65,6 +65,13 @@ def conformance_run(
     timeout: Annotated[
         float, typer.Option("--timeout", help="Seconds one assignment may take, start to finish.")
     ] = 300.0,
+    idle_timeout: Annotated[
+        float,
+        typer.Option(
+            "--idle-timeout",
+            help="Seconds the suite waits between two events before giving up on a stream.",
+        ),
+    ] = 60.0,
 ) -> None:
     """Run the conformance suite against a live adapter.
 
@@ -89,6 +96,7 @@ def conformance_run(
         credential_value=os.environ.get(credential) or None,
         worker_log=worker_log,
         timeout=timeout,
+        idle_timeout=idle_timeout,
     )
     report = asyncio.run(run_suite(options))
     if json_path is not None:

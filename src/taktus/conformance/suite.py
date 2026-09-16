@@ -95,6 +95,12 @@ class Run:
         return self.stream.events
 
     @property
+    def stop_acknowledged(self) -> bool:
+        """A stop was requested while the assignment ran and the worker answered `stopping`."""
+        state = self.stop.json if self.stop is not None else None
+        return self.stop_requested and state is not None and state.get("status") == "stopping"
+
+    @property
     def outcome(self) -> str | None:
         finished = [e for e in self.events if e.get("type") == "assignment.finished"]
         return str(finished[-1].get("outcome")) if finished else None
@@ -176,15 +182,16 @@ async def run_suite(options: SuiteOptions) -> Report:
             await _w11(client, options, stopped, declared, fitting, estimate, findings, runs)
             await _w10(client, options, declared, estimate, findings, runs)
         except httpx.HTTPError as error:
-            findings.fail("W-01", f"the worker at {options.endpoint} did not answer: {error!r}")
+            report.notes.append(f"the worker at {options.endpoint} stopped answering: {error!r}")
+            if not findings.evidence["W-01"]:
+                findings.fail("W-01", f"the worker at {options.endpoint} did not answer: {error!r}")
             for check in CHECKS:
-                if check not in {"W-01", "W-12"}:
+                if check != "W-12" and not findings.evidence[check]:
                     findings.inconclusive.setdefault(
-                        check, "not reached: the worker stopped answering (see W-01)"
+                        check, "not reached: the worker stopped answering (see the notes)"
                     )
     _w08(options, runs, findings)
     _w09(runs, findings)
-    findings.inconclusive.setdefault("W-12", "")
     for check in CHECKS:
         if check == "W-12":
             report.add(
@@ -428,7 +435,7 @@ async def _judge(client: WorkerClient, run: Run, estimate: Json | None, findings
             findings.fail(_owner(event), f"{where}: event seq {seq} is invalid: {why}")
 
     for violation in rules.stream_violations(
-        run.assignment, estimate, run.events, stopped=run.stop_requested
+        run.assignment, estimate, run.events, stopped=run.stop_acknowledged
     ):
         findings.add(violation, where)
 

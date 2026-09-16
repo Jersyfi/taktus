@@ -699,7 +699,7 @@ def validate_assignment(body: Any) -> str | None:
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    worker: Worker  # set by serve()
+    worker: Worker  # set by main()
 
     def log_message(self, format: str, *args: Any) -> None:
         log(f"{self.address_string()} {format % args}")

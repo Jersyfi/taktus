@@ -46,6 +46,7 @@ Options you may need:
 | `--credential NAME` | the name under which the suite references a credential (default `TAKTUS_CONFORMANCE_CREDENTIAL`). See check W-08 below. |
 | `--worker-log FILE` | your worker writes a log file the suite can read. It is scanned for W-08. |
 | `--timeout SECONDS` | one assignment may take longer than five minutes. |
+| `--idle-timeout SECONDS` | your worker is silent for more than a minute between two events — a training job between epochs, say. |
 
 To see what a passing run looks like, run the suite against the reference worker in this
 repository — a shell wrapper with no AI at all:
