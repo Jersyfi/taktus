@@ -16,7 +16,7 @@ from typing import Any, Self
 
 import httpx
 
-from taktus.conformance.sse import Message, messages
+from taktus.wire.sse import Message, messages
 
 type Json = dict[str, Any]
 
