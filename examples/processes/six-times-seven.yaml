@@ -22,7 +22,7 @@ reason: the worked example of the first control-plane slice
 # The run's budget. Admission control checks every worker step's estimate against what is left
 # of it; the last step below is written so that it does not fit.
 limits:
-  compute: { seconds: 10, resource_class: cpu.small }
+  compute: { seconds: 2, resource_class: cpu.small }
 
 steps:
   - id: prepare-commands
@@ -85,7 +85,7 @@ steps:
   - id: overreach
     method: worker
     reason: >
-      two hundred commands, so that the worker's estimate exceeds what the budget has left;
+      thirty commands, so that the worker's estimate exceeds what the budget has left;
       this step exists to show a rejection before start
     rejected:
       - method: rule
@@ -103,36 +103,6 @@ steps:
           - never reached
         inputs:
           commands:
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
-            - "true"
             - "true"
             - "true"
             - "true"

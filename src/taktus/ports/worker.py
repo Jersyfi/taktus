@@ -49,6 +49,18 @@ class Outcome(StrEnum):
     REJECTED = "rejected"
 
 
+type EventType = Literal[
+    "step.started",
+    "step.progress",
+    "tool.called",
+    "decision.made",
+    "consumption.reported",
+    "step.boundary",
+    "artifact.produced",
+    "assignment.finished",
+]
+
+
 class Confidence(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
@@ -255,6 +267,7 @@ class EventBase(Value):
     assignment_id: AssignmentId
     seq: int = Field(ge=1)
     ts: datetime
+    type: EventType
 
 
 class StepStarted(EventBase):

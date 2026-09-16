@@ -89,7 +89,7 @@ class HttpWorker:
 
     async def stop(self, assignment_id: AssignmentId, request: StopRequest) -> AssignmentState:
         return await self._post(
-            f"/v1/assignments/{assignment_id}/stop", request, AssignmentState, expected=200
+            f"/v1/assignments/{assignment_id}/stop", request, AssignmentState, expected=202
         )
 
     async def artifacts(self, assignment_id: AssignmentId) -> ArtifactList:

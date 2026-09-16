@@ -51,28 +51,31 @@ class Step(Value):
 
     @model_validator(mode="after")
     def _rules(self) -> Step:
-        # The five rules of Step.json's allOf, in the same order.
+        # The five rules of Step.json's allOf, in the same order; every violation is reported.
+        findings: list[str] = []
         if self.method in PRODUCING and self.exactness is None:
-            raise ValueError(
+            findings.append(
                 f"a {self.method} step produces a result and carries an exactness class"
             )
         if self.method in NON_PRODUCING and self.exactness is not None:
-            raise ValueError(
+            findings.append(
                 f"a {self.method} step produces no result and carries no exactness class"
             )
         if self.method in VARIABLE and self.fallback is None:
-            raise ValueError(f"a {self.method} step can vary and names a fallback")
+            findings.append(f"a {self.method} step can vary and names a fallback")
         if self.method in PINNED and self.model is None:
-            raise ValueError(f"a {self.method} step pins its model as name@version")
+            findings.append(f"a {self.method} step pins its model as name@version")
         if self.exactness is ExactnessClass.EXACT and self.method not in EXACT_ADMISSIBLE:
             admissible = ", ".join(sorted(EXACT_ADMISSIBLE))
-            raise ValueError(
+            findings.append(
                 f"an exact result comes from {admissible} only, never from {self.method}"
             )
         for field in ("requires", "depends_on"):
             values = getattr(self, field)
             if values is not None and len(set(values)) != len(values):
-                raise ValueError(f"{field} lists an item twice")
+                findings.append(f"{field} lists an item twice")
+        if findings:
+            raise ValueError("; ".join(findings))
         return self
 
     @property

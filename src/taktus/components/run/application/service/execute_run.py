@@ -402,7 +402,13 @@ class RunEngine:
         self, run: Run, step_run: StepRun, worker: Worker, assignment_id: str, span: Span
     ) -> tuple[Run, StepRun]:
         """Read the stream to its end, persisting what arrives as it arrives."""
+        # What an earlier attempt of this step used was used all the same: a resumed or
+        # retried step accumulates on top of it, and the budget sees the whole.
         used: dict[str, Any] = {}
+        if step_run.consumption is not None:
+            used = dict(step_run.consumption.quantities())
+            if step_run.consumption.resource_class is not None:
+                used["resource_class"] = step_run.consumption.resource_class
         artifacts = list(step_run.artifacts)  # inherited from before the checkpoint on resume
         checkpoint_ref: str | None = (
             None if step_run.checkpoint is None else step_run.checkpoint.ref

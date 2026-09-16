@@ -49,7 +49,7 @@ type RuleWork = Annotated[ConstantRule | VerifyArtifactRule, Field(discriminator
 
 
 class WaitWork(Value):
-    seconds: float = Field(ge=0)
+    seconds: float = Field(default=0, ge=0)
 
 
 class WorkerWork(Value):
@@ -82,7 +82,9 @@ def parse_work(step: Step, work: Mapping[str, Any] | None) -> Work:
     except ValidationError as error:
         first = error.errors()[0]
         where = ".".join(str(p) for p in first["loc"])
-        raise UnsupportedWork(step.id, f"work.{where}: {first['msg']}") from error
+        raise UnsupportedWork(
+            step.id, f"work{'.' + where if where else ''}: {first['msg']}"
+        ) from error
     raise UnsupportedWork(step.id, f"no executor for method {step.method} in this version")
 
 
