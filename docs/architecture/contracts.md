@@ -34,6 +34,9 @@ not the bottleneck here; adapter variety is.
 | **Declare capabilities** — what this worker can do | processes reference capabilities, never product names |
 
 Full specification: [`contracts/worker/v1/README.md`](../../contracts/worker/v1/README.md).
+The core's side of it is the worker port (`src/taktus/ports/worker.py`): the contract's shapes
+as frozen types and the protocol the run component calls. `tests/contract` holds those types to
+`Worker.json` and its examples, so that the port and the contract cannot drift apart.
 
 ---
 
@@ -42,8 +45,10 @@ Full specification: [`contracts/worker/v1/README.md`](../../contracts/worker/v1/
 Every adapter tests itself:
 
 ```
-taktusctl conformance run --contract worker/v1 --endpoint http://localhost:9000
+uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhost:9000
 ```
+
+(`taktusctl` lives in the project environment, hence `uv run`.)
 
 | Maturity | Condition |
 |---|---|
@@ -81,7 +86,7 @@ example, not a requirement. The core runs with all of them removed — it simply
 
 | Family | Adapter | Why this one |
 |---|---|---|
-| Worker | `script` | the trivial worker. **Mandatory from day one:** a contract a shell script cannot satisfy is built around one specific coding agent. Exists (`workers/script/`), passes the suite; its `longrun` profile has the shape of the second proof case and trains nothing. |
+| Worker | `script` | the trivial worker. **Mandatory from day one:** a contract a shell script cannot satisfy is built around one specific coding agent. Exists (`workers/script/`), passes the suite; its `longrun` profile has the shape of the second proof case and trains nothing. The control plane reaches it through the HTTP worker adapter (`src/taktus/adapters/driven/workers/http/`), the client side of this contract; `examples/processes/` runs a process against it. |
 | Worker | `mlbench` | training, evaluation, embeddings, classical ML. The second proof case: hours of runtime, a GPU held, a model artifact returned. |
 | Worker | `claudecode` | the first real coding worker |
 | Worker | `codex` | the second real coding worker; validates the contract against a second vendor |

@@ -1,0 +1,136 @@
+# A process that exercises the first vertical slice of the control plane.
+#
+# Five steps, four method kinds, one rejection: a rule prepares the work, a worker does it,
+# a wait step waits, an exact rule checks the worker's result and produces the value that
+# counts, and a last worker step asks for more than the budget has left and is rejected
+# before it starts. Run it against the reference worker:
+#
+#     python3 workers/script/worker.py --port 9000 &
+#     uv run taktusctl run --process examples/processes/six-times-seven.yaml
+#
+# The shape of this file is the process version of docs/architecture/control-plane.md §4 with
+# one addition per step, `work`: what the step does when it runs. The bundle format proper
+# arrives at 0.3.0 (docs/roadmap.md); until then examples/README.md is the reference.
+
+id: six-times-seven
+version: "1"
+name: Six times seven, checked
+autonomy: 2
+author: the repository
+reason: the worked example of the first control-plane slice
+
+# The run's budget. Admission control checks every worker step's estimate against what is left
+# of it; the last step below is written so that it does not fit.
+limits:
+  compute: { seconds: 2, resource_class: cpu.small }
+
+steps:
+  - id: prepare-commands
+    method: rule
+    reason: the commands are fixed; nothing here needs judgement
+    rejected:
+      - method: llm
+        why: a fixed list needs no language model
+    exactness: exact
+    work:
+      rule: constant
+      value:
+        commands: ["expr 6 '*' 7"]
+
+  - id: compute
+    method: worker
+    reason: running a command needs a sandbox and a shell, which is what a worker offers
+    rejected:
+      - method: rule
+        why: the core executes no shell command itself; that is the adapter obligation
+    exactness: tolerant
+    fallback:
+      when: the assignment fails or is stopped twice
+      to: human
+    requires: [shell.script]
+    depends_on: [prepare-commands]
+    work:
+      task:
+        goal: run the prepared commands and keep their output
+        acceptance:
+          - every command ran
+          - the output of each command is an artifact
+        inputs: { $from: prepare-commands }
+      max_steps: 10
+
+  - id: settle
+    method: wait
+    reason: an external system would confirm here; in this example a fixed pause stands in for it
+    rejected: []
+    depends_on: [compute]
+    work:
+      seconds: 0.2
+
+  - id: verify-answer
+    method: rule
+    reason: >
+      the value that leaves this process comes from a machine check of the worker's artifact,
+      not from the worker; a worker's word is a proposal
+    rejected:
+      - method: worker
+        why: a variable method never produces an exact result (ADR-0014)
+    exactness: exact
+    depends_on: [settle]
+    work:
+      rule: verify_artifact
+      step: compute
+      artifact: output-1
+      pattern: "^42$"
+
+  - id: overreach
+    method: worker
+    reason: >
+      thirty commands, so that the worker's estimate exceeds what the budget has left;
+      this step exists to show a rejection before start
+    rejected:
+      - method: rule
+        why: the point is a worker estimate above the limit
+    exactness: tolerant
+    fallback:
+      when: the assignment fails
+      to: human
+    requires: [shell.script]
+    depends_on: [verify-answer]
+    work:
+      task:
+        goal: run far more commands than the budget allows
+        acceptance:
+          - never reached
+        inputs:
+          commands:
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+            - "true"
+      max_steps: 100

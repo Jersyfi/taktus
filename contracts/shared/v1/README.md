@@ -2,7 +2,9 @@
 
 The concepts every part of Taktus agrees on: the core, the workers, the web app and third-party
 adapters. Language-neutral JSON Schema 2020-12 (ADR-0016). The Python types under
-`src/taktus/shared/` are generated from here by `make generate` and never edited by hand.
+`src/taktus/shared/v1/` are a binding of these schemas — one frozen model per file, checked
+against the schemas and the examples below by `tests/contract` on every run of `make test`
+(`docs/architecture/project-structure.md` §4 says why a checked binding and not generation).
 
 One schema per concept. No product name, no Python assumption, no transport detail.
 

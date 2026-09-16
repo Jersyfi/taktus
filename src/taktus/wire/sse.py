@@ -1,8 +1,9 @@
 """A minimal Server-Sent Events reader, as the specification defines the wire format.
 
-One message is a block of `field: value` lines ended by a blank line. The suite needs three
-fields: `id` (carries seq), `event` (carries type) and `data` (one line of JSON). Comment lines
-start with a colon. `retry` is read and ignored.
+One message is a block of `field: value` lines ended by a blank line. The worker contract uses
+three fields: `id` (carries seq), `event` (carries type) and `data` (one line of JSON). Comment
+lines start with a colon. `retry` is read and ignored. Used by the conformance suite and by the
+driven worker adapter; see the package docstring for why it lives here.
 """
 
 from __future__ import annotations

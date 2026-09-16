@@ -75,6 +75,16 @@ RULES: tuple[Rule, ...] = (
         ("docs/architecture/project-structure.md",),
     ),
     Rule(
+        "a wire format",
+        r"src/taktus/wire/.*",
+        ("docs/architecture/project-structure.md",),
+    ),
+    Rule(
+        "an example",
+        r"examples/.*",
+        ("examples/README.md",),
+    ),
+    Rule(
         "a worker",
         r"workers/(?P<name>[a-z]+)/.*",
         ("workers/{name}/README.md", "docs/architecture/contracts.md"),

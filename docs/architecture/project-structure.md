@@ -27,7 +27,15 @@ boundaries, `import-linter` contracts and `tests/architecture` are not optional 
 
 **Rules between components:** no direct import · communication through events · reading another
 component's data is allowed, writing is not · what is shared lives in the **language-neutral** shared
-kernel (JSON Schema, generated into `src/taktus/shared/`).
+kernel (JSON Schema under `contracts/shared/`, bound to Python under `src/taktus/shared/` — see §4,
+*Shared kernel binding*).
+
+**Where the first slice draws its lines.** `run` applies admission control (ADR-0005) against the
+budget a run is given; the budgets, limits and policies themselves belong to `governance` and
+arrive with `0.2.0`. `command` commissions a plan from steps it receives as shared-kernel `Step`s;
+the process version that holds those steps is `process`'s, and the two never import each other.
+What a step *does* when it runs — its `work` — is carried by the process version as data and
+interpreted by `run` (`examples/README.md`); its shape belongs to the bundle format of `0.3.0`.
 
 ---
 
@@ -36,39 +44,45 @@ kernel (JSON Schema, generated into `src/taktus/shared/`).
 ```
 taktus/
 ├── src/taktus/
-│   ├── shared/                      # shared kernel — GENERATED from contracts/shared, never edited
+│   ├── shared/v1/                   # shared kernel binding — one frozen model per schema, checked by tests/contract
 │   ├── components/
 │   │   └── process/                 # every component has the same shape
 │   │       ├── domain/
-│   │       │   ├── model/           # Process, ProcessVersion, Step, Method, Exactness, Bundle
-│   │       │   ├── service/         # MethodSelection, Planner, Validation
+│   │       │   ├── model/           # Process, ProcessVersion, Edge, Trigger, Slo; Step is the kernel's
+│   │       │   ├── service/         # validation (graph and step rules); later MethodSelection, Planner
 │   │       │   └── event/
 │   │       ├── application/
 │   │       │   ├── service/         # one use case per module
-│   │       │   ├── repository/      # abstract repository protocols
 │   │       │   └── query/           # read side (CQRS)
-│   │       └── ports/               # ports this component needs
-│   │   … identity/ command/ run/ governance/ decision/ catalog/
+│   │       └── ports/               # ports this component alone needs (run/ports/workers.py)
+│   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
 │   │     accounting/ knowledge/ value/ ledger/
 │   │
 │   ├── ports/                       # cross-cutting ports
-│   │   ├── worker.py                # CONTRACT 1 — execution units
+│   │   ├── worker.py                # CONTRACT 1 — execution units: the contract's shapes and the protocol
 │   │   ├── connector.py             # CONTRACT 2 — tools and channels (MCP)
 │   │   ├── model.py                 # CONTRACT 3 — models
 │   │   ├── execution.py             # process | container | kubernetes
-│   │   ├── persistence.py  queue.py  eventbus.py
-│   │   ├── objectstore.py  secret.py  telemetry.py  clock.py
+│   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore
+│   │   ├── ledger.py                # facts in, chained entries out, verify
+│   │   ├── objectstore.py  clock.py  telemetry.py
+│   │   ├── queue.py  eventbus.py  secret.py
 │   │
 │   ├── adapters/
-│   │   ├── driving/                 # rest/ mcp/ sse/ cli/ channel/ admin/ webui/
+│   │   ├── driving/                 # cli/ (taktusctl) — later rest/ mcp/ sse/ channel/ admin/ webui/
 │   │   └── driven/
-│   │       ├── postgres/ objectstore/ secret/ execution/ telemetry/ ledger/
+│   │       ├── memory/              # DEVELOPMENT AND TEST ONLY: in-memory stores, optional file snapshot
+│   │       ├── clock/               # the system clock, identifiers, randomness — the only place
+│   │       ├── telemetry/           # noop; an OpenTelemetry exporter later
+│   │       ├── workers/http/        # the worker port over HTTP and SSE; workers/pool.py maps capabilities
+│   │       ├── postgres/ objectstore/ secret/ execution/ ledger/
 │   │       ├── connectors/{github,chat,http}/
 │   │       └── models/{openai_compatible,anthropic,ollama}/
 │   │
+│   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core
 │   │
-│   └── composition/                 # composition root, dependency wiring, role runners
+│   └── composition/                 # composition root: local.py wires a developer's machine, taktusctl.py is the console script
 │
 ├── workers/                         # separate deployables behind the worker contract
 │   ├── script/ claudecode/ codex/
@@ -81,6 +95,7 @@ taktus/
 ├── migrations/                      # Alembic
 ├── deploy/{docker,k8s,observability}/
 ├── blueprints/{dev-orchestration,it-operations}/
+├── examples/processes/              # process bundles that run as they are; each exercised by a test
 ├── web/                             # SvelteKit app, embedded into the image
 │
 ├── tests/
@@ -88,7 +103,10 @@ taktus/
 │   ├── conformance/                 # the contract suite, runnable against foreign adapters
 │   ├── governance/                  # anchors hold, limits never breach, least privilege
 │   ├── exactness/                   # `exact` steps never take their final value from AI
-│   └── integration/ contract/ security/ resilience/ fixtures/
+│   ├── contract/                    # the Python bindings match the schemas and their examples
+│   ├── components/ adapters/        # domain tables and application tests against fakes/
+│   ├── integration/                 # the whole slice against the reference worker
+│   └── security/ resilience/
 │
 ├── docs/{architecture,adr,usecases,roadmap.md}
 ├── tools/                           # gates, checkdocs, preflight, generators
@@ -103,12 +121,22 @@ taktus/
 ```
 composition          → everything
 adapters.driving     → components.*.application, ports, shared, conformance
-adapters.driven      → ports, shared
-conformance          → contracts only                    — nothing in src/taktus
+adapters.driven      → ports, shared, wire
+conformance          → contracts, wire                   — nothing else in src/taktus
+wire                 → nothing                           — stdlib only
 workers/*            → contracts only                    — NEVER src/taktus
 components.X         → components.X, ports, shared
+ports                → shared
 shared               → nothing
 ```
+
+A driving adapter calls application services and never builds them: the composition root
+implements what the adapter declares it needs (`adapters/driving/cli/wiring.py`) and starts it.
+That is why the console script `taktusctl` begins in `composition/taktusctl.py`.
+
+`wire` holds what two readers of one wire format share — today the Server-Sent Events reader,
+used by the conformance suite and by the HTTP worker adapter. Neither may import the other, so
+what they share lives in a package that imports nothing from either and no technology.
 
 `conformance` is the executable reading of a contract, run against a live adapter. It is a
 client, as a foreign control plane would be, and therefore imports nothing from the control
@@ -124,7 +152,10 @@ the rest of Taktus.
 - a direct import between two components
 - a write by one component into another's data
 - `workers/**` importing `src/taktus/**`
-- a domain model carrying serialisation concerns
+- a domain model that is not frozen and closed
+- the core reading the clock, minting an identifier or drawing randomness by itself — only
+  through `ports/clock.py`; `adapters/driven/clock/` is the one place that does
+- the core importing anything but the standard library, pydantic and itself
 
 ---
 
@@ -138,14 +169,16 @@ the rest of Taktus.
 | Errors | typed exceptions in each component's `domain/model/errors.py` |
 | Async | `async` throughout; no blocking call in a coroutine, enforced by lint |
 | Context | actor and tenant travel in an explicit `ActorContext` argument, never in a context variable read by business code |
-| Time, randomness, IDs | only through ports — otherwise no run is reproducible |
+| Time, randomness, IDs | only through ports (`ports/clock.py`) — otherwise no run is reproducible; enforced by `tests/architecture` |
 | Logging | `structlog`, structured, never personal data, always with `trace_id` |
 | Secrets | never a bare `str` — a `Secret` type masks on `repr`, `str` and serialisation |
 | Every step | carries method, reason, rejected alternatives, fallback; an exactness class if it produces a result (ADR-0018) |
 | Persistence | SQLAlchemy Core in the driven adapter only; no ORM object crosses into the domain |
-| Generated code | `src/taktus/shared/`, `api/openapi.yaml`, contract types — never edited by hand |
+| Shared kernel binding | `src/taktus/shared/v1/` is hand-written and **machine-checked**, not generated: one frozen model per schema of `contracts/shared/v1`, one module per schema file, and `tests/contract` fails on any difference in properties, required fields, enumerations or patterns, and runs every example of the contract through the models. The same holds for the worker contract's shapes in `ports/worker.py`. Why not generation: the schemas carry conditional rules (`if`/`then` over a step's method, "at least one quantity") that no generator turns into a constructor check, and the components need exactly those checks in the constructor; generating the shape and hand-writing the rules would be two files per concept with the seam in the wrong place. A checked binding is one file, and drift is a red test |
+| Generated code | `api/openapi.yaml` from the REST interface, once it exists — never edited by hand; `make generate` is its one place |
 | Types | `mypy --strict` across `src/`; no `Any` without a comment saying why |
-| Tests | domain = table tests, no mocks; application = fakes of the ports; driven adapters = testcontainers |
+| Tests | domain = table tests, no mocks; application = fakes of the ports (`tests/fakes/`); driven adapters = testcontainers |
+| Ledger facts | what a component tells the ledger is a `Fact` (`ports/ledger.py`): identifiers, method, adapter, measured consumption, an outcome *token*, a content digest — never text. A reason stays on the run; the ledger is content-free by construction |
 | Language | everything in English — code, comments, commits, documentation |
 
 ---

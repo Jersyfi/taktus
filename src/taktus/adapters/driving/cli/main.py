@@ -1,8 +1,10 @@
 """`taktusctl` — the command line of Taktus.
 
-One command group so far: `conformance`. It drives the conformance suite
-(src/taktus/conformance), which is not part of the control plane; this adapter therefore imports
-no component. Further commands arrive with the control plane they drive.
+Two commands. `conformance run` drives the conformance suite (src/taktus/conformance), which is
+not part of the control plane and needs no wiring. `run` drives the control plane: it needs
+services, which the composition root provides as the typer context object (see `wiring`); the
+console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
+exposes the application for it.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from typing import Annotated
 
 import typer
 
+from taktus.adapters.driving.cli import run_command
 from taktus.conformance import SuiteOptions, run_suite
 from taktus.conformance.suite import DEFAULT_CREDENTIAL
 
@@ -27,6 +30,7 @@ app = typer.Typer(
 )
 conformance = typer.Typer(help="Check an adapter against its contract.", no_args_is_help=True)
 app.add_typer(conformance, name="conformance")
+app.command("run")(run_command.run)
 
 CONTRACTS = {"worker/v1"}
 
@@ -108,7 +112,8 @@ def conformance_run(
 
 
 def main() -> None:
-    app()
+    """The adapter on its own: `conformance run` works, `run` needs the composition root."""
+    app(obj=None)
 
 
 if __name__ == "__main__":

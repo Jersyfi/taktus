@@ -81,6 +81,10 @@ Mirroring to Git is enabled per process. With it on, history, diff, review and r
 mechanics as for code. With it off, history lives in the database. The bundle is the truth either
 way — Git is a projection, not a second source.
 
+Until the bundle format exists (`0.3.0`), a bundle is this process version written as YAML, with
+one addition per step — `work`, what the step does when it runs — carried as data and interpreted
+by the run. `examples/README.md` is the reference for that shape.
+
 ---
 
 ## 5. Run and step run
@@ -100,6 +104,12 @@ follow:
 
 Workers with native pause support refine the granularity but are not required: the guarantee is
 worker-agnostic.
+
+In code, `src/taktus/components/run/` does exactly this around every step, whatever its method:
+estimate, admit against what remains of the run's budget, run, persist checkpoint, artifacts and
+raw consumption, then honour a pending stop at the boundary. A step rejected by admission control
+halts the run with cause `limit`; a raised budget on resume lets it continue. A worker step
+stopped mid-way ends with the worker's checkpoint, and the resumed assignment starts from it.
 
 ### 5.2 States
 
@@ -125,7 +135,11 @@ consumption, with what result. Kept as a **hash chain**, so that tamper-evidence
 secrecy. Fed from the workers' event streams, exported as OpenTelemetry signals.
 
 The ledger references content, it does not store it: no personal data and no secrets. What it holds
-is the chain of actions.
+is the chain of actions. The hash rule — what is hashed, in which form — is stated in one place,
+`src/taktus/components/ledger/__init__.py`, so that anyone can recompute a chain from its entries.
+What a component may tell the ledger is a *fact* (`src/taktus/ports/ledger.py`): identifiers,
+method, adapter, measured consumption, an outcome token, a content digest. Never text. A reason
+for a halt stays on the run; the ledger carries the cause as a token.
 
 **It is the single source for every metric.** No view and no value ledger computes from a second
 source.

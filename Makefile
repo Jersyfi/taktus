@@ -13,27 +13,39 @@ need-%:
 doctor: ## Report the tooling state; non-zero if a required tool is missing
 	@tools/preflight.sh --doctor
 
-install: need-uv ## Create the environment
+# The project environment. Every target that runs a tool from it depends on `env`, so that a
+# fresh checkout needs no `make install` first: the stamp is older than pyproject.toml or
+# uv.lock, or absent, and `uv sync` runs once. `make install` forces the sync.
+ENV_STAMP := $(or $(UV_PROJECT_ENVIRONMENT),.venv)/.synced
+
+$(ENV_STAMP): pyproject.toml uv.lock | need-uv
 	$(UV) sync --all-extras
+	@touch $@
+
+env: $(ENV_STAMP) ## Ensure the project environment is installed and current
+
+install: need-uv ## Create or refresh the environment
+	$(UV) sync --all-extras
+	@touch $(ENV_STAMP)
 
 # The gate directories run under their own targets; `make gates` runs every test exactly once.
-test: need-uv ## Unit and domain tests — everything under tests/ that is not a gate
+test: env ## Unit and domain tests — everything under tests/ that is not a gate
 	$(UV) run tools/gate.py test tests $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
 
 gate-contracts: need-uv ## Schemas are valid 2020-12, examples validate, must-fail examples fail
 	$(UV) run tools/validate_contracts.py
 
-gate-arch: need-uv ## Adapter obligation, component boundaries, no product names in the core
+gate-arch: env ## Adapter obligation, component boundaries, no product names in the core
 	$(UV) run lint-imports
 	$(UV) run tools/gate.py architecture tests/architecture
 
-gate-conformance: need-uv ## Contract conformance suite: starts the reference worker, runs the suite and the meta-test, stops it
+gate-conformance: env ## Contract conformance suite: starts the reference worker, runs the suite and the meta-test, stops it
 	$(UV) run tools/gate.py conformance tests/conformance
 
-gate-governance: need-uv ## Anchors hold, limits never breach, least privilege
+gate-governance: env ## Anchors hold, limits never breach, least privilege
 	$(UV) run tools/gate.py governance tests/governance
 
-gate-exactness: need-uv ## `exact` steps never take their final value from a variable method
+gate-exactness: env ## `exact` steps never take their final value from a variable method
 	$(UV) run tools/gate.py exactness tests/exactness
 
 gate-docs: need-uv ## A contract or behaviour change must touch its documentation
@@ -45,14 +57,14 @@ gate-secrets: need-gitleaks ## No secret value may ever enter this public reposi
 gate-decisions: need-uv ## Decision requests are complete, recorded, and a blocking one keeps its pull request a draft
 	$(UV) run tools/check_decisions.py
 
-lint: need-uv ## Static analysis and types
+lint: env ## Static analysis and types
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
 	$(UV) run mypy
 
-generate: need-uv ## Regenerate the shared kernel and API types from contracts/
+generate: env ## Regenerate what is generated from contracts/ (nothing yet; see tools/README.md)
 	$(UV) run python tools/generate.py
 
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions test ## Everything CI runs
 
-.PHONY: help doctor install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions lint generate gates
+.PHONY: help doctor env install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions lint generate gates

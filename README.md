@@ -10,8 +10,11 @@ Taktus does not replace ticket systems, repositories or knowledge tools. It cond
 
 Python, PostgreSQL, Explicit Architecture. Self-hostable from day one.
 
-> **Status: draft.** This repository is currently an architecture, not an application. Contracts and
-> decisions first, code second. First milestone: `0.1.0`.
+> **Status: draft, on the way to `0.1.0`.** The contracts, the conformance suite, and the first
+> vertical slice of the control plane exist: a process bundle runs against a worker, every step
+> lands in a verifiable ledger, a stop resumes at a step boundary, a step that would breach the
+> budget never starts. In memory, from the command line, without governance. What runs today:
+> [examples/README.md](examples/README.md).
 >
 > **Public for transparency, but not licensed for use.** See `LICENSE` and `NOTICE`. Third-party
 > contributions are not accepted until the licence is settled.
@@ -88,6 +91,7 @@ you see the domain, not the framework.
 | [docs/architecture/contracts.md](docs/architecture/contracts.md) | Worker, connector and model contracts; maturity levels |
 | [contracts/worker/v1/CONFORMANCE.md](contracts/worker/v1/CONFORMANCE.md) | How to check a worker of your own against the contract |
 | [docs/architecture/project-structure.md](docs/architecture/project-structure.md) | Components, tree, dependency rules, conventions |
+| [examples/README.md](examples/README.md) | Running a process bundle with `uv run taktusctl run`; the shape of a bundle |
 | [docs/adr/README.md](docs/adr/README.md) | 19 architecture decisions with the alternatives rejected |
 | [docs/decisions/](docs/decisions/README.md) | The project's decision register: which questions reach the owner, and what was answered |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones `0.1.0` to `1.0.0` |
@@ -104,10 +108,12 @@ you see the domain, not the framework.
 | API | FastAPI, OpenAPI 3.1, RFC 9457 problem details, SSE |
 | Agent interface | MCP — Taktus is a client, and exposes itself as a server |
 | Domain types | Pydantic v2 value objects; SQLAlchemy Core at the boundary, never in the domain |
+| Shared kernel | JSON Schema under `contracts/shared`, bound to Python by hand and checked by a test |
+| Process bundles | YAML, read by PyYAML in the command-line adapter only |
 | Migrations | Alembic |
 | ML bench | scikit-learn, PyTorch, sentence-transformers — as a worker, never in the core |
 | Architecture enforcement | `import-linter` contracts, run in CI |
-| Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers`; `make doctor` says what is missing |
+| Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers`; `make gates` installs its own environment; `make doctor` says what is missing. `taktusctl` lives in that environment: `uv run taktusctl …` |
 | Observability | OpenTelemetry from day one |
 | Web | SvelteKit, embedded into the image |
 | Deployment | Docker Compose for self-hosting, Kubernetes for scale |
