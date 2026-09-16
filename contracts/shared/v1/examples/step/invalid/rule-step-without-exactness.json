@@ -1,0 +1,6 @@
+{
+  "id": "book-amount",
+  "method": "rule",
+  "reason": "the booked amount must equal the document total",
+  "rejected": []
+}

@@ -1,6 +1,7 @@
 # ADR-0014 — Exactness classes
 
-**Status:** accepted
+**Status:** accepted · amended by ADR-0018: the classes apply to result-producing steps; `wait`
+and `human` carry none
 
 ## Context
 A number in bookkeeping is either right or it is damage. A draft text, by contrast, should vary. A

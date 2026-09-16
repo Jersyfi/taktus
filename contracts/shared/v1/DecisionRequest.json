@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/DecisionRequest.json",
+  "title": "DecisionRequest",
+  "description": "The planned question about direction during normal operation, distinct from an escalation. Same shape across every process and every channel: situation, question, options with exactly one recommendation, what is blocked, a deadline. A free-text answer is never acted on silently: it is interpreted, reflected back and confirmed before it is applied. See docs/architecture/governance.md and ADR-0008.",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "raised_by": {
+      "type": "object",
+      "properties": {
+        "run": { "type": "string", "minLength": 1 },
+        "step": { "type": "string", "minLength": 1 }
+      },
+      "required": ["run", "step"],
+      "additionalProperties": false
+    },
+    "class": { "type": "string", "enum": ["strategic", "conceptual", "domain", "legal"] },
+    "situation": { "description": "The problem, briefly.", "type": "string", "minLength": 1 },
+    "question": { "description": "Exactly what must be decided, as a question.", "type": "string", "minLength": 1 },
+    "options": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z]$" },
+          "proposal": { "type": "string", "minLength": 1 },
+          "consequence": { "type": "string" },
+          "effort": { "type": "string" },
+          "recommended": { "type": "boolean" }
+        },
+        "required": ["id", "proposal", "recommended"],
+        "additionalProperties": false
+      },
+      "minItems": 2,
+      "contains": { "properties": { "recommended": { "const": true } }, "required": ["recommended"] },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    "blocking": {
+      "description": "What waits on the answer. Identifiers of issues, runs or steps.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "channel": {
+      "type": "object",
+      "properties": {
+        "connector": { "$ref": "Capability.json" },
+        "address": { "type": "string", "minLength": 1 },
+        "thread": { "type": "string" }
+      },
+      "required": ["connector", "address"],
+      "additionalProperties": false
+    },
+    "due": { "type": "string", "format": "date" },
+    "status": { "type": "string", "enum": ["open", "answered", "interpreted", "confirmed", "applied"] },
+    "answer_raw": { "description": "The answer as given, verbatim.", "type": "string" },
+    "answer_interpreted": {
+      "description": "The structured reading reflected back for confirmation.",
+      "type": "object",
+      "properties": {
+        "option": { "type": "string", "pattern": "^[A-Z]$" },
+        "modifications": { "type": "string" }
+      },
+      "required": ["option"],
+      "additionalProperties": false
+    },
+    "outcome": {
+      "description": "The entry in the decision register, once applied.",
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": ["id", "raised_by", "class", "situation", "question", "options", "blocking", "channel", "due", "status"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "enum": ["answered", "interpreted", "confirmed", "applied"] } } },
+      "then": { "required": ["answer_raw"] }
+    },
+    {
+      "if": { "properties": { "status": { "enum": ["interpreted", "confirmed", "applied"] } } },
+      "then": { "required": ["answer_interpreted"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "applied" } } },
+      "then": { "required": ["outcome"] }
+    }
+  ]
+}

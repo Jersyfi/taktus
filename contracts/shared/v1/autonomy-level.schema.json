@@ -1,7 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AutonomyLevel",
-  "description": "The role a person plays in the decision loop. 1: observe and propose; the person decides and executes. 2: execute after approval; the person confirms every step. 3: autonomous under supervision; the person watches reports and samples. 4: virtual agent business; the person sets frame and goals and is drawn in when the frame is exceeded. Levels apply per process, per action and per risk class. See docs/architecture/governance.md.",
-  "type": "integer",
-  "enum": [1, 2, 3, 4]
-}

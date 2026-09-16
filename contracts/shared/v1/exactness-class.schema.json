@@ -1,7 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "ExactnessClass",
-  "description": "How wrong a step's result may be. The class limits which methods may produce the result (ADR-0014). exact: provably correct and machine-checkable; only rule or statistics may produce the final value. sourced: traceable to a source and cross-checked against it. tolerant: within a measured quality tolerance, guarded by regression tests. free: variation is wanted.",
-  "type": "string",
-  "enum": ["exact", "sourced", "tolerant", "free"]
-}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Command.json",
+  "title": "Command",
+  "description": "The normalised entry into the one execution path. A chat message, a CLI invocation, a schedule and a webhook all produce this object. No command exists without an authenticated identity; replies go back to the channel it came from. See docs/architecture/control-plane.md.",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "channel": {
+      "description": "The channel capability the command arrived through: channel.chat, channel.cli, channel.web, channel.repo, channel.time, channel.event. A capability, never a product name.",
+      "$ref": "Capability.json"
+    },
+    "identity": {
+      "description": "The single authenticated Taktus identity of the sender. An opaque identifier, not a name or an address.",
+      "type": "string",
+      "minLength": 1
+    },
+    "org_path": {
+      "description": "Where the sender acts: tenant, then department or group, team, project. Drives visibility, sharing and cost attribution.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "intent": {
+      "type": "object",
+      "properties": {
+        "raw": { "description": "What the sender said, verbatim.", "type": "string" },
+        "recognised": {
+          "description": "The intent Taktus recognised, as a lowercase dotted token. Absent until recognised.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        }
+      },
+      "required": ["raw"],
+      "additionalProperties": false
+    },
+    "context": {
+      "description": "Channel context: issue, thread, file, previous run. Shape depends on the channel.",
+      "type": "object"
+    },
+    "reply_to": {
+      "type": "object",
+      "properties": {
+        "channel": { "$ref": "Capability.json" },
+        "address": { "type": "string", "minLength": 1 },
+        "thread": { "type": "string" }
+      },
+      "required": ["channel", "address"],
+      "additionalProperties": false
+    },
+    "received_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["id", "channel", "identity", "org_path", "intent", "reply_to", "received_at"],
+  "additionalProperties": false
+}

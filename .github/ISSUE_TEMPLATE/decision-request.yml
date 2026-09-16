@@ -1,0 +1,86 @@
+name: Decision request
+description: A question that reaches the owner (docs/decisions/anchors.md). Mirrors docs/decisions/TEMPLATE.md.
+title: "DEC-NNNN — "
+labels: ["decision-request"]
+assignees: ["Jersyfi"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One file under `docs/decisions/open/` and this issue together form one request (ADR-0017).
+        Fill the seven sections with the same content as the file, then put this issue's link into
+        the file. The owner answers here with the sentence from section 7.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: BLOCKING only if continuing would produce work that must be thrown away.
+      options:
+        - NON-BLOCKING
+        - BLOCKING
+    validations:
+      required: true
+  - type: input
+    id: file
+    attributes:
+      label: File
+      description: Path of the request under docs/decisions/open/.
+      placeholder: docs/decisions/open/DEC-NNNN-slug.md
+    validations:
+      required: true
+  - type: input
+    id: needed_by
+    attributes:
+      label: Needed by
+      placeholder: YYYY-MM-DD
+    validations:
+      required: true
+  - type: textarea
+    id: about
+    attributes:
+      label: 1. What this is about
+      description: The situation in plain sentences, no repository jargon.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 2. Why you are being asked
+      description: The row of docs/decisions/anchors.md §1 that makes this the owner's call.
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: 3. What you must decide
+      description: Exactly one answerable question.
+    validations:
+      required: true
+  - type: textarea
+    id: background
+    attributes:
+      label: 4. What you need to know to decide
+      description: Every term explained, the background needed to judge, what the decision commits the project to.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: 5. Options
+      description: Two or three; each with meaning, consequence, effort and reversibility; one marked recommended, with the reason.
+    validations:
+      required: true
+  - type: textarea
+    id: blocked
+    attributes:
+      label: 6. What is blocked
+      description: What waits, the date an answer is needed by, and what happens without one.
+    validations:
+      required: true
+  - type: textarea
+    id: answer
+    attributes:
+      label: 7. How to answer
+      description: The literal sentence the owner can write back.
+    validations:
+      required: true

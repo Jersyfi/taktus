@@ -1,0 +1,14 @@
+{
+  "id": "confirm-interpretation",
+  "method": "human",
+  "reason": "a free-text answer is never acted on silently; the person who gave it confirms how it was read",
+  "rejected": [
+    {
+      "method": "llm",
+      "why": "the interpretation was made by a language model; confirming it with the same method confirms nothing"
+    }
+  ],
+  "depends_on": [
+    "interpret-answer"
+  ]
+}

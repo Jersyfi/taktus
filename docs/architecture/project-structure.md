@@ -132,7 +132,7 @@ shared               → nothing
 | Time, randomness, IDs | only through ports — otherwise no run is reproducible |
 | Logging | `structlog`, structured, never personal data, always with `trace_id` |
 | Secrets | never a bare `str` — a `Secret` type masks on `repr`, `str` and serialisation |
-| Every step | carries method, reason, rejected alternatives, fallback, exactness class |
+| Every step | carries method, reason, rejected alternatives, fallback; an exactness class if it produces a result (ADR-0018) |
 | Persistence | SQLAlchemy Core in the driven adapter only; no ORM object crosses into the domain |
 | Generated code | `src/taktus/shared/`, `api/openapi.yaml`, contract types — never edited by hand |
 | Types | `mypy --strict` across `src/`; no `Any` without a comment saying why |

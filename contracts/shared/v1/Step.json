@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Step.json",
+  "title": "Step",
+  "description": "One node of a process graph. Every step carries its method, the reason for the choice, the alternatives rejected and, for any method that can vary, a fallback. Every step that produces a result carries its exactness class; wait and human produce none and carry no class (ADR-0018). Two rules from ADR-0014 and ADR-0004 are enforced here: a step classed exact takes its result from rule or statistics only, and a step on llm or worker names a fallback. A step on ml or neural pins its model version, because that is what makes it reproducible.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "description": "Stable name of the step inside its process, lowercase with hyphens.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "method": { "$ref": "Method.json" },
+    "reason": {
+      "description": "Why this method was chosen for this step.",
+      "type": "string",
+      "minLength": 1
+    },
+    "rejected": {
+      "description": "The alternatives considered and why they were not chosen. Empty when there was nothing to reject.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "method": { "$ref": "Method.json" },
+          "why": { "type": "string", "minLength": 1 }
+        },
+        "required": ["method", "why"],
+        "additionalProperties": false
+      }
+    },
+    "exactness": {
+      "description": "How wrong the result may be. Required for every result-producing method, absent for wait and human (ADR-0018).",
+      "$ref": "ExactnessClass.json"
+    },
+    "fallback": {
+      "description": "Where the step goes when the chosen method is not good enough. Mandatory for llm and worker.",
+      "type": "object",
+      "properties": {
+        "when": {
+          "description": "The condition that triggers the fallback, stated so that it can be evaluated: confidence < 0.9, tests failed twice.",
+          "type": "string",
+          "minLength": 1
+        },
+        "to": { "$ref": "Method.json" }
+      },
+      "required": ["when", "to"],
+      "additionalProperties": false
+    },
+    "model": {
+      "description": "The model this step runs on, pinned as name@version. Required for ml and neural.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._+-]*$"
+    },
+    "requires": {
+      "description": "Capabilities the executing adapter must offer. Never a product name.",
+      "type": "array",
+      "items": { "$ref": "Capability.json" },
+      "uniqueItems": true
+    },
+    "depends_on": {
+      "description": "Steps of the same process that must finish before this one starts. The edges of the graph.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+      "uniqueItems": true
+    }
+  },
+  "required": ["id", "method", "reason", "rejected"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "method": { "$ref": "Method.json#/$defs/producing" } } },
+      "then": { "required": ["exactness"] }
+    },
+    {
+      "if": { "properties": { "method": { "$ref": "Method.json#/$defs/nonProducing" } } },
+      "then": { "not": { "required": ["exactness"] } }
+    },
+    {
+      "if": { "properties": { "method": { "$ref": "Method.json#/$defs/variable" } } },
+      "then": { "required": ["fallback"] }
+    },
+    {
+      "if": { "properties": { "method": { "$ref": "Method.json#/$defs/pinned" } } },
+      "then": { "required": ["model"] }
+    },
+    {
+      "if": { "required": ["exactness"], "properties": { "exactness": { "const": "exact" } } },
+      "then": { "properties": { "method": { "$ref": "Method.json#/$defs/exactAdmissible" } } }
+    }
+  ]
+}

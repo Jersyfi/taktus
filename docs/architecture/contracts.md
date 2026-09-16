@@ -57,8 +57,12 @@ The conformance suite is the real asset here — not the adapter code, but the a
 Without it, "interchangeable" is an assertion.
 
 Before the suite runs against a worker, `make gate-contracts` checks the contract itself: every
-schema is valid, every example validates, and every check W-01..W-12 has a fixture that fails as it
-must (`tools/validate_contracts.py`).
+schema is valid and carries the `$id` its path prescribes, every example validates, and every check
+W-01..W-12 has a fixture that fails as it must (`tools/validate_contracts.py`).
+
+Every schema is identified by `https://taktus.eu/contracts/<family>/v1/<Concept>.json` — its path
+under `contracts/` behind the project's domain. A released v1 schema is immutable; changes become
+v2 (ADR-0019).
 
 ---
 

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Artifact.json",
+  "title": "Artifact",
+  "description": "A result that is data, not prose: a patch, a document, a dataset, a model file, a report. Referenced by digest so that the ledger can point at content without storing it (ADR-0006). The same shape describes an input document, because the output of one step is the input of the next.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "description": "Identifier unique within the run or assignment that produced it.",
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "description": "What the artifact is, as a lowercase dotted token: code.patch, vcs.pullrequest, document, dataset, model, report, log.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]*$"
+    },
+    "digest": { "$ref": "#/$defs/digest" },
+    "media_type": {
+      "description": "IANA media type of the content.",
+      "type": "string",
+      "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+(;.*)?$"
+    },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "uri": {
+      "description": "Where the content can be fetched. Carries no credential.",
+      "type": "string",
+      "minLength": 1
+    },
+    "title": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["id", "kind", "digest"],
+  "additionalProperties": false,
+  "$defs": {
+    "digest": {
+      "title": "Digest",
+      "description": "A content hash with its algorithm as prefix: sha256:<64 lowercase hex>. Only sha256 is admitted in v1.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

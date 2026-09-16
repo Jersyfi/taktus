@@ -1,0 +1,575 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/worker/v1/Worker.json",
+  "title": "Worker contract v1",
+  "description": "Every request and response body of the worker contract, and every event on the stream. Workers execute; they do not decide. Transport and endpoints are in openapi.yaml, the rationale in ADR-0007, the prose in README.md. Shared concepts are referenced from contracts/shared/v1 and never redefined here.",
+  "$defs": {
+    "AssignmentId": {
+      "title": "AssignmentId",
+      "description": "Chosen by the control plane, prefixed asg_.",
+      "type": "string",
+      "pattern": "^asg_[A-Za-z0-9_-]{4,}$"
+    },
+    "StepId": {
+      "title": "StepId",
+      "description": "The worker's own identifier for one of its steps. Stable across a resume.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "CheckpointRef": {
+      "title": "CheckpointRef",
+      "description": "An opaque reference the worker can resume from. Its format belongs to the worker.",
+      "type": "string",
+      "minLength": 1
+    },
+    "ConsumptionKind": {
+      "title": "ConsumptionKind",
+      "description": "What kind of limit applies to this worker's use. currency: paid per use. quota: a subscription window that blocks when exhausted. compute: held hardware in a resource class.",
+      "type": "string",
+      "enum": ["currency", "quota", "compute"]
+    },
+    "Outcome": {
+      "title": "Outcome",
+      "description": "How an assignment ended. rejected means it never started, because the estimate did not fit the limits or the frame could not be honoured.",
+      "type": "string",
+      "enum": ["succeeded", "failed", "stopped", "rejected"]
+    },
+
+    "Capabilities": {
+      "title": "Capabilities",
+      "description": "Response of GET /v1/capabilities. What this worker can do, how its use is limited, and what it supports. Capabilities are named by function, never by product. step_boundary_signal, streaming_events and estimate are constant true: without them the worker cannot satisfy sections 4, 5 and 6 of the README; they are declared so that a reader sees the obligation.",
+      "type": "object",
+      "properties": {
+        "contract": { "const": "worker/v1" },
+        "capabilities": {
+          "type": "array",
+          "items": { "$ref": "../../shared/v1/Capability.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "consumption": {
+          "type": "object",
+          "properties": {
+            "kinds": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/ConsumptionKind" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "window_seconds": {
+              "description": "Length of the subscription window. Required with kind quota.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "unit": {
+              "description": "Name of the quota unit the worker reports in. Required with kind quota.",
+              "type": "string",
+              "minLength": 1
+            },
+            "resource_classes": {
+              "description": "Resource classes the worker can report compute in. Required with kind compute.",
+              "type": "array",
+              "items": { "$ref": "../../shared/v1/Consumption.json#/$defs/resourceClass" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "currencies": {
+              "description": "ISO 4217 codes, lowercase, the worker can report cost in. Required with kind currency.",
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-z]{3}$" },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": ["kinds"],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": { "properties": { "kinds": { "contains": { "const": "quota" } } } },
+              "then": { "required": ["window_seconds", "unit"] }
+            },
+            {
+              "if": { "properties": { "kinds": { "contains": { "const": "compute" } } } },
+              "then": { "required": ["resource_classes"] }
+            },
+            {
+              "if": { "properties": { "kinds": { "contains": { "const": "currency" } } } },
+              "then": { "required": ["currencies"] }
+            }
+          ]
+        },
+        "supports": {
+          "type": "object",
+          "properties": {
+            "native_pause": {
+              "description": "Whether the worker can pause inside a step. Refines granularity; never required.",
+              "type": "boolean"
+            },
+            "step_boundary_signal": { "const": true },
+            "streaming_events": { "const": true },
+            "estimate": { "const": true }
+          },
+          "required": ["native_pause", "step_boundary_signal", "streaming_events", "estimate"],
+          "additionalProperties": false
+        },
+        "max_concurrent_assignments": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["contract", "capabilities", "consumption", "supports", "max_concurrent_assignments"],
+      "additionalProperties": false
+    },
+
+    "Task": {
+      "title": "Task",
+      "description": "What the worker is to achieve and how it will know it is done.",
+      "type": "object",
+      "properties": {
+        "goal": { "type": "string", "minLength": 1 },
+        "acceptance": {
+          "description": "Criteria the result must meet, each checkable.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "inputs": {
+          "description": "Structured inputs. Shape belongs to the task; never a credential.",
+          "type": "object"
+        }
+      },
+      "required": ["goal", "acceptance"],
+      "additionalProperties": false
+    },
+
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Where the worker works. For git, ref names the branch or commit and location the repository; the execution adapter may have provisioned it already, in which case location is absent.",
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "enum": ["git", "directory", "none"] },
+        "ref": { "type": "string", "minLength": 1 },
+        "location": {
+          "description": "Repository URL or path. Carries no credential.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["kind"],
+      "additionalProperties": false,
+      "if": { "properties": { "kind": { "const": "git" } } },
+      "then": { "required": ["ref"] }
+    },
+
+    "Context": {
+      "title": "Context",
+      "description": "What the worker starts from. checkpoint_ref is present when the assignment resumes an earlier one; the worker continues after that checkpoint and produces no artifact it produced before it.",
+      "type": "object",
+      "properties": {
+        "workspace": { "$ref": "#/$defs/Workspace" },
+        "documents": {
+          "type": "array",
+          "items": { "$ref": "../../shared/v1/Artifact.json" }
+        },
+        "checkpoint_ref": { "$ref": "#/$defs/CheckpointRef" }
+      },
+      "additionalProperties": false
+    },
+
+    "Frame": {
+      "title": "Frame",
+      "description": "The ceiling, not a suggestion. The worker receives only the tools in allowed_tools; forbidden narrows further by pattern.",
+      "type": "object",
+      "properties": {
+        "autonomy_level": { "$ref": "../../shared/v1/AutonomyLevel.json" },
+        "allowed_tools": {
+          "type": "array",
+          "items": { "$ref": "../../shared/v1/Capability.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "forbidden": {
+          "type": "array",
+          "items": { "$ref": "../../shared/v1/Capability.json#/$defs/pattern" },
+          "uniqueItems": true
+        },
+        "max_steps": { "type": "integer", "minimum": 1 },
+        "deadline": { "type": "string", "format": "date-time" }
+      },
+      "required": ["autonomy_level", "allowed_tools", "max_steps"],
+      "additionalProperties": false
+    },
+
+    "Limits": {
+      "title": "Limits",
+      "description": "What the assignment may consume, per consumption kind. At least one kind. Checked against the estimate before the first step; a step that would breach a limit does not start.",
+      "type": "object",
+      "properties": {
+        "currency": { "$ref": "../../shared/v1/Consumption.json#/$defs/currencyAmounts" },
+        "quota": {
+          "type": "object",
+          "properties": {
+            "units": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "required": ["units"],
+          "additionalProperties": false
+        },
+        "compute": {
+          "type": "object",
+          "properties": {
+            "seconds": { "type": "number", "exclusiveMinimum": 0 },
+            "resource_class": { "$ref": "../../shared/v1/Consumption.json#/$defs/resourceClass" }
+          },
+          "required": ["seconds", "resource_class"],
+          "additionalProperties": false
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+
+    "CredentialReference": {
+      "title": "CredentialReference",
+      "description": "A secret by name only. The execution adapter injects the value into the worker's environment at runtime; the value never travels through this contract, never appears in an event, an artifact or a log, and is never stored by the worker.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "injected_as": { "type": "string", "enum": ["env", "file"] },
+        "path": {
+          "description": "Where the file is mounted. Only with injected_as file.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["name", "injected_as"],
+      "additionalProperties": false,
+      "if": { "properties": { "injected_as": { "const": "file" } } },
+      "then": { "required": ["path"] },
+      "else": { "not": { "required": ["path"] } }
+    },
+
+    "Callback": {
+      "title": "Callback",
+      "description": "How the control plane receives events. v1 knows Server-Sent Events only.",
+      "type": "object",
+      "properties": {
+        "events": { "const": "sse" }
+      },
+      "required": ["events"],
+      "additionalProperties": false
+    },
+
+    "Assignment": {
+      "title": "Assignment",
+      "description": "Body of POST /v1/assignments.",
+      "type": "object",
+      "properties": {
+        "assignment_id": { "$ref": "#/$defs/AssignmentId" },
+        "task": { "$ref": "#/$defs/Task" },
+        "context": { "$ref": "#/$defs/Context" },
+        "frame": { "$ref": "#/$defs/Frame" },
+        "limits": { "$ref": "#/$defs/Limits" },
+        "credentials": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CredentialReference" },
+          "uniqueItems": true
+        },
+        "callback": { "$ref": "#/$defs/Callback" }
+      },
+      "required": ["assignment_id", "task", "context", "frame", "limits", "callback"],
+      "additionalProperties": false
+    },
+
+    "EstimateRequest": {
+      "title": "EstimateRequest",
+      "description": "Body of POST /v1/estimate: the assignment without credentials and callback. An estimate needs no secret.",
+      "type": "object",
+      "properties": {
+        "assignment_id": { "$ref": "#/$defs/AssignmentId" },
+        "task": { "$ref": "#/$defs/Task" },
+        "context": { "$ref": "#/$defs/Context" },
+        "frame": { "$ref": "#/$defs/Frame" },
+        "limits": { "$ref": "#/$defs/Limits" }
+      },
+      "required": ["task", "context", "frame"],
+      "additionalProperties": false
+    },
+
+    "Estimate": {
+      "title": "Estimate",
+      "description": "Response of POST /v1/estimate. May be rough; must exist. confidence low is a valid answer. The quantities are those of the shared Consumption schema; a worker that uses none of them still states steps and wall_seconds.",
+      "type": "object",
+      "allOf": [{ "$ref": "../../shared/v1/Consumption.json#/$defs/quantities" }],
+      "properties": {
+        "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+        "wall_seconds": { "type": "integer", "minimum": 0 },
+        "steps": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["confidence", "wall_seconds", "steps"],
+      "unevaluatedProperties": false
+    },
+
+    "AssignmentState": {
+      "title": "AssignmentState",
+      "description": "Response of POST /v1/assignments, GET /v1/assignments/{id} and POST /v1/assignments/{id}/stop. last_seq is the highest event sequence number emitted so far; 0 before the first event.",
+      "type": "object",
+      "properties": {
+        "assignment_id": { "$ref": "#/$defs/AssignmentId" },
+        "status": { "type": "string", "enum": ["accepted", "running", "stopping", "finished"] },
+        "outcome": { "$ref": "#/$defs/Outcome" },
+        "last_seq": { "type": "integer", "minimum": 0 },
+        "checkpoint_ref": { "$ref": "#/$defs/CheckpointRef" },
+        "reason": { "type": "string" },
+        "accepted_at": { "type": "string", "format": "date-time" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["assignment_id", "status", "last_seq"],
+      "additionalProperties": false,
+      "if": { "properties": { "status": { "const": "finished" } } },
+      "then": { "required": ["outcome", "finished_at"] },
+      "else": { "not": { "required": ["outcome"] } }
+    },
+
+    "StopRequest": {
+      "title": "StopRequest",
+      "description": "Body of POST /v1/assignments/{id}/stop. The stop takes effect at the next step boundary. ceiling_seconds bounds how long the running step may still take; absent means the worker's own ceiling.",
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "ceiling_seconds": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+
+    "ArtifactList": {
+      "title": "ArtifactList",
+      "description": "Response of GET /v1/assignments/{id}/artifacts. Each artifact's uri says where its bytes are; by default GET /v1/assignments/{id}/artifacts/{artifact_id} on the worker.",
+      "type": "object",
+      "properties": {
+        "assignment_id": { "$ref": "#/$defs/AssignmentId" },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "../../shared/v1/Artifact.json" }
+        }
+      },
+      "required": ["assignment_id", "artifacts"],
+      "additionalProperties": false
+    },
+
+    "Health": {
+      "title": "Health",
+      "description": "Response of GET /v1/health. Readiness, not liveness: ready means the worker can accept an assignment now.",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["ready", "not_ready"] },
+        "detail": { "type": "string" }
+      },
+      "required": ["status"],
+      "additionalProperties": false
+    },
+
+    "EventBase": {
+      "title": "EventBase",
+      "description": "What every event carries. seq starts at 1 and increases by exactly 1; the stream is resumable from any seq.",
+      "type": "object",
+      "properties": {
+        "assignment_id": { "$ref": "#/$defs/AssignmentId" },
+        "seq": { "type": "integer", "minimum": 1 },
+        "ts": { "type": "string", "format": "date-time" },
+        "type": {
+          "type": "string",
+          "enum": [
+            "step.started",
+            "step.progress",
+            "tool.called",
+            "decision.made",
+            "consumption.reported",
+            "step.boundary",
+            "artifact.produced",
+            "assignment.finished"
+          ]
+        }
+      },
+      "required": ["assignment_id", "seq", "ts", "type"]
+    },
+
+    "StepStarted": {
+      "title": "StepStarted",
+      "description": "A step of the worker's own plan begins. kind names the class of work in one lowercase token: plan, edit, test, shell, epoch, evaluate.",
+      "type": "object",
+      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "properties": {
+        "type": { "const": "step.started" },
+        "step_id": { "$ref": "#/$defs/StepId" },
+        "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
+        "summary": { "type": "string", "minLength": 1 }
+      },
+      "required": ["step_id", "kind", "summary"],
+      "unevaluatedProperties": false
+    },
+
+    "StepProgress": {
+      "title": "StepProgress",
+      "description": "Progress inside a step. progress is for work measured in units, such as epochs.",
+      "type": "object",
+      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "properties": {
+        "type": { "const": "step.progress" },
+        "step_id": { "$ref": "#/$defs/StepId" },
+        "message": { "type": "string", "minLength": 1 },
+        "progress": {
+          "type": "object",
+          "properties": {
+            "current": { "type": "number", "minimum": 0 },
+            "total": { "type": "number", "exclusiveMinimum": 0 },
+            "unit": { "type": "string", "minLength": 1 }
+          },
+          "required": ["current", "total", "unit"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["step_id", "message"],
+      "unevaluatedProperties": false
+    },
+
+    "ToolCalled": {
+      "title": "ToolCalled",
+      "description": "The worker used, or refused to use, a tool. Arguments travel as a digest, never in clear. A tool outside the frame's allowed_tools is refused, and the refusal is this event with refused true.",
+      "type": "object",
+      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "properties": {
+        "type": { "const": "tool.called" },
+        "step_id": { "$ref": "#/$defs/StepId" },
+        "tool": { "$ref": "../../shared/v1/Capability.json" },
+        "arguments_digest": { "$ref": "../../shared/v1/Artifact.json#/$defs/digest" },
+        "refused": { "type": "boolean", "default": false },
+        "reason": { "description": "Why the call was refused.", "type": "string" }
+      },
+      "required": ["tool", "arguments_digest"],
+      "unevaluatedProperties": false
+    },
+
+    "DecisionMade": {
+      "title": "DecisionMade",
+      "description": "The worker chose a path. rationale says why. This is an execution choice within the frame, not a decision request; those are raised by the control plane.",
+      "type": "object",
+      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "properties": {
+        "type": { "const": "decision.made" },
+        "step_id": { "$ref": "#/$defs/StepId" },
+        "chosen": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 }
+      },
+      "required": ["rationale"],
+      "unevaluatedProperties": false
+    },
+
+    "ConsumptionReported": {
+      "title": "ConsumptionReported",
+      "description": "What one step used. Emitted per step, not at the end; without it there is no admission control. At least one quantity.",
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/EventBase" },
+        { "$ref": "../../shared/v1/Consumption.json#/$defs/quantities" },
+        { "$ref": "../../shared/v1/Consumption.json#/$defs/atLeastOneQuantity" }
+      ],
+      "properties": {
+        "type": { "const": "consumption.reported" },
+        "step_id": { "$ref": "#/$defs/StepId" }
+      },
+      "required": ["step_id"],
+      "unevaluatedProperties": false
+    },
+
+    "StepBoundary": {
+      "title": "StepBoundary",
+      "description": "The step's result is persisted and the worker could stop here. The promise that at most one step of work is lost. A stop takes effect at this point.",
+      "type": "object",
+      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "properties": {
+        "type": { "const": "step.boundary" },
+        "step_id": { "$ref": "#/$defs/StepId" },
+        "checkpoint_ref": { "$ref": "#/$defs/CheckpointRef" }
+      },
+      "required": ["step_id", "checkpoint_ref"],
+      "unevaluatedProperties": false
+    },
+
+    "ArtifactProduced": {
+      "title": "ArtifactProduced",
+      "description": "A result exists. The same artifact appears in GET /v1/assignments/{id}/artifacts. A resumed assignment never re-emits an artifact produced before its checkpoint.",
+      "type": "object",
+      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "properties": {
+        "type": { "const": "artifact.produced" },
+        "step_id": { "$ref": "#/$defs/StepId" },
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]*$" },
+        "digest": { "$ref": "../../shared/v1/Artifact.json#/$defs/digest" },
+        "media_type": { "type": "string" },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "uri": { "type": "string", "minLength": 1 }
+      },
+      "required": ["artifact_id", "kind", "digest"],
+      "unevaluatedProperties": false
+    },
+
+    "AssignmentFinished": {
+      "title": "AssignmentFinished",
+      "description": "The last event of a stream. stopped carries the checkpoint to resume from; failed and rejected carry a reason.",
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/EventBase" },
+        {
+          "if": { "properties": { "outcome": { "const": "stopped" } } },
+          "then": { "required": ["checkpoint_ref"] }
+        },
+        {
+          "if": { "properties": { "outcome": { "enum": ["failed", "rejected"] } } },
+          "then": { "required": ["reason"] }
+        }
+      ],
+      "properties": {
+        "type": { "const": "assignment.finished" },
+        "outcome": { "$ref": "#/$defs/Outcome" },
+        "checkpoint_ref": { "$ref": "#/$defs/CheckpointRef" },
+        "reason": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string" }
+      },
+      "required": ["outcome"],
+      "unevaluatedProperties": false
+    },
+
+    "Event": {
+      "title": "Event",
+      "description": "One message on GET /v1/assignments/{id}/events. On the wire: the SSE id field carries seq, the SSE event field carries type, the SSE data field carries this object as one line of JSON.",
+      "type": "object",
+      "oneOf": [
+        { "$ref": "#/$defs/StepStarted" },
+        { "$ref": "#/$defs/StepProgress" },
+        { "$ref": "#/$defs/ToolCalled" },
+        { "$ref": "#/$defs/DecisionMade" },
+        { "$ref": "#/$defs/ConsumptionReported" },
+        { "$ref": "#/$defs/StepBoundary" },
+        { "$ref": "#/$defs/ArtifactProduced" },
+        { "$ref": "#/$defs/AssignmentFinished" }
+      ]
+    },
+
+    "Transcript": {
+      "title": "Transcript",
+      "description": "Not a wire object. The fixture shape for the conformance suite: one assignment, the estimate the worker gave for it, and every event of its stream in order. The suite checks the stream rules W-03 to W-07, W-10 and W-11 against this shape.",
+      "type": "object",
+      "properties": {
+        "assignment": { "$ref": "#/$defs/Assignment" },
+        "estimate": { "$ref": "#/$defs/Estimate" },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Event" },
+          "minItems": 1
+        }
+      },
+      "required": ["assignment", "estimate", "events"],
+      "additionalProperties": false
+    }
+  }
+}
