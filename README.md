@@ -13,7 +13,8 @@ Python, PostgreSQL, Explicit Architecture. Self-hostable from day one.
 > **Status: draft, on the way to `0.1.0`.** The contracts, the conformance suite, and the first
 > vertical slice of the control plane exist: a process bundle runs against a worker, every step
 > lands in a verifiable ledger, a stop resumes at a step boundary, a step that would breach the
-> budget never starts. In memory, from the command line, without governance. What runs today:
+> budget never starts, and the state lives in PostgreSQL — a killed process resumes at its last
+> step boundary. From the command line, without governance. What runs today:
 > [examples/README.md](examples/README.md).
 >
 > **Public for transparency, but not licensed for use.** See `LICENSE` and `NOTICE`. Third-party
@@ -107,13 +108,13 @@ you see the domain, not the framework.
 | Database | PostgreSQL 16+ — state, queue, outbox, ledger, vector search (`pgvector`) |
 | API | FastAPI, OpenAPI 3.1, RFC 9457 problem details, SSE |
 | Agent interface | MCP — Taktus is a client, and exposes itself as a server |
-| Domain types | Pydantic v2 value objects; SQLAlchemy Core at the boundary, never in the domain |
+| Domain types | Pydantic v2 value objects; SQLAlchemy Core at the boundary, never in the domain — the adapter stores an aggregate's document and never imports its class |
 | Shared kernel | JSON Schema under `contracts/shared`, bound to Python by hand and checked by a test |
 | Process bundles | YAML, read by PyYAML in the command-line adapter only |
-| Migrations | Alembic |
+| Migrations | Alembic, `make migrate`; every table tenant-scoped with row-level security, the ledger append-only in the database (ADR-0020) |
 | ML bench | scikit-learn, PyTorch, sentence-transformers — as a worker, never in the core |
 | Architecture enforcement | `import-linter` contracts, run in CI |
-| Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers`; `make gates` installs its own environment; `make doctor` says what is missing. `taktusctl` lives in that environment: `uv run taktusctl …` |
+| Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers`; `make gates` installs its own environment; `make doctor` says what is missing. `taktusctl` lives in that environment: `uv run taktusctl …`. Docker is optional: without it the PostgreSQL tests skip and say so; CI runs them |
 | Observability | OpenTelemetry from day one |
 | Web | SvelteKit, embedded into the image |
 | Deployment | Docker Compose for self-hosting, Kubernetes for scale |
@@ -131,3 +132,32 @@ default adapter that needs no extra service.
 Workers run isolated — as a process (local development only), as a container (the default in
 operation) or as a Kubernetes job. **The process adapter is not permitted from autonomy level 3
 upwards.**
+
+**Today, on a developer's machine.** The application container arrives with the daemon; until
+then Taktus runs from a checkout, against the development database or in memory:
+
+```bash
+make db-up
+```
+
+```bash
+export TAKTUS_DATABASE_URL=postgresql://taktus@127.0.0.1:5432/taktus && make migrate
+```
+
+```bash
+uv run taktusctl run --process examples/processes/six-times-seven.yaml
+```
+
+`make db-up` starts PostgreSQL alone (`deploy/docker/compose.dev.yml`, bound to `127.0.0.1`,
+no password; `TAKTUS_DB_PORT` when 5432 is taken); `make migrate` brings it to the current
+schema; `make db-down` stops it and keeps its data. With `TAKTUS_DATABASE_URL` set, runs survive the process and a killed one resumes at
+its last step boundary with `--resume`. Without it, `taktusctl run` uses the in-memory
+implementation with a file snapshot and says so in its first line of output — development
+only, not durable. Neither is a silent default. Every `TAKTUS_*` variable is listed in
+`.env.example`, names only; the database URL is a secret and is registered in `CREDENTIALS.md`.
+
+**Tenants and instances** are different boundaries (ADR-0020). Tenants share one instance and
+one database, kept apart by a tenant column on every table and row-level security. Instances
+share nothing. The Taktus project itself runs two instances: a development instance on `main`
+and a project instance on a tagged release, so that a version under development can never take
+down productive work.

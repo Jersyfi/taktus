@@ -6,6 +6,10 @@ empty database instead of a container — CI without Docker, or a developer's ow
 Tests keep apart through tenants (the adapter suite makes a fresh one per test; the
 integration tests run as `default` and identify their runs by id), so nothing is cleaned
 between them.
+
+A skip is for a developer's machine. Where the database tests must run — CI — the environment
+sets `TAKTUS_REQUIRE_DATABASE=1`, and a missing Docker is then a failure, not a skip: a gate
+that goes green because it could not look is broken, not strict (DEC-0004).
 """
 
 from __future__ import annotations
@@ -49,7 +53,10 @@ def postgres_url() -> Iterator[str]:
         return
     reason = docker_available()
     if reason is not None:
-        pytest.skip(f"PostgreSQL tests need Docker for a container: {reason}")
+        message = f"PostgreSQL tests need Docker for a container: {reason}"
+        if os.environ.get("TAKTUS_REQUIRE_DATABASE"):
+            pytest.fail(message + " — and TAKTUS_REQUIRE_DATABASE says they may not skip")
+        pytest.skip(message)
     from testcontainers.community.postgres import PostgresContainer
 
     with PostgresContainer("postgres:16-alpine", driver=None) as container:

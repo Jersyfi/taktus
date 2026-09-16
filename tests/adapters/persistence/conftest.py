@@ -51,25 +51,25 @@ class Backend:
         return tenant
 
 
-@pytest.fixture(params=IMPLEMENTATIONS)
-async def backend(request: pytest.FixtureRequest) -> AsyncIterator[Backend]:
-    if request.param == "memory":
-        memory = MemoryPersistence()
+@pytest.fixture
+async def memory_backend() -> Backend:
+    memory = MemoryPersistence()
 
-        async def no_tenant_to_create(tenant: str) -> None:
-            pass
+    async def no_tenant_to_create(tenant: str) -> None:
+        pass
 
-        yield Backend(
-            "memory",
-            memory,
-            MemoryLedgerStore(memory),
-            lambda kind: MemoryRepository(memory, kind),
-            no_tenant_to_create,
-        )
-        return
+    return Backend(
+        "memory",
+        memory,
+        MemoryLedgerStore(memory),
+        lambda kind: MemoryRepository(memory, kind),
+        no_tenant_to_create,
+    )
 
-    url: str = request.getfixturevalue("postgres_url")
-    postgres = PostgresPersistence(url, pool_size=2)
+
+@pytest.fixture
+async def postgres_backend(postgres_url: str) -> AsyncIterator[Backend]:
+    postgres = PostgresPersistence(postgres_url, pool_size=2)
 
     async def create_tenant(tenant: str) -> None:
         # As the login user, inside a transaction that names the tenant, so that the forced
@@ -93,6 +93,13 @@ async def backend(request: pytest.FixtureRequest) -> AsyncIterator[Backend]:
         )
     finally:
         await postgres.close()
+
+
+@pytest.fixture(params=IMPLEMENTATIONS)
+def backend(request: pytest.FixtureRequest) -> Backend:
+    """The port as each implementation offers it: every test that takes this runs twice."""
+    chosen: Backend = request.getfixturevalue(f"{request.param}_backend")
+    return chosen
 
 
 @pytest.fixture

@@ -47,9 +47,15 @@ runnable by a third party against a live worker, proven to fail on every injecte
 of the control plane: command, plan, process version as a validated graph, run with step
 atomicity and admission control, the content-free ledger with verification, the worker port and
 its HTTP adapter, `taktusctl run` against the reference worker, in memory; the architecture
-tests, `tests/exactness` real, the shared kernel bound to Python and checked (#5). Not yet:
-persistence in the database, the REST API, governance and anchors, `mlbench`, the execution
-adapters, the `github` connector, OpenTelemetry export (spans exist, nothing collects them).
+tests, `tests/exactness` real, the shared kernel bound to Python and checked (#5) ·
+persistence in PostgreSQL: every table tenant-scoped under row-level security, the ledger
+append-only in the database, one repository suite that the memory and the database
+implementation both pass, and a restart proven — a killed `taktusctl run` resumes at its last
+step boundary with an unbroken ledger (ADR-0013 A, for one instance; ADR-0020 for the tenant
+and instance boundaries) (#6). Not yet: the daemon and its roles, the REST API, governance and
+anchors, `mlbench`, the execution adapters, the `github` connector, OpenTelemetry export
+(spans exist, nothing collects them), the queue and outbox (their tables exist, nothing claims
+through them).
 
 ### `0.2.0` — governance, limits, availability
 Autonomy levels 1–3 per process **and per action class** · anchors, configurable per tenant ·

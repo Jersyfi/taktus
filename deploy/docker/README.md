@@ -6,7 +6,8 @@
 
 `make db-up` starts it and waits until it accepts connections; `make migrate` brings it to the
 current schema (`TAKTUS_DATABASE_URL=postgresql://taktus@127.0.0.1:5432/taktus`); `make db-down`
-stops it and keeps the volume. Removing the volume is the operator's explicit act
+stops it and keeps the volume. When port 5432 is taken on the machine, `TAKTUS_DB_PORT` picks
+another host port, and the URL carries that port. Removing the volume is the operator's explicit act
 (`docker volume rm taktus-dev-postgres`), never a make target: nothing here deletes data
 without asking (CLAUDE.md §9).
 

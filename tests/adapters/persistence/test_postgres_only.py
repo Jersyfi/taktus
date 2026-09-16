@@ -34,10 +34,8 @@ pytestmark = pytest.mark.usefixtures("postgres_url")
 
 
 @pytest.fixture
-def postgres(backend: Backend) -> Backend:
-    if backend.name != "postgres":
-        pytest.skip("what only the database can show")
-    return backend
+def postgres(postgres_backend: Backend) -> Backend:
+    return postgres_backend
 
 
 async def test_a_raw_statement_as_the_application_sees_only_its_tenant(

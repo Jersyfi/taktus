@@ -3,7 +3,8 @@
 A key is dotted and lowercase — `database.url` — and names one setting. Where the value comes
 from is the adapter's business (the environment, today). A setting that may carry a secret is
 read as a `Secret`, which never shows its value in a log, a message or a traceback; the
-repository is public and so is every log line a session might paste (CLAUDE.md §9).
+repository is public and so is every log line a session might paste (the working rules: no
+secret value ever enters a file, a log or a message).
 """
 
 from __future__ import annotations

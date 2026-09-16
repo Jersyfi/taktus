@@ -8,7 +8,8 @@
 #
 # It listens on 127.0.0.1 only and trusts every local connection: there is no password, so
 # there is no secret to keep out of this file. The URL is then
-# postgresql://taktus@127.0.0.1:5432/taktus — see .env.example.
+# postgresql://taktus@127.0.0.1:5432/taktus — see .env.example. When 5432 is taken on this
+# machine, TAKTUS_DB_PORT chooses another host port; the URL changes with it.
 
 name: taktus-dev
 
@@ -20,7 +21,7 @@ services:
       POSTGRES_DB: taktus
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${TAKTUS_DB_PORT:-5432}:5432"
     volumes:
       - taktus-dev-postgres:/var/lib/postgresql/data
     healthcheck:

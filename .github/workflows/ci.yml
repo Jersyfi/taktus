@@ -87,5 +87,8 @@ jobs:
       - name: decisions
         run: make gate-decisions
 
+      # The runner has Docker; the PostgreSQL tests run in a container and may not skip here.
       - name: test
+        env:
+          TAKTUS_REQUIRE_DATABASE: "1"
         run: make test

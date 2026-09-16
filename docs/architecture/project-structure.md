@@ -63,8 +63,9 @@ taktus/
 │   │   ├── connector.py             # CONTRACT 2 — tools and channels (MCP)
 │   │   ├── model.py                 # CONTRACT 3 — models
 │   │   ├── execution.py             # process | container | kubernetes
-│   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore
-│   │   ├── ledger.py                # facts in, chained entries out, verify
+│   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore, UnitOfWork — every call names its tenant
+│   │   ├── ledger.py                # facts in, chained entries out, verify — one chain per tenant
+│   │   ├── configuration.py         # what an instance is told about itself, by key; Secret
 │   │   ├── objectstore.py  clock.py  telemetry.py
 │   │   ├── queue.py  eventbus.py  secret.py
 │   │
@@ -72,17 +73,19 @@ taktus/
 │   │   ├── driving/                 # cli/ (taktusctl) — later rest/ mcp/ sse/ channel/ admin/ webui/
 │   │   └── driven/
 │   │       ├── memory/              # DEVELOPMENT AND TEST ONLY: in-memory stores, optional file snapshot
+│   │       ├── postgres/            # the persistence port over PostgreSQL: SQLAlchemy Core, one mapper per aggregate
+│   │       ├── configuration/       # the configuration port over TAKTUS_* environment variables
 │   │       ├── clock/               # the system clock, identifiers, randomness — the only place
 │   │       ├── telemetry/           # noop; an OpenTelemetry exporter later
 │   │       ├── workers/http/        # the worker port over HTTP and SSE; workers/pool.py maps capabilities
-│   │       ├── postgres/ objectstore/ secret/ execution/ ledger/
+│   │       ├── objectstore/ secret/ execution/ ledger/
 │   │       ├── connectors/{github,chat,http}/
 │   │       └── models/{openai_compatible,anthropic,ollama}/
 │   │
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core
 │   │
-│   └── composition/                 # composition root: local.py wires a developer's machine, taktusctl.py is the console script
+│   └── composition/                 # composition root: local.py wires a developer's machine (memory or database), taktusctl.py is the console script
 │
 ├── workers/                         # separate deployables behind the worker contract
 │   ├── script/ claudecode/ codex/
@@ -92,8 +95,8 @@ taktus/
 │   └── worker/v1/ connector/v1/ model/v1/ process/v1/ events/v1/ shared/v1/
 │
 ├── api/openapi.yaml                 # Taktus' OWN REST interface, generated from FastAPI
-├── migrations/                      # Alembic
-├── deploy/{docker,k8s,observability}/
+├── migrations/                      # Alembic: alembic.ini, env.py, versions/ — explicit DDL, one head
+├── deploy/{docker,k8s,observability}/   # docker/compose.dev.yml is the development database
 ├── blueprints/{dev-orchestration,it-operations}/
 ├── examples/processes/              # process bundles that run as they are; each exercised by a test
 ├── web/                             # SvelteKit app, embedded into the image
@@ -104,13 +107,13 @@ taktus/
 │   ├── governance/                  # anchors hold, limits never breach, least privilege
 │   ├── exactness/                   # `exact` steps never take their final value from AI
 │   ├── contract/                    # the Python bindings match the schemas and their examples
-│   ├── components/ adapters/        # domain tables and application tests against fakes/
-│   ├── integration/                 # the whole slice against the reference worker
+│   ├── components/ adapters/        # domain tables and application tests against fakes/; adapters/persistence: one suite, both implementations
+│   ├── integration/                 # the whole slice against the reference worker; the restart test against PostgreSQL
 │   └── security/ resilience/
 │
 ├── docs/{architecture,adr,usecases,roadmap.md}
 ├── tools/                           # gates, checkdocs, preflight, generators
-├── pyproject.toml  Makefile  .importlinter
+├── pyproject.toml  Makefile  .importlinter  .env.example   # .env.example lists TAKTUS_* names, never values
 └── CLAUDE.md  README.md  LICENSE  NOTICE  CONTRIBUTING.md  CREDENTIALS.md
 ```
 
@@ -168,16 +171,16 @@ the rest of Taktus.
 | Application services | one `Command`/`Query` dataclass, one `Handler` with `async def execute(self, cmd) -> Result` |
 | Errors | typed exceptions in each component's `domain/model/errors.py` |
 | Async | `async` throughout; no blocking call in a coroutine, enforced by lint |
-| Context | actor and tenant travel in an explicit `ActorContext` argument, never in a context variable read by business code |
+| Context | actor and tenant travel as explicit arguments — today as fields of every command (`StartRun.tenant`), later bundled in an `ActorContext` — never in a context variable read by business code |
 | Time, randomness, IDs | only through ports (`ports/clock.py`) — otherwise no run is reproducible; enforced by `tests/architecture` |
 | Logging | `structlog`, structured, never personal data, always with `trace_id` |
-| Secrets | never a bare `str` — a `Secret` type masks on `repr`, `str` and serialisation |
+| Secrets | never a bare `str` — `ports/configuration.py`'s `Secret` masks on `repr` and `str`; `reveal()` is the one way to the value, and the database URL is read as one |
 | Every step | carries method, reason, rejected alternatives, fallback; an exactness class if it produces a result (ADR-0018) |
-| Persistence | SQLAlchemy Core in the driven adapter only; no ORM object crosses into the domain |
+| Persistence | SQLAlchemy Core in the driven adapter only; no ORM object crosses into the domain. **Every repository call names its tenant** as an explicit parameter (ADR-0020); the adapter refuses another tenant than the open transaction's, and an aggregate that carries its tenant carries the one it is stored under. **Every call happens inside a unit of work** (`ports/persistence.py`, `UnitOfWork.transaction(tenant)`), opened by the application layer — a handler, the run engine — never by an adapter or the domain; a call outside one raises, blocks do not nest, and a store that raises inside a block spoils it. **An adapter stores documents, not classes:** it never imports a component (§3), so the composition root binds the aggregate class and the adapter maps `document()` to rows and back — one mapper per aggregate in `adapters/driven/postgres/_mapping.py`. **A foreign key never crosses a component boundary;** inside an aggregate, children hang off their parent and are replaced with it; a copy (the steps of a plan, of a run) is one JSON column, the source (the process version's steps) is rows. The tables live in `_schema.py`, the history in `migrations/`, and `tests/adapters/persistence` fails on drift between them |
 | Shared kernel binding | `src/taktus/shared/v1/` is hand-written and **machine-checked**, not generated: one frozen model per schema of `contracts/shared/v1`, one module per schema file, and `tests/contract` fails on any difference in properties, required fields, enumerations or patterns, and runs every example of the contract through the models. The same holds for the worker contract's shapes in `ports/worker.py`. Why not generation: the schemas carry conditional rules (`if`/`then` over a step's method, "at least one quantity") that no generator turns into a constructor check, and the components need exactly those checks in the constructor; generating the shape and hand-writing the rules would be two files per concept with the seam in the wrong place. A checked binding is one file, and drift is a red test |
 | Generated code | `api/openapi.yaml` from the REST interface, once it exists — never edited by hand; `make generate` is its one place |
 | Types | `mypy --strict` across `src/`; no `Any` without a comment saying why |
-| Tests | domain = table tests, no mocks; application = fakes of the ports (`tests/fakes/`); driven adapters = testcontainers |
+| Tests | domain = table tests, no mocks; application = fakes of the ports (`tests/fakes/`); driven adapters = testcontainers. **One suite per port, run against every implementation** (`tests/adapters/persistence`: the memory adapter and PostgreSQL answer the same assertions; a disagreement is a finding about the port, and the port gains the rule) |
 | Ledger facts | what a component tells the ledger is a `Fact` (`ports/ledger.py`): identifiers, method, adapter, measured consumption, an outcome *token*, a content digest — never text. A reason stays on the run; the ledger is content-free by construction |
 | Language | everything in English — code, comments, commits, documentation |
 
