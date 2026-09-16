@@ -1,0 +1,33 @@
+# The development database: PostgreSQL alone, on this machine, for `taktusctl run` and the
+# migrations. Not a deployment. The application container arrives with the daemon; the target
+# shape is two containers in total (ADR-0002).
+#
+#   make db-up        start it (and wait until it accepts connections)
+#   make migrate      bring it to the current schema; needs TAKTUS_DATABASE_URL
+#   make db-down      stop it; the data volume stays (nothing is deleted without asking)
+#
+# It listens on 127.0.0.1 only and trusts every local connection: there is no password, so
+# there is no secret to keep out of this file. The URL is then
+# postgresql://taktus@127.0.0.1:5432/taktus — see .env.example.
+
+name: taktus-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: taktus
+      POSTGRES_DB: taktus
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - taktus-dev-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taktus -d taktus"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  taktus-dev-postgres:

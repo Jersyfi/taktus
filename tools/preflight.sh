@@ -7,7 +7,7 @@
 # through `need-<tool>` (Makefile).
 #
 # `tools/preflight.sh --doctor` reports two levels and says which is incomplete: the system
-# tools (uv, gitleaks; node is optional), and the project environment — the tools the gates
+# tools (uv, gitleaks; docker and node are optional), and the project environment — the tools the gates
 # actually invoke through `uv run` (ruff, mypy, pytest, lint-imports, taktusctl), which live
 # in .venv and not on the path. Exit 1 if either level is incomplete.
 #
@@ -19,6 +19,7 @@ purpose() {
     case "$1" in
         uv) echo "runs every Python gate: the environment, tests, lint, types, the tools" ;;
         gitleaks) echo "scans the repository for secret values (make gate-secrets)" ;;
+        docker) echo "runs the development database (make db-up) and the PostgreSQL tests; without it those tests skip" ;;
         node) echo "JavaScript runtime for the web app under web/; no gate needs it" ;;
         *) echo "unknown tool" ;;
     esac
@@ -27,7 +28,7 @@ purpose() {
 required() {
     case "$1" in
         uv | gitleaks) echo "required" ;;
-        node) echo "optional" ;;
+        docker | node) echo "optional" ;;
         *) echo "unknown" ;;
     esac
 }
@@ -40,6 +41,13 @@ install_command() {
                 echo "brew install gitleaks"
             else
                 echo "see https://github.com/gitleaks/gitleaks#installing (a single binary per release)"
+            fi
+            ;;
+        docker)
+            if [ "$(uname -s)" = "Darwin" ]; then
+                echo "brew install --cask docker (or Docker Desktop / OrbStack)"
+            else
+                echo "see https://docs.docker.com/engine/install/"
             fi
             ;;
         node)
@@ -57,6 +65,7 @@ version_of() {
     case "$1" in
         uv) uv --version 2>/dev/null | head -n 1 | cut -d" " -f1-2 ;;
         gitleaks) gitleaks version 2>/dev/null | head -n 1 ;;
+        docker) docker --version 2>/dev/null | head -n 1 | cut -d" " -f1-3 | tr -d , ;;
         node) node --version 2>/dev/null | head -n 1 ;;
         *) echo "" ;;
     esac
@@ -97,7 +106,7 @@ project_purpose() {
 doctor() {
     status=0
     echo "system tools"
-    for tool in uv gitleaks node; do
+    for tool in uv gitleaks docker node; do
         need="$(required "$tool")"
         if present "$tool"; then
             printf '  %-8s %-9s %-18s %s\n' "ok" "$tool" "$(version_of "$tool")" "$(purpose "$tool")"

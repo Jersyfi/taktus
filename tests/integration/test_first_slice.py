@@ -241,7 +241,7 @@ def test_taktusctl_run_executes_the_example_and_resumes_in_a_later_invocation(
         check=False,
     )
     assert first.returncode == 3, first.stdout + first.stderr
-    assert "state  memory, snapshot under" in first.stdout, "the storage is never silent"
+    assert "state  memory with a snapshot under" in first.stdout, "the storage is never silent"
     assert "state halted (stop)" in first.stdout
     assert "verifies" in first.stdout and "DOES NOT VERIFY" not in first.stdout
     run_id = next(line.split()[-1] for line in first.stdout.splitlines() if "--resume" in line)

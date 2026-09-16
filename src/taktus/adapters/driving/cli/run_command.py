@@ -18,7 +18,7 @@ from typing import Annotated, Any
 import typer
 import yaml
 
-from taktus.adapters.driving.cli.wiring import Services, Wiring
+from taktus.adapters.driving.cli.wiring import NotOperable, Services, Wiring
 from taktus.components.command.application.service import CommissionPlan
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
@@ -115,7 +115,7 @@ def run(
         for finding in error.findings:
             typer.echo(f"  - {finding}", err=True)
         raise typer.Exit(code=2) from error
-    except (RunError, WorkerError) as error:
+    except (RunError, WorkerError, NotOperable) as error:
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=2) from error
     raise typer.Exit(code=0 if result.state is RunState.FINISHED else 3)

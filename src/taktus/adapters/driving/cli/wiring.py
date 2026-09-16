@@ -24,6 +24,11 @@ from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, UnitOfWork
 
 
+class NotOperable(Exception):
+    """The services cannot be opened as configured — no database where one is named, a schema
+    that is not at the current revision, a URL that is not one. The message says what to do."""
+
+
 @dataclass(frozen=True)
 class Services:
     register_version: RegisterProcessVersionHandler
@@ -44,5 +49,5 @@ class Wiring(Protocol):
         self, *, state_dir: Path, worker_endpoint: str
     ) -> AbstractAsyncContextManager[Services]:
         """Open the services against a state directory and one worker endpoint; close what
-        needs closing on exit."""
+        needs closing on exit. Raises `NotOperable` when the configuration cannot be served."""
         ...
