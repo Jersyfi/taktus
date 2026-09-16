@@ -33,6 +33,8 @@ What this creates, and why it looks the way it does:
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
@@ -66,7 +68,7 @@ def _tenant() -> sa.Column[str]:
     return sa.Column("tenant", sa.Text, sa.ForeignKey("tenant.id"), nullable=False)
 
 
-def _at(name: str, *, nullable: bool = False) -> sa.Column[object]:
+def _at(name: str, *, nullable: bool = False) -> sa.Column[datetime]:
     return sa.Column(name, sa.DateTime(timezone=True), nullable=nullable)
 
 
@@ -363,6 +365,8 @@ def upgrade() -> None:
     )
 
     # --- the application role ---------------------------------------------------------------
+    # The role name and the table names are constants of this file, not input: the statements
+    # below are assembled from them and from nothing else.
     op.execute(
         f"""
         DO $$
@@ -372,7 +376,7 @@ def upgrade() -> None:
             END IF;
         END
         $$
-        """
+        """  # noqa: S608
     )
     op.execute(f"GRANT {ROLE} TO CURRENT_USER")
     op.execute(f"GRANT USAGE ON SCHEMA public TO {ROLE}")

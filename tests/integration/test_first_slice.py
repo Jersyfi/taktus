@@ -30,6 +30,7 @@ from taktus.shared.v1 import Command, Intent, ReplyTo
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE = ROOT / "examples" / "processes" / "six-times-seven.yaml"
+TENANT = "test"
 
 
 def bundle(*, budget_seconds: float = 2, with_overreach: bool = True) -> dict[str, Any]:
@@ -44,12 +45,14 @@ def bundle(*, budget_seconds: float = 2, with_overreach: bool = True) -> dict[st
 async def start(
     services: Services, document: dict[str, Any], *, stop_after: int | None = None
 ) -> Run:
-    version = await services.register_version.execute(RegisterProcessVersion(document))
+    version = await services.register_version.execute(
+        RegisterProcessVersion(document, tenant=TENANT)
+    )
     command = Command(
         id=services.ids.new("cmd"),
         channel="channel.cli",
         identity="idn_test",
-        org_path=("test",),
+        org_path=(TENANT,),
         intent=Intent(raw="run"),
         reply_to=ReplyTo(channel="channel.cli", address="test"),
         received_at=services.clock.now(),
@@ -57,6 +60,7 @@ async def start(
     plan = await services.commission.execute(
         CommissionPlan(
             command=command,
+            tenant=TENANT,
             goal="g",
             autonomy_level=version.autonomy_level,
             steps=version.ordered(),
@@ -69,9 +73,20 @@ async def start(
             budget=Limits.model_validate(dict(version.limits or {})),
             process_version=version.ref,
             actor="idn_test",
+            tenant=TENANT,
             stop_after=stop_after,
         )
     )
+
+
+async def entries_of(services: Services, run_id: str) -> list[Any]:
+    async with services.work.transaction(TENANT):
+        return list(await services.ledger.entries(TENANT, run_id))
+
+
+async def verifies(services: Services) -> bool:
+    async with services.work.transaction(TENANT):
+        return (await services.ledger.verify(TENANT)).intact
 
 
 async def test_a_run_completes_and_the_ledger_verifies(
@@ -89,7 +104,7 @@ async def test_a_run_completes_and_the_ledger_verifies(
         assert compute.consumption.resource_class == "cpu.small"
         verify = run.step_run("verify-answer")
         assert verify.checkpoint is not None and verify.checkpoint.result_digest is not None
-        entries = await services.ledger.entries(run.id)
+        entries = await entries_of(services, run.id)
         assert [e.kind for e in entries][:2] == ["run.created", "run.started"]
         assert [e.kind for e in entries][-1] == "run.finished"
         assert sum(1 for e in entries if e.kind == "step.finished") == 4
@@ -97,7 +112,7 @@ async def test_a_run_completes_and_the_ledger_verifies(
             e for e in entries if e.kind == "step.started" and e.refs.step_id == "compute"
         )
         assert started.adapter == "worker.http" and started.refs.assignment_id is not None
-        assert (await services.ledger.verify()).intact
+        assert await verifies(services)
 
 
 async def test_a_run_stops_at_a_boundary_and_resumes(worker_endpoint: str, tmp_path: Path) -> None:
@@ -112,18 +127,20 @@ async def test_a_run_stops_at_a_boundary_and_resumes(worker_endpoint: str, tmp_p
             StepState.PLANNED,
             StepState.PLANNED,
         ]
-        assert (await services.ledger.verify()).intact
+        assert await verifies(services)
     # A later invocation: the state comes back from the snapshot.
     async with LocalWiring().services(
         state_dir=tmp_path / "state", worker_endpoint=worker_endpoint
     ) as services:
-        run = await services.engine.resume(ResumeRun(run_id=run.id, actor="idn_test"))
+        run = await services.engine.resume(
+            ResumeRun(run_id=run.id, actor="idn_test", tenant=TENANT)
+        )
         assert run.state is RunState.FINISHED
         assert [s.state for s in run.step_runs] == [StepState.SUCCEEDED] * 4
-        kinds = [e.kind for e in await services.ledger.entries(run.id)]
+        kinds = [e.kind for e in await entries_of(services, run.id)]
         assert kinds.count("step.started") == 4, "no step ran twice"
         assert "run.resumed" in kinds
-        assert (await services.ledger.verify()).intact
+        assert await verifies(services)
 
 
 async def test_a_worker_step_stopped_mid_way_resumes_from_its_checkpoint_without_duplicates(
@@ -140,7 +157,8 @@ async def test_a_worker_step_stopped_mid_way_resumes_from_its_checkpoint_without
         running = asyncio.create_task(start(services, document))
         # Wait until the worker step has an assignment in flight, then ask for a stop.
         while True:
-            runs = await services.runs.list()
+            async with services.work.transaction(TENANT):
+                runs = await services.runs.list(TENANT)
             if runs and runs[0].step_run("compute").state is StepState.RUNNING:
                 break
             await asyncio.sleep(0.02)
@@ -151,13 +169,15 @@ async def test_a_worker_step_stopped_mid_way_resumes_from_its_checkpoint_without
         assert stopped.state is StepState.STOPPED
         assert stopped.checkpoint is not None and stopped.checkpoint.ref.startswith("ckpt/asg_")
         assert 0 < len(stopped.artifacts) < 4, "the running command finished; nothing after it ran"
-        run = await services.engine.resume(ResumeRun(run_id=run.id, actor="idn_test"))
+        run = await services.engine.resume(
+            ResumeRun(run_id=run.id, actor="idn_test", tenant=TENANT)
+        )
         assert run.state is RunState.FINISHED
         resumed = run.step_run("compute")
         ids = [a.id for a in resumed.artifacts]
         assert ids == ["output-1", "output-2", "output-3", "output-4"]
         assert len(set(ids)) == 4
-        assert (await services.ledger.verify()).intact
+        assert await verifies(services)
 
 
 async def test_a_step_is_rejected_by_admission_control_before_it_starts(
@@ -173,16 +193,17 @@ async def test_a_step_is_rejected_by_admission_control_before_it_starts(
         assert overreach.assignment_id is None, "nothing was posted to the worker"
         assert overreach.estimate is not None and overreach.estimate.compute_seconds is not None
         assert overreach.estimate.compute_seconds > 2
-        kinds = [(e.kind, e.refs.step_id, e.outcome) for e in await services.ledger.entries(run.id)]
+        kinds = [(e.kind, e.refs.step_id, e.outcome) for e in await entries_of(services, run.id)]
         assert ("step.rejected", "overreach", "rejected_by_admission") in kinds
         assert ("step.started", "overreach", None) not in kinds
         assert kinds[-1] == ("run.halted", None, "limit")
-        assert (await services.ledger.verify()).intact
+        assert await verifies(services)
         # With a larger budget the same run continues and finishes.
         run = await services.engine.resume(
             ResumeRun(
                 run_id=run.id,
                 actor="idn_test",
+                tenant=TENANT,
                 budget=Limits.model_validate(
                     {"compute": {"seconds": 120, "resource_class": "cpu.small"}}
                 ),
@@ -190,7 +211,7 @@ async def test_a_step_is_rejected_by_admission_control_before_it_starts(
         )
         assert run.state is RunState.FINISHED
         assert run.step_run("overreach").state is StepState.SUCCEEDED
-        assert (await services.ledger.verify()).intact
+        assert await verifies(services)
 
 
 def taktusctl() -> str:
@@ -220,6 +241,7 @@ def test_taktusctl_run_executes_the_example_and_resumes_in_a_later_invocation(
         check=False,
     )
     assert first.returncode == 3, first.stdout + first.stderr
+    assert "state  memory, snapshot under" in first.stdout, "the storage is never silent"
     assert "state halted (stop)" in first.stdout
     assert "verifies" in first.stdout and "DOES NOT VERIFY" not in first.stdout
     run_id = next(line.split()[-1] for line in first.stdout.splitlines() if "--resume" in line)
@@ -235,7 +257,7 @@ def test_taktusctl_run_executes_the_example_and_resumes_in_a_later_invocation(
     assert "rejected_by_admission" in second.stdout
     assert "verify-answer        rule       exact     succeeded" in second.stdout
     assert "settle               wait       -         succeeded" in second.stdout
-    ledger = json.loads((tmp_path / "state" / "ledger.json").read_text())
+    ledger = json.loads((tmp_path / "state" / "ledger.json").read_text())["default"]
     assert [e["kind"] for e in ledger][-1] == "run.halted"
     assert all("reason" not in e for e in ledger), "the ledger stores no text"
 

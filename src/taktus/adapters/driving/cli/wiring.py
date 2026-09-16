@@ -21,7 +21,7 @@ from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Repository
+from taktus.ports.persistence import Repository, UnitOfWork
 
 
 @dataclass(frozen=True)
@@ -31,8 +31,12 @@ class Services:
     engine: RunEngine
     runs: Repository[Run]
     ledger: Ledger
+    work: UnitOfWork
     clock: Clock
     ids: Identifiers
+    storage: str
+    """Where the state lives, in one line for the user: the command line prints it, so that
+    neither the database nor the memory implementation is a silent default."""
 
 
 class Wiring(Protocol):

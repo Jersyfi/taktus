@@ -21,6 +21,8 @@ Rules the layout follows:
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import (
     BigInteger,
     Column,
@@ -46,7 +48,7 @@ def _tenant() -> Column[str]:
     return Column("tenant", Text, ForeignKey("tenant.id"), nullable=False)
 
 
-def _at(name: str, *, nullable: bool = False) -> Column[object]:
+def _at(name: str, *, nullable: bool = False) -> Column[datetime]:
     return Column(name, DateTime(timezone=True), nullable=nullable)
 
 
@@ -257,7 +259,7 @@ ledger_entry = Table(
     Index("ledger_entry_run", "tenant", text("(refs ->> 'run_id')")),
 )
 
-# --- queue and outbox (ADR-0002) — created now, used from the daemon on ----------------------------
+# --- queue and outbox (ADR-0002) — created now, used from the daemon on --------------------
 
 job = Table(
     "job",

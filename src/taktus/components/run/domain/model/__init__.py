@@ -7,6 +7,7 @@ from taktus.components.run.domain.model.errors import (
     UnsupportedWork,
 )
 from taktus.components.run.domain.model.run import (
+    INTERRUPTIBLE,
     RESUMABLE,
     RUN_TRANSITIONS,
     STEP_TRANSITIONS,
@@ -30,6 +31,7 @@ from taktus.components.run.domain.model.work import (
 )
 
 __all__ = [
+    "INTERRUPTIBLE",
     "RESUMABLE",
     "RUN_TRANSITIONS",
     "STEP_TRANSITIONS",

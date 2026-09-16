@@ -13,7 +13,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
-from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryObjectStore, MemoryRepository
+from taktus.adapters.driven.memory import (
+    MemoryLedgerStore,
+    MemoryObjectStore,
+    MemoryPersistence,
+    MemoryRepository,
+)
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
@@ -36,11 +41,13 @@ class LocalWiring:
     async def services(self, *, state_dir: Path, worker_endpoint: str) -> AsyncIterator[Services]:
         clock = SystemClock()
         ids = SystemIdentifiers()
-        runs = MemoryRepository(Run, key=lambda r: r.id, snapshot=state_dir / "runs.json")
-        ledger = ChainedLedger(MemoryLedgerStore(state_dir / "ledger.json"), clock)
+        persistence = MemoryPersistence(state_dir)
+        runs = MemoryRepository(persistence, Run)
+        ledger = ChainedLedger(MemoryLedgerStore(persistence), clock)
         async with HttpWorker(worker_endpoint) as worker:
             engine = RunEngine(
                 runs=runs,
+                work=persistence,
                 objects=MemoryObjectStore(state_dir / "objects"),
                 ledger=ledger,
                 workers=StaticWorkerPool([(WORKER_ADAPTER, worker)]),
@@ -50,21 +57,20 @@ class LocalWiring:
             )
             yield Services(
                 register_version=RegisterProcessVersionHandler(
-                    MemoryRepository(
-                        ProcessVersion, key=lambda v: v.id, snapshot=state_dir / "versions.json"
-                    )
+                    MemoryRepository(persistence, ProcessVersion), persistence
                 ),
                 commission=CommissionPlanHandler(
-                    MemoryRepository(
-                        Command, key=lambda c: c.id, snapshot=state_dir / "commands.json"
-                    ),
-                    MemoryRepository(Plan, key=lambda p: p.id, snapshot=state_dir / "plans.json"),
+                    MemoryRepository(persistence, Command),
+                    MemoryRepository(persistence, Plan),
+                    persistence,
                     clock,
                     ids,
                 ),
                 engine=engine,
                 runs=runs,
                 ledger=ledger,
+                work=persistence,
                 clock=clock,
                 ids=ids,
+                storage=f"memory, snapshot under {state_dir} — development only, not durable",
             )

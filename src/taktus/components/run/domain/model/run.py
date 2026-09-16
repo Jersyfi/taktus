@@ -60,6 +60,14 @@ RUN_TRANSITIONS: frozenset[tuple[RunState, RunState]] = frozenset(
 )
 
 RESUMABLE: frozenset[RunState] = frozenset({RunState.HALTED, RunState.ESCALATED})
+"""States a run leaves by `resume`: it stopped at a boundary and waits."""
+
+INTERRUPTIBLE: frozenset[RunState] = frozenset(
+    {RunState.PLANNED, RunState.ADMITTED, RunState.RUNNING}
+)
+"""States a run is found in when the instance executing it stopped without a chance to halt
+it. Such a run is *recovered*: the step that was in flight is set back to its boundary and the
+run continues from there (ADR-0013 A)."""
 
 
 class StepState(StrEnum):
@@ -80,6 +88,7 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
         (StepState.REJECTED, StepState.REJECTED),  # rejected again on resume
         (StepState.ADMITTED, StepState.RUNNING),
         (StepState.ADMITTED, StepState.REJECTED),  # the worker rejected what the core admitted
+        (StepState.ADMITTED, StepState.STOPPED),  # the instance stopped before the step ran
         (StepState.RUNNING, StepState.SUCCEEDED),
         (StepState.RUNNING, StepState.FAILED),
         (StepState.RUNNING, StepState.STOPPED),
@@ -89,6 +98,9 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
 )
 
 DONE: frozenset[StepState] = frozenset({StepState.SUCCEEDED})
+
+IN_FLIGHT: frozenset[StepState] = frozenset({StepState.ADMITTED, StepState.RUNNING})
+"""States a step run is in while its instance is executing it."""
 
 
 class Checkpoint(Value):
@@ -140,7 +152,7 @@ class Run(Value):
     id: str = Field(min_length=1)
     plan_id: str = Field(min_length=1)
     process_version: str = Field(min_length=1)
-    tenant: str | None = None
+    tenant: str = Field(min_length=1)
     autonomy_level: AutonomyLevel
     budget: Limits
     steps: tuple[Step, ...] = Field(min_length=1)
@@ -203,6 +215,14 @@ class Run(Value):
         """The first step that has not succeeded: where execution continues."""
         for step_run in self.step_runs:
             if not step_run.done:
+                return step_run
+        return None
+
+    def in_flight(self) -> StepRun | None:
+        """The step run the executing instance was inside, if any: at most one, since steps
+        run one at a time."""
+        for step_run in self.step_runs:
+            if step_run.state in IN_FLIGHT:
                 return step_run
         return None
 

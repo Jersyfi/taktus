@@ -1,35 +1,35 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from pathlib import Path
+from collections.abc import Sequence
 
-from taktus.adapters.driven.memory import _snapshot
-from taktus.shared.v1 import Value
+from taktus.adapters.driven.memory.persistence import MemoryPersistence, Stored
+from taktus.ports.persistence import Tenant
 
 
-class MemoryRepository[T: Value]:
-    """A dictionary behind the repository port. `key` says what identifies an item; `model` is
-    needed only to read a snapshot."""
+class MemoryRepository[T: Stored]:
+    """A dictionary per tenant behind the repository port, reading through the open
+    transaction's journal."""
 
-    def __init__(
-        self, model: type[T], key: Callable[[T], str], snapshot: Path | None = None
-    ) -> None:
+    def __init__(self, persistence: MemoryPersistence, model: type[T]) -> None:
+        self._persistence = persistence
         self._model = model
-        self._snapshot = snapshot
-        self._key = key
-        self._items: dict[str, T] = {}
-        if snapshot is not None:
-            for document in _snapshot.read(snapshot) or []:
-                item = model.model_validate(document)
-                self._items[self._key(item)] = item
+        self._kind = model.__name__.lower()
+        persistence.load(self._kind, model)
 
-    async def get(self, id: str) -> T | None:
-        return self._items.get(id)
+    async def get(self, tenant: Tenant, id: str) -> T | None:
+        transaction = self._persistence.current(tenant)
+        pending = transaction.puts.get((self._kind, id))
+        if pending is not None:
+            return self._model.model_validate(pending.document())
+        return self._persistence.table(self._kind, tenant).get(id)
 
-    async def put(self, item: T) -> None:
-        self._items[self._key(item)] = item
-        if self._snapshot is not None:
-            await _snapshot.write(self._snapshot, [i.document() for i in self._items.values()])
+    async def put(self, tenant: Tenant, item: T) -> None:
+        self._persistence.current(tenant).puts[(self._kind, item.id)] = item
 
-    async def list(self) -> Sequence[T]:
-        return list(self._items.values())
+    async def list(self, tenant: Tenant) -> Sequence[T]:
+        transaction = self._persistence.current(tenant)
+        merged: dict[str, T] = dict(self._persistence.table(self._kind, tenant))
+        for (kind, id), item in transaction.puts.items():
+            if kind == self._kind:
+                merged[id] = item
+        return list(merged.values())

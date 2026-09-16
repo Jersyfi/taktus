@@ -32,6 +32,7 @@ from taktus.shared.v1 import Command, ConsumptionQuantities, Intent, LedgerEntry
 
 DEFAULT_WORKER = "http://127.0.0.1:9000"
 DEFAULT_STATE_DIR = "~/.cache/taktus/taktusctl"
+DEFAULT_TENANT = "default"
 
 
 def run(
@@ -74,6 +75,15 @@ def run(
             "nobody yet; this is an opaque label, not a name.",
         ),
     ] = "idn_local",
+    tenant: Annotated[
+        str,
+        typer.Option(
+            "--tenant",
+            envvar="TAKTUS_TENANT",
+            help="The tenant the run belongs to. Until the identity component exists there is "
+            "one, created by the migration.",
+        ),
+    ] = DEFAULT_TENANT,
 ) -> None:
     """Run a process bundle against a worker and print the ledger and the consumption.
 
@@ -97,6 +107,7 @@ def run(
                 resume=resume,
                 stop_after=stop_after,
                 identity=identity,
+                tenant=tenant,
             )
         )
     except InvalidProcess as error:
@@ -128,18 +139,29 @@ async def _run(
     resume: str | None,
     stop_after: int | None,
     identity: str,
+    tenant: str,
 ) -> Run:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
-        version = await services.register_version.execute(RegisterProcessVersion(bundle))
+        typer.echo(f"state  {services.storage}")
+        version = await services.register_version.execute(
+            RegisterProcessVersion(bundle, tenant=tenant)
+        )
         budget = _budget(version)
         if resume is None:
-            run = await _start(services, version, budget, identity, stop_after)
+            run = await _start(services, version, budget, identity, tenant, stop_after)
         else:
             run = await services.engine.resume(
-                ResumeRun(run_id=resume, actor=identity, budget=budget, stop_after=stop_after)
+                ResumeRun(
+                    run_id=resume,
+                    actor=identity,
+                    tenant=tenant,
+                    budget=budget,
+                    stop_after=stop_after,
+                )
             )
-        entries = await services.ledger.entries(run.id)
-        verification = await services.ledger.verify()
+        async with services.work.transaction(tenant):
+            entries = await services.ledger.entries(tenant, run.id)
+            verification = await services.ledger.verify(tenant)
         typer.echo(render(run, version, entries, verification, bundle_path))
         return run
 
@@ -149,6 +171,7 @@ async def _start(
     version: ProcessVersion,
     budget: Limits,
     identity: str,
+    tenant: str,
     stop_after: int | None,
 ) -> Run:
     now = services.clock.now()
@@ -156,7 +179,7 @@ async def _start(
         id=services.ids.new("cmd"),
         channel="channel.cli",
         identity=identity,
-        org_path=("local",),
+        org_path=(tenant,),
         intent=Intent(raw=f"run {version.ref}", recognised="process.run"),
         reply_to=ReplyTo(channel="channel.cli", address="stdout"),
         received_at=now,
@@ -164,6 +187,7 @@ async def _start(
     plan = await services.commission.execute(
         CommissionPlan(
             command=command,
+            tenant=tenant,
             goal=f"run process {version.name} ({version.ref})",
             autonomy_level=version.autonomy_level,
             steps=version.ordered(),
@@ -176,7 +200,7 @@ async def _start(
             budget=budget,
             process_version=version.ref,
             actor=identity,
-            tenant="local",
+            tenant=tenant,
             stop_after=stop_after,
         )
     )
@@ -245,7 +269,10 @@ def render(
     lines.append("budget       " + _limits(run.budget))
     if run.state in (RunState.HALTED, RunState.ESCALATED):
         lines.append("")
-        lines.append(f"resume with: uv run taktusctl run --process {bundle_path} --resume {run.id}")
+        lines.append(
+            f"resume with: uv run taktusctl run --process {bundle_path} --resume {run.id}"
+            + ("" if run.tenant == DEFAULT_TENANT else f" --tenant {run.tenant}")
+        )
     return "\n".join(lines)
 
 
