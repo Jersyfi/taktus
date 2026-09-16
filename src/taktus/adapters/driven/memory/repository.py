@@ -18,9 +18,9 @@ class MemoryRepository[T: Stored]:
 
     async def get(self, tenant: Tenant, id: str) -> T | None:
         transaction = self._persistence.current(tenant)
-        pending = transaction.puts.get((self._kind, id))
+        pending: T | None = transaction.puts.get((self._kind, id))
         if pending is not None:
-            return self._model.model_validate(pending.document())
+            return pending  # frozen: handing out the object itself is safe
         return self._persistence.table(self._kind, tenant).get(id)
 
     async def put(self, tenant: Tenant, item: T) -> None:
