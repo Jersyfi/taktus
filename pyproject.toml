@@ -25,7 +25,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest", "pytest-asyncio", "testcontainers[postgres]",
-  "mypy", "ruff", "import-linter", "coverage",
+  "mypy", "types-jsonschema", "ruff", "import-linter", "coverage",
 ]
 
 [project.scripts]
@@ -39,12 +39,19 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/taktus"]
 
+[tool.hatch.build.targets.wheel.force-include]
+# The conformance suite validates against the contracts; an installed package carries them.
+"contracts" = "taktus/contracts"
+
 [tool.ruff]
 line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # a test asserts
 
 [tool.mypy]
 strict = true
