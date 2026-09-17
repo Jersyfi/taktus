@@ -30,3 +30,4 @@ ADR wins.
 | [0022](ADR-0022-retroactive-correction-is-anchored.md) | Retroactive correction is anchored by default | accepted |
 | [0023](ADR-0023-automatic-emergency-stop-is-rule-based.md) | An automatic emergency stop is rule-based | accepted |
 | [0024](ADR-0024-connector-contract.md) | Connector contract on MCP: two directions, a declared effect, an honest repeat | accepted |
+| [0025](ADR-0025-where-an-instance-may-run.md) | Where an instance may run | accepted |

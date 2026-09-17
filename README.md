@@ -94,7 +94,7 @@ you see the domain, not the framework.
 | [contracts/connector/v1/CONFORMANCE.md](contracts/connector/v1/CONFORMANCE.md) | How to check a connector of your own against the contract |
 | [docs/architecture/project-structure.md](docs/architecture/project-structure.md) | Components, tree, dependency rules, conventions |
 | [examples/README.md](examples/README.md) | Running a process bundle with `uv run taktusctl run`; the shape of a bundle |
-| [docs/adr/README.md](docs/adr/README.md) | 24 architecture decisions with the alternatives rejected |
+| [docs/adr/README.md](docs/adr/README.md) | 25 architecture decisions with the alternatives rejected |
 | [docs/decisions/](docs/decisions/README.md) | The project's decision register: which questions reach the owner, and what was answered |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones `0.1.0` to `1.0.0` |
 | [docs/usecases/](docs/usecases/) | The worked use cases |
