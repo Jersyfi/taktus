@@ -139,6 +139,19 @@ There are no open loops. Every execution produces a measurable result that flows
 monitoring and reports. Repeated self-healing of the same fault raises an improvement proposal or a
 draft skill — a fault healed three times is a design fault.
 
+### 5.3 Failure, result defect, incident
+
+Three words, kept apart (ADR-0021):
+
+| Term | Meaning | Where it shows |
+|---|---|---|
+| **failure** | a run or a step did not complete | the states above: `halted`, `escalated`, a step `failed`, `rejected` or `stopped`; the cause is a token in the ledger |
+| **result defect** | a run completed and reported success, but its result is wrong | nowhere in the states; only a check of the result finds it (UC-4.10, `0.5.0`) |
+| **incident** | the tracked object above either: severity, timeline, affected scope, remediation plan, addressees, closure | raised and delivered into the organisation's own tracking system (UC-6.8, `0.5.0`) |
+
+The model above handles failures. Result defects need a record that this version writes and a
+detection that `0.5.0` adds; the record is the provenance chain of §6.1.
+
 ---
 
 ## 6. Ledger

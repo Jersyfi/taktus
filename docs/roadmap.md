@@ -83,7 +83,10 @@ measurably cheaper and reproducible — and the second tenant produces its first
 
 ### `0.5.0` — value and dependency measurable
 Value ledger with revert analysis · role-based views · takeover test and removal test automated ·
-marginal-value recommendations · BI export
+marginal-value recommendations · BI export · **result defects handled**: deviation detection,
+error window and impact analysis over the provenance chain, remediation plans under the
+correction anchor, incidents delivered into the organisation's own tracking (UC-4.10 to
+UC-4.12, UC-6.8; ADR-0021 to ADR-0023)
 
 **Complete when** principles 6 and 13 are measured rather than asserted, and limit recommendations
 come with numbers.
