@@ -57,10 +57,16 @@ naming process version, method, exactness, model, adapter and version, inputs wi
 moment each was read, outputs and the ledger entry, walkable back from any artifact in one
 query and proven across a restart; the three terms failure, result defect and incident; the
 correction anchor with a checkable "has left the system"; the rule-based automatic
-emergency stop (ADR-0021 to ADR-0023; detection and repair themselves are `0.5.0`). Not yet: the daemon and its roles, the REST API, governance and
-anchors, `mlbench`, the execution adapters, the `github` connector, OpenTelemetry export
-(spans exist, nothing collects them), the queue and outbox (their tables exist, nothing claims
-through them).
+emergency stop (ADR-0021 to ADR-0023; detection and repair themselves are `0.5.0`) · the
+connector contract on MCP as executable schema, the conformance suite for it — runnable by a
+third party against a live connector, proven to fail on every injected fault — and the
+reference repository connector in both directions: actions with a declared effect and a
+recognised repeat, proven to open one pull request for a step across a restart, and webhook
+intake refused unless signed (ADR-0024). Not yet: the daemon and its roles, the REST API,
+governance and anchors, `mlbench`, the execution adapters, the connector port and the run's
+binding of connector steps (the reference connector exists, nothing calls it from a process),
+the channel intake endpoint that would receive a webhook, OpenTelemetry export (spans exist,
+nothing collects them), the queue and outbox (their tables exist, nothing claims through them).
 
 ### `0.2.0` — governance, limits, availability
 Autonomy levels 1–3 per process **and per action class** · anchors, configurable per tenant ·

@@ -12,4 +12,5 @@ Driving adapters call into the core; driven adapters are called by it through po
 | `driven/configuration` | the configuration port over `TAKTUS_*` environment variables | exists |
 | `driven/clock` | system time, identifiers, randomness: the one place the control plane reads them | exists |
 | `driven/telemetry` | no-op spans; an OpenTelemetry exporter later | exists |
+| `driven/connectors/github` | the reference connector behind `contracts/connector/v1`: an MCP server against a repository hosting service — issues, pull requests, pipelines, comments as actions with a declared effect and a marked idempotency key; webhook intake verified and normalised into commands; fault injection for the suite. Named by capability everywhere but in its own directory | exists; not yet called from a process (the connector port and the run's binding are `0.2.0`) |
 | everything else | see the tree in the project structure | from later versions |

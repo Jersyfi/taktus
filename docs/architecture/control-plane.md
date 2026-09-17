@@ -43,6 +43,11 @@ An unknown sender gets no execution — a question or an offer to register. One 
 maps to several identities; one identity may hold many channels. The mapping is audited and
 revocable by an administrator.
 
+A connector's intake (`contracts/connector/v1` §7) supplies the channel's half of this object:
+the sender as the source system names them, the intent, the context and the reply address — and
+only after the event's signature verified. The identity component maps the sender to `identity`
+and `org_path` and completes the command; the connector never holds that mapping.
+
 ---
 
 ## 3. Plan

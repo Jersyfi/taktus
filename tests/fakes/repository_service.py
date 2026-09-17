@@ -209,22 +209,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         url = urlparse(self.path)
+        body = self._body()  # always read, so that a keep-alive connection stays in step
         if url.path == "/_fake/reset":
             with self.store.lock:
                 self.store.repositories.clear()
             self._send(200, {"ok": True})
             return
         if url.path == "/_fake/outage":
-            self.store.outage = bool(self._body().get("on"))
+            self.store.outage = bool(body.get("on"))
             self._send(200, {"outage": self.store.outage})
             return
         if url.path == "/_fake/hang":
-            self.store.hang_seconds = float(self._body().get("seconds") or 0)
+            self.store.hang_seconds = float(body.get("seconds") or 0)
             self._send(200, {"hang_seconds": self.store.hang_seconds})
             return
         if not self._guard(write=True):
             return
-        body = self._body()
         with self.store.lock:
             self._post(url.path, body)
 

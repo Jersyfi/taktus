@@ -81,11 +81,12 @@ taktus/
 │   │       ├── telemetry/           # noop; an OpenTelemetry exporter later
 │   │       ├── workers/http/        # the worker port over HTTP and SSE; workers/pool.py maps capabilities
 │   │       ├── objectstore/ secret/ execution/ ledger/
-│   │       ├── connectors/{github,chat,http}/
+│   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
+│   │       ├── connectors/{chat,http}/
 │   │       └── models/{openai_compatible,anthropic,ollama}/
 │   │
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
-│   ├── conformance/                 # the contract suite — a client of adapters, no part of the core
+│   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
 │   └── composition/                 # composition root: local.py wires a developer's machine (memory or database), taktusctl.py is the console script
 │
@@ -109,7 +110,7 @@ taktus/
 │   ├── governance/                  # anchors hold, limits never breach, least privilege
 │   ├── exactness/                   # `exact` steps never take their final value from AI
 │   ├── contract/                    # the Python bindings match the schemas and their examples
-│   ├── components/ adapters/        # domain tables and application tests against fakes/; adapters/persistence: one suite, both implementations
+│   ├── components/ adapters/        # domain tables and application tests against fakes/; adapters/persistence: one suite, both implementations; adapters/connectors: the reference connector against fakes/repository_service.py
 │   ├── integration/                 # the whole slice against the reference worker; the restart test against PostgreSQL
 │   └── security/ resilience/
 │
@@ -147,13 +148,15 @@ what they share lives in a package that imports nothing from either and no techn
 client, as a foreign control plane would be, and therefore imports nothing from the control
 plane; `taktusctl conformance` (a driving adapter) is its entry point, and `tests/conformance` its
 gate. It ships in the wheel together with `contracts/`, so that a third party can run it without
-the rest of Taktus.
+the rest of Taktus. It speaks HTTP and SSE to a worker and MCP to a connector; the reference
+connector is a driven adapter and the suite its client, and neither imports the other.
 
 `tests/architecture` fails on:
 
 - the core importing `httpx`, `sqlalchemy`, `psycopg`, `fastapi` or any driver
 - **a product name in `components/**` or `ports/**`** (`claude`, `slack`, `github`, `jira`,
-  `ollama`, …) — the sharpest test in the project
+  `ollama`, …) — the sharpest test in the project — and in `contracts/**`, where a connector is
+  named by what it can do and never by what it is
 - a direct import between two components
 - a write by one component into another's data
 - `workers/**` importing `src/taktus/**`

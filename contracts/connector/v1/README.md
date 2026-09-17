@@ -39,7 +39,7 @@ normalised before its signature is verified.
 | MCP primitive | Its role in this contract |
 |---|---|
 | resource `taktus://connector/v1/capabilities`, `application/json` | the declaration (§3), in the shape of `Connector.json#/$defs/Capabilities` |
-| tool `<operation name>` | one operation each; the arguments are `Arguments` (§4), the structured content of the result is `Result` or, with `isError: true`, `Error` (§5, §6) |
+| tool `<operation name>` | one operation each; the arguments are `Arguments` (§5), the structured content of the result is `Result` or, with `isError: true`, `Error` (§5, §6) |
 | tool `intake` | the intake direction (§7); the arguments are `IntakeArguments`, the structured content is `IntakeResult` |
 
 Every tool the connector serves is either a declared operation or `intake`. A tool that is

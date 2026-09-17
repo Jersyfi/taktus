@@ -39,7 +39,7 @@ gate-arch: env ## Adapter obligation, component boundaries, no product names in 
 	$(UV) run lint-imports
 	$(UV) run tools/gate.py architecture tests/architecture
 
-gate-conformance: env ## Contract conformance suite: starts the reference worker, runs the suite and the meta-test, stops it
+gate-conformance: env ## Contract conformance suite, both contracts: starts the reference worker and connector, runs the suite and the meta-tests, stops them
 	$(UV) run tools/gate.py conformance tests/conformance
 
 gate-governance: env ## Anchors hold, limits never breach, least privilege
