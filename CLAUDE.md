@@ -65,6 +65,14 @@ and carry no class (ADR-0018).
 **For `exact` there is no exception:** AI methods may propose and prepare, never produce the final
 value. A number produced by a language model never reaches the accounting journal. CI enforces it.
 
+Exactness prevents a wrong value from being produced. It does not prevent a correct value from
+becoming wrong when its source changes underneath it. Every completed step therefore carries a
+**provenance record** — what produced the result, from which inputs, read when — written once
+and never changed, so that "since when has this been wrong?" stays answerable (ADR-0021). A
+correction of a result that has left the system stays with a person, at every autonomy level
+(ADR-0022). An automatic emergency stop is decided by a rule, never by a probabilistic method
+(ADR-0023).
+
 ---
 
 ## 5. The fourteen guiding principles

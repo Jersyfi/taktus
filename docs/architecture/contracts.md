@@ -31,7 +31,7 @@ not the bottleneck here; adapter variety is.
 | **Hand over artifacts** — code, documents, structured data, model files | a result is data, not prose |
 | **Accept credentials at runtime, never store them** | secret safety |
 | **Least privilege** — only the tools the process allows | permission model |
-| **Declare capabilities** — what this worker can do | processes reference capabilities, never product names |
+| **Declare capabilities** — what this worker can do, and optionally its own version | processes reference capabilities, never product names; the version is recorded in the provenance of every result (ADR-0021) |
 
 Full specification: [`contracts/worker/v1/README.md`](../../contracts/worker/v1/README.md).
 The core's side of it is the worker port (`src/taktus/ports/worker.py`): the contract's shapes
