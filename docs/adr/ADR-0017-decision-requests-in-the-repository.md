@@ -1,6 +1,7 @@
 # ADR-0017 — Decision requests as a repository mechanism
 
-**Status:** accepted · operationalises ADR-0008 for this repository
+**Status:** accepted · operationalises ADR-0008 for this repository · amended by ADR-0021: the
+category `DEFECT` is read as *documentation defect*; a wrong result is a *result defect*
 
 ## Context
 ADR-0008 defines the decision request: the planned question about direction, with a fixed shape,
@@ -29,8 +30,9 @@ A question is tested against that page before it is raised. It fixes defect (e).
 
 ### 2. Defects are corrected, not escalated
 When the repository's own documents are ambiguous, contradict each other, or turn out to be wrong,
-that is a **defect**, not a decision. The session corrects it in the same pull request — as an ADR
-amendment where an ADR is involved — and records it under `docs/decisions/` as a DEFECT record:
+that is a **documentation defect**, not a decision. The session corrects it in the same pull
+request — as an ADR amendment where an ADR is involved — and records it under `docs/decisions/`
+as a DEFECT record:
 what was wrong, why it was wrong, what it now says, and what changed in substance. The owner is
 never presented with a choice between two readings of a document that should not have been
 ambiguous. It fixes defect (d).
@@ -43,7 +45,7 @@ Everything a pull request wants to tell the owner falls into exactly one of thes
 
 | Category | Meaning | Where it appears | Effect on the pull request |
 |---|---|---|---|
-| **DEFECT** | the repository contradicts itself or is wrong | corrected in the pull request; a DEFECT record under `docs/decisions/` | none |
+| **DEFECT** | a documentation defect: the repository contradicts itself or is wrong | corrected in the pull request; a DEFECT record under `docs/decisions/` | none |
 | **NOTE** | information the owner should have; nothing to answer | the "Notes" section of the description; never phrased as a question | none |
 | **NON-BLOCKING** | a choice is pending; work continues on a clearly marked provisional answer | a file under `docs/decisions/open/` and a GitHub issue labelled `decision-request`, assigned to the owner | may merge; the description names the decision by ID |
 | **BLOCKING** | continuing would produce work that must be thrown away | a file under `docs/decisions/open/` and a GitHub issue as above | **stays a draft** until answered |
@@ -52,6 +54,11 @@ GitHub refuses to merge a draft. Defect (a) therefore becomes technically imposs
 merely forbidden. A CI job reads the draft flag and fails when a pull request names a BLOCKING
 decision while not being a draft. Defect (c) is addressed by the NOTE category: information is
 stated, never asked.
+
+The category label `DEFECT` is short for *documentation defect* and is used only in the
+register. Since ADR-0021 the product knows a second kind, the *result defect* — a run that
+completed and reported success with a wrong result. The two are never confused because the
+bare word is not used: it is always *documentation defect* or *result defect*.
 
 **The blocking test.** A decision is blocking only if continuing would produce work that must be
 thrown away. If a provisional answer can be marked and later changed cheaply, the decision is

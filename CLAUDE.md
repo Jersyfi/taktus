@@ -123,10 +123,15 @@ Everything a pull request tells the owner is one of four categories (ADR-0017):
 
 | Category | Meaning | Effect |
 |---|---|---|
-| **DEFECT** | the repository contradicts itself or is wrong | corrected here, recorded under `docs/decisions/`, never asked |
+| **DEFECT** | a *documentation defect*: the repository contradicts itself or is wrong | corrected here, recorded under `docs/decisions/`, never asked |
 | **NOTE** | information, nothing to answer | stated under "Notes", never phrased as a question |
 | **NON-BLOCKING** | a choice is pending; work continues on a marked provisional answer | a file under `docs/decisions/open/` and an issue; the pull request may merge |
 | **BLOCKING** | continuing would produce work that must be thrown away | the same, and the pull request **stays a draft** until answered |
+
+The word *defect* is never used on its own. The register's `DEFECT` is a **documentation
+defect**: a fault in what the repository says. A run that completed and reported success with a
+wrong result is a **result defect**; a run that did not complete is a **failure**; the object that
+tracks either is an **incident** (ADR-0021).
 
 A request has seven sections and must be decidable by a person who has read neither the diff nor
 the session nor any ADR. The answer becomes a `DEC-NNNN` record. `make gate-decisions` enforces
