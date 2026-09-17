@@ -14,7 +14,10 @@ python3 workers/script/worker.py --port 9000 &
 uv run taktusctl run --process examples/processes/six-times-seven.yaml
 ```
 
-`taktusctl` lives in the project environment, hence `uv run`. The command prints where the state
+`taktusctl` lives in the project environment, hence `uv run`. With a database and the daemon
+running (`uv run taktusd`, or `make up`), `uv run taktusctl submit --process …` queues the
+bundle instead and prints the run's identifier; the daemon executes it, and
+`GET /runs/{id}` shows where it got to. The command prints where the state
 lives — the database named by `TAKTUS_DATABASE_URL`, or memory with a file snapshot, development
 only — then the run, its steps, the ledger entries of the run with the result of verifying the
 tenant's whole chain, the provenance of the run — one record per completed step — with the

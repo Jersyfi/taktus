@@ -9,7 +9,7 @@ Repository tooling. Nothing here is part of the product.
 | `checkdocs.py` | `make gate-docs` | a change to a contract, a tool, a make target, the architecture contracts, a component, a port, an adapter, the composition root, a wire format, a worker, a blueprint, an example or a deployment touches the documentation of that place in the same change; compares with `origin/main` (or `BASE=<ref>`); nothing changed, or nothing that a rule covers, is green |
 | `gate.py` | `make test`, `make gate-arch`, `-conformance`, `-governance`, `-exactness` | runs pytest on one directory; "no tests collected" reports "no targets yet" and green, every other exit code passes through. `gate-conformance` starts the reference worker, the reference connector and the fake of its service as processes from the tests themselves |
 | `preflight.sh` | every make target, through `need-<tool>`; `make doctor` | a missing tool names itself, what it is for and the one command that installs it, instead of `make: uv: No such file or directory`; `make doctor` reports two levels — the system tools (`uv`, `gitleaks`; `docker` and `node` optional), and the project environment with the tools the gates actually invoke through `uv run` (ruff, mypy, pytest, lint-imports, taktusctl) — says which is incomplete, and exits non-zero if either is |
-| `generate.py` | `make generate` | says what is generated from `contracts/` — nothing yet: the shared kernel is a checked binding (`docs/architecture/project-structure.md` §4), `api/openapi.yaml` arrives with the REST interface |
+| `generate.py` | `make generate` | writes `api/openapi.yaml` from the FastAPI application (`src/taktus/adapters/driving/rest`), built at the root with the path prefix as a server variable; the file is committed and `tests/adapters/rest/test_openapi.py` fails when it is out of date. The shared kernel is a checked binding, not generated (`docs/architecture/project-structure.md` §4) |
 
 `validate_contracts.py` carries its own dependencies in a PEP 723 header, so `uv run
 tools/validate_contracts.py` works without the project installed. A third party can check a contract
@@ -28,10 +28,14 @@ as optional, for the web targets that will need it. CI reaches the same prefligh
 `need-<tool>` on every target it runs, so it does not call `make doctor` (its secret scan runs
 through an action that brings its own `gitleaks`).
 
-Three targets are for the development database and not gates: `make db-up` and `make db-down`
-start and stop PostgreSQL through `deploy/docker/compose.dev.yml` (they need `docker`; `db-down`
-keeps the data volume), and `make migrate` runs the Alembic migrations against
-`TAKTUS_DATABASE_URL`.
+Six targets are for operating and not gates. `make up` brings Taktus up in two containers
+(`deploy/docker/compose.yml`: writes the secret files once, builds the image, applies the
+migrations, waits for readiness), `make down` stops them and keeps every volume, and
+`make verify-compose` runs `deploy/docker/verify.sh` — from nothing to a run that survives a
+killed container. `make db-up` and `make db-down` start and stop the development database
+(`deploy/docker/compose.dev.yml`; `db-down` keeps the volume), and `make migrate` runs the
+Alembic migrations against `TAKTUS_DATABASE_URL_FILE` or `TAKTUS_DATABASE_URL`. All six need
+`docker` except `migrate`.
 
 **A gate that cannot run says why.** An unclear message is a defect, not a minor annoyance —
 the same rule ADR-0017 applies to decision requests, applied to tooling.

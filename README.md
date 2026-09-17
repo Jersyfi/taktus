@@ -10,12 +10,13 @@ Taktus does not replace ticket systems, repositories or knowledge tools. It cond
 
 Python, PostgreSQL, Explicit Architecture. Self-hostable from day one.
 
-> **Status: draft, on the way to `0.1.0`.** The contracts, the conformance suite, and the first
-> vertical slice of the control plane exist: a process bundle runs against a worker, every step
-> lands in a verifiable ledger, a stop resumes at a step boundary, a step that would breach the
-> budget never starts, and the state lives in PostgreSQL — a killed process resumes at its last
-> step boundary. From the command line, without governance. What runs today:
-> [examples/README.md](examples/README.md).
+> **Status: draft, on the way to `0.1.0`.** The contracts, the conformance suite, the first
+> vertical slice of the control plane and the daemon exist: a process bundle runs against a
+> worker, every step lands in a verifiable ledger, a stop resumes at a step boundary, a step
+> that would breach the budget never starts, the state lives in PostgreSQL, and Taktus runs as
+> a service — two containers, several runners that never claim the same run, one elected
+> scheduler, a shutdown that lands on a step boundary, a killed container that resumes at its
+> last boundary. Without governance. What runs today: [examples/README.md](examples/README.md).
 >
 > **Public for transparency, but not licensed for use.** See `LICENSE` and `NOTICE`. Third-party
 > contributions are not accepted until the licence is settled.
@@ -107,7 +108,7 @@ you see the domain, not the framework.
 |---|---|
 | Language | Python ≥ 3.13, `asyncio` throughout |
 | Database | PostgreSQL 16+ — state, queue, outbox, ledger, vector search (`pgvector`) |
-| API | FastAPI, OpenAPI 3.1, RFC 9457 problem details, SSE |
+| API | FastAPI, OpenAPI 3.1 (`api/openapi.yaml`, generated and committed), RFC 9457 problem details, everything under a configurable path prefix; SSE later |
 | Agent and tool interface | MCP — Taktus is a client of every connector (`contracts/connector/v1`, the `mcp` package for the suite and the reference connector), and exposes itself as a server later |
 | Domain types | Pydantic v2 value objects; SQLAlchemy Core at the boundary, never in the domain — the adapter stores an aggregate's document and never imports its class |
 | Shared kernel | JSON Schema under `contracts/shared`, bound to Python by hand and checked by a test |
@@ -118,7 +119,7 @@ you see the domain, not the framework.
 | Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers`; `make gates` installs its own environment; `make doctor` says what is missing. `taktusctl` lives in that environment: `uv run taktusctl …`. Docker is optional: without it the PostgreSQL tests skip and say so; CI runs them |
 | Observability | OpenTelemetry from day one |
 | Web | SvelteKit, embedded into the image |
-| Deployment | Docker Compose for self-hosting, Kubernetes for scale |
+| Deployment | one image, roles via `TAKTUS_ROLES`; Docker Compose for self-hosting (`make up`), Kubernetes for scale |
 
 ---
 
@@ -127,15 +128,43 @@ you see the domain, not the framework.
 A minimal installation is **two containers**: Taktus and PostgreSQL. Everything else is a port with a
 default adapter that needs no extra service.
 
-- **Docker Compose:** all roles in one container.
-- **Kubernetes:** one deployment per role, each scaled independently.
+- **Docker Compose:** all roles in one container (`deploy/docker/compose.yml`).
+- **Kubernetes:** one deployment per role, each scaled independently — the chart arrives with
+  the next pull request; the daemon already scales that way: runners claim work through
+  database locks and never claim the same run, the scheduler is one instance elected by an
+  advisory lock, and every process answers health and readiness.
 
 Workers run isolated — as a process (local development only), as a container (the default in
 operation) or as a Kubernetes job. **The process adapter is not permitted from autonomy level 3
 upwards.**
 
-**Today, on a developer's machine.** The application container arrives with the daemon; until
-then Taktus runs from a checkout, against the development database or in memory:
+**Operating it is one command.**
+
+```bash
+make up
+```
+
+It writes the two secret files the containers read (a random database password and the URL
+that carries it, under `deploy/docker/secrets/`, never committed), builds the image, starts
+PostgreSQL and Taktus, applies the migrations on start, and returns when readiness answers.
+Two containers: Taktus with every role in one process (`TAKTUS_ROLES=all`, the self-hosting
+shape), and PostgreSQL. `make down` stops them and keeps every volume.
+
+**Readiness means** the database answers and is at the schema this build needs:
+`GET /ready` answers `200`, or `503` with the reason. **Health means** the process is alive:
+`GET /health`. A container that has lost its database is not ready and receives no traffic; it
+is not therefore unhealthy, and nothing restarts it in a loop. A daemon refuses to start against
+a database whose schema does not match the binary: silent drift is worse than a refusal.
+
+Everything is configured through `TAKTUS_*` variables, validated at start with a message that
+names the variable; a secret is read from a file the variable points at
+(`TAKTUS_DATABASE_URL_FILE`), never from the environment; the effective configuration is
+logged with every secret masked. `.env.example` lists every variable, names only.
+`deploy/docker/README.md` has the rest: the HTTP surface, `taktusctl submit`, the shutdown,
+and `make verify-compose`, which proves from nothing that a killed container resumes its run
+at the last step boundary.
+
+**On a developer's machine**, without the container:
 
 ```bash
 make db-up
@@ -150,13 +179,14 @@ uv run taktusctl run --process examples/processes/six-times-seven.yaml
 ```
 
 `make db-up` starts PostgreSQL alone (`deploy/docker/compose.dev.yml`, bound to `127.0.0.1`,
-no password; `TAKTUS_DB_PORT` when 5432 is taken); `make migrate` brings it to the current
-schema; `make db-down` stops it and keeps its data. With `TAKTUS_DATABASE_URL` set, runs survive the process and a killed one resumes at
-its last step boundary with `--resume`. Without it, `taktusctl run` uses the in-memory
+no password — which is why the URL may be inline here; `TAKTUS_DB_PORT` when 5432 is taken);
+`make migrate` brings it to the current schema; `make db-down` stops it and keeps its data.
+`uv run taktusd` then runs the daemon against the same database, and `uv run taktusctl submit`
+queues a bundle for it. With `TAKTUS_DATABASE_URL` set, runs survive the process and a killed
+one resumes at its last step boundary. Without it, `taktusctl run` uses the in-memory
 implementation with a file snapshot and says so in its first line of output — development
-only, not durable. Neither is a silent default. Every `TAKTUS_*` variable is listed in
-`.env.example`, names only; the database URL is a secret, and `CREDENTIALS.md` describes it as
-a parameter.
+only, not durable, and `taktusd` refuses to start. Neither is a silent default. The database
+URL is a secret, and `CREDENTIALS.md` describes it as a parameter.
 
 **Tenants and instances** are different boundaries (ADR-0020). Tenants share one instance and
 one database, kept apart by a tenant column on every table and row-level security. Instances
