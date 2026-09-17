@@ -15,6 +15,10 @@ from taktus.shared.v1.value import Value
 KIND_PATTERN = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$"
 OUTCOME_PATTERN = r"^[a-z][a-z0-9_]*$"
 
+EGRESS_KINDS: frozenset[str] = frozenset({"egress.write", "egress.delivery", "egress.read"})
+"""The entries that record that a result left the system (ADR-0022 §4): a connector wrote
+outward, a channel delivered, an external system read through Taktus."""
+
 
 class LedgerRefs(Value):
     """What an entry is about: identifiers only, at least one."""

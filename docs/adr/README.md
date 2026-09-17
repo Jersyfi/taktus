@@ -13,7 +13,7 @@ ADR wins.
 | [0005](ADR-0005-step-atomicity.md) | Step atomicity and admission control | accepted |
 | [0006](ADR-0006-ledger.md) | The ledger as a content-free hash chain | accepted |
 | [0007](ADR-0007-worker-contract.md) | Worker contract over HTTP and SSE | accepted |
-| [0008](ADR-0008-decision-request.md) | Decision requests and strategic anchors | accepted |
+| [0008](ADR-0008-decision-request.md) | Decision requests and strategic anchors | accepted, extended by 0022 |
 | [0009](ADR-0009-adapter-monorepo.md) | Adapters in the main repository until 1.0.0 | accepted |
 | [0010](ADR-0010-accounting.md) | The Takt as a unit of orchestrated work | **proposed** |
 | [0011](ADR-0011-process-bundles.md) | Process bundles, optionally mirrored to Git | accepted |
@@ -27,3 +27,4 @@ ADR wins.
 | [0019](ADR-0019-contract-identity.md) | Contract identity | accepted |
 | [0020](ADR-0020-tenants-and-instances.md) | Tenants and instances are different boundaries | accepted |
 | [0021](ADR-0021-failure-result-defect-incident.md) | Failure, result defect, incident | accepted |
+| [0022](ADR-0022-retroactive-correction-is-anchored.md) | Retroactive correction is anchored by default | accepted |

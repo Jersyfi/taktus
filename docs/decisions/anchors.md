@@ -3,11 +3,12 @@
 This page answers one question: **which questions reach the owner, and which are decided by
 whoever is doing the work.** It applies to every session in this repository, human or machine.
 
-It is the concrete form of two general statements. CLAUDE.md §8 says that *strategic anchors* —
+It is the concrete form of three general statements. CLAUDE.md §8 says that *strategic anchors* —
 direction, scope, releases, licensing, anything public — stay with a person regardless of how
 autonomously the rest of the work runs. ADR-0008 makes that a mechanism: an anchor halts work and
-raises a decision request. Neither text is concrete enough to test a single question against.
-This page is.
+raises a decision request. ADR-0022 adds the *correction anchor*: correcting something that has
+already left the system stays with a person. None of the three texts is concrete enough to test
+a single question against. This page is.
 
 The owner is the person named in `.github/CODEOWNERS`.
 
@@ -29,6 +30,7 @@ work that depends on the answer does not pretend the answer is known.
 | O7 | **Anything published under the project's name** | Website copy, claims in `README.md`, public statements, and the *contract namespace* — the public address under which the machine-readable contracts in `contracts/` are identified (ADR-0019). |
 | O8 | **A new external dependency at integration-code tier 1** | *Tier 1* is what Taktus itself needs in order to run: database, queue, secret store, telemetry, reference workers (`docs/architecture/contracts.md` §7). Adding one is a dependency the whole product inherits. Tier 2 — what Taktus conducts on behalf of a customer — is not in this list. |
 | O9 | **Anything that would weaken a gate** | A *gate* is a check that must pass before a change is merged: `make gates` lists them. Removing a gate, narrowing what it looks at, or adding an exception to it weakens it. Making a gate correct without making it weaker (for example: reporting green when there is nothing to check) is not in this list. |
+| O10 | **Correcting anything that has left the repository** | The correction anchor (ADR-0022) applied to the project. A release that was tagged, a package that was published, a statement that was made, a contract that a third party already relies on: correcting it — a rollback, a retraction, a re-release, a breaking change to a released contract — is the owner's call. Correcting an unmerged branch, or `main` before a release, is not: nothing has left. |
 
 ---
 

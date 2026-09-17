@@ -15,7 +15,7 @@
       "required": ["run", "step"],
       "additionalProperties": false
     },
-    "class": { "type": "string", "enum": ["strategic", "conceptual", "domain", "legal"] },
+    "class": { "type": "string", "enum": ["strategic", "conceptual", "domain", "legal", "correction"] },
     "situation": { "description": "The problem, briefly.", "type": "string", "minLength": 1 },
     "question": { "description": "Exactly what must be decided, as a question.", "type": "string", "minLength": 1 },
     "options": {

@@ -1,0 +1,16 @@
+{
+  "id": "anc-correction-outside",
+  "class": "correction",
+  "act": "correct a result that has left the system: a value written to a partner, delivered through a channel, or read by an external system",
+  "applies_to": {
+    "actions": [
+      "correction.execute:*"
+    ],
+    "risk_classes": [
+      "egress.any"
+    ]
+  },
+  "decider": {
+    "role": "process.owner"
+  }
+}

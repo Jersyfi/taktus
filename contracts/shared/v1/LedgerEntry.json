@@ -8,7 +8,7 @@
     "seq": { "type": "integer", "minimum": 1 },
     "ts": { "type": "string", "format": "date-time" },
     "kind": {
-      "description": "What happened, as a lowercase dotted token: run.started, step.finished, decision.confirmed, assignment.rejected.",
+      "description": "What happened, as a lowercase dotted token: run.started, step.finished, decision.confirmed, assignment.rejected. Three kinds record that a result left the system (ADR-0022): egress.write (a connector wrote outward), egress.delivery (a channel delivered), egress.read (an external system read through Taktus); each references what went out in refs.artifact_ids or content_digest.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
     },

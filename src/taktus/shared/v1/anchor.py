@@ -13,6 +13,8 @@ from taktus.shared.v1.value import Value
 class AnchorClass(StrEnum):
     LEGAL = "legal"
     STRATEGIC = "strategic"
+    CORRECTION = "correction"
+    """The correction of a result after it has left the system (ADR-0022)."""
 
 
 class AppliesTo(Value):

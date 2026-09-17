@@ -16,6 +16,8 @@ class DecisionClass(StrEnum):
     CONCEPTUAL = "conceptual"
     DOMAIN = "domain"
     LEGAL = "legal"
+    CORRECTION = "correction"
+    """Raised by the correction anchor: correct a result that has left the system (ADR-0022)."""
 
 
 class DecisionStatus(StrEnum):

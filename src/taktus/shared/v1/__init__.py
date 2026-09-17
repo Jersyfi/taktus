@@ -22,7 +22,7 @@ from taktus.shared.v1.decision_request import (
     RaisedBy,
 )
 from taktus.shared.v1.exactness_class import ExactnessClass
-from taktus.shared.v1.ledger_entry import LedgerEntry, LedgerRefs
+from taktus.shared.v1.ledger_entry import EGRESS_KINDS, LedgerEntry, LedgerRefs
 from taktus.shared.v1.method import (
     EXACT_ADMISSIBLE,
     NON_PRODUCING,
@@ -37,6 +37,7 @@ from taktus.shared.v1.step import Fallback, Rejected, Step, StepId
 from taktus.shared.v1.value import Value
 
 __all__ = [
+    "EGRESS_KINDS",
     "EXACT_ADMISSIBLE",
     "NON_PRODUCING",
     "PINNED",

@@ -17,10 +17,10 @@ One schema per concept. No product name, no Python assumption, no transport deta
 | [`ExactnessClass.json`](ExactnessClass.json) | how wrong a result may be | `exact`, `sourced`, `tolerant`, `free`; carried by result-producing steps only |
 | [`Capability.json`](Capability.json) | what an adapter can do, by function | lowercase dotted, at least two segments, so that a bare product name never validates; `pattern` adds qualifiers and `*` |
 | [`AutonomyLevel.json`](AutonomyLevel.json) | the role a person plays in the loop | 1 to 4 |
-| [`Anchor.json`](Anchor.json) | an act that stays with a person | legal or strategic; at least one selector; the decider is a role |
+| [`Anchor.json`](Anchor.json) | an act that stays with a person | legal, strategic or correction (ADR-0022); at least one selector; the decider is a role |
 | [`Consumption.json`](Consumption.json) | the raw quantities a step used | at least one quantity; `compute_seconds` never without `resource_class`; money as a map by currency code |
 | [`Artifact.json`](Artifact.json) | a result that is data | referenced by `sha256:` digest; the same shape serves as input document |
-| [`LedgerEntry.json`](LedgerEntry.json) | one link of the hash chain | references only, no payload; `prev_hash` null only for the first entry |
+| [`LedgerEntry.json`](LedgerEntry.json) | one link of the hash chain | references only, no payload; `prev_hash` null only for the first entry; `egress.*` kinds record what left the system (ADR-0022) |
 | [`Provenance.json`](Provenance.json) | what a step result is made of (ADR-0021) | one record per completed step run: process version, method and exactness, model and prompt version, adapter and version, inputs with the moment each was read, outputs, result digest, the ledger entry; references only; exactness present exactly for result-producing methods; each input kind names its own fields |
 | [`DecisionRequest.json`](DecisionRequest.json) | the planned question about direction | at least two options with exactly one recommendation; a status beyond `open` requires the raw answer, beyond `answered` the interpretation, `applied` the register entry |
 
