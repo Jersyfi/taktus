@@ -111,7 +111,7 @@ you see the domain, not the framework.
 | Domain types | Pydantic v2 value objects; SQLAlchemy Core at the boundary, never in the domain — the adapter stores an aggregate's document and never imports its class |
 | Shared kernel | JSON Schema under `contracts/shared`, bound to Python by hand and checked by a test |
 | Process bundles | YAML, read by PyYAML in the command-line adapter only |
-| Migrations | Alembic, `make migrate`; every table tenant-scoped with row-level security, the ledger append-only in the database (ADR-0020) |
+| Migrations | Alembic, `make migrate`; every table tenant-scoped with row-level security, the ledger and the provenance append-only in the database (ADR-0020, ADR-0021) |
 | ML bench | scikit-learn, PyTorch, sentence-transformers — as a worker, never in the core |
 | Architecture enforcement | `import-linter` contracts, run in CI |
 | Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers`; `make gates` installs its own environment; `make doctor` says what is missing. `taktusctl` lives in that environment: `uv run taktusctl …`. Docker is optional: without it the PostgreSQL tests skip and say so; CI runs them |

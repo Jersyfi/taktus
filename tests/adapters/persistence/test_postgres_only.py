@@ -1,6 +1,7 @@
 """What the database enforces on its own, without the adapter's cooperation: a raw statement
-sees only its tenant, the ledger refuses to change, the schema matches the metadata, and two
-instances append to one chain in sequence."""
+sees only its tenant, the ledger and the provenance refuse to change, the chain behind an
+artifact is one statement, the schema matches the metadata, and two instances append to one
+chain in sequence."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from fakes import FakeClock
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.exc import ProgrammingError
 
 from adapters.persistence import samples
@@ -103,6 +104,70 @@ async def test_the_ledger_rejects_update_and_delete_at_the_database_level(
     async with postgres.work.transaction(tenant):
         verification = await ledger.verify(tenant)
         assert verification.intact and verification.entries == 1
+
+
+async def test_provenance_rejects_update_and_delete_at_the_database_level(
+    postgres: Backend, sync_engine: Any
+) -> None:
+    """A provenance record is written once (ADR-0021 §3): the application role was never
+    granted more than insert and read, and the trigger stops the table's owner too."""
+    from adapters.persistence.test_provenance_store import record
+
+    tenant = await postgres.tenant()
+    async with postgres.work.transaction(tenant):
+        await postgres.provenance_store.append(tenant, record("prov_1", "r1", "a", 3))
+
+    def attempt(role: str | None, statement: str) -> None:
+        with sync_engine.begin() as connection:
+            if role is not None:
+                connection.execute(text(f"SET LOCAL ROLE {role}"))
+            connection.execute(text("SELECT set_config('taktus.tenant', :t, true)"), {"t": tenant})
+            connection.execute(text(statement))
+
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        attempt("taktus_app", "UPDATE provenance SET outputs = '[\"planted\"]'")
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        attempt("taktus_app", "DELETE FROM provenance")
+    with pytest.raises(ProgrammingError, match="written once: UPDATE"):
+        attempt(None, "UPDATE provenance SET outputs = '[\"planted\"]'")
+    with pytest.raises(ProgrammingError, match="written once: DELETE"):
+        attempt(None, "DELETE FROM provenance")
+    with pytest.raises(ProgrammingError, match="written once: TRUNCATE"):
+        attempt(None, "TRUNCATE provenance")
+    async with postgres.work.transaction(tenant):
+        kept = await postgres.provenance_store.of_run(tenant, "r1")
+        assert [r.outputs for r in kept] == [()]
+
+
+async def test_the_chain_behind_an_artifact_is_one_statement(postgres: Backend) -> None:
+    from adapters.persistence.test_provenance_store import record
+
+    tenant = await postgres.tenant()
+    store = postgres.provenance_store
+    async with postgres.work.transaction(tenant):
+        await store.append(tenant, record("prov_0", "r0", "fetch", 2, outputs=("source",)))
+        await store.append(
+            tenant, record("prov_1", "r1", "a", 10, result=1, reads=(("r0", "fetch", "source"),))
+        )
+        await store.append(
+            tenant,
+            record("prov_2", "r1", "b", 13, outputs=("final",), reads=(("r1", "a", None),)),
+        )
+    statements: list[str] = []
+
+    def count(conn: Any, cursor: Any, statement: str, *args: Any) -> None:
+        statements.append(statement)
+
+    engine = postgres.work.engine.sync_engine  # type: ignore[attr-defined]
+    async with postgres.work.transaction(tenant):
+        event.listen(engine, "before_cursor_execute", count)
+        try:
+            walked = await store.chain(tenant, "r1", "final")
+        finally:
+            event.remove(engine, "before_cursor_execute", count)
+    assert [r.step_id for r in walked] == ["b", "a", "fetch"]
+    assert len(statements) == 1, statements
+    assert "WITH RECURSIVE" in statements[0]
 
 
 def test_the_migrated_schema_matches_the_adapter_s_metadata(sync_engine: Any) -> None:

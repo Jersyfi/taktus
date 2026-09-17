@@ -52,7 +52,12 @@ persistence in PostgreSQL: every table tenant-scoped under row-level security, t
 append-only in the database, one repository suite that the memory and the database
 implementation both pass, and a restart proven — a killed `taktusctl run` resumes at its last
 step boundary with an unbroken ledger (ADR-0013 A, for one instance; ADR-0020 for the tenant
-and instance boundaries) (#6). Not yet: the daemon and its roles, the REST API, governance and
+and instance boundaries) (#6) · the provenance chain: one immutable record per completed step
+naming process version, method, exactness, model, adapter and version, inputs with the
+moment each was read, outputs and the ledger entry, walkable back from any artifact in one
+query and proven across a restart; the three terms failure, result defect and incident; the
+correction anchor with a checkable "has left the system"; the rule-based automatic
+emergency stop (ADR-0021 to ADR-0023; detection and repair themselves are `0.5.0`). Not yet: the daemon and its roles, the REST API, governance and
 anchors, `mlbench`, the execution adapters, the `github` connector, OpenTelemetry export
 (spans exist, nothing collects them), the queue and outbox (their tables exist, nothing claims
 through them).

@@ -175,6 +175,37 @@ application role may insert and read, and a trigger rejects every update, delete
 for everyone but a superuser (`migrations/`). A hash chain whose rows can be edited proves
 nothing.
 
+### 6.1 Provenance
+
+The ledger says *what happened*. The **provenance record** says *what a result is made of*
+(ADR-0021). One record per completed step run, written in the same transaction as the
+`step.finished` entry and bound to it by sequence number:
+
+| The record names | Taken from |
+|---|---|
+| the process version; the step, its method and exactness class; the model version where the step pins one | the run and its step |
+| the adapter that executed and the version the worker declares for itself | the worker pool (`Capabilities.version` of the worker contract) |
+| the inputs: every result or artifact of an earlier step the step read — by run, step, artifact identifier and digest — and every external source, each with the moment it was read | the run engine, as it resolves `$from` and as a rule reads an artifact |
+| the outputs: the artifact identifiers the step run produced across its attempts; the digest of the value it produced | the step run |
+
+It references and never copies: identifiers, tokens and digests, no content. Its shape is the
+shared kernel's `Provenance.json`; the run component builds and verifies it
+(`domain/service/provenance.py`), the persistence port stores it (`ProvenanceStore`), and the
+database keeps it immutable the way it keeps the ledger — insert and read for the application
+role, a trigger against everything else, one record per step run by unique key
+(`migrations/versions/0002_provenance.py`).
+
+Following inputs from the record that produced an artifact leads back through every step run
+that contributed to it, across runs. That walk is one query (`ProvenanceQuery.chain`), and
+`ProvenanceQuery.verify` holds a run's records against the run and against the ledger: every
+completed step has exactly one record, every input names a record that lists what was read,
+every record agrees with the entry it names. Growth is bounded and measured: one record per
+completed step, never more than a third of the run's ledger entries, at most 1 KiB plus 384
+bytes per input and 80 bytes per output (ADR-0021 §4).
+
+The chain is what makes "since when has this been wrong?" answerable once detection exists
+(UC-4.10 to UC-4.12, `0.5.0`), and it is why the chain arrives before the detection.
+
 ---
 
 ## 7. Consumption

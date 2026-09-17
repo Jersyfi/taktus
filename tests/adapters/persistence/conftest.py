@@ -16,14 +16,26 @@ from typing import Any
 import pytest
 from sqlalchemy import create_engine, text
 
-from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
+from taktus.adapters.driven.memory import (
+    MemoryLedgerStore,
+    MemoryPersistence,
+    MemoryProvenanceStore,
+    MemoryRepository,
+)
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresPersistence,
+    PostgresProvenanceStore,
     PostgresRepository,
 )
 from taktus.adapters.driven.postgres.url import for_sqlalchemy
-from taktus.ports.persistence import LedgerStore, Repository, Stored, UnitOfWork
+from taktus.ports.persistence import (
+    LedgerStore,
+    ProvenanceStore,
+    Repository,
+    Stored,
+    UnitOfWork,
+)
 
 IMPLEMENTATIONS = ("memory", "postgres")
 
@@ -35,6 +47,7 @@ class Backend:
     name: str
     work: UnitOfWork
     ledger_store: LedgerStore
+    provenance_store: ProvenanceStore
     _repository: Any
     _new_tenant: Any
     tenants: list[str] = field(default_factory=list)
@@ -62,6 +75,7 @@ async def memory_backend() -> Backend:
         "memory",
         memory,
         MemoryLedgerStore(memory),
+        MemoryProvenanceStore(memory),
         lambda kind: MemoryRepository(memory, kind),
         no_tenant_to_create,
     )
@@ -88,6 +102,7 @@ async def postgres_backend(postgres_url: str) -> AsyncIterator[Backend]:
             "postgres",
             postgres,
             PostgresLedgerStore(postgres),
+            PostgresProvenanceStore(postgres),
             lambda kind: PostgresRepository(postgres, kind),
             create_tenant,
         )

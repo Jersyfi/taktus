@@ -5,7 +5,9 @@ Once two steps have finished and the third — a worker step — has persisted i
 boundary, the process is killed: SIGKILL, no shutdown, no chance to halt the run. A second
 invocation resumes the run by id. Then: it continued from the last boundary, at most one
 step's work was lost, no artifact is duplicated, and the ledger verifies unbroken across the
-restart with every entry from before it unchanged.
+restart with every entry from before it unchanged — and so does the provenance chain: the
+records written before the kill are unchanged, the interrupted step gets its record from the
+second process, and the chain verifies with no gap at the boundary (ADR-0021).
 """
 
 from __future__ import annotations
@@ -23,11 +25,13 @@ import yaml
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresPersistence,
+    PostgresProvenanceStore,
     PostgresRepository,
 )
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.domain.model import Run, RunState, StepState
-from taktus.shared.v1 import LedgerEntry
+from taktus.components.run.domain.service import provenance
+from taktus.shared.v1 import LedgerEntry, Provenance
 
 from .test_first_slice import EXAMPLE, PLAIN, taktusctl
 
@@ -59,6 +63,11 @@ class Database:
         self.persistence = PostgresPersistence(url, pool_size=1)
         self.runs = PostgresRepository(self.persistence, Run)
         self.ledger = PostgresLedgerStore(self.persistence)
+        self.provenance = PostgresProvenanceStore(self.persistence)
+
+    async def records(self, run_id: str) -> list[Provenance]:
+        async with self.persistence.transaction(TENANT):
+            return list(await self.provenance.of_run(TENANT, run_id))
 
     async def run(self, run_id: str) -> Run | None:
         async with self.persistence.transaction(TENANT):
@@ -146,6 +155,10 @@ async def test_a_run_survives_a_killed_process_and_resumes_at_its_last_boundary(
     before = await database.entries(run.id)
     assert [e.kind for e in before][-1] == "step.started", "nothing after the kill was recorded"
     assert await database.verifies()
+    recorded_before = await database.records(run.id)
+    assert [r.step_id for r in recorded_before] == ["prepare-commands"], (
+        "the step in flight has no record yet; the one before it has"
+    )
 
     second = await asyncio.create_subprocess_exec(
         taktusctl(),
@@ -200,6 +213,19 @@ async def test_a_run_survives_a_killed_process_and_resumes_at_its_last_boundary(
         == 1
     )
     assert await database.verifies()
+
+    # The provenance chain has no gap at the boundary: what was recorded before the kill is
+    # unchanged, the interrupted step got its record from the second process with every
+    # artifact of both attempts, and the chain verifies against the run and the ledger.
+    recorded = await database.records(run.id)
+    assert recorded[: len(recorded_before)] == recorded_before
+    assert [r.step_id for r in recorded] == [s.id for s in resumed.steps]
+    assert recorded[1].outputs == tuple(ids)
+    assert recorded[1].adapter == "worker.http" and recorded[1].adapter_version is not None
+    assert recorded[1].ledger_seq > before[-1].seq, "recorded by the second process"
+    assert [i.step_id for i in recorded[3].inputs] == ["compute"]
+    verification = provenance.verify(resumed, recorded, after)
+    assert verification.intact, verification.findings
     await database.close()
 
     # The artifact bytes of both invocations are in the same object store.
