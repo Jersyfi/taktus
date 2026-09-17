@@ -1,10 +1,10 @@
 """`taktusctl` — the command line of Taktus.
 
-Two commands. `conformance run` drives the conformance suite (src/taktus/conformance), which is
-not part of the control plane and needs no wiring. `run` drives the control plane: it needs
-services, which the composition root provides as the typer context object (see `wiring`); the
-console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
-exposes the application for it.
+Two commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
+worker or the connector contract; the suite is not part of the control plane and needs no
+wiring. `run` drives the control plane: it needs services, which the composition root provides
+as the typer context object (see `wiring`); the console script `taktusctl` therefore starts in
+`taktus.composition.taktusctl`, and this module exposes the application for it.
 """
 
 from __future__ import annotations
@@ -19,7 +19,13 @@ from typing import Annotated
 import typer
 
 from taktus.adapters.driving.cli import run_command
-from taktus.conformance import SuiteOptions, run_suite
+from taktus.conformance import (
+    ConnectorSuiteOptions,
+    Report,
+    SuiteOptions,
+    run_connector_suite,
+    run_suite,
+)
 from taktus.conformance.suite import DEFAULT_CREDENTIAL
 
 app = typer.Typer(
@@ -32,7 +38,7 @@ conformance = typer.Typer(help="Check an adapter against its contract.", no_args
 app.add_typer(conformance, name="conformance")
 app.command("run")(run_command.run)
 
-CONTRACTS = {"worker/v1"}
+CONTRACTS = {"worker/v1", "connector/v1"}
 
 
 @conformance.command("run")
@@ -40,7 +46,14 @@ def conformance_run(
     contract: Annotated[
         str, typer.Option("--contract", help="The contract to check against, e.g. worker/v1.")
     ],
-    endpoint: Annotated[str, typer.Option("--endpoint", help="Base URL of the running adapter.")],
+    endpoint: Annotated[
+        str,
+        typer.Option(
+            "--endpoint",
+            help="Where the adapter listens: the base URL of a worker, the MCP URL of a "
+            "connector (for example http://localhost:9100/mcp).",
+        ),
+    ],
     json_path: Annotated[
         Path | None,
         typer.Option("--json", help="Write the machine-readable report to this file."),
@@ -62,9 +75,22 @@ def conformance_run(
             "value is read from the environment and never printed.",
         ),
     ] = DEFAULT_CREDENTIAL,
-    worker_log: Annotated[
+    scenario: Annotated[
         Path | None,
-        typer.Option("--worker-log", help="The worker's log file, scanned for W-08 if given."),
+        typer.Option(
+            "--scenario",
+            help="connector/v1 only, required: a JSON file in the shape of "
+            "Connector.json#/$defs/Scenario — which operations to call with which input, and "
+            "the recorded payloads for intake (contracts/connector/v1/CONFORMANCE.md).",
+        ),
+    ] = None,
+    adapter_log: Annotated[
+        Path | None,
+        typer.Option(
+            "--adapter-log",
+            "--worker-log",
+            help="The adapter's log file, scanned for a credential value (W-08, C-04) if given.",
+        ),
     ] = None,
     timeout: Annotated[
         float, typer.Option("--timeout", help="Seconds one assignment may take, start to finish.")
@@ -89,20 +115,43 @@ def conformance_run(
             f"unknown contract {contract!r}; known: {', '.join(sorted(CONTRACTS))}", err=True
         )
         raise typer.Exit(code=2)
-    task_body = None
-    if task is not None:
-        with task.open(encoding="utf-8") as handle:
-            task_body = json.load(handle)
-    options = SuiteOptions(
-        endpoint=endpoint,
-        task=task_body,
-        credential_name=credential,
-        credential_value=os.environ.get(credential) or None,
-        worker_log=worker_log,
-        timeout=timeout,
-        idle_timeout=idle_timeout,
-    )
-    report = asyncio.run(run_suite(options))
+    report: Report
+    if contract == "connector/v1":
+        if scenario is None:
+            typer.echo(
+                "connector/v1 needs --scenario; see contracts/connector/v1/CONFORMANCE.md", err=True
+            )
+            raise typer.Exit(code=2)
+        with scenario.open(encoding="utf-8") as handle:
+            scenario_body = json.load(handle)
+        names = [v for v in scenario_body.get("credentials", {}).values() if isinstance(v, str)]
+        values = {name: os.environ[name] for name in names if os.environ.get(name)}
+        report = asyncio.run(
+            run_connector_suite(
+                ConnectorSuiteOptions(
+                    endpoint=endpoint,
+                    scenario=scenario_body,
+                    credential_values=values,
+                    adapter_log=adapter_log,
+                    timeout=timeout,
+                )
+            )
+        )
+    else:
+        task_body = None
+        if task is not None:
+            with task.open(encoding="utf-8") as handle:
+                task_body = json.load(handle)
+        options = SuiteOptions(
+            endpoint=endpoint,
+            task=task_body,
+            credential_name=credential,
+            credential_value=os.environ.get(credential) or None,
+            worker_log=adapter_log,
+            timeout=timeout,
+            idle_timeout=idle_timeout,
+        )
+        report = asyncio.run(run_suite(options))
     if json_path is not None:
         json_path.write_text(report.to_json(), encoding="utf-8")
     sys.stdout.write(report.render())

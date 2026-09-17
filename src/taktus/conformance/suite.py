@@ -38,8 +38,9 @@ import httpx
 from taktus.conformance import rules
 from taktus.conformance.client import Response, Stream, WorkerClient
 from taktus.conformance.contracts import first_error
+from taktus.conformance.findings import Findings
 from taktus.conformance.report import CheckResult, Report, RunSummary
-from taktus.conformance.rules import CHECKS, Violation
+from taktus.conformance.rules import CATALOGUE, CHECKS
 
 type Json = dict[str, Any]
 
@@ -127,41 +128,9 @@ class Run:
         return out
 
 
-class Findings:
-    """Violations and evidence per check, from every run, folded into results at the end."""
-
-    def __init__(self) -> None:
-        self.violations: dict[str, list[str]] = {c: [] for c in CHECKS}
-        self.evidence: dict[str, list[str]] = {c: [] for c in CHECKS}
-        self.inconclusive: dict[str, str] = {}
-
-    def add(self, violation: Violation, where: str) -> None:
-        self.violations[violation.check].append(f"{where}: {violation.message}")
-
-    def fail(self, check: str, message: str) -> None:
-        self.violations[check].append(message)
-
-    def ok(self, check: str, message: str, *, first: bool = False) -> None:
-        if first:
-            self.evidence[check].insert(0, message)
-        else:
-            self.evidence[check].append(message)
-
-    def result(self, check: str) -> CheckResult:
-        if self.violations[check]:
-            return CheckResult.failed(
-                check, self.violations[check][0], self.violations[check][1:] + self.evidence[check]
-            )
-        if check in self.inconclusive:
-            return CheckResult.inconclusive(check, self.inconclusive[check], self.evidence[check])
-        if self.evidence[check]:
-            return CheckResult.passed(check, self.evidence[check][0], self.evidence[check][1:])
-        return CheckResult.inconclusive(check, "the suite never reached this check")
-
-
 async def run_suite(options: SuiteOptions) -> Report:
-    report = Report(endpoint=options.endpoint)
-    findings = Findings()
+    report = Report(endpoint=options.endpoint, contract=CATALOGUE.contract)
+    findings = Findings(CHECKS)
     runs: list[Run] = []
     async with WorkerClient(
         options.endpoint, timeout=options.timeout, idle_timeout=options.idle_timeout

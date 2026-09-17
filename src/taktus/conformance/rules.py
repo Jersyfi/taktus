@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import fnmatch
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import Any
+
+from taktus.conformance.catalogue import Catalogue
+from taktus.conformance.findings import Violation
 
 type Json = dict[str, Any]
 
@@ -51,16 +53,45 @@ SECTIONS: dict[str, str] = {
     "W-12": "§7 Conformance",
 }
 
+REQUIREMENTS: dict[str, str] = {
+    "W-01": "GET /v1/capabilities answers 200 with a body that validates against "
+    "Worker.json#/$defs/Capabilities and lists at least one consumption kind",
+    "W-02": "POST /v1/estimate answers 200 with a body that validates against "
+    "Worker.json#/$defs/Estimate; confidence, wall_seconds and steps are always present",
+    "W-03": "every event validates against Worker.json#/$defs/Event; seq starts at 1 and "
+    "increases by exactly 1; the SSE id field carries seq and the SSE event field carries type; "
+    "the stream ends with assignment.finished; a client that sends the last seq it has seen in "
+    "Last-Event-ID or as ?after= receives exactly the events after it",
+    "W-04": "every step that started has a consumption.reported with its step_id before the next "
+    "step starts; a worker that only settles up at the end makes admission control impossible",
+    "W-05": "at least one step.boundary per assignment that was not rejected; each names a step "
+    "that started",
+    "W-06": "after POST /stop is acknowledged the running step finishes, the worker emits "
+    "step.boundary and then assignment.finished with outcome stopped and the same checkpoint_ref; "
+    "no step starts after that boundary; GET /v1/assignments/{id} agrees",
+    "W-07": "a tool.called for a tool outside allowed_tools, or matching forbidden, carries "
+    "refused: true and is not executed",
+    "W-08": "a credential referenced by name in the assignment never appears — as its value — in "
+    "any event, in any artifact, in the assignment state, or in the worker's log",
+    "W-09": "every tool.called carries arguments_digest as sha256: followed by 64 lowercase hex "
+    "characters, and no argument in clear",
+    "W-10": "an assignment whose estimate exceeds its limits is answered with status finished "
+    "and outcome rejected, and its stream carries exactly one event, assignment.finished with "
+    "outcome rejected and a reason",
+    "W-11": "an assignment resumed from a checkpoint_ref produces no artifact that was produced "
+    "before that checkpoint; every artifact.produced appears in GET /artifacts with the same "
+    "digest, and its bytes hash to it",
+    "W-12": "removing the adapter changes quality or cost but breaks no process",
+}
 
-@dataclass(frozen=True)
-class Violation:
-    """One broken rule: which check, and what the stream did instead of what the check requires."""
-
-    check: str
-    message: str
-
-    def __str__(self) -> str:
-        return f"{self.check} {self.message}"
+CATALOGUE = Catalogue.build(
+    "worker/v1",
+    "contracts/worker/v1/README.md",
+    CHECKS,
+    REQUIREMENTS,
+    SECTIONS,
+    unrunnable=frozenset({"W-12"}),
+)
 
 
 def matches_pattern(tool: str, pattern: str) -> bool:
