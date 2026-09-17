@@ -1,0 +1,187 @@
+openapi: 3.1.0
+info:
+  title: Taktus
+  description: An operating layer for a business — the control plane's own interface.
+  version: 0.1.0
+servers:
+- url: '{prefix}'
+  description: The path prefix the instance is served under (TAKTUS_PATH_PREFIX).
+  variables:
+    prefix:
+      default: /
+paths:
+  /health:
+    get:
+      tags:
+      - operations
+      summary: 'Liveness: the process is alive'
+      operationId: health_health_get
+      responses:
+        '200':
+          description: The process answers.
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Health Health Get
+  /ready:
+    get:
+      tags:
+      - operations
+      summary: 'Readiness: the process may receive traffic'
+      operationId: ready_ready_get
+      responses:
+        '200':
+          description: The database answers and is at the schema this build needs.
+          content:
+            application/json:
+              schema: {}
+        '503':
+          description: Not ready; the problem's detail says why.
+          content:
+            application/problem+json: {}
+  /intake/{channel}:
+    post:
+      tags:
+      - intake
+      summary: Webhook intake for a channel
+      description: The delivery as the source system sent it — every header, the raw body — is handed
+        to the connector that serves the channel. The connector verifies the signature before it reads
+        the body, then normalises the event into the channel's half of a command, which is kept until
+        the identity component completes it. Nothing is executed from here.
+      operationId: intake_intake__channel__post
+      parameters:
+      - name: channel
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Channel
+      responses:
+        '202':
+          description: 'Decided: `accepted` with the intake event, or `refused`.'
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: The body cannot be read.
+          content:
+            application/problem+json: {}
+        '401':
+          description: Unsigned, or the signature does not verify.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No connector serves the channel.
+          content:
+            application/problem+json: {}
+        '503':
+          description: The connector did not answer.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /runs:
+    get:
+      tags:
+      - runs
+      summary: The runs of a tenant, newest first
+      operationId: list_runs_runs_get
+      parameters:
+      - name: tenant
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: The tenant; the instance's first configured tenant when absent.
+          title: Tenant
+        description: The tenant; the instance's first configured tenant when absent.
+      responses:
+        '200':
+          description: A list of runs as the run component records them.
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /runs/{run_id}:
+    get:
+      tags:
+      - runs
+      summary: One run
+      operationId: get_run_runs__run_id__get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: tenant
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: The tenant; the instance's first configured tenant when absent.
+          title: Tenant
+        description: The tenant; the instance's first configured tenant when absent.
+      responses:
+        '200':
+          description: The run.
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: No such run in the tenant.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /runs/{run_id}/ledger:
+    get:
+      tags:
+      - runs
+      summary: The ledger entries of one run, in sequence
+      operationId: run_ledger_runs__run_id__ledger_get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: tenant
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: The tenant; the instance's first configured tenant when absent.
+          title: Tenant
+        description: The tenant; the instance's first configured tenant when absent.
+      responses:
+        '200':
+          description: The entries, and whether the tenant's chain verifies.
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: No such run in the tenant.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
