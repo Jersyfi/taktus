@@ -95,6 +95,7 @@ you see the domain, not the framework.
 | [docs/architecture/contracts.md](docs/architecture/contracts.md) | Worker, connector and model contracts; maturity levels |
 | [contracts/worker/v1/CONFORMANCE.md](contracts/worker/v1/CONFORMANCE.md) | How to check a worker of your own against the contract |
 | [contracts/connector/v1/CONFORMANCE.md](contracts/connector/v1/CONFORMANCE.md) | How to check a connector of your own against the contract |
+| [workers/README.md](workers/README.md) | The workers of this repository, each in its own image: the reference worker, and the coding worker with what it can and cannot do |
 | [docs/architecture/project-structure.md](docs/architecture/project-structure.md) | Components, tree, dependency rules, conventions |
 | [examples/README.md](examples/README.md) | Running a process bundle with `uv run taktusctl run`; the shape of a bundle |
 | [docs/adr/README.md](docs/adr/README.md) | 25 architecture decisions with the alternatives rejected |
