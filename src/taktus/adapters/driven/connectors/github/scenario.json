@@ -24,5 +24,20 @@
     "operation": "repository.issues.read",
     "input": { "number": 999999 },
     "expected_cause": "not_found"
+  },
+  "intake": {
+    "signature": { "header": "x-hub-signature-256", "prefix": "sha256=" },
+    "supported": {
+      "headers_file": "payloads/issue-comment-created.headers.json",
+      "body_file": "payloads/issue-comment-created.body.json"
+    },
+    "unsupported": {
+      "headers_file": "payloads/ping.headers.json",
+      "body_file": "payloads/ping.body.json"
+    },
+    "own_action": {
+      "headers_file": "payloads/issue-comment-own-action.headers.json",
+      "body_file": "payloads/issue-comment-own-action.body.json"
+    }
   }
 }

@@ -405,14 +405,19 @@
     },
     "ScenarioPayload": {
       "title": "ScenarioPayload",
-      "description": "One recorded event for the intake checks: the headers as the target system sends them, without the signature header, and the body. The suite signs it with the intake secret, or leaves it unsigned, or signs it wrongly.",
+      "description": "One recorded event for the intake checks: the headers as the target system sends them, without the signature header, and the body — inline as body, or as body_file, a path relative to the scenario file, so that a recorded delivery stays readable. Headers may also come from headers_file. The suite signs the body with the intake secret, or leaves it unsigned, or signs it wrongly.",
       "type": "object",
       "properties": {
         "headers": { "type": "object", "additionalProperties": { "type": "string" } },
-        "body": { "type": "string" }
+        "headers_file": { "type": "string", "minLength": 1 },
+        "body": { "type": "string" },
+        "body_file": { "type": "string", "minLength": 1 }
       },
-      "required": ["headers", "body"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        { "oneOf": [{ "required": ["headers"] }, { "required": ["headers_file"] }] },
+        { "oneOf": [{ "required": ["body"] }, { "required": ["body_file"] }] }
+      ]
     },
     "Scenario": {
       "title": "Scenario",

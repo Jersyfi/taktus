@@ -1,0 +1,9 @@
+{
+  "content-type": "application/json",
+  "user-agent": "GitHub-Hookshot/placeholder",
+  "x-github-event": "ping",
+  "x-github-delivery": "placeholder-delivery-ping",
+  "x-github-hook-id": "700000001",
+  "x-github-hook-installation-target-id": "900000001",
+  "x-github-hook-installation-target-type": "repository"
+}

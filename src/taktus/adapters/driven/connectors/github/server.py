@@ -22,7 +22,7 @@ from mcp_types import CallToolResult, TextContent
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from taktus.adapters.driven.connectors.github import declaration, operations
+from taktus.adapters.driven.connectors.github import declaration, intake, operations
 from taktus.adapters.driven.connectors.github.api import Api, TargetError
 
 type Json = dict[str, Any]
@@ -120,6 +120,19 @@ class Connector:
         log(f"{name} step={step}: {outcome.effect['kind']}{replayed}, {api.requests} request(s)")
         return envelope(result)
 
+    async def intake(self, headers: Json, body: str, received_at: str) -> CallToolResult:
+        """The secret is read at the moment of the call, like a credential of an action."""
+        secret = os.environ.get(declaration.INTAKE_CREDENTIAL)
+        result = intake.normalise(
+            {str(k): str(v) for k, v in headers.items()}, body, received_at, secret
+        )
+        if "accepted" in result:
+            accepted = result["accepted"]
+            log(f"intake {accepted['event_id']}: accepted as {accepted['event']}")
+        else:
+            log(f"intake: refused, {result['refused']['reason']}")
+        return envelope(result)
+
 
 def build_server(config: Config) -> MCPServer[None]:
     connector = Connector(config)
@@ -141,6 +154,16 @@ def build_server(config: Config) -> MCPServer[None]:
             description=str(op["summary"]),
             meta={META_KEY: dict(op)},
         )
+
+    async def intake_tool(headers: dict[str, str], body: str, received_at: str) -> CallToolResult:
+        return await connector.intake(headers, body, received_at)
+
+    server.add_tool(
+        intake_tool,
+        name="intake",
+        description="One event as it arrived from the service: headers, the raw body, when. "
+        "Verified, then normalised into an intake command, or refused.",
+    )
 
     async def health(request: Request) -> JSONResponse:
         return JSONResponse({"status": "ready"})

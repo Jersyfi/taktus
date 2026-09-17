@@ -24,6 +24,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -59,6 +60,20 @@ class ConnectorSuiteOptions:
     only searched for, the intake value only used to sign."""
     adapter_log: Path | None = None
     timeout: float = 60.0
+    scenario_dir: Path | None = None
+    """Where the scenario's `body_file` and `headers_file` paths are resolved from."""
+
+
+def load_payload(payload: Json, scenario_dir: Path | None) -> Json:
+    """A scenario payload with its headers and body inline, files read."""
+    base = scenario_dir or Path.cwd()
+    headers = payload.get("headers")
+    if headers is None:
+        headers = json.loads((base / str(payload["headers_file"])).read_text(encoding="utf-8"))
+    body = payload.get("body")
+    if body is None:
+        body = (base / str(payload["body_file"])).read_text(encoding="utf-8")
+    return {"headers": {str(k): str(v) for k, v in headers.items()}, "body": str(body)}
 
 
 @dataclass
@@ -454,7 +469,24 @@ async def _intake(
     intake = scenario["intake"]
     header = str(intake["signature"]["header"])
     prefix = str(intake["signature"]["prefix"])
-    supported = intake["supported"]
+    try:
+        supported = load_payload(intake["supported"], options.scenario_dir)
+        unsupported = (
+            load_payload(intake["unsupported"], options.scenario_dir)
+            if "unsupported" in intake
+            else None
+        )
+        own = (
+            load_payload(intake["own_action"], options.scenario_dir)
+            if "own_action" in intake
+            else None
+        )
+    except (OSError, ValueError, KeyError) as error:
+        for check in ("C-07", "C-08"):
+            findings.inconclusive.setdefault(
+                check, f"a payload of the scenario could not be read: {error!r}"
+            )
+        return
 
     async def deliver(purpose: str, payload: Json, signature: str | None) -> Json | None:
         headers = dict(payload["headers"])
@@ -506,8 +538,7 @@ async def _intake(
         ("unsigned", supported, None, "unsigned"),
         ("wrongly signed", supported, prefix + _sign(body, secret + "-not"), "bad_signature"),
     ]
-    if "unsupported" in intake:
-        unsupported = intake["unsupported"]
+    if unsupported is not None:
         cases.append(
             (
                 "unsupported",
@@ -516,8 +547,7 @@ async def _intake(
                 "unsupported_event",
             )
         )
-    if "own_action" in intake:
-        own = intake["own_action"]
+    if own is not None:
         cases.append(("own action", own, prefix + _sign(str(own["body"]), secret), "own_action"))
     refused = 0
     for purpose, payload, signature, reason in cases:

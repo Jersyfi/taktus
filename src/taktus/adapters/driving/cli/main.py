@@ -134,6 +134,7 @@ def conformance_run(
                     credential_values=values,
                     adapter_log=adapter_log,
                     timeout=timeout,
+                    scenario_dir=scenario.parent,
                 )
             )
         )
