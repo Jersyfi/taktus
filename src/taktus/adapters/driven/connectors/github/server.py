@@ -5,12 +5,15 @@ Every tool does the same four things: find the requesting identity's credential 
 context carries — and refuse when there is none, because the connector has no credential of its
 own — run the operation against the service, wrap what came back in the contract's Result or
 Error envelope, and log one line that names the operation and the outcome and never a value.
+
+The faults of `faults.py` are applied here, around that behaviour, and nowhere else.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import secrets
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -24,6 +27,7 @@ from starlette.responses import JSONResponse
 
 from taktus.adapters.driven.connectors.github import declaration, intake, operations
 from taktus.adapters.driven.connectors.github.api import Api, TargetError
+from taktus.adapters.driven.connectors.github.faults import validate
 
 type Json = dict[str, Any]
 
@@ -39,6 +43,7 @@ class Config:
     port: int = 9100
     path: str = "/mcp"
     timeout: float = 30.0  # seconds to wait for the service's answer
+    fault: str | None = None  # one of faults.FAULTS, for the meta-test only
 
 
 def now() -> str:
@@ -84,6 +89,15 @@ class Connector:
 
     def __init__(self, config: Config) -> None:
         self.config = config
+        self.faults = validate(config.fault)
+
+    def declaration(self) -> Json:
+        capabilities = declaration.capabilities()
+        if "C-01" in self.faults:
+            capabilities["operations"] = [
+                op for op in capabilities["operations"] if op["name"] != "repository.comments.list"
+            ]
+        return capabilities
 
     async def call(self, name: str, context: Json, input: Json) -> CallToolResult:
         step = str(context.get("step_id", "?"))
@@ -92,7 +106,11 @@ class Connector:
             error = TargetError("invalid", "none", False, "the context carries no idempotency_key")
             log(f"{name} step={step}: invalid context")
             return envelope(error.envelope(0), is_error=True)
+        if "C-05" in self.faults:
+            key = "fault-" + secrets.token_hex(12)
         token = credential_value(context)
+        if token is None and "C-03" in self.faults:
+            token = os.environ.get(declaration.ACTIONS_CREDENTIAL)
         if token is None:
             error = TargetError(
                 "unauthenticated",
@@ -108,6 +126,10 @@ class Connector:
             outcome = await operations.OPERATIONS[name](api, input, key)
         except TargetError as error:
             log(f"{name} step={step}: {error.cause} after {api.requests} request(s)")
+            if "C-06" in self.faults:
+                return CallToolResult(
+                    content=[TextContent(type="text", text=error.detail)], is_error=True
+                )
             return envelope(error.envelope(api.requests), is_error=True)
         finally:
             await api.close()
@@ -118,14 +140,31 @@ class Connector:
         }
         replayed = " (replayed)" if outcome.effect.get("replayed") else ""
         log(f"{name} step={step}: {outcome.effect['kind']}{replayed}, {api.requests} request(s)")
+        self._break_result(result, token)
         return envelope(result)
+
+    def _break_result(self, result: Json, token: str) -> None:
+        if "C-02" in self.faults and result["effect"]["kind"] != "read":
+            result["effect"] = {"kind": "read"}
+        if "C-04-result" in self.faults:
+            result["output"]["token"] = token
+        if "C-04-log" in self.faults:
+            log(f"using token {token}")
+        if "C-09" in self.faults:
+            del result["consumption"]
 
     async def intake(self, headers: Json, body: str, received_at: str) -> CallToolResult:
         """The secret is read at the moment of the call, like a credential of an action."""
         secret = os.environ.get(declaration.INTAKE_CREDENTIAL)
-        result = intake.normalise(
-            {str(k): str(v) for k, v in headers.items()}, body, received_at, secret
-        )
+        given = {str(k).lower(): str(v) for k, v in headers.items()}
+        if secret and (
+            ("C-08-unsigned" in self.faults and intake.SIGNATURE_HEADER not in given)
+            or ("C-08-signature" in self.faults and intake.SIGNATURE_HEADER in given)
+        ):
+            given[intake.SIGNATURE_HEADER] = intake.signature_of(body.encode("utf-8"), secret)
+        result = intake.normalise(given, body, received_at, secret)
+        if "accepted" in result and "C-07" in self.faults:
+            del result["accepted"]["reply_to"]
         if "accepted" in result:
             accepted = result["accepted"]
             log(f"intake {accepted['event_id']}: accepted as {accepted['event']}")
@@ -145,7 +184,7 @@ def build_server(config: Config) -> MCPServer[None]:
 
     @server.resource(CAPABILITIES_URI, mime_type="application/json", name="capabilities")
     def capabilities() -> str:
-        return json.dumps(declaration.capabilities())
+        return json.dumps(connector.declaration())
 
     for op in declaration.OPERATIONS:
         server.add_tool(

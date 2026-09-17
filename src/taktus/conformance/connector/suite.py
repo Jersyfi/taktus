@@ -219,15 +219,19 @@ async def _call(
     return answer
 
 
-def _result_of(answer: Answer, findings: Findings, where: str) -> Json | None:
-    """The validated Result of a successful call, or None with the failure recorded."""
+def _result_of(
+    answer: Answer, findings: Findings, where: str, *, error_owner: str = "C-02"
+) -> Json | None:
+    """The validated Result of a successful call, or None with the failure recorded. An error
+    where the scenario expects success belongs to `error_owner`: C-02 as a rule, C-05 for a
+    repeated call, whose error means the repeat was not recognised."""
     if answer.transport_error:
         findings.fail("C-01", f"{where}: the call did not go through: {answer.transport_error}")
         return None
     if answer.is_error:
         detail = answer.json or {}
         findings.fail(
-            "C-02",
+            error_owner,
             f"{where}: the call ended in an error ({detail.get('cause', 'no cause')}: "
             f"{detail.get('detail', answer.text[:160])}) although the scenario expects it to "
             "succeed",
@@ -237,7 +241,8 @@ def _result_of(answer: Answer, findings: Findings, where: str) -> Json | None:
         findings.fail("C-02", f"{where}: the result has no structured content")
         return None
     if (why := first_error("Result", answer.json, CONTRACT)) is not None:
-        findings.fail("C-02", f"{where}: the result does not validate against Result: {why}")
+        owner = "C-09" if "consumption" in why else "C-02"
+        findings.fail(owner, f"{where}: the result does not validate against Result: {why}")
         return None
     return answer.json
 
@@ -358,12 +363,15 @@ async def _writes(
         first_result = _result_of(first, findings, f"first {operation}")
         if first_result is None:
             continue
-        for violation in rules.result_violations(capabilities, operation, first_result):
+        misreported = rules.result_violations(capabilities, operation, first_result)
+        for violation in misreported:
             findings.add(violation, f"first {operation}")
+        if misreported:
+            continue  # a result that misreports its effect cannot be judged for a repeat
         repeat = await _call(
             client, seen, "write repeated", case, _context(scenario, "write", key), token=token
         )
-        repeat_result = _result_of(repeat, findings, f"repeated {operation}")
+        repeat_result = _result_of(repeat, findings, f"repeated {operation}", error_owner="C-05")
         if repeat_result is None:
             continue
         fresh = await _call(
