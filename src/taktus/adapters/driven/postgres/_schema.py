@@ -3,8 +3,8 @@
 The migrations under `migrations/` create the same tables with explicit DDL; this module is the
 current shape, the migrations are the history. `tests/adapters/persistence` compares the two and
 fails on any drift. Everything the database enforces beyond columns — row-level security, the
-append-only ledger, the claiming functions, the application role — lives in the migrations
-alone, because it is not part of a statement's shape.
+append-only ledger, the immutable provenance, the claiming functions, the application role —
+lives in the migrations alone, because it is not part of a statement's shape.
 
 Rules the layout follows:
 
@@ -259,6 +259,32 @@ ledger_entry = Table(
     Index("ledger_entry_run", "tenant", text("(refs ->> 'run_id')")),
 )
 
+# --- provenance (ADR-0021) ------------------------------------------------------------------------
+
+provenance = Table(
+    "provenance",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("run_id", Text, nullable=False),
+    Column("step_id", Text, nullable=False),
+    Column("process_version", Text, nullable=False),
+    Column("method", Text, nullable=False),
+    Column("exactness", Text),
+    Column("model", Text),
+    Column("prompt", Text),
+    Column("adapter", Text),
+    Column("adapter_version", Text),
+    Column("inputs", JSONB, nullable=False),
+    Column("outputs", JSONB, nullable=False),
+    Column("result_digest", Text),
+    Column("ledger_seq", BigInteger, nullable=False),
+    _at("recorded_at"),
+    PrimaryKeyConstraint("tenant", "id"),
+    UniqueConstraint("tenant", "run_id", "step_id", name="provenance_once_per_step_run"),
+    Index("provenance_run", "tenant", "run_id"),
+)
+
 # --- queue and outbox (ADR-0002) — created now, used from the daemon on --------------------
 
 job = Table(
@@ -307,6 +333,7 @@ TENANT_SCOPED: tuple[Table, ...] = (
     checkpoint,
     artifact,
     ledger_entry,
+    provenance,
     job,
     outbox,
 )
@@ -314,7 +341,8 @@ TENANT_SCOPED: tuple[Table, ...] = (
 APPLICATION_ROLE = "taktus_app"
 """The role the adapter assumes inside every transaction (`SET LOCAL ROLE`). It owns nothing,
 cannot log in, sees only the tenant the transaction names, and may not update or delete a
-ledger entry. The migration creates it and grants it to the user running the migration."""
+ledger entry or a provenance record. The migrations create it and grant it to the user running
+them."""
 
 TENANT_SETTING = "taktus.tenant"
 """The session setting the row-level security policies read: `current_setting('taktus.tenant')`.

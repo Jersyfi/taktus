@@ -14,6 +14,13 @@ behind when it fails.
 from taktus.adapters.driven.memory.ledger_store import MemoryLedgerStore
 from taktus.adapters.driven.memory.object_store import MemoryObjectStore
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
+from taktus.adapters.driven.memory.provenance_store import MemoryProvenanceStore
 from taktus.adapters.driven.memory.repository import MemoryRepository
 
-__all__ = ["MemoryLedgerStore", "MemoryObjectStore", "MemoryPersistence", "MemoryRepository"]
+__all__ = [
+    "MemoryLedgerStore",
+    "MemoryObjectStore",
+    "MemoryPersistence",
+    "MemoryProvenanceStore",
+    "MemoryRepository",
+]

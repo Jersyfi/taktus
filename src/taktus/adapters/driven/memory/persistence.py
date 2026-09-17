@@ -27,9 +27,10 @@ from taktus.ports.persistence import (
     Tenant,
     WrongTenant,
 )
-from taktus.shared.v1 import LedgerEntry
+from taktus.shared.v1 import LedgerEntry, Provenance
 
 LEDGER = "ledger"
+PROVENANCE = "provenance"
 
 
 @dataclass
@@ -37,6 +38,7 @@ class Transaction:
     tenant: Tenant
     puts: dict[tuple[str, str], Any] = field(default_factory=dict)  # (kind, id) → item
     appended: list[LedgerEntry] = field(default_factory=list)
+    recorded: list[Provenance] = field(default_factory=list)
     spoilt: bool = False
 
 
@@ -45,11 +47,15 @@ class MemoryPersistence:
         self._snapshot_dir = snapshot_dir
         self._tables: dict[str, dict[Tenant, dict[str, Any]]] = {}
         self._ledger: dict[Tenant, list[LedgerEntry]] = {}
+        self._provenance: dict[Tenant, list[Provenance]] = {}
         self._current: ContextVar[Transaction | None] = ContextVar("transaction", default=None)
         if snapshot_dir is not None:
             stored = _snapshot.read(snapshot_dir / f"{LEDGER}.json") or {}
             for tenant, documents in stored.items():
                 self._ledger[tenant] = [LedgerEntry.model_validate(d) for d in documents]
+            stored = _snapshot.read(snapshot_dir / f"{PROVENANCE}.json") or {}
+            for tenant, documents in stored.items():
+                self._provenance[tenant] = [Provenance.model_validate(d) for d in documents]
 
     # --- the unit of work ----------------------------------------------------------------------
 
@@ -82,6 +88,8 @@ class MemoryPersistence:
             touched.add(kind)
         if transaction.appended:
             self._ledger.setdefault(transaction.tenant, []).extend(transaction.appended)
+        if transaction.recorded:
+            self._provenance.setdefault(transaction.tenant, []).extend(transaction.recorded)
         if self._snapshot_dir is None:
             return
         for kind in touched:
@@ -97,6 +105,11 @@ class MemoryPersistence:
                 self._snapshot_dir / f"{LEDGER}.json",
                 {t: [e.document() for e in entries] for t, entries in self._ledger.items()},
             )
+        if transaction.recorded:
+            await _snapshot.write(
+                self._snapshot_dir / f"{PROVENANCE}.json",
+                {t: [r.document() for r in records] for t, records in self._provenance.items()},
+            )
 
     # --- what the stores see -------------------------------------------------------------------
 
@@ -105,6 +118,9 @@ class MemoryPersistence:
 
     def chain(self, tenant: Tenant) -> list[LedgerEntry]:
         return self._ledger.setdefault(tenant, [])
+
+    def provenance(self, tenant: Tenant) -> list[Provenance]:
+        return self._provenance.setdefault(tenant, [])
 
     def load(self, kind: str, model: type[Stored]) -> None:
         """Read a kind's snapshot, once, when its repository is created."""

@@ -119,15 +119,15 @@ async def test_the_revision_check_names_what_is_missing(
     persistence = PostgresPersistence(postgres_url, pool_size=1)
     try:
         await check_schema(persistence.engine)
-        assert await current_revision(persistence.engine) == head_revision() == "0001"
+        assert await current_revision(persistence.engine) == head_revision() == "0002"
         with sync_engine.begin() as connection:
             connection.execute(text("UPDATE alembic_version SET version_num = '0000'"))
         try:
-            with pytest.raises(SchemaOutOfDate, match=r"at schema revision 0000.*needs 0001"):
+            with pytest.raises(SchemaOutOfDate, match=r"at schema revision 0000.*needs 0002"):
                 await check_schema(persistence.engine)
         finally:
             with sync_engine.begin() as connection:
-                connection.execute(text("UPDATE alembic_version SET version_num = '0001'"))
+                connection.execute(text("UPDATE alembic_version SET version_num = '0002'"))
     finally:
         await persistence.close()
 

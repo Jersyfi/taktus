@@ -17,6 +17,7 @@ from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
+from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
@@ -34,6 +35,7 @@ class Services:
     register_version: RegisterProcessVersionHandler
     commission: CommissionPlanHandler
     engine: RunEngine
+    provenance: ProvenanceQuery
     runs: Repository[Run]
     ledger: Ledger
     work: UnitOfWork
