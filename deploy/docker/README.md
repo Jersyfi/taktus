@@ -21,7 +21,12 @@ make up
 That is the whole of it. `make up` writes a random database password and the database URL that
 carries it under `secrets/` (never committed; existing files are kept, so a running database
 keeps its password), builds the image, starts PostgreSQL, starts Taktus with every role in one
-process, applies the migrations on start, and returns when readiness answers. From then on:
+process, applies the migrations on start, and returns when readiness answers. The password
+lives in two places that must agree: the secret files of the checkout and the database
+volume. A fresh checkout next to an existing volume — a second clone, a worktree — writes new
+secret files, and Taktus then cannot log in; keep the volume and copy the secret files over, or
+run the second checkout under its own project name (`COMPOSE_PROJECT_NAME=taktus-2 make up`),
+which gives it volumes of its own. Nothing here removes a volume. From then on:
 
 | Where | What |
 |---|---|
