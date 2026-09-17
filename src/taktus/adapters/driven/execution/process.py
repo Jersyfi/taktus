@@ -168,10 +168,11 @@ class ProcessExecution:
 
 
 def _signal(process: asyncio.subprocess.Process, signum: signal.Signals) -> None:
-    """The unit and everything it started: the unit runs in its own session."""
+    """The unit and everything it started: the unit runs in its own session. A group that is
+    already gone — or whose leader has exited and not yet been reaped — is nothing to signal."""
     try:
         os.killpg(process.pid, signum)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
         pass
 
 

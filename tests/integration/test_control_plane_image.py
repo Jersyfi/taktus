@@ -16,22 +16,27 @@ CONTROL_PLANE = "taktus:test"
 
 @pytest.fixture(scope="module")
 def control_plane_image(engine_socket: str) -> str:
-    subprocess.run(  # noqa: S603 — our own Dockerfile, fixed arguments
-        [
-            "docker",
-            "build",
-            "-q",
-            "-f",
-            str(ROOT / "deploy/docker/Dockerfile"),
-            "-t",
-            CONTROL_PLANE,
-            str(ROOT),
-        ],
-        check=True,
-        capture_output=True,
-        timeout=900,
-    )
-    return CONTROL_PLANE
+    command = [
+        "docker",
+        "build",
+        "-q",
+        "-f",
+        str(ROOT / "deploy/docker/Dockerfile"),
+        "-t",
+        CONTROL_PLANE,
+        str(ROOT),
+    ]
+    # A build pulls base images and packages; one transient failure is retried once, and a
+    # second one fails the test with the engine's own words.
+    for attempt in (1, 2):
+        completed = subprocess.run(  # noqa: S603 — our own Dockerfile, fixed arguments
+            command, capture_output=True, text=True, timeout=900, check=False
+        )
+        if completed.returncode == 0:
+            return CONTROL_PLANE
+        if attempt == 2:
+            pytest.fail(f"docker build failed twice:\n{completed.stderr[-2000:]}")
+    return CONTROL_PLANE  # unreachable
 
 
 def inside(image: str, script: str) -> str:
