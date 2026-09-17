@@ -1,0 +1,29 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "warehouse.tables"
+  ],
+  "operations": [
+    {
+      "name": "warehouse.tables.query",
+      "capability": "warehouse.tables",
+      "effect": "read",
+      "summary": "Run a read-only query."
+    }
+  ],
+  "credentials": [
+    {
+      "name": "WAREHOUSE_TOKEN",
+      "purpose": "actions"
+    }
+  ],
+  "consumption": {
+    "kinds": [
+      "compute"
+    ],
+    "resource_classes": [
+      "cpu.small"
+    ]
+  },
+  "permissions": "passthrough"
+}

@@ -1,0 +1,6 @@
+{
+  "refused": {
+    "reason": "unsigned",
+    "detail": "no signature header"
+  }
+}

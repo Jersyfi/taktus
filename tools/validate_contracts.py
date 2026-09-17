@@ -15,7 +15,8 @@ Checks, in order:
 2. every `openapi.yaml` is OpenAPI 3.1 and every `$ref` in it resolves;
 3. every example under `examples/<target>/valid/` validates against its target;
 4. every example under `examples/<target>/invalid/` fails by schema, and every conformance check
-   W-01..W-12 has at least one fixture named after it;
+   — W-01..W-12 of the worker contract, C-01..C-10 of the connector contract — has at least one
+   fixture named after it;
 5. every target has at least two valid examples.
 
 The target of an examples directory is its name in kebab-case: for the shared kernel the schema
@@ -50,7 +51,7 @@ from referencing.jsonschema import DRAFT202012
 ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS = ROOT / "contracts"
 NAMESPACE = "https://taktus.eu/contracts/"  # ADR-0019: the $id of a schema is its path under here
-CHECKS = [f"W-{n:02d}" for n in range(1, 13)]
+CHECKS = [f"W-{n:02d}" for n in range(1, 13)] + [f"C-{n:02d}" for n in range(1, 11)]
 MIN_VALID_EXAMPLES = 2
 
 type Json = dict[str, Any]
@@ -270,7 +271,7 @@ def check_examples(schemas: dict[Path, Json], registry: SchemaRegistry, report: 
                 instance = load_json(path)
                 why = first_error(validator, instance)
                 name = path.relative_to(ROOT)
-                match = re.match(r"(W-\d{2})-", path.name)
+                match = re.match(r"([WC]-\d{2})-", path.name)
                 if match:
                     covered.add(match.group(1))
                 if target == "transcript":
@@ -286,7 +287,7 @@ def check_examples(schemas: dict[Path, Json], registry: SchemaRegistry, report: 
     if missing:
         report.fail("conformance coverage", "no must-fail example for " + ", ".join(missing))
     else:
-        report.ok(f"every check {CHECKS[0]}..{CHECKS[-1]} has a must-fail example")
+        report.ok("every check W-01..W-12 and C-01..C-10 has a must-fail example")
 
 
 # --- main ----------------------------------------------------------------------------------------

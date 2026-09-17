@@ -20,7 +20,9 @@ not the bottleneck here; adapter variety is.
 
 ---
 
-## 2. The worker contract in brief
+## 2. The contracts in brief
+
+### 2.1 Worker
 
 | Capability | Why it is required |
 |---|---|
@@ -38,6 +40,27 @@ The core's side of it is the worker port (`src/taktus/ports/worker.py`): the con
 as frozen types and the protocol the run component calls. `tests/contract` holds those types to
 `Worker.json` and its examples, so that the port and the contract cannot drift apart.
 
+### 2.2 Connector
+
+A connector is an MCP server; the contract is what Taktus needs on top of MCP (ADR-0024). Two
+directions, governed differently: **actions**, where Taktus calls an operation, and **intake**,
+where an event from the outside becomes a command or is refused.
+
+| Capability | Why it is required |
+|---|---|
+| **Declare capabilities and operations** — by function, never by product; served as one MCP resource | processes bind capabilities; the tool list is checked against the declaration |
+| **Declare the effect of every operation** — `read`, `write`, `delivery` | `write` and `delivery` leave the system: the run records them as egress entries, and correcting their result afterwards is anchored (ADR-0022). Declared, "has left the system" is a field, not a judgement |
+| **Declare the idempotency of every outward operation** — `native`, `marked`, `none` — and honour the idempotency key of every call | a step retried after a restart must not open a second pull request (ADR-0005). `none` is allowed and honest: Taktus then never repeats the call on its own |
+| **Act with the requesting identity's credentials, by name, read at the call** | source-system permissions remain in force; the connector has no credential of its own |
+| **Classify every error** — a failure with cause, effect and retryable | the run knows whether the effect happened and whether the same call may be repeated (ADR-0021) |
+| **Report consumption per call** | connector calls cost close to nothing and are counted, not ignored |
+| **Verify the signature of every incoming event before reading it**, then normalise it as far as the channel can | intake without a signature is not a valid declaration; the identity component completes the command |
+
+Full specification: [`contracts/connector/v1/README.md`](../../contracts/connector/v1/README.md).
+The connector port on the core's side, and the run's binding of connector steps — writing the
+egress entry from the result, halting instead of retrying an outward operation with
+`idempotency: none` whose outcome is unknown — arrive with `0.2.0`.
+
 ---
 
 ## 3. Conformance and maturity
@@ -46,6 +69,8 @@ Every adapter tests itself:
 
 ```
 uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhost:9000
+uv run taktusctl conformance run --contract connector/v1 --endpoint http://localhost:9100/mcp \
+    --scenario scenario.json
 ```
 
 (`taktusctl` lives in the project environment, hence `uv run`.)
@@ -62,16 +87,21 @@ The conformance suite is the real asset here — not the adapter code, but the a
 Without it, "interchangeable" is an assertion.
 
 The suite lives in `src/taktus/conformance/` and imports nothing from the control plane; it talks
-to a worker over HTTP and SSE as a foreign control plane would. It runs W-01 to W-11 against a
-live endpoint and reports W-12, the removal test, as *pending* until processes exist to remove an
-adapter from. Its report states which half of *verified* it proves. How a third party runs it
-against a worker of their own: [`contracts/worker/v1/CONFORMANCE.md`](../../contracts/worker/v1/CONFORMANCE.md).
-`make gate-conformance` proves the suite itself: the reference worker passes it in both profiles,
-and for every fault the reference worker can inject the suite fails on exactly that check.
+to a worker over HTTP and SSE, and to a connector over MCP, as a foreign control plane would. It
+runs W-01 to W-11 against a live worker and C-01 to C-09 against a live connector, and reports
+W-12 and C-10, the removal test, as *pending* until processes exist to remove an adapter from.
+Its report states which half of *verified* it proves. What both halves share — the report, the
+findings, the catalogue of checks, the schema validators — lives at the package level; the
+connector half is `src/taktus/conformance/connector/`. How a third party runs it against an
+adapter of their own: [`contracts/worker/v1/CONFORMANCE.md`](../../contracts/worker/v1/CONFORMANCE.md)
+and [`contracts/connector/v1/CONFORMANCE.md`](../../contracts/connector/v1/CONFORMANCE.md).
+`make gate-conformance` proves the suite itself for both contracts: the reference worker passes
+it in both profiles, the reference connector passes it against a fake of its service, and for
+every fault either reference adapter can inject the suite fails on exactly that check.
 
-Before the suite runs against a worker, `make gate-contracts` checks the contract itself: every
+Before the suite runs against an adapter, `make gate-contracts` checks the contract itself: every
 schema is valid and carries the `$id` its path prescribes, every example validates, and every check
-W-01..W-12 has a fixture (`tools/validate_contracts.py`).
+W-01..W-12 and C-01..C-10 has a fixture (`tools/validate_contracts.py`).
 
 Every schema is identified by `https://taktus.eu/contracts/<family>/v1/<Concept>.json` — its path
 under `contracts/` behind the project's domain. A released v1 schema is immutable; changes become
@@ -90,7 +120,7 @@ example, not a requirement. The core runs with all of them removed — it simply
 | Worker | `mlbench` | training, evaluation, embeddings, classical ML. The second proof case: hours of runtime, a GPU held, a model artifact returned. |
 | Worker | `claudecode` | the first real coding worker |
 | Worker | `codex` | the second real coding worker; validates the contract against a second vendor |
-| Connector | `github` | repository, issues, pull requests, pipelines |
+| Connector | `github` | repository: issues, pull requests, pipelines, comments — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector. Not yet bound into the run (`0.2.0`) |
 | Connector | `chat` | both a command channel and a delivery channel |
 | Connector | `http` | the generic fallback for anything with a documented API |
 | Model | `openai_compatible` | covers Ollama, vLLM and most vendors |

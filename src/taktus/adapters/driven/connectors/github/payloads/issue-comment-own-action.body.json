@@ -1,0 +1,74 @@
+{
+  "action": "created",
+  "issue": {
+    "url": "https://api.example/repos/placeholder-owner/placeholder-repo/issues/412",
+    "html_url": "https://repo.example/placeholder-owner/placeholder-repo/issues/412",
+    "id": 2000000412,
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "number": 412,
+    "title": "Pin the model version on every ml step",
+    "user": {
+      "login": "placeholder-user-1",
+      "id": 100000001,
+      "node_id": "PLACEHOLDER_NODE_ID",
+      "avatar_url": "https://avatars.example/placeholder",
+      "html_url": "https://repo.example/placeholder-user-1",
+      "type": "User",
+      "site_admin": false
+    },
+    "labels": [],
+    "state": "open",
+    "locked": false,
+    "comments": 0,
+    "created_at": "2000-01-01T00:00:00Z",
+    "updated_at": "2000-01-01T00:00:00Z",
+    "closed_at": null,
+    "body": "Every ml step must carry model as name@version."
+  },
+  "comment": {
+    "url": "https://api.example/repos/placeholder-owner/placeholder-repo/issues/comments/3000000002",
+    "html_url": "https://repo.example/placeholder-owner/placeholder-repo/issues/412#issuecomment-3000000002",
+    "id": 3000000002,
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "user": {
+      "login": "placeholder-user-9",
+      "id": 100000009,
+      "node_id": "PLACEHOLDER_NODE_ID",
+      "avatar_url": "https://avatars.example/placeholder",
+      "html_url": "https://repo.example/placeholder-user-9",
+      "type": "Bot",
+      "site_admin": false
+    },
+    "created_at": "2000-01-01T00:00:00Z",
+    "updated_at": "2000-01-01T00:00:00Z",
+    "body": "On it: run run_placeholder started.\n\n<!-- taktus-idempotency-key run_placeholder:reply:1 -->\n"
+  },
+  "repository": {
+    "id": 900000001,
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "name": "placeholder-repo",
+    "full_name": "placeholder-owner/placeholder-repo",
+    "private": false,
+    "owner": {
+      "login": "placeholder-user-0",
+      "id": 100000000,
+      "node_id": "PLACEHOLDER_NODE_ID",
+      "avatar_url": "https://avatars.example/placeholder",
+      "html_url": "https://repo.example/placeholder-user-0",
+      "type": "User",
+      "site_admin": false
+    },
+    "html_url": "https://repo.example/placeholder-owner/placeholder-repo",
+    "url": "https://api.example/repos/placeholder-owner/placeholder-repo",
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "placeholder-user-9",
+    "id": 100000009,
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "avatar_url": "https://avatars.example/placeholder",
+    "html_url": "https://repo.example/placeholder-user-9",
+    "type": "Bot",
+    "site_admin": false
+  }
+}

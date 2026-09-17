@@ -1,0 +1,9 @@
+{
+  "events": [
+    "message.posted",
+    "message.mentioned"
+  ],
+  "signature": {
+    "scheme": "hmac-sha256"
+  }
+}

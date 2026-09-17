@@ -3,7 +3,11 @@
 A check ends in one of four states. `passed` and `failed` mean what they say. `inconclusive`
 means the suite could not provoke the situation the check is about — the message says what would
 make it conclusive. `pending` means the check is outside what a suite against one endpoint can
-prove at all; today that is W-12, the removal test, which needs processes.
+prove at all; today that is the removal test of each contract — W-12, C-10 — which needs
+processes.
+
+The same report serves every contract: a check names its catalogue by its identifier
+(`catalogue.py`), and the report carries the contract it was run for.
 
 Maturity is stated as two halves (docs/architecture/contracts.md §3): the conformance half, which
 this report proves or refutes, and the removal-test half, which stays pending. No report marks an
@@ -18,10 +22,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from taktus.conformance.rules import CHECKS, SECTIONS
-
-CONTRACT = "worker/v1"
-README = "contracts/worker/v1/README.md"
+from taktus.conformance.catalogue import catalogue_of
 
 
 class Status(StrEnum):
@@ -66,12 +67,13 @@ class CheckResult:
     def _make(
         cls, check: str, status: Status, observed: str, details: list[str] | None
     ) -> CheckResult:
+        catalogue = catalogue_of(check)
         return cls(
             id=check,
-            title=CHECKS[check],
+            title=catalogue.checks[check].title,
             status=status,
-            requirement=REQUIREMENTS[check],
-            section=f"{README} {SECTIONS[check]}",
+            requirement=catalogue.checks[check].requirement,
+            section=catalogue.where(check),
             observed=observed,
             details=list(details or []),
         )
@@ -79,7 +81,7 @@ class CheckResult:
 
 @dataclass
 class RunSummary:
-    """One assignment the suite posted, and how it ended."""
+    """One assignment the suite posted, and how it ended (worker contract)."""
 
     purpose: str
     assignment_id: str
@@ -88,13 +90,23 @@ class RunSummary:
 
 
 @dataclass
+class CallSummary:
+    """One tool call the suite made, and how it ended (connector contract)."""
+
+    purpose: str
+    tool: str
+    outcome: str
+
+
+@dataclass
 class Report:
     endpoint: str
-    contract: str = CONTRACT
+    contract: str
     started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     finished_at: str | None = None
     checks: list[CheckResult] = field(default_factory=list)
     runs: list[RunSummary] = field(default_factory=list)
+    calls: list[CallSummary] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def add(self, result: CheckResult) -> None:
@@ -160,6 +172,7 @@ class Report:
             "maturity": self.maturity(),
             "checks": [asdict(c) for c in self.checks],
             "runs": [asdict(r) for r in self.runs],
+            "calls": [asdict(c) for c in self.calls],
             "notes": list(self.notes),
         }
 
@@ -188,35 +201,3 @@ class Report:
         for note in self.notes:
             lines.append(f"note: {note}")
         return "\n".join(lines) + "\n"
-
-
-REQUIREMENTS: dict[str, str] = {
-    "W-01": "GET /v1/capabilities answers 200 with a body that validates against "
-    "Worker.json#/$defs/Capabilities and lists at least one consumption kind",
-    "W-02": "POST /v1/estimate answers 200 with a body that validates against "
-    "Worker.json#/$defs/Estimate; confidence, wall_seconds and steps are always present",
-    "W-03": "every event validates against Worker.json#/$defs/Event; seq starts at 1 and "
-    "increases by exactly 1; the SSE id field carries seq and the SSE event field carries type; "
-    "the stream ends with assignment.finished; a client that sends the last seq it has seen in "
-    "Last-Event-ID or as ?after= receives exactly the events after it",
-    "W-04": "every step that started has a consumption.reported with its step_id before the next "
-    "step starts; a worker that only settles up at the end makes admission control impossible",
-    "W-05": "at least one step.boundary per assignment that was not rejected; each names a step "
-    "that started",
-    "W-06": "after POST /stop is acknowledged the running step finishes, the worker emits "
-    "step.boundary and then assignment.finished with outcome stopped and the same checkpoint_ref; "
-    "no step starts after that boundary; GET /v1/assignments/{id} agrees",
-    "W-07": "a tool.called for a tool outside allowed_tools, or matching forbidden, carries "
-    "refused: true and is not executed",
-    "W-08": "a credential referenced by name in the assignment never appears — as its value — in "
-    "any event, in any artifact, in the assignment state, or in the worker's log",
-    "W-09": "every tool.called carries arguments_digest as sha256: followed by 64 lowercase hex "
-    "characters, and no argument in clear",
-    "W-10": "an assignment whose estimate exceeds its limits is answered with status finished "
-    "and outcome rejected, and its stream carries exactly one event, assignment.finished with "
-    "outcome rejected and a reason",
-    "W-11": "an assignment resumed from a checkpoint_ref produces no artifact that was produced "
-    "before that checkpoint; every artifact.produced appears in GET /artifacts with the same "
-    "digest, and its bytes hash to it",
-    "W-12": "removing the adapter changes quality or cost but breaks no process",
-}

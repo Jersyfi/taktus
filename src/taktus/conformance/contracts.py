@@ -2,8 +2,9 @@
 
 The schemas live under contracts/ in the repository and are copied into the wheel, so that the
 suite works from a checkout and from an installed package alike. Every schema is registered under
-the `$id` its path prescribes (ADR-0019); relative `$ref`s between the worker contract and the
-shared kernel resolve through that registry.
+the `$id` its path prescribes (ADR-0019); relative `$ref`s between a contract and the shared
+kernel resolve through that registry. `validator` and `first_error` serve the worker contract by
+default and the connector contract on request.
 """
 
 from __future__ import annotations
@@ -22,6 +23,8 @@ from referencing.jsonschema import DRAFT202012
 
 NAMESPACE = "https://taktus.eu/contracts/"
 WORKER = NAMESPACE + "worker/v1/Worker.json"
+CONNECTOR = NAMESPACE + "connector/v1/Connector.json"
+SCHEMAS = {"worker/v1": WORKER, "connector/v1": CONNECTOR}
 
 type Json = dict[str, Any]
 type SchemaRegistry = Registry[bool | Mapping[str, Any]]
@@ -52,21 +55,22 @@ def registry() -> SchemaRegistry:
 
 
 @cache
-def validator(definition: str) -> Draft202012Validator:
-    """A validator for one definition of Worker.json, for example "Capabilities"."""
+def validator(definition: str, contract: str = "worker/v1") -> Draft202012Validator:
+    """A validator for one definition of a contract's schema, for example "Capabilities" of
+    Worker.json (the default) or of Connector.json."""
     return Draft202012Validator(
         {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$ref": f"{WORKER}#/$defs/{definition}",
+            "$ref": f"{SCHEMAS[contract]}#/$defs/{definition}",
         },
         registry=registry(),
         format_checker=FormatChecker(),
     )
 
 
-def first_error(definition: str, instance: Any) -> str | None:
+def first_error(definition: str, instance: Any, contract: str = "worker/v1") -> str | None:
     """The most relevant validation error as one line, or None when the instance validates."""
-    error = best_match(validator(definition).iter_errors(instance))
+    error = best_match(validator(definition, contract).iter_errors(instance))
     if error is None:
         return None
     if error.validator == "oneOf" and error.context:

@@ -1,0 +1,4 @@
+{
+  "reason": "bad_signature",
+  "detail": "the signature does not verify against the intake secret"
+}

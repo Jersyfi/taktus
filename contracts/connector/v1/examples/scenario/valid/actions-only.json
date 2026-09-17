@@ -1,0 +1,29 @@
+{
+  "credentials": {
+    "actions": "WAREHOUSE_TOKEN"
+  },
+  "read": {
+    "operation": "warehouse.tables.query",
+    "input": {
+      "sql": "select 1"
+    }
+  },
+  "writes": [
+    {
+      "operation": "warehouse.tables.insert",
+      "input": {
+        "table": "conformance",
+        "row": {
+          "id": "{{unique}}"
+        }
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "warehouse.tables.query",
+    "input": {
+      "sql": "select from"
+    },
+    "expected_cause": "invalid"
+  }
+}

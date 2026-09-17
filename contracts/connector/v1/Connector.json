@@ -1,0 +1,469 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/connector/v1/Connector.json",
+  "title": "Connector contract v1",
+  "description": "What Taktus needs from a tool or channel on top of the Model Context Protocol. A connector is an MCP server. Its operations are MCP tools; this schema defines the declaration it serves, the context every call carries, the envelopes every call returns, and the intake of events from the outside. Two directions with different governance: actions, where Taktus calls the tool, and intake, where the tool reaches Taktus. The prose is in README.md, the rationale in ADR-0024. Shared concepts are referenced from contracts/shared/v1 and never redefined here. No product name appears in this contract; a connector is named by what it can do.",
+  "$defs": {
+    "OperationName": {
+      "title": "OperationName",
+      "description": "The name of an operation, which is also the name of its MCP tool: the capability it belongs to, extended by one segment for the verb. repository.issues.read belongs to repository.issues. At least three segments, so that an operation name never validates as a bare capability and a capability never as an operation.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9_-]*){2,}$"
+    },
+    "Effect": {
+      "title": "Effect",
+      "description": "Whether the effect of an operation leaves Taktus. read: nothing outside changes. write: an external record is created, updated or deleted. delivery: a message, a file or a report reaches a person or a system through a channel. write and delivery leave the system; the run records them as egress.write and egress.delivery in the ledger (ADR-0022), and correcting their result afterwards is anchored.",
+      "type": "string",
+      "enum": ["read", "write", "delivery"]
+    },
+    "Idempotency": {
+      "title": "Idempotency",
+      "description": "How a repeat of an outward operation is recognised. native: the target system accepts the idempotency key itself and returns the original result on a repeat. marked: the connector writes the key into the record it creates and looks the record up by that mark before acting, so that a repeat finds the original. none: neither is possible; the connector cannot recognise a repeat and acts every time, and Taktus never sends one on its own (README section 4).",
+      "type": "string",
+      "enum": ["native", "marked", "none"]
+    },
+    "Operation": {
+      "title": "Operation",
+      "description": "One thing the connector can do, declared once. Its MCP tool carries the same name. effect is always declared; idempotency exactly when the effect leaves the system.",
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/$defs/OperationName" },
+        "capability": {
+          "description": "The capability this operation belongs to; name starts with it, followed by a dot.",
+          "$ref": "../../shared/v1/Capability.json"
+        },
+        "effect": { "$ref": "#/$defs/Effect" },
+        "idempotency": { "$ref": "#/$defs/Idempotency" },
+        "summary": { "type": "string", "minLength": 1 }
+      },
+      "required": ["name", "capability", "effect", "summary"],
+      "additionalProperties": false,
+      "if": { "properties": { "effect": { "const": "read" } } },
+      "then": { "not": { "required": ["idempotency"] } },
+      "else": { "required": ["idempotency"] }
+    },
+    "CredentialName": {
+      "title": "CredentialName",
+      "description": "The name of a secret. Values never travel through this contract.",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "CredentialNeed": {
+      "title": "CredentialNeed",
+      "description": "A credential the connector needs, by name and purpose. actions: the requesting identity's credential for the target system, referenced in every call. intake: the secret the target system signs events with. The operator creates the secrets; CREDENTIALS.md lists names, never values.",
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/$defs/CredentialName" },
+        "purpose": { "type": "string", "enum": ["actions", "intake"] }
+      },
+      "required": ["name", "purpose"],
+      "additionalProperties": false
+    },
+    "ConsumptionKind": {
+      "title": "ConsumptionKind",
+      "description": "What kind of limit applies to the connector's use. quota: a window of calls to the target system. currency: paid per call. compute: held hardware, rare for a connector.",
+      "type": "string",
+      "enum": ["quota", "currency", "compute"]
+    },
+    "ConsumptionDeclaration": {
+      "title": "ConsumptionDeclaration",
+      "description": "How the connector's use is measured. Connector calls cost close to nothing and are counted, not ignored: every result reports what it used in one of these kinds. Each kind brings its own detail, as in the worker contract.",
+      "type": "object",
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ConsumptionKind" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "window_seconds": {
+          "description": "Length of the quota window. Required with kind quota.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "unit": {
+          "description": "Name of the quota unit the connector reports in, for example requests. Required with kind quota.",
+          "type": "string",
+          "minLength": 1
+        },
+        "resource_classes": {
+          "type": "array",
+          "items": { "$ref": "../../shared/v1/Consumption.json#/$defs/resourceClass" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "currencies": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z]{3}$" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": ["kinds"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "kinds": { "contains": { "const": "quota" } } } },
+          "then": { "required": ["window_seconds", "unit"] }
+        },
+        {
+          "if": { "properties": { "kinds": { "contains": { "const": "compute" } } } },
+          "then": { "required": ["resource_classes"] }
+        },
+        {
+          "if": { "properties": { "kinds": { "contains": { "const": "currency" } } } },
+          "then": { "required": ["currencies"] }
+        }
+      ]
+    },
+    "SignatureScheme": {
+      "title": "SignatureScheme",
+      "description": "How the target system signs the events it sends. hmac-sha256: a keyed hash over the raw body with the intake secret, carried in a header. There is no scheme none: an intake without a signature is not a valid declaration.",
+      "type": "string",
+      "enum": ["hmac-sha256"]
+    },
+    "IntakeDeclaration": {
+      "title": "IntakeDeclaration",
+      "description": "What the connector can receive from the target system, and how it verifies that the event came from there. events are the event kinds the connector normalises, as lowercase dotted tokens; anything else is refused as unsupported.",
+      "type": "object",
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "signature": {
+          "type": "object",
+          "properties": { "scheme": { "$ref": "#/$defs/SignatureScheme" } },
+          "required": ["scheme"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["events", "signature"],
+      "additionalProperties": false
+    },
+    "Capabilities": {
+      "title": "Capabilities",
+      "description": "What the connector declares about itself, served as the MCP resource taktus://connector/v1/capabilities. Capabilities are named by function, never by product. Every operation listed here is an MCP tool of the same name, and every tool the connector serves is listed here; intake is the one tool that is not an operation. permissions is constant passthrough: the connector acts with the credentials of the requesting identity and never widens what that identity may do; it is declared so that a reader sees the obligation.",
+      "type": "object",
+      "properties": {
+        "contract": { "const": "connector/v1" },
+        "version": {
+          "description": "The connector's own version, as it names it. Recorded in the provenance of every result it contributes to. Never a product name.",
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "$ref": "../../shared/v1/Capability.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "operations": { "type": "array", "items": { "$ref": "#/$defs/Operation" }, "minItems": 1 },
+        "intake": { "$ref": "#/$defs/IntakeDeclaration" },
+        "credentials": { "type": "array", "items": { "$ref": "#/$defs/CredentialNeed" }, "minItems": 1 },
+        "consumption": { "$ref": "#/$defs/ConsumptionDeclaration" },
+        "permissions": { "const": "passthrough" }
+      },
+      "required": ["contract", "capabilities", "operations", "credentials", "consumption", "permissions"],
+      "additionalProperties": false
+    },
+    "CredentialReference": {
+      "title": "CredentialReference",
+      "description": "A secret by name only. The connector's runtime makes the value available under that name — in the environment or as a file — before the call; the connector reads it at the moment of the call, uses it for that call and keeps nothing. The value never travels through this contract, never appears in a result, an error, a declaration or a log.",
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/$defs/CredentialName" },
+        "injected_as": { "type": "string", "enum": ["env", "file"] },
+        "path": {
+          "description": "Where the file is mounted. Only with injected_as file.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["name", "injected_as"],
+      "additionalProperties": false,
+      "if": { "properties": { "injected_as": { "const": "file" } } },
+      "then": { "required": ["path"] },
+      "else": { "not": { "required": ["path"] } }
+    },
+    "IdempotencyKey": {
+      "title": "IdempotencyKey",
+      "description": "Chosen by Taktus for one attempt of one step of one run, stable across a resume of that attempt after a restart, and never reused. Opaque to the connector.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{16,128}$"
+    },
+    "CallContext": {
+      "title": "CallContext",
+      "description": "What Taktus sends with every call, beside the operation's own input. identity is the requesting identity; credentials are that identity's, by name. attempt counts the executions of the step; a resume after a restart continues the same attempt and carries the same idempotency_key.",
+      "type": "object",
+      "properties": {
+        "tenant": { "type": "string", "minLength": 1 },
+        "identity": {
+          "description": "The single authenticated Taktus identity on whose behalf the call is made. An opaque identifier.",
+          "type": "string",
+          "minLength": 1
+        },
+        "run_id": { "type": "string", "minLength": 1 },
+        "step_id": { "type": "string", "minLength": 1 },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "idempotency_key": { "$ref": "#/$defs/IdempotencyKey" },
+        "credentials": { "type": "array", "items": { "$ref": "#/$defs/CredentialReference" }, "uniqueItems": true },
+        "autonomy_level": { "$ref": "../../shared/v1/AutonomyLevel.json" }
+      },
+      "required": ["tenant", "identity", "run_id", "step_id", "attempt", "idempotency_key", "credentials"],
+      "additionalProperties": false
+    },
+    "Arguments": {
+      "title": "Arguments",
+      "description": "The arguments of an operation's MCP tool: the call context and the operation's own input. The input's shape belongs to the operation and is published as part of the tool's input schema.",
+      "type": "object",
+      "properties": { "context": { "$ref": "#/$defs/CallContext" }, "input": { "type": "object" } },
+      "required": ["context", "input"],
+      "additionalProperties": false
+    },
+    "Record": {
+      "title": "Record",
+      "description": "An external record the operation created, updated, deleted or delivered to: what it is, how the target system identifies it, and where it can be seen. This is what the egress entry references.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "What the record is, as a lowercase dotted token: vcs.pullrequest, issue, comment, pipeline.run, message.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "id": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind", "id"],
+      "additionalProperties": false
+    },
+    "EffectReport": {
+      "title": "EffectReport",
+      "description": "What the call did to the outside. kind repeats the operation's declared effect. For write and delivery: replayed says whether the idempotency key was recognised and the original result returned instead of acting again; records names what went out; content_digest is the digest of what was written, so that the ledger can reference it without holding it.",
+      "type": "object",
+      "properties": {
+        "kind": { "$ref": "#/$defs/Effect" },
+        "replayed": { "type": "boolean" },
+        "records": { "type": "array", "items": { "$ref": "#/$defs/Record" }, "minItems": 1 },
+        "content_digest": { "$ref": "../../shared/v1/Artifact.json#/$defs/digest" }
+      },
+      "required": ["kind"],
+      "additionalProperties": false,
+      "if": { "properties": { "kind": { "const": "read" } } },
+      "then": {
+        "not": {
+          "anyOf": [{ "required": ["replayed"] }, { "required": ["records"] }, { "required": ["content_digest"] }]
+        }
+      },
+      "else": { "required": ["replayed", "records"] }
+    },
+    "Result": {
+      "title": "Result",
+      "description": "The structured content of a successful tool call. output is the operation's own result; effect what the call did to the outside; consumption what it used, in a declared kind, at least one quantity — a read of one record is one request, not nothing.",
+      "type": "object",
+      "properties": {
+        "output": { "type": "object" },
+        "effect": { "$ref": "#/$defs/EffectReport" },
+        "consumption": { "$ref": "../../shared/v1/Consumption.json" }
+      },
+      "required": ["output", "effect", "consumption"],
+      "additionalProperties": false
+    },
+    "Cause": {
+      "title": "Cause",
+      "description": "Why a call failed, as one token. unauthenticated: no usable credential for the requesting identity. forbidden: the identity may not do this in the target system — the source system's permission stands. not_found: the record does not exist or the identity cannot see it. invalid: the input is not acceptable to the target. conflict: the state of the target does not admit the operation, for example a record that already exists and is not ours. unavailable: the target did not answer, or answered that it cannot right now. unknown: the call was made and the answer did not arrive, so the effect may or may not have happened.",
+      "type": "string",
+      "enum": ["unauthenticated", "forbidden", "not_found", "invalid", "conflict", "unavailable", "unknown"]
+    },
+    "Error": {
+      "title": "Error",
+      "description": "The structured content of a failed tool call, with isError true. Every error is a failure in the sense of ADR-0021: the step did not complete. A connector never reports a result defect; that is found by a check of a result after the fact, not by the call that produced it. effect says whether the outward effect happened: none, or unknown when the answer did not arrive. retryable says whether the same call with the same idempotency key may be repeated without a second effect.",
+      "type": "object",
+      "properties": {
+        "class": { "const": "failure" },
+        "cause": { "$ref": "#/$defs/Cause" },
+        "effect": { "type": "string", "enum": ["none", "unknown"] },
+        "retryable": { "type": "boolean" },
+        "detail": {
+          "description": "For a person. Never a credential, never the target's raw response in full.",
+          "type": "string",
+          "minLength": 1
+        },
+        "consumption": { "$ref": "../../shared/v1/Consumption.json" }
+      },
+      "required": ["class", "cause", "effect", "retryable", "detail"],
+      "additionalProperties": false,
+      "if": { "properties": { "cause": { "const": "unknown" } } },
+      "then": { "properties": { "effect": { "const": "unknown" } } },
+      "else": { "properties": { "effect": { "const": "none" } } }
+    },
+    "IntakeArguments": {
+      "title": "IntakeArguments",
+      "description": "The arguments of the intake tool: one event as it arrived from the target system, before anything was believed about it. body is the raw body as text, exactly as received, because the signature covers it byte for byte. The transport that received the event is not part of this contract; intake is a function from this to an IntakeResult.",
+      "type": "object",
+      "properties": {
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "body": { "type": "string" },
+        "received_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["headers", "body", "received_at"],
+      "additionalProperties": false
+    },
+    "Sender": {
+      "title": "Sender",
+      "description": "Who caused the event, as the target system names them: an opaque account identifier, never a name or an address. The identity component maps it to a Taktus identity; an account it cannot map gets no execution. kind says whether a person or an automation acted.",
+      "type": "object",
+      "properties": {
+        "account": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["person", "automation"] }
+      },
+      "required": ["account", "kind"],
+      "additionalProperties": false
+    },
+    "Intake": {
+      "title": "Intake",
+      "description": "An accepted event, normalised as far as the channel can: the command of contracts/shared/v1/Command.json without identity and org_path, which the identity component adds from the sender. event_id is the target system's identifier for the delivery, so that a redelivery is recognised. reply_to says where the reply goes: back into the same channel.",
+      "type": "object",
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1 },
+        "event": {
+          "description": "The event kind, one of those the intake declaration lists.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+        },
+        "channel": { "$ref": "../../shared/v1/Capability.json" },
+        "sender": { "$ref": "#/$defs/Sender" },
+        "intent": {
+          "type": "object",
+          "properties": { "raw": { "type": "string" } },
+          "required": ["raw"],
+          "additionalProperties": false
+        },
+        "context": {
+          "description": "Channel context: the repository, the issue or pull request, the thread. Shape belongs to the channel. Identifiers, never a credential.",
+          "type": "object"
+        },
+        "reply_to": {
+          "type": "object",
+          "properties": {
+            "channel": { "$ref": "../../shared/v1/Capability.json" },
+            "address": { "type": "string", "minLength": 1 },
+            "thread": { "type": "string" }
+          },
+          "required": ["channel", "address"],
+          "additionalProperties": false
+        },
+        "occurred_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["event_id", "event", "channel", "sender", "intent", "context", "reply_to", "occurred_at"],
+      "additionalProperties": false
+    },
+    "RefusalReason": {
+      "title": "RefusalReason",
+      "description": "Why an event was not turned into a command. unsigned: no signature. bad_signature: a signature that does not verify. malformed: a body that cannot be read. unsupported_event: an event kind the connector does not normalise. own_action: the event was caused by the connector's own earlier action, and acting on it would loop.",
+      "type": "string",
+      "enum": ["unsigned", "bad_signature", "malformed", "unsupported_event", "own_action"]
+    },
+    "Refusal": {
+      "title": "Refusal",
+      "description": "A clean refusal: the event was not processed, and this says why. An unsigned or wrongly signed event is refused before its body is read.",
+      "type": "object",
+      "properties": { "reason": { "$ref": "#/$defs/RefusalReason" }, "detail": { "type": "string", "minLength": 1 } },
+      "required": ["reason", "detail"],
+      "additionalProperties": false
+    },
+    "IntakeResult": {
+      "title": "IntakeResult",
+      "description": "The structured content the intake tool returns: exactly one of accepted or refused. A refusal is not an error of the tool call; the call succeeded in deciding.",
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": { "accepted": { "$ref": "#/$defs/Intake" } },
+          "required": ["accepted"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "refused": { "$ref": "#/$defs/Refusal" } },
+          "required": ["refused"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ScenarioCall": {
+      "title": "ScenarioCall",
+      "description": "One operation the conformance suite calls, with its input. In string values, {{unique}} is replaced by a fresh token per call, so that a write can be repeated with a new key without colliding with its own earlier record.",
+      "type": "object",
+      "properties": {
+        "operation": { "$ref": "#/$defs/OperationName" },
+        "input": { "type": "object" },
+        "expected_cause": { "$ref": "#/$defs/Cause" }
+      },
+      "required": ["operation", "input"],
+      "additionalProperties": false
+    },
+    "ScenarioPayload": {
+      "title": "ScenarioPayload",
+      "description": "One recorded event for the intake checks: the headers as the target system sends them, without the signature header, and the body — inline as body, or as body_file, a path relative to the scenario file, so that a recorded delivery stays readable. Headers may also come from headers_file. The suite signs the body with the intake secret, or leaves it unsigned, or signs it wrongly.",
+      "type": "object",
+      "properties": {
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "headers_file": { "type": "string", "minLength": 1 },
+        "body": { "type": "string" },
+        "body_file": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        { "oneOf": [{ "required": ["headers"] }, { "required": ["headers_file"] }] },
+        { "oneOf": [{ "required": ["body"] }, { "required": ["body_file"] }] }
+      ]
+    },
+    "Scenario": {
+      "title": "Scenario",
+      "description": "The input of the conformance suite for one connector: which operations to call with which input, and which recorded events to deliver. The suite cannot know the input an operation needs; the connector's author states it here, against a target the connector may write to. credentials names the secrets the suite references by name; the suite reads their values from its own environment for the scan and for signing, and never sends them.",
+      "type": "object",
+      "properties": {
+        "credentials": {
+          "type": "object",
+          "properties": {
+            "actions": { "$ref": "#/$defs/CredentialName" },
+            "intake": { "$ref": "#/$defs/CredentialName" }
+          },
+          "required": ["actions"],
+          "additionalProperties": false
+        },
+        "read": { "$ref": "#/$defs/ScenarioCall" },
+        "writes": {
+          "description": "Outward operations whose idempotency is native or marked. Each is called twice with one key, then once with another.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/ScenarioCall" },
+          "minItems": 1
+        },
+        "invalid": {
+          "description": "A call the target must refuse, with the cause the error must carry.",
+          "$ref": "#/$defs/ScenarioCall"
+        },
+        "intake": {
+          "type": "object",
+          "properties": {
+            "signature": {
+              "description": "Where the suite puts the signature it computes: the header, and the prefix before the lowercase hex digest.",
+              "type": "object",
+              "properties": { "header": { "type": "string", "minLength": 1 }, "prefix": { "type": "string" } },
+              "required": ["header", "prefix"],
+              "additionalProperties": false
+            },
+            "supported": { "$ref": "#/$defs/ScenarioPayload" },
+            "unsupported": { "$ref": "#/$defs/ScenarioPayload" },
+            "own_action": { "$ref": "#/$defs/ScenarioPayload" }
+          },
+          "required": ["signature", "supported"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["credentials", "read", "writes", "invalid"],
+      "additionalProperties": false
+    }
+  }
+}

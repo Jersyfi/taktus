@@ -1,0 +1,9 @@
+{
+  "headers": {
+    "content-type": "application/json",
+    "x-event": "issue_comment",
+    "x-delivery": "dlv_01J8R4A1B2C3D4E5F6G7H8J9K1"
+  },
+  "body": "{\"action\":\"created\",\"issue\":{\"number\":412},\"comment\":{\"id\":9001,\"body\":\"@taktus turn this into a pull request\"},\"sender\":{\"id\":100200,\"type\":\"User\"}}",
+  "received_at": "2026-09-16T08:15:03Z"
+}

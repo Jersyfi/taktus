@@ -91,9 +91,10 @@ you see the domain, not the framework.
 | [docs/architecture/accounting.md](docs/architecture/accounting.md) | Consumption measurement and the Takt as a unit |
 | [docs/architecture/contracts.md](docs/architecture/contracts.md) | Worker, connector and model contracts; maturity levels |
 | [contracts/worker/v1/CONFORMANCE.md](contracts/worker/v1/CONFORMANCE.md) | How to check a worker of your own against the contract |
+| [contracts/connector/v1/CONFORMANCE.md](contracts/connector/v1/CONFORMANCE.md) | How to check a connector of your own against the contract |
 | [docs/architecture/project-structure.md](docs/architecture/project-structure.md) | Components, tree, dependency rules, conventions |
 | [examples/README.md](examples/README.md) | Running a process bundle with `uv run taktusctl run`; the shape of a bundle |
-| [docs/adr/README.md](docs/adr/README.md) | 20 architecture decisions with the alternatives rejected |
+| [docs/adr/README.md](docs/adr/README.md) | 24 architecture decisions with the alternatives rejected |
 | [docs/decisions/](docs/decisions/README.md) | The project's decision register: which questions reach the owner, and what was answered |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones `0.1.0` to `1.0.0` |
 | [docs/usecases/](docs/usecases/) | The worked use cases |
@@ -107,7 +108,7 @@ you see the domain, not the framework.
 | Language | Python ≥ 3.13, `asyncio` throughout |
 | Database | PostgreSQL 16+ — state, queue, outbox, ledger, vector search (`pgvector`) |
 | API | FastAPI, OpenAPI 3.1, RFC 9457 problem details, SSE |
-| Agent interface | MCP — Taktus is a client, and exposes itself as a server |
+| Agent and tool interface | MCP — Taktus is a client of every connector (`contracts/connector/v1`, the `mcp` package for the suite and the reference connector), and exposes itself as a server later |
 | Domain types | Pydantic v2 value objects; SQLAlchemy Core at the boundary, never in the domain — the adapter stores an aggregate's document and never imports its class |
 | Shared kernel | JSON Schema under `contracts/shared`, bound to Python by hand and checked by a test |
 | Process bundles | YAML, read by PyYAML in the command-line adapter only |

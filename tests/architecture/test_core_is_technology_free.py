@@ -2,9 +2,9 @@
 
 `import-linter` (.importlinter, run by `make gate-arch`) holds the import graph: no component
 imports another, the core imports no driver, adapters import no component. What it cannot see
-is here: a product name anywhere in the core, a direct call to the clock or to randomness, an
-import outside the allowed set, a domain model that is not frozen and closed, a worker that
-reaches into the control plane.
+is here: a product name anywhere in the core or in the contracts, a direct call to the clock or
+to randomness, an import outside the allowed set, a domain model that is not frozen and closed,
+a worker that reaches into the control plane.
 """
 
 from __future__ import annotations
@@ -22,7 +22,10 @@ from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "taktus"
+CONTRACTS = ROOT / "contracts"
 CORE = ("components", "ports", "shared", "wire")
+# The one product name the contracts may carry: where to clone this repository from.
+REPOSITORY_URL = "github.com/Jersyfi/taktus"
 
 # The sharpest test in the project (ADR-0003): a product name in the core is a finding, even in
 # a comment. Names are matched as whole words, case-insensitively.
@@ -111,6 +114,20 @@ def imported_modules(tree: ast.AST) -> list[str]:
 def test_no_product_name_in_the_core(path: Path) -> None:
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         match = PRODUCT.search(line)
+        assert match is None, f"{rel(path)}:{number}: product name {match.group(0)!r}"
+
+
+def contract_files() -> list[Path]:
+    return sorted(p for p in CONTRACTS.rglob("*") if p.suffix in {".json", ".yaml", ".md"})
+
+
+@pytest.mark.parametrize("path", contract_files(), ids=rel)
+def test_no_product_name_in_the_contracts(path: Path) -> None:
+    """A contract names capabilities, never products (ADR-0003): a schema, an example or a
+    README that mentions one has smuggled a product back in. The only exception is the address
+    of this repository in the instructions for cloning it."""
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        match = PRODUCT.search(line.replace(REPOSITORY_URL, ""))
         assert match is None, f"{rel(path)}:{number}: product name {match.group(0)!r}"
 
 

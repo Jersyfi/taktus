@@ -1,0 +1,10 @@
+{
+  "output": {
+    "number": 57,
+    "url": "https://repo.example/acme/taktus/pull/57",
+    "state": "open"
+  },
+  "consumption": {
+    "quota_units": 2
+  }
+}

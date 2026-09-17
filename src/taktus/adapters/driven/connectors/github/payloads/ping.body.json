@@ -1,0 +1,43 @@
+{
+  "zen": "Placeholder.",
+  "hook_id": 700000001,
+  "hook": {
+    "type": "Repository",
+    "id": 700000001,
+    "events": [
+      "issue_comment",
+      "issues",
+      "pull_request",
+      "workflow_run"
+    ],
+    "active": true
+  },
+  "repository": {
+    "id": 900000001,
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "name": "placeholder-repo",
+    "full_name": "placeholder-owner/placeholder-repo",
+    "private": false,
+    "owner": {
+      "login": "placeholder-user-0",
+      "id": 100000000,
+      "node_id": "PLACEHOLDER_NODE_ID",
+      "avatar_url": "https://avatars.example/placeholder",
+      "html_url": "https://repo.example/placeholder-user-0",
+      "type": "User",
+      "site_admin": false
+    },
+    "html_url": "https://repo.example/placeholder-owner/placeholder-repo",
+    "url": "https://api.example/repos/placeholder-owner/placeholder-repo",
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "placeholder-user-1",
+    "id": 100000001,
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "avatar_url": "https://avatars.example/placeholder",
+    "html_url": "https://repo.example/placeholder-user-1",
+    "type": "User",
+    "site_admin": false
+  }
+}

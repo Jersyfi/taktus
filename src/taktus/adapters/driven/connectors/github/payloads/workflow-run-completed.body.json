@@ -1,0 +1,59 @@
+{
+  "action": "completed",
+  "workflow_run": {
+    "id": 4000000001,
+    "name": "ci",
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "head_branch": "taktus/issue-412",
+    "head_sha": "0000000000000000000000000000000000000000",
+    "run_number": 1,
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "workflow_id": 5000000001,
+    "url": "https://api.example/repos/placeholder-owner/placeholder-repo/actions/runs/4000000001",
+    "html_url": "https://repo.example/placeholder-owner/placeholder-repo/actions/runs/4000000001",
+    "pull_requests": [
+      {
+        "url": "https://api.example/repos/placeholder-owner/placeholder-repo/pulls/57",
+        "id": 2000000057,
+        "number": 57
+      }
+    ],
+    "created_at": "2000-01-01T00:00:00Z",
+    "updated_at": "2000-01-01T00:00:00Z"
+  },
+  "workflow": {
+    "id": 5000000001,
+    "name": "ci",
+    "path": ".github/workflows/ci.yml"
+  },
+  "repository": {
+    "id": 900000001,
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "name": "placeholder-repo",
+    "full_name": "placeholder-owner/placeholder-repo",
+    "private": false,
+    "owner": {
+      "login": "placeholder-user-0",
+      "id": 100000000,
+      "node_id": "PLACEHOLDER_NODE_ID",
+      "avatar_url": "https://avatars.example/placeholder",
+      "html_url": "https://repo.example/placeholder-user-0",
+      "type": "User",
+      "site_admin": false
+    },
+    "html_url": "https://repo.example/placeholder-owner/placeholder-repo",
+    "url": "https://api.example/repos/placeholder-owner/placeholder-repo",
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "placeholder-user-1",
+    "id": 100000001,
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "avatar_url": "https://avatars.example/placeholder",
+    "html_url": "https://repo.example/placeholder-user-1",
+    "type": "User",
+    "site_admin": false
+  }
+}

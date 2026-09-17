@@ -1,0 +1,6 @@
+{
+  "name": "repository.pullrequests.open",
+  "capability": "repository.pullrequests",
+  "effect": "write",
+  "summary": "Open a pull request from a branch."
+}

@@ -1,0 +1,7 @@
+{
+  "name": "repository.pipelines.trigger",
+  "capability": "repository.pipelines",
+  "effect": "write",
+  "idempotency": "none",
+  "summary": "Start a pipeline. The target offers no way to recognise a repeat."
+}

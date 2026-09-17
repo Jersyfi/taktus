@@ -1,0 +1,43 @@
+{
+  "credentials": { "actions": "REPOSITORY_TOKEN", "intake": "REPOSITORY_WEBHOOK_SECRET" },
+  "read": { "operation": "repository.issues.read", "input": { "number": 1 } },
+  "writes": [
+    {
+      "operation": "repository.issues.create",
+      "input": { "title": "conformance {{unique}}", "body": "Opened by the conformance suite." }
+    },
+    {
+      "operation": "repository.pullrequests.open",
+      "input": {
+        "head": "conformance/{{unique}}",
+        "base": "main",
+        "title": "conformance {{unique}}",
+        "body": "Opened by the conformance suite."
+      }
+    },
+    {
+      "operation": "repository.comments.create",
+      "input": { "number": 1, "body": "Comment {{unique}} by the conformance suite." }
+    }
+  ],
+  "invalid": {
+    "operation": "repository.issues.read",
+    "input": { "number": 999999 },
+    "expected_cause": "not_found"
+  },
+  "intake": {
+    "signature": { "header": "x-hub-signature-256", "prefix": "sha256=" },
+    "supported": {
+      "headers_file": "payloads/issue-comment-created.headers.json",
+      "body_file": "payloads/issue-comment-created.body.json"
+    },
+    "unsupported": {
+      "headers_file": "payloads/ping.headers.json",
+      "body_file": "payloads/ping.body.json"
+    },
+    "own_action": {
+      "headers_file": "payloads/issue-comment-own-action.headers.json",
+      "body_file": "payloads/issue-comment-own-action.body.json"
+    }
+  }
+}

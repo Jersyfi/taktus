@@ -1,0 +1,10 @@
+{
+  "class": "failure",
+  "cause": "forbidden",
+  "effect": "none",
+  "retryable": false,
+  "detail": "the requesting identity may not open pull requests in this repository",
+  "consumption": {
+    "quota_units": 1
+  }
+}
