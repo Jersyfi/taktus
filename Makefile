@@ -70,16 +70,23 @@ db-down: need-docker ## Stop the development database; its data volume stays
 # Self-hosting (deploy/docker/compose.yml): Taktus and PostgreSQL, two containers, in one
 # command. `up` writes the secret files once (random password, never committed), builds the
 # image and waits until readiness answers. `down` stops the containers; every volume stays.
+# `up-dev` layers the reference worker over it (compose.reference-worker.yml), in its own
+# image, for trying a bundle out; the control plane image carries no worker (DEC-0011).
 COMPOSE := deploy/docker/compose.yml
+COMPOSE_WORKER := deploy/docker/compose.reference-worker.yml
 
 up: need-docker ## Bring Taktus up: two containers, migrations applied, ready
 	deploy/docker/secrets.sh
 	docker compose -f $(COMPOSE) up --build --detach --wait
 
-down: need-docker ## Stop the containers; the volumes stay
-	docker compose -f $(COMPOSE) --profile reference-worker down
+up-dev: need-docker ## The same, plus the reference worker in its own image, for development
+	deploy/docker/secrets.sh
+	docker compose -f $(COMPOSE) -f $(COMPOSE_WORKER) up --build --detach --wait
 
-verify-compose: need-docker ## From nothing: up, a run end to end against the reference worker, the container killed and restarted, the run resumed
+down: need-docker ## Stop the containers, with or without the reference worker; the volumes stay
+	docker compose -f $(COMPOSE) -f $(COMPOSE_WORKER) down
+
+verify-compose: need-docker ## From nothing: up with the reference worker, the control plane image checked for worker code, a run end to end, the container killed and restarted, the run resumed
 	deploy/docker/verify.sh
 
 migrate: env ## Bring the database named by TAKTUS_DATABASE_URL to the current schema
@@ -95,4 +102,4 @@ generate: env ## Regenerate what is generated: api/openapi.yaml from the REST in
 
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions test ## Everything CI runs
 
-.PHONY: help doctor env install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions db-up db-down up down verify-compose migrate lint generate gates
+.PHONY: help doctor env install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions db-up db-down up up-dev down verify-compose migrate lint generate gates

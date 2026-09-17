@@ -125,10 +125,20 @@ you see the domain, not the framework.
 
 ## Operating it
 
-A minimal installation is **two containers**: Taktus and PostgreSQL. Everything else is a port with a
-default adapter that needs no extra service.
+The control plane is **two containers**: Taktus and PostgreSQL. Everything else the control
+plane needs is a port with a default adapter that needs no extra service. What those two
+containers can do on their own is run every process built from `rule`, `statistics`, `wait`
+and `human` steps.
 
-- **Docker Compose:** all roles in one container (`deploy/docker/compose.yml`).
+Every process that has a `worker` step needs **one execution unit** in addition — a worker,
+a separate deployable behind the worker contract, in its own image. A process built without
+worker steps needs none, and method maturation moves processes in that direction over time
+(`docs/architecture/methods.md`). No worker code is part of the control plane image: a worker
+executes foreign code, and code that is not in the image cannot be started from a compromised
+control plane (DEC-0011).
+
+- **Docker Compose:** all roles in one container (`deploy/docker/compose.yml`); a worker is
+  configured by endpoint, or started per job by the execution port.
 - **Kubernetes:** one deployment per role, each scaled independently — the chart arrives with
   the next pull request; the daemon already scales that way: runners claim work through
   database locks and never claim the same run, the scheduler is one instance elected by an
@@ -148,7 +158,9 @@ It writes the two secret files the containers read (a random database password a
 that carries it, under `deploy/docker/secrets/`, never committed), builds the image, starts
 PostgreSQL and Taktus, applies the migrations on start, and returns when readiness answers.
 Two containers: Taktus with every role in one process (`TAKTUS_ROLES=all`, the self-hosting
-shape), and PostgreSQL. `make down` stops them and keeps every volume.
+shape), and PostgreSQL. `make down` stops them and keeps every volume. `make up-dev` adds the
+reference worker in its own image, for trying a bundle out
+(`deploy/docker/compose.reference-worker.yml`, development only).
 
 **Readiness means** the database answers and is at the schema this build needs:
 `GET /ready` answers `200`, or `503` with the reason. **Health means** the process is alive:
