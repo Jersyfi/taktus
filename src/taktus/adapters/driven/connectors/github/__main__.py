@@ -1,6 +1,6 @@
 """Run the reference connector as a process.
 
-    python -m taktus.adapters.driven.connectors.github --port 9100 --repository owner/name
+    uv run python -m taktus.adapters.driven.connectors.github --port 9100 --repository owner/name
 
 It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 base URL of the service's API; point it at the fake under `tests/fakes/repository_service.py`

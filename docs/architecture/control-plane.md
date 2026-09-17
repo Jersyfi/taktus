@@ -127,7 +127,7 @@ checkpoint if one arrived, its start otherwise), is admitted again, and the run 
 the steps before it are kept as they are. That is ADR-0013 A made true, and
 `tests/integration/test_restart.py` proves it by killing the process. Whoever resumes a running
 run asserts that no instance is executing it; today that is the operator's explicit act
-(`taktusctl run --resume`), and the daemon's lease on a run will make the check automatic.
+(`uv run taktusctl run --resume`), and the daemon's lease on a run will make the check automatic.
 
 ### 5.2 States
 

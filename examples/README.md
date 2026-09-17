@@ -60,7 +60,7 @@ version; every other method is refused before the run starts.
 | `rule` | `rule: constant` with `value` | the result is the value |
 | `rule` | `rule: verify_artifact` with `step`, `artifact`, optional `pattern` | the result is the text of the named artifact of an earlier step, after its bytes are checked against the digest its producer announced and against the pattern. If either check fails, nothing leaves the step and the run escalates. This is the `exact` pattern of ADR-0014: a worker proposes, a rule produces the value. |
 | `wait` | `seconds` | the run waits through the clock port |
-| `worker` | `task` (`goal`, `acceptance`, `inputs`), optional `max_steps`, `forbidden`, `workspace` | the task goes to a worker that offers every capability in `requires`, in a frame of exactly those capabilities, with what is left of the budget as its limits |
+| `worker` | `task` (`goal`, `acceptance`, `inputs`), optional `max_steps`, `allowed_hosts`, `workspace` | the task goes to a worker that offers every capability in `requires`, in a frame of exactly those capabilities and exactly the hosts in `allowed_hosts` (none, by default), with what is left of the budget as its limits |
 
 Inside `inputs`, the object `{ $from: <step-id> }` is replaced by that step's result — the
 value a rule produced, or `{artifacts: [...]}` for a worker step. The named step must be a

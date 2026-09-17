@@ -111,7 +111,8 @@ own. §5 says what that means for a call.
 `version` is the connector's own version. `consumption` says how the connector's use is measured
 — the same shape as the worker contract's — and every result reports in one of these kinds (§5).
 `credentials` names the secrets the connector needs, by name and purpose; the operator creates
-them, and `CREDENTIALS.md` of the repository that deploys the connector lists the names.
+them, and `CREDENTIALS.md` of the repository that deploys the connector describes each as a
+parameter — what it is for, the permissions it needs, how it rotates, and how it is supplied.
 
 ---
 

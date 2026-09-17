@@ -33,9 +33,8 @@
       "code.test",
       "vcs.branch"
     ],
-    "forbidden": [
-      "vcs.push:protected",
-      "net.egress:*"
+    "allowed_hosts": [
+      "repo.example"
     ],
     "max_steps": 40,
     "deadline": "2026-09-16T04:00:00Z"

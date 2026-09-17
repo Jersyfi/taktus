@@ -407,7 +407,7 @@ class RunEngine:
             frame=Frame(
                 autonomy_level=run.autonomy_level,
                 allowed_tools=step.required_capabilities,
-                forbidden=work.forbidden,
+                allowed_hosts=work.allowed_hosts,
                 max_steps=work.max_steps,
             ),
             # The worker sees what is left, never the whole budget: its own check (W-10) then

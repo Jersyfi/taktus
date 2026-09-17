@@ -34,8 +34,8 @@
       "ml.evaluate",
       "data.read"
     ],
-    "forbidden": [
-      "net.egress:*"
+    "allowed_hosts": [
+      "repo.example"
     ],
     "max_steps": 12
   },

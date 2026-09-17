@@ -35,9 +35,8 @@
         "code.test",
         "vcs.branch"
       ],
-      "forbidden": [
-        "vcs.push:protected",
-        "net.egress:*"
+      "allowed_hosts": [
+        "repo.example"
       ],
       "max_steps": 40,
       "deadline": "2026-09-16T04:00:00Z"
@@ -109,10 +108,11 @@
       "ts": "2026-09-15T21:10:41Z",
       "type": "tool.called",
       "step_id": "s2",
-      "tool": "net.egress",
+      "tool": "code.test",
       "arguments_digest": "sha256:970155324baf808756904f137ec53e5dcbaafe5ba64118e411b314a55b3758d2",
+      "host": "packages.example",
       "refused": true,
-      "reason": "net.egress:* is forbidden by the frame"
+      "reason": "packages.example is not in the frame's allowed_hosts"
     },
     {
       "assignment_id": "asg_01J8RC5D7E9F1G3H5J7K9L1MNPQ",

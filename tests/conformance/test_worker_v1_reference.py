@@ -28,6 +28,7 @@ async def test_reference_worker_passes(start_worker: StartWorker, profile: str) 
     assert {r.purpose for r in report.runs} == {
         "main",
         "narrowed",
+        "narrowed-hosts",
         "stopped",
         "resumed",
         "over-limit",
@@ -44,7 +45,7 @@ async def test_report_is_machine_readable_and_claims_no_verification(
     assert document["maturity"]["verified"] is False
     assert document["maturity"]["removal_test"] == "pending"
     assert document["maturity"]["conformance_suite"] == "passed"
-    assert [c["id"] for c in document["checks"]] == [f"W-{n:02d}" for n in range(1, 13)]
+    assert [c["id"] for c in document["checks"]] == [f"W-{n:02d}" for n in range(1, 14)]
     for check in document["checks"]:
         assert check["requirement"] and check["section"].startswith("contracts/worker/v1/README.md")
     assert worker.credential_value not in report.to_json()

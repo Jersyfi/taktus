@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .conftest import CREDENTIAL, SCENARIO, StartConnector, StartWorker
+from .conftest import CREDENTIAL, HOST, SCENARIO, TASK, StartConnector, StartWorker
 
 
 def test_taktusctl_conformance_run(start_worker: StartWorker, tmp_path: Path) -> None:
@@ -16,6 +16,8 @@ def test_taktusctl_conformance_run(start_worker: StartWorker, tmp_path: Path) ->
     taktusctl = shutil.which("taktusctl")
     assert taktusctl is not None, "taktusctl is not on the path; run under `uv run`"
     report_path = tmp_path / "report.json"
+    task_path = tmp_path / "task.json"
+    task_path.write_text(json.dumps(TASK), encoding="utf-8")
     completed = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
         [
             taktusctl,
@@ -25,6 +27,10 @@ def test_taktusctl_conformance_run(start_worker: StartWorker, tmp_path: Path) ->
             "worker/v1",
             "--endpoint",
             worker.endpoint,
+            "--task",
+            str(task_path),
+            "--hosts",
+            HOST,
             "--json",
             str(report_path),
             "--worker-log",
@@ -36,7 +42,7 @@ def test_taktusctl_conformance_run(start_worker: StartWorker, tmp_path: Path) ->
         check=False,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "11 passed, 0 failed, 0 inconclusive, 1 pending" in completed.stdout
+    assert "12 passed, 0 failed, 0 inconclusive, 1 pending" in completed.stdout
     assert "verified: no" in completed.stdout
     report = json.loads(report_path.read_text())
     assert report["summary"]["exit_code"] == 0

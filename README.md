@@ -155,7 +155,8 @@ schema; `make db-down` stops it and keeps its data. With `TAKTUS_DATABASE_URL` s
 its last step boundary with `--resume`. Without it, `taktusctl run` uses the in-memory
 implementation with a file snapshot and says so in its first line of output — development
 only, not durable. Neither is a silent default. Every `TAKTUS_*` variable is listed in
-`.env.example`, names only; the database URL is a secret and is registered in `CREDENTIALS.md`.
+`.env.example`, names only; the database URL is a secret, and `CREDENTIALS.md` describes it as
+a parameter.
 
 **Tenants and instances** are different boundaries (ADR-0020). Tenants share one instance and
 one database, kept apart by a tenant column on every table and row-level security. Instances

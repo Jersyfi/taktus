@@ -9,8 +9,10 @@ Everywhere else — processes, blueprints, documents — it is `repository.issue
 It is proof and example, not a requirement: the control plane runs with it removed.
 
 ```
-python -m taktus.adapters.driven.connectors.github --port 9100 --repository owner/name
+uv run python -m taktus.adapters.driven.connectors.github --port 9100 --repository owner/name
 ```
+
+(The package lives in the project environment and not on the machine's path, hence `uv run`.)
 
 serves MCP over streamable HTTP at `http://127.0.0.1:9100/mcp` and readiness at `GET /health`.
 `--target` is the API's base URL (default `https://api.github.com`); point it at the fake under
@@ -46,7 +48,8 @@ requests the call made.
 
 ## Credentials
 
-Two, by name, created by the operator and listed in `CREDENTIALS.md`:
+Two, referenced by the names below, created and mapped by the operator; `CREDENTIALS.md`
+describes both as parameters:
 
 | Name | Purpose | How it reaches the connector |
 |---|---|---|

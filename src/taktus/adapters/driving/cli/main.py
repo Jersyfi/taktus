@@ -66,6 +66,14 @@ def conformance_run(
             "for a worker that needs a real task to do anything.",
         ),
     ] = None,
+    hosts: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--hosts",
+            help="worker/v1 only: a host the task reaches, which the main run's frame allows "
+            "(repeat for several). W-13 withdraws one and expects the worker to refuse it.",
+        ),
+    ] = None,
     credential: Annotated[
         str,
         typer.Option(
@@ -146,6 +154,7 @@ def conformance_run(
         options = SuiteOptions(
             endpoint=endpoint,
             task=task_body,
+            hosts=tuple(hosts or ()),
             credential_name=credential,
             credential_value=os.environ.get(credential) or None,
             worker_log=adapter_log,
