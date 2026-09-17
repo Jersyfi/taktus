@@ -28,3 +28,4 @@ ADR wins.
 | [0020](ADR-0020-tenants-and-instances.md) | Tenants and instances are different boundaries | accepted |
 | [0021](ADR-0021-failure-result-defect-incident.md) | Failure, result defect, incident | accepted |
 | [0022](ADR-0022-retroactive-correction-is-anchored.md) | Retroactive correction is anchored by default | accepted |
+| [0023](ADR-0023-automatic-emergency-stop-is-rule-based.md) | An automatic emergency stop is rule-based | accepted |

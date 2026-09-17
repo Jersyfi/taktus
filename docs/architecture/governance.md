@@ -129,7 +129,14 @@ path are in [ADR-0017](../adr/ADR-0017-decision-requests-in-the-repository.md), 
   repeatedly, delayed progress, critical processes held up. It then reports which limit, which
   queue, and which change it recommends, with cost and benefit. **The change is decided by a
   person.**
-- **Emergency stop** at any time, globally and per process.
+- **Emergency stop** at any time, globally and per process — by a person. An *automatic*
+  emergency stop, once detection can trigger one (`0.5.0`), is decided by a **rule** over few,
+  measurable, documented criteria: the size of the error window, the exactness class affected,
+  whether data has left the system, whether a legal anchor lies downstream, the business
+  relevance of the process (ADR-0023). Thresholds are tenant configuration; a criterion may be
+  added and a threshold changed, but the set cannot be emptied. Only the narrative — the
+  incident description, the situation package — may come from a language model, and it names
+  the rule and the facts it fired on.
 
 ---
 
