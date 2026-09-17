@@ -25,6 +25,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 import structlog
+import uvicorn
 from sqlalchemy.exc import DBAPIError
 
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
@@ -45,6 +46,7 @@ from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
+from taktus.adapters.driving.rest import build_app
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
@@ -95,6 +97,10 @@ class Wired:
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
+
+    @property
+    def roles(self) -> list[str]:
+        return sorted(r.value for r in self.settings.roles)
 
     async def ready(self) -> str | None:
         """None when the database answers and is at the schema this build needs; otherwise
@@ -201,12 +207,7 @@ async def serve(
     down. The exit code of the process. `on_wired` hands the wired services to a test that
     runs the daemon in-process."""
     stop = stop or asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for signum in (signal.SIGTERM, signal.SIGINT):
-        try:
-            loop.add_signal_handler(signum, _on_signal, signum, stop)
-        except (NotImplementedError, RuntimeError):  # not the main thread, or no loop support
-            pass
+    _install_signal_handlers(stop)
     try:
         async with wire(settings) as wired:
             if on_wired is not None:
@@ -218,8 +219,12 @@ async def serve(
                 database=described(settings.database.reveal()),
             )
             tasks = _start_roles(wired, stop)
+            server = await _start_http(wired, stop)
             await stop.wait()
             log.info("taktusd stopping", ceiling_seconds=settings.shutdown_ceiling_seconds)
+            # New work is refused first — the surface goes, the runner claims nothing more —
+            # then every running step reaches its boundary.
+            server.should_exit = True
             await _wind_down(tasks, settings.shutdown_ceiling_seconds)
             log.info("taktusd stopped")
     except NotOperable as error:
@@ -231,6 +236,50 @@ async def serve(
 def _on_signal(signum: int, stop: asyncio.Event) -> None:
     log.info("signal received", signal=signal.Signals(signum).name)
     stop.set()
+
+
+def _install_signal_handlers(stop: asyncio.Event) -> None:
+    loop = asyncio.get_running_loop()
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(signum, _on_signal, signum, stop)
+        except (NotImplementedError, RuntimeError):  # not the main thread, or no loop support
+            pass
+
+
+async def _start_http(wired: Wired, stop: asyncio.Event) -> uvicorn.Server:
+    """Every process serves health and readiness under the prefix; the `api` role adds the
+    rest (commit by commit: intake and the read API). The server takes no signal of its own:
+    the daemon's handlers are installed again once it has started, because the server
+    installs its own on startup and would otherwise take the daemon's away."""
+    settings = wired.settings
+    app = build_app(wired, prefix=settings.path_prefix, full=Role.API in settings.roles)
+    server = uvicorn.Server(
+        uvicorn.Config(
+            app,
+            host=settings.http_host,
+            port=settings.http_port,
+            log_config=None,
+            access_log=False,
+            lifespan="off",
+        )
+    )
+    task = asyncio.create_task(server.serve(), name="http")
+    while not server.started:
+        if task.done():
+            task.result()  # raises what the server raised — a port in use, most likely
+            raise NotOperable(
+                f"the HTTP server did not start on {settings.http_host}:{settings.http_port}"
+            )
+        await asyncio.sleep(0.01)
+    _install_signal_handlers(stop)
+    log.info(
+        "http serving",
+        host=settings.http_host,
+        port=settings.http_port,
+        prefix=settings.path_prefix,
+    )
+    return server
 
 
 def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
