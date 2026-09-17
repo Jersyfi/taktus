@@ -2,7 +2,7 @@
 
 A stream rule cannot be expressed in JSON Schema because it concerns the order and the
 completeness of events, not the shape of one. These are the executable reading of the checks
-W-03 to W-07, W-10 and W-11 of contracts/worker/v1/README.md §7. They take a transcript — the
+W-03 to W-07, W-10, W-11 and W-13 of contracts/worker/v1/README.md §7. They take a transcript — the
 assignment, the estimate the worker gave for it, and every event in order — and return every
 violation found, each naming its check.
 
@@ -13,7 +13,6 @@ the streams it collects from a running worker. Nothing here does I/O.
 
 from __future__ import annotations
 
-import fnmatch
 from collections.abc import Sequence
 from typing import Any
 
@@ -35,6 +34,7 @@ CHECKS: dict[str, str] = {
     "W-10": "exceeding limits yields rejected before starting, not an abort afterwards",
     "W-11": "resuming from a checkpoint produces no duplicate artifact",
     "W-12": "the adapter passes the removal test: removing it breaks no process",
+    "W-13": "a host outside allowed_hosts is refused, not ignored",
 }
 
 # Where the README states each rule. A failure cites this so that the reader can look it up.
@@ -51,6 +51,7 @@ SECTIONS: dict[str, str] = {
     "W-10": "§3 Assignment",
     "W-11": "§3 Assignment and §4 Events",
     "W-12": "§7 Conformance",
+    "W-13": "§3 Assignment and §4 Events",
 }
 
 REQUIREMENTS: dict[str, str] = {
@@ -69,8 +70,8 @@ REQUIREMENTS: dict[str, str] = {
     "W-06": "after POST /stop is acknowledged the running step finishes, the worker emits "
     "step.boundary and then assignment.finished with outcome stopped and the same checkpoint_ref; "
     "no step starts after that boundary; GET /v1/assignments/{id} agrees",
-    "W-07": "a tool.called for a tool outside allowed_tools, or matching forbidden, carries "
-    "refused: true and is not executed",
+    "W-07": "a tool.called for a tool outside allowed_tools carries refused: true and is not "
+    "executed",
     "W-08": "a credential referenced by name in the assignment never appears — as its value — in "
     "any event, in any artifact, in the assignment state, or in the worker's log",
     "W-09": "every tool.called carries arguments_digest as sha256: followed by 64 lowercase hex "
@@ -82,6 +83,9 @@ REQUIREMENTS: dict[str, str] = {
     "before that checkpoint; every artifact.produced appears in GET /artifacts with the same "
     "digest, and its bytes hash to it",
     "W-12": "removing the adapter changes quality or cost but breaks no process",
+    "W-13": "a tool.called that reaches a host names it in host; a host outside the frame's "
+    "allowed_hosts carries refused: true and is not reached — an absent or empty list allows "
+    "no host at all",
 }
 
 CATALOGUE = Catalogue.build(
@@ -94,19 +98,15 @@ CATALOGUE = Catalogue.build(
 )
 
 
-def matches_pattern(tool: str, pattern: str) -> bool:
-    """`*` stands for a whole segment or qualifier; a pattern without qualifier matches any."""
-    if ":" in pattern:
-        return fnmatch.fnmatchcase(tool, pattern)
-    base = tool.split(":", 1)[0]
-    return fnmatch.fnmatchcase(base, pattern)
-
-
 def outside_frame(tool: str, frame: Json) -> bool:
-    """True when the frame does not admit the tool: not in allowed_tools, or matching forbidden."""
-    allowed = set(frame.get("allowed_tools", []))
-    forbidden = frame.get("forbidden", [])
-    return tool not in allowed or any(matches_pattern(tool, p) for p in forbidden)
+    """True when the frame does not admit the tool: it is not in allowed_tools."""
+    return tool not in set(frame.get("allowed_tools", []))
+
+
+def host_outside_frame(host: str, frame: Json) -> bool:
+    """True when the frame does not admit the host: it is not in allowed_hosts. An absent or
+    empty list allows no host at all (§3)."""
+    return host not in set(frame.get("allowed_hosts") or [])
 
 
 def exceeds_limits(estimate: Json, limits: Json) -> str | None:
@@ -202,12 +202,22 @@ def stream_violations(
 
     for event in (e for e in events if e.get("type") == "tool.called"):
         tool = event.get("tool", "")
-        if outside_frame(tool, frame) and not event.get("refused", False):
+        refused = event.get("refused", False)
+        if outside_frame(tool, frame) and not refused:
             out.append(
                 Violation(
                     "W-07",
                     f"tool {tool!r} lies outside the frame and was not refused "
                     f"(seq {event['seq']})",
+                )
+            )
+        host = event.get("host")
+        if host is not None and host_outside_frame(str(host), frame) and not refused:
+            out.append(
+                Violation(
+                    "W-13",
+                    f"host {host!r} lies outside the frame's allowed_hosts and was reached "
+                    f"without refusal (seq {event['seq']})",
                 )
             )
 

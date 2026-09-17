@@ -152,8 +152,12 @@ the shape; CI enforces the draft.
 - **One pull request per change.** Conventional Commits. Pull requests are squash-merged; the pull
   request title becomes the commit on `main` and follows Conventional Commits.
 - **No secret value** ever enters this repository, a file, a log or a message. Configuration
-  references secret **names**; the operator creates them. `CREDENTIALS.md` lists name, purpose,
-  where it is used and how to rotate it — never values. **The repository is public.**
+  references a secret by its **parameter** — a configuration key, or the name a call names;
+  the operator creates the secret and maps it. `CREDENTIALS.md` describes each parameter:
+  purpose, the permissions it needs, how it rotates, and the key it is supplied through —
+  never a value, and never a deployment's own name for it. A secret value is read from a file
+  the variable points at (`TAKTUS_<KEY>_FILE`), never from the environment, and every log
+  line masks it. **The repository is public.**
 - **No third-party contributions** while the licence is unsettled (ADR-0012).
 - **Generated code is never edited by hand.** Generation lives in `make generate`.
 - **Architectural changes arrive as an ADR** before the code does.

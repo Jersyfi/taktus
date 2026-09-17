@@ -19,8 +19,8 @@ from typing import Annotated, Any, Literal
 from pydantic import Field, TypeAdapter, ValidationError
 
 from taktus.components.run.domain.model.errors import UnsupportedWork
-from taktus.ports.worker import Task, Workspace
-from taktus.shared.v1 import CapabilityPattern, Method, Step, StepId, Value
+from taktus.ports.worker import Host, Task, Workspace
+from taktus.shared.v1 import Method, Step, StepId, Value
 
 FROM = "$from"
 
@@ -55,7 +55,9 @@ class WaitWork(Value):
 class WorkerWork(Value):
     task: Task
     max_steps: int = Field(default=100, ge=1)
-    forbidden: tuple[CapabilityPattern, ...] | None = None
+    allowed_hosts: tuple[Host, ...] = ()
+    """The hosts the worker may reach for this step; nothing else. Empty — the default — means
+    no outbound access, which is right for most work."""
     workspace: Workspace = Workspace(kind="none")
 
 

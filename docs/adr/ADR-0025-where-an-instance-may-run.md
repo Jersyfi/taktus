@@ -1,0 +1,85 @@
+# ADR-0025 — Where an instance may run
+
+**Status:** accepted · applies ADR-0013 C and ADR-0020 to the platform an instance runs on
+
+## Context
+An instance of Taktus runs on some infrastructure: a home server, a cluster, a platform that
+someone operates. Taktus at level 4 also *administers* infrastructure — it is one of the things a
+department does, and the `it-operations` blueprint (`0.7.0`) is built for it. The two facts meet
+in one question: may the instance that administers a platform run on that platform?
+
+The question has been answered case by case so far, each time from scratch: the development
+instance of the Taktus project may run on the platform it is deployed to; a later instance that
+would manage that platform's tenants, quotas and network policies should not. Each answer was
+right, and each was given without a rule to derive it from. A question answered from scratch is
+answered differently the third time.
+
+ADR-0013 C says that Taktus is repairable without Taktus. An instance that runs on
+infrastructure it administers can break that infrastructure, and with it the path its own repair
+would travel: a faulty change to the cluster's network policy takes down the pod that would
+revert it. That is the failure the rule below prevents, and it is the only one it needs to
+prevent.
+
+ADR-0020 says that two instances share nothing: no database, no secret store, no connection.
+That is what makes the second half of the rule safe.
+
+## Decision
+
+### 1. The rule
+**No instance runs on infrastructure that it administers itself.**
+
+*Administers* means: the instance holds credentials that can change the infrastructure — create
+or delete namespaces, change quotas, network policies, node pools, storage classes, the
+platform's own configuration — and runs processes that use them. Reading the platform's state
+is not administering it. Deploying a workload into a namespace the instance was given is not
+administering the platform either; that is using it.
+
+### 2. What is allowed
+Running on infrastructure that a **different** instance administers is allowed, provided the
+running instance has, on that infrastructure:
+
+- its own namespace, or the platform's equivalent boundary;
+- its own database (ADR-0002, ADR-0020);
+- its own credentials, which reach nothing outside that boundary.
+
+The administering instance sees the other's namespace as one workload among many and never
+calls into it (ADR-0020 §3).
+
+### 3. Two consequences, from one rule
+- **The instance that develops Taktus** manages a repository and administers no infrastructure.
+  It may run on the platform it is deployed to. Its credentials reach the repository and its own
+  namespace, nothing else.
+- **A later instance that administers that platform** — the one the `it-operations` blueprint is
+  for — runs outside it: on other infrastructure, or on a platform that a third instance
+  administers, under the same rule.
+
+Neither is a special case. Both follow from §1, and the next question of this kind is answered
+by §1 too.
+
+### 4. What the rule does not say
+It does not say that an instance may not run in a container or a pod. It says nothing about
+tenants: tenants are inside one instance and share its infrastructure by design (ADR-0020). It
+does not forbid an instance from *observing* the platform it runs on — reading metrics, reading
+its own resource usage — because observing changes nothing.
+
+## Alternatives
+- **No rule; decide per deployment.** The situation today. It works while one person holds every
+  deployment in their head, and stops working the first time two people, or a person and a
+  session, answer differently.
+- **No instance runs on a platform that any Taktus instance administers.** Simpler, and wrong in
+  the direction that costs the most: it would forbid the development instance from running on
+  the project's own platform, for no gain. The blast radius ADR-0013 C worries about is an
+  instance breaking *its own* ground; another instance's ground is another instance's blast
+  radius, and ADR-0020 already keeps them apart.
+- **Allow self-administration with extra safeguards** — a break-glass account, a second cluster
+  for repair. Every safeguard is a second path that must be exercised as often as the first, and
+  ADR-0013 C already asks for a manual repair path; a rule that needs no safeguard is cheaper
+  than a safeguard that needs exercise.
+
+## Consequences
+- The operating documentation of the project describes where each instance runs, and why, by
+  reference to §1 rather than by assertion.
+- A process that would give an instance credentials for the infrastructure it runs on is refused
+  at planning time once governance exists (`0.2.0`); until then, the rule is applied by the
+  person who configures the instance.
+- The `it-operations` blueprint states where its instance runs before it states anything else.

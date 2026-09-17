@@ -15,7 +15,7 @@ The directory name is the definition in kebab-case: `assignment-state` is `Assig
 
 ## Transcripts
 
-Seven of the twelve checks concern a whole stream, not one object. Their fixtures use the
+Eight of the thirteen checks concern a whole stream, not one object. Their fixtures use the
 `Transcript` shape — the assignment, the estimate the worker gave for it, and every event in order —
 and fail one of the stream rules in `src/taktus/conformance/rules.py`, which
 `tests/conformance/test_worker_v1_fixtures.py` applies to every file here:
@@ -26,9 +26,10 @@ and fail one of the stream rules in `src/taktus/conformance/rules.py`, which
 | W-04 | every step that started has a `consumption.reported` before the next step starts |
 | W-05 | at least one `step.boundary`, unless the assignment was rejected |
 | W-06 | after the last `step.boundary` no step starts; `stopped` carries that boundary's `checkpoint_ref` |
-| W-07 | a `tool.called` outside `allowed_tools` or matching `forbidden` has `refused: true` |
+| W-07 | a `tool.called` outside `allowed_tools` has `refused: true` |
 | W-10 | an estimate above `limits` yields a stream of exactly one event, `assignment.finished` with `rejected` |
 | W-11 | no two `artifact.produced` share a digest or an `artifact_id` |
+| W-13 | a `tool.called` whose `host` is outside `allowed_hosts` has `refused: true` |
 
 `transcript/valid/` holds both proof cases of the README — a shell script with no AI at all and a
 training run that holds a GPU and is stopped at an epoch boundary — plus a rejection and a resume.

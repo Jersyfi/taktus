@@ -184,15 +184,20 @@ async def test_the_revision_check_names_what_is_missing(
     persistence = PostgresPersistence(postgres_url, pool_size=1)
     try:
         await check_schema(persistence.engine)
-        assert await current_revision(persistence.engine) == head_revision() == "0002"
+        head = head_revision()
+        assert await current_revision(persistence.engine) == head == "0004"
         with sync_engine.begin() as connection:
             connection.execute(text("UPDATE alembic_version SET version_num = '0000'"))
         try:
-            with pytest.raises(SchemaOutOfDate, match=r"at schema revision 0000.*needs 0002"):
+            with pytest.raises(SchemaOutOfDate, match=rf"at schema revision 0000.*needs {head}"):
                 await check_schema(persistence.engine)
         finally:
+            # Restored to the head, whatever it is: the database is shared with every test of
+            # the session, and a wrong restore would fail them all.
             with sync_engine.begin() as connection:
-                connection.execute(text("UPDATE alembic_version SET version_num = '0002'"))
+                connection.execute(
+                    text("UPDATE alembic_version SET version_num = :head"), {"head": head}
+                )
     finally:
         await persistence.close()
 

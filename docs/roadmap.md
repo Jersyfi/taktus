@@ -62,11 +62,24 @@ connector contract on MCP as executable schema, the conformance suite for it —
 third party against a live connector, proven to fail on every injected fault — and the
 reference repository connector in both directions: actions with a declared effect and a
 recognised repeat, proven to open one pull request for a step across a restart, and webhook
-intake refused unless signed (ADR-0024). Not yet: the daemon and its roles, the REST API,
-governance and anchors, `mlbench`, the execution adapters, the connector port and the run's
-binding of connector steps (the reference connector exists, nothing calls it from a process),
-the channel intake endpoint that would receive a webhook, OpenTelemetry export (spans exist,
-nothing collects them), the queue and outbox (their tables exist, nothing claims through them).
+intake refused unless signed (ADR-0024) · the daemon `taktusd` (#9): four roles in one image
+selected by `TAKTUS_ROLES`, runners that claim runs through the database with a lease and never
+claim the same run, a scheduler elected by an advisory lock that a survivor takes over, a
+shutdown on SIGTERM that lands on a step boundary and releases the run, health and readiness as
+two different questions, a refusal to start against a schema that does not match the binary,
+configuration through validated `TAKTUS_*` variables with secrets read from files and logged
+masked, the HTTP surface under a configurable prefix — health, readiness, webhook intake
+through the connector port (the intake half), a read API for runs and ledger entries,
+`api/openapi.yaml` — and self-hosting in two containers with `make up`, proven from nothing
+by killing and restarting the container; the frame names allowed hosts (W-13), credentials
+are parameters (ADR-0025 says where an instance may run). Not yet: governance and anchors,
+`mlbench`, the execution adapters and the container registry build, the Helm chart, the
+action half of the connector port and the run's binding of connector steps (the reference
+connector exists; intake reaches it, nothing calls its operations from a process), the
+identity component that would complete an intake event into a command, time triggers (the
+scheduler leads and ticks; nothing is scheduled), event reactions (the automation role
+starts and waits; the outbox exists, nothing writes it), OpenTelemetry export (spans exist,
+nothing collects them).
 
 ### `0.2.0` — governance, limits, availability
 Autonomy levels 1–3 per process **and per action class** · anchors, configurable per tenant ·

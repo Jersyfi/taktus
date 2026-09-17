@@ -57,9 +57,12 @@ where an event from the outside becomes a command or is refused.
 | **Verify the signature of every incoming event before reading it**, then normalise it as far as the channel can | intake without a signature is not a valid declaration; the identity component completes the command |
 
 Full specification: [`contracts/connector/v1/README.md`](../../contracts/connector/v1/README.md).
-The connector port on the core's side, and the run's binding of connector steps — writing the
-egress entry from the result, halting instead of retrying an outward operation with
-`idempotency: none` whose outcome is unknown — arrive with `0.2.0`.
+The connector port on the core's side exists for the intake direction (`src/taktus/ports/
+connector.py`, over MCP in `adapters/driven/connectors/mcp/`): the HTTP surface hands a webhook
+delivery to the connector that serves the channel and keeps what it accepted. The action
+direction, and the run's binding of connector steps — writing the egress entry from the
+result, halting instead of retrying an outward operation with `idempotency: none` whose outcome
+is unknown — arrive with `0.2.0`.
 
 ---
 
@@ -88,7 +91,7 @@ Without it, "interchangeable" is an assertion.
 
 The suite lives in `src/taktus/conformance/` and imports nothing from the control plane; it talks
 to a worker over HTTP and SSE, and to a connector over MCP, as a foreign control plane would. It
-runs W-01 to W-11 against a live worker and C-01 to C-09 against a live connector, and reports
+runs W-01 to W-11 and W-13 against a live worker and C-01 to C-09 against a live connector, and reports
 W-12 and C-10, the removal test, as *pending* until processes exist to remove an adapter from.
 Its report states which half of *verified* it proves. What both halves share — the report, the
 findings, the catalogue of checks, the schema validators — lives at the package level; the
@@ -101,7 +104,7 @@ every fault either reference adapter can inject the suite fails on exactly that 
 
 Before the suite runs against an adapter, `make gate-contracts` checks the contract itself: every
 schema is valid and carries the `$id` its path prescribes, every example validates, and every check
-W-01..W-12 and C-01..C-10 has a fixture (`tools/validate_contracts.py`).
+W-01..W-13 and C-01..C-10 has a fixture (`tools/validate_contracts.py`).
 
 Every schema is identified by `https://taktus.eu/contracts/<family>/v1/<Concept>.json` — its path
 under `contracts/` behind the project's domain. A released v1 schema is immutable; changes become
@@ -120,7 +123,7 @@ example, not a requirement. The core runs with all of them removed — it simply
 | Worker | `mlbench` | training, evaluation, embeddings, classical ML. The second proof case: hours of runtime, a GPU held, a model artifact returned. |
 | Worker | `claudecode` | the first real coding worker |
 | Worker | `codex` | the second real coding worker; validates the contract against a second vendor |
-| Connector | `github` | repository: issues, pull requests, pipelines, comments — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector. Not yet bound into the run (`0.2.0`) |
+| Connector | `github` | repository: issues, pull requests, pipelines, comments — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector. Reached by the daemon's webhook intake; its operations are not yet bound into the run (`0.2.0`) |
 | Connector | `chat` | both a command channel and a delivery channel |
 | Connector | `http` | the generic fallback for anything with a documented API |
 | Model | `openai_compatible` | covers Ollama, vLLM and most vendors |

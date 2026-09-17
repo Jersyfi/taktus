@@ -39,6 +39,14 @@ CONNECTOR = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors" / "gi
 SCENARIO = CONNECTOR / "scenario.json"
 FAKE_SERVICE = ROOT / "tests" / "fakes" / "repository_service.py"
 CREDENTIAL = "TAKTUS_CONFORMANCE_CREDENTIAL"
+# The reference worker reaches nothing by itself; the task declares the host its commands
+# would need, so that the main run allows it and W-13 has a host to withdraw.
+HOST = "registry.example"
+TASK: dict[str, object] = {
+    "goal": "Conformance run of the reference worker: do the profile's default work.",
+    "acceptance": ["the stream ends with assignment.finished"],
+    "inputs": {"hosts": [HOST]},
+}
 ACTIONS_CREDENTIAL = "REPOSITORY_TOKEN"
 INTAKE_CREDENTIAL = "REPOSITORY_WEBHOOK_SECRET"
 
@@ -53,6 +61,8 @@ class RunningWorker:
     def options(self) -> SuiteOptions:
         return SuiteOptions(
             endpoint=self.endpoint,
+            task=dict(TASK),
+            hosts=(HOST,),
             credential_value=self.credential_value,
             worker_log=self.log,
             timeout=90.0,

@@ -70,6 +70,7 @@ FAULTS: dict[str, str] = {
     "W-09": "tool.called carries the command in clear instead of its sha256",
     "W-10": "an estimate above the limits is accepted; the assignment fails after its first step",
     "W-11": "a resumed assignment produces the artifacts from before its checkpoint again",
+    "W-13": "a host outside allowed_hosts is reached and reported without refused: true",
 }
 
 
@@ -194,19 +195,25 @@ def plan_for(task: Json, profile: str, options: argparse.Namespace) -> list[Plan
 # --- state -----------------------------------------------------------------------------------
 
 
-def matches_pattern(tool: str, pattern: str) -> bool:
-    """`*` stands for a whole segment or qualifier; a pattern without qualifier matches any."""
-    import fnmatch
-
-    if ":" in pattern:
-        return fnmatch.fnmatchcase(tool, pattern)
-    return fnmatch.fnmatchcase(tool.split(":", 1)[0], pattern)
-
-
 def outside_frame(tool: str, frame: Json) -> bool:
-    allowed = frame.get("allowed_tools", [])
-    forbidden = frame.get("forbidden", [])
-    return tool not in allowed or any(matches_pattern(tool, p) for p in forbidden)
+    return tool not in frame.get("allowed_tools", [])
+
+
+def host_outside_frame(host: str, frame: Json) -> bool:
+    """An absent or empty allowed_hosts allows no host at all: the affirmative list is the
+    whole of what may be reached."""
+    return host not in (frame.get("allowed_hosts") or [])
+
+
+def hosts_of(task: Json) -> list[str]:
+    """The hosts the task says its commands reach (`inputs.hosts`). This worker runs local
+    commands and reaches nothing by itself; the task declares what its commands need, the
+    worker holds that against the frame before the first command runs, and a refused host
+    means the commands cannot run."""
+    hosts = task.get("inputs", {}).get("hosts")
+    if isinstance(hosts, list) and all(isinstance(h, str) for h in hosts):
+        return list(dict.fromkeys(hosts))
+    return []
 
 
 @dataclass
@@ -493,6 +500,27 @@ class Worker:
                     },
                 )
             refused = outside_frame(TOOL, frame) and self.fault != "W-07"
+            refused_host: str | None = None
+            if index == assignment.start_index:
+                # The hosts the task reaches are held against the frame once, before the first
+                # command runs: reached, or refused visibly, never reached in silence.
+                for host in hosts_of(assignment.body["task"]):
+                    reach: Json = {
+                        "type": "tool.called",
+                        "step_id": step.step_id,
+                        "tool": TOOL,
+                        "host": host,
+                        "arguments_digest": sha256(host.encode()),
+                    }
+                    if refused:
+                        reach["refused"] = True
+                        reach["reason"] = f"{TOOL} is outside the frame's allowed_tools"
+                    elif host_outside_frame(host, frame) and self.fault != "W-13":
+                        reach["refused"] = True
+                        reach["reason"] = f"{host} is not in the frame's allowed_hosts"
+                        refused_host = refused_host or host
+                    with assignment.lock:
+                        self._emit(assignment, reach)
             digest = step.command if self.fault == "W-09" else sha256(step.command.encode())
             call: Json = {
                 "type": "tool.called",
@@ -502,13 +530,19 @@ class Worker:
             }
             if refused:
                 call["refused"] = True
-                call["reason"] = f"{TOOL} is outside the frame's allowed_tools or forbidden"
+                call["reason"] = f"{TOOL} is outside the frame's allowed_tools"
             with assignment.lock:
                 self._emit(assignment, call)
             output = b""
             failure: str | None = None
             if refused:
                 failure = f"step {step.step_id!r} needs {TOOL}, which the frame does not allow"
+            elif refused_host is not None:
+                refused = True
+                failure = (
+                    f"step {step.step_id!r} needs host {refused_host!r}, which the frame does "
+                    "not allow"
+                )
             else:
                 output, failure = run_command(step.command)
                 if self.fault == "W-08-log" and credential:

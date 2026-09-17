@@ -3,9 +3,10 @@ dist/
 build/
 *.egg-info/
 
-# generated — see docs/architecture/project-structure.md
+# generated — see docs/architecture/project-structure.md; api/openapi.yaml is generated and
+# committed, so that the interface can be read without running anything, and a test holds it
+# to `make generate`
 src/taktus/shared/generated/
-api/openapi.yaml
 web/build/
 node_modules/
 
@@ -25,3 +26,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 .DS_Store
+
+# deployment secrets written by `make up` — never committed
+deploy/docker/secrets/*
+!deploy/docker/secrets/README.md

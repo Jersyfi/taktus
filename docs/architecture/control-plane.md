@@ -46,7 +46,10 @@ revocable by an administrator.
 A connector's intake (`contracts/connector/v1` §7) supplies the channel's half of this object:
 the sender as the source system names them, the intent, the context and the reply address — and
 only after the event's signature verified. The identity component maps the sender to `identity`
-and `org_path` and completes the command; the connector never holds that mapping.
+and `org_path` and completes the command; the connector never holds that mapping. Until it
+exists, what the webhook intake of the HTTP surface accepts is kept as an **intake event**
+(`command` component, `awaiting_identity`) under the source system's delivery identifier — a
+redelivery replaces, never doubles — and nothing is executed from it.
 
 ---
 
@@ -126,8 +129,16 @@ run *recovers* it: the step in flight goes back to its last persisted boundary (
 checkpoint if one arrived, its start otherwise), is admitted again, and the run continues;
 the steps before it are kept as they are. That is ADR-0013 A made true, and
 `tests/integration/test_restart.py` proves it by killing the process. Whoever resumes a running
-run asserts that no instance is executing it; today that is the operator's explicit act
-(`taktusctl run --resume`), and the daemon's lease on a run will make the check automatic.
+run asserts that no instance is executing it. In the daemon that assertion is the runner's
+claim: a submitted run is a job on the queue (`ports/queue.py`), a runner claims it with
+`SELECT … FOR UPDATE SKIP LOCKED` and holds the claim as a lease it renews while the run
+executes; a runner that dies stops renewing, the lease expires, and the next runner claims the
+job and recovers the run — two runners never execute one run
+(`components/run/application/service/runner.py`, `tests/integration/test_daemon_scaling.py`).
+A shutdown on SIGTERM asks every running run to stop at its next boundary, waits up to the
+ceiling, releases the claims and exits; the next runner resumes at that boundary
+(`tests/integration/test_daemon_shutdown.py`). From the command line, `uv run taktusctl run
+--resume` is the operator's explicit act of the same assertion.
 
 ### 5.2 States
 

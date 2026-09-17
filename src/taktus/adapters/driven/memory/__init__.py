@@ -11,16 +11,20 @@ a tenant on every call, a unit of work around every call, and a transaction that
 behind when it fails.
 """
 
+from taktus.adapters.driven.memory.leadership import MemoryLeadership
 from taktus.adapters.driven.memory.ledger_store import MemoryLedgerStore
 from taktus.adapters.driven.memory.object_store import MemoryObjectStore
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
 from taktus.adapters.driven.memory.provenance_store import MemoryProvenanceStore
+from taktus.adapters.driven.memory.queue import MemoryQueue
 from taktus.adapters.driven.memory.repository import MemoryRepository
 
 __all__ = [
+    "MemoryLeadership",
     "MemoryLedgerStore",
     "MemoryObjectStore",
     "MemoryPersistence",
     "MemoryProvenanceStore",
+    "MemoryQueue",
     "MemoryRepository",
 ]

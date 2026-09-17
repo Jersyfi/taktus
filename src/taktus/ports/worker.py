@@ -24,7 +24,6 @@ from taktus.shared.v1 import (
     Artifact,
     AutonomyLevel,
     Capability,
-    CapabilityPattern,
     ConsumptionQuantities,
     CurrencyAmounts,
     Digest,
@@ -35,6 +34,15 @@ from taktus.shared.v1 import (
 type AssignmentId = Annotated[str, StringConstraints(pattern=r"^asg_[A-Za-z0-9_-]{4,}$")]
 type WorkerStepId = Annotated[str, StringConstraints(min_length=1, max_length=128)]
 type CheckpointRef = Annotated[str, StringConstraints(min_length=1)]
+type Host = Annotated[
+    str,
+    StringConstraints(
+        pattern=r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$",
+        max_length=253,
+    ),
+]
+"""A host the frame allows: a lowercase host name or an IPv4 address, optionally with a port.
+No wildcard — least privilege names what is allowed."""
 
 
 class ConsumptionKind(StrEnum):
@@ -139,9 +147,13 @@ class Context(Value):
 
 
 class Frame(Value):
+    """Two affirmative lists: the tools the worker may use and the hosts it may reach. Nothing
+    is forbidden by pattern; everything outside the lists is refused. An empty `allowed_hosts`
+    is the default and means no outbound access at all."""
+
     autonomy_level: AutonomyLevel
     allowed_tools: tuple[Capability, ...] = Field(min_length=1)
-    forbidden: tuple[CapabilityPattern, ...] | None = None
+    allowed_hosts: tuple[Host, ...] = ()
     max_steps: int = Field(ge=1)
     deadline: datetime | None = None
 
@@ -149,8 +161,8 @@ class Frame(Value):
     def _unique(self) -> Frame:
         if len(set(self.allowed_tools)) != len(self.allowed_tools):
             raise ValueError("allowed_tools lists a tool twice")
-        if self.forbidden is not None and len(set(self.forbidden)) != len(self.forbidden):
-            raise ValueError("forbidden lists a pattern twice")
+        if len(set(self.allowed_hosts)) != len(self.allowed_hosts):
+            raise ValueError("allowed_hosts lists a host twice")
         return self
 
 
@@ -297,6 +309,7 @@ class ToolCalled(EventBase):
     step_id: WorkerStepId | None = None
     tool: Capability
     arguments_digest: Digest
+    host: Host | None = None
     refused: bool | None = None
     reason: str | None = None
 

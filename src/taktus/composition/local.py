@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from sqlalchemy.exc import DBAPIError
+
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.memory import (
@@ -32,6 +34,7 @@ from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresPersistence,
     PostgresProvenanceStore,
+    PostgresQueue,
     PostgresRepository,
     SchemaOutOfDate,
     check_schema,
@@ -50,7 +53,7 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
-from taktus.ports.configuration import Configuration
+from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
     LedgerStore,
     ProvenanceStore,
@@ -58,6 +61,7 @@ from taktus.ports.persistence import (
     Stored,
     UnitOfWork,
 )
+from taktus.ports.queue import Queue
 from taktus.shared.v1 import Command, Plan
 
 WORKER_ADAPTER = "worker.http"
@@ -76,6 +80,7 @@ class Stores:
     ledger_store: LedgerStore
     provenance_store: ProvenanceStore
     storage: str
+    queue: Queue | None = None
 
 
 class LocalWiring:
@@ -99,6 +104,7 @@ class LocalWiring:
                 clock=clock,
                 ids=ids,
                 telemetry=NoTelemetry(),
+                queue=stores.queue,
             )
             yield Services(
                 register_version=RegisterProcessVersionHandler(
@@ -115,11 +121,15 @@ class LocalWiring:
                 clock=clock,
                 ids=ids,
                 storage=stores.storage,
+                queued=stores.queue is not None,
             )
 
     @asynccontextmanager
     async def _stores(self, state_dir: Path) -> AsyncIterator[Stores]:
-        database = self._configuration.secret("database.url")
+        try:
+            database = self._configuration.secret("database.url")
+        except ConfigurationError as error:
+            raise NotOperable(str(error)) from error
         if database is None:
             memory = MemoryPersistence(state_dir)
 
@@ -145,7 +155,7 @@ class LocalWiring:
                 await check_schema(postgres.engine)
             except SchemaOutOfDate as error:
                 raise NotOperable(str(error)) from error
-            except OSError as error:
+            except (OSError, DBAPIError) as error:
                 raise NotOperable(
                     f"cannot reach the database at {described(url)}: {error}"
                 ) from error
@@ -159,6 +169,7 @@ class LocalWiring:
                 ledger_store=PostgresLedgerStore(postgres),
                 provenance_store=PostgresProvenanceStore(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
+                queue=PostgresQueue(postgres),
             )
         finally:
             await postgres.close()

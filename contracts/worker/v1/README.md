@@ -96,7 +96,7 @@ declared so that a reader of the response sees the obligation.
   "frame": {
     "autonomy_level": 3,
     "allowed_tools": ["code.edit", "code.test", "vcs.branch"],
-    "forbidden": ["vcs.push:protected", "net.egress:*"],
+    "allowed_hosts": ["repo.example"],
     "max_steps": 40,
     "deadline": "2026-09-16T04:00:00Z"
   },
@@ -118,8 +118,12 @@ artifact it produced before it.
 environment at runtime; the value never passes through this contract, never appears in an event, an
 artifact or a log, and is never stored by the worker. A worker that violates this fails conformance.
 
-**Least privilege:** the worker receives only the tools in `allowed_tools`; `forbidden` narrows
-further by pattern. `frame` is a ceiling, not a suggestion.
+**Least privilege, in the affirmative:** the worker receives only the tools in `allowed_tools`
+and reaches only the hosts in `allowed_hosts`. Both are explicit lists; there is no pattern and
+no "everything but". An absent or empty `allowed_hosts` means no outbound access at all, which
+is the right default for most work: an assignment that needs a host names it. The execution
+environment enforces the same list at the network — a proxy that admits exactly these hosts —
+and this field is what it is given. `frame` is a ceiling, not a suggestion.
 
 **Rejection.** If the estimate does not fit `limits`, or the frame cannot be honoured, the worker
 does not start. The response to `POST /v1/assignments` is the assignment state with `status:
@@ -141,7 +145,7 @@ everything after it. A worker honours both.
 |---|---|
 | `step.started` | `step_id`, `kind`, `summary` — `kind` names the class of work in one token: `plan`, `edit`, `test`, `shell`, `epoch` |
 | `step.progress` | `step_id`, `message`; optionally `progress: {current, total, unit}` for work measured in units such as epochs |
-| `tool.called` | `tool` (a capability), `arguments_digest` (**`sha256:` + hex, never in clear**); `refused: true` with a `reason` when the tool lies outside the frame |
+| `tool.called` | `tool` (a capability), `arguments_digest` (**`sha256:` + hex, never in clear**); `host` when the call reaches a host over the network; `refused: true` with a `reason` when the tool or the host lies outside the frame |
 | `decision.made` | `rationale` — why this path |
 | `consumption.reported` | `step_id`, and any of `tokens_in` / `tokens_out` / `currency` / `quota_units` / `compute_seconds` with `resource_class` |
 | `step.boundary` | `step_id`, `checkpoint_ref` — **a stop may take effect here** |
@@ -155,9 +159,11 @@ makes admission control impossible. `currency` is a map by ISO 4217 code in lowe
 `step.boundary` is the most important event in the contract: it is the promise that at most one step
 of work can be lost.
 
-A tool outside `allowed_tools`, or matching `forbidden`, is **refused, not ignored**: the worker emits
-`tool.called` with `refused: true` and does not execute it. That is how the refusal becomes visible
-to the ledger.
+A tool outside `allowed_tools` is **refused, not ignored**: the worker emits `tool.called` with
+`refused: true` and does not execute it. A host outside `allowed_hosts` is refused the same way:
+`tool.called` names the `host`, carries `refused: true`, and the host is not reached. That is how
+a refusal becomes visible to the ledger — and how a worker that ignores an empty list is caught,
+because reaching a host without naming it is not an option the contract offers.
 
 ---
 
@@ -211,8 +217,9 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 | W-10 | exceeding `limits` yields `rejected` **before** starting, not an abort afterwards |
 | W-11 | resuming from a checkpoint produces no duplicate artifact |
 | W-12 | the adapter passes the removal test: removing it breaks no process |
+| W-13 | a host outside `allowed_hosts` is refused, not ignored |
 
-The suite runs W-01 to W-11 against a live worker and reports W-12 as *pending*: the removal test
+The suite runs W-01 to W-11 and W-13 against a live worker and reports W-12 as *pending*: the removal test
 takes the adapter out of running processes, which a suite talking to one endpoint cannot do, and
 which needs processes to exist (DEC-0005). A passed suite plus a passed removal test is maturity
 *verified*. Production processes at autonomy level 3 and above may only use adapters at
@@ -223,7 +230,7 @@ a failure tells you to fix: [CONFORMANCE.md](CONFORMANCE.md).
 
 **Fixtures.** `examples/<definition>/valid/` holds what a conforming worker produces;
 `examples/<definition>/invalid/W-NN-*.json` holds one violation per check. Checks that concern a
-whole stream — W-03 to W-07, W-10, W-11 — use the `Transcript` shape: the assignment, the estimate
+whole stream — W-03 to W-07, W-10, W-11, W-13 — use the `Transcript` shape: the assignment, the estimate
 the worker gave for it, and every event in order. The stream rules that judge them live in the
 suite (`src/taktus/conformance/rules.py`) and are applied to the fixtures by `tests/conformance`
 and to a live worker by `uv run taktusctl conformance run`. `tools/validate_contracts.py` checks that

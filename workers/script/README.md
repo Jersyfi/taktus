@@ -53,9 +53,14 @@ any artifacts, `consumption.reported` with the measured seconds, a checkpoint on
 `step.boundary` with its reference.
 
 The frame is checked where the call happens, not before the assignment starts: a step whose tool
-is outside `allowed_tools` or matches `forbidden` emits `tool.called` with `refused: true`, does
-not run, reports its consumption and boundary, and the assignment ends `failed` with the reason.
-This is what lets the suite observe the refusal (W-07). The limits are checked before the start:
+is outside `allowed_tools` emits `tool.called` with `refused: true`, does not run, reports its
+consumption and boundary, and the assignment ends `failed` with the reason. This is what lets
+the suite observe the refusal (W-07). Hosts work the same way: this worker reaches nothing by
+itself, so the task declares what its commands need in `task.inputs.hosts`, and before the first
+command runs the worker emits one `tool.called` with `host` per declared host — `refused: true`
+for every host that is not in the frame's `allowed_hosts`, after which the step does not run and
+the assignment ends `failed` (W-13). An absent or empty `allowed_hosts` allows no host at all.
+The limits are checked before the start:
 an estimate above `limits.compute.seconds`, a missing compute limit, a foreign resource class, too
 few `max_steps` or a deadline before the estimated end all give `finished` / `rejected` (W-10).
 

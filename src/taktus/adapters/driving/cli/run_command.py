@@ -178,16 +178,7 @@ async def _start(
     tenant: str,
     stop_after: int | None,
 ) -> Run:
-    now = services.clock.now()
-    command = Command(
-        id=services.ids.new("cmd"),
-        channel="channel.cli",
-        identity=identity,
-        org_path=(tenant,),
-        intent=Intent(raw=f"run {version.ref}", recognised="process.run"),
-        reply_to=ReplyTo(channel="channel.cli", address="stdout"),
-        received_at=now,
-    )
+    command = _command(services, version, identity, tenant)
     plan = await services.commission.execute(
         CommissionPlan(
             command=command,
@@ -207,6 +198,19 @@ async def _start(
             tenant=tenant,
             stop_after=stop_after,
         )
+    )
+
+
+def _command(services: Services, version: ProcessVersion, identity: str, tenant: str) -> Command:
+    """The invocation as a command on the `channel.cli` capability."""
+    return Command(
+        id=services.ids.new("cmd"),
+        channel="channel.cli",
+        identity=identity,
+        org_path=(tenant,),
+        intent=Intent(raw=f"run {version.ref}", recognised="process.run"),
+        reply_to=ReplyTo(channel="channel.cli", address="stdout"),
+        received_at=services.clock.now(),
     )
 
 

@@ -1,21 +1,25 @@
-"""The suite: W-01 to W-12 against a live worker.
+"""The suite: W-01 to W-13 against a live worker.
 
 The endpoint is the only required input. The suite reads the worker's capabilities, asks for an
 estimate, and then posts up to five assignments, each for a purpose:
 
-1. `main` — the worker's default work within a frame that admits every declared capability.
-   Proves W-03, W-04, W-05, W-09 and the artifact half of W-11; supplies the tool for W-07.
+1. `main` — the worker's default work within a frame that admits every declared capability
+   and the hosts the caller names. Proves W-03, W-04, W-05, W-09 and the artifact half of
+   W-11; supplies the tool for W-07 and the host for W-13.
 2. `narrowed` — the same work in a frame that excludes one tool the main run used. Proves W-07.
-3. `stopped` — the same work, stopped while a step runs. Proves W-06.
-4. `resumed` — the same work resumed from the checkpoint of the stopped run. Proves W-11.
-5. `over-limit` — the same work with a limit below the estimate. Proves W-10.
+3. `narrowed-hosts` — the same work in a frame whose allowed_hosts lacks one host the main run
+   reached. Proves W-13.
+4. `stopped` — the same work, stopped while a step runs. Proves W-06.
+5. `resumed` — the same work resumed from the checkpoint of the stopped run. Proves W-11.
+6. `over-limit` — the same work with a limit below the estimate. Proves W-10.
 
 W-08 scans everything the suite saw for the value of the credential it referenced by name. W-12
 is reported as pending: the removal test needs processes, and the suite has none.
 
 What the worker does inside a step is its own business. The suite sends a generic task unless
 the caller supplies one; a worker that needs a real task to do anything is given one with
-`--task`.
+`--task`, and the hosts that task reaches are named with `--hosts`, so that the main run allows
+them and the narrowed run can withdraw one.
 
 Every schema violation in an event is attributed to the check that owns the event type — a bad
 `arguments_digest` is a W-09 failure, not a generic one — so that the report names the rule to
@@ -66,6 +70,9 @@ EVENT_OWNER = {
 class SuiteOptions:
     endpoint: str
     task: Json | None = None
+    hosts: Sequence[
+        str
+    ] = ()  # what the main run's frame allows; the task is expected to reach them
     credential_name: str = DEFAULT_CREDENTIAL
     credential_value: str | None = None  # never written anywhere; only searched for
     worker_log: Path | None = None
@@ -142,11 +149,12 @@ async def run_suite(options: SuiteOptions) -> Report:
             estimate = await _w02(client, findings, declared, options)
             fitting = _fitting_limits(capabilities, estimate)
 
-            main = await _run(client, options, "main", declared, [], fitting)
+            main = await _run(client, options, "main", declared, fitting)
             runs.append(main)
             await _judge(client, main, estimate, findings)
             await _w03_resume(client, main, findings)
             await _w07(client, options, main, declared, fitting, estimate, findings, runs)
+            await _w13(client, options, main, declared, fitting, estimate, findings, runs)
             stopped = await _w06(client, options, main, declared, fitting, estimate, findings, runs)
             await _w11(client, options, stopped, declared, fitting, estimate, findings, runs)
             await _w10(client, options, declared, estimate, findings, runs)
@@ -224,7 +232,7 @@ def _declared_tools(capabilities: Json) -> list[str]:
 async def _w02(
     client: WorkerClient, findings: Findings, declared: list[str], options: SuiteOptions
 ) -> Json | None:
-    assignment = _assignment(options, declared, [], {"quota": {"units": GENEROUS}})
+    assignment = _assignment(options, declared, {"quota": {"units": GENEROUS}})
     body = {k: assignment[k] for k in ("task", "context", "frame")}
     response = await client.post("/v1/estimate", body)
     estimate = response.json
@@ -251,17 +259,23 @@ async def _w02(
 def _assignment(
     options: SuiteOptions,
     allowed: Sequence[str],
-    forbidden: Sequence[str],
     limits: Json,
     *,
+    hosts: Sequence[str] | None = None,
     checkpoint_ref: str | None = None,
 ) -> Json:
+    """`hosts` None means the hosts the caller named; a list is exactly that list, which is how
+    the narrowed run withdraws one. The list is always sent: the affirmative form is the
+    contract's, and an empty list is the explicit "nothing"."""
     context: Json = {"workspace": {"kind": "none"}}
     if checkpoint_ref is not None:
         context["checkpoint_ref"] = checkpoint_ref
-    frame: Json = {"autonomy_level": 2, "allowed_tools": list(allowed), "max_steps": GENEROUS}
-    if forbidden:
-        frame["forbidden"] = list(forbidden)
+    frame: Json = {
+        "autonomy_level": 2,
+        "allowed_tools": list(allowed),
+        "allowed_hosts": list(options.hosts if hosts is None else hosts),
+        "max_steps": GENEROUS,
+    }
     return {
         "assignment_id": "asg_conf_" + secrets.token_hex(6),
         "task": options.task or DEFAULT_TASK,
@@ -327,15 +341,15 @@ async def _run(
     options: SuiteOptions,
     purpose: str,
     allowed: Sequence[str],
-    forbidden: Sequence[str],
     limits: Json,
     *,
+    hosts: Sequence[str] | None = None,
     checkpoint_ref: str | None = None,
     stop_on_step: str | bool | None = False,
 ) -> Run:
     """Post an assignment and read its stream to the end. `stop_on_step` names the step at
     whose start a stop is requested; None means the first step; False means never."""
-    assignment = _assignment(options, allowed, forbidden, limits, checkpoint_ref=checkpoint_ref)
+    assignment = _assignment(options, allowed, limits, hosts=hosts, checkpoint_ref=checkpoint_ref)
     accepted = await client.post("/v1/assignments", assignment)
     run = Run(purpose, assignment, accepted, Stream(status=0))
     if accepted.status != 201:
@@ -551,12 +565,13 @@ async def _w07(
         )
         return
     tool = used[0]
-    remaining = [t for t in declared if t != tool]
-    if remaining:
-        allowed, forbidden, how = remaining, [], f"removed {tool!r} from allowed_tools"
-    else:
-        allowed, forbidden, how = [tool], [tool], f"listed {tool!r} under forbidden"
-    run = await _run(client, options, "narrowed", allowed, forbidden, limits)
+    allowed = [t for t in declared if t != tool]
+    if not allowed:
+        # allowed_tools needs at least one entry; a worker with a single capability is given
+        # a capability it does not have, which excludes the one it used just the same.
+        allowed = ["conformance.nothing"]
+    how = f"removed {tool!r} from allowed_tools"
+    run = await _run(client, options, "narrowed", allowed, limits)
     runs.append(run)
     await _judge(client, run, estimate, findings)
     if run.outcome == "rejected":
@@ -588,6 +603,79 @@ async def _w07(
     )
 
 
+async def _w13(
+    client: WorkerClient,
+    options: SuiteOptions,
+    main: Run,
+    declared: list[str],
+    limits: Json,
+    estimate: Json | None,
+    findings: Findings,
+    runs: list[Run],
+) -> None:
+    """The main run's frame allowed exactly the hosts the caller named. A host reached outside
+    that list without refusal is already a failure of the main run (the stream rule). Otherwise
+    a run whose frame withdraws one reached host must show the refusal."""
+    if findings.violations["W-13"]:
+        return
+    reached = [
+        str(e.get("host"))
+        for e in main.events
+        if e.get("type") == "tool.called" and e.get("host") and not e.get("refused", False)
+    ]
+    if not reached:
+        refused = [
+            e
+            for e in main.events
+            if e.get("type") == "tool.called" and e.get("refused") and e.get("host")
+        ]
+        if refused:
+            findings.ok(
+                "W-13",
+                f"the main run refused host {refused[0].get('host')!r}, which its frame did not "
+                f"allow (seq {refused[0]['seq']})",
+            )
+            return
+        findings.inconclusive["W-13"] = (
+            "the main run reached no host, so no host could be placed outside the frame; give "
+            "the worker a task that reaches one (--task) and name that host (--hosts)"
+        )
+        return
+    host = reached[0]
+    hosts = [h for h in options.hosts if h != host]
+    how = f"removed {host!r} from allowed_hosts"
+    run = await _run(client, options, "narrowed-hosts", declared, limits, hosts=hosts)
+    runs.append(run)
+    await _judge(client, run, estimate, findings)
+    if run.outcome == "rejected":
+        findings.inconclusive["W-13"] = (
+            f"{how}; the worker rejected the narrowed frame before starting, which the contract "
+            "allows, so the refusal path could not be observed"
+        )
+        return
+    attempts = [e for e in run.events if e.get("type") == "tool.called" and e.get("host") == host]
+    refused = [e for e in attempts if e.get("refused", False)]
+    if findings.violations["W-13"]:
+        return
+    if not attempts:
+        findings.inconclusive["W-13"] = (
+            f"{how}; the worker never named {host!r} in the narrowed run, so the refusal could "
+            "not be observed"
+        )
+        return
+    if not refused:
+        findings.fail(
+            "W-13",
+            f"{how}; the worker reached {host!r} without refused: true (seq {attempts[0]['seq']})",
+        )
+        return
+    findings.ok(
+        "W-13",
+        f"{how}; the worker emitted tool.called with host and refused: true for it "
+        f"(seq {refused[0]['seq']}) and ended with outcome {run.outcome!r}",
+    )
+
+
 # --- W-06 stop, W-11 resume -------------------------------------------------------------------
 
 
@@ -615,9 +703,7 @@ async def _w06(
     if not any(e.get("type") == "step.started" for e in main.events):
         findings.inconclusive["W-06"] = "the main run started no step, so there was nothing to stop"
         return None
-    run = await _run(
-        client, options, "stopped", declared, [], limits, stop_on_step=_stop_target(main)
-    )
+    run = await _run(client, options, "stopped", declared, limits, stop_on_step=_stop_target(main))
     runs.append(run)
     await _judge(client, run, estimate, findings)
     if not run.stop_requested:
@@ -684,7 +770,7 @@ async def _w11(
         )
         return
     checkpoint = str(stopped.events[-1].get("checkpoint_ref"))
-    run = await _run(client, options, "resumed", declared, [], limits, checkpoint_ref=checkpoint)
+    run = await _run(client, options, "resumed", declared, limits, checkpoint_ref=checkpoint)
     runs.append(run)
     await _judge(client, run, estimate, findings)
     if run.outcome != "succeeded":
@@ -734,7 +820,7 @@ async def _w10(
         )
         return
     limits, how = exceeding
-    run = await _run(client, options, "over-limit", declared, [], limits)
+    run = await _run(client, options, "over-limit", declared, limits)
     runs.append(run)
     if run.accepted.status != 201:
         findings.fail(

@@ -21,3 +21,6 @@ creates its record here. `make gate-decisions` checks both.
 | [0005](DEC-0005-w12-is-not-a-suite-check.md) | W-12 is not a check the suite can run | DEFECT | corrected: the suite runs W-01 to W-11 and reports the removal test as pending |
 | [0006](DEC-0006-gates-assumed-an-installed-environment.md) | The gates assumed an installed environment | DEFECT | corrected: every gate target ensures its environment; `make doctor` checks what the gates invoke |
 | [0007](DEC-0007-the-shared-kernel-is-a-checked-binding.md) | The shared kernel is a checked binding, not generated code | DEFECT | corrected: hand-written bindings held to the schemas by `tests/contract` |
+| [0008](DEC-0008-the-frame-names-allowed-hosts.md) | The execution frame names allowed hosts, not forbidden ones | DEFECT | corrected: `frame.allowed_hosts` replaces `frame.forbidden`; check W-13 |
+| [0009](DEC-0009-credentials-are-parameters.md) | The credential register lists parameters, not deployment names | DEFECT | corrected: every row of `CREDENTIALS.md` is a parameter with purpose, permissions, rotation and its configuration key |
+| [0010](DEC-0010-commands-show-the-invocation-that-works.md) | Every command shows the invocation that works | DEFECT | corrected: `uv run` wherever the project environment is involved; the rule is in the conventions |

@@ -4,8 +4,9 @@
   "ts": "2026-09-15T21:10:41Z",
   "type": "tool.called",
   "step_id": "s2",
-  "tool": "net.egress",
+  "tool": "code.test",
   "arguments_digest": "sha256:970155324baf808756904f137ec53e5dcbaafe5ba64118e411b314a55b3758d2",
+  "host": "packages.example",
   "refused": true,
-  "reason": "net.egress:* is forbidden by the frame"
+  "reason": "packages.example is not in the frame's allowed_hosts"
 }

@@ -1,9 +1,12 @@
-"""Use cases: start a run from a commissioned plan, resume a halted one, request a stop.
+"""Use cases: start a run from a commissioned plan, submit one for a runner, resume a halted
+one, request a stop.
 
-One engine, three entry points. `start` creates the run and executes it; `resume` continues a
-halted or escalated run at its boundary — or recovers a run whose instance stopped without
-halting it; `request_stop` asks a running run to stop at its next boundary. Execution is
-sequential: one step at a time, in the plan's order.
+One engine, four entry points. `start` creates the run and executes it in this process;
+`submit` creates the run and puts a job on the queue, so that a runner — this process or
+another — executes it (`runner.py`); `resume` continues a halted or escalated run at its
+boundary, starts a submitted one, or recovers a run whose instance stopped without halting it;
+`request_stop` asks a running run to stop at its next boundary. Execution is sequential: one
+step at a time, in the plan's order.
 
 What happens around every step is the contract of ADR-0005 and is the same for every method:
 
@@ -42,6 +45,7 @@ from taktus.components.run.domain.model import (
     NoWorker,
     RuleFailed,
     Run,
+    RunError,
     RunState,
     StepRun,
     StepState,
@@ -62,6 +66,7 @@ from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
+from taktus.ports.queue import RUN_EXECUTE, Job, Queue
 from taktus.ports.telemetry import Span, Telemetry
 from taktus.ports.worker import (
     ArtifactProduced,
@@ -107,11 +112,12 @@ class StartRun:
 
 @dataclass(frozen=True)
 class ResumeRun:
-    """Continue a run at its boundary. A halted or escalated run continues where it stopped. A
-    run still marked as executing is *recovered*: the instance that ran it is taken to be gone,
-    the step it was inside is set back to its last persisted boundary, and the run continues.
-    The caller asserts that no instance is executing the run; the daemon's lease will make
-    that check automatic, `taktusctl run --resume` is an operator's explicit act."""
+    """Continue a run at its boundary. A halted or escalated run continues where it stopped; a
+    submitted run that never started starts. A run still marked as executing is *recovered*:
+    the instance that ran it is taken to be gone, the step it was inside is set back to its
+    last persisted boundary, and the run continues. The caller asserts that no instance is
+    executing the run: the runner's claim on the run's job asserts it (`runner.py`),
+    `taktusctl run --resume` is an operator's explicit act."""
 
     run_id: str
     actor: str
@@ -148,6 +154,7 @@ class RunEngine:
         clock: Clock,
         ids: Identifiers,
         telemetry: Telemetry,
+        queue: Queue | None = None,
         options: EngineOptions | None = None,
     ) -> None:
         self._runs = runs
@@ -159,6 +166,7 @@ class RunEngine:
         self._clock = clock
         self._ids = ids
         self._telemetry = telemetry
+        self._queue = queue
         self._options = options or EngineOptions()
         self._stop_requested: set[str] = set()
         self._inflight: dict[str, tuple[Worker, str]] = {}
@@ -166,6 +174,35 @@ class RunEngine:
     # --- entry points --------------------------------------------------------------------------
 
     async def start(self, command: StartRun) -> Run:
+        run = await self._create(command)
+        return await self._execute(await self._launch(run), command.stop_after)
+
+    async def submit(self, command: StartRun) -> Run:
+        """Create the run and hand it to a runner: the run in state `planned` and the job that
+        names it land in one transaction, so that a run without a job and a job without a run
+        are both impossible. Which runner executes it, and when, is the queue's business."""
+        if self._queue is None:
+            raise RunError("no queue is wired; submit needs one, start does not")
+        return await self._create(command, enqueue=True)
+
+    async def resume(self, command: ResumeRun) -> Run:
+        async with self._work.transaction(command.tenant):
+            run = await self._runs.get(command.tenant, command.run_id)
+        if run is None:
+            raise UnknownRun(command.run_id)
+        if command.budget is not None:
+            run = run.model_copy(update={"budget": command.budget})
+        if run.state in RESUMABLE:
+            run = await self._commit(run.to(RunState.RUNNING), "run.resumed", actor=command.actor)
+        elif run.state is RunState.PLANNED and run.in_flight() is None:
+            run = await self._launch(run)  # submitted, never started: this is its start
+        elif run.state in INTERRUPTIBLE:
+            run = await self._recover(run, command.actor)
+        else:
+            raise UnknownRun(f"run {run.id!r} is {run.state} and cannot be resumed")
+        return await self._execute(run, command.stop_after)
+
+    async def _create(self, command: StartRun, *, enqueue: bool = False) -> Run:
         now = self._clock.now()
         run = Run(
             id=self._ids.new("run"),
@@ -180,25 +217,14 @@ class RunEngine:
             updated_at=now,
         )
         self._check_executable(run)
-        run = await self._commit(run, "run.created", actor=command.actor)
-        run = await self._commit(run.to(RunState.ADMITTED))
-        run = await self._commit(run.to(RunState.RUNNING), "run.started")
-        return await self._execute(run, command.stop_after)
+        job = None
+        if enqueue:
+            job = Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
+        return await self._commit(run, "run.created", actor=command.actor, enqueue=job)
 
-    async def resume(self, command: ResumeRun) -> Run:
-        async with self._work.transaction(command.tenant):
-            run = await self._runs.get(command.tenant, command.run_id)
-        if run is None:
-            raise UnknownRun(command.run_id)
-        if command.budget is not None:
-            run = run.model_copy(update={"budget": command.budget})
-        if run.state in RESUMABLE:
-            run = await self._commit(run.to(RunState.RUNNING), "run.resumed", actor=command.actor)
-        elif run.state in INTERRUPTIBLE:
-            run = await self._recover(run, command.actor)
-        else:
-            raise UnknownRun(f"run {run.id!r} is {run.state} and cannot be resumed")
-        return await self._execute(run, command.stop_after)
+    async def _launch(self, run: Run) -> Run:
+        run = await self._commit(run.to(RunState.ADMITTED))
+        return await self._commit(run.to(RunState.RUNNING), "run.started")
 
     async def _recover(self, run: Run, actor: str) -> Run:
         """The instance executing this run stopped without halting it. The step it was inside
@@ -407,7 +433,7 @@ class RunEngine:
             frame=Frame(
                 autonomy_level=run.autonomy_level,
                 allowed_tools=step.required_capabilities,
-                forbidden=work.forbidden,
+                allowed_hosts=work.allowed_hosts,
                 max_steps=work.max_steps,
             ),
             # The worker sees what is left, never the whole budget: its own check (W-10) then
@@ -655,13 +681,17 @@ class RunEngine:
         outcome: str | None = None,
         actor: str | None = None,
         trace: Trace | None = None,
+        enqueue: Job | None = None,
     ) -> Run:
         """One transaction: the run as it now is, and — when `kind` is given — the ledger entry
         that says what changed. Either both land or neither does. A step that finished with a
-        result gets its provenance record in the same transaction, bound to that entry."""
+        result gets its provenance record in the same transaction, bound to that entry; a job
+        to `enqueue` lands in it too."""
         run = run.model_copy(update={"updated_at": self._clock.now()})
         async with self._work.transaction(run.tenant):
             await self._runs.put(run.tenant, run)
+            if enqueue is not None and self._queue is not None:
+                await self._queue.enqueue(run.tenant, enqueue)
             if kind is not None:
                 entry = await self._record(run, kind, step=step, outcome=outcome, actor=actor)
                 if step is not None and trace is not None and step.done:

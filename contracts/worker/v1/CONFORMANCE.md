@@ -5,7 +5,7 @@ and reports back over a stream of events — and wants to know whether it satisf
 You do not need to know anything else about Taktus to follow it.
 
 The *conformance suite* is a program that talks to your worker exactly as Taktus would, and
-reports, for each of twelve numbered checks, whether your worker did what the contract requires.
+reports, for each of thirteen numbered checks, whether your worker did what the contract requires.
 The contract itself is in [README.md](README.md) in this directory; the checks are its section 7.
 
 ---
@@ -43,6 +43,7 @@ Options you may need:
 | Option | When |
 |---|---|
 | `--task task.json` | your worker does nothing useful without a real task. The file holds `goal`, `acceptance` and `inputs` as the contract defines them (README §3). Without it the suite sends a generic task and expects the worker to do its default work. |
+| `--hosts HOST` | your task reaches a host over the network. Name each such host (repeat the option); the main run's frame allows exactly these, and W-13 withdraws one and expects your worker to refuse it. Without it the frame allows no host, and a worker that reaches one anyway fails W-13. |
 | `--credential NAME` | the name under which the suite references a credential (default `TAKTUS_CONFORMANCE_CREDENTIAL`). See check W-08 below. |
 | `--worker-log FILE` | your worker writes a log file the suite can read. It is scanned for W-08. |
 | `--timeout SECONDS` | one assignment may take longer than five minutes. |
@@ -83,7 +84,7 @@ the other; the suite never runs two at once.
 
 ---
 
-## 4. The twelve checks in plain words
+## 4. The thirteen checks in plain words
 
 | Check | In plain words | If it fails, fix this |
 |---|---|---|
@@ -93,12 +94,13 @@ the other; the suite never runs two at once.
 | **W-04** | After every step, before the next one starts, you report what that step used. | Emit `consumption.reported` with the step's id before `step.started` of the next step. Reporting everything at the end is exactly what this check refuses. |
 | **W-05** | At least once per assignment you emit `step.boundary`: a point where your work is saved and you could stop. | Emit it after every step, with a `checkpoint_ref` you can resume from. |
 | **W-06** | When a stop is requested, you finish the running step, emit its boundary, and end with outcome `stopped` and that boundary's `checkpoint_ref`. No step starts after that boundary. | Do not abort the running step. Do not start another one. The `checkpoint_ref` in `assignment.finished` and in the assignment state must be the boundary's. |
-| **W-07** | A tool the frame does not allow is refused visibly, not used silently. | When a step wants a tool that is not in `allowed_tools` or matches `forbidden`, emit `tool.called` with `refused: true` and a `reason`, and do not run it. |
+| **W-07** | A tool the frame does not allow is refused visibly, not used silently. | When a step wants a tool that is not in `allowed_tools`, emit `tool.called` with `refused: true` and a `reason`, and do not run it. |
 | **W-08** | The value of a credential never appears anywhere the suite can see: no event, no artifact, no state, no log. | Never print, echo or store a credential value. Report its presence if you must, never its content. |
 | **W-09** | `tool.called` carries the arguments as a hash — `sha256:` and 64 hex characters — never in clear. | Hash the arguments; do not add a field with them in clear. |
 | **W-10** | When your estimate does not fit the limits, you do not start: the answer to `POST /v1/assignments` is `finished` / `rejected` with a reason, and the stream has exactly one event. | Compare the estimate with `limits` before the first step. Rejection is a state, not an HTTP error: answer `201` with the rejected state. |
 | **W-11** | An assignment resumed from a checkpoint produces nothing it produced before that checkpoint. Every artifact you announce is listed under `GET /artifacts` with the same digest, and its bytes hash to that digest. | Remember, per checkpoint, which artifacts exist. Serve every artifact's bytes at its `uri`. |
 | **W-12** | Removing your worker from a running Taktus changes quality or cost but breaks no process. | Nothing yet: this check is not run by the suite. See section 7. |
+| **W-13** | A host the frame does not allow is refused visibly, not reached silently. `allowed_hosts` is the whole list of what you may reach; absent or empty means nothing. | Whenever a step reaches a host, emit `tool.called` with that `host`. When the host is not in `allowed_hosts`, set `refused: true` and a `reason`, and do not reach it. Never treat an absent list as "anything goes". |
 
 The report attributes a malformed event to the check that owns that event type: a bad
 `arguments_digest` is a W-09 failure, a bad `consumption.reported` a W-04 failure, and so on. Base
@@ -131,6 +133,7 @@ what would make it conclusive. The common cases:
 | Check | Why | What to do |
 |---|---|---|
 | W-07 / W-09 | your worker called no tool during `main`, so nothing could be placed outside the frame and no hash could be inspected | give it a task that uses a tool: `--task` |
+| W-13 | your worker reached no host during `main`, so no host could be withdrawn from the frame | give it a task that reaches one (`--task`) and name that host (`--hosts`) |
 | W-06 | the assignment finished before the stop arrived; or the step the suite waits for never started | make the default work take more than a moment, or supply a task with several steps |
 | W-08 | the suite had no value to look for | set the same random value under the credential's name in your worker's environment and in the environment of the suite before starting both: `export TAKTUS_CONFORMANCE_CREDENTIAL=$(openssl rand -hex 16)` |
 | W-10 | your estimate is zero for every quantity, so no limit can lie below it | estimate something; a shell script still takes seconds of `cpu` |
@@ -143,7 +146,7 @@ stop can land on, without a stopped run there is nothing to resume. Fix the fail
 
 ## 7. What a pass means
 
-A worker whose report shows eleven `passed` and one `pending` satisfies the contract as far as a
+A worker whose report shows twelve `passed` and one `pending` satisfies the contract as far as a
 suite talking to one endpoint can tell.
 
 It is not yet *verified*. Taktus grades adapters in three levels — `experimental`, `verified`,

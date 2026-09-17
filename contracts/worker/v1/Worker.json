@@ -23,6 +23,13 @@
       "type": "string",
       "minLength": 1
     },
+    "Host": {
+      "title": "Host",
+      "description": "A host the frame allows, as a lowercase host name or an IPv4 address, optionally with a port. No wildcard: least privilege names what is allowed.",
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$",
+      "maxLength": 253
+    },
     "ConsumptionKind": {
       "title": "ConsumptionKind",
       "description": "What kind of limit applies to this worker's use. currency: paid per use. quota: a subscription window that blocks when exhausted. compute: held hardware in a resource class.",
@@ -181,7 +188,7 @@
 
     "Frame": {
       "title": "Frame",
-      "description": "The ceiling, not a suggestion. The worker receives only the tools in allowed_tools; forbidden narrows further by pattern.",
+      "description": "The ceiling, not a suggestion. The worker receives only the tools in allowed_tools and reaches only the hosts in allowed_hosts; both are affirmative lists, and everything outside them is refused.",
       "type": "object",
       "properties": {
         "autonomy_level": { "$ref": "../../shared/v1/AutonomyLevel.json" },
@@ -191,10 +198,12 @@
           "minItems": 1,
           "uniqueItems": true
         },
-        "forbidden": {
+        "allowed_hosts": {
+          "description": "The hosts the worker may reach over the network, and nothing else: an explicit list, never a pattern. Absent or empty means no outbound access at all, which is the default for most work. A host outside the list is refused, and the refusal is a tool.called event with host and refused true.",
           "type": "array",
-          "items": { "$ref": "../../shared/v1/Capability.json#/$defs/pattern" },
-          "uniqueItems": true
+          "items": { "$ref": "#/$defs/Host" },
+          "uniqueItems": true,
+          "default": []
         },
         "max_steps": { "type": "integer", "minimum": 1 },
         "deadline": { "type": "string", "format": "date-time" }
@@ -438,7 +447,7 @@
 
     "ToolCalled": {
       "title": "ToolCalled",
-      "description": "The worker used, or refused to use, a tool. Arguments travel as a digest, never in clear. A tool outside the frame's allowed_tools is refused, and the refusal is this event with refused true.",
+      "description": "The worker used, or refused to use, a tool. Arguments travel as a digest, never in clear. A tool outside the frame's allowed_tools is refused, and so is a host outside the frame's allowed_hosts; the refusal is this event with refused true.",
       "type": "object",
       "allOf": [{ "$ref": "#/$defs/EventBase" }],
       "properties": {
@@ -446,6 +455,10 @@
         "step_id": { "$ref": "#/$defs/StepId" },
         "tool": { "$ref": "../../shared/v1/Capability.json" },
         "arguments_digest": { "$ref": "../../shared/v1/Artifact.json#/$defs/digest" },
+        "host": {
+          "description": "The host the call reaches over the network, when it reaches one. A host outside the frame's allowed_hosts is refused.",
+          "$ref": "#/$defs/Host"
+        },
         "refused": { "type": "boolean", "default": false },
         "reason": { "description": "Why the call was refused.", "type": "string" }
       },
