@@ -1,0 +1,93 @@
+{
+  "contract": "connector/v1",
+  "version": "1.0.0",
+  "capabilities": [
+    "repository.issues",
+    "repository.pullrequests",
+    "repository.pipelines",
+    "repository.comments"
+  ],
+  "operations": [
+    {
+      "name": "repository.issues.read",
+      "capability": "repository.issues",
+      "effect": "read",
+      "summary": "Read one issue."
+    },
+    {
+      "name": "repository.issues.create",
+      "capability": "repository.issues",
+      "effect": "write",
+      "idempotency": "marked",
+      "summary": "Open an issue."
+    },
+    {
+      "name": "repository.pullrequests.read",
+      "capability": "repository.pullrequests",
+      "effect": "read",
+      "summary": "Read one pull request."
+    },
+    {
+      "name": "repository.pullrequests.open",
+      "capability": "repository.pullrequests",
+      "effect": "write",
+      "idempotency": "marked",
+      "summary": "Open a pull request from a branch."
+    },
+    {
+      "name": "repository.pipelines.read",
+      "capability": "repository.pipelines",
+      "effect": "read",
+      "summary": "Read the state of one pipeline run."
+    },
+    {
+      "name": "repository.pipelines.trigger",
+      "capability": "repository.pipelines",
+      "effect": "write",
+      "idempotency": "none",
+      "summary": "Start a pipeline. The target offers no way to recognise a repeat."
+    },
+    {
+      "name": "repository.comments.list",
+      "capability": "repository.comments",
+      "effect": "read",
+      "summary": "List the comments of an issue or pull request."
+    },
+    {
+      "name": "repository.comments.create",
+      "capability": "repository.comments",
+      "effect": "write",
+      "idempotency": "marked",
+      "summary": "Comment on an issue or pull request."
+    }
+  ],
+  "intake": {
+    "events": [
+      "issues.opened",
+      "issue_comment.created",
+      "pull_request.opened",
+      "pipeline_run.completed"
+    ],
+    "signature": {
+      "scheme": "hmac-sha256"
+    }
+  },
+  "credentials": [
+    {
+      "name": "REPOSITORY_TOKEN",
+      "purpose": "actions"
+    },
+    {
+      "name": "REPOSITORY_WEBHOOK_SECRET",
+      "purpose": "intake"
+    }
+  ],
+  "consumption": {
+    "kinds": [
+      "quota"
+    ],
+    "unit": "requests",
+    "window_seconds": 3600
+  },
+  "permissions": "service-account"
+}

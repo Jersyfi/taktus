@@ -1,0 +1,23 @@
+{
+  "event_id": "dlv_01J8R4A1B2C3D4E5F6G7H8J9K0",
+  "event": "issue_comment.created",
+  "channel": "channel.repo",
+  "sender": {
+    "account": "100200",
+    "kind": "person"
+  },
+  "intent": {
+    "raw": "@taktus turn this into a pull request"
+  },
+  "context": {
+    "repository": "acme/taktus",
+    "issue": "412",
+    "comment": "9001"
+  },
+  "reply_to": {
+    "channel": "channel.repo",
+    "address": "acme/taktus#412",
+    "thread": "9001"
+  },
+  "occurred_at": "2026-09-16T08:15:00Z"
+}

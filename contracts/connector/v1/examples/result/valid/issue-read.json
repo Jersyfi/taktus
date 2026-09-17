@@ -1,0 +1,13 @@
+{
+  "output": {
+    "number": 412,
+    "title": "Pin the model version on every ml step",
+    "state": "open"
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "consumption": {
+    "quota_units": 1
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "events": [
+    "issues.opened",
+    "issue_comment.created",
+    "pull_request.opened",
+    "pipeline_run.completed"
+  ],
+  "signature": {
+    "scheme": "hmac-sha256"
+  }
+}

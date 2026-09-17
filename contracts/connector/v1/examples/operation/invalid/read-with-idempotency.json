@@ -1,0 +1,7 @@
+{
+  "name": "repository.issues.read",
+  "capability": "repository.issues",
+  "effect": "read",
+  "summary": "Read one issue.",
+  "idempotency": "marked"
+}

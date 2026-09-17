@@ -1,0 +1,4 @@
+{
+  "reason": "own_action",
+  "detail": "the comment carries the connector's own mark; acting on it would loop"
+}

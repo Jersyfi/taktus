@@ -1,0 +1,7 @@
+{
+  "class": "failure",
+  "cause": "unavailable",
+  "effect": "none",
+  "retryable": true,
+  "detail": "the target answered 503; try again with the same key"
+}

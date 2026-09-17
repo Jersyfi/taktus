@@ -1,0 +1,22 @@
+{
+  "output": {
+    "number": 57,
+    "url": "https://repo.example/acme/taktus/pull/57",
+    "state": "open"
+  },
+  "effect": {
+    "kind": "write",
+    "replayed": true,
+    "records": [
+      {
+        "kind": "vcs.pullrequest",
+        "id": "57",
+        "url": "https://repo.example/acme/taktus/pull/57"
+      }
+    ],
+    "content_digest": "sha256:9f2c1e0b7a4d3c6e5f8a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6"
+  },
+  "consumption": {
+    "quota_units": 1
+  }
+}

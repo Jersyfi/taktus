@@ -1,0 +1,9 @@
+{
+  "kind": "read",
+  "records": [
+    {
+      "kind": "issue",
+      "id": "412"
+    }
+  ]
+}

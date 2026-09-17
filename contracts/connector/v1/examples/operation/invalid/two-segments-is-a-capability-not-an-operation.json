@@ -1,0 +1,6 @@
+{
+  "name": "repository.issues",
+  "capability": "repository.issues",
+  "effect": "read",
+  "summary": "Read one issue."
+}

@@ -1,0 +1,7 @@
+{
+  "class": "failure",
+  "cause": "unknown",
+  "effect": "unknown",
+  "retryable": false,
+  "detail": "the request was sent and no answer arrived within 30 seconds"
+}

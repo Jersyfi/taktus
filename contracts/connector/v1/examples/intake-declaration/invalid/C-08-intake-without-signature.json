@@ -1,0 +1,8 @@
+{
+  "events": [
+    "issues.opened"
+  ],
+  "signature": {
+    "scheme": "none"
+  }
+}

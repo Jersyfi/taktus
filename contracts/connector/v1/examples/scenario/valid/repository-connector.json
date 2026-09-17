@@ -1,0 +1,59 @@
+{
+  "credentials": {
+    "actions": "REPOSITORY_TOKEN",
+    "intake": "REPOSITORY_WEBHOOK_SECRET"
+  },
+  "read": {
+    "operation": "repository.issues.read",
+    "input": {
+      "number": 1
+    }
+  },
+  "writes": [
+    {
+      "operation": "repository.issues.create",
+      "input": {
+        "title": "conformance {{unique}}",
+        "body": "opened by the conformance suite"
+      }
+    },
+    {
+      "operation": "repository.pullrequests.open",
+      "input": {
+        "head": "conformance/{{unique}}",
+        "base": "main",
+        "title": "conformance {{unique}}",
+        "body": "opened by the conformance suite"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "repository.issues.read",
+    "input": {
+      "number": 999999
+    },
+    "expected_cause": "not_found"
+  },
+  "intake": {
+    "signature": {
+      "header": "x-signature-256",
+      "prefix": "sha256="
+    },
+    "supported": {
+      "headers": {
+        "content-type": "application/json",
+        "x-event": "issue_comment",
+        "x-delivery": "dlv_01J8R4A1B2C3D4E5F6G7H8J9K0"
+      },
+      "body": "{\"action\":\"created\",\"issue\":{\"number\":412},\"comment\":{\"id\":9001,\"body\":\"@taktus turn this into a pull request\"},\"sender\":{\"id\":100200,\"type\":\"User\"}}"
+    },
+    "unsupported": {
+      "headers": {
+        "content-type": "application/json",
+        "x-event": "star",
+        "x-delivery": "dlv_01J8R4A1B2C3D4E5F6G7H8J9K3"
+      },
+      "body": "{\"action\":\"created\"}"
+    }
+  }
+}

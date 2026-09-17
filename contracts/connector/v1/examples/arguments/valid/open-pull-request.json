@@ -1,0 +1,23 @@
+{
+  "context": {
+    "tenant": "default",
+    "identity": "idn_7f3a2c",
+    "run_id": "run_01J8R3K5Q2N7VX9M4T6B0DPHWE",
+    "step_id": "open-pr",
+    "attempt": 1,
+    "idempotency_key": "run_01J8R3K5Q2N7VX9M4T6B0DPHWE:open-pr:1",
+    "credentials": [
+      {
+        "name": "REPOSITORY_TOKEN",
+        "injected_as": "env"
+      }
+    ],
+    "autonomy_level": 3
+  },
+  "input": {
+    "head": "taktus/issue-412",
+    "base": "main",
+    "title": "Pin the model version on every ml step",
+    "body": "Closes #412."
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "chat.threads"
+  ],
+  "operations": [
+    {
+      "name": "chat.threads.read",
+      "capability": "chat.threads",
+      "effect": "read",
+      "summary": "Read a thread."
+    },
+    {
+      "name": "chat.threads.post",
+      "capability": "chat.threads",
+      "effect": "delivery",
+      "idempotency": "native",
+      "summary": "Post a message into a thread; the target accepts the idempotency key itself."
+    }
+  ],
+  "intake": {
+    "events": [
+      "message.posted",
+      "message.mentioned"
+    ],
+    "signature": {
+      "scheme": "hmac-sha256"
+    }
+  },
+  "credentials": [
+    {
+      "name": "CHAT_TOKEN",
+      "purpose": "actions"
+    },
+    {
+      "name": "CHAT_SIGNING_SECRET",
+      "purpose": "intake"
+    }
+  ],
+  "consumption": {
+    "kinds": [
+      "currency"
+    ],
+    "currencies": [
+      "eur"
+    ]
+  },
+  "permissions": "passthrough"
+}

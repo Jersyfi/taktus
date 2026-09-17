@@ -1,0 +1,20 @@
+{
+  "context": {
+    "tenant": "default",
+    "identity": "idn_7f3a2c",
+    "run_id": "run_01J8R3K5Q2N7VX9M4T6B0DPHWE",
+    "step_id": "read-issue",
+    "attempt": 1,
+    "idempotency_key": "run_01J8R3K5Q2N7VX9M4T6B0DPHWE:read-issue:1",
+    "credentials": [
+      {
+        "name": "REPOSITORY_TOKEN",
+        "injected_as": "env"
+      }
+    ],
+    "autonomy_level": 3
+  },
+  "input": {
+    "number": 412
+  }
+}

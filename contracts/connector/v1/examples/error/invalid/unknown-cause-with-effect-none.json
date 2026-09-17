@@ -1,0 +1,7 @@
+{
+  "class": "failure",
+  "cause": "unknown",
+  "effect": "none",
+  "retryable": false,
+  "detail": "the answer did not arrive"
+}

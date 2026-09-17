@@ -1,0 +1,23 @@
+{
+  "event_id": "dlv_01J8R4A1B2C3D4E5F6G7H8J9K2",
+  "event": "pull_request.opened",
+  "channel": "channel.repo",
+  "sender": {
+    "account": "100200",
+    "kind": "person"
+  },
+  "intent": {
+    "raw": "Pin the model version on every ml step"
+  },
+  "context": {
+    "repository": "acme/taktus",
+    "pull_request": "57",
+    "head": "taktus/issue-412",
+    "base": "main"
+  },
+  "reply_to": {
+    "channel": "channel.repo",
+    "address": "acme/taktus#57"
+  },
+  "occurred_at": "2026-09-16T09:00:00Z"
+}
