@@ -111,6 +111,19 @@ raw consumption, then honour a pending stop at the boundary. A step rejected by 
 halts the run with cause `limit`; a raised budget on resume lets it continue. A worker step
 stopped mid-way ends with the worker's checkpoint, and the resumed assignment starts from it.
 
+Every state change is one transaction with the ledger entry that describes it: the run as it
+now is and the entry land together or not at all. A worker's own step boundaries are persisted
+as they arrive, so that the boundary a run resumes from can lie inside a worker step.
+
+**Restart.** An instance that stops without a chance to halt its runs — killed, crashed,
+powered off — leaves each of them marked as running, with one step in flight. Resuming such a
+run *recovers* it: the step in flight goes back to its last persisted boundary (the worker's
+checkpoint if one arrived, its start otherwise), is admitted again, and the run continues;
+the steps before it are kept as they are. That is ADR-0013 A made true, and
+`tests/integration/test_restart.py` proves it by killing the process. Whoever resumes a running
+run asserts that no instance is executing it; today that is the operator's explicit act
+(`taktusctl run --resume`), and the daemon's lease on a run will make the check automatic.
+
 ### 5.2 States
 
 ```
@@ -144,6 +157,11 @@ for a halt stays on the run; the ledger carries the cause as a token.
 **It is the single source for every metric.** No view and no value ledger computes from a second
 source.
 
+In the database the ledger is append-only by construction, not only by convention: the
+application role may insert and read, and a trigger rejects every update, delete and truncate
+for everyone but a superuser (`migrations/`). A hash chain whose rows can be edited proves
+nothing.
+
 ---
 
 ## 7. Consumption
@@ -166,3 +184,22 @@ configuration, not part of a process definition. See [accounting.md](accounting.
 Every control-plane event and every worker event stream is emitted as an OpenTelemetry signal. That
 is the data basis for the ledger, the views, the value ledger and BI export — and the reason an
 external observability platform stays optional and never becomes a prerequisite.
+
+---
+
+## 9. Tenants and instances
+
+Two boundaries that are easy to confuse, kept apart by ADR-0020.
+
+A **tenant** separates organisational units *inside one running instance* — departments,
+teams, projects, a family. It governs visibility, sharing, cost attribution and permissions. It
+is the first element of a command's `org_path` (§2). Every row in the database carries its
+tenant, every repository call names its tenant as an explicit parameter, and row-level security
+in the database keeps tenants apart even when a query forgets the filter. Until the identity
+component exists there is one tenant, `default`, created by the first migration.
+
+An **instance** separates *deployments* with a different cadence and a different blast radius:
+its own database, its own secret store, its own configuration. Two instances share nothing and
+never call each other. The Taktus project runs two — a development instance on `main`, a
+project instance on a tagged release — so that a faulty version under development cannot take
+down productive work (ADR-0013 D).

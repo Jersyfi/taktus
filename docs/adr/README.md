@@ -25,3 +25,4 @@ ADR wins.
 | [0017](ADR-0017-decision-requests-in-the-repository.md) | Decision requests as a repository mechanism | accepted |
 | [0018](ADR-0018-exactness-applies-to-result-producing-steps.md) | Exactness classes apply to result-producing steps only | accepted |
 | [0019](ADR-0019-contract-identity.md) | Contract identity | accepted |
+| [0020](ADR-0020-tenants-and-instances.md) | Tenants and instances are different boundaries | accepted |

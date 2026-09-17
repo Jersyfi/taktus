@@ -10,6 +10,7 @@ Configuration references secret *names*. The operator creates the secrets.
 | Name | Purpose | Used in | Rotation |
 |---|---|---|---|
 | `GITHUB_TOKEN` | lets the secret scan in CI read the commits of a pull request | `.github/workflows/ci.yml`, step `secrets` | none needed: GitHub creates it per workflow run and revokes it when the run ends; it is never stored |
+| `TAKTUS_DATABASE_URL` | how an instance reaches its PostgreSQL database; carries the database password when the server requires one, which is why the whole URL is handled as a secret | the composition root (`src/taktus/composition/local.py`) through the configuration port; `make migrate` through `migrations/env.py` | change the database user's password on the server, then the URL in the instance's environment; the development database (`deploy/docker/compose.dev.yml`) has no password and trusts local connections only |
 
 ## Rule for every session in this repository
 

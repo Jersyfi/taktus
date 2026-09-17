@@ -1,8 +1,9 @@
 """Use cases: start a run from a commissioned plan, resume a halted one, request a stop.
 
 One engine, three entry points. `start` creates the run and executes it; `resume` continues a
-halted or escalated run at its boundary; `request_stop` asks a running run to stop at its next
-boundary. Execution is sequential: one step at a time, in the plan's order.
+halted or escalated run at its boundary — or recovers a run whose instance stopped without
+halting it; `request_stop` asks a running run to stop at its next boundary. Execution is
+sequential: one step at a time, in the plan's order.
 
 What happens around every step is the contract of ADR-0005 and is the same for every method:
 
@@ -12,12 +13,15 @@ What happens around every step is the contract of ADR-0005 and is the same for e
    with cause `limit`;
 3. run — through the worker port, the rule table, or the clock;
 4. persist — the step run with its checkpoint, artifacts and raw consumption is written before
-   the next step is looked at;
+   the next step is looked at; every state change and the ledger entry that describes it are
+   one transaction of the unit of work;
 5. boundary — a stop requested meanwhile, or `stop_after`, takes effect here.
 
 A worker step that is stopped mid-way ends `stopped` with the worker's checkpoint; resuming
 hands that checkpoint back to the worker, which produces nothing it produced before it, and the
-engine records no artifact twice even if it did.
+engine records no artifact twice even if it did. The worker's own step boundaries are persisted
+as they arrive, so that an instance that dies mid-step loses at most the worker's current inner
+step, not the whole step (ADR-0013 A).
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from taktus.components.run.domain.model import (
+    INTERRUPTIBLE,
     RESUMABLE,
     Cause,
     Checkpoint,
@@ -54,7 +59,7 @@ from taktus.components.run.ports import WorkerPool
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.objectstore import ObjectStore
-from taktus.ports.persistence import Repository
+from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.telemetry import Span, Telemetry
 from taktus.ports.worker import (
     ArtifactProduced,
@@ -91,14 +96,21 @@ class StartRun:
     budget: Limits
     process_version: str
     actor: str
-    tenant: str | None = None
+    tenant: Tenant
     stop_after: int | None = None
 
 
 @dataclass(frozen=True)
 class ResumeRun:
+    """Continue a run at its boundary. A halted or escalated run continues where it stopped. A
+    run still marked as executing is *recovered*: the instance that ran it is taken to be gone,
+    the step it was inside is set back to its last persisted boundary, and the run continues.
+    The caller asserts that no instance is executing the run; the daemon's lease will make
+    that check automatic, `taktusctl run --resume` is an operator's explicit act."""
+
     run_id: str
     actor: str
+    tenant: Tenant
     budget: Limits | None = None  # a changed limit; None keeps the run's
     stop_after: int | None = None
 
@@ -114,6 +126,7 @@ class RunEngine:
         self,
         *,
         runs: Repository[Run],
+        work: UnitOfWork,
         objects: ObjectStore,
         ledger: Ledger,
         workers: WorkerPool,
@@ -123,6 +136,7 @@ class RunEngine:
         options: EngineOptions | None = None,
     ) -> None:
         self._runs = runs
+        self._work = work
         self._objects = objects
         self._ledger = ledger
         self._workers = workers
@@ -150,24 +164,44 @@ class RunEngine:
             updated_at=now,
         )
         self._check_executable(run)
-        await self._save(run)
-        await self._record(run, "run.created", actor=command.actor)
-        run = await self._save(run.to(RunState.ADMITTED))
-        run = await self._save(run.to(RunState.RUNNING))
-        await self._record(run, "run.started")
+        run = await self._commit(run, "run.created", actor=command.actor)
+        run = await self._commit(run.to(RunState.ADMITTED))
+        run = await self._commit(run.to(RunState.RUNNING), "run.started")
         return await self._execute(run, command.stop_after)
 
     async def resume(self, command: ResumeRun) -> Run:
-        run = await self._runs.get(command.run_id)
+        async with self._work.transaction(command.tenant):
+            run = await self._runs.get(command.tenant, command.run_id)
         if run is None:
             raise UnknownRun(command.run_id)
-        if run.state not in RESUMABLE:
-            raise UnknownRun(f"run {run.id!r} is {run.state} and cannot be resumed")
         if command.budget is not None:
             run = run.model_copy(update={"budget": command.budget})
-        run = await self._save(run.to(RunState.RUNNING))
-        await self._record(run, "run.resumed", actor=command.actor)
+        if run.state in RESUMABLE:
+            run = await self._commit(run.to(RunState.RUNNING), "run.resumed", actor=command.actor)
+        elif run.state in INTERRUPTIBLE:
+            run = await self._recover(run, command.actor)
+        else:
+            raise UnknownRun(f"run {run.id!r} is {run.state} and cannot be resumed")
         return await self._execute(run, command.stop_after)
+
+    async def _recover(self, run: Run, actor: str) -> Run:
+        """The instance executing this run stopped without halting it. The step it was inside
+        goes back to its last persisted boundary — the worker's checkpoint if one arrived, its
+        start otherwise — and is admitted again; steps before it are kept as they are. That is
+        the "at most one step of work is lost" of ADR-0005, made true across a restart."""
+        interrupted = run.in_flight()
+        if interrupted is not None:
+            interrupted = interrupted.to(
+                StepState.STOPPED,
+                reason="the instance stopped while this step was in flight",
+                finished_at=self._clock.now(),
+            )
+            run = run.with_step_run(interrupted)
+        if run.state is RunState.PLANNED:
+            run = run.to(RunState.ADMITTED)
+        if run.state is RunState.ADMITTED:
+            run = run.to(RunState.RUNNING)
+        return await self._commit(run, "run.recovered", step=interrupted, actor=actor)
 
     async def request_stop(self, run_id: str) -> None:
         """Takes effect at the next step boundary. A running worker step is asked to stop as
@@ -231,13 +265,11 @@ class RunEngine:
         self, run: Run, state: RunState, cause: Cause | None, reason: str | None, span: Span
     ) -> Run:
         self._stop_requested.discard(run.id)
-        run = await self._save(run.to(state, cause, reason))
         span.set_attribute("run.state", state)
         if cause is not None:
             span.set_attribute("run.cause", cause)
         outcome = "succeeded" if state is RunState.FINISHED else str(cause)
-        await self._record(run, f"run.{state}", outcome=outcome)
-        return run
+        return await self._commit(run.to(state, cause, reason), f"run.{state}", outcome=outcome)
 
     async def _execute_step(self, run: Run, step: Step, step_run: StepRun) -> tuple[Run, StepRun]:
         async with self._telemetry.span(
@@ -256,11 +288,9 @@ class RunEngine:
         # A rule or a wait demands nothing of any limit: admission is a formality, recorded so
         # that every step run reads the same in the ledger.
         step_run = step_run.to(StepState.ADMITTED, estimate=None, reason=None)
-        run = await self._save(run.with_step_run(step_run))
-        await self._record(run, "step.admitted", step=step_run)
+        run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
         step_run = step_run.to(StepState.RUNNING, started_at=self._clock.now())
-        run = await self._save(run.with_step_run(step_run))
-        await self._record(run, "step.started", step=step_run)
+        run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
         try:
             result_digest: str | None = None
             artifacts: tuple[Artifact, ...] = ()
@@ -285,8 +315,9 @@ class RunEngine:
             step_run = step_run.to(
                 StepState.FAILED, reason=str(failure), finished_at=self._clock.now()
             )
-            run = await self._save(run.with_step_run(step_run))
-            await self._record(run, "step.finished", step=step_run, outcome="failed")
+            run = await self._commit(
+                run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+            )
             return run, step_run
         now = self._clock.now()
         checkpoint = Checkpoint(
@@ -299,8 +330,9 @@ class RunEngine:
         step_run = step_run.to(
             StepState.SUCCEEDED, artifacts=artifacts, checkpoint=checkpoint, finished_at=now
         )
-        run = await self._save(run.with_step_run(step_run))
-        await self._record(run, "step.finished", step=step_run, outcome="succeeded")
+        run = await self._commit(
+            run.with_step_run(step_run), "step.finished", step=step_run, outcome="succeeded"
+        )
         return run, step_run
 
     async def _evaluate(self, run: Run, work: Work) -> Any:
@@ -362,12 +394,15 @@ class RunEngine:
                 estimate=demand,
                 reason="does not fit the remaining budget: " + "; ".join(admission.findings),
             )
-            run = await self._save(run.with_step_run(step_run))
-            await self._record(run, "step.rejected", step=step_run, outcome="rejected_by_admission")
+            run = await self._commit(
+                run.with_step_run(step_run),
+                "step.rejected",
+                step=step_run,
+                outcome="rejected_by_admission",
+            )
             return run, step_run
         step_run = step_run.to(StepState.ADMITTED, adapter=adapter, estimate=demand, reason=None)
-        run = await self._save(run.with_step_run(step_run))
-        await self._record(run, "step.admitted", step=step_run)
+        run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
 
         # 3: run.
         state = await worker.assign(assignment)
@@ -379,14 +414,17 @@ class RunEngine:
                 assignment_id=assignment.assignment_id,
                 reason=f"rejected by the worker: {state.reason or 'no reason given'}",
             )
-            run = await self._save(run.with_step_run(step_run))
-            await self._record(run, "step.rejected", step=step_run, outcome="rejected_by_worker")
+            run = await self._commit(
+                run.with_step_run(step_run),
+                "step.rejected",
+                step=step_run,
+                outcome="rejected_by_worker",
+            )
             return run, step_run
         step_run = step_run.to(
             StepState.RUNNING, assignment_id=assignment.assignment_id, started_at=self._clock.now()
         )
-        run = await self._save(run.with_step_run(step_run))
-        await self._record(run, "step.started", step=step_run)
+        run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
         self._inflight[run.id] = (worker, assignment.assignment_id)
         if run.id in self._stop_requested:
             await self.request_stop(run.id)
@@ -431,7 +469,22 @@ class RunEngine:
                         )
                     artifacts.append(artifact)
                 elif isinstance(event, StepBoundary):
+                    # The worker's own boundary: persisted now, so that an instance that dies
+                    # after it resumes from here and not from the step's start.
                     checkpoint_ref = event.checkpoint_ref
+                    step_run = step_run.model_copy(
+                        update={
+                            "artifacts": tuple(artifacts),
+                            "consumption": _consumption(used),
+                            "checkpoint": Checkpoint(
+                                ref=checkpoint_ref,
+                                step_id=step_run.step_id,
+                                taken_at=self._clock.now(),
+                                artifact_ids=tuple(a.id for a in artifacts),
+                            ),
+                        }
+                    )
+                    run = await self._commit(run.with_step_run(step_run))
                 elif isinstance(event, AssignmentFinished):
                     finished = event
             if finished is None:
@@ -445,8 +498,9 @@ class RunEngine:
                 reason=str(error),
                 finished_at=self._clock.now(),
             )
-            run = await self._save(run.with_step_run(step_run))
-            await self._record(run, "step.finished", step=step_run, outcome="failed")
+            run = await self._commit(
+                run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+            )
             return run, step_run
 
         now = self._clock.now()
@@ -497,8 +551,9 @@ class RunEngine:
                 finished_at=now,
             )
             outcome = "failed"
-        run = await self._save(run.with_step_run(step_run))
-        await self._record(run, "step.finished", step=step_run, outcome=outcome)
+        run = await self._commit(
+            run.with_step_run(step_run), "step.finished", step=step_run, outcome=outcome
+        )
         return run, step_run
 
     async def _results(self, run: Run) -> dict[StepId, Any]:
@@ -519,9 +574,22 @@ class RunEngine:
 
     # --- persistence and the ledger --------------------------------------------------------------
 
-    async def _save(self, run: Run) -> Run:
+    async def _commit(
+        self,
+        run: Run,
+        kind: str | None = None,
+        *,
+        step: StepRun | None = None,
+        outcome: str | None = None,
+        actor: str | None = None,
+    ) -> Run:
+        """One transaction: the run as it now is, and — when `kind` is given — the ledger entry
+        that says what changed. Either both land or neither does."""
         run = run.model_copy(update={"updated_at": self._clock.now()})
-        await self._runs.put(run)
+        async with self._work.transaction(run.tenant):
+            await self._runs.put(run.tenant, run)
+            if kind is not None:
+                await self._record(run, kind, step=step, outcome=outcome, actor=actor)
         return run
 
     async def _record(
@@ -559,6 +627,7 @@ class RunEngine:
         if step is not None and step.checkpoint is not None:
             digest = step.checkpoint.result_digest
         await self._ledger.record(
+            run.tenant,
             Fact(
                 kind=kind,
                 refs=refs,
@@ -567,7 +636,7 @@ class RunEngine:
                 consumption=consumption,
                 outcome=outcome,
                 content_digest=digest,
-            )
+            ),
         )
 
 

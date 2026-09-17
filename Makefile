@@ -57,6 +57,19 @@ gate-secrets: need-gitleaks ## No secret value may ever enter this public reposi
 gate-decisions: need-uv ## Decision requests are complete, recorded, and a blocking one keeps its pull request a draft
 	$(UV) run tools/check_decisions.py
 
+# The development database (deploy/docker/compose.dev.yml). `db-down` keeps the data volume:
+# nothing here deletes data without asking (CLAUDE.md §9).
+COMPOSE_DEV := deploy/docker/compose.dev.yml
+
+db-up: need-docker ## Start the development database and wait until it accepts connections
+	docker compose -f $(COMPOSE_DEV) up --detach --wait
+
+db-down: need-docker ## Stop the development database; its data volume stays
+	docker compose -f $(COMPOSE_DEV) down
+
+migrate: env ## Bring the database named by TAKTUS_DATABASE_URL to the current schema
+	$(UV) run alembic -c migrations/alembic.ini upgrade head
+
 lint: env ## Static analysis and types
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
@@ -67,4 +80,4 @@ generate: env ## Regenerate what is generated from contracts/ (nothing yet; see 
 
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions test ## Everything CI runs
 
-.PHONY: help doctor env install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions lint generate gates
+.PHONY: help doctor env install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions db-up db-down migrate lint generate gates

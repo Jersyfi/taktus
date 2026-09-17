@@ -14,19 +14,21 @@ python3 workers/script/worker.py --port 9000 &
 uv run taktusctl run --process examples/processes/six-times-seven.yaml
 ```
 
-`taktusctl` lives in the project environment, hence `uv run`. The command prints the run, its
-steps, the ledger entries of the run with the result of verifying the whole chain, and the raw
-consumption against the budget. Exit code `0` means the run finished; `3` means it halted or
+`taktusctl` lives in the project environment, hence `uv run`. The command prints where the state
+lives — the database named by `TAKTUS_DATABASE_URL`, or memory with a file snapshot, development
+only — then the run, its steps, the ledger entries of the run with the result of verifying the
+tenant's whole chain, and the raw consumption against the budget. Exit code `0` means the run finished; `3` means it halted or
 escalated, and the last line says how to resume; `2` means the bundle or the invocation is
 wrong.
 
 | Option | Meaning |
 |---|---|
-| `--resume RUN_ID` | continue a halted run at its step boundary. The bundle is read again: a changed `limits` block is a changed budget, which is how a run rejected by admission control is given more room. The steps a run executes are the ones it started with. |
+| `--resume RUN_ID` | continue a halted run at its step boundary. The bundle is read again: a changed `limits` block is a changed budget, which is how a run rejected by admission control is given more room. The steps a run executes are the ones it started with. A run still marked as running — its process was killed — is recovered: the step in flight goes back to its last persisted boundary and the run continues. |
 | `--stop-after N` | request a stop after `N` steps have finished. The stop takes effect at the boundary; nothing is aborted. |
 | `--worker URL` | the worker endpoint (default `http://127.0.0.1:9000`, or `TAKTUS_WORKER`) |
-| `--state-dir PATH` | where runs, plans, the ledger and artifact bytes are written between invocations (default `~/.cache/taktus/taktusctl`, or `TAKTUS_STATE_DIR`). Development only: these are the in-memory adapters with a file snapshot, not a supported deployment. |
+| `--state-dir PATH` | where artifact bytes are written, and — without a database — the snapshot of runs, plans and the ledger between invocations (default `~/.cache/taktus/taktusctl`, or `TAKTUS_STATE_DIR`). The snapshot is development only: the in-memory adapters, not a supported deployment. With `TAKTUS_DATABASE_URL` set the state lives in PostgreSQL (`README.md`, *Operating it*). |
 | `--identity LABEL` | the identity the command is attributed to. The CLI channel authenticates nobody yet. |
+| `--tenant ID` | the tenant the run belongs to (default `default`, or `TAKTUS_TENANT`); until the identity component exists there is that one, created by the first migration. |
 
 ## The shape of a bundle
 

@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from taktus.adapters.driven.memory import MemoryRepository
+from taktus.adapters.driven.memory import MemoryPersistence, MemoryRepository
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     RegisterProcessVersionHandler,
@@ -104,7 +104,9 @@ def test_work_that_is_not_a_mapping_is_a_finding() -> None:
 
 
 async def test_the_handler_stores_the_version() -> None:
-    versions = MemoryRepository(ProcessVersion, key=lambda v: v.id)
-    handler = RegisterProcessVersionHandler(versions)
-    version = await handler.execute(RegisterProcessVersion(bundle()))
-    assert await versions.get("p@1") == version
+    persistence = MemoryPersistence()
+    versions = MemoryRepository(persistence, ProcessVersion)
+    handler = RegisterProcessVersionHandler(versions, persistence)
+    version = await handler.execute(RegisterProcessVersion(bundle(), tenant="t"))
+    async with persistence.transaction("t"):
+        assert await versions.get("t", "p@1") == version

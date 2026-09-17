@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 import pytest
 from fakes import FakeClock
 
-from taktus.adapters.driven.memory import MemoryLedgerStore
+from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.ledger.domain.model import canonical, hash_of, link, verify
 from taktus.ports.ledger import Fact
@@ -100,20 +100,25 @@ def test_a_fact_carries_no_text() -> None:
 
 
 async def test_the_ledger_records_in_sequence_and_verifies() -> None:
-    ledger = ChainedLedger(MemoryLedgerStore(), FakeClock())
-    await ledger.record(fact())
-    await ledger.record(
-        Fact(
-            kind="step.finished",
-            refs=LedgerRefs(run_id="run_1", step_id="a", artifact_ids=("x",)),
-            method=Method.WORKER,
-            adapter="worker.http",
-            consumption=Consumption(compute_seconds=1.5, resource_class="cpu.small"),
-            outcome="succeeded",
+    persistence = MemoryPersistence()
+    ledger = ChainedLedger(MemoryLedgerStore(persistence), FakeClock())
+    async with persistence.transaction("t"):
+        await ledger.record("t", fact())
+        await ledger.record(
+            "t",
+            Fact(
+                kind="step.finished",
+                refs=LedgerRefs(run_id="run_1", step_id="a", artifact_ids=("x",)),
+                method=Method.WORKER,
+                adapter="worker.http",
+                consumption=Consumption(compute_seconds=1.5, resource_class="cpu.small"),
+                outcome="succeeded",
+            ),
         )
-    )
-    await ledger.record(Fact(kind="run.created", refs=LedgerRefs(run_id="run_2")))
-    entries = await ledger.entries()
-    assert [e.seq for e in entries] == [1, 2, 3]
-    assert [e.seq for e in await ledger.entries("run_1")] == [1, 2]
-    assert (await ledger.verify()).intact
+        await ledger.record("t", Fact(kind="run.created", refs=LedgerRefs(run_id="run_2")))
+        entries = await ledger.entries("t")
+        assert [e.seq for e in entries] == [1, 2, 3]
+        assert [e.seq for e in await ledger.entries("t", "run_1")] == [1, 2]
+        assert (await ledger.verify("t")).intact
+    async with persistence.transaction("other"):
+        assert list(await ledger.entries("other")) == [], "one chain per tenant"

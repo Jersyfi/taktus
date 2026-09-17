@@ -27,6 +27,7 @@ def run(state: RunState = RunState.PLANNED) -> Run:
         id="run_1",
         plan_id="pln_1",
         process_version="p@1",
+        tenant="t",
         autonomy_level=2,
         budget=Limits(compute=ComputeLimit(seconds=1, resource_class="cpu.small")),
         steps=(

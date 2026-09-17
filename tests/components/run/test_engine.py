@@ -15,7 +15,12 @@ from typing import Any
 import pytest
 from fakes import FakeClock, FakeIdentifiers, FakeWorker, InnerStep
 
-from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryObjectStore, MemoryRepository
+from taktus.adapters.driven.memory import (
+    MemoryLedgerStore,
+    MemoryObjectStore,
+    MemoryPersistence,
+    MemoryRepository,
+)
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
@@ -44,6 +49,7 @@ from taktus.shared.v1 import (
 
 AT = datetime(2026, 9, 16, 12, 0, tzinfo=UTC)
 BUDGET = Limits(compute=ComputeLimit(seconds=10, resource_class="cpu.small"))
+TENANT = "t"
 
 
 def rule(
@@ -92,12 +98,14 @@ class Harness:
     ) -> None:
         self.clock = FakeClock(AT)
         self.ids = FakeIdentifiers()
-        self.runs = MemoryRepository(Run, key=lambda r: r.id)
+        self.persistence = MemoryPersistence()
+        self.runs = MemoryRepository(self.persistence, Run)
         self.objects = MemoryObjectStore()
-        self.ledger = ChainedLedger(MemoryLedgerStore(), self.clock)
+        self.ledger = ChainedLedger(MemoryLedgerStore(self.persistence), self.clock)
         self.workers = list(workers) or [FakeWorker()]
         self.engine = RunEngine(
             runs=self.runs,
+            work=self.persistence,
             objects=self.objects,
             ledger=self.ledger,
             workers=StaticWorkerPool([(f"worker.fake.{n}", w) for n, w in enumerate(self.workers)]),
@@ -128,6 +136,7 @@ class Harness:
                 budget=budget,
                 process_version="p@1",
                 actor="idn_t",
+                tenant=TENANT,
                 stop_after=stop_after,
             )
         )
@@ -136,11 +145,22 @@ class Harness:
         self, run: Run, budget: Limits | None = None, stop_after: int | None = None
     ) -> Run:
         return await self.engine.resume(
-            ResumeRun(run_id=run.id, actor="idn_t", budget=budget, stop_after=stop_after)
+            ResumeRun(
+                run_id=run.id, actor="idn_t", tenant=TENANT, budget=budget, stop_after=stop_after
+            )
         )
 
     async def entries(self, run: Run) -> list[LedgerEntry]:
-        return list(await self.ledger.entries(run.id))
+        async with self.persistence.transaction(TENANT):
+            return list(await self.ledger.entries(TENANT, run.id))
+
+    async def verify(self) -> bool:
+        async with self.persistence.transaction(TENANT):
+            return (await self.ledger.verify(TENANT)).intact
+
+    async def stored(self, run_id: str) -> Run | None:
+        async with self.persistence.transaction(TENANT):
+            return await self.runs.get(TENANT, run_id)
 
     async def kinds(self, run: Run) -> list[str]:
         return [
@@ -179,7 +199,7 @@ async def test_a_run_completes_and_every_state_change_is_in_the_ledger() -> None
         "step.finished:pause:succeeded",
         "run.finished::succeeded",
     ]
-    assert (await h.ledger.verify()).intact
+    assert await h.verify()
 
 
 async def test_a_step_persists_checkpoint_artifacts_and_raw_consumption() -> None:
@@ -296,7 +316,7 @@ async def test_stop_after_takes_effect_at_the_boundary_and_the_run_resumes() -> 
         "step.finished:c:succeeded",
         "run.finished::succeeded",
     ]
-    assert (await h.ledger.verify()).intact
+    assert await h.verify()
 
 
 async def test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing() -> (
@@ -370,6 +390,82 @@ async def test_an_artifact_the_worker_produces_again_after_resume_is_recorded_on
     assert [a.id for a in run.step_run("do").artifacts] == ["out-1", "out-2"]
 
 
+class Crash(Exception):
+    """The instance dies: not a worker error, nothing the engine handles."""
+
+
+async def test_a_run_whose_instance_died_recovers_from_the_last_persisted_boundary() -> None:
+    fake = FakeWorker(
+        script=(
+            InnerStep("one", 1.0, (("out-1", b"1"),)),
+            InnerStep("two", 1.0, (("out-2", b"2"),)),
+            InnerStep("three", 1.0, (("out-3", b"3"),)),
+        )
+    )
+    h = Harness(
+        rule("prep", {"rule": "constant", "value": 1}),
+        worker("do", after=("prep",)),
+        wait("after", 0, after=("do",)),
+        workers=[fake],
+    )
+
+    async def die_inside_the_second_inner_step(event: Event) -> None:
+        if event.type == "step.started" and event.seq == 5:  # boundary of "one" was seq 4
+            raise Crash
+
+    fake.on_event = die_inside_the_second_inner_step
+    with pytest.raises(Crash):
+        await h.start()
+    # What the database holds at that moment: the run still running, the step in flight, and
+    # the worker's first boundary persisted with the artifact it produced.
+    left = await h.stored("run_0001")
+    assert left is not None and left.state is RunState.RUNNING
+    do = left.step_run("do")
+    assert do.state is StepState.RUNNING
+    assert do.checkpoint is not None and do.checkpoint.ref == "ckpt/asg_0001/0"
+    assert [a.id for a in do.artifacts] == ["out-1"]
+    before = await h.kinds(left)
+
+    fake.on_event = None
+    run = await h.resume(left)
+    assert run.state is RunState.FINISHED
+    assert run.step_run("prep").started_at == left.step_run("prep").started_at, (
+        "a step before the interruption is not run again"
+    )
+    resumed = fake.assignments[1]
+    assert resumed.context.checkpoint_ref == "ckpt/asg_0001/0", (
+        "the worker continues from the persisted boundary, not from the start"
+    )
+    do = run.step_run("do")
+    assert [a.id for a in do.artifacts] == ["out-1", "out-2", "out-3"]
+    assert do.consumption is not None and do.consumption.compute_seconds == 3.0
+    kinds = await h.kinds(run)
+    assert kinds[: len(before)] == before, "nothing before the interruption changed"
+    assert kinds[len(before)] == "run.recovered:do"
+    assert kinds.count("step.started:prep") == 1 and kinds.count("step.started:do") == 2
+    assert await h.verify()
+
+
+async def test_a_run_interrupted_before_its_first_step_recovers_too() -> None:
+    h = Harness(rule("a", {"rule": "constant", "value": 1}))
+    run = await h.start()
+    # A run that was created and never got further: ADMITTED, no step in flight.
+    planned = run.model_copy(
+        update={
+            "state": RunState.ADMITTED,
+            "step_runs": tuple(
+                s.model_copy(update={"state": StepState.PLANNED}) for s in run.step_runs
+            ),
+            "id": "run_0009",
+        }
+    )
+    async with h.persistence.transaction(TENANT):
+        await h.runs.put(TENANT, planned)
+    recovered = await h.resume(planned)
+    assert recovered.state is RunState.FINISHED
+    assert (await h.kinds(recovered))[0] == "run.recovered"
+
+
 async def test_a_stop_requested_between_steps_takes_effect_at_the_next_boundary() -> None:
     h = Harness(
         rule("a", {"rule": "constant", "value": 1}),
@@ -388,7 +484,7 @@ async def test_only_a_halted_or_escalated_run_resumes() -> None:
     with pytest.raises(UnknownRun, match="finished and cannot be resumed"):
         await h.resume(run)
     with pytest.raises(UnknownRun):
-        await h.engine.resume(ResumeRun(run_id="run_nope", actor="idn_t"))
+        await h.engine.resume(ResumeRun(run_id="run_nope", actor="idn_t", tenant=TENANT))
 
 
 # --- exactness in execution ----------------------------------------------------------------------
@@ -469,8 +565,9 @@ async def test_a_plan_with_an_unexecutable_step_is_refused_before_anything_runs(
     h = Harness(rule("a", {"rule": "constant", "value": 1}), (llm, {"prompt": "x"}))
     with pytest.raises(UnsupportedWork, match="no executor for method llm"):
         await h.start()
-    assert await h.runs.list() == []
-    assert await h.ledger.entries() == ()
+    async with h.persistence.transaction(TENANT):
+        assert await h.runs.list(TENANT) == []
+        assert list(await h.ledger.entries(TENANT)) == []
 
 
 async def test_a_from_reference_must_name_a_dependency() -> None:

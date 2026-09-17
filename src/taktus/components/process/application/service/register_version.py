@@ -16,7 +16,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from taktus.components.process.domain.model import InvalidProcess, ProcessVersion, Slo, Trigger
-from taktus.ports.persistence import Repository
+from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Step
 
 type Document = Mapping[str, Any]
@@ -28,15 +28,18 @@ UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 @dataclass(frozen=True)
 class RegisterProcessVersion:
     bundle: Document
+    tenant: Tenant
 
 
 class RegisterProcessVersionHandler:
-    def __init__(self, versions: Repository[ProcessVersion]) -> None:
+    def __init__(self, versions: Repository[ProcessVersion], work: UnitOfWork) -> None:
         self._versions = versions
+        self._work = work
 
     async def execute(self, command: RegisterProcessVersion) -> ProcessVersion:
         version = parse_bundle(command.bundle)
-        await self._versions.put(version)
+        async with self._work.transaction(command.tenant):
+            await self._versions.put(command.tenant, version)
         return version
 
 
