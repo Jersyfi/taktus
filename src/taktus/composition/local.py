@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from sqlalchemy.exc import DBAPIError
+
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.memory import (
@@ -148,7 +150,7 @@ class LocalWiring:
                 await check_schema(postgres.engine)
             except SchemaOutOfDate as error:
                 raise NotOperable(str(error)) from error
-            except OSError as error:
+            except (OSError, DBAPIError) as error:
                 raise NotOperable(
                     f"cannot reach the database at {described(url)}: {error}"
                 ) from error
