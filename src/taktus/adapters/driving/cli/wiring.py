@@ -44,6 +44,9 @@ class Services:
     storage: str
     """Where the state lives, in one line for the user: the command line prints it, so that
     neither the database nor the memory implementation is a silent default."""
+    queued: bool = False
+    """Whether `engine.submit` has a queue a daemon claims from: true with a database, where
+    `taktusd` runs; false in memory, where nothing else executes."""
 
 
 class Wiring(Protocol):

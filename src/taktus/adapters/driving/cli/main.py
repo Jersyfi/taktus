@@ -1,9 +1,10 @@
 """`taktusctl` — the command line of Taktus.
 
-Two commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
+Three commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
 worker or the connector contract; the suite is not part of the control plane and needs no
-wiring. `run` drives the control plane: it needs services, which the composition root provides
-as the typer context object (see `wiring`); the console script `taktusctl` therefore starts in
+wiring. `run` and `submit` drive the control plane: `run` executes a bundle in this process,
+`submit` queues it for the daemon. Both need services, which the composition root provides as
+the typer context object (see `wiring`); the console script `taktusctl` therefore starts in
 `taktus.composition.taktusctl`, and this module exposes the application for it.
 """
 
@@ -18,7 +19,7 @@ from typing import Annotated
 
 import typer
 
-from taktus.adapters.driving.cli import run_command
+from taktus.adapters.driving.cli import run_command, submit_command
 from taktus.conformance import (
     ConnectorSuiteOptions,
     Report,
@@ -37,6 +38,7 @@ app = typer.Typer(
 conformance = typer.Typer(help="Check an adapter against its contract.", no_args_is_help=True)
 app.add_typer(conformance, name="conformance")
 app.command("run")(run_command.run)
+app.command("submit")(submit_command.submit)
 
 CONTRACTS = {"worker/v1", "connector/v1"}
 

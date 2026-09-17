@@ -1,0 +1,12 @@
+.venv
+.git
+.claude
+**/__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache
+node_modules
+web/build
+deploy/docker/secrets
+.env
+.env.*

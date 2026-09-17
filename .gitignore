@@ -26,3 +26,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 .DS_Store
+
+# deployment secrets written by `make up` — never committed
+deploy/docker/secrets/*
+!deploy/docker/secrets/README.md

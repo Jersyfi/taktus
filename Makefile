@@ -67,6 +67,21 @@ db-up: need-docker ## Start the development database and wait until it accepts c
 db-down: need-docker ## Stop the development database; its data volume stays
 	docker compose -f $(COMPOSE_DEV) down
 
+# Self-hosting (deploy/docker/compose.yml): Taktus and PostgreSQL, two containers, in one
+# command. `up` writes the secret files once (random password, never committed), builds the
+# image and waits until readiness answers. `down` stops the containers; every volume stays.
+COMPOSE := deploy/docker/compose.yml
+
+up: need-docker ## Bring Taktus up: two containers, migrations applied, ready
+	deploy/docker/secrets.sh
+	docker compose -f $(COMPOSE) up --build --detach --wait
+
+down: need-docker ## Stop the containers; the volumes stay
+	docker compose -f $(COMPOSE) --profile reference-worker down
+
+verify-compose: need-docker ## From nothing: up, a run end to end against the reference worker, the container killed and restarted, the run resumed
+	deploy/docker/verify.sh
+
 migrate: env ## Bring the database named by TAKTUS_DATABASE_URL to the current schema
 	$(UV) run alembic -c migrations/alembic.ini upgrade head
 
@@ -80,4 +95,4 @@ generate: env ## Regenerate what is generated: api/openapi.yaml from the REST in
 
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions test ## Everything CI runs
 
-.PHONY: help doctor env install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions db-up db-down migrate lint generate gates
+.PHONY: help doctor env install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions db-up db-down up down verify-compose migrate lint generate gates

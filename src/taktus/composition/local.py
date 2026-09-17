@@ -34,6 +34,7 @@ from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresPersistence,
     PostgresProvenanceStore,
+    PostgresQueue,
     PostgresRepository,
     SchemaOutOfDate,
     check_schema,
@@ -60,6 +61,7 @@ from taktus.ports.persistence import (
     Stored,
     UnitOfWork,
 )
+from taktus.ports.queue import Queue
 from taktus.shared.v1 import Command, Plan
 
 WORKER_ADAPTER = "worker.http"
@@ -78,6 +80,7 @@ class Stores:
     ledger_store: LedgerStore
     provenance_store: ProvenanceStore
     storage: str
+    queue: Queue | None = None
 
 
 class LocalWiring:
@@ -101,6 +104,7 @@ class LocalWiring:
                 clock=clock,
                 ids=ids,
                 telemetry=NoTelemetry(),
+                queue=stores.queue,
             )
             yield Services(
                 register_version=RegisterProcessVersionHandler(
@@ -117,6 +121,7 @@ class LocalWiring:
                 clock=clock,
                 ids=ids,
                 storage=stores.storage,
+                queued=stores.queue is not None,
             )
 
     @asynccontextmanager
@@ -164,6 +169,7 @@ class LocalWiring:
                 ledger_store=PostgresLedgerStore(postgres),
                 provenance_store=PostgresProvenanceStore(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
+                queue=PostgresQueue(postgres),
             )
         finally:
             await postgres.close()
