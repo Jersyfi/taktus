@@ -21,10 +21,11 @@ Fault injection (`--fault NAME`) makes the worker violate exactly one conformanc
 the suite can be shown to catch it. `--list-faults` prints every fault with the check it breaks.
 
 Credentials arrive as names; the execution adapter puts the values into this process's
-environment. The same adapter tells this worker where to listen and where its state lives
-(TAKTUS_UNIT_PORT, TAKTUS_UNIT_STATE_DIR — the launch convention of the execution port), so
-that it can be started as a process or as a container without further arguments. This worker reads whether they are present and nothing else, and never writes a
-value anywhere — except under the three W-08 faults, which exist to be caught.
+environment. This worker reads whether they are present and nothing else, and never writes a
+value anywhere — except under the three W-08 faults, which exist to be caught. The same
+adapter tells this worker where to listen and where its state lives (TAKTUS_UNIT_PORT,
+TAKTUS_UNIT_STATE_DIR — the launch convention of the execution port), so that it can be
+started as a process or as a container without further arguments.
 
 This file imports nothing from src/taktus. It is a separate deployable, as every worker is.
 """

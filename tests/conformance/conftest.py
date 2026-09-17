@@ -35,6 +35,9 @@ from taktus.conformance import (
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "script" / "worker.py"
+CODING_WORKER = ROOT / "workers" / "claudecode" / "worker.py"
+FAKE_AGENT = ROOT / "workers" / "claudecode" / "fake_agent.py"
+CODING_CREDENTIAL = {"api-key": "CODING_AGENT_API_KEY", "session": "CODING_AGENT_SESSION"}
 CONNECTOR = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors" / "github"
 SCENARIO = CONNECTOR / "scenario.json"
 FAKE_SERVICE = ROOT / "tests" / "fakes" / "repository_service.py"
@@ -57,12 +60,14 @@ class RunningWorker:
     log: Path
     credential_value: str
     process: subprocess.Popen[bytes]
+    credential_name: str = CREDENTIAL
 
     def options(self) -> SuiteOptions:
         return SuiteOptions(
             endpoint=self.endpoint,
             task=dict(TASK),
             hosts=(HOST,),
+            credential_name=self.credential_name,
             credential_value=self.credential_value,
             worker_log=self.log,
             timeout=90.0,
@@ -83,6 +88,10 @@ def free_port() -> int:
 def faults() -> list[tuple[str, str]]:
     """Every fault the worker offers, with the check it breaks, from the worker itself."""
     return _list_faults([sys.executable, str(WORKER), "--list-faults"])
+
+
+def coding_faults() -> list[tuple[str, str]]:
+    return _list_faults([sys.executable, str(CODING_WORKER), "--list-faults"])
 
 
 def connector_faults() -> list[tuple[str, str]]:
@@ -156,6 +165,56 @@ def start_worker(tmp_path: Path) -> Iterator[StartWorker]:
             except httpx.HTTPError:
                 time.sleep(0.1)
         raise RuntimeError(f"the worker did not become ready; see {log}")
+
+    yield start
+    stop_all(started)
+
+
+@pytest.fixture
+def start_coding_worker(tmp_path: Path) -> Iterator[StartWorker]:
+    """The coding worker against the fake agent, in either authentication mode. The credential
+    the suite references is the one the worker's authentication needs, with a random value
+    that reaches the worker through its environment and the agent under its own variable —
+    and must appear nowhere the suite can see (W-08). `agent_env` reaches the fake agent
+    through the worker: the two variables that make it misbehave on purpose."""
+    started: list[subprocess.Popen[bytes]] = []
+
+    def start(
+        *, auth: str = "api-key", fault: str | None = None, agent_env: dict[str, str] | None = None
+    ) -> RunningWorker:
+        port = free_port()
+        log = tmp_path / f"coding-{auth}-{fault or 'honest'}.log"
+        name = CODING_CREDENTIAL[auth]
+        value = "conf-" + secrets.token_hex(12)
+        env = {**os.environ, name: value, **(agent_env or {})}
+        args = [
+            sys.executable,
+            str(CODING_WORKER),
+            "--port",
+            str(port),
+            "--auth",
+            auth,
+            "--agent",
+            f"{sys.executable} {FAKE_AGENT}",
+            "--state-dir",
+            str(tmp_path / f"coding-state-{auth}-{fault or 'honest'}"),
+            "--estimate-steps",
+            "8",
+            "--estimate-currency",
+            "0.5",
+            "--agent-env",
+            ",".join(agent_env or {}),
+        ]
+        if fault:
+            args += ["--fault", fault]
+        with log.open("wb") as handle:
+            process = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
+                args, stdout=handle, stderr=subprocess.STDOUT, env=env
+            )
+        started.append(process)
+        endpoint = f"http://127.0.0.1:{port}"
+        wait_ready(process, f"{endpoint}/v1/health", log, "coding worker")
+        return RunningWorker(endpoint, log, value, process, credential_name=name)
 
     yield start
     stop_all(started)
