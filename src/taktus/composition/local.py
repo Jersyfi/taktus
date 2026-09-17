@@ -50,7 +50,7 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
-from taktus.ports.configuration import Configuration
+from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
     LedgerStore,
     ProvenanceStore,
@@ -119,7 +119,10 @@ class LocalWiring:
 
     @asynccontextmanager
     async def _stores(self, state_dir: Path) -> AsyncIterator[Stores]:
-        database = self._configuration.secret("database.url")
+        try:
+            database = self._configuration.secret("database.url")
+        except ConfigurationError as error:
+            raise NotOperable(str(error)) from error
         if database is None:
             memory = MemoryPersistence(state_dir)
 
