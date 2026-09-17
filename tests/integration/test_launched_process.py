@@ -100,3 +100,25 @@ async def test_the_process_adapter_is_refused_at_level_3_and_the_run_escalates(
         assert compute.reason is not None and "ADR-0002" in compute.reason
         assert compute.assignment_id is None, "no unit was started for the assignment"
     assert not list((tmp_path / "state" / "units").glob("*/job-asg_*.log"))
+
+
+async def test_a_unit_that_exceeds_its_wall_clock_is_killed_and_the_step_fails_with_the_cause(
+    tmp_path: Path,
+) -> None:
+    """A limit the execution adapter enforces ends the unit; the run sees a failed step that
+    names the kill, not a stream that hangs. The memory limit of the container adapter is
+    reported through the same path (tests/adapters/execution/test_container.py)."""
+    document = bundle(with_overreach=False)
+    compute = next(s for s in document["steps"] if s["id"] == "compute")
+    compute["work"]["task"]["inputs"] = {"commands": [f"sleep 0.4; echo {n}" for n in range(30)]}
+    compute["work"]["max_steps"] = 40
+    document["limits"] = {"compute": {"seconds": 120, "resource_class": "cpu.small"}}
+    local = wiring(TAKTUS_EXECUTION_WALL_SECONDS="3")
+    async with local.services(state_dir=tmp_path / "state", worker_endpoint="") as services:
+        run = await start(services, document)
+        assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
+        failed = run.step_run("compute")
+        assert failed.state is StepState.FAILED
+        assert failed.reason is not None and "wall-clock limit of 3s" in failed.reason
+        assert failed.reason.startswith("the execution unit was killed")
+        assert 0 < len(failed.artifacts) < 30, "what was done before the kill is kept"

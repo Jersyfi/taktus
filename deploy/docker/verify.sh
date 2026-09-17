@@ -25,7 +25,11 @@ say "1b. the control plane image contains no worker code (DEC-0011)"
 docker run --rm --entrypoint sh taktus:local -c '
 set -e
 test ! -e /app/workers || { echo "found /app/workers in the control plane image"; exit 1; }
-found="$(find / -xdev \( -path /proc -o -path /sys \) -prune -o \( -name worker.py -o -name fake_agent.py \) -print 2>/dev/null || true)"
+found="$(find / -xdev \( -path /proc -o -path /sys \) -prune -o \( -path "*/workers/*" -not -path "*/src/taktus/*" -o -name fake_agent.py \) -print 2>/dev/null || true)"
+[ -z "$found" ] || { echo "worker code in the control plane image: $found"; exit 1; }
+# Every worker of this repository says so in its first lines; the worker port of the control
+# plane (src/taktus/ports/worker.py) does not, and belongs there.
+found="$(grep -rl "separate deployable, as every worker is" /app 2>/dev/null || true)"
 [ -z "$found" ] || { echo "worker code in the control plane image: $found"; exit 1; }
 echo "no worker code in the image"'
 
