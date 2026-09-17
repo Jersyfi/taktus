@@ -16,7 +16,9 @@ Python, PostgreSQL, Explicit Architecture. Self-hostable from day one.
 > that would breach the budget never starts, the state lives in PostgreSQL, and Taktus runs as
 > a service — two containers, several runners that never claim the same run, one elected
 > scheduler, a shutdown that lands on a step boundary, a killed container that resumes at its
-> last boundary. Without governance. What runs today: [examples/README.md](examples/README.md).
+> last boundary. A `worker` step runs in an isolated container the control plane starts per
+> job, and a coding agent works behind the worker contract, so that Taktus can have code
+> written for it. Without governance. What runs today: [examples/README.md](examples/README.md).
 >
 > **Public for transparency, but not licensed for use.** See `LICENSE` and `NOTICE`. Third-party
 > contributions are not accepted until the licence is settled.
@@ -117,9 +119,10 @@ you see the domain, not the framework.
 | ML bench | scikit-learn, PyTorch, sentence-transformers — as a worker, never in the core |
 | Architecture enforcement | `import-linter` contracts, run in CI |
 | Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers`; `make gates` installs its own environment; `make doctor` says what is missing. `taktusctl` lives in that environment: `uv run taktusctl …`. Docker is optional: without it the PostgreSQL tests skip and say so; CI runs them |
-| Observability | OpenTelemetry from day one |
+| Observability | OpenTelemetry from day one: spans for run, step, worker and connector calls, exported where `TAKTUS_OTLP_*` names an endpoint; the trace identifier is on every ledger entry and log line |
 | Web | SvelteKit, embedded into the image |
-| Deployment | one image, roles via `TAKTUS_ROLES`; Docker Compose for self-hosting (`make up`), Kubernetes for scale |
+| Deployment | one image for the control plane, roles via `TAKTUS_ROLES`; one image per worker, none of them in the control plane image; Docker Compose for self-hosting (`make up`), Kubernetes for scale |
+| Execution | `TAKTUS_EXECUTION`: a worker by endpoint, a unit started per job as a process (development only; refused from autonomy level 3), or as a container with limits, credentials in memory and a network allowlist — over the engine's API, Docker or Podman |
 
 ---
 
@@ -145,8 +148,11 @@ control plane (DEC-0011).
   advisory lock, and every process answers health and readiness.
 
 Workers run isolated — as a process (local development only), as a container (the default in
-operation) or as a Kubernetes job. **The process adapter is not permitted from autonomy level 3
-upwards.**
+operation) or, next, as a pod. **The process adapter is not permitted from autonomy level 3
+upwards**, and the refusal is in code: an unknown level is refused too. The container adapter
+gives every job CPU, memory and wall-clock limits, credentials that live in memory only, a
+network that reaches the hosts its frame names and nothing else, and no access to the
+engine's socket (`docs/architecture/contracts.md` §2.4).
 
 **Operating it is one command.**
 

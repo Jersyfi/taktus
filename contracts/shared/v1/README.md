@@ -20,7 +20,7 @@ One schema per concept. No product name, no Python assumption, no transport deta
 | [`Anchor.json`](Anchor.json) | an act that stays with a person | legal, strategic or correction (ADR-0022); at least one selector; the decider is a role |
 | [`Consumption.json`](Consumption.json) | the raw quantities a step used | at least one quantity; `compute_seconds` never without `resource_class`; money as a map by currency code |
 | [`Artifact.json`](Artifact.json) | a result that is data | referenced by `sha256:` digest; the same shape serves as input document |
-| [`LedgerEntry.json`](LedgerEntry.json) | one link of the hash chain | references only, no payload; `prev_hash` null only for the first entry; `egress.*` kinds record what left the system (ADR-0022) |
+| [`LedgerEntry.json`](LedgerEntry.json) | one link of the hash chain | references only, no payload; `prev_hash` null only for the first entry; `egress.*` kinds record what left the system (ADR-0022); `refs.trace_id` names the trace the entry was recorded in, so that an entry and a trace can be joined |
 | [`Provenance.json`](Provenance.json) | what a step result is made of (ADR-0021) | one record per completed step run: process version, method and exactness, model and prompt version, adapter and version, inputs with the moment each was read, outputs, result digest, the ledger entry; references only; exactness present exactly for result-producing methods; each input kind names its own fields |
 | [`DecisionRequest.json`](DecisionRequest.json) | the planned question about direction | at least two options with exactly one recommendation; a status beyond `open` requires the raw answer, beyond `answered` the interpretation, `applied` the register entry |
 

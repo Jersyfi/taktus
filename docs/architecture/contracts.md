@@ -38,7 +38,15 @@ not the bottleneck here; adapter variety is.
 Full specification: [`contracts/worker/v1/README.md`](../../contracts/worker/v1/README.md).
 The core's side of it is the worker port (`src/taktus/ports/worker.py`): the contract's shapes
 as frozen types and the protocol the run component calls. `tests/contract` holds those types to
-`Worker.json` and its examples, so that the port and the contract cannot drift apart.
+`Worker.json` and its examples, so that the port and the contract cannot drift apart. How a
+worker comes to exist for a job — as a process, as a container — is the execution port's
+business (§2.4), and a worker that is already running is reached by endpoint.
+
+Two workers exist. The reference worker `script` runs shell commands and no AI. The coding
+worker (`workers/claudecode/`, named by capability everywhere else) wraps a coding agent: a
+step per completed tool call, tokens per step, money at the end, two authentication modes,
+and a session that expires halts at the last boundary. It passes the same suite, faults
+included, against a stand-in for the agent; its README states what it cannot do.
 
 ### 2.2 Connector
 
@@ -63,6 +71,57 @@ delivery to the connector that serves the channel and keeps what it accepted. Th
 direction, and the run's binding of connector steps — writing the egress entry from the
 result, halting instead of retrying an outward operation with `idempotency: none` whose outcome
 is unknown — arrive with `0.2.0`.
+
+### 2.4 The execution port
+
+The worker contract says how the core talks to an execution unit. It says nothing about how
+the unit comes to exist for a job, with what isolation, and how a credential reaches it. That
+is the execution port (`src/taktus/ports/execution.py`; ADR-0002): one job, one unit, started
+by an adapter, reachable at an endpoint that speaks the worker contract, torn down when the
+job ends. A job's workspace does not outlive the job; a unit's *state* — its checkpoints — does,
+so that a resumed assignment finds them in a new unit.
+
+| `TAKTUS_EXECUTION` | Isolation | Adapter | For |
+|---|---|---|---|
+| `endpoint` | whoever runs the worker | `adapters/driven/workers/http/` | a worker that is already running, at `TAKTUS_WORKER`; the default |
+| `process` | none | `adapters/driven/execution/process.py` | local development, a single user. **Refused from autonomy level 3 upwards, and when the level is unknown** — the rule is `ports/execution.py:refusal()`, and `tests/governance` holds the adapter to it |
+| `container` | process, filesystem, network | `adapters/driven/execution/container/` | operation. One container per job with limits, credentials in memory only, and a network that reaches `frame.allowed_hosts` and nothing else |
+| cluster | pod with quota and network policy | next pull request | the same shape with a pod instead of two containers; the port does not change |
+
+The worker port over the execution port is `adapters/driven/workers/launched.py`: one unit
+per assignment, started with the credentials, the hosts and the autonomy level the assignment
+carries; a *probe* — a unit with no credential and no host — answers `capabilities` once and
+`estimate` before every worker step, which costs one unit start per estimate and is the price
+of never starting a unit with credentials before admission control has said yes (ADR-0005).
+A unit the adapter killed — memory, wall clock — is a failed step with that cause, never a hang.
+
+**The launch convention** is the one thing a unit must know when an adapter starts it: it reads
+`TAKTUS_UNIT_PORT` for the port to serve the contract on and `TAKTUS_UNIT_STATE_DIR` for the
+directory that outlives the job. Both workers of this repository take them as defaults; a
+foreign worker is wrapped by a shell script that translates.
+
+**Credentials** travel as names through the contract. At the moment a unit is started the
+adapter reads each value through the configuration port under `credential.<name>` — the file
+`TAKTUS_CREDENTIAL_<NAME>_FILE` points at — and injects it. The `process` adapter puts it into
+the unit's environment and refuses a credential injected as a file: without a filesystem of
+its own, a job has nowhere to keep one. The `container` adapter starts the unit's container
+behind a launcher it places there, writes each value into a memory-backed directory after
+the container has started, and the launcher exports the environment kind and removes the
+files before it becomes the unit: no value is on a volume, in an image layer, in the
+container's recorded configuration, on a command line, or in a log.
+
+**The container adapter's wall**, per job: a container from the unit's image with no
+capability, no privilege escalation, a process limit, a memory limit without swap and a CPU
+limit — the engine kills on memory, the adapter on the wall clock; a network of its own,
+internal, whose only other member is the job's *egress container*, which forwards the unit's
+port inward so the control plane can reach it and is an HTTP proxy outward that admits
+exactly `frame.allowed_hosts` and answers 403 to every other host, an empty list reaching
+nothing (this is where DEC-0008's field becomes a wall); one named volume per unit for its
+state and no other mount, the engine's socket never among them. The adapter speaks the
+engine's HTTP API over its socket — Docker or Podman — so that the control plane image needs
+no client. `tests/adapters/execution/test_container.py` proves every one of these from inside
+a job, and `tests/integration/test_launched_container.py` runs a process through it, stops it
+at a boundary and resumes it in a new container.
 
 ---
 
@@ -121,7 +180,7 @@ example, not a requirement. The core runs with all of them removed — it simply
 |---|---|---|
 | Worker | `script` | the trivial worker. **Mandatory from day one:** a contract a shell script cannot satisfy is built around one specific coding agent. Exists (`workers/script/`), passes the suite; its `longrun` profile has the shape of the second proof case and trains nothing. The control plane reaches it through the HTTP worker adapter (`src/taktus/adapters/driven/workers/http/`), the client side of this contract; `examples/processes/` runs a process against it. |
 | Worker | `mlbench` | training, evaluation, embeddings, classical ML. The second proof case: hours of runtime, a GPU held, a model artifact returned. |
-| Worker | `claudecode` | the first real coding worker |
+| Worker | `claudecode` | the first real coding worker. Exists (`workers/claudecode/`), passes the suite in both authentication modes, faults included, against a stand-in for its agent; a live run needs a credential the operator supplies |
 | Worker | `codex` | the second real coding worker; validates the contract against a second vendor |
 | Connector | `github` | repository: issues, pull requests, pipelines, comments — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector. Reached by the daemon's webhook intake; its operations are not yet bound into the run (`0.2.0`) |
 | Connector | `chat` | both a command channel and a delivery channel |

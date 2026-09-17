@@ -29,7 +29,7 @@ wrong.
 |---|---|
 | `--resume RUN_ID` | continue a halted run at its step boundary. The bundle is read again: a changed `limits` block is a changed budget, which is how a run rejected by admission control is given more room. The steps a run executes are the ones it started with. A run still marked as running — its process was killed — is recovered: the step in flight goes back to its last persisted boundary and the run continues. |
 | `--stop-after N` | request a stop after `N` steps have finished. The stop takes effect at the boundary; nothing is aborted. |
-| `--worker URL` | the worker endpoint (default `http://127.0.0.1:9000`, or `TAKTUS_WORKER`) |
+| `--worker URL` | the worker endpoint (default `http://127.0.0.1:9000`, or `TAKTUS_WORKER`) — for `TAKTUS_EXECUTION=endpoint`, the default. With `TAKTUS_EXECUTION=process` or `container` the command starts a unit per worker step instead, from the command line or image `TAKTUS_EXECUTION_UNIT` names (`.env.example`, `docs/architecture/contracts.md` §2.4); the bundle's `autonomy` decides whether `process` is allowed at all |
 | `--state-dir PATH` | where artifact bytes are written, and — without a database — the snapshot of runs, plans and the ledger between invocations (default `~/.cache/taktus/taktusctl`, or `TAKTUS_STATE_DIR`). The snapshot is development only: the in-memory adapters, not a supported deployment. With `TAKTUS_DATABASE_URL` set the state lives in PostgreSQL (`README.md`, *Operating it*). |
 | `--identity LABEL` | the identity the command is attributed to. The CLI channel authenticates nobody yet. |
 | `--tenant ID` | the tenant the run belongs to (default `default`, or `TAKTUS_TENANT`); until the identity component exists there is that one, created by the first migration. |
