@@ -43,6 +43,7 @@ concrete adapter is configuration.
 ```json
 {
   "contract": "worker/v1",
+  "version": "2.3.0",
   "capabilities": [
     "code.edit", "code.test", "vcs.branch", "vcs.pullrequest",
     "workspace.isolated", "shell.sandboxed"
@@ -62,6 +63,11 @@ concrete adapter is configuration.
   "max_concurrent_assignments": 2
 }
 ```
+
+`version` is optional: the worker's own version, as it names it. Where a worker declares one,
+the control plane records it in the provenance of every result the worker produces
+(`contracts/shared/v1/Provenance.json`, ADR-0021), so that a result can later be traced to the
+worker version that made it.
 
 `consumption.kinds` is any of `currency`, `quota`, `compute`. Each kind brings its own detail:
 `quota` needs `window_seconds` and `unit`, `compute` needs `resource_classes`, `currency` needs

@@ -32,6 +32,7 @@ from taktus.shared.v1.method import (
     Method,
 )
 from taktus.shared.v1.plan import Commissioned, Plan, PlanResult, PlanStatus
+from taktus.shared.v1.provenance import InputKind, Provenance, ProvenanceInput
 from taktus.shared.v1.step import Fallback, Rejected, Step, StepId
 from taktus.shared.v1.value import Value
 
@@ -65,6 +66,7 @@ __all__ = [
     "Digest",
     "ExactnessClass",
     "Fallback",
+    "InputKind",
     "Intent",
     "LedgerEntry",
     "LedgerRefs",
@@ -72,6 +74,8 @@ __all__ = [
     "Plan",
     "PlanResult",
     "PlanStatus",
+    "Provenance",
+    "ProvenanceInput",
     "RaisedBy",
     "Rejected",
     "ReplyTo",

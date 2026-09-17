@@ -1,0 +1,11 @@
+{
+  "id": "prov_01j8x2c9",
+  "run_id": "run_01j8x2b7",
+  "step_id": "settle",
+  "process_version": "six-times-seven@1",
+  "method": "wait",
+  "inputs": [],
+  "outputs": [],
+  "ledger_seq": 11,
+  "recorded_at": "2026-09-16T12:00:03Z"
+}

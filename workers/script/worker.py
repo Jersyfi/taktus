@@ -50,6 +50,7 @@ from urllib.parse import parse_qs, urlparse
 type Json = dict[str, Any]
 
 CONTRACT = "worker/v1"
+VERSION = "1.1.0"  # this worker's own version, recorded in the provenance of what it produces
 TOOL = "shell.script"
 MAX_CONCURRENT = 4
 COMMAND_TIMEOUT = 60
@@ -294,6 +295,7 @@ class Worker:
         kinds = [] if self.fault == "W-01" else ["compute"]
         return {
             "contract": CONTRACT,
+            "version": VERSION,
             "capabilities": [TOOL, "shell.sandboxed", "workspace.isolated"],
             "consumption": {"kinds": kinds, "resource_classes": [self.resource_class]},
             "supports": {

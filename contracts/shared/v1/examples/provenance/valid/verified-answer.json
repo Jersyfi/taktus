@@ -1,0 +1,22 @@
+{
+  "id": "prov_01j8x2c4",
+  "run_id": "run_01j8x2b7",
+  "step_id": "verify-answer",
+  "process_version": "six-times-seven@1",
+  "method": "rule",
+  "exactness": "exact",
+  "inputs": [
+    {
+      "kind": "artifact",
+      "run_id": "run_01j8x2b7",
+      "step_id": "compute",
+      "artifact_id": "output-1",
+      "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "observed_at": "2026-09-16T12:00:04Z"
+    }
+  ],
+  "outputs": ["result"],
+  "result_digest": "sha256:73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049",
+  "ledger_seq": 14,
+  "recorded_at": "2026-09-16T12:00:04Z"
+}

@@ -14,7 +14,9 @@ What happens around every step is the contract of ADR-0005 and is the same for e
 3. run — through the worker port, the rule table, or the clock;
 4. persist — the step run with its checkpoint, artifacts and raw consumption is written before
    the next step is looked at; every state change and the ledger entry that describes it are
-   one transaction of the unit of work;
+   one transaction of the unit of work, and a step that finished with a result gets its
+   provenance record in that same transaction (ADR-0021): what it read and when, what it
+   produced, the ledger entry it belongs to;
 5. boundary — a stop requested meanwhile, or `stop_after`, takes effect here.
 
 A worker step that is stopped mid-way ends `stopped` with the worker's checkpoint; resuming
@@ -53,13 +55,13 @@ from taktus.components.run.domain.model import (
     references,
     resolve,
 )
-from taktus.components.run.domain.service import rules
+from taktus.components.run.domain.service import provenance, rules
 from taktus.components.run.domain.service.admission import admit, remaining
 from taktus.components.run.ports import WorkerPool
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.objectstore import ObjectStore
-from taktus.ports.persistence import Repository, Tenant, UnitOfWork
+from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
 from taktus.ports.telemetry import Span, Telemetry
 from taktus.ports.worker import (
     ArtifactProduced,
@@ -82,8 +84,11 @@ from taktus.shared.v1 import (
     Artifact,
     Consumption,
     ConsumptionQuantities,
+    InputKind,
+    LedgerEntry,
     LedgerRefs,
     Plan,
+    ProvenanceInput,
     Step,
     StepId,
 )
@@ -116,6 +121,15 @@ class ResumeRun:
 
 
 @dataclass(frozen=True)
+class Trace:
+    """What the provenance record of a step needs beyond the step run itself: what the step
+    read, and the version the worker declared."""
+
+    inputs: tuple[ProvenanceInput, ...] = ()
+    adapter_version: str | None = None
+
+
+@dataclass(frozen=True)
 class EngineOptions:
     step_ceiling_seconds: int = 300
     """How long a running worker step may take to finish after a stop was requested."""
@@ -129,6 +143,7 @@ class RunEngine:
         work: UnitOfWork,
         objects: ObjectStore,
         ledger: Ledger,
+        provenance: ProvenanceStore,
         workers: WorkerPool,
         clock: Clock,
         ids: Identifiers,
@@ -139,6 +154,7 @@ class RunEngine:
         self._work = work
         self._objects = objects
         self._ledger = ledger
+        self._provenance = provenance
         self._workers = workers
         self._clock = clock
         self._ids = ids
@@ -291,13 +307,14 @@ class RunEngine:
         run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
         step_run = step_run.to(StepState.RUNNING, started_at=self._clock.now())
         run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
+        trace = Trace()
         try:
             result_digest: str | None = None
             artifacts: tuple[Artifact, ...] = ()
             if isinstance(work, WaitWork):
                 await self._clock.sleep(work.seconds)
             else:
-                value = await self._evaluate(run, work)
+                value, trace = await self._evaluate(run, work)
                 content = json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
                 result_digest = await self._objects.put(content)
                 artifacts = (
@@ -331,18 +348,35 @@ class RunEngine:
             StepState.SUCCEEDED, artifacts=artifacts, checkpoint=checkpoint, finished_at=now
         )
         run = await self._commit(
-            run.with_step_run(step_run), "step.finished", step=step_run, outcome="succeeded"
+            run.with_step_run(step_run),
+            "step.finished",
+            step=step_run,
+            outcome="succeeded",
+            trace=trace,
         )
         return run, step_run
 
-    async def _evaluate(self, run: Run, work: Work) -> Any:
+    async def _evaluate(self, run: Run, work: Work) -> tuple[Any, Trace]:
+        """The rule's value, and what the rule read to produce it."""
         if isinstance(work, ConstantRule):
-            return rules.constant(work)
+            return rules.constant(work), Trace()
         if isinstance(work, VerifyArtifactRule):
             producer = run.step_run(work.step)
             artifact = producer.artifact(work.artifact)
             content = None if artifact is None else await self._objects.get(artifact.digest)
-            return rules.verify_artifact(work, artifact, content)
+            observed_at = self._clock.now()
+            value = rules.verify_artifact(work, artifact, content)
+            if artifact is None:  # unreachable: the rule refuses a missing artifact
+                raise RuleFailed(f"step {work.step!r} produced no artifact {work.artifact!r}")
+            read = ProvenanceInput(
+                kind=InputKind.ARTIFACT,
+                run_id=run.id,
+                step_id=producer.step_id,
+                artifact_id=artifact.id,
+                digest=artifact.digest,
+                observed_at=observed_at,
+            )
+            return value, Trace(inputs=(read,))
         raise UnsupportedWork("?", f"no evaluator for {type(work).__name__}")  # unreachable
 
     # --- worker steps ----------------------------------------------------------------------------
@@ -353,16 +387,18 @@ class RunEngine:
         resolved = await self._workers.resolve(step.required_capabilities)
         if resolved is None:
             raise NoWorker(step.id, step.required_capabilities)
-        adapter, worker = resolved
+        adapter, worker = resolved.adapter, resolved.worker
         span.set_attribute("adapter", adapter)
         resuming = step_run.checkpoint if step_run.state is StepState.STOPPED else None
         left = remaining(run.budget, run.consumed())
+        results, read = await self._results(run, references(work.task.inputs))
+        trace = Trace(inputs=read, adapter_version=resolved.version)
         assignment = Assignment(
             assignment_id=self._ids.new("asg"),
             task=Task(
                 goal=work.task.goal,
                 acceptance=work.task.acceptance,
-                inputs=resolve(work.task.inputs, await self._results(run)),
+                inputs=resolve(work.task.inputs, results),
             ),
             context=Context(
                 workspace=work.workspace,
@@ -430,14 +466,20 @@ class RunEngine:
             await self.request_stop(run.id)
         try:
             run, step_run = await self._follow(
-                run, step_run, worker, assignment.assignment_id, span
+                run, step_run, worker, assignment.assignment_id, trace, span
             )
         finally:
             self._inflight.pop(run.id, None)
         return run, step_run
 
     async def _follow(
-        self, run: Run, step_run: StepRun, worker: Worker, assignment_id: str, span: Span
+        self,
+        run: Run,
+        step_run: StepRun,
+        worker: Worker,
+        assignment_id: str,
+        trace: Trace,
+        span: Span,
     ) -> tuple[Run, StepRun]:
         """Read the stream to its end, persisting what arrives as it arrives."""
         # What an earlier attempt of this step used was used all the same: a resumed or
@@ -552,25 +594,55 @@ class RunEngine:
             )
             outcome = "failed"
         run = await self._commit(
-            run.with_step_run(step_run), "step.finished", step=step_run, outcome=outcome
+            run.with_step_run(step_run),
+            "step.finished",
+            step=step_run,
+            outcome=outcome,
+            trace=trace,
         )
         return run, step_run
 
-    async def _results(self, run: Run) -> dict[StepId, Any]:
-        """What every finished step produced, for `$from`."""
+    async def _results(
+        self, run: Run, referenced: set[StepId]
+    ) -> tuple[dict[StepId, Any], tuple[ProvenanceInput, ...]]:
+        """What the referenced steps produced, for `$from` — and the same as provenance
+        inputs: a result by digest, or every artifact by identifier and digest, each with the
+        moment it was read."""
         results: dict[StepId, Any] = {}
+        read: list[ProvenanceInput] = []
         for step_run in run.step_runs:
-            if not step_run.done:
+            if not step_run.done or step_run.step_id not in referenced:
                 continue
+            observed_at = self._clock.now()
             checkpoint = step_run.checkpoint
             if checkpoint is not None and checkpoint.result_digest is not None:
                 content = await self._objects.get(checkpoint.result_digest)
                 results[step_run.step_id] = None if content is None else json.loads(content)
+                read.append(
+                    ProvenanceInput(
+                        kind=InputKind.RESULT,
+                        run_id=run.id,
+                        step_id=step_run.step_id,
+                        digest=checkpoint.result_digest,
+                        observed_at=observed_at,
+                    )
+                )
             else:
                 results[step_run.step_id] = {
                     "artifacts": [a.document() for a in step_run.artifacts]
                 }
-        return results
+                read.extend(
+                    ProvenanceInput(
+                        kind=InputKind.ARTIFACT,
+                        run_id=run.id,
+                        step_id=step_run.step_id,
+                        artifact_id=artifact.id,
+                        digest=artifact.digest,
+                        observed_at=observed_at,
+                    )
+                    for artifact in step_run.artifacts
+                )
+        return results, tuple(read)
 
     # --- persistence and the ledger --------------------------------------------------------------
 
@@ -582,14 +654,29 @@ class RunEngine:
         step: StepRun | None = None,
         outcome: str | None = None,
         actor: str | None = None,
+        trace: Trace | None = None,
     ) -> Run:
         """One transaction: the run as it now is, and — when `kind` is given — the ledger entry
-        that says what changed. Either both land or neither does."""
+        that says what changed. Either both land or neither does. A step that finished with a
+        result gets its provenance record in the same transaction, bound to that entry."""
         run = run.model_copy(update={"updated_at": self._clock.now()})
         async with self._work.transaction(run.tenant):
             await self._runs.put(run.tenant, run)
             if kind is not None:
-                await self._record(run, kind, step=step, outcome=outcome, actor=actor)
+                entry = await self._record(run, kind, step=step, outcome=outcome, actor=actor)
+                if step is not None and trace is not None and step.done:
+                    await self._provenance.append(
+                        run.tenant,
+                        provenance.record(
+                            run,
+                            step,
+                            id=self._ids.new("prov"),
+                            inputs=trace.inputs,
+                            entry=entry,
+                            adapter_version=trace.adapter_version,
+                            at=self._clock.now(),
+                        ),
+                    )
         return run
 
     async def _record(
@@ -600,7 +687,7 @@ class RunEngine:
         step: StepRun | None = None,
         outcome: str | None = None,
         actor: str | None = None,
-    ) -> None:
+    ) -> LedgerEntry:
         refs = LedgerRefs(
             tenant=run.tenant,
             plan_id=run.plan_id,
@@ -626,7 +713,7 @@ class RunEngine:
         digest = None
         if step is not None and step.checkpoint is not None:
             digest = step.checkpoint.result_digest
-        await self._ledger.record(
+        return await self._ledger.record(
             run.tenant,
             Fact(
                 kind=kind,

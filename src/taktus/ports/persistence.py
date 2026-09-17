@@ -1,5 +1,5 @@
-"""Persistence: repositories per component, the append-only store of the ledger, and the unit
-of work that makes their writes one transaction.
+"""Persistence: repositories per component, the append-only stores of the ledger and of
+provenance, and the unit of work that makes their writes one transaction.
 
 A repository holds one kind of aggregate and knows nothing of what it means. Each component
 names its own repositories by binding the type parameter (`Repository[ProcessVersion]`); the
@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from contextlib import AbstractAsyncContextManager
 from typing import Any, Protocol, Self
 
-from taktus.shared.v1 import LedgerEntry
+from taktus.shared.v1 import LedgerEntry, Provenance
 
 type Tenant = str
 """The identifier of a tenant. Until the identity component exists there is one, `default`."""
@@ -69,6 +69,16 @@ class DuplicateSequence(PersistenceError):
 
     def __init__(self, tenant: Tenant, seq: int) -> None:
         super().__init__(f"the chain of tenant {tenant!r} already has an entry with seq {seq}")
+
+
+class DuplicateProvenance(PersistenceError):
+    """A step run's provenance was recorded a second time. A completed step has exactly one
+    record; a second one would let a result defect rewrite its own history (ADR-0021)."""
+
+    def __init__(self, tenant: Tenant, run_id: str, step_id: str) -> None:
+        super().__init__(
+            f"tenant {tenant!r} already holds the provenance of step {step_id!r} of run {run_id!r}"
+        )
 
 
 class Identified(Protocol):
@@ -118,8 +128,30 @@ class LedgerStore(Protocol):
         ...
 
 
+class ProvenanceStore(Protocol):
+    """Where provenance records live (ADR-0021). Append-only, as the ledger store is: a record,
+    once stored, is never changed or removed, and a step run is recorded once. Reading walks
+    the chain: from the record that produced an artifact back through the records its inputs
+    name, in one query of the store."""
+
+    async def append(self, tenant: Tenant, record: Provenance) -> None:
+        """Raises `DuplicateProvenance` when the step run is already recorded."""
+        ...
+
+    async def of_run(self, tenant: Tenant, run_id: str) -> Sequence[Provenance]:
+        """Every record of one run, in the order of the ledger entries they belong to."""
+        ...
+
+    async def chain(self, tenant: Tenant, run_id: str, artifact_id: str) -> Sequence[Provenance]:
+        """The record that produced the artifact in that run, followed by every record its
+        inputs lead to, transitively, across runs of the tenant. Empty when no record of the
+        run lists the artifact. One query."""
+        ...
+
+
 class UnitOfWork(Protocol):
     def transaction(self, tenant: Tenant) -> AbstractAsyncContextManager[None]:
-        """One transaction for one tenant across every repository and the ledger store of the
-        same persistence. Committed when the block ends, rolled back when it raises."""
+        """One transaction for one tenant across every repository, the ledger store and the
+        provenance store of the same persistence. Committed when the block ends, rolled back
+        when it raises."""
         ...
