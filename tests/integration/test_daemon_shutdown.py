@@ -1,4 +1,5 @@
-"""A real SIGTERM mid-run lands on a step boundary (ADR-0005, ADR-0013 A).
+"""A real SIGTERM mid-run lands on a step boundary (ADR-0005, ADR-0013 A), and the whole
+surface works under a non-root path prefix.
 
 `taktusd` runs as a process of its own — runner role, against PostgreSQL and the reference
 worker — and executes a submitted run whose worker step takes a couple of seconds. Once that
@@ -6,7 +7,9 @@ step has persisted an inner boundary, the process receives SIGTERM. Then: it exi
 ceiling; the run is halted at a boundary with its checkpoint and nothing after it started; the
 job is claimable again; the ledger verifies. A second daemon claims the job, resumes the run
 from that boundary — the worker produces nothing it produced before — and finishes it, and its
-SIGTERM lands cleanly on an idle process. Health answered throughout; readiness said yes.
+SIGTERM lands cleanly on an idle process. Health answered throughout; readiness said yes. The
+second daemon is served under `/taktus/two`: nothing answers at the root, everything under the
+prefix.
 """
 
 from __future__ import annotations
@@ -59,12 +62,13 @@ async def daemon(environment: dict[str, str], log: Path) -> Process:
     return process
 
 
-async def wait_ready(port: int, process: Process) -> None:
+async def wait_ready(port: int, process: Process, prefix: str = "") -> None:
     async with asyncio.timeout(30), httpx.AsyncClient() as client:
         while True:
             assert process.returncode is None, "the daemon exited early"
             try:
-                if (await client.get(f"http://127.0.0.1:{port}/ready")).status_code == 200:
+                url = f"http://127.0.0.1:{port}{prefix}/ready"
+                if (await client.get(url)).status_code == 200:
                     return
             except httpx.HTTPError:
                 pass
@@ -137,11 +141,31 @@ async def test_sigterm_mid_run_lands_on_a_boundary_and_the_next_daemon_resumes(
 
     port = free_port()
     log = tmp_path / "taktusd-2.log"
+    prefix = "/taktus/two"
     second = await daemon(
-        {**environment, "TAKTUS_HTTP_PORT": str(port), "TAKTUS_INSTANCE": "second"}, log
+        {
+            **environment,
+            "TAKTUS_HTTP_PORT": str(port),
+            "TAKTUS_INSTANCE": "second",
+            "TAKTUS_PATH_PREFIX": prefix,
+            "TAKTUS_ROLES": "runner,api",
+        },
+        log,
     )
     try:
-        await wait_ready(port, second)
+        await wait_ready(port, second, prefix)
+        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
+            assert (await client.get("/ready")).status_code == 404, "nothing at the root"
+            assert (await client.get("/health")).status_code == 404
+            assert (await client.get(f"/runs/{run.id}")).status_code == 404
+            assert (await client.get(f"{prefix}/health")).json() == {"status": "alive"}
+            seen = await client.get(f"{prefix}/runs/{run.id}")
+            assert seen.status_code == 200 and seen.json()["id"] == run.id
+            listed = await client.get(f"{prefix}/runs")
+            assert run.id in [r["id"] for r in listed.json()["runs"]]
+            problem = await client.get(f"{prefix}/runs/run_nope")
+            assert problem.status_code == 404
+            assert problem.headers["content-type"] == "application/problem+json"
         async with asyncio.timeout(60):
             while True:
                 assert second.returncode is None, f"the daemon exited early; see {log}"
@@ -149,6 +173,9 @@ async def test_sigterm_mid_run_lands_on_a_boundary_and_the_next_daemon_resumes(
                 if stored is not None and stored.state is RunState.FINISHED:
                     break
                 await asyncio.sleep(0.1)
+        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
+            ledger = (await client.get(f"{prefix}/runs/{run.id}/ledger")).json()
+            assert ledger["chain"]["intact"] and ledger["entries"][-1]["kind"] == "run.finished"
         second.send_signal(signal.SIGTERM)
         assert await asyncio.wait_for(second.wait(), timeout=25) == 0, log.read_text()
     finally:
