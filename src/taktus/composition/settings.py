@@ -87,6 +87,55 @@ class ExecutionSettings:
         ]
 
 
+@dataclass(frozen=True)
+class TelemetrySettings:
+    """Where spans go. Absent endpoint: spans are real and exported nowhere — the no-op is the
+    export, so that trace identifiers still join ledger entries and log lines."""
+
+    endpoint: str | None
+    protocol: str
+    """`grpc` or `http` (OTLP over HTTP/protobuf)."""
+    headers: Secret | None
+    """Headers the endpoint needs, `name=value` pairs separated by commas — a secret, because
+    that is where an authorisation token goes: `TAKTUS_OTLP_HEADERS_FILE`."""
+    headers_source: str | None
+    service_name: str
+
+    def effective(self) -> list[tuple[str, str]]:
+        headers = "" if self.headers is None else f"{self.headers} (from {self.headers_source})"
+        return [
+            ("TAKTUS_OTLP_ENDPOINT", self.endpoint or ""),
+            ("TAKTUS_OTLP_PROTOCOL", self.protocol),
+            ("TAKTUS_OTLP_HEADERS", headers),
+            ("TAKTUS_OTLP_SERVICE_NAME", self.service_name),
+        ]
+
+    def parsed_headers(self) -> dict[str, str]:
+        if self.headers is None:
+            return {}
+        pairs = (p.partition("=") for p in self.headers.reveal().split(",") if p.strip())
+        return {name.strip(): value.strip() for name, _, value in pairs if name.strip()}
+
+
+def load_telemetry(configuration: Configuration) -> TelemetrySettings:
+    """The telemetry settings alone: `taktusctl` reads them too."""
+    reader = _Reader(configuration)
+    endpoint = reader.text("otlp.endpoint", "") or None
+    if endpoint is not None and not (
+        endpoint.startswith("http://") or endpoint.startswith("https://")
+    ):
+        raise ConfigurationError(
+            configuration.name("otlp.endpoint"), f"{endpoint!r} is not an http(s) URL"
+        )
+    return TelemetrySettings(
+        endpoint=endpoint,
+        protocol=reader.choice("otlp.protocol", "grpc", ("grpc", "http")),
+        headers=configuration.secret("otlp.headers"),
+        headers_source=configuration.source("otlp.headers"),
+        service_name=reader.text("otlp.service.name", "taktus"),
+    )
+
+
 def load_execution(configuration: Configuration) -> ExecutionSettings:
     """The execution settings alone: `taktusctl` reads them too, without the daemon's."""
     reader = _Reader(configuration)
@@ -133,6 +182,8 @@ class Settings:
     """Everything the HTTP surface serves lives under this prefix, `/` by default."""
     execution: ExecutionSettings
     """How the runner reaches an execution unit for worker steps."""
+    telemetry: TelemetrySettings
+    """Where spans are exported, if anywhere."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
     state_dir: Path
@@ -166,6 +217,7 @@ class Settings:
             ("TAKTUS_HTTP_PORT", str(self.http_port)),
             ("TAKTUS_PATH_PREFIX", self.path_prefix),
             *self.execution.effective(),
+            *self.telemetry.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
             ("TAKTUS_TENANTS", ",".join(self.tenants)),
@@ -205,6 +257,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         http_port=reader.integer("http.port", 8080, low=1, high=65535),
         path_prefix=normalise_prefix(prefix, configuration.name("path.prefix")),
         execution=load_execution(configuration),
+        telemetry=load_telemetry(configuration),
         connectors=reader.connectors(),
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         tenants=reader.names("tenants", (DEFAULT_TENANT,)),

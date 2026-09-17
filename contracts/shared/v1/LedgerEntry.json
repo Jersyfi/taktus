@@ -41,6 +41,11 @@
           "description": "The identity that acted, as an opaque identifier. Absent when Taktus acted on its own.",
           "type": "string",
           "minLength": 1
+        },
+        "trace_id": {
+          "description": "The identifier of the trace (OpenTelemetry, 32 lowercase hex characters) in which the entry was recorded, so that a ledger entry and a trace can be joined. Absent when nothing traced.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
         }
       },
       "minProperties": 1,

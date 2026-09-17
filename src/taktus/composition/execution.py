@@ -1,4 +1,5 @@
-"""The one worker the control plane is configured with, opened the way `TAKTUS_EXECUTION` says.
+"""The one worker the control plane is configured with, opened the way `TAKTUS_EXECUTION` says;
+and the telemetry, opened the way `TAKTUS_OTLP_*` says.
 
 Three kinds (ADR-0002): a worker that is already running, reached by endpoint; a unit started
 per job as a process of this machine; a unit started per job in a container. The daemon and
@@ -13,9 +14,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from taktus.adapters.driven.execution import ContainerExecution, ProcessExecution
+from taktus.adapters.driven.telemetry import OpenTelemetryTelemetry, exporter_for
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.launched import LaunchedWorker
-from taktus.composition.settings import ExecutionKind, ExecutionSettings
+from taktus.composition.settings import ExecutionKind, ExecutionSettings, TelemetrySettings
 from taktus.ports.configuration import Configuration
 from taktus.ports.execution import Execution, ExecutionUnit, ResourceLimits
 from taktus.ports.worker import Worker
@@ -77,3 +79,15 @@ async def open_worker(
     execution = execution_of(settings, configuration, state_dir=state_dir)
     async with LaunchedWorker(execution, unit_of(settings), stream_timeout=stream_timeout) as w:
         yield adapter_identifier(settings.kind), w
+
+
+def telemetry_of(settings: TelemetrySettings) -> OpenTelemetryTelemetry:
+    """Real spans always; an exporter only where an endpoint is configured."""
+    exporter = None
+    if settings.endpoint is not None:
+        exporter = exporter_for(
+            settings.endpoint,
+            protocol="grpc" if settings.protocol == "grpc" else "http",
+            headers=settings.parsed_headers(),
+        )
+    return OpenTelemetryTelemetry(service_name=settings.service_name, exporter=exporter)

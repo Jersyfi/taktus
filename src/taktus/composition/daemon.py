@@ -44,7 +44,6 @@ from taktus.adapters.driven.postgres import (
     upgrade,
 )
 from taktus.adapters.driven.postgres.url import described
-from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.components.command.application.service import (
@@ -66,7 +65,7 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
-from taktus.composition.execution import open_worker
+from taktus.composition.execution import open_worker, telemetry_of
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.settings import Role, Settings, load
 from taktus.ports.configuration import Configuration, ConfigurationError
@@ -149,6 +148,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
             raise NotOperable(f"cannot reach the database at {described(url)}: {error}") from error
         clock = SystemClock()
         ids = SystemIdentifiers()
+        telemetry = telemetry_of(settings.telemetry)
         runs = PostgresRepository(persistence, Run)
         ledger = ChainedLedger(PostgresLedgerStore(persistence), clock)
         provenance_store = PostgresProvenanceStore(persistence)
@@ -166,7 +166,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                 workers=StaticWorkerPool([(adapter, worker)]),
                 clock=clock,
                 ids=ids,
-                telemetry=NoTelemetry(),
+                telemetry=telemetry,
                 queue=queue,
                 options=EngineOptions(step_ceiling_seconds=settings.shutdown_ceiling_seconds),
             )
@@ -196,6 +196,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                     },
                     PostgresRepository(persistence, IntakeEvent),
                     persistence,
+                    telemetry,
                 ),
                 leadership=PostgresLeadership(persistence.engine),
                 clock=clock,
@@ -215,7 +216,10 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                         heartbeat_seconds=max(settings.lease_seconds / 3, 1.0),
                     ),
                 )
-            yield wired
+            try:
+                yield wired
+            finally:
+                telemetry.shutdown()
     finally:
         await persistence.close()
 

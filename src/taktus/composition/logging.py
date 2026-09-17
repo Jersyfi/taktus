@@ -1,4 +1,5 @@
-"""Structured logging for the daemon: one JSON object per line on stderr, never a secret.
+"""Structured logging for the daemon: one JSON object per line on stderr, never a secret, and
+the trace identifier on every line written inside a span.
 
 `structlog` renders every event; a `Secret` reaches the renderer as an object and is written
 through its `repr`, which masks it, so a secret cannot appear in a line by being logged as a
@@ -14,15 +15,27 @@ from typing import Any
 
 import structlog
 
+from taktus.adapters.driven.telemetry.otel import current_trace_id
 from taktus.composition.settings import Settings
 
 LEVELS = {"debug": logging.DEBUG, "info": logging.INFO, "warning": logging.WARNING}
+
+
+def add_trace_id(logger: Any, method: str, event: dict[str, Any]) -> dict[str, Any]:
+    """Every line written inside a span carries the trace identifier the span belongs to —
+    the same one the engine writes into its ledger entries — so that a line, an entry and a
+    trace can be joined."""
+    trace_id = current_trace_id()
+    if trace_id is not None:
+        event.setdefault("trace_id", trace_id)
+    return event
 
 
 def processors() -> list[Any]:
     """The chain every event goes through, shared with the test that renders through it."""
     return [
         structlog.contextvars.merge_contextvars,
+        add_trace_id,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.format_exc_info,

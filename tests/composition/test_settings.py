@@ -155,7 +155,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 27, "every setting is in the startup log"
+    assert len(effective) == 31, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:

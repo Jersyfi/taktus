@@ -41,7 +41,6 @@ from taktus.adapters.driven.postgres import (
     check_schema,
 )
 from taktus.adapters.driven.postgres.url import described
-from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.cli.wiring import NotOperable, Services
 from taktus.components.command.application.service import CommissionPlanHandler
@@ -53,8 +52,8 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
-from taktus.composition.execution import open_worker
-from taktus.composition.settings import load_execution
+from taktus.composition.execution import open_worker, telemetry_of
+from taktus.composition.settings import load_execution, load_telemetry
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
     LedgerStore,
@@ -93,6 +92,7 @@ class LocalWiring:
         ids = SystemIdentifiers()
         try:
             execution = load_execution(self._configuration)
+            telemetry = telemetry_of(load_telemetry(self._configuration))
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         async with (
@@ -112,7 +112,7 @@ class LocalWiring:
                 workers=StaticWorkerPool([(adapter, worker)]),
                 clock=clock,
                 ids=ids,
-                telemetry=NoTelemetry(),
+                telemetry=telemetry,
                 queue=stores.queue,
             )
             yield Services(
@@ -132,6 +132,7 @@ class LocalWiring:
                 storage=stores.storage,
                 queued=stores.queue is not None,
             )
+            telemetry.shutdown()
 
     @asynccontextmanager
     async def _stores(self, state_dir: Path) -> AsyncIterator[Stores]:

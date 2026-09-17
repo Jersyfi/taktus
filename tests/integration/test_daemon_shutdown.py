@@ -24,6 +24,7 @@ from typing import Any
 
 import httpx
 
+from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.postgres import PostgresQueue
 from taktus.components.run.domain.model import Cause, RunState, StepState
 from taktus.composition.daemon import wire
@@ -79,7 +80,7 @@ async def test_sigterm_mid_run_lands_on_a_boundary_and_the_next_daemon_resumes(
     worker_endpoint: str, postgres_url: str, tmp_path: Path
 ) -> None:
     configured = settings(postgres_url, tmp_path, TAKTUS_WORKER=worker_endpoint)
-    async with wire(configured) as wired:
+    async with wire(configured, EnvironmentConfiguration({})) as wired:
         run = await submit(wired, bundle(1))
     database = Database(postgres_url)
     environment = {

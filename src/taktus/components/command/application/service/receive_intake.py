@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.ports.connector import ConnectorError, Delivery, IntakeConnector, Refusal
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
+from taktus.ports.telemetry import Telemetry
 from taktus.shared.v1 import Capability
 
 
@@ -43,10 +44,12 @@ class ReceiveIntakeHandler:
         connectors: Mapping[Capability, IntakeConnector],
         events: Repository[IntakeEvent],
         work: UnitOfWork,
+        telemetry: Telemetry | None = None,
     ) -> None:
         self._connectors = connectors
         self._events = events
         self._work = work
+        self._telemetry = telemetry
 
     @property
     def channels(self) -> tuple[Capability, ...]:
@@ -56,7 +59,15 @@ class ReceiveIntakeHandler:
         connector = self._connectors.get(command.channel)
         if connector is None:
             raise UnknownChannel(command.channel)
-        result = await connector.intake(command.delivery)
+        if self._telemetry is None:
+            result = await connector.intake(command.delivery)
+        else:
+            # The connector call is a span of its own: the channel and the tenant, never the
+            # delivery — its headers and body are the source system's content.
+            attributes = {"channel": command.channel, "tenant": command.tenant}
+            async with self._telemetry.span("connector.intake", attributes) as span:
+                result = await connector.intake(command.delivery)
+                span.set_attribute("intake.outcome", "refused" if result.refused else "accepted")
         if result.refused is not None:
             return IntakeOutcome(refused=result.refused)
         accepted = result.accepted

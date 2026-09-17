@@ -18,3 +18,6 @@ class NoTelemetry:
     @asynccontextmanager
     async def span(self, name: str, attributes: Attributes | None = None) -> AsyncIterator[Span]:
         yield NoSpan()
+
+    def current_trace_id(self) -> str | None:
+        return None
