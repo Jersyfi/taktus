@@ -21,7 +21,9 @@ Fault injection (`--fault NAME`) makes the worker violate exactly one conformanc
 the suite can be shown to catch it. `--list-faults` prints every fault with the check it breaks.
 
 Credentials arrive as names; the execution adapter puts the values into this process's
-environment. This worker reads whether they are present and nothing else, and never writes a
+environment. The same adapter tells this worker where to listen and where its state lives
+(TAKTUS_UNIT_PORT, TAKTUS_UNIT_STATE_DIR — the launch convention of the execution port), so
+that it can be started as a process or as a container without further arguments. This worker reads whether they are present and nothing else, and never writes a
 value anywhere — except under the three W-08 faults, which exist to be caught.
 
 This file imports nothing from src/taktus. It is a separate deployable, as every worker is.
@@ -882,13 +884,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    # The launch convention of the execution port: an execution adapter that starts this
+    # worker tells it where to listen and where its state lives through these two variables.
+    # The options override them; without either, the defaults below apply.
+    port = int(os.environ.get("TAKTUS_UNIT_PORT") or 9000)
+    state_dir = os.environ.get("TAKTUS_UNIT_STATE_DIR") or None
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9000)
+    parser.add_argument("--port", type=int, default=port)
     parser.add_argument("--profile", choices=["quick", "longrun"], default="quick")
     parser.add_argument("--fault", choices=sorted(FAULTS), help="violate exactly one check")
     parser.add_argument("--list-faults", action="store_true", help="print the faults and exit")
-    parser.add_argument("--state-dir", default=None, help="where checkpoints are written")
+    parser.add_argument("--state-dir", default=state_dir, help="where checkpoints are written")
     parser.add_argument("--resource-class", default="cpu.small", help="the class reported")
     parser.add_argument("--step-seconds", type=float, default=0.3, help="quick: seconds per step")
     parser.add_argument("--epochs", type=int, default=4, help="longrun: number of epochs")

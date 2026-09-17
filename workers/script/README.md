@@ -42,7 +42,13 @@ works. The worker that trains, `mlbench`, arrives at `0.4.0` (`docs/roadmap.md`)
 
 Tunables: `--step-seconds` (quick, default 0.3), `--epochs` (longrun, default 4),
 `--epoch-seconds` (longrun, default 0.5), `--resource-class`, `--state-dir` for checkpoints
-(default a fresh directory under `~/.cache/taktus-script-worker/`).
+(default a fresh directory under `~/.cache/taktus-script-worker/`). When an execution adapter
+starts this worker it sets `TAKTUS_UNIT_PORT` and `TAKTUS_UNIT_STATE_DIR` — the launch
+convention of the execution port (`docs/architecture/contracts.md` §2.4) — and the worker
+takes them as the defaults of `--port` and `--state-dir`; the state directory is what
+outlives a job, so that a resumed assignment finds its checkpoint in a new unit. Its own
+image is `Dockerfile` in this directory (`docker build -f workers/script/Dockerfile .`),
+listening on `0.0.0.0:9000` with its state under `/var/lib/taktus/unit`.
 
 ## What an assignment does
 

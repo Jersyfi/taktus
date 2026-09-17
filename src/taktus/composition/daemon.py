@@ -45,7 +45,6 @@ from taktus.adapters.driven.postgres import (
 )
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.telemetry import NoTelemetry
-from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.components.command.application.service import (
@@ -67,15 +66,15 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
+from taktus.composition.execution import open_worker
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.settings import Role, Settings, load
-from taktus.ports.configuration import ConfigurationError
+from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.leadership import Leadership
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, UnitOfWork
 from taktus.shared.v1 import Command, Plan
 
-WORKER_ADAPTER = "worker.http"
 EXIT_CONFIGURATION = 2
 EXIT_NOT_OPERABLE = 3
 
@@ -130,7 +129,9 @@ class NotOperable(Exception):
 
 
 @asynccontextmanager
-async def wire(settings: Settings) -> AsyncIterator[Wired]:
+async def wire(settings: Settings, configuration: Configuration) -> AsyncIterator[Wired]:
+    """`configuration` is read again at runtime for what is not a setting: the credential
+    values a launched execution unit is given, at the moment a job starts."""
     url = settings.database.reveal()
     if settings.migrate_on_start:
         log.info("migrating", database=described(url))
@@ -152,14 +153,17 @@ async def wire(settings: Settings) -> AsyncIterator[Wired]:
         ledger = ChainedLedger(PostgresLedgerStore(persistence), clock)
         provenance_store = PostgresProvenanceStore(persistence)
         queue = PostgresQueue(persistence, lease_seconds=settings.lease_seconds)
-        async with HttpWorker(settings.worker) as worker:
+        async with open_worker(settings.execution, configuration, state_dir=settings.state_dir) as (
+            adapter,
+            worker,
+        ):
             engine = RunEngine(
                 runs=runs,
                 work=persistence,
                 objects=MemoryObjectStore(settings.state_dir / "objects"),
                 ledger=ledger,
                 provenance=provenance_store,
-                workers=StaticWorkerPool([(WORKER_ADAPTER, worker)]),
+                workers=StaticWorkerPool([(adapter, worker)]),
                 clock=clock,
                 ids=ids,
                 telemetry=NoTelemetry(),
@@ -219,6 +223,7 @@ async def wire(settings: Settings) -> AsyncIterator[Wired]:
 async def serve(
     settings: Settings,
     *,
+    configuration: Configuration | None = None,
     stop: asyncio.Event | None = None,
     on_wired: Callable[[Wired], None] | None = None,
 ) -> int:
@@ -228,7 +233,7 @@ async def serve(
     stop = stop or asyncio.Event()
     _install_signal_handlers(stop)
     try:
-        async with wire(settings) as wired:
+        async with wire(settings, configuration or EnvironmentConfiguration()) as wired:
             if on_wired is not None:
                 on_wired(wired)
             log.info(
@@ -349,17 +354,15 @@ async def _wind_down(tasks: list[asyncio.Task[None]], ceiling_seconds: int) -> N
 
 
 def main() -> None:
+    configuration = EnvironmentConfiguration()
     try:
-        settings = load(
-            EnvironmentConfiguration(),
-            default_instance=f"{socket.gethostname()}-{os.getpid()}",
-        )
+        settings = load(configuration, default_instance=f"{socket.gethostname()}-{os.getpid()}")
     except ConfigurationError as error:
         sys.stderr.write(f"taktusd: {error}\n")
         sys.exit(EXIT_CONFIGURATION)
     configure(settings.log_level)
     log_effective_configuration(settings)
-    sys.exit(asyncio.run(serve(settings)))
+    sys.exit(asyncio.run(serve(settings, configuration=configuration)))
 
 
 if __name__ == "__main__":

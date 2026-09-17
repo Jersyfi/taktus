@@ -32,6 +32,91 @@ ALL_ROLES: frozenset[Role] = frozenset(Role)
 DEFAULT_TENANT = "default"
 
 
+class ExecutionKind(StrEnum):
+    """How the control plane reaches an execution unit for `worker` steps (ADR-0002)."""
+
+    ENDPOINT = "endpoint"
+    """A worker that is already running, at `TAKTUS_WORKER`. Its isolation is whoever runs it."""
+    PROCESS = "process"
+    """A unit started per job as a child process of this one. No isolation; refused from
+    autonomy level 3 upwards."""
+    CONTAINER = "container"
+    """A unit started per job in a container with limits, a memory-backed credential store
+    and a network that reaches the allowed hosts and nothing else."""
+
+
+@dataclass(frozen=True)
+class ExecutionSettings:
+    kind: ExecutionKind
+    endpoint: str
+    """`TAKTUS_WORKER`: the base URL of the worker for kind `endpoint`."""
+    unit: str | None
+    """`TAKTUS_EXECUTION_UNIT`: what a launched unit is — a command line for `process`, an
+    image reference for `container`. Required for those two kinds."""
+    unit_port: int
+    unit_state_dir: str
+    cpus: float
+    memory_mb: int
+    wall_seconds: int
+    start_timeout_seconds: int
+    network: str | None
+    """`TAKTUS_EXECUTION_NETWORK` (container): the network this process shares with the job's
+    egress container — a control plane that itself runs in a container names its own network
+    here. Unset, the egress container publishes the unit's port on 127.0.0.1 of the machine
+    the engine runs on, which is where a control plane on a developer's machine reaches it."""
+    engine_socket: str
+    """`TAKTUS_EXECUTION_ENGINE_SOCKET` (container): the container engine's socket."""
+    egress_image: str
+    """`TAKTUS_EXECUTION_EGRESS_IMAGE` (container): the image the per-job egress container runs
+    from; any image with `python3` on the path."""
+
+    def effective(self) -> list[tuple[str, str]]:
+        return [
+            ("TAKTUS_EXECUTION", self.kind.value),
+            ("TAKTUS_WORKER", self.endpoint),
+            ("TAKTUS_EXECUTION_UNIT", self.unit or ""),
+            ("TAKTUS_EXECUTION_UNIT_PORT", str(self.unit_port)),
+            ("TAKTUS_EXECUTION_UNIT_STATE_DIR", self.unit_state_dir),
+            ("TAKTUS_EXECUTION_CPUS", str(self.cpus)),
+            ("TAKTUS_EXECUTION_MEMORY_MB", str(self.memory_mb)),
+            ("TAKTUS_EXECUTION_WALL_SECONDS", str(self.wall_seconds)),
+            ("TAKTUS_EXECUTION_START_TIMEOUT_SECONDS", str(self.start_timeout_seconds)),
+            ("TAKTUS_EXECUTION_NETWORK", self.network or ""),
+            ("TAKTUS_EXECUTION_ENGINE_SOCKET", self.engine_socket),
+            ("TAKTUS_EXECUTION_EGRESS_IMAGE", self.egress_image),
+        ]
+
+
+def load_execution(configuration: Configuration) -> ExecutionSettings:
+    """The execution settings alone: `taktusctl` reads them too, without the daemon's."""
+    reader = _Reader(configuration)
+    kind = ExecutionKind(
+        reader.choice("execution", "endpoint", tuple(k.value for k in ExecutionKind))
+    )
+    unit = reader.text("execution.unit", "") or None
+    if kind is not ExecutionKind.ENDPOINT and unit is None:
+        what = "a command line" if kind is ExecutionKind.PROCESS else "an image reference"
+        raise ConfigurationError(
+            configuration.name("execution.unit"),
+            f"is not set; {configuration.name('execution')}={kind.value} starts a unit per job "
+            f"and needs {what} here",
+        )
+    return ExecutionSettings(
+        kind=kind,
+        endpoint=reader.url("worker", "http://127.0.0.1:9000"),
+        unit=unit,
+        unit_port=reader.integer("execution.unit.port", 9000, low=1, high=65535),
+        unit_state_dir=reader.text("execution.unit.state.dir", "/var/lib/taktus/unit"),
+        cpus=reader.number("execution.cpus", 1.0, low=0.1),
+        memory_mb=reader.integer("execution.memory.mb", 1024, low=16),
+        wall_seconds=reader.integer("execution.wall.seconds", 3600, low=1),
+        start_timeout_seconds=reader.integer("execution.start.timeout.seconds", 60, low=1),
+        network=reader.text("execution.network", "") or None,
+        engine_socket=reader.text("execution.engine.socket", "/var/run/docker.sock"),
+        egress_image=reader.text("execution.egress.image", "python:3.13-slim"),
+    )
+
+
 @dataclass(frozen=True)
 class Settings:
     roles: frozenset[Role]
@@ -46,8 +131,8 @@ class Settings:
     http_port: int
     path_prefix: str
     """Everything the HTTP surface serves lives under this prefix, `/` by default."""
-    worker: str
-    """The base URL of the one worker endpoint the runner delegates worker steps to."""
+    execution: ExecutionSettings
+    """How the runner reaches an execution unit for worker steps."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
     state_dir: Path
@@ -80,7 +165,7 @@ class Settings:
             ("TAKTUS_HTTP_HOST", self.http_host),
             ("TAKTUS_HTTP_PORT", str(self.http_port)),
             ("TAKTUS_PATH_PREFIX", self.path_prefix),
-            ("TAKTUS_WORKER", self.worker),
+            *self.execution.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
             ("TAKTUS_TENANTS", ",".join(self.tenants)),
@@ -119,7 +204,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         http_host=reader.text("http.host", "127.0.0.1"),
         http_port=reader.integer("http.port", 8080, low=1, high=65535),
         path_prefix=normalise_prefix(prefix, configuration.name("path.prefix")),
-        worker=reader.url("worker", "http://127.0.0.1:9000"),
+        execution=load_execution(configuration),
         connectors=reader.connectors(),
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         tenants=reader.names("tenants", (DEFAULT_TENANT,)),

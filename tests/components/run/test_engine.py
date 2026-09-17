@@ -600,3 +600,19 @@ async def test_a_failing_assignment_escalates_with_what_it_used() -> None:
         "the fake fails again; the retry started from the boundary before"
     )
     assert fake.assignments[1].context.checkpoint_ref is None
+
+
+async def test_a_worker_that_cannot_be_reached_fails_the_step_with_that_cause() -> None:
+    """An execution unit that does not start, or an endpoint that does not answer, is a failed
+    step and an escalated run — never an exception out of the engine. The reason names what
+    happened, so that the operator can read it on the run."""
+    fake = FakeWorker(unreachable="the execution unit could not be started: autonomy level 3")
+    h = Harness(worker("do"), workers=[fake])
+    run = await h.start()
+    assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
+    do = run.step_run("do")
+    assert do.state is StepState.FAILED and do.assignment_id is None
+    assert do.reason is not None and "could not be started" in do.reason
+    kinds = [e.kind for e in await h.entries(run)]
+    assert kinds[-2:] == ["step.finished", "run.escalated"]
+    assert fake.assignments == [], "nothing was posted"

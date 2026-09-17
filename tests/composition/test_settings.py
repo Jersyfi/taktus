@@ -11,7 +11,14 @@ import structlog
 
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.composition import logging as daemon_logging
-from taktus.composition.settings import ALL_ROLES, Role, Settings, load, normalise_prefix
+from taktus.composition.settings import (
+    ALL_ROLES,
+    ExecutionKind,
+    Role,
+    Settings,
+    load,
+    normalise_prefix,
+)
 from taktus.ports.configuration import ConfigurationError
 
 URL = "postgresql://taktus:hunter2-the-password@db.internal:5432/taktus"
@@ -50,6 +57,10 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
                 "TAKTUS_HTTP_PORT": "9000",
                 "TAKTUS_PATH_PREFIX": "/taktus/",
                 "TAKTUS_WORKER": "http://worker:9000/",
+                "TAKTUS_EXECUTION": "process",
+                "TAKTUS_EXECUTION_UNIT": "python3 worker.py",
+                "TAKTUS_EXECUTION_MEMORY_MB": "256",
+                "TAKTUS_EXECUTION_WALL_SECONDS": "120",
                 "TAKTUS_CONNECTORS": "channel.repo=http://connector:9100/mcp",
                 "TAKTUS_STATE_DIR": str(tmp_path / "state"),
                 "TAKTUS_TENANTS": "default,acme",
@@ -68,7 +79,10 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
     assert loaded.migrate_on_start is True
     assert (loaded.http_host, loaded.http_port) == ("0.0.0.0", 9000)  # noqa: S104
     assert loaded.path_prefix == "/taktus"
-    assert loaded.worker == "http://worker:9000"
+    assert loaded.execution.endpoint == "http://worker:9000"
+    assert loaded.execution.kind is ExecutionKind.PROCESS
+    assert loaded.execution.unit == "python3 worker.py"
+    assert (loaded.execution.memory_mb, loaded.execution.wall_seconds) == (256, 120)
     assert loaded.connectors == {"channel.repo": "http://connector:9100/mcp"}
     assert loaded.state_dir == tmp_path / "state"
     assert loaded.tenants == ("default", "acme")
@@ -91,6 +105,8 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
         ("TAKTUS_PATH_PREFIX", "/a/../b", "empty segment, or one that is . or .."),
         ("TAKTUS_PATH_PREFIX", "/a b", "no space"),
         ("TAKTUS_WORKER", "worker:9000", "not an http(s) URL"),
+        ("TAKTUS_EXECUTION", "pod", "not one of endpoint, process, container"),
+        ("TAKTUS_EXECUTION_MEMORY_MB", "8", "at least 16"),
         ("TAKTUS_CONNECTORS", "channel.repo", "capability=url"),
         ("TAKTUS_CONNECTORS", "Repo=http://x", "not a capability"),
         ("TAKTUS_CONNECTORS", "channel.repo=ftp://x", "not an http(s) URL"),
@@ -120,6 +136,12 @@ def test_the_database_is_required_and_the_message_says_how_to_supply_it() -> Non
         load(EnvironmentConfiguration({"TAKTUS_DATABASE_URL": "mysql://x"}), default_instance="h")
 
 
+def test_a_launching_execution_kind_needs_its_unit() -> None:
+    with pytest.raises(ConfigurationError, match="TAKTUS_EXECUTION_UNIT: is not set") as raised:
+        settings(TAKTUS_EXECUTION="container")
+    assert "an image reference" in str(raised.value)
+
+
 def test_the_prefix_is_normalised() -> None:
     assert normalise_prefix("/", "X") == "/"
     assert normalise_prefix("/taktus/", "X") == "/taktus"
@@ -133,7 +155,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 16, "every setting is in the startup log"
+    assert len(effective) == 27, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:

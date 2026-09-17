@@ -33,6 +33,7 @@ from taktus.ports.worker import (
     StepStarted,
     StopRequest,
     Supports,
+    WorkerError,
 )
 from taktus.shared.v1 import Artifact
 
@@ -53,6 +54,7 @@ class FakeWorker:
     resource_class: str = "cpu.small"
     reject_with: str | None = None
     fail_at: str | None = None  # the inner step at which the assignment fails
+    unreachable: str | None = None  # every call fails with this WorkerError, as a dead unit does
     on_event: Callable[[Event], Awaitable[None]] | None = None
     assignments: list[Assignment] = field(default_factory=list)
     estimates: list[EstimateRequest] = field(default_factory=list)
@@ -79,6 +81,8 @@ class FakeWorker:
         )
 
     async def estimate(self, request: EstimateRequest) -> Estimate:
+        if self.unreachable is not None:
+            raise WorkerError(self.unreachable)
         self.estimates.append(request)
         start = self._start_index(request.context.checkpoint_ref)
         return Estimate(

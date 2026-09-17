@@ -442,8 +442,13 @@ class RunEngine:
             callback=Callback(events="sse"),
         )
 
-        # 1 + 2: estimate and admit, before anything starts.
-        estimate = await worker.estimate(assignment.estimate_request())
+        # 1 + 2: estimate and admit, before anything starts. A worker that cannot answer — an
+        # execution unit that does not start, an endpoint that does not answer — fails the
+        # step with that cause; the run escalates and nothing is left half done.
+        try:
+            estimate = await worker.estimate(assignment.estimate_request())
+        except WorkerError as error:
+            return await self._unavailable(run, step_run, adapter, span, error)
         demand = ConsumptionQuantities.model_validate(
             {**estimate.quantities(), "resource_class": estimate.resource_class}
         )
@@ -467,7 +472,10 @@ class RunEngine:
         run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
 
         # 3: run.
-        state = await worker.assign(assignment)
+        try:
+            state = await worker.assign(assignment)
+        except WorkerError as error:
+            return await self._unavailable(run, step_run, adapter, span, error)
         if state.status == "finished":
             # A rejection is a state, not an error: the worker's own check refused it.
             span.record_failure("rejected by the worker")
@@ -496,6 +504,18 @@ class RunEngine:
             )
         finally:
             self._inflight.pop(run.id, None)
+        return run, step_run
+
+    async def _unavailable(
+        self, run: Run, step_run: StepRun, adapter: str, span: Span, error: WorkerError
+    ) -> tuple[Run, StepRun]:
+        span.record_failure("worker unavailable")
+        step_run = step_run.to(
+            StepState.FAILED, adapter=adapter, reason=str(error), finished_at=self._clock.now()
+        )
+        run = await self._commit(
+            run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+        )
         return run, step_run
 
     async def _follow(
