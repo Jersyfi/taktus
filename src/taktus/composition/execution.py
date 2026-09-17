@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from taktus.adapters.driven.execution import ProcessExecution
+from taktus.adapters.driven.execution import ContainerExecution, ProcessExecution
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.launched import LaunchedWorker
 from taktus.composition.settings import ExecutionKind, ExecutionSettings
@@ -50,7 +50,13 @@ def execution_of(
 ) -> Execution:
     if settings.kind is ExecutionKind.PROCESS:
         return ProcessExecution(configuration, state_dir=state_dir)
-    raise NotImplementedError(settings.kind)  # container arrives with the next commit
+    return ContainerExecution(
+        configuration,
+        socket=settings.engine_socket,
+        state_dir=state_dir,
+        network=settings.network,
+        egress_image=settings.egress_image,
+    )
 
 
 @asynccontextmanager
