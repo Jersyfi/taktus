@@ -47,6 +47,7 @@ class InnerStep:
 @dataclass
 class FakeWorker:
     capabilities_offered: tuple[str, ...] = ("shell.script",)
+    version: str | None = "0.9.0"
     script: tuple[InnerStep, ...] = (InnerStep("one", artifacts=(("out-1", b"42\n"),)),)
     estimate_seconds: float = 1.0
     resource_class: str = "cpu.small"
@@ -63,6 +64,7 @@ class FakeWorker:
     async def capabilities(self) -> Capabilities:
         return Capabilities(
             contract="worker/v1",
+            version=self.version,
             capabilities=self.capabilities_offered,
             consumption=ConsumptionDeclaration(
                 kinds=("compute",), resource_classes=(self.resource_class,)

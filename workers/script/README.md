@@ -4,7 +4,9 @@ A shell wrapper behind the worker contract v1. It runs shell commands as steps a
 the contract asks for: capabilities, an estimate, an event stream that resumes from any `seq`,
 consumption after every step, a boundary with a checkpoint after every step, a stop that lands on
 that boundary, refusal of tools outside the frame, rejection before starting when the limits do
-not fit, artifacts, health.
+not fit, artifacts, health. It declares its own version in its capabilities (`VERSION` in
+`worker.py`), so that the provenance of every artifact it produces names the worker version
+that made it (`contracts/shared/v1/Provenance.json`, ADR-0021).
 
 It exists because of [ADR-0007](../../docs/adr/ADR-0007-worker-contract.md): a contract that a
 shell script cannot satisfy is built around one specific coding agent. It is proof case 1 of the

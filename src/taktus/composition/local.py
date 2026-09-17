@@ -25,11 +25,13 @@ from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
     MemoryObjectStore,
     MemoryPersistence,
+    MemoryProvenanceStore,
     MemoryRepository,
 )
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresPersistence,
+    PostgresProvenanceStore,
     PostgresRepository,
     SchemaOutOfDate,
     check_schema,
@@ -45,10 +47,17 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.domain.model import ProcessVersion
+from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.ports.configuration import Configuration
-from taktus.ports.persistence import LedgerStore, Repository, Stored, UnitOfWork
+from taktus.ports.persistence import (
+    LedgerStore,
+    ProvenanceStore,
+    Repository,
+    Stored,
+    UnitOfWork,
+)
 from taktus.shared.v1 import Command, Plan
 
 WORKER_ADAPTER = "worker.http"
@@ -65,6 +74,7 @@ class Stores:
     work: UnitOfWork
     of: RepositoryFactory
     ledger_store: LedgerStore
+    provenance_store: ProvenanceStore
     storage: str
 
 
@@ -84,6 +94,7 @@ class LocalWiring:
                 work=stores.work,
                 objects=MemoryObjectStore(state_dir / "objects"),
                 ledger=ledger,
+                provenance=stores.provenance_store,
                 workers=StaticWorkerPool([(WORKER_ADAPTER, worker)]),
                 clock=clock,
                 ids=ids,
@@ -97,6 +108,7 @@ class LocalWiring:
                     stores.of(Command), stores.of(Plan), stores.work, clock, ids
                 ),
                 engine=engine,
+                provenance=ProvenanceQuery(stores.provenance_store, runs, ledger, stores.work),
                 runs=runs,
                 ledger=ledger,
                 work=stores.work,
@@ -118,6 +130,7 @@ class LocalWiring:
                 work=memory,
                 of=in_memory,
                 ledger_store=MemoryLedgerStore(memory),
+                provenance_store=MemoryProvenanceStore(memory),
                 storage=f"memory with a snapshot under {state_dir} — development only, "
                 "not durable; set TAKTUS_DATABASE_URL for a database",
             )
@@ -144,6 +157,7 @@ class LocalWiring:
                 work=postgres,
                 of=in_postgres,
                 ledger_store=PostgresLedgerStore(postgres),
+                provenance_store=PostgresProvenanceStore(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
             )
         finally:

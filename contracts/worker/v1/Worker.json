@@ -38,10 +38,15 @@
 
     "Capabilities": {
       "title": "Capabilities",
-      "description": "Response of GET /v1/capabilities. What this worker can do, how its use is limited, and what it supports. Capabilities are named by function, never by product. step_boundary_signal, streaming_events and estimate are constant true: without them the worker cannot satisfy sections 4, 5 and 6 of the README; they are declared so that a reader sees the obligation.",
+      "description": "Response of GET /v1/capabilities. What this worker can do, how its use is limited, and what it supports. Capabilities are named by function, never by product. step_boundary_signal, streaming_events and estimate are constant true: without them the worker cannot satisfy sections 4, 5 and 6 of the README; they are declared so that a reader sees the obligation. A worker that declares its version has that version recorded in the provenance of every result it produces (contracts/shared/v1/Provenance.json).",
       "type": "object",
       "properties": {
         "contract": { "const": "worker/v1" },
+        "version": {
+          "description": "The worker's own version, as it names it. Optional; recorded in provenance where present. Never a product name where the capabilities are not either.",
+          "type": "string",
+          "minLength": 1
+        },
         "capabilities": {
           "type": "array",
           "items": { "$ref": "../../shared/v1/Capability.json" },

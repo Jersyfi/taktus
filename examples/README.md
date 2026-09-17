@@ -17,7 +17,8 @@ uv run taktusctl run --process examples/processes/six-times-seven.yaml
 `taktusctl` lives in the project environment, hence `uv run`. The command prints where the state
 lives — the database named by `TAKTUS_DATABASE_URL`, or memory with a file snapshot, development
 only — then the run, its steps, the ledger entries of the run with the result of verifying the
-tenant's whole chain, and the raw consumption against the budget. Exit code `0` means the run finished; `3` means it halted or
+tenant's whole chain, the provenance of the run — one record per completed step — with the
+result of verifying its chain, and the raw consumption against the budget. Exit code `0` means the run finished; `3` means it halted or
 escalated, and the last line says how to resume; `2` means the bundle or the invocation is
 wrong.
 

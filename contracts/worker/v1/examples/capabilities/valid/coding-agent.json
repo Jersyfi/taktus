@@ -1,5 +1,6 @@
 {
   "contract": "worker/v1",
+  "version": "2.3.0",
   "capabilities": [
     "code.edit",
     "code.test",

@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://taktus.eu/contracts/shared/v1/Anchor.json",
   "title": "Anchor",
-  "description": "An act that stays with a person regardless of the autonomy level of the rest of the process. Legal anchors cover legally binding acts; strategic anchors cover direction. An anchor halts the run at a step boundary and raises a decision request. Every organisation defines its own set; the set can be reduced but never emptied. The decider is a role, never a named person. See docs/architecture/governance.md and ADR-0008.",
+  "description": "An act that stays with a person regardless of the autonomy level of the rest of the process. Legal anchors cover legally binding acts; strategic anchors cover direction; correction anchors cover the correction of a result after it has left the system (ADR-0022). An anchor halts the run at a step boundary and raises a decision request. Every organisation defines its own set; the set can be reduced but never emptied. The decider is a role, never a named person. See docs/architecture/governance.md and ADR-0008.",
   "type": "object",
   "properties": {
     "id": { "type": "string", "minLength": 1 },
-    "class": { "type": "string", "enum": ["legal", "strategic"] },
+    "class": { "type": "string", "enum": ["legal", "strategic", "correction"] },
     "act": {
       "description": "The act kept with a person, in one sentence: payment release above 10,000 EUR; accepting or rejecting a feature.",
       "type": "string",

@@ -13,6 +13,7 @@ assignment it cannot afford (ADR-0005).
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Protocol
@@ -103,6 +104,7 @@ class Supports(Value):
 
 class Capabilities(Value):
     contract: Literal["worker/v1"]
+    version: str | None = Field(default=None, min_length=1)
     capabilities: tuple[Capability, ...] = Field(min_length=1)
     consumption: ConsumptionDeclaration
     supports: Supports
@@ -371,6 +373,17 @@ EVENT: TypeAdapter[Event] = TypeAdapter(Event)
 
 
 # --- the port -------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ResolvedWorker:
+    """A configured worker, as the run receives it from its pool: the worker, the identifier
+    of its adapter configuration — what the ledger and the provenance record carry, never a
+    product name — and the version the worker declares for itself, where it declares one."""
+
+    adapter: str
+    worker: Worker
+    version: str | None = None
 
 
 class WorkerError(Exception):

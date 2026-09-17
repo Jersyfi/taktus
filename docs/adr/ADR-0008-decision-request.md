@@ -1,6 +1,6 @@
 # ADR-0008 — Decision requests and strategic anchors
 
-**Status:** accepted
+**Status:** accepted · extended by ADR-0022: a third anchor class, *correction*
 
 ## Context
 A process should run unattended while direction stays with its owner. The existing model only knows

@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Provenance.json",
+  "title": "Provenance",
+  "description": "What a step result is made of (ADR-0021). One record per completed step run, written in the same transaction as the ledger entry that says the step finished, and never changed afterwards. It names the process version, the step with its method and exactness class, the model and prompt version where a model was involved, the adapter and its version where an adapter executed, every input with the moment it was read, every artifact produced, the digest of the value produced, and the ledger entry it belongs to. It references and never copies: identifiers, tokens and digests only, no content, no text. Following inputs from the record that produced an artifact leads back through every step run that contributed to it.",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "step_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "process_version": {
+      "description": "The process version the run executes, as the ledger names it: process@version.",
+      "type": "string",
+      "minLength": 1
+    },
+    "method": { "$ref": "Method.json" },
+    "exactness": {
+      "description": "The step's exactness class. Present exactly when the method produces a result (ADR-0018).",
+      "$ref": "ExactnessClass.json"
+    },
+    "model": {
+      "description": "The model that was involved, pinned as name@version. Absent when no model was involved.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._+-]*$"
+    },
+    "prompt": {
+      "description": "The prompt that was involved, pinned as name@version. Absent when no prompt was involved.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._+-]*$"
+    },
+    "adapter": {
+      "description": "Identifier of the adapter configuration that executed the step, as the ledger records it. Absent when the run component executed the step itself.",
+      "type": "string",
+      "minLength": 1
+    },
+    "adapter_version": {
+      "description": "The version the executing adapter declares for itself. Absent when it declares none, or when no adapter executed.",
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "description": "What the step read, in the order it was read. Empty for a step that read nothing.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/input" }
+    },
+    "outputs": {
+      "description": "Identifiers of the artifacts this step run produced, across every attempt, in order. Empty for a step that produced none.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "result_digest": {
+      "description": "Digest of the value the step produced, where it produced one.",
+      "$ref": "Artifact.json#/$defs/digest"
+    },
+    "ledger_seq": {
+      "description": "Sequence number of the ledger entry, in the tenant's chain, that recorded this step's completion.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "recorded_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["id", "run_id", "step_id", "process_version", "method", "inputs", "outputs", "ledger_seq", "recorded_at"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "method": { "$ref": "Method.json#/$defs/producing" } } },
+      "then": { "required": ["exactness"] }
+    },
+    {
+      "if": { "properties": { "method": { "$ref": "Method.json#/$defs/nonProducing" } } },
+      "then": { "not": { "required": ["exactness"] } }
+    },
+    {
+      "if": { "required": ["adapter_version"] },
+      "then": { "required": ["adapter"] }
+    }
+  ],
+  "$defs": {
+    "input": {
+      "title": "ProvenanceInput",
+      "description": "One thing a step read, and when. An artifact or a result of an earlier step run, named by run and step; or an external source, named by the capability it was read through and a reference the connector understands.",
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "enum": ["artifact", "result", "source"] },
+        "run_id": {
+          "description": "The run of the step that produced what was read. For artifact and result.",
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "description": "The step that produced what was read. For artifact and result.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "artifact_id": {
+          "description": "The artifact read. For artifact only.",
+          "type": "string",
+          "minLength": 1
+        },
+        "capability": {
+          "description": "The capability the external source was read through. For source only.",
+          "$ref": "Capability.json"
+        },
+        "ref": {
+          "description": "What was read from the external source, as the connector names it. Carries no credential. For source only.",
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "description": "Digest of what was read, where the reader had the content: an artifact's digest, a result's digest, a source's content digest.",
+          "$ref": "Artifact.json#/$defs/digest"
+        },
+        "observed_at": {
+          "description": "When it was read.",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["kind", "observed_at"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "artifact" } } },
+          "then": {
+            "required": ["run_id", "step_id", "artifact_id", "digest"],
+            "not": { "anyOf": [{ "required": ["capability"] }, { "required": ["ref"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "result" } } },
+          "then": {
+            "required": ["run_id", "step_id", "digest"],
+            "not": { "anyOf": [{ "required": ["artifact_id"] }, { "required": ["capability"] }, { "required": ["ref"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "source" } } },
+          "then": {
+            "required": ["capability", "ref"],
+            "not": { "anyOf": [{ "required": ["run_id"] }, { "required": ["step_id"] }, { "required": ["artifact_id"] }] }
+          }
+        }
+      ]
+    }
+  }
+}

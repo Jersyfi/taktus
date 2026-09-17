@@ -1,0 +1,31 @@
+{
+  "id": "prov_01j8x9aa",
+  "run_id": "run_01j8x99z",
+  "step_id": "assign-cost-centre",
+  "process_version": "invoice-intake@7",
+  "method": "ml",
+  "exactness": "sourced",
+  "model": "cost-centre-clf@3.2.0",
+  "adapter": "worker.mlbench",
+  "adapter_version": "0.4.1",
+  "inputs": [
+    {
+      "kind": "source",
+      "capability": "mail.read",
+      "ref": "message/18f3a2e1",
+      "digest": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+      "observed_at": "2026-09-16T08:15:02Z"
+    },
+    {
+      "kind": "result",
+      "run_id": "run_01j8x99z",
+      "step_id": "extract-fields",
+      "digest": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+      "observed_at": "2026-09-16T08:15:03Z"
+    }
+  ],
+  "outputs": [],
+  "result_digest": "sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+  "ledger_seq": 2041,
+  "recorded_at": "2026-09-16T08:15:03Z"
+}

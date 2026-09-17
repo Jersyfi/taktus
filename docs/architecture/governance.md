@@ -30,17 +30,27 @@ has the same claim to it as a corporation.
 ## 2. Anchors
 
 An anchor keeps an act with a person **regardless of the autonomy level of the rest of the process**.
-Two classes:
+Three classes:
 
 | Class | Occasion | Examples |
 |---|---|---|
 | **Legal anchor** | legally binding acts | signature · payment release above a threshold · tax filing · termination · data-protection notification · contract conclusion |
 | **Strategic anchor** | conceptual and strategic direction | scope · accepting or rejecting a feature · version assignment · architectural change · releases · licensing and pricing · public communication |
+| **Correction anchor** | correcting a result after it has left the system (ADR-0022) | re-issuing an invoice a customer received · re-sending a partner file · restating a value a tax authority holds · retracting a delivered report |
+
+The correction anchor has a checkable trigger. A result *has left the system* when the ledger
+holds an egress entry for it or for anything derived from it: `egress.write` (a connector wrote
+outward), `egress.delivery` (a channel delivered), `egress.read` (an external system read through
+Taktus). *Derived from* is the provenance chain read forward. Analysis — detecting a result
+defect, bounding it, planning its repair — is never anchored; correction inside the system is not
+anchored; correction of anything that has left the system is. The predicate lives in
+`src/taktus/components/governance/domain/service/egress.py`.
 
 **Every organisation defines its own anchor set.** A business at level 4 with a different model will
 draw the line somewhere else, and some owners will hand over nearly everything. The set is
 configurable per tenant, per domain and per jurisdiction, and it **can be reduced but never
-emptied** — an act with legal force always has a person behind it.
+emptied** — an act with legal force always has a person behind it, and so does a correction
+that reaches a third party.
 
 An anchor halts the run at a **step boundary** — never before, never after — and raises a decision
 request.
@@ -61,7 +71,7 @@ reports a fault. A level-4 process whose direction a person owns needs both.
 decision_request:
   id: DR-2026-014
   raised_by: { run: 17342, step: roadmap-consistency }
-  class: strategic | conceptual | domain | legal
+  class: strategic | conceptual | domain | legal | correction
   situation:        # the problem, briefly
   question:         # exactly what must be decided, as a question
   options:
@@ -119,7 +129,14 @@ path are in [ADR-0017](../adr/ADR-0017-decision-requests-in-the-repository.md), 
   repeatedly, delayed progress, critical processes held up. It then reports which limit, which
   queue, and which change it recommends, with cost and benefit. **The change is decided by a
   person.**
-- **Emergency stop** at any time, globally and per process.
+- **Emergency stop** at any time, globally and per process — by a person. An *automatic*
+  emergency stop, once detection can trigger one (`0.5.0`), is decided by a **rule** over few,
+  measurable, documented criteria: the size of the error window, the exactness class affected,
+  whether data has left the system, whether a legal anchor lies downstream, the business
+  relevance of the process (ADR-0023). Thresholds are tenant configuration; a criterion may be
+  added and a threshold changed, but the set cannot be emptied. Only the narrative — the
+  incident description, the situation package — may come from a language model, and it names
+  the rule and the facts it fired on.
 
 ---
 

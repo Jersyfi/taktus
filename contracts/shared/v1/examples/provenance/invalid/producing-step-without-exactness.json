@@ -1,0 +1,12 @@
+{
+  "id": "prov_01j8x2c4",
+  "run_id": "run_01j8x2b7",
+  "step_id": "compute",
+  "process_version": "six-times-seven@1",
+  "method": "worker",
+  "adapter": "worker.http",
+  "inputs": [],
+  "outputs": ["output-1"],
+  "ledger_seq": 8,
+  "recorded_at": "2026-09-16T12:00:02Z"
+}

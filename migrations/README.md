@@ -17,7 +17,9 @@ metadata — never a hand edit of an applied revision.
 
 What the first revision decides — the tenant column and row-level security on every table, the
 application role the adapter assumes, the append-only ledger, the queue and outbox that are
-created but not yet used — is stated in its docstring, `versions/0001_first_schema.py`.
+created but not yet used — is stated in its docstring, `versions/0001_first_schema.py`. The
+second, `versions/0002_provenance.py`, adds the provenance table: one immutable record per
+completed step run (ADR-0021), fenced the way the ledger is.
 
 Rules:
 

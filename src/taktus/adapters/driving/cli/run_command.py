@@ -1,4 +1,5 @@
-"""`taktusctl run`: a process bundle runs against one worker endpoint, and the ledger is shown.
+"""`taktusctl run`: a process bundle runs against one worker endpoint; the ledger and the
+provenance are shown.
 
 The one execution path of control-plane.md §1, driven from the command line: the invocation
 becomes a Command on the `channel.cli` capability, the bundle becomes a process version, the
@@ -24,8 +25,10 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
 )
 from taktus.components.process.domain.model import InvalidProcess, ProcessVersion
+from taktus.components.run.application.query import ProvenanceOfRun
 from taktus.components.run.application.service import ResumeRun, StartRun
 from taktus.components.run.domain.model import Run, RunError, RunState
+from taktus.components.run.domain.service.provenance import ChainVerification
 from taktus.ports.ledger import Verification
 from taktus.ports.worker import Limits, WorkerError
 from taktus.shared.v1 import Command, ConsumptionQuantities, Intent, LedgerEntry, ReplyTo
@@ -162,7 +165,8 @@ async def _run(
         async with services.work.transaction(tenant):
             entries = await services.ledger.entries(tenant, run.id)
             verification = await services.ledger.verify(tenant)
-        typer.echo(render(run, version, entries, verification, bundle_path))
+        chain = await services.provenance.verify(ProvenanceOfRun(run_id=run.id, tenant=tenant))
+        typer.echo(render(run, version, entries, verification, chain, bundle_path))
         return run
 
 
@@ -225,6 +229,7 @@ def render(
     version: ProcessVersion,
     entries: Sequence[LedgerEntry],
     verification: Verification,
+    chain: ChainVerification,
     bundle_path: Path,
 ) -> str:
     lines = [f"run {run.id}  process {run.process_version}  state {_state(run)}"]
@@ -264,6 +269,11 @@ def render(
             entry.hash[7:19],
         ]
         lines.append("  " + " ".join(columns).rstrip())
+    lines.append("")
+    lines.append(f"provenance  {chain.records} records of this run, one per completed step: ")
+    lines[-1] += "chain verifies" if chain.intact else "chain DOES NOT VERIFY"
+    for finding in chain.findings:
+        lines.append(f"  ! {finding}")
     lines.append("")
     lines.append("consumption  " + (_quantities(run.consumed()) or "nothing measured"))
     lines.append("budget       " + _limits(run.budget))

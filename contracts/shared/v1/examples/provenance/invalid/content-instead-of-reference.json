@@ -1,0 +1,13 @@
+{
+  "id": "prov_01j8x2c4",
+  "run_id": "run_01j8x2b7",
+  "step_id": "verify-answer",
+  "process_version": "six-times-seven@1",
+  "method": "rule",
+  "exactness": "exact",
+  "inputs": [],
+  "outputs": ["result"],
+  "result": "42",
+  "ledger_seq": 14,
+  "recorded_at": "2026-09-16T12:00:04Z"
+}

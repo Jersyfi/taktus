@@ -19,6 +19,7 @@ from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
     MemoryObjectStore,
     MemoryPersistence,
+    MemoryProvenanceStore,
     MemoryRepository,
 )
 from taktus.adapters.driven.telemetry import NoTelemetry
@@ -102,12 +103,14 @@ class Harness:
         self.runs = MemoryRepository(self.persistence, Run)
         self.objects = MemoryObjectStore()
         self.ledger = ChainedLedger(MemoryLedgerStore(self.persistence), self.clock)
+        self.provenance = MemoryProvenanceStore(self.persistence)
         self.workers = list(workers) or [FakeWorker()]
         self.engine = RunEngine(
             runs=self.runs,
             work=self.persistence,
             objects=self.objects,
             ledger=self.ledger,
+            provenance=self.provenance,
             workers=StaticWorkerPool([(f"worker.fake.{n}", w) for n, w in enumerate(self.workers)]),
             clock=self.clock,
             ids=self.ids,
