@@ -1,0 +1,48 @@
+"""Run the reference connector as a process.
+
+    python -m taktus.adapters.driven.connectors.github --port 9100 --repository owner/name
+
+It serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
+base URL of the service's API; point it at the fake under `tests/fakes/repository_service.py`
+to run without a network. Credentials are never arguments: the connector reads the value of a
+credential at the moment of a call, from the environment or a file, under the name the call
+references (`README.md`).
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+
+from taktus.adapters.driven.connectors.github.server import Config, build_server, log
+
+DEFAULT_TARGET = "https://api.github.com"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="The reference repository connector.")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=9100)
+    parser.add_argument("--path", default="/mcp", help="where MCP is served")
+    parser.add_argument("--target", default=DEFAULT_TARGET, help="base URL of the service's API")
+    parser.add_argument("--repository", required=True, help="owner/name of the repository")
+    args = parser.parse_args(argv)
+    config = Config(
+        target=args.target,
+        repository=args.repository,
+        host=args.host,
+        port=args.port,
+        path=args.path,
+    )
+    log(f"serving {config.repository} at http://{config.host}:{config.port}{config.path}")
+    build_server(config).run(
+        "streamable-http",
+        host=config.host,
+        port=config.port,
+        streamable_http_path=config.path,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

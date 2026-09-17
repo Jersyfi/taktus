@@ -1,0 +1,28 @@
+{
+  "credentials": { "actions": "REPOSITORY_TOKEN", "intake": "REPOSITORY_WEBHOOK_SECRET" },
+  "read": { "operation": "repository.issues.read", "input": { "number": 1 } },
+  "writes": [
+    {
+      "operation": "repository.issues.create",
+      "input": { "title": "conformance {{unique}}", "body": "Opened by the conformance suite." }
+    },
+    {
+      "operation": "repository.pullrequests.open",
+      "input": {
+        "head": "conformance/{{unique}}",
+        "base": "main",
+        "title": "conformance {{unique}}",
+        "body": "Opened by the conformance suite."
+      }
+    },
+    {
+      "operation": "repository.comments.create",
+      "input": { "number": 1, "body": "Comment {{unique}} by the conformance suite." }
+    }
+  ],
+  "invalid": {
+    "operation": "repository.issues.read",
+    "input": { "number": 999999 },
+    "expected_cause": "not_found"
+  }
+}
