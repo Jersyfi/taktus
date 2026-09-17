@@ -133,6 +133,27 @@ command = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+intake_event = Table(
+    "intake_event",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the source system's delivery identifier
+    Column("channel", Text, nullable=False),
+    Column("event", Text, nullable=False),
+    Column("sender_account", Text, nullable=False),
+    Column("sender_kind", Text, nullable=False),
+    Column("intent", Text, nullable=False),
+    Column("context", JSONB, nullable=False),
+    Column("reply_channel", Text, nullable=False),
+    Column("reply_address", Text, nullable=False),
+    Column("reply_thread", Text),
+    _at("occurred_at"),
+    _at("received_at"),
+    Column("status", Text, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("intake_event_received", "tenant", "received_at"),
+)
+
 plan = Table(
     "plan",
     metadata,
@@ -327,6 +348,7 @@ TENANT_SCOPED: tuple[Table, ...] = (
     process_version,
     step,
     command,
+    intake_event,
     plan,
     run,
     step_run,

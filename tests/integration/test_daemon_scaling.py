@@ -26,6 +26,7 @@ from taktus.composition.settings import Settings, load
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import Command, Intent, ReplyTo
 
+from .conftest import free_port
 from .test_first_slice import EXAMPLE
 
 TENANT = "default"
@@ -83,7 +84,15 @@ async def instances(postgres_url: str, tmp_path: Path) -> AsyncIterator[Callable
     made: list[Instance] = []
 
     def make(name: str, **environment: str) -> Instance:
-        instance = Instance(settings(postgres_url, tmp_path, TAKTUS_INSTANCE=name, **environment))
+        instance = Instance(
+            settings(
+                postgres_url,
+                tmp_path,
+                TAKTUS_INSTANCE=name,
+                TAKTUS_HTTP_PORT=str(free_port()),
+                **environment,
+            )
+        )
         made.append(instance)
         return instance
 

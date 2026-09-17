@@ -283,6 +283,62 @@ class CommandMapper:
         )
 
 
+class IntakeEventMapper:
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.intake_event, tenant, id)
+        return None if row is None else self._from(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.intake_event,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "channel": document["channel"],
+                "event": document["event"],
+                "sender_account": document["sender_account"],
+                "sender_kind": document["sender_kind"],
+                "intent": document["intent"],
+                "context": document["context"],
+                "reply_channel": document["reply_channel"],
+                "reply_address": document["reply_address"],
+                "reply_thread": document.get("reply_thread"),
+                "occurred_at": _at(document["occurred_at"]),
+                "received_at": _at(document["received_at"]),
+                "status": document["status"],
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection, s.intake_event, tenant, s.intake_event.c.received_at, s.intake_event.c.id
+        )
+        return [self._from(row) for row in rows]
+
+    @staticmethod
+    def _from(row: Row[Any]) -> Document:
+        return _present(
+            {
+                "id": row.id,
+                "tenant": row.tenant,
+                "channel": row.channel,
+                "event": row.event,
+                "sender_account": row.sender_account,
+                "sender_kind": row.sender_kind,
+                "intent": row.intent,
+                "context": row.context,
+                "reply_channel": row.reply_channel,
+                "reply_address": row.reply_address,
+                "reply_thread": row.reply_thread,
+                "occurred_at": _iso(row.occurred_at),
+                "received_at": _iso(row.received_at),
+                "status": row.status,
+            }
+        )
+
+
 class PlanMapper:
     """The plan's steps are a copy of the process version's and stay one JSON column."""
 
@@ -548,6 +604,7 @@ MAPPERS: dict[str, Mapper] = {
     "process": ProcessMapper(),
     "process_version": ProcessVersionMapper(),
     "command": CommandMapper(),
+    "intake_event": IntakeEventMapper(),
     "plan": PlanMapper(),
     "run": RunMapper(),
 }

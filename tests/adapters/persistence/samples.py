@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import Process, ProcessVersion, Slo, Trigger
 from taktus.components.run.domain.model import Checkpoint, Run, RunState, StepState
@@ -66,6 +67,24 @@ def command(id: str = "cmd_1", tenant: str = "t") -> Command:
         context={"issue": 7, "thread": "abc"},
         reply_to=ReplyTo(channel="channel.cli", address="stdout", thread="abc"),
         received_at=AT,
+    )
+
+
+def intake_event(id: str = "placeholder-delivery-1", tenant: str = "t") -> IntakeEvent:
+    return IntakeEvent(
+        id=id,
+        tenant=tenant,
+        channel="channel.repo",
+        event="issue_comment.created",
+        sender_account="100000001",
+        sender_kind="person",
+        intent="@taktus turn this into a pull request",
+        context={"repository": "placeholder-owner/placeholder-repo", "issue": "412"},
+        reply_channel="channel.repo",
+        reply_address="placeholder-owner/placeholder-repo#412",
+        reply_thread="3000000001",
+        occurred_at=AT,
+        received_at=AT + timedelta(seconds=2),
     )
 
 

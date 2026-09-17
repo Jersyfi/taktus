@@ -30,6 +30,7 @@ from sqlalchemy.exc import DBAPIError
 
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
+from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
 from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.postgres import (
     PostgresLeadership,
@@ -47,7 +48,11 @@ from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
-from taktus.components.command.application.service import CommissionPlanHandler
+from taktus.components.command.application.service import (
+    CommissionPlanHandler,
+    ReceiveIntakeHandler,
+)
+from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
@@ -91,6 +96,7 @@ class Wired:
     engine: RunEngine
     register_version: RegisterProcessVersionHandler
     commission: CommissionPlanHandler
+    intake: ReceiveIntakeHandler
     leadership: Leadership
     clock: SystemClock
     ids: SystemIdentifiers
@@ -101,6 +107,10 @@ class Wired:
     @property
     def roles(self) -> list[str]:
         return sorted(r.value for r in self.settings.roles)
+
+    @property
+    def tenants(self) -> tuple[str, ...]:
+        return self.settings.tenants
 
     async def ready(self) -> str | None:
         """None when the database answers and is at the schema this build needs; otherwise
@@ -173,6 +183,15 @@ async def wire(settings: Settings) -> AsyncIterator[Wired]:
                     persistence,
                     clock,
                     ids,
+                ),
+                intake=ReceiveIntakeHandler(
+                    # Capability → connector is configuration (ADR-0003): TAKTUS_CONNECTORS.
+                    {
+                        channel: McpIntakeConnector(endpoint)
+                        for channel, endpoint in settings.connectors.items()
+                    },
+                    PostgresRepository(persistence, IntakeEvent),
+                    persistence,
                 ),
                 leadership=PostgresLeadership(persistence.engine),
                 clock=clock,
@@ -267,9 +286,10 @@ async def _start_http(wired: Wired, stop: asyncio.Event) -> uvicorn.Server:
     task = asyncio.create_task(server.serve(), name="http")
     while not server.started:
         if task.done():
-            task.result()  # raises what the server raised — a port in use, most likely
+            error = task.exception()
             raise NotOperable(
                 f"the HTTP server did not start on {settings.http_host}:{settings.http_port}"
+                + (f": {error}" if error else "; the port is in use, most likely")
             )
         await asyncio.sleep(0.01)
     _install_signal_handlers(stop)

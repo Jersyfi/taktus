@@ -75,7 +75,7 @@ lint: env ## Static analysis and types
 	$(UV) run ruff format --check .
 	$(UV) run mypy
 
-generate: env ## Regenerate what is generated from contracts/ (nothing yet; see tools/README.md)
+generate: env ## Regenerate what is generated: api/openapi.yaml from the REST interface (tools/README.md)
 	$(UV) run python tools/generate.py
 
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions test ## Everything CI runs
