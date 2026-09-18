@@ -83,8 +83,10 @@ steps:
           equals: open
         - value: { $from: read-issue, $select: output.is_pull_request }
           equals: false
+        # The section, not the phrase: an issue that mentions acceptance criteria in prose
+        # still lacks them (the first live run found exactly that, docs/first-run.md).
         - value: { $from: read-issue, $select: output.body }
-          not_matches: "(?i)acceptance criteria"
+          not_matches: "(?m)^## Acceptance criteria"
         - value: { $from: read-comments, $select: output.comments }
           not_matches: "## Acceptance criteria"
 

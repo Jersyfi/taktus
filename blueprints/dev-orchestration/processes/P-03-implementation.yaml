@@ -120,6 +120,8 @@ steps:
           equals: open
         - value: { $from: read-issue, $select: output.is_pull_request }
           equals: false
+        # Present anywhere in the issue or its discussion; the discussion is JSON text, so the
+        # heading is looked for as a phrase here, unlike P-02's check for its absence.
         - value: { $from: context }
           matches: "## Acceptance criteria"
 
