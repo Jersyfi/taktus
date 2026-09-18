@@ -21,6 +21,14 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "script" / "worker.py"
 
 
+@pytest.fixture(autouse=True)
+def provisional_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing executes without an identity: the command line takes the provisional operator
+    identity from the environment (DEC-0013), and these tests are about the run, not about
+    who is asking. A test that is about the identity deletes the variable itself."""
+    monkeypatch.setenv("TAKTUS_PROVISIONAL_IDENTITY", "default=idn_test")
+
+
 def free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))

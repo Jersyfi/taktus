@@ -25,6 +25,7 @@ from sqlalchemy.exc import DBAPIError
 
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
+from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
     MemoryObjectStore,
@@ -54,7 +55,12 @@ from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.composition.execution import connector_pool, open_worker, telemetry_of
-from taktus.composition.settings import load_connectors, load_execution, load_telemetry
+from taktus.composition.settings import (
+    load_connectors,
+    load_execution,
+    load_provisional_identity,
+    load_telemetry,
+)
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
     LedgerStore,
@@ -95,6 +101,7 @@ class LocalWiring:
             execution = load_execution(self._configuration)
             telemetry = telemetry_of(load_telemetry(self._configuration))
             connectors = load_connectors(self._configuration)
+            operators = load_provisional_identity(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         async with (
@@ -134,6 +141,9 @@ class LocalWiring:
                 ids=ids,
                 storage=stores.storage,
                 queued=stores.queue is not None,
+                # PROVISIONAL (DEC-0013): the configured operator identity, until the identity
+                # component exists. None when nothing is configured.
+                identities=ProvisionalOperatorIdentity(operators) if operators else None,
             )
             telemetry.shutdown()
 

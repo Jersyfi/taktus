@@ -67,6 +67,7 @@ taktus/
 │   │   ├── execution.py             # how a unit comes to exist for a job: process | container | cluster; the fail-closed refusal of no isolation from level 3
 │   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore, ProvenanceStore, UnitOfWork — every call names its tenant
 │   │   ├── ledger.py                # facts in, chained entries out, verify — one chain per tenant
+│   │   ├── identity.py              # who acts: a sender on a channel placed in a tenant as an identity; served PROVISIONALLY by adapters/driven/identity (DEC-0013)
 │   │   ├── configuration.py         # what an instance is told about itself, by key; Secret; ConfigurationError
 │   │   ├── queue.py                 # jobs a runner claims once, as a lease it renews (ADR-0002)
 │   │   ├── leadership.py            # one instance leads a singular role; a dead leader is replaced
@@ -89,6 +90,7 @@ taktus/
 │   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/mcp/      # the connector port as an MCP client: intake and actions; connectors/pool.py maps capabilities
 │   │       ├── connectors/{chat,http}/
+│   │       ├── identity/            # PROVISIONAL: one configured operator identity per tenant, until the identity component (DEC-0013)
 │   │       └── models/{openai_compatible,anthropic,ollama}/
 │   │
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
@@ -251,5 +253,7 @@ role it would tie the core to a model stack and the removal test would be lost.
   process exits 0. A role still running at the ceiling is abandoned and its run recovered by
   the next runner from its last persisted boundary.
 - **Tenants.** Until the identity component exists, an instance is told which tenants it serves
-  (`TAKTUS_TENANTS`, default `default`); the runner claims for each in turn, and an intake
-  lands in the first.
+  (`TAKTUS_TENANTS`, default `default`); the runner claims for each in turn. An intake lands
+  in the tenant the identity port places its sender in — with the provisional identity
+  (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013), the one configured tenant; with none configured,
+  the first tenant, as a stated fallback.

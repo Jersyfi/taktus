@@ -6,8 +6,9 @@ answers, therefore it is — and a platform restarts a process that stops answer
 this build needs. A role that has lost its database is not ready and must not receive traffic;
 it is not therefore unhealthy, and restarting it in a loop would only make the outage louder.
 
-The `api` role adds the rest: webhook intake for the channel a connector serves, and a read API
-for runs and ledger entries. No write beyond intake, no UI.
+The `api` role adds the rest: webhook intake for the channel a connector serves, the completion
+of an intake event into a command by the configured identity, and a read API for runs and
+ledger entries. No other write, no UI.
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -27,7 +28,14 @@ from starlette.exceptions import HTTPException
 
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
 from taktus.adapters.driving.rest.wiring import RestServices
-from taktus.components.command.application.service import ReceiveIntake, UnknownChannel
+from taktus.components.command.application.service import (
+    AlreadyCompleted,
+    CompleteIntake,
+    ReceiveIntake,
+    UnknownChannel,
+    UnknownIntakeEvent,
+    UnknownSender,
+)
 from taktus.ports.connector import ConnectorError, Delivery, RefusalReason
 
 VERSION = "0.1.0"
@@ -114,11 +122,16 @@ def _intake(services: RestServices) -> APIRouter:
         description="The delivery as the source system sent it — every header, the raw body — "
         "is handed to the connector that serves the channel. The connector verifies the "
         "signature before it reads the body, then normalises the event into the channel's "
-        "half of a command, which is kept until the identity component completes it. Nothing "
-        "is executed from here.",
+        "half of a command. The sender is placed in a tenant by the identity resolver — "
+        "today the provisional operator identity (DEC-0013) — and the event is kept there "
+        "until it is completed into a command. A sender that cannot be placed is answered "
+        "`unknown_sender` and nothing is kept. Nothing is executed from here.",
         status_code=202,
         responses={
-            202: {"description": "Decided: `accepted` with the intake event, or `refused`."},
+            202: {
+                "description": "Decided: `accepted` with the intake event, `refused`, or "
+                "`unknown_sender`."
+            },
             400: {"description": "The body cannot be read.", **PROBLEM},
             401: {"description": "Unsigned, or the signature does not verify.", **PROBLEM},
             404: {"description": "No connector serves the channel.", **PROBLEM},
@@ -135,7 +148,9 @@ def _intake(services: RestServices) -> APIRouter:
         )
         try:
             outcome = await services.intake.execute(
-                ReceiveIntake(tenant=services.tenants[0], channel=channel, delivery=delivery)
+                # The tenant is the resolver's to decide; the first configured tenant is the
+                # fallback of an instance without an identity, and is named as such.
+                ReceiveIntake(channel=channel, delivery=delivery, tenant=services.tenants[0])
             )
         except UnknownChannel as error:
             return problem(404, str(error))
@@ -151,9 +166,50 @@ def _intake(services: RestServices) -> APIRouter:
                 title="Refused",
                 reason=outcome.refused.reason,
             )
-        if outcome.accepted is None:  # unreachable: an outcome is one of the two
+        if outcome.unknown_sender is not None:
+            return JSONResponse(
+                {"unknown_sender": outcome.unknown_sender.document()}, status_code=202
+            )
+        if outcome.accepted is None:  # unreachable: an outcome is one of the three
             return problem(503, "the intake decided nothing")
         return JSONResponse({"accepted": outcome.accepted.document()}, status_code=202)
+
+    tenant_query = Query(
+        default=None,
+        description="The tenant; the instance's first configured tenant when absent.",
+    )
+
+    @router.post(
+        "/intake-events/{event_id}/complete",
+        summary="Complete an intake event into a command",
+        description="The event the connector accepted becomes a command: the identity resolver "
+        "supplies who acts — today the provisional operator identity of the tenant "
+        "(DEC-0013), marked as such in the command's context — and the event is marked "
+        "completed. Nothing is executed; the command is returned for whoever commissions a "
+        "plan from it.",
+        status_code=200,
+        responses={
+            200: {"description": "The command the event became."},
+            404: {"description": "No such intake event in the tenant.", **PROBLEM},
+            409: {"description": "The event was completed before.", **PROBLEM},
+            422: {"description": "The sender cannot be placed.", **PROBLEM},
+            503: {"description": "No identity is configured.", **PROBLEM},
+        },
+    )
+    async def complete(event_id: str, tenant: str | None = tenant_query) -> JSONResponse:
+        handler = services.complete_intake
+        if handler is None:
+            return problem(503, "no identity is configured; nothing can complete an intake")
+        chosen = tenant or services.tenants[0]
+        try:
+            command = await handler.execute(CompleteIntake(tenant=chosen, event_id=event_id))
+        except UnknownIntakeEvent as error:
+            return problem(404, str(error))
+        except AlreadyCompleted as error:
+            return problem(409, str(error))
+        except UnknownSender as error:
+            return problem(422, str(error))
+        return JSONResponse(command.document(), status_code=200)
 
     return router
 

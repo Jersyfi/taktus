@@ -46,10 +46,23 @@ revocable by an administrator.
 A connector's intake (`contracts/connector/v1` §7) supplies the channel's half of this object:
 the sender as the source system names them, the intent, the context and the reply address — and
 only after the event's signature verified. The identity component maps the sender to `identity`
-and `org_path` and completes the command; the connector never holds that mapping. Until it
-exists, what the webhook intake of the HTTP surface accepts is kept as an **intake event**
-(`command` component, `awaiting_identity`) under the source system's delivery identifier — a
-redelivery replaces, never doubles — and nothing is executed from it.
+and `org_path` and completes the command; the connector never holds that mapping. What the
+webhook intake of the HTTP surface accepts is kept as an **intake event** (`command`
+component, `awaiting_identity`) under the source system's delivery identifier — a redelivery
+replaces, never doubles — in the tenant the identity port places the sender in, and nothing is
+executed from it. `POST /intake-events/{id}/complete` completes it into a command
+(`complete_intake.py`), and the command is then commissioned like any other.
+
+The identity port (`src/taktus/ports/identity.py`) is what the core asks: place a sender —
+tenant, identity, organisational path — or answer that the sender is unknown. **Until the
+identity component exists (`0.2.0`) the port is served by a provisional adapter:** one
+configured operator identity per tenant, `TAKTUS_PROVISIONAL_IDENTITY=<tenant>=<identity>`,
+which every command of that tenant acts as — from the command line, where `taktusctl run`
+takes it when `--identity` is not given and refuses to run with neither, and from a webhook,
+where every sender of the one configured tenant resolves to its operator. Every resolution it
+answers carries `provisional: true`, every command it completes carries
+`identity_provisional: true` in its context, and DEC-0013 states what it does not do and what
+replaces it.
 
 ---
 

@@ -16,7 +16,10 @@ from taktus.adapters.driven.memory import (
     MemoryRepository,
 )
 from taktus.adapters.driving.rest import build_app
-from taktus.components.command.application.service import ReceiveIntakeHandler
+from taktus.components.command.application.service import (
+    CompleteIntakeHandler,
+    ReceiveIntakeHandler,
+)
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.domain.model import Run
@@ -79,6 +82,7 @@ class Services:
     intake: ReceiveIntakeHandler
     connector: ScriptedConnector
     clock: FakeClock
+    complete_intake: CompleteIntakeHandler | None = None
     tenants: Sequence[str] = (TENANT,)
     roles: Sequence[str] = ("api", "runner")
     leading: bool = False

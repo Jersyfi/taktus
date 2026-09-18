@@ -66,9 +66,7 @@ async def test_the_declaration_is_read_and_bound(service: Service) -> None:
 
 @pytest.mark.usefixtures("credentials")
 async def test_a_call_returns_a_result_with_the_declared_effect(service: Service) -> None:
-    result = await connector(service).call(
-        "repository.issues.read", context("read"), {"number": 1}
-    )
+    result = await connector(service).call("repository.issues.read", context("read"), {"number": 1})
     assert result.effect.kind is Effect.READ
     assert result.output["number"] == 1
     assert result.consumption.quota_units == 1

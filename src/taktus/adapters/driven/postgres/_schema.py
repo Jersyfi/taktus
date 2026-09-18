@@ -151,6 +151,8 @@ intake_event = Table(
     _at("occurred_at"),
     _at("received_at"),
     Column("status", Text, nullable=False),
+    Column("command_id", Text),  # set when completed: the command this event became
+    _at("completed_at", nullable=True),
     PrimaryKeyConstraint("tenant", "id"),
     Index("intake_event_received", "tenant", "received_at"),
 )

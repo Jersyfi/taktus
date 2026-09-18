@@ -136,6 +136,13 @@ def load_telemetry(configuration: Configuration) -> TelemetrySettings:
     )
 
 
+def load_provisional_identity(configuration: Configuration) -> Mapping[str, str]:
+    """`TAKTUS_PROVISIONAL_IDENTITY`: tenant → the identity every command in that tenant acts
+    as, until the identity component exists (DEC-0013). `taktusctl` reads it too. The name
+    says what it is; nothing that reads it may forget."""
+    return _Reader(configuration).pairs("provisional.identity", "tenant=identity")
+
+
 def load_connectors(configuration: Configuration) -> Mapping[str, str]:
     """The connectors alone (`TAKTUS_CONNECTORS`): `taktusctl` reads them too. Each entry is a
     label — the channel capability for intake — and the MCP URL of one connector, which
@@ -194,6 +201,10 @@ class Settings:
     """Where spans are exported, if anywhere."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
+    provisional_identity: Mapping[str, str]
+    """Tenant → the identity that acts for it, PROVISIONAL (DEC-0013): configured, not
+    authenticated. Empty: no intake event can be completed and `taktusctl` needs
+    `--identity`."""
     state_dir: Path
     """Where artifact bytes are written."""
     tenants: tuple[str, ...]
@@ -227,6 +238,10 @@ class Settings:
             *self.execution.effective(),
             *self.telemetry.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
+            (
+                "TAKTUS_PROVISIONAL_IDENTITY",
+                ",".join(f"{t}={i}" for t, i in self.provisional_identity.items()),
+            ),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
             ("TAKTUS_TENANTS", ",".join(self.tenants)),
             ("TAKTUS_INSTANCE", self.instance),
@@ -267,6 +282,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         execution=load_execution(configuration),
         telemetry=load_telemetry(configuration),
         connectors=reader.connectors(),
+        provisional_identity=load_provisional_identity(configuration),
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         tenants=reader.names("tenants", (DEFAULT_TENANT,)),
         instance=reader.text("instance", default_instance),
@@ -384,6 +400,21 @@ class _Reader:
                     f"{item!r} is not a role; roles are {', '.join(r.value for r in Role)}, or all",
                 ) from None
         return frozenset(chosen)
+
+    def pairs(self, key: str, shape: str) -> Mapping[str, str]:
+        """`a=x,b=y`: identifiers on both sides, none twice on the left."""
+        name, value = self._raw(key)
+        if value is None:
+            return {}
+        mapping: dict[str, str] = {}
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            left, separator, right = entry.partition("=")
+            if not separator or not left.strip() or not right.strip():
+                raise ConfigurationError(name, f"{entry!r} is not {shape}")
+            if left.strip() in mapping:
+                raise ConfigurationError(name, f"{left.strip()!r} is given twice")
+            mapping[left.strip()] = right.strip()
+        return mapping
 
     def connectors(self) -> Mapping[str, str]:
         """`channel.repo=http://connector:9100/mcp,channel.chat=…`: a capability, an equals

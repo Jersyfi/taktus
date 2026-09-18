@@ -55,6 +55,9 @@ services:
       # means none is configured; a run with a worker step then fails at that step and says so.
       TAKTUS_WORKER: ${TAKTUS_WORKER:-}
       TAKTUS_STATE_DIR: /var/lib/taktus
+      # PROVISIONAL (DEC-0013): the identity every command of a tenant acts as, until the
+      # identity component exists. tenant=identity pairs, comma separated.
+      TAKTUS_PROVISIONAL_IDENTITY: ${TAKTUS_PROVISIONAL_IDENTITY:-default=idn_operator}
       TAKTUS_SHUTDOWN_CEILING_SECONDS: ${TAKTUS_SHUTDOWN_CEILING_SECONDS:-300}
       TAKTUS_LOG_LEVEL: ${TAKTUS_LOG_LEVEL:-info}
     secrets:

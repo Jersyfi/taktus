@@ -308,6 +308,8 @@ class IntakeEventMapper:
                 "occurred_at": _at(document["occurred_at"]),
                 "received_at": _at(document["received_at"]),
                 "status": document["status"],
+                "command_id": document.get("command_id"),
+                "completed_at": _at(document.get("completed_at")),
             },
         )
 
@@ -335,6 +337,8 @@ class IntakeEventMapper:
                 "occurred_at": _iso(row.occurred_at),
                 "received_at": _iso(row.received_at),
                 "status": row.status,
+                "command_id": row.command_id,
+                "completed_at": _iso(row.completed_at),
             }
         )
 

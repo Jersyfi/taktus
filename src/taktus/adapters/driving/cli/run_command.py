@@ -37,6 +37,8 @@ from taktus.shared.v1 import Command, ConsumptionQuantities, Intent, LedgerEntry
 DEFAULT_WORKER = "http://127.0.0.1:9000"
 DEFAULT_STATE_DIR = "~/.cache/taktus/taktusctl"
 DEFAULT_TENANT = "default"
+CLI_ACCOUNT = "local"
+"""How the CLI channel names its one sender to the identity port: it authenticates nobody."""
 
 
 def run(
@@ -72,13 +74,15 @@ def run(
         ),
     ] = Path(DEFAULT_STATE_DIR),
     identity: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--identity",
-            help="The identity the command is attributed to. The CLI channel authenticates "
-            "nobody yet; this is an opaque label, not a name.",
+            help="The identity the command is attributed to and the run acts on behalf of. "
+            "Default: the provisional operator identity configured for the tenant "
+            "(TAKTUS_PROVISIONAL_IDENTITY). The CLI channel authenticates nobody yet; this is "
+            "an opaque label, not a name.",
         ),
-    ] = "idn_local",
+    ] = None,
     tenant: Annotated[
         str,
         typer.Option(
@@ -144,6 +148,24 @@ def _load(path: Path) -> dict[str, Any]:
     return document
 
 
+async def resolve_identity(services: Services, given: str | None, tenant: str) -> str:
+    """The identity the invocation acts as: `--identity` when given, else what the identity
+    port answers for the CLI channel in this tenant. Nothing executes without one
+    (control-plane.md §2)."""
+    if given is not None:
+        return given
+    if services.identities is not None:
+        resolution = await services.identities.resolve("channel.cli", CLI_ACCOUNT, tenant=tenant)
+        if resolution is not None:
+            note = " (provisional: DEC-0013)" if resolution.provisional else ""
+            typer.echo(f"identity  {resolution.identity}{note}", err=True)
+            return resolution.identity
+    raise NotOperable(
+        "nothing executes without an identity: set TAKTUS_PROVISIONAL_IDENTITY="
+        f"{tenant}=<identity> (provisional, DEC-0013) or pass --identity"
+    )
+
+
 def parse_inputs(given: list[str]) -> dict[str, Any]:
     """`name=value` pairs; a value that reads as JSON is JSON, anything else is text."""
     inputs: dict[str, Any] = {}
@@ -167,12 +189,13 @@ async def _run(
     worker_endpoint: str,
     resume: str | None,
     stop_after: int | None,
-    identity: str,
+    identity: str | None,
     tenant: str,
     inputs: dict[str, Any],
 ) -> Run:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
         typer.echo(f"state  {services.storage}")
+        identity = await resolve_identity(services, identity, tenant)
         version = await services.register_version.execute(
             RegisterProcessVersion(bundle, tenant=tenant)
         )
