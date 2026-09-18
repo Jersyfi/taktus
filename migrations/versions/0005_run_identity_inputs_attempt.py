@@ -39,16 +39,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "run", sa.Column("identity", sa.Text, nullable=False, server_default="idn_local")
-    )
+    op.add_column("run", sa.Column("identity", sa.Text, nullable=False, server_default="idn_local"))
     op.add_column("run", sa.Column("inputs", JSONB, nullable=False, server_default="{}"))
     op.add_column(
         "process_version", sa.Column("inputs", JSONB, nullable=False, server_default="{}")
     )
-    op.add_column(
-        "step_run", sa.Column("attempt", sa.Integer, nullable=False, server_default="1")
-    )
+    op.add_column("step_run", sa.Column("attempt", sa.Integer, nullable=False, server_default="1"))
     op.add_column("step_run", sa.Column("retryable", sa.Boolean))
     op.add_column("intake_event", sa.Column("command_id", sa.Text))
     op.add_column("intake_event", sa.Column("completed_at", sa.DateTime(timezone=True)))
