@@ -3,7 +3,8 @@
 
 The connector under `src/taktus/adapters/driven/connectors/github/` speaks the REST dialect of
 that service. This fake answers the subset the connector uses — issues, pull requests, comments,
-pipeline runs — in the same shapes, with the same status codes for the same faults, and keeps
+labels, pipeline runs, and the object interface for branches: references, commits, blobs,
+trees — in the same shapes, with the same status codes for the same faults, and keeps
 everything in memory. It exists so that the connector can be exercised in CI without a network,
 an account or a secret: the conformance gate starts it as a process, the adapter tests start it
 in a thread.
@@ -17,6 +18,10 @@ What it enforces, because the connector's checks depend on it:
 - **Pull request uniqueness.** A second open pull request for the same head branch is refused
   with 422, as the real service does.
 - **Paging.** Comment lists page with `per_page`/`page` and a `Link: <…>; rel="next"` header.
+- **A pipeline per push.** Creating a reference creates one completed pipeline run for its
+  commit, concluded `success` unless `POST /_fake/ci` said otherwise (`{"conclusion":
+  "failure"}`, or `{"pending": true}` for a run that never completes), so that a process can
+  read the pipeline's verdict for a branch it created.
 
 Test-only endpoints under `/_fake/`: `GET /_fake/state` counts what exists, `POST /_fake/reset`
 empties the store, `POST /_fake/outage` with `{"on": true}` makes every other request answer 503
@@ -57,9 +62,12 @@ class Repository:
     pulls: dict[int, Json] = field(default_factory=dict)
     comments: dict[int, list[Json]] = field(default_factory=dict)
     runs: dict[int, Json] = field(default_factory=dict)
+    refs: dict[str, str] = field(default_factory=dict)  # branch name -> commit sha
+    objects: dict[str, Json] = field(default_factory=dict)  # sha -> blob | tree | commit
     next_number: int = 1
     next_comment: int = 1
     next_run: int = 1
+    next_object: int = 1
 
     @property
     def full_name(self) -> str:
@@ -73,6 +81,8 @@ class Store:
     repositories: dict[str, Repository] = field(default_factory=dict)
     outage: bool = False
     hang_seconds: float = 0.0
+    ci_conclusion: str = "success"
+    ci_pending: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def repository(self, owner: str, name: str) -> Repository:
@@ -84,18 +94,44 @@ class Store:
         return self.repositories[key]
 
     def _seed(self, repo: Repository) -> None:
-        """Every repository starts with issue #1, so that a read has something to read."""
+        """Every repository starts with issue #1 and a `main` branch with one commit, so that a
+        read has something to read and a branch has something to start from."""
         self.create_issue(repo, "Seed issue", "The first issue of every fake repository.", "seed")
+        tree = self.new_object(repo, "tree", {"tree": []})
+        commit = self.new_object(
+            repo,
+            "commit",
+            {"message": "seed", "tree": {"sha": tree}, "parents": []},
+        )
+        repo.refs["main"] = commit
+        self.create_run(repo, "ci", commit, status="completed", conclusion="success")
+
+    def new_object(self, repo: Repository, kind: str, body: Json) -> str:
+        sha = f"{repo.next_object:040x}"
+        repo.next_object += 1
+        repo.objects[sha] = {
+            "sha": sha,
+            "kind": kind,
+            "html_url": f"{self.base_url}/{repo.full_name}/{kind}/{sha}",
+            **body,
+        }
+        return sha
+
+    def create_run(
+        self, repo: Repository, name: str, head_sha: str, *, status: str, conclusion: str | None
+    ) -> Json:
         run = {
             "id": repo.next_run,
-            "name": "ci",
-            "status": "completed",
-            "conclusion": "success",
+            "name": name,
+            "status": status,
+            "conclusion": conclusion,
+            "head_sha": head_sha,
             "html_url": f"{self.base_url}/{repo.full_name}/actions/runs/{repo.next_run}",
             "created_at": now(),
         }
         repo.runs[repo.next_run] = run
         repo.next_run += 1
+        return run
 
     def create_issue(self, repo: Repository, title: str, body: str, login: str) -> Json:
         number = repo.next_number
@@ -106,6 +142,7 @@ class Store:
             "body": body,
             "state": "open",
             "user": {"login": login, "id": 1000 + len(repo.issues), "type": "User"},
+            "labels": [],
             "html_url": f"{self.base_url}/{repo.full_name}/issues/{number}",
             "created_at": now(),
             "updated_at": now(),
@@ -137,6 +174,8 @@ class Store:
                 "pulls": len(repo.pulls),
                 "comments": sum(len(c) for c in repo.comments.values()),
                 "runs": len(repo.runs),
+                "branches": len(repo.refs),
+                "labels": sum(len(i.get("labels", [])) for i in repo.issues.values()),
             }
             for full_name, repo in self.repositories.items()
         }
@@ -213,6 +252,8 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/_fake/reset":
             with self.store.lock:
                 self.store.repositories.clear()
+                self.store.ci_conclusion = "success"
+                self.store.ci_pending = False
             self._send(200, {"ok": True})
             return
         if url.path == "/_fake/outage":
@@ -222,6 +263,13 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/_fake/hang":
             self.store.hang_seconds = float(body.get("seconds") or 0)
             self._send(200, {"hang_seconds": self.store.hang_seconds})
+            return
+        if url.path == "/_fake/ci":
+            self.store.ci_conclusion = str(body.get("conclusion") or "success")
+            self.store.ci_pending = bool(body.get("pending"))
+            self._send(
+                200, {"conclusion": self.store.ci_conclusion, "pending": self.store.ci_pending}
+            )
             return
         if not self._guard(write=True):
             return
@@ -285,7 +333,36 @@ class Handler(BaseHTTPRequestHandler):
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/actions/runs", path):
             repo = store.repository(m.group(1), m.group(2))
             runs = sorted(repo.runs.values(), key=lambda r: int(r["id"]), reverse=True)
+            head = query.get("head_sha")
+            if head is not None:
+                runs = [r for r in runs if r.get("head_sha") == head]
             self._send(200, {"total_count": len(runs), "workflow_runs": runs})
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/ref/heads/(.+)", path):
+            repo = store.repository(m.group(1), m.group(2))
+            sha = repo.refs.get(m.group(3))
+            if sha is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            self._send(
+                200, {"ref": f"refs/heads/{m.group(3)}", "object": {"type": "commit", "sha": sha}}
+            )
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/branches/(.+)", path):
+            repo = store.repository(m.group(1), m.group(2))
+            sha = repo.refs.get(m.group(3))
+            if sha is None:
+                self._send(404, {"message": "Branch not found"})
+                return
+            self._send(200, {"name": m.group(3), "commit": {"sha": sha}})
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/(commits|trees|blobs)/([0-9a-f]+)", path):
+            repo = store.repository(m.group(1), m.group(2))
+            obj = repo.objects.get(m.group(4))
+            if obj is None or obj["kind"] != m.group(3).rstrip("s"):
+                self._send(404, {"message": "Not Found"})
+                return
+            self._send(200, obj)
             return
         self._send(404, {"message": "Not Found"})
 
@@ -347,6 +424,93 @@ class Handler(BaseHTTPRequestHandler):
                 repo, body["title"], label.split(":", 1)[1], base, body.get("body") or "", login
             )
             self._send(201, pull)
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/issues/(\d+)/labels", path):
+            repo = store.repository(m.group(1), m.group(2))
+            issue = repo.issues.get(int(m.group(3)))
+            if issue is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            names = body.get("labels")
+            if not isinstance(names, list) or not all(isinstance(n, str) and n for n in names):
+                self._send(422, {"message": "Validation Failed"})
+                return
+            present = {label["name"] for label in issue["labels"]}
+            for name in names:
+                if name not in present:
+                    issue["labels"].append({"name": name, "color": "ededed"})
+                    present.add(name)
+            self._send(200, issue["labels"])
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/blobs", path):
+            repo = store.repository(m.group(1), m.group(2))
+            if not isinstance(body.get("content"), str):
+                self._send(422, {"message": "Validation Failed"})
+                return
+            sha = store.new_object(
+                repo,
+                "blob",
+                {"content": body["content"], "encoding": body.get("encoding", "utf-8")},
+            )
+            self._send(201, repo.objects[sha])
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/trees", path):
+            repo = store.repository(m.group(1), m.group(2))
+            base = body.get("base_tree")
+            entries = body.get("tree")
+            if not isinstance(entries, list) or (base is not None and base not in repo.objects):
+                self._send(422, {"message": "Validation Failed"})
+                return
+            merged: dict[str, Json] = {}
+            if base is not None:
+                merged = {e["path"]: e for e in repo.objects[base]["tree"]}
+            for entry in entries:
+                if entry.get("sha") is None:
+                    merged.pop(entry["path"], None)
+                else:
+                    merged[entry["path"]] = {k: v for k, v in entry.items()}
+            sha = store.new_object(repo, "tree", {"tree": list(merged.values())})
+            self._send(201, repo.objects[sha])
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/commits", path):
+            repo = store.repository(m.group(1), m.group(2))
+            tree, parents = body.get("tree"), body.get("parents")
+            if not isinstance(body.get("message"), str) or tree not in repo.objects:
+                self._send(422, {"message": "Validation Failed"})
+                return
+            sha = store.new_object(
+                repo,
+                "commit",
+                {
+                    "message": body["message"],
+                    "tree": {"sha": tree},
+                    "parents": [{"sha": p} for p in (parents or [])],
+                },
+            )
+            self._send(201, repo.objects[sha])
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/refs", path):
+            repo = store.repository(m.group(1), m.group(2))
+            ref, sha = body.get("ref"), body.get("sha")
+            if (
+                not isinstance(ref, str)
+                or not ref.startswith("refs/heads/")
+                or sha not in repo.objects
+            ):
+                self._send(422, {"message": "Validation Failed"})
+                return
+            name = ref.removeprefix("refs/heads/")
+            if name in repo.refs:
+                self._send(422, {"message": "Reference already exists"})
+                return
+            repo.refs[name] = sha
+            if store.ci_pending:
+                store.create_run(repo, "ci", sha, status="in_progress", conclusion=None)
+            else:
+                store.create_run(
+                    repo, "ci", sha, status="completed", conclusion=store.ci_conclusion
+                )
+            self._send(201, {"ref": ref, "object": {"type": "commit", "sha": sha}})
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/actions/workflows/([^/]+)/dispatches", path):
             repo = store.repository(m.group(1), m.group(2))

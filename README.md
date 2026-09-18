@@ -98,6 +98,8 @@ you see the domain, not the framework.
 | [workers/README.md](workers/README.md) | The workers of this repository, each in its own image: the reference worker, and the coding worker with what it can and cannot do |
 | [docs/architecture/project-structure.md](docs/architecture/project-structure.md) | Components, tree, dependency rules, conventions |
 | [examples/README.md](examples/README.md) | Running a process bundle with `uv run taktusctl run`; the shape of a bundle |
+| [blueprints/dev-orchestration/README.md](blueprints/dev-orchestration/README.md) | The dev-orchestration blueprint: P-02 Refinement and P-03 Implementation run; the rest remain descriptions |
+| [docs/first-run.md](docs/first-run.md) | The first time Taktus was used against this repository rather than tested: how far it got, and every piece of friction |
 | [docs/adr/README.md](docs/adr/README.md) | 25 architecture decisions with the alternatives rejected |
 | [docs/decisions/](docs/decisions/README.md) | The project's decision register: which questions reach the owner, and what was answered |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones `0.1.0` to `1.0.0` |
@@ -194,10 +196,12 @@ export TAKTUS_DATABASE_URL=postgresql://taktus@127.0.0.1:5432/taktus && make mig
 ```
 
 ```bash
-uv run taktusctl run --process examples/processes/six-times-seven.yaml
+export TAKTUS_PROVISIONAL_IDENTITY=default=idn_owner && uv run taktusctl run --process examples/processes/six-times-seven.yaml
 ```
 
-`make db-up` starts PostgreSQL alone (`deploy/docker/compose.dev.yml`, bound to `127.0.0.1`,
+Nothing executes without an identity: until the identity component exists, the identity every
+command of a tenant acts as is configured — `TAKTUS_PROVISIONAL_IDENTITY`, provisional and
+named so (DEC-0013) — or given as `--identity`. `make db-up` starts PostgreSQL alone (`deploy/docker/compose.dev.yml`, bound to `127.0.0.1`,
 no password — which is why the URL may be inline here; `TAKTUS_DB_PORT` when 5432 is taken);
 `make migrate` brings it to the current schema; `make db-down` stops it and keeps its data.
 `uv run taktusd` then runs the daemon against the same database, and `uv run taktusctl submit`

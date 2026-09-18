@@ -289,3 +289,23 @@ def test_taktusctl_run_needs_a_process(missing: str) -> None:
     )
     assert completed.returncode == 2
     assert missing in completed.stderr
+
+
+def test_nothing_executes_without_an_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No `--identity` and no provisional identity configured: the command refuses before it
+    registers anything, and names both ways out (control-plane.md §2, DEC-0013)."""
+    monkeypatch.delenv("TAKTUS_PROVISIONAL_IDENTITY")
+    completed = subprocess.run(  # noqa: S603
+        [taktusctl(), "run", "--process", str(EXAMPLE), "--state-dir", str(tmp_path / "state")],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **PLAIN},
+    )
+    assert completed.returncode == 2, completed.stdout + completed.stderr
+    assert "nothing executes without an identity" in completed.stderr
+    assert "TAKTUS_PROVISIONAL_IDENTITY=default=<identity>" in completed.stderr
+    assert "--identity" in completed.stderr
+    assert not (tmp_path / "state" / "ledger.json").exists()

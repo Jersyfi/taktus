@@ -25,6 +25,8 @@ CAPABILITIES = [
     "repository.pullrequests",
     "repository.pipelines",
     "repository.comments",
+    "repository.branches",
+    "repository.labels",
 ]
 
 OPERATIONS: list[Json] = [
@@ -64,6 +66,13 @@ OPERATIONS: list[Json] = [
         "summary": "Read the state of one pipeline run by id.",
     },
     {
+        "name": "repository.pipelines.status",
+        "capability": "repository.pipelines",
+        "effect": "read",
+        "summary": "The state of the pipeline runs for the head of a branch: none, pending, "
+        "success or failure, with every run listed.",
+    },
+    {
         "name": "repository.pipelines.trigger",
         "capability": "repository.pipelines",
         "effect": "write",
@@ -84,6 +93,23 @@ OPERATIONS: list[Json] = [
         "idempotency": "marked",
         "summary": "Comment on an issue or pull request. The comment carries the idempotency "
         "key as a mark; a repeat finds it.",
+    },
+    {
+        "name": "repository.branches.create",
+        "capability": "repository.branches",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Create a branch from a base with one commit on it that carries the given "
+        "files, or none. The commit message carries the idempotency key as a trailer; a repeat "
+        "finds the branch and the mark at its head.",
+    },
+    {
+        "name": "repository.labels.set",
+        "capability": "repository.labels",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Put labels on an issue or pull request. The mark is the label itself: a "
+        "repeat finds every requested label present and adds nothing.",
     },
 ]
 

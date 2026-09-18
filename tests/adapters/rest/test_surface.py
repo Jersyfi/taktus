@@ -5,9 +5,17 @@ problem details for every error."""
 from __future__ import annotations
 
 import httpx
+from fakes import FakeIdentifiers
 
+from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
+from taktus.adapters.driven.memory import MemoryRepository
 from taktus.adapters.driving.rest import build_app
+from taktus.components.command.application.service import (
+    CompleteIntakeHandler,
+    ReceiveIntakeHandler,
+)
 from taktus.ports.connector import ConnectorError
+from taktus.shared.v1 import Command
 
 from .conftest import TENANT, ScriptedConnector, Services, a_run, refused, services
 
@@ -98,6 +106,43 @@ async def test_an_accepted_delivery_is_kept_awaiting_identity(client: Client) ->
     assert again.status_code == 202
     async with given.persistence.transaction(TENANT):
         assert len(await given.events.list(TENANT)) == 1, "a redelivery replaces, never doubles"
+
+
+async def test_an_intake_event_is_completed_into_a_command_by_the_provisional_identity(
+    client: Client,
+) -> None:
+    http, given, base = client
+    # No identity configured: nothing completes, and the surface says so.
+    missing = await http.post(f"{base}/intake-events/dlv_1/complete")
+    is_problem(missing, 503)
+
+    resolver = ProvisionalOperatorIdentity({TENANT: "idn_owner"})
+    given.intake = ReceiveIntakeHandler(
+        {"channel.repo": given.connector}, given.events, given.persistence, identities=resolver
+    )
+    given.complete_intake = CompleteIntakeHandler(
+        given.events,
+        MemoryRepository(given.persistence, Command),
+        resolver,
+        given.persistence,
+        given.clock,
+        FakeIdentifiers(),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_app(given, prefix=base or "/")),
+        base_url="http://taktus.test",
+    ) as http:
+        accepted = await http.post(f"{base}/intake/channel.repo", content=b"{}")
+        assert accepted.status_code == 202 and accepted.json()["accepted"]["tenant"] == TENANT
+        completed = await http.post(f"{base}/intake-events/dlv_1/complete")
+        assert completed.status_code == 200, completed.text
+        command = completed.json()
+        assert command["identity"] == "idn_owner" and command["org_path"] == [TENANT]
+        assert command["context"]["identity_provisional"] is True
+        assert command["reply_to"]["address"] == "acme/taktus#412"
+        is_problem(await http.post(f"{base}/intake-events/dlv_1/complete"), 409)
+        is_problem(await http.post(f"{base}/intake-events/dlv_9/complete"), 404)
+        is_problem(await http.post(f"{base}/intake-events/dlv_1/complete?tenant=other"), 404)
 
 
 async def test_refusals_answer_with_the_status_that_says_who_should_act(prefix: str) -> None:

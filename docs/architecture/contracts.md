@@ -65,12 +65,52 @@ where an event from the outside becomes a command or is refused.
 | **Verify the signature of every incoming event before reading it**, then normalise it as far as the channel can | intake without a signature is not a valid declaration; the identity component completes the command |
 
 Full specification: [`contracts/connector/v1/README.md`](../../contracts/connector/v1/README.md).
-The connector port on the core's side exists for the intake direction (`src/taktus/ports/
-connector.py`, over MCP in `adapters/driven/connectors/mcp/`): the HTTP surface hands a webhook
-delivery to the connector that serves the channel and keeps what it accepted. The action
-direction, and the run's binding of connector steps — writing the egress entry from the
-result, halting instead of retrying an outward operation with `idempotency: none` whose outcome
-is unknown — arrive with `0.2.0`.
+The connector port on the core's side (`src/taktus/ports/connector.py`, over MCP in
+`adapters/driven/connectors/mcp/`) serves both directions. **Intake:** the HTTP surface hands a
+webhook delivery to the connector that serves the channel and keeps what it accepted.
+**Actions:** the run calls an operation with a call context and reads the result — the
+declaration's shapes, the context, the result and the classified error are bound as frozen
+types, held to `Connector.json` by `tests/contract`. A `rule` step whose work is
+`rule: connector` is bound this way (`components/run/domain/model/work.py`,
+`examples/README.md`); a `wait` step can wait on an external state read the same way.
+
+**What idempotency requires of a connector, seen from the run.** The run derives the
+idempotency key of every call from the run, the step and the step's *attempt*:
+`taktus:<run id>:<step id>:<attempt>`. It is never stored, so that a resumed attempt after a restart
+derives the same key; a step recovered from a crash, or resumed from a stop, therefore repeats
+its call with the key of the attempt that was interrupted, and a `marked` or `native` connector
+answers with the original record and `replayed: true`. The attempt advances only when a step is
+retried after a failure the connector said was *not* retryable, so that a retry after
+`unavailable` or `unknown` on a `marked` operation still finds the original. What the run does
+with the declaration: the effect of an outward result becomes an `egress.write` or
+`egress.delivery` entry in the same transaction as `step.finished`, referencing the result
+artifact and the digest the connector reported (ADR-0022 §4); an operation declared
+`idempotency: none` is **never repeated by the run on its own** — a call that failed with
+effect `unknown` ends the step failed and the run escalated, and the run's reason says that
+resuming repeats the call, so that the person who resumes has checked the target first
+(ADR-0024 §3). No call is retried automatically in this version; every retry is a resume.
+
+### 2.3 Model
+
+A model is reached by an OpenAI-compatible endpoint: `POST /chat/completions` with a model
+name, messages and an output limit, the first choice's message as the answer, the usage as the
+consumption. A vendor's API, a local model server and most gateways answer this dialect, which
+is why it is the basis and why no vendor's own extensions are used.
+
+| Capability | Why it is required |
+|---|---|
+| **Answer a prompt** — a system message, a user message, an output limit | an `llm` step is one completion |
+| **Report the tokens used** and **which model answered** | tokens are counted per step (ADR-0005); a variable method is reproducible only at a pinned version, so the answering model goes into the provenance (ADR-0021) |
+| **Say why it stopped** — the end of the answer, or the output limit | an answer cut off at the limit does not leave the step |
+| **Take a bearer credential at the call, or none** | a local endpoint needs none; a vendor's key is a parameter (`CREDENTIALS.md`) |
+
+The contract as a schema and a conformance suite (`contracts/model/v1`) is not yet written;
+the core's side exists as the model port (`src/taktus/ports/model.py`) and its one adapter
+(`adapters/driven/models/openai_compatible/`), configured by `TAKTUS_MODEL_ENDPOINT`,
+`TAKTUS_MODEL_NAME` and `TAKTUS_MODEL_PURPOSES` — one model, for the purposes it is named for
+or for all — and recorded in the ledger as `model.endpoint`. A process names a *purpose*
+(`reasoning`, `triage`), never a product (ADR-0003). `tests/adapters/models` proves the adapter
+against a fake of the endpoint; the run's `llm` step is `components/run` (`examples/README.md`).
 
 ### 2.4 The execution port
 
@@ -182,10 +222,10 @@ example, not a requirement. The core runs with all of them removed — it simply
 | Worker | `mlbench` | training, evaluation, embeddings, classical ML. The second proof case: hours of runtime, a GPU held, a model artifact returned. |
 | Worker | `claudecode` | the first real coding worker. Exists (`workers/claudecode/`), passes the suite in both authentication modes, faults included, against a stand-in for its agent; a live run needs a credential the operator supplies |
 | Worker | `codex` | the second real coding worker; validates the contract against a second vendor |
-| Connector | `github` | repository: issues, pull requests, pipelines, comments — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector. Reached by the daemon's webhook intake; its operations are not yet bound into the run (`0.2.0`) |
+| Connector | `github` | repository: issues, pull requests, pipelines, comments, branches, labels — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector against the fake and, with a credential, against the real service (`tests/adapters/connectors/test_repository_live.py`). Reached by the daemon's webhook intake and by the run's connector steps |
 | Connector | `chat` | both a command channel and a delivery channel |
 | Connector | `http` | the generic fallback for anything with a documented API |
-| Model | `openai_compatible` | covers Ollama, vLLM and most vendors |
+| Model | `openai_compatible` | covers Ollama, vLLM and most vendors. Exists (`src/taktus/adapters/driven/models/openai_compatible/`), proven against a fake of the endpoint; the one model `llm` steps ask |
 | Model | `anthropic` | native capabilities the common denominator does not carry |
 
 **Rule:** a second real worker of each shape exists **before** features build on worker behaviour.

@@ -25,6 +25,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -86,6 +87,7 @@ process_version = Table(
     Column("slo", JSONB),
     Column("work", JSONB, nullable=False),
     Column("limits", JSONB),
+    Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),
     PrimaryKeyConstraint("tenant", "id"),
@@ -150,6 +152,8 @@ intake_event = Table(
     _at("occurred_at"),
     _at("received_at"),
     Column("status", Text, nullable=False),
+    Column("command_id", Text),  # set when completed: the command this event became
+    _at("completed_at", nullable=True),
     PrimaryKeyConstraint("tenant", "id"),
     Index("intake_event_received", "tenant", "received_at"),
 )
@@ -180,10 +184,12 @@ run = Table(
     Column("id", Text, nullable=False),
     Column("plan_id", Text, nullable=False),
     Column("process_version", Text, nullable=False),
+    Column("identity", Text, nullable=False),
     Column("autonomy_level", Integer, nullable=False),
     Column("budget", JSONB, nullable=False),
     Column("steps", JSONB, nullable=False),
     Column("work", JSONB, nullable=False),
+    Column("inputs", JSONB, nullable=False),
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),
@@ -202,6 +208,8 @@ step_run = Table(
     Column("position", Integer, nullable=False),
     Column("method", Text, nullable=False),
     Column("state", Text, nullable=False),
+    Column("attempt", Integer, nullable=False),
+    Column("retryable", Boolean),
     Column("adapter", Text),
     Column("assignment_id", Text),
     Column("estimate", JSONB),

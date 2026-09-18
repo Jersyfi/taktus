@@ -48,8 +48,10 @@ paths:
       summary: Webhook intake for a channel
       description: The delivery as the source system sent it — every header, the raw body — is handed
         to the connector that serves the channel. The connector verifies the signature before it reads
-        the body, then normalises the event into the channel's half of a command, which is kept until
-        the identity component completes it. Nothing is executed from here.
+        the body, then normalises the event into the channel's half of a command. The sender is placed
+        in a tenant by the identity resolver — today the provisional operator identity (DEC-0013) — and
+        the event is kept there until it is completed into a command. A sender that cannot be placed is
+        answered `unknown_sender` and nothing is kept. Nothing is executed from here.
       operationId: intake_intake__channel__post
       parameters:
       - name: channel
@@ -60,7 +62,7 @@ paths:
           title: Channel
       responses:
         '202':
-          description: 'Decided: `accepted` with the intake event, or `refused`.'
+          description: 'Decided: `accepted` with the intake event, `refused`, or `unknown_sender`.'
           content:
             application/json:
               schema: {}
@@ -82,6 +84,55 @@ paths:
             application/problem+json: {}
         '422':
           description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /intake-events/{event_id}/complete:
+    post:
+      tags:
+      - intake
+      summary: Complete an intake event into a command
+      description: 'The event the connector accepted becomes a command: the identity resolver supplies
+        who acts — today the provisional operator identity of the tenant (DEC-0013), marked as such in
+        the command''s context — and the event is marked completed. Nothing is executed; the command is
+        returned for whoever commissions a plan from it.'
+      operationId: complete_intake_events__event_id__complete_post
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Event Id
+      - name: tenant
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: The tenant; the instance's first configured tenant when absent.
+          title: Tenant
+        description: The tenant; the instance's first configured tenant when absent.
+      responses:
+        '200':
+          description: The command the event became.
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: No such intake event in the tenant.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The event was completed before.
+          content:
+            application/problem+json: {}
+        '422':
+          description: The sender cannot be placed.
+          content:
+            application/problem+json: {}
+        '503':
+          description: No identity is configured.
           content:
             application/problem+json: {}
   /runs:

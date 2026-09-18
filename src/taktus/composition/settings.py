@@ -136,6 +136,77 @@ def load_telemetry(configuration: Configuration) -> TelemetrySettings:
     )
 
 
+@dataclass(frozen=True)
+class ModelSettings:
+    """One model behind the chat-completions dialect, for every purpose it is configured for.
+    Absent endpoint: no model, and an `llm` step fails naming the setting."""
+
+    endpoint: str | None
+    """`TAKTUS_MODEL_ENDPOINT`: the base URL that serves `/chat/completions`."""
+    name: str
+    """`TAKTUS_MODEL_NAME`: the model the endpoint is asked for; recorded as the adapter's
+    version in the provenance of every answer."""
+    purposes: tuple[str, ...]
+    """`TAKTUS_MODEL_PURPOSES`: the purposes this model serves, `*` (the default) for all."""
+    credential: Secret | None
+    """`credential.model_api_key`: the bearer credential, from
+    `TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE`; absent for an endpoint that needs none."""
+    credential_source: str | None
+
+    def effective(self) -> list[tuple[str, str]]:
+        credential = "" if self.credential is None else f"*** (from {self.credential_source})"
+        return [
+            ("TAKTUS_MODEL_ENDPOINT", self.endpoint or ""),
+            ("TAKTUS_MODEL_NAME", self.name),
+            ("TAKTUS_MODEL_PURPOSES", ",".join(self.purposes)),
+            ("TAKTUS_CREDENTIAL_MODEL_API_KEY", credential),
+        ]
+
+
+MODEL_CREDENTIAL = "credential.model_api_key"
+
+
+def load_model(configuration: Configuration) -> ModelSettings:
+    """The model settings alone: `taktusctl` reads them too."""
+    reader = _Reader(configuration)
+    endpoint = reader.text("model.endpoint", "") or None
+    if endpoint is not None and not (
+        endpoint.startswith("http://") or endpoint.startswith("https://")
+    ):
+        raise ConfigurationError(
+            configuration.name("model.endpoint"), f"{endpoint!r} is not an http(s) URL"
+        )
+    name = reader.text("model.name", "")
+    if endpoint is not None and not name:
+        raise ConfigurationError(
+            configuration.name("model.name"),
+            f"is not set; {configuration.name('model.endpoint')} names an endpoint and needs "
+            "the model to ask it for",
+        )
+    return ModelSettings(
+        endpoint=endpoint,
+        name=name,
+        purposes=reader.names("model.purposes", ("*",)),
+        credential=configuration.secret(MODEL_CREDENTIAL),
+        credential_source=configuration.source(MODEL_CREDENTIAL),
+    )
+
+
+def load_provisional_identity(configuration: Configuration) -> Mapping[str, str]:
+    """`TAKTUS_PROVISIONAL_IDENTITY`: tenant → the identity every command in that tenant acts
+    as, until the identity component exists (DEC-0013). `taktusctl` reads it too. The name
+    says what it is; nothing that reads it may forget."""
+    return _Reader(configuration).pairs("provisional.identity", "tenant=identity")
+
+
+def load_connectors(configuration: Configuration) -> Mapping[str, str]:
+    """The connectors alone (`TAKTUS_CONNECTORS`): `taktusctl` reads them too. Each entry is a
+    label — the channel capability for intake — and the MCP URL of one connector, which
+    serves its actions as well; the run resolves an action's connector by the capabilities
+    the connector declares, not by the label."""
+    return _Reader(configuration).connectors()
+
+
 def load_execution(configuration: Configuration) -> ExecutionSettings:
     """The execution settings alone: `taktusctl` reads them too, without the daemon's."""
     reader = _Reader(configuration)
@@ -184,8 +255,14 @@ class Settings:
     """How the runner reaches an execution unit for worker steps."""
     telemetry: TelemetrySettings
     """Where spans are exported, if anywhere."""
+    model: ModelSettings
+    """The model `llm` steps ask, if one is configured."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
+    provisional_identity: Mapping[str, str]
+    """Tenant → the identity that acts for it, PROVISIONAL (DEC-0013): configured, not
+    authenticated. Empty: no intake event can be completed and `taktusctl` needs
+    `--identity`."""
     state_dir: Path
     """Where artifact bytes are written."""
     tenants: tuple[str, ...]
@@ -218,7 +295,12 @@ class Settings:
             ("TAKTUS_PATH_PREFIX", self.path_prefix),
             *self.execution.effective(),
             *self.telemetry.effective(),
+            *self.model.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
+            (
+                "TAKTUS_PROVISIONAL_IDENTITY",
+                ",".join(f"{t}={i}" for t, i in self.provisional_identity.items()),
+            ),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
             ("TAKTUS_TENANTS", ",".join(self.tenants)),
             ("TAKTUS_INSTANCE", self.instance),
@@ -258,7 +340,9 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         path_prefix=normalise_prefix(prefix, configuration.name("path.prefix")),
         execution=load_execution(configuration),
         telemetry=load_telemetry(configuration),
+        model=load_model(configuration),
         connectors=reader.connectors(),
+        provisional_identity=load_provisional_identity(configuration),
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         tenants=reader.names("tenants", (DEFAULT_TENANT,)),
         instance=reader.text("instance", default_instance),
@@ -376,6 +460,21 @@ class _Reader:
                     f"{item!r} is not a role; roles are {', '.join(r.value for r in Role)}, or all",
                 ) from None
         return frozenset(chosen)
+
+    def pairs(self, key: str, shape: str) -> Mapping[str, str]:
+        """`a=x,b=y`: identifiers on both sides, none twice on the left."""
+        name, value = self._raw(key)
+        if value is None:
+            return {}
+        mapping: dict[str, str] = {}
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            left, separator, right = entry.partition("=")
+            if not separator or not left.strip() or not right.strip():
+                raise ConfigurationError(name, f"{entry!r} is not {shape}")
+            if left.strip() in mapping:
+                raise ConfigurationError(name, f"{left.strip()!r} is given twice")
+            mapping[left.strip()] = right.strip()
+        return mapping
 
     def connectors(self) -> Mapping[str, str]:
         """`channel.repo=http://connector:9100/mcp,channel.chat=…`: a capability, an equals

@@ -18,6 +18,15 @@
     {
       "operation": "repository.comments.create",
       "input": { "number": 1, "body": "Comment {{unique}} by the conformance suite." }
+    },
+    {
+      "operation": "repository.branches.create",
+      "input": {
+        "name": "conformance/branch-{{unique}}",
+        "base": "main",
+        "message": "conformance {{unique}}",
+        "files": [{ "path": "conformance/{{unique}}.md", "content": "Created by the conformance suite.\n" }]
+      }
     }
   ],
   "invalid": {
