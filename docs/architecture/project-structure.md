@@ -54,7 +54,7 @@ taktus/
 │   │       ├── application/
 │   │       │   ├── service/         # one use case per module
 │   │       │   └── query/           # read side (CQRS): run/application/query/provenance.py walks and verifies the chain
-│   │       └── ports/               # ports this component alone needs (run/ports/workers.py)
+│   │       └── ports/               # ports this component alone needs (run/ports/workers.py, run/ports/connectors.py)
 │   │   … run/domain/service/provenance.py builds and verifies the provenance chain (ADR-0021)
 │   │   … governance/domain/service/egress.py decides whether a result has left the system (ADR-0022)
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
@@ -62,7 +62,7 @@ taktus/
 │   │
 │   ├── ports/                       # cross-cutting ports
 │   │   ├── worker.py                # CONTRACT 1 — execution units: the contract's shapes and the protocol
-│   │   ├── connector.py             # CONTRACT 2 — tools and channels: the intake half today, the actions with 0.2.0
+│   │   ├── connector.py             # CONTRACT 2 — tools and channels: intake, and actions with a call context, a declared effect and a classified failure
 │   │   ├── model.py                 # CONTRACT 3 — models
 │   │   ├── execution.py             # how a unit comes to exist for a job: process | container | cluster; the fail-closed refusal of no isolation from level 3
 │   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore, ProvenanceStore, UnitOfWork — every call names its tenant
@@ -87,7 +87,7 @@ taktus/
 │   │       ├── execution/           # process.py: a unit as a child process; container/: a unit per job in a container with limits, credentials in memory, an egress proxy
 │   │       ├── objectstore/ secret/ ledger/
 │   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
-│   │       ├── connectors/mcp/      # the connector port as an MCP client: intake today
+│   │       ├── connectors/mcp/      # the connector port as an MCP client: intake and actions; connectors/pool.py maps capabilities
 │   │       ├── connectors/{chat,http}/
 │   │       └── models/{openai_compatible,anthropic,ollama}/
 │   │
