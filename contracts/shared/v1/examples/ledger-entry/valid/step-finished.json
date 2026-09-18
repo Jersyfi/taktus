@@ -11,7 +11,8 @@
     "assignment_id": "asg_01J8R3K5Q2N7VX9M4T6B0DPHWE",
     "artifact_ids": [
       "art-pr-412"
-    ]
+    ],
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
   },
   "method": "worker",
   "adapter": "coding-worker-primary",

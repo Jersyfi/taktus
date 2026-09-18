@@ -72,14 +72,24 @@ masked, the HTTP surface under a configurable prefix — health, readiness, webh
 through the connector port (the intake half), a read API for runs and ledger entries,
 `api/openapi.yaml` — and self-hosting in two containers with `make up`, proven from nothing
 by killing and restarting the container; the frame names allowed hosts (W-13), credentials
-are parameters (ADR-0025 says where an instance may run). Not yet: governance and anchors,
-`mlbench`, the execution adapters and the container registry build, the Helm chart, the
-action half of the connector port and the run's binding of connector steps (the reference
-connector exists; intake reaches it, nothing calls its operations from a process), the
-identity component that would complete an intake event into a command, time triggers (the
-scheduler leads and ticks; nothing is scheduled), event reactions (the automation role
-starts and waits; the outbox exists, nothing writes it), OpenTelemetry export (spans exist,
-nothing collects them).
+are parameters (ADR-0025 says where an instance may run) · the execution layer (#10): the
+execution port with the `process` adapter (refused from autonomy level 3 upwards and when the
+level is unknown, enforced in code) and the `container` adapter — one container per job with
+CPU, memory and wall-clock limits enforced by killing, credentials in memory only, a per-job
+network with an egress proxy that admits exactly `frame.allowed_hosts`, no engine socket —
+proven from inside a job and end to end with a stop and a resume in a new container; the
+coding worker, passing the suite in both authentication modes with every fault, boundaries
+per tool call, tokens per step, money at the end; OpenTelemetry spans for run, step, worker
+and connector calls with the trace identifier on every ledger entry and log line, exported
+where `TAKTUS_OTLP_*` says; each worker in its own image and none in the control plane image
+(DEC-0011). Not yet: governance and anchors, `mlbench`, the cluster execution adapter, the
+container registry build and the Helm chart, the action half of the connector port and the
+run's binding of connector steps (the reference connector exists; intake reaches it, nothing
+calls its operations from a process), the identity component that would complete an intake
+event into a command, time triggers (the scheduler leads and ticks; nothing is scheduled),
+event reactions (the automation role starts and waits; the outbox exists, nothing writes it),
+a live run of the coding worker against its real agent in CI (it needs a credential; the gate
+runs the stand-in).
 
 ### `0.2.0` — governance, limits, availability
 Autonomy levels 1–3 per process **and per action class** · anchors, configurable per tenant ·

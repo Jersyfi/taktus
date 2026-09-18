@@ -94,6 +94,13 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
         (StepState.RUNNING, StepState.STOPPED),
         (StepState.STOPPED, StepState.ADMITTED),  # resume from the checkpoint
         (StepState.FAILED, StepState.ADMITTED),  # retry from the boundary before it
+        # The worker could not be reached or started — before admission (the estimate), from
+        # whichever state the step is asked in, or after it (the assignment).
+        (StepState.PLANNED, StepState.FAILED),
+        (StepState.REJECTED, StepState.FAILED),
+        (StepState.STOPPED, StepState.FAILED),
+        (StepState.FAILED, StepState.FAILED),
+        (StepState.ADMITTED, StepState.FAILED),
     }
 )
 

@@ -14,6 +14,7 @@ from taktus.shared.v1.value import Value
 
 KIND_PATTERN = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$"
 OUTCOME_PATTERN = r"^[a-z][a-z0-9_]*$"
+TRACE_ID_PATTERN = r"^[0-9a-f]{32}$"
 
 EGRESS_KINDS: frozenset[str] = frozenset({"egress.write", "egress.delivery", "egress.read"})
 """The entries that record that a result left the system (ADR-0022 §4): a connector wrote
@@ -33,6 +34,8 @@ class LedgerRefs(Value):
     decision_request_id: str | None = Field(default=None, min_length=1)
     artifact_ids: tuple[str, ...] | None = None
     actor: str | None = Field(default=None, min_length=1)
+    trace_id: str | None = Field(default=None, pattern=TRACE_ID_PATTERN)
+    """The trace the entry was recorded in, so that an entry and a trace can be joined."""
 
     @model_validator(mode="after")
     def _at_least_one(self) -> LedgerRefs:

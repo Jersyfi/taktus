@@ -2,22 +2,36 @@
 # The promise of ADR-0002 and ADR-0013 A, verified rather than asserted: from nothing, two
 # containers come up in one command; a process runs end to end against the reference worker;
 # the application container is killed mid-run (SIGKILL, no shutdown); it is restarted; the run
-# resumes at its last step boundary and finishes with every artifact exactly once.
+# resumes at its last step boundary and finishes with every artifact exactly once. On the way
+# it checks that the control plane image carries no worker code (DEC-0011): the reference
+# worker runs from its own image, layered in by compose.reference-worker.yml.
 #
 # Needs docker with the compose plugin and curl. Leaves the containers and volumes as it found
 # them running; `make down` stops them. Exit code 0 when every step held.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-compose() { docker compose -f deploy/docker/compose.yml --profile reference-worker "$@"; }
+compose() { docker compose -f deploy/docker/compose.yml -f deploy/docker/compose.reference-worker.yml "$@"; }
 say() { printf '\nverify: %s\n' "$*"; }
 port="${TAKTUS_HTTP_PORT:-8080}"
 api="http://127.0.0.1:${port}"
 
-say "1. from nothing: secrets, image, two containers (plus the reference worker), ready"
+say "1. from nothing: secrets, images, two containers (plus the reference worker in its own image), ready"
 deploy/docker/secrets.sh
 compose up --build --detach --wait
 curl -fsS "${api}/health" >/dev/null && echo "health answers"
 curl -fsS "${api}/ready" | tee /dev/stderr | grep -q '"status": *"ready"' && echo "ready answers"
+
+say "1b. the control plane image contains no worker code (DEC-0011)"
+docker run --rm --entrypoint sh taktus:local -c '
+set -e
+test ! -e /app/workers || { echo "found /app/workers in the control plane image"; exit 1; }
+found="$(find / -xdev \( -path /proc -o -path /sys \) -prune -o \( -path "*/workers/*" -not -path "*/src/taktus/*" -o -name fake_agent.py \) -print 2>/dev/null || true)"
+[ -z "$found" ] || { echo "worker code in the control plane image: $found"; exit 1; }
+# Every worker of this repository says so in its first lines; the worker port of the control
+# plane (src/taktus/ports/worker.py) does not, and belongs there.
+found="$(grep -rl "separate deployable, as every worker is" /app 2>/dev/null || true)"
+[ -z "$found" ] || { echo "worker code in the control plane image: $found"; exit 1; }
+echo "no worker code in the image"'
 
 say "2. a run is queued from inside the container and executed by the daemon"
 bundle=/tmp/verify-bundle.yaml

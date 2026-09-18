@@ -174,8 +174,11 @@ class RunEngine:
     # --- entry points --------------------------------------------------------------------------
 
     async def start(self, command: StartRun) -> Run:
-        run = await self._create(command)
-        return await self._execute(await self._launch(run), command.stop_after)
+        # One trace from the first entry to the last: every entry of this invocation carries it.
+        async with self._telemetry.span("run", {"process.version": command.process_version}) as s:
+            run = await self._create(command)
+            s.set_attribute("run.id", run.id)
+            return await self._execute(await self._launch(run), command.stop_after, s)
 
     async def submit(self, command: StartRun) -> Run:
         """Create the run and hand it to a runner: the run in state `planned` and the job that
@@ -183,24 +186,29 @@ class RunEngine:
         are both impossible. Which runner executes it, and when, is the queue's business."""
         if self._queue is None:
             raise RunError("no queue is wired; submit needs one, start does not")
-        return await self._create(command, enqueue=True)
+        async with self._telemetry.span("run.submit", {"process.version": command.process_version}):
+            return await self._create(command, enqueue=True)
 
     async def resume(self, command: ResumeRun) -> Run:
-        async with self._work.transaction(command.tenant):
-            run = await self._runs.get(command.tenant, command.run_id)
-        if run is None:
-            raise UnknownRun(command.run_id)
-        if command.budget is not None:
-            run = run.model_copy(update={"budget": command.budget})
-        if run.state in RESUMABLE:
-            run = await self._commit(run.to(RunState.RUNNING), "run.resumed", actor=command.actor)
-        elif run.state is RunState.PLANNED and run.in_flight() is None:
-            run = await self._launch(run)  # submitted, never started: this is its start
-        elif run.state in INTERRUPTIBLE:
-            run = await self._recover(run, command.actor)
-        else:
-            raise UnknownRun(f"run {run.id!r} is {run.state} and cannot be resumed")
-        return await self._execute(run, command.stop_after)
+        async with self._telemetry.span("run", {"run.id": command.run_id}) as span:
+            async with self._work.transaction(command.tenant):
+                run = await self._runs.get(command.tenant, command.run_id)
+            if run is None:
+                raise UnknownRun(command.run_id)
+            span.set_attribute("process.version", run.process_version)
+            if command.budget is not None:
+                run = run.model_copy(update={"budget": command.budget})
+            if run.state in RESUMABLE:
+                run = await self._commit(
+                    run.to(RunState.RUNNING), "run.resumed", actor=command.actor
+                )
+            elif run.state is RunState.PLANNED and run.in_flight() is None:
+                run = await self._launch(run)  # submitted, never started: this is its start
+            elif run.state in INTERRUPTIBLE:
+                run = await self._recover(run, command.actor)
+            else:
+                raise UnknownRun(f"run {run.id!r} is {run.state} and cannot be resumed")
+            return await self._execute(run, command.stop_after, span)
 
     async def _create(self, command: StartRun, *, enqueue: bool = False) -> Run:
         now = self._clock.now()
@@ -277,31 +285,28 @@ class RunEngine:
                             step.id, f"$from {referenced!r} is not a dependency of this step"
                         )
 
-    async def _execute(self, run: Run, stop_after: int | None) -> Run:
-        async with self._telemetry.span(
-            "run", {"run.id": run.id, "process.version": run.process_version}
-        ) as span:
-            completed_now = 0
-            while (step_run := run.next_step_run()) is not None:
-                step = run.step(step_run.step_id)
-                run, step_run = await self._execute_step(run, step, step_run)
-                if step_run.state is StepState.REJECTED:
-                    return await self._end(run, RunState.HALTED, Cause.LIMIT, step_run.reason, span)
-                if step_run.state is StepState.FAILED:
-                    return await self._end(
-                        run, RunState.ESCALATED, Cause.FAILURE, step_run.reason, span
-                    )
-                if step_run.state is StepState.STOPPED:
-                    return await self._end(run, RunState.HALTED, Cause.STOP, step_run.reason, span)
-                completed_now += 1
-                # The boundary: a stop requested meanwhile takes effect here.
-                if run.id in self._stop_requested or (
-                    stop_after is not None and completed_now >= stop_after
-                ):
-                    return await self._end(
-                        run, RunState.HALTED, Cause.STOP, "stop requested at the boundary", span
-                    )
-            return await self._end(run, RunState.FINISHED, None, None, span)
+    async def _execute(self, run: Run, stop_after: int | None, span: Span) -> Run:
+        completed_now = 0
+        while (step_run := run.next_step_run()) is not None:
+            step = run.step(step_run.step_id)
+            run, step_run = await self._execute_step(run, step, step_run)
+            if step_run.state is StepState.REJECTED:
+                return await self._end(run, RunState.HALTED, Cause.LIMIT, step_run.reason, span)
+            if step_run.state is StepState.FAILED:
+                return await self._end(
+                    run, RunState.ESCALATED, Cause.FAILURE, step_run.reason, span
+                )
+            if step_run.state is StepState.STOPPED:
+                return await self._end(run, RunState.HALTED, Cause.STOP, step_run.reason, span)
+            completed_now += 1
+            # The boundary: a stop requested meanwhile takes effect here.
+            if run.id in self._stop_requested or (
+                stop_after is not None and completed_now >= stop_after
+            ):
+                return await self._end(
+                    run, RunState.HALTED, Cause.STOP, "stop requested at the boundary", span
+                )
+        return await self._end(run, RunState.FINISHED, None, None, span)
 
     async def _end(
         self, run: Run, state: RunState, cause: Cause | None, reason: str | None, span: Span
@@ -380,6 +385,7 @@ class RunEngine:
             outcome="succeeded",
             trace=trace,
         )
+        _measured(span, step_run)
         return run, step_run
 
     async def _evaluate(self, run: Run, work: Work) -> tuple[Any, Trace]:
@@ -442,8 +448,15 @@ class RunEngine:
             callback=Callback(events="sse"),
         )
 
-        # 1 + 2: estimate and admit, before anything starts.
-        estimate = await worker.estimate(assignment.estimate_request())
+        # 1 + 2: estimate and admit, before anything starts. A worker that cannot answer — an
+        # execution unit that does not start, an endpoint that does not answer — fails the
+        # step with that cause; the run escalates and nothing is left half done.
+        call = {"run.id": run.id, "step.id": step.id, "adapter": adapter}
+        try:
+            async with self._telemetry.span("worker.estimate", call):
+                estimate = await worker.estimate(assignment.estimate_request())
+        except WorkerError as error:
+            return await self._unavailable(run, step_run, adapter, span, error)
         demand = ConsumptionQuantities.model_validate(
             {**estimate.quantities(), "resource_class": estimate.resource_class}
         )
@@ -467,7 +480,12 @@ class RunEngine:
         run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
 
         # 3: run.
-        state = await worker.assign(assignment)
+        call["assignment.id"] = assignment.assignment_id
+        try:
+            async with self._telemetry.span("worker.assign", call):
+                state = await worker.assign(assignment)
+        except WorkerError as error:
+            return await self._unavailable(run, step_run, adapter, span, error)
         if state.status == "finished":
             # A rejection is a state, not an error: the worker's own check refused it.
             span.record_failure("rejected by the worker")
@@ -491,11 +509,26 @@ class RunEngine:
         if run.id in self._stop_requested:
             await self.request_stop(run.id)
         try:
-            run, step_run = await self._follow(
-                run, step_run, worker, assignment.assignment_id, trace, span
-            )
+            async with self._telemetry.span("worker.follow", call) as following:
+                run, step_run = await self._follow(
+                    run, step_run, worker, assignment.assignment_id, trace, span
+                )
+                following.set_attribute("step.state", step_run.state)
         finally:
             self._inflight.pop(run.id, None)
+        _measured(span, step_run)
+        return run, step_run
+
+    async def _unavailable(
+        self, run: Run, step_run: StepRun, adapter: str, span: Span, error: WorkerError
+    ) -> tuple[Run, StepRun]:
+        span.record_failure("worker unavailable")
+        step_run = step_run.to(
+            StepState.FAILED, adapter=adapter, reason=str(error), finished_at=self._clock.now()
+        )
+        run = await self._commit(
+            run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+        )
         return run, step_run
 
     async def _follow(
@@ -729,6 +762,8 @@ class RunEngine:
             if step is None or not step.artifacts
             else tuple(a.id for a in step.artifacts),
             actor=actor,
+            # The trace this entry is recorded in: what joins the ledger and the telemetry.
+            trace_id=self._telemetry.current_trace_id(),
         )
         consumption: Consumption | None = None
         if step is not None:
@@ -755,6 +790,22 @@ class RunEngine:
                 content_digest=digest,
             ),
         )
+
+
+def _measured(span: Span, step_run: StepRun) -> None:
+    """What the step used, as span attributes: quantities and their class, never content."""
+    span.set_attribute("step.state", step_run.state)
+    consumption = step_run.consumption
+    if consumption is None:
+        return
+    for name, value in consumption.quantities().items():
+        if name == "currency" and isinstance(value, dict):
+            for code, amount in value.items():
+                span.set_attribute(f"consumption.currency.{code}", float(amount))
+        elif isinstance(value, int | float):
+            span.set_attribute(f"consumption.{name}", value)
+    if consumption.resource_class is not None:
+        span.set_attribute("consumption.resource_class", consumption.resource_class)
 
 
 def _accumulate(used: dict[str, Any], event: ConsumptionReported) -> None:

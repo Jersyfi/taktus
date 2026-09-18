@@ -217,3 +217,27 @@ def test_every_component_of_the_structure_exists_as_a_package() -> None:
     }
     present = {p.name for p in (SRC / "components").iterdir() if (p / "__init__.py").is_file()}
     assert present == documented
+
+
+CONTROL_PLANE_IMAGE = ROOT / "deploy" / "docker" / "Dockerfile"
+
+
+def test_the_control_plane_image_carries_no_worker_code() -> None:
+    """A worker executes foreign code and is a separate deployable with its own image
+    (DEC-0011). The control plane image copies nothing from workers/ and never the whole
+    checkout, so that a compromised control plane finds no execution primitive ready to hand;
+    deploy/docker/verify.sh checks the built image the same way."""
+    lines = CONTROL_PLANE_IMAGE.read_text(encoding="utf-8").splitlines()
+    copies = [
+        (number, line.split())
+        for number, line in enumerate(lines, 1)
+        if line.strip().upper().startswith(("COPY", "ADD"))
+    ]
+    assert copies, "the Dockerfile copies nothing at all"
+    for number, words in copies:
+        sources = [w for w in words[1:-1] if not w.startswith("--")]
+        for source in sources:
+            assert "workers" not in source, f"deploy/docker/Dockerfile:{number}: {' '.join(words)}"
+            assert source not in (".", "./"), (
+                f"deploy/docker/Dockerfile:{number}: copies the whole checkout, workers included"
+            )

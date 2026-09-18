@@ -111,7 +111,7 @@ async def test_a_run_completes_and_the_ledger_verifies(
         started = next(
             e for e in entries if e.kind == "step.started" and e.refs.step_id == "compute"
         )
-        assert started.adapter == "worker.http" and started.refs.assignment_id is not None
+        assert started.adapter == "worker.endpoint" and started.refs.assignment_id is not None
         assert await verifies(services)
 
 

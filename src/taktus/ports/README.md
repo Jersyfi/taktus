@@ -11,5 +11,6 @@ never mirroring a tool (ADR-0016). Nothing here imports a component or a technol
 | `configuration.py` | what an instance is told about itself, by key; `Secret` for what must not be shown | `adapters/driven/configuration/` |
 | `objectstore.py` | artifact bytes by digest | `adapters/driven/memory/` |
 | `clock.py` | time, identifiers, randomness — the core never reads them by itself | `adapters/driven/clock/` |
+| `execution.py` | how an execution unit comes to exist for one job, with what isolation; the fail-closed rule that refuses an unisolated unit from autonomy level 3 (ADR-0002) | `adapters/driven/execution/` (`process`, `container`); `adapters/driven/workers/launched.py` puts the worker port over it |
 | `telemetry.py` | spans around units of work | `adapters/driven/telemetry/` (no-op) |
-| `connector.py`, `model.py`, `execution.py`, `queue.py`, `eventbus.py`, `secret.py` | see the tree in `docs/architecture/project-structure.md`; the queue's and outbox's tables and claiming functions already exist in the schema | from later versions |
+| `connector.py`, `model.py`, `queue.py`, `eventbus.py`, `secret.py` | see the tree in `docs/architecture/project-structure.md`; the queue's and outbox's tables and claiming functions already exist in the schema | from later versions |

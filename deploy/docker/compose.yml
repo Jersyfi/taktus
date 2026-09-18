@@ -1,18 +1,23 @@
-# Taktus, self-hosted: two containers, the shape ADR-0002 promises. `make up` brings it up in
-# one command (deploy/docker/README.md); `make down` stops it and keeps every volume.
+# Taktus, self-hosted: the deployment shape. Two containers for the control plane, the shape
+# ADR-0002 promises. `make up` brings it up in one command (deploy/docker/README.md);
+# `make down` stops it and keeps every volume.
 #
 #   postgres   the one mandatory dependency; its data in a named volume; not published
 #   taktus     every role in one process (TAKTUS_ROLES=all); migrations applied on start;
 #              health and readiness, intake and the read API on 127.0.0.1:8080
 #
+# No worker is part of this file, and no worker code is part of the image (DEC-0011). A worker
+# executes foreign code; it is a separate deployable with its own image behind the worker
+# contract, and the control plane reaches it through the execution port: by endpoint
+# (TAKTUS_WORKER names a worker that is already running, the default here), as a process it
+# starts, or as a container it starts with limits and a network allowlist
+# (TAKTUS_EXECUTION=container, deploy/docker/README.md). Only a process with a `worker` step
+# needs one; a process built from rule, statistics, wait and human steps runs with none.
+# compose.reference-worker.yml adds the reference worker for development and verify.sh.
+#
 # Secrets are files, never values in this file: `make up` writes a random database password
 # and the URL that carries it under deploy/docker/secrets/ (ignored by git), and the
 # containers read them under /run/secrets. TAKTUS_DATABASE_URL_FILE names the file.
-#
-# A process needs an execution unit, and an execution unit is by design not Taktus (ADR-0002:
-# workers are separate deployables behind the worker contract). The reference worker ships in
-# the same image as an optional third service under the profile `reference-worker`, for the
-# end-to-end check in deploy/docker/verify.sh and for trying a bundle out.
 
 name: taktus
 
@@ -46,7 +51,9 @@ services:
       TAKTUS_HTTP_HOST: 0.0.0.0
       TAKTUS_HTTP_PORT: "8080"
       TAKTUS_PATH_PREFIX: ${TAKTUS_PATH_PREFIX:-/}
-      TAKTUS_WORKER: ${TAKTUS_WORKER:-http://worker:9000}
+      # The execution unit for `worker` steps: a worker reachable at this endpoint. Empty
+      # means none is configured; a run with a worker step then fails at that step and says so.
+      TAKTUS_WORKER: ${TAKTUS_WORKER:-}
       TAKTUS_STATE_DIR: /var/lib/taktus
       TAKTUS_SHUTDOWN_CEILING_SECONDS: ${TAKTUS_SHUTDOWN_CEILING_SECONDS:-300}
       TAKTUS_LOG_LEVEL: ${TAKTUS_LOG_LEVEL:-info}
@@ -68,22 +75,6 @@ services:
     # SIGTERM, then this long for the running step to reach its boundary (ADR-0005).
     stop_grace_period: ${TAKTUS_SHUTDOWN_CEILING_SECONDS:-300}s
     restart: unless-stopped
-
-  worker:
-    profiles: ["reference-worker"]
-    build:
-      context: ../..
-      dockerfile: deploy/docker/Dockerfile
-    image: taktus:local
-    command: ["python3", "workers/script/worker.py", "--host", "0.0.0.0", "--port", "9000",
-              "--state-dir", "/var/lib/taktus/worker", "--step-seconds", "0.5"]
-    volumes:
-      - taktus-state:/var/lib/taktus
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9000/v1/health', timeout=3).status == 200 else 1)"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
 
 secrets:
   postgres_password:

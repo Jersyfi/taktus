@@ -7,8 +7,9 @@ bytes go to the filesystem under `state_dir` either way (the object store's defa
 ADR-0002). Neither choice is silent: `Services.storage` states it, and `taktusctl run` prints
 it first.
 
-The worker is one endpoint, registered under the adapter identifier `worker.http` for every
-capability it declares.
+The worker is what `TAKTUS_EXECUTION` says (`composition/execution.py`): the endpoint
+`--worker` names, or a unit started per job; it is registered under the adapter identifier
+`worker.<kind>` for every capability it declares.
 """
 
 from __future__ import annotations
@@ -40,8 +41,6 @@ from taktus.adapters.driven.postgres import (
     check_schema,
 )
 from taktus.adapters.driven.postgres.url import described
-from taktus.adapters.driven.telemetry import NoTelemetry
-from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.cli.wiring import NotOperable, Services
 from taktus.components.command.application.service import CommissionPlanHandler
@@ -53,6 +52,8 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
+from taktus.composition.execution import open_worker, telemetry_of
+from taktus.composition.settings import load_execution, load_telemetry
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
     LedgerStore,
@@ -63,8 +64,6 @@ from taktus.ports.persistence import (
 )
 from taktus.ports.queue import Queue
 from taktus.shared.v1 import Command, Plan
-
-WORKER_ADAPTER = "worker.http"
 
 
 class RepositoryFactory(Protocol):
@@ -91,7 +90,17 @@ class LocalWiring:
     async def services(self, *, state_dir: Path, worker_endpoint: str) -> AsyncIterator[Services]:
         clock = SystemClock()
         ids = SystemIdentifiers()
-        async with self._stores(state_dir) as stores, HttpWorker(worker_endpoint) as worker:
+        try:
+            execution = load_execution(self._configuration)
+            telemetry = telemetry_of(load_telemetry(self._configuration))
+        except ConfigurationError as error:
+            raise NotOperable(str(error)) from error
+        async with (
+            self._stores(state_dir) as stores,
+            open_worker(
+                execution, self._configuration, state_dir=state_dir, endpoint=worker_endpoint
+            ) as (adapter, worker),
+        ):
             runs = stores.of(Run)
             ledger = ChainedLedger(stores.ledger_store, clock)
             engine = RunEngine(
@@ -100,10 +109,10 @@ class LocalWiring:
                 objects=MemoryObjectStore(state_dir / "objects"),
                 ledger=ledger,
                 provenance=stores.provenance_store,
-                workers=StaticWorkerPool([(WORKER_ADAPTER, worker)]),
+                workers=StaticWorkerPool([(adapter, worker)]),
                 clock=clock,
                 ids=ids,
-                telemetry=NoTelemetry(),
+                telemetry=telemetry,
                 queue=stores.queue,
             )
             yield Services(
@@ -123,6 +132,7 @@ class LocalWiring:
                 storage=stores.storage,
                 queued=stores.queue is not None,
             )
+            telemetry.shutdown()
 
     @asynccontextmanager
     async def _stores(self, state_dir: Path) -> AsyncIterator[Stores]:

@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -63,3 +64,35 @@ def postgres_url() -> Iterator[str]:
         url = container.get_connection_url()
         command.upgrade(configuration(url), "head")
         yield url
+
+
+@pytest.fixture(scope="session")
+def engine_socket() -> str:
+    """The container engine's socket, for the container execution adapter's tests. Without
+    Docker they skip and say why — unless `TAKTUS_REQUIRE_DATABASE` says Docker is required
+    here, as it does in CI, in which case they fail."""
+    reason = docker_available()
+    if reason is not None:
+        message = f"the container execution tests need Docker: {reason}"
+        if os.environ.get("TAKTUS_REQUIRE_DATABASE"):
+            pytest.fail(message + " — and TAKTUS_REQUIRE_DATABASE says they may not skip")
+        pytest.skip(message)
+    host = os.environ.get("DOCKER_HOST", "")
+    if host.startswith("unix://"):
+        return host.removeprefix("unix://")
+    return "/var/run/docker.sock"
+
+
+@pytest.fixture(scope="session")
+def reference_worker_image(engine_socket: str) -> str:
+    """The reference worker's own image, built once from workers/script/Dockerfile."""
+    root = Path(__file__).resolve().parents[1]
+    tag = "taktus-worker-script:test"
+    dockerfile = root / "workers" / "script" / "Dockerfile"
+    subprocess.run(  # noqa: S603 — our own Dockerfile, fixed arguments
+        ["docker", "build", "-q", "-f", str(dockerfile), "-t", tag, str(root)],  # noqa: S607
+        check=True,
+        capture_output=True,
+        timeout=600,
+    )
+    return tag

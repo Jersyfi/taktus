@@ -221,7 +221,7 @@ async def test_a_run_survives_a_killed_process_and_resumes_at_its_last_boundary(
     assert recorded[: len(recorded_before)] == recorded_before
     assert [r.step_id for r in recorded] == [s.id for s in resumed.steps]
     assert recorded[1].outputs == tuple(ids)
-    assert recorded[1].adapter == "worker.http" and recorded[1].adapter_version is not None
+    assert recorded[1].adapter == "worker.endpoint" and recorded[1].adapter_version is not None
     assert recorded[1].ledger_seq > before[-1].seq, "recorded by the second process"
     assert [i.step_id for i in recorded[3].inputs] == ["compute"]
     verification = provenance.verify(resumed, recorded, after)

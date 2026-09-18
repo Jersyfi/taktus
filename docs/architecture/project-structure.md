@@ -64,7 +64,7 @@ taktus/
 │   │   ├── worker.py                # CONTRACT 1 — execution units: the contract's shapes and the protocol
 │   │   ├── connector.py             # CONTRACT 2 — tools and channels: the intake half today, the actions with 0.2.0
 │   │   ├── model.py                 # CONTRACT 3 — models
-│   │   ├── execution.py             # process | container | kubernetes
+│   │   ├── execution.py             # how a unit comes to exist for a job: process | container | cluster; the fail-closed refusal of no isolation from level 3
 │   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore, ProvenanceStore, UnitOfWork — every call names its tenant
 │   │   ├── ledger.py                # facts in, chained entries out, verify — one chain per tenant
 │   │   ├── configuration.py         # what an instance is told about itself, by key; Secret; ConfigurationError
@@ -82,9 +82,10 @@ taktus/
 │   │       ├── postgres/            # persistence, queue (claim_jobs with a lease) and leadership (advisory lock) over PostgreSQL; SQLAlchemy Core
 │   │       ├── configuration/       # the configuration port over TAKTUS_* variables; a secret from the file TAKTUS_<KEY>_FILE names
 │   │       ├── clock/               # the system clock, identifiers, randomness — the only place
-│   │       ├── telemetry/           # noop; an OpenTelemetry exporter later
-│   │       ├── workers/http/        # the worker port over HTTP and SSE; workers/pool.py maps capabilities
-│   │       ├── objectstore/ secret/ execution/ ledger/
+│   │       ├── telemetry/           # otel: real spans, exported where TAKTUS_OTLP_* says; noop for tests
+│   │       ├── workers/http/        # the worker port over HTTP and SSE; workers/pool.py maps capabilities; workers/launched.py puts the port over the execution port
+│   │       ├── execution/           # process.py: a unit as a child process; container/: a unit per job in a container with limits, credentials in memory, an egress proxy
+│   │       ├── objectstore/ secret/ ledger/
 │   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/mcp/      # the connector port as an MCP client: intake today
 │   │       ├── connectors/{chat,http}/
@@ -93,18 +94,20 @@ taktus/
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
-│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); local.py wires taktusctl
+│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); local.py wires taktusctl; execution.py opens the worker and the telemetry both share
 │
-├── workers/                         # separate deployables behind the worker contract
-│   ├── script/ claudecode/ codex/
-│   └── mlbench/                     # training, evaluation, embeddings, classical ML
+├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
+│   ├── script/                      # the reference worker: shell commands, no AI
+│   ├── claudecode/                  # the coding worker: a coding agent behind the contract, and the fake agent the gate runs it against
+│   ├── codex/                       # the second coding worker (0.4.0)
+│   └── mlbench/                     # training, evaluation, embeddings, classical ML (0.4.0)
 │
 ├── contracts/                       # what third parties implement — JSON Schema
 │   └── worker/v1/ connector/v1/ model/v1/ process/v1/ events/v1/ shared/v1/
 │
 ├── api/openapi.yaml                 # Taktus' OWN REST interface, generated from FastAPI by `make generate`, committed, held current by a test
 ├── migrations/                      # Alembic: alembic.ini, env.py, versions/ — explicit DDL, one head
-├── deploy/{docker,k8s,observability}/   # docker/compose.yml: Taktus and PostgreSQL, `make up`; compose.dev.yml: the development database
+├── deploy/{docker,k8s,observability}/   # docker/compose.yml: Taktus and PostgreSQL, `make up`; compose.reference-worker.yml: the worker layered in for development; compose.dev.yml: the development database
 ├── blueprints/{dev-orchestration,it-operations}/
 ├── examples/processes/              # process bundles that run as they are; each exercised by a test
 ├── web/                             # SvelteKit app, embedded into the image
@@ -115,9 +118,9 @@ taktus/
 │   ├── governance/                  # anchors hold, limits never breach, least privilege
 │   ├── exactness/                   # `exact` steps never take their final value from AI
 │   ├── contract/                    # the Python bindings match the schemas and their examples
-│   ├── components/ adapters/        # domain tables and application tests against fakes/; adapters/persistence and adapters/queue: one suite, both implementations; adapters/connectors: the reference connector against fakes/repository_service.py; adapters/rest: the surface under two prefixes
+│   ├── components/ adapters/        # domain tables and application tests against fakes/; adapters/persistence and adapters/queue: one suite, both implementations; adapters/connectors: the reference connector against fakes/repository_service.py; adapters/rest: the surface under two prefixes; adapters/execution: the process adapter, and the container adapter checked from inside a job; adapters/telemetry: spans nested, the trace id on every entry, no person and no secret in an attribute
 │   ├── composition/                 # the daemon's settings, and that no secret reaches a log line
-│   ├── integration/                 # the whole slice against the reference worker; the restart test; two runners, two schedulers, a real SIGTERM, the daemon under a prefix
+│   ├── integration/                 # the whole slice against the reference worker — by endpoint, as a process started per job, as a container started per job; the restart test; two runners, two schedulers, a real SIGTERM, the daemon under a prefix; the control plane image built and inspected
 │   └── security/ resilience/
 │
 ├── docs/{architecture,adr,usecases,roadmap.md}
@@ -186,9 +189,11 @@ connector is a driven adapter and the suite its client, and neither imports the 
 | Async | `async` throughout; no blocking call in a coroutine, enforced by lint |
 | Context | actor and tenant travel as explicit arguments — today as fields of every command (`StartRun.tenant`), later bundled in an `ActorContext` — never in a context variable read by business code |
 | Time, randomness, IDs | only through ports (`ports/clock.py`) — otherwise no run is reproducible; enforced by `tests/architecture` |
-| Logging | `structlog`, structured, never personal data, always with `trace_id` |
+| Logging | `structlog`, structured, never personal data; every line written inside a span carries `trace_id`, the same identifier the engine writes into its ledger entries (`composition/logging.py`) |
 | Secrets | never a bare `str` — `ports/configuration.py`'s `Secret` masks on `repr` and `str`; `reveal()` is the one way to the value, and the database URL is read as one. **A secret is read from a file, not from the environment:** `TAKTUS_<KEY>_FILE` holds the path, the file holds the value; the inline variable is accepted for a value that carries no secret (the development database) and refused together with the file. The daemon logs its effective configuration at start with every secret masked and its source named, and `tests/composition` proves that no secret value reaches a line |
-| Configuration | every setting is a `TAKTUS_*` variable, read through the configuration port and validated once at start (`composition/settings.py`); a wrong one is refused with one sentence naming the variable, never a stack trace. `.env.example` lists every variable, names only |
+| Configuration | every setting is a `TAKTUS_*` variable, read through the configuration port and validated once at start (`composition/settings.py`); a wrong one is refused with one sentence naming the variable, never a stack trace. `.env.example` lists every variable, names only. A credential an assignment references is read at the moment a unit is started, under `credential.<name>` — `TAKTUS_CREDENTIAL_<NAME>_FILE` |
+| Execution | `TAKTUS_EXECUTION` chooses how a `worker` step's unit comes to exist: by endpoint, as a process, as a container (`docs/architecture/contracts.md` §2.4). The `process` adapter is refused from autonomy level 3 upwards and when the level is unknown; the rule lives in `ports/execution.py` and `tests/governance` holds the adapter to it |
+| Telemetry | spans for the run, every step, every worker call and every connector call, nested; consumption and method as attributes; no person and no secret in an attribute (`tests/adapters/telemetry`); exported where `TAKTUS_OTLP_*` says, real either way |
 | Every step | carries method, reason, rejected alternatives, fallback; an exactness class if it produces a result (ADR-0018) |
 | Provenance | one record per completed step run (ADR-0021), built by `run/domain/service/provenance.py` and written by the engine in the transaction of the `step.finished` entry; the `ProvenanceStore` port is append-only like the `LedgerStore`, and the database refuses update and delete. A record references — identifiers, tokens, digests — and never copies. The worker's own version reaches the record through `Capabilities.version` and the pool's `ResolvedWorker` |
 | Persistence | SQLAlchemy Core in the driven adapter only; no ORM object crosses into the domain. **Every repository call names its tenant** as an explicit parameter (ADR-0020); the adapter refuses another tenant than the open transaction's, and an aggregate that carries its tenant carries the one it is stored under. **Every call happens inside a unit of work** (`ports/persistence.py`, `UnitOfWork.transaction(tenant)`), opened by the application layer — a handler, the run engine — never by an adapter or the domain; a call outside one raises, blocks do not nest, and a store that raises inside a block spoils it. **An adapter stores documents, not classes:** it never imports a component (§3), so the composition root binds the aggregate class and the adapter maps `document()` to rows and back — one mapper per aggregate in `adapters/driven/postgres/_mapping.py`. **A foreign key never crosses a component boundary;** inside an aggregate, children hang off their parent and are replaced with it; a copy (the steps of a plan, of a run) is one JSON column, the source (the process version's steps) is rows. The tables live in `_schema.py`, the history in `migrations/`, and `tests/adapters/persistence` fails on drift between them |

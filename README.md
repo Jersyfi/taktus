@@ -16,7 +16,9 @@ Python, PostgreSQL, Explicit Architecture. Self-hostable from day one.
 > that would breach the budget never starts, the state lives in PostgreSQL, and Taktus runs as
 > a service — two containers, several runners that never claim the same run, one elected
 > scheduler, a shutdown that lands on a step boundary, a killed container that resumes at its
-> last boundary. Without governance. What runs today: [examples/README.md](examples/README.md).
+> last boundary. A `worker` step runs in an isolated container the control plane starts per
+> job, and a coding agent works behind the worker contract, so that Taktus can have code
+> written for it. Without governance. What runs today: [examples/README.md](examples/README.md).
 >
 > **Public for transparency, but not licensed for use.** See `LICENSE` and `NOTICE`. Third-party
 > contributions are not accepted until the licence is settled.
@@ -93,6 +95,7 @@ you see the domain, not the framework.
 | [docs/architecture/contracts.md](docs/architecture/contracts.md) | Worker, connector and model contracts; maturity levels |
 | [contracts/worker/v1/CONFORMANCE.md](contracts/worker/v1/CONFORMANCE.md) | How to check a worker of your own against the contract |
 | [contracts/connector/v1/CONFORMANCE.md](contracts/connector/v1/CONFORMANCE.md) | How to check a connector of your own against the contract |
+| [workers/README.md](workers/README.md) | The workers of this repository, each in its own image: the reference worker, and the coding worker with what it can and cannot do |
 | [docs/architecture/project-structure.md](docs/architecture/project-structure.md) | Components, tree, dependency rules, conventions |
 | [examples/README.md](examples/README.md) | Running a process bundle with `uv run taktusctl run`; the shape of a bundle |
 | [docs/adr/README.md](docs/adr/README.md) | 25 architecture decisions with the alternatives rejected |
@@ -117,26 +120,40 @@ you see the domain, not the framework.
 | ML bench | scikit-learn, PyTorch, sentence-transformers — as a worker, never in the core |
 | Architecture enforcement | `import-linter` contracts, run in CI |
 | Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers`; `make gates` installs its own environment; `make doctor` says what is missing. `taktusctl` lives in that environment: `uv run taktusctl …`. Docker is optional: without it the PostgreSQL tests skip and say so; CI runs them |
-| Observability | OpenTelemetry from day one |
+| Observability | OpenTelemetry from day one: spans for run, step, worker and connector calls, exported where `TAKTUS_OTLP_*` names an endpoint; the trace identifier is on every ledger entry and log line |
 | Web | SvelteKit, embedded into the image |
-| Deployment | one image, roles via `TAKTUS_ROLES`; Docker Compose for self-hosting (`make up`), Kubernetes for scale |
+| Deployment | one image for the control plane, roles via `TAKTUS_ROLES`; one image per worker, none of them in the control plane image; Docker Compose for self-hosting (`make up`), Kubernetes for scale |
+| Execution | `TAKTUS_EXECUTION`: a worker by endpoint, a unit started per job as a process (development only; refused from autonomy level 3), or as a container with limits, credentials in memory and a network allowlist — over the engine's API, Docker or Podman |
 
 ---
 
 ## Operating it
 
-A minimal installation is **two containers**: Taktus and PostgreSQL. Everything else is a port with a
-default adapter that needs no extra service.
+The control plane is **two containers**: Taktus and PostgreSQL. Everything else the control
+plane needs is a port with a default adapter that needs no extra service. What those two
+containers can do on their own is run every process built from `rule`, `statistics`, `wait`
+and `human` steps.
 
-- **Docker Compose:** all roles in one container (`deploy/docker/compose.yml`).
+Every process that has a `worker` step needs **one execution unit** in addition — a worker,
+a separate deployable behind the worker contract, in its own image. A process built without
+worker steps needs none, and method maturation moves processes in that direction over time
+(`docs/architecture/methods.md`). No worker code is part of the control plane image: a worker
+executes foreign code, and code that is not in the image cannot be started from a compromised
+control plane (DEC-0011).
+
+- **Docker Compose:** all roles in one container (`deploy/docker/compose.yml`); a worker is
+  configured by endpoint, or started per job by the execution port.
 - **Kubernetes:** one deployment per role, each scaled independently — the chart arrives with
   the next pull request; the daemon already scales that way: runners claim work through
   database locks and never claim the same run, the scheduler is one instance elected by an
   advisory lock, and every process answers health and readiness.
 
 Workers run isolated — as a process (local development only), as a container (the default in
-operation) or as a Kubernetes job. **The process adapter is not permitted from autonomy level 3
-upwards.**
+operation) or, next, as a pod. **The process adapter is not permitted from autonomy level 3
+upwards**, and the refusal is in code: an unknown level is refused too. The container adapter
+gives every job CPU, memory and wall-clock limits, credentials that live in memory only, a
+network that reaches the hosts its frame names and nothing else, and no access to the
+engine's socket (`docs/architecture/contracts.md` §2.4).
 
 **Operating it is one command.**
 
@@ -148,7 +165,9 @@ It writes the two secret files the containers read (a random database password a
 that carries it, under `deploy/docker/secrets/`, never committed), builds the image, starts
 PostgreSQL and Taktus, applies the migrations on start, and returns when readiness answers.
 Two containers: Taktus with every role in one process (`TAKTUS_ROLES=all`, the self-hosting
-shape), and PostgreSQL. `make down` stops them and keeps every volume.
+shape), and PostgreSQL. `make down` stops them and keeps every volume. `make up-dev` adds the
+reference worker in its own image, for trying a bundle out
+(`deploy/docker/compose.reference-worker.yml`, development only).
 
 **Readiness means** the database answers and is at the schema this build needs:
 `GET /ready` answers `200`, or `503` with the reason. **Health means** the process is alive:
