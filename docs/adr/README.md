@@ -10,7 +10,7 @@ ADR wins.
 | [0002](ADR-0002-dependencies.md) | Dependencies and the execution environment | accepted |
 | [0003](ADR-0003-adapter-obligation.md) | The adapter obligation, enforced in CI | accepted |
 | [0004](ADR-0004-method-selection.md) | Method selection: which kind of AI per step | accepted |
-| [0005](ADR-0005-step-atomicity.md) | Step atomicity and admission control | accepted |
+| [0005](ADR-0005-step-atomicity.md) | Step atomicity and admission control | accepted, amended (DEC-0012) |
 | [0006](ADR-0006-ledger.md) | The ledger as a content-free hash chain | accepted |
 | [0007](ADR-0007-worker-contract.md) | Worker contract over HTTP and SSE | accepted |
 | [0008](ADR-0008-decision-request.md) | Decision requests and strategic anchors | accepted, extended by 0022 |

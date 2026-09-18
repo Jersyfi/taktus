@@ -102,9 +102,15 @@ by the run. `examples/README.md` is the reference for that shape.
 Results are persisted **per step**: checkpoint, artifacts, consumption, events. Three guarantees
 follow:
 
-- **No limit is ever breached.** Before each step its demand is estimated (the worker supplies the
-  estimate) and checked against what remains. A step starts only if it fits. The guarantee comes
-  from *admission*, not from aborting.
+- **No limit is ever breached — for what is reported per step.** Before each step its demand is
+  estimated (the worker supplies the estimate) and checked against what remains. A step starts
+  only if it fits. The guarantee comes from *admission*, not from aborting, and admission needs
+  a running total: for tokens, quota and compute seconds, which workers report per step, the
+  total is exact at every boundary and the guarantee holds. For currency it degrades to an
+  estimate where a worker learns its cost only when an assignment ends — the coding worker
+  does — so that the budget can be exceeded by the difference between one assignment's estimate
+  and its actual cost, visible in the ledger at the boundary where it was reported (ADR-0005,
+  amendment; DEC-0012).
 - **At most one step of work is lost.** A stop — by limit, emergency stop, user or anchor — takes
   effect at the next step boundary; the running step may finish up to a hard ceiling.
 - **Resume and replay.** After approval or a limit change, work continues at the step boundary.
@@ -232,7 +238,10 @@ class, step count, storage — and the normalised unit **Takt** is derived from 
 Admission control works against all applicable limits at once: budget in currency, a subscription
 window, a provider rate limit, available compute. If the estimate does not fit, the step does not
 start, and the block is recorded with cause and duration in the blocked-time account
-([throughput.md](throughput.md)).
+([throughput.md](throughput.md)). The line holds exactly for the kinds reported per step —
+tokens, quota, compute — and only up to the estimate for currency reported per assignment
+(ADR-0005, amendment). That is why the Takt derives from tokens and compute and not from money:
+it is the quantity admission control can actually hold a run against.
 
 Whether a model purpose is served by a subscription, an API key or local hardware is tenant
 configuration, not part of a process definition. See [accounting.md](accounting.md).
