@@ -86,6 +86,7 @@ STEP_KIND: dict[str, str] = {
 }
 TEST_COMMAND = re.compile(r"\b(pytest|npm test|npm run test|make test|go test|cargo test)\b")
 AUTH_VARIABLE = {"api-key": "ANTHROPIC_API_KEY", "session": "CLAUDE_CODE_OAUTH_TOKEN"}
+BASELINE_TAG = "taktus-baseline"
 DEFAULT_CREDENTIAL = {"api-key": "CODING_AGENT_API_KEY", "session": "CODING_AGENT_SESSION"}
 AUTH_FAILURE = re.compile(
     r"not logged in|invalid api key|authentication|unauthori[sz]ed|token expired|expired|"
@@ -536,6 +537,9 @@ class _Run:
             self._git(["git", "init", "--quiet"])
         self._git(["git", "add", "-A"])
         self._git(["git", "commit", "--quiet", "--allow-empty", "-m", "taktus: baseline"])
+        # The baseline is tagged so that the changeset at the end is measured from it, also
+        # after a resume in the same workspace.
+        self._git(["git", "tag", "--force", BASELINE_TAG], check=False)
         return True
 
     def _git(self, command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -911,6 +915,33 @@ class _Run:
             if not skip_boundary:
                 self.last_checkpoint = checkpoint
 
+    def _changeset(self) -> str:
+        """Every file the assignment changed since the baseline, with its full content, as one
+        JSON document: what a connector needs to put the change on a branch without a
+        repository of its own (`repository.branches.create`). Text as text, anything else as
+        base64; a deleted file by path. Renames count as a deletion and an addition."""
+        base = self._git(["git", "rev-parse", BASELINE_TAG], check=False).stdout.strip()
+        listed = self._git(
+            ["git", "diff", "--name-status", "--no-renames", f"{BASELINE_TAG}..HEAD"], check=False
+        ).stdout
+        files: list[Json] = []
+        deleted: list[str] = []
+        for line in listed.splitlines():
+            status, _, path = line.partition("\t")
+            if not path:
+                continue
+            if status.startswith("D"):
+                deleted.append(path)
+                continue
+            raw = (self.workspace / path).read_bytes()
+            try:
+                files.append({"path": path, "content": raw.decode("utf-8"), "encoding": "utf-8"})
+            except UnicodeDecodeError:
+                files.append(
+                    {"path": path, "content": base64.b64encode(raw).decode(), "encoding": "base64"}
+                )
+        return json.dumps({"base": base, "files": files, "deleted": deleted}, ensure_ascii=False)
+
     def _commit_change(self, step: Step) -> str | None:
         """What the agent changed in this step, committed and announced as a patch."""
         status = self._git(["git", "status", "--porcelain"], check=False).stdout
@@ -1017,6 +1048,13 @@ class _Run:
             with a.lock:
                 a.produced.append(summary)
                 self.worker._emit(a, _artifact_event(a, summary, step.step_id))
+        changeset = Produced(
+            "changeset", "changeset", "application/json", self._changeset().encode()
+        )
+        if not any(p.artifact_id == "changeset" for p in a.inherited):
+            with a.lock:
+                a.produced.append(changeset)
+                self.worker._emit(a, _artifact_event(a, changeset, step.step_id))
         self._close_step(step, "report")
         # What the agent settles up only at the end: the money, attributed to the last step.
         settlement: Json = {"type": "consumption.reported", "step_id": step.step_id}

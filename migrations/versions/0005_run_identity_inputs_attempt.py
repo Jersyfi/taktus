@@ -13,6 +13,8 @@ and the provisional identity (DEC-0013):
   `--identity` label; they receive that label's default.
 - **`run.inputs`** — what the run was given when it started (an issue number, a repository),
   which `$input` references in a step's work resolve to. Existing rows had none.
+- **`process_version.inputs`** — what a bundle declares it needs: name, description, example.
+  Existing rows declared none.
 - **`step_run.attempt`** — how many times the step was started afresh: a resume from a stop
   continues the attempt, a retry after a failure the connector called not retryable starts a
   new one. The idempotency key of a connector call is derived from run, step and attempt, never
@@ -42,6 +44,9 @@ def upgrade() -> None:
     )
     op.add_column("run", sa.Column("inputs", JSONB, nullable=False, server_default="{}"))
     op.add_column(
+        "process_version", sa.Column("inputs", JSONB, nullable=False, server_default="{}")
+    )
+    op.add_column(
         "step_run", sa.Column("attempt", sa.Integer, nullable=False, server_default="1")
     )
     op.add_column("step_run", sa.Column("retryable", sa.Boolean))
@@ -50,6 +55,7 @@ def upgrade() -> None:
     # The defaults exist for the rows that were there; new rows always carry a value.
     op.alter_column("run", "identity", server_default=None)
     op.alter_column("run", "inputs", server_default=None)
+    op.alter_column("process_version", "inputs", server_default=None)
     op.alter_column("step_run", "attempt", server_default=None)
 
 
@@ -58,5 +64,6 @@ def downgrade() -> None:
     op.drop_column("intake_event", "command_id")
     op.drop_column("step_run", "retryable")
     op.drop_column("step_run", "attempt")
+    op.drop_column("process_version", "inputs")
     op.drop_column("run", "inputs")
     op.drop_column("run", "identity")

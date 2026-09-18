@@ -1,10 +1,15 @@
 name: ci
 
 # CI validates. CI never deploys.
+#
+# Pushes to `taktus/**` run the same gates as a pull request: P-03 Implementation puts a change
+# on such a branch and reads the pipeline's verdict before it opens the pull request
+# (blueprints/dev-orchestration/processes/P-03-implementation.yaml), so the verdict must exist
+# for a branch without one.
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "taktus/**"]
 
 permissions:
   contents: read

@@ -159,6 +159,7 @@ class ProcessVersionMapper:
                 "slo": document.get("slo"),
                 "work": document.get("work", {}),
                 "limits": document.get("limits"),
+                "inputs": document.get("inputs", {}),
                 "author": document.get("author"),
                 "reason": document.get("reason"),
             },
@@ -201,6 +202,7 @@ class ProcessVersionMapper:
                 "slo": row.slo,
                 "work": row.work,
                 "limits": row.limits,
+                "inputs": row.inputs,
                 "author": row.author,
                 "reason": row.reason,
             }

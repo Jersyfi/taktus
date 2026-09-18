@@ -26,6 +26,7 @@ from taktus.adapters.driving.cli.run_command import (
     _command,
     _load,
     parse_inputs,
+    require_inputs,
     resolve_identity,
 )
 from taktus.adapters.driving.cli.wiring import NotOperable, Wiring
@@ -121,6 +122,7 @@ async def _submit(
             RegisterProcessVersion(bundle, tenant=tenant)
         )
         budget = _budget(version)
+        require_inputs(version, inputs)
         command = _command(services, version, identity, tenant, inputs)
         plan = await services.commission.execute(
             CommissionPlan(

@@ -15,7 +15,13 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from taktus.components.process.domain.model import InvalidProcess, ProcessVersion, Slo, Trigger
+from taktus.components.process.domain.model import (
+    InputDeclaration,
+    InvalidProcess,
+    ProcessVersion,
+    Slo,
+    Trigger,
+)
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Step
 
@@ -81,11 +87,26 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             slo=_slo(bundle.get("slo")),
             work=work,
             limits=bundle.get("limits"),
+            inputs=_inputs(bundle.get("inputs")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )
     except ValidationError as error:
         raise InvalidProcess(tuple(_describe("bundle", error))) from error
+
+
+def _inputs(raw: Any) -> dict[str, InputDeclaration]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`inputs` is not a mapping of name to declaration",))
+    declared: dict[str, InputDeclaration] = {}
+    for name, declaration in raw.items():
+        try:
+            declared[str(name)] = InputDeclaration.model_validate(declaration)
+        except ValidationError as error:
+            raise InvalidProcess(tuple(_describe(f"input {name!r}", error))) from error
+    return declared
 
 
 def _slo(raw: Any) -> Slo | None:

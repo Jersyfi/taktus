@@ -87,6 +87,7 @@ process_version = Table(
     Column("slo", JSONB),
     Column("work", JSONB, nullable=False),
     Column("limits", JSONB),
+    Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),
     PrimaryKeyConstraint("tenant", "id"),

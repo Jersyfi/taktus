@@ -17,7 +17,7 @@ connector call's `input`, the values of a template, a check or a prompt — an o
 - `{"$from": "<step-id>", "$select": "a.b.0"}` — one part of it, by a dotted path over keys
   and list positions;
 - `{"$from": "<step-id>", "$artifact": "<artifact-id>"}` — the content of that artifact of
-  that step: parsed when its media type is JSON, text otherwise;
+  that step: parsed when its media type is JSON, text otherwise; `$select` applies to it;
 - `{"$input": "<name>"}` — one of the run's inputs, given when the run starts
   (`taktusctl run --input`), optionally with `$select` as well.
 
@@ -250,7 +250,7 @@ def resolve(value: Any, results: Mapping[StepId, Any], artifacts: Mapping[str, A
         if is_reference(value) and FROM in value:
             step_id = str(value[FROM])
             if ARTIFACT in value:
-                return artifacts[f"{step_id}/{value[ARTIFACT]}"]
+                return select(artifacts[f"{step_id}/{value[ARTIFACT]}"], value.get(SELECT))
             return select(results[step_id], value.get(SELECT))
         return {key: resolve(item, results, artifacts) for key, item in value.items()}
     if isinstance(value, list | tuple):

@@ -148,6 +148,22 @@ def _load(path: Path) -> dict[str, Any]:
     return document
 
 
+def require_inputs(version: ProcessVersion, inputs: dict[str, Any]) -> None:
+    """Every input the bundle declares is given, or the invocation is refused naming each
+    missing one with its description and an example."""
+    missing = [name for name in version.inputs if name not in inputs]
+    if not missing:
+        return
+    lines = [
+        f"  --input {name}={json.dumps(version.inputs[name].example)}  "
+        f"({version.inputs[name].description})"
+        for name in missing
+    ]
+    raise NotOperable(
+        f"the bundle {version.ref} needs {len(missing)} more input(s):\n" + "\n".join(lines)
+    )
+
+
 async def resolve_identity(services: Services, given: str | None, tenant: str) -> str:
     """The identity the invocation acts as: `--identity` when given, else what the identity
     port answers for the CLI channel in this tenant. Nothing executes without one
@@ -201,6 +217,7 @@ async def _run(
         )
         budget = _budget(version)
         if resume is None:
+            require_inputs(version, inputs)
             run = await _start(services, version, budget, identity, tenant, stop_after, inputs)
         else:
             run = await services.engine.resume(
