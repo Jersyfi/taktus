@@ -54,10 +54,11 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
-from taktus.composition.execution import connector_pool, open_worker, telemetry_of
+from taktus.composition.execution import connector_pool, model_pool, open_worker, telemetry_of
 from taktus.composition.settings import (
     load_connectors,
     load_execution,
+    load_model,
     load_provisional_identity,
     load_telemetry,
 )
@@ -101,6 +102,7 @@ class LocalWiring:
             execution = load_execution(self._configuration)
             telemetry = telemetry_of(load_telemetry(self._configuration))
             connectors = load_connectors(self._configuration)
+            model = load_model(self._configuration)
             operators = load_provisional_identity(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
@@ -124,6 +126,7 @@ class LocalWiring:
                 telemetry=telemetry,
                 queue=stores.queue,
                 connectors=connector_pool(connectors),
+                models=model_pool(model),
             )
             yield Services(
                 register_version=RegisterProcessVersionHandler(

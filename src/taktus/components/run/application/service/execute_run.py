@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -80,7 +81,7 @@ from taktus.components.run.domain.model import (
 )
 from taktus.components.run.domain.service import provenance, rules
 from taktus.components.run.domain.service.admission import admit, remaining
-from taktus.components.run.ports import ConnectorPool, WorkerPool
+from taktus.components.run.ports import ConnectorPool, ModelPool, WorkerPool
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
     CallContext,
@@ -93,6 +94,7 @@ from taktus.ports.connector import (
     idempotency_key,
 )
 from taktus.ports.ledger import Fact, Ledger
+from taktus.ports.model import ModelError, Prompt
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
 from taktus.ports.queue import RUN_EXECUTE, Job, Queue
@@ -201,6 +203,7 @@ class RunEngine:
         queue: Queue | None = None,
         options: EngineOptions | None = None,
         connectors: ConnectorPool | None = None,
+        models: ModelPool | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -209,6 +212,7 @@ class RunEngine:
         self._provenance = provenance
         self._workers = workers
         self._connectors = connectors
+        self._models = models
         self._clock = clock
         self._ids = ids
         self._telemetry = telemetry
@@ -326,8 +330,6 @@ class RunEngine:
             for dependency in step.dependencies:
                 ancestors[step.id] |= {dependency, *ancestors[dependency]}
             work = parse_work(step, run.work.get(step.id), run.inputs)
-            if isinstance(work, LlmWork):
-                raise UnsupportedWork(step.id, "no executor for method llm in this version")
             for value in referenced_values(work):
                 for referenced in references(value):
                     if referenced not in ancestors[step.id]:
@@ -503,7 +505,80 @@ class RunEngine:
             return rules.template(work, values), Trace(inputs=read), None, None
         if isinstance(work, ConnectorRule):
             return await self._connector_call(run, step_run, work, span)
+        if isinstance(work, LlmWork):
+            return await self._llm_step(run, step_run, work, span)
         raise UnsupportedWork(step_run.step_id, f"no evaluator for {type(work).__name__}")
+
+    # --- llm steps ------------------------------------------------------------------------------
+
+    async def _llm_step(
+        self, run: Run, step_run: StepRun, work: LlmWork, span: Span
+    ) -> tuple[Any, Trace, Consumption | None, str]:
+        """One completion from the model configured for the purpose. The text that leaves the
+        step is the model's, once it passes the pattern; the tokens are counted; the model
+        that answered goes into the provenance as the adapter's version, because a variable
+        method is reproducible only at a pinned one."""
+        resolved = None if self._models is None else await self._models.resolve(work.purpose)
+        if resolved is None:
+            raise _StepFailed(
+                reason=f"no model is configured for the purpose {work.purpose!r} "
+                "(TAKTUS_MODEL_ENDPOINT, TAKTUS_MODEL_NAME)",
+                retryable=True,
+                consumption=None,
+                adapter=None,
+                outcome="no model",
+            )
+        (values,), read = await self._resolved(run, [work.values])
+        rendered = rules.template(
+            TemplateRule(rule="template", text=work.prompt, values=work.values), values
+        )
+        prompt = Prompt(system=work.system, user=rendered, max_output_tokens=work.max_output_tokens)
+        span.set_attribute("adapter", resolved.adapter)
+        attributes: dict[str, str | int] = {
+            "run.id": run.id,
+            "step.id": step_run.step_id,
+            "adapter": resolved.adapter,
+            "model.purpose": work.purpose,
+        }
+        try:
+            async with self._telemetry.span("model.complete", attributes) as call:
+                completion = await resolved.model.complete(prompt)
+                call.set_attribute("model.name", completion.model)
+                call.set_attribute("model.finish", completion.finish)
+        except ModelError as error:
+            raise _StepFailed(
+                reason=str(error),
+                retryable=True,
+                consumption=None,
+                adapter=resolved.adapter,
+                outcome="model unavailable",
+            ) from error
+        consumption = Consumption(tokens_in=completion.tokens_in, tokens_out=completion.tokens_out)
+        if completion.finish == "length":
+            raise _StepFailed(
+                reason=f"the model stopped at the output limit of {work.max_output_tokens} "
+                "tokens; the answer is cut off and does not leave the step",
+                retryable=True,
+                consumption=consumption,
+                adapter=resolved.adapter,
+                outcome="answer cut off",
+            )
+        if work.pattern is not None and re.search(work.pattern, completion.text) is None:
+            raise _StepFailed(
+                reason=f"the model's answer does not match {work.pattern!r}; nothing leaves the "
+                "step (a variable method proposes, the check decides)",
+                retryable=True,
+                consumption=consumption,
+                adapter=resolved.adapter,
+                outcome="answer failed the check",
+            )
+        trace = Trace(inputs=read, adapter_version=completion.model)
+        return (
+            {"text": completion.text, "model": completion.model},
+            trace,
+            consumption,
+            resolved.adapter,
+        )
 
     # --- connector steps ------------------------------------------------------------------------
 

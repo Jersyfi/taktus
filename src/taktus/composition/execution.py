@@ -16,15 +16,36 @@ from pathlib import Path
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.execution import ContainerExecution, ProcessExecution
+from taktus.adapters.driven.models import OpenAiCompatibleModel, StaticModelPool
 from taktus.adapters.driven.telemetry import OpenTelemetryTelemetry, exporter_for
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.launched import LaunchedWorker
-from taktus.composition.settings import ExecutionKind, ExecutionSettings, TelemetrySettings
+from taktus.composition.settings import (
+    ExecutionKind,
+    ExecutionSettings,
+    ModelSettings,
+    TelemetrySettings,
+)
 from taktus.ports.configuration import Configuration
 from taktus.ports.execution import Execution, ExecutionUnit, ResourceLimits
 from taktus.ports.worker import Worker
 
 UNIT_NAME = "unit"
+
+
+MODEL_ADAPTER = "model.endpoint"
+"""The adapter identifier of the one configured model: reached by endpoint, never a product."""
+
+
+def model_pool(settings: ModelSettings, *, timeout: float = 120.0) -> StaticModelPool:
+    """The configured model as the run's pool, under `model.endpoint` for the purposes it
+    serves; an empty pool when no endpoint is configured."""
+    if settings.endpoint is None:
+        return StaticModelPool()
+    model = OpenAiCompatibleModel(
+        settings.endpoint, settings.name, credential=settings.credential, timeout=timeout
+    )
+    return StaticModelPool([(MODEL_ADAPTER, settings.purposes, model, settings.name)])
 
 
 def connector_pool(connectors: Mapping[str, str], *, timeout: float = 120.0) -> StaticConnectorPool:

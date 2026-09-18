@@ -90,6 +90,28 @@ effect `unknown` ends the step failed and the run escalated, and the run's reaso
 resuming repeats the call, so that the person who resumes has checked the target first
 (ADR-0024 §3). No call is retried automatically in this version; every retry is a resume.
 
+### 2.3 Model
+
+A model is reached by an OpenAI-compatible endpoint: `POST /chat/completions` with a model
+name, messages and an output limit, the first choice's message as the answer, the usage as the
+consumption. A vendor's API, a local model server and most gateways answer this dialect, which
+is why it is the basis and why no vendor's own extensions are used.
+
+| Capability | Why it is required |
+|---|---|
+| **Answer a prompt** — a system message, a user message, an output limit | an `llm` step is one completion |
+| **Report the tokens used** and **which model answered** | tokens are counted per step (ADR-0005); a variable method is reproducible only at a pinned version, so the answering model goes into the provenance (ADR-0021) |
+| **Say why it stopped** — the end of the answer, or the output limit | an answer cut off at the limit does not leave the step |
+| **Take a bearer credential at the call, or none** | a local endpoint needs none; a vendor's key is a parameter (`CREDENTIALS.md`) |
+
+The contract as a schema and a conformance suite (`contracts/model/v1`) is not yet written;
+the core's side exists as the model port (`src/taktus/ports/model.py`) and its one adapter
+(`adapters/driven/models/openai_compatible/`), configured by `TAKTUS_MODEL_ENDPOINT`,
+`TAKTUS_MODEL_NAME` and `TAKTUS_MODEL_PURPOSES` — one model, for the purposes it is named for
+or for all — and recorded in the ledger as `model.endpoint`. A process names a *purpose*
+(`reasoning`, `triage`), never a product (ADR-0003). `tests/adapters/models` proves the adapter
+against a fake of the endpoint; the run's `llm` step is `components/run` (`examples/README.md`).
+
 ### 2.4 The execution port
 
 The worker contract says how the core talks to an execution unit. It says nothing about how
@@ -203,7 +225,7 @@ example, not a requirement. The core runs with all of them removed — it simply
 | Connector | `github` | repository: issues, pull requests, pipelines, comments, branches, labels — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector against the fake and, with a credential, against the real service (`tests/adapters/connectors/test_repository_live.py`). Reached by the daemon's webhook intake and by the run's connector steps |
 | Connector | `chat` | both a command channel and a delivery channel |
 | Connector | `http` | the generic fallback for anything with a documented API |
-| Model | `openai_compatible` | covers Ollama, vLLM and most vendors |
+| Model | `openai_compatible` | covers Ollama, vLLM and most vendors. Exists (`src/taktus/adapters/driven/models/openai_compatible/`), proven against a fake of the endpoint; the one model `llm` steps ask |
 | Model | `anthropic` | native capabilities the common denominator does not carry |
 
 **Rule:** a second real worker of each shape exists **before** features build on worker behaviour.

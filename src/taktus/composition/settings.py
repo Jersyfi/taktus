@@ -136,6 +136,62 @@ def load_telemetry(configuration: Configuration) -> TelemetrySettings:
     )
 
 
+@dataclass(frozen=True)
+class ModelSettings:
+    """One model behind the chat-completions dialect, for every purpose it is configured for.
+    Absent endpoint: no model, and an `llm` step fails naming the setting."""
+
+    endpoint: str | None
+    """`TAKTUS_MODEL_ENDPOINT`: the base URL that serves `/chat/completions`."""
+    name: str
+    """`TAKTUS_MODEL_NAME`: the model the endpoint is asked for; recorded as the adapter's
+    version in the provenance of every answer."""
+    purposes: tuple[str, ...]
+    """`TAKTUS_MODEL_PURPOSES`: the purposes this model serves, `*` (the default) for all."""
+    credential: Secret | None
+    """`credential.model_api_key`: the bearer credential, from
+    `TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE`; absent for an endpoint that needs none."""
+    credential_source: str | None
+
+    def effective(self) -> list[tuple[str, str]]:
+        credential = "" if self.credential is None else f"*** (from {self.credential_source})"
+        return [
+            ("TAKTUS_MODEL_ENDPOINT", self.endpoint or ""),
+            ("TAKTUS_MODEL_NAME", self.name),
+            ("TAKTUS_MODEL_PURPOSES", ",".join(self.purposes)),
+            ("TAKTUS_CREDENTIAL_MODEL_API_KEY", credential),
+        ]
+
+
+MODEL_CREDENTIAL = "credential.model_api_key"
+
+
+def load_model(configuration: Configuration) -> ModelSettings:
+    """The model settings alone: `taktusctl` reads them too."""
+    reader = _Reader(configuration)
+    endpoint = reader.text("model.endpoint", "") or None
+    if endpoint is not None and not (
+        endpoint.startswith("http://") or endpoint.startswith("https://")
+    ):
+        raise ConfigurationError(
+            configuration.name("model.endpoint"), f"{endpoint!r} is not an http(s) URL"
+        )
+    name = reader.text("model.name", "")
+    if endpoint is not None and not name:
+        raise ConfigurationError(
+            configuration.name("model.name"),
+            f"is not set; {configuration.name('model.endpoint')} names an endpoint and needs "
+            "the model to ask it for",
+        )
+    return ModelSettings(
+        endpoint=endpoint,
+        name=name,
+        purposes=reader.names("model.purposes", ("*",)),
+        credential=configuration.secret(MODEL_CREDENTIAL),
+        credential_source=configuration.source(MODEL_CREDENTIAL),
+    )
+
+
 def load_provisional_identity(configuration: Configuration) -> Mapping[str, str]:
     """`TAKTUS_PROVISIONAL_IDENTITY`: tenant → the identity every command in that tenant acts
     as, until the identity component exists (DEC-0013). `taktusctl` reads it too. The name
@@ -199,6 +255,8 @@ class Settings:
     """How the runner reaches an execution unit for worker steps."""
     telemetry: TelemetrySettings
     """Where spans are exported, if anywhere."""
+    model: ModelSettings
+    """The model `llm` steps ask, if one is configured."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
     provisional_identity: Mapping[str, str]
@@ -237,6 +295,7 @@ class Settings:
             ("TAKTUS_PATH_PREFIX", self.path_prefix),
             *self.execution.effective(),
             *self.telemetry.effective(),
+            *self.model.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
             (
                 "TAKTUS_PROVISIONAL_IDENTITY",
@@ -281,6 +340,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         path_prefix=normalise_prefix(prefix, configuration.name("path.prefix")),
         execution=load_execution(configuration),
         telemetry=load_telemetry(configuration),
+        model=load_model(configuration),
         connectors=reader.connectors(),
         provisional_identity=load_provisional_identity(configuration),
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
