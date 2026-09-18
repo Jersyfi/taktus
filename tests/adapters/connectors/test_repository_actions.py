@@ -344,3 +344,152 @@ async def test_no_credential_value_reaches_a_result_an_error_or_the_log(
     for text in texts:
         assert service.write_value not in text
         assert service.read_value not in text
+
+
+# --- branches, labels, pipeline status ---------------------------------------------------------
+
+BRANCH_INPUT = {
+    "name": "taktus/issue-412",
+    "base": "main",
+    "message": "Pin the model",
+    "files": [{"path": "docs/note.md", "content": "# Note\n"}],
+}
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_a_branch_created_for_a_step_is_created_once_across_a_restart(
+    service: Service,
+) -> None:
+    """The branch is found by its name; the commit at its head carries the key as a trailer.
+    A second connector with no memory of the first finds both and replays."""
+    key = "run_01:branch:1-0123456789"
+    error, first = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("branch", key),
+        BRANCH_INPUT,
+    )
+    assert not error, first
+    assert first["effect"]["replayed"] is False
+    assert [r["kind"] for r in first["effect"]["records"]] == ["vcs.branch", "vcs.commit"]
+    assert first["output"]["name"] == "taktus/issue-412"
+    error, again = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("branch", key),
+        BRANCH_INPUT,
+    )
+    assert not error
+    assert again["effect"]["replayed"] is True
+    assert again["output"]["sha"] == first["output"]["sha"]
+    assert again["effect"]["records"] == first["effect"]["records"]
+    assert service.state()[REPOSITORY]["branches"] == 2  # main and ours
+
+    other = "run_01:branch:2-0123456789"
+    error, conflict = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("branch", other),
+        BRANCH_INPUT,
+    )
+    assert error
+    assert conflict["cause"] == "conflict"
+    assert conflict["effect"] == "none"
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_a_branch_without_files_carries_an_empty_marked_commit(service: Service) -> None:
+    key = "run_01:bare:1-0123456789"
+    error, result = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("bare", key),
+        {"name": "taktus/bare", "base": "main"},
+    )
+    assert not error
+    assert result["output"]["base"] == "main"
+    error, missing = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("bare", key),
+        {"name": "taktus/other", "base": "nowhere"},
+    )
+    assert error
+    assert missing["cause"] == "not_found"
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_labels_are_their_own_mark(service: Service) -> None:
+    key = "run_01:label:1-0123456789"
+    connector = Connector(config(service))
+    error, first = await call(
+        connector,
+        "repository.labels.set",
+        context("label", key),
+        {"number": 1, "labels": ["taktus"]},
+    )
+    assert not error
+    assert first["effect"]["replayed"] is False
+    assert first["output"]["labels"] == ["taktus"]
+    assert first["effect"]["records"] == [{"kind": "label", "id": "1#taktus"}]
+    error, again = await call(
+        Connector(config(service)),
+        "repository.labels.set",
+        context("label", key),
+        {"number": 1, "labels": ["taktus"]},
+    )
+    assert not error
+    assert again["effect"]["replayed"] is True
+    assert service.state()[REPOSITORY]["labels"] == 1
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_the_pipeline_state_of_a_branch_is_the_pipelines_verdict(service: Service) -> None:
+    connector = Connector(config(service))
+    key = "run_01:ci:1-0123456789"
+    error, before = await call(
+        connector, "repository.pipelines.status", context("ci", key), {"ref": "main"}
+    )
+    assert not error
+    assert before["effect"] == {"kind": "read"}
+    assert before["output"]["state"] == "success"
+    assert [r["name"] for r in before["output"]["runs"]] == ["ci"]
+
+    service.control("/_fake/ci", {"conclusion": "failure"})
+    await call(
+        connector,
+        "repository.branches.create",
+        context("b", "run_01:b:1-0123456789"),
+        {"name": "taktus/red", "base": "main"},
+    )
+    error, red = await call(
+        connector, "repository.pipelines.status", context("ci", key), {"ref": "taktus/red"}
+    )
+    assert not error
+    assert red["output"]["state"] == "failure"
+
+    service.control("/_fake/ci", {"pending": True})
+    await call(
+        connector,
+        "repository.branches.create",
+        context("b", "run_01:b:2-0123456789"),
+        {"name": "taktus/slow", "base": "main"},
+    )
+    error, slow = await call(
+        connector, "repository.pipelines.status", context("ci", key), {"ref": "taktus/slow"}
+    )
+    assert not error
+    assert slow["output"]["state"] == "pending"
+    error, sha = await call(
+        connector,
+        "repository.pipelines.status",
+        context("ci", key),
+        {"ref": slow["output"]["sha"], "workflow": "nothing"},
+    )
+    assert not error
+    assert sha["output"]["state"] == "none"
+    error, gone = await call(
+        connector, "repository.pipelines.status", context("ci", key), {"ref": "taktus/nowhere"}
+    )
+    assert error
+    assert gone["cause"] == "not_found"

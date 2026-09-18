@@ -65,7 +65,7 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
-from taktus.composition.execution import open_worker, telemetry_of
+from taktus.composition.execution import connector_pool, open_worker, telemetry_of
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.settings import Role, Settings, load
 from taktus.ports.configuration import Configuration, ConfigurationError
@@ -169,6 +169,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                 telemetry=telemetry,
                 queue=queue,
                 options=EngineOptions(step_ceiling_seconds=settings.shutdown_ceiling_seconds),
+                connectors=connector_pool(settings.connectors),
             )
             wired = Wired(
                 settings=settings,

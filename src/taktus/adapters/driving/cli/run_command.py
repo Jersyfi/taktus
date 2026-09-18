@@ -11,6 +11,7 @@ step boundary; the bundle is read again, so that a changed `limits` block is a c
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from collections.abc import Sequence
 from pathlib import Path
@@ -87,6 +88,15 @@ def run(
             "one, created by the migration.",
         ),
     ] = DEFAULT_TENANT,
+    input: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--input",
+            metavar="NAME=VALUE",
+            help="One input of the run, repeatable: what `$input` references in the bundle "
+            "resolve to. A value that reads as JSON is JSON, anything else is text.",
+        ),
+    ] = None,
 ) -> None:
     """Run a process bundle against a worker and print the ledger and the consumption.
 
@@ -96,6 +106,7 @@ def run(
     wiring: Wiring = ctx.obj
     try:
         bundle = _load(process)
+        inputs = parse_inputs(input or [])
     except (OSError, yaml.YAMLError, ValueError) as error:
         typer.echo(f"cannot read {process}: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -111,6 +122,7 @@ def run(
                 stop_after=stop_after,
                 identity=identity,
                 tenant=tenant,
+                inputs=inputs,
             )
         )
     except InvalidProcess as error:
@@ -132,6 +144,20 @@ def _load(path: Path) -> dict[str, Any]:
     return document
 
 
+def parse_inputs(given: list[str]) -> dict[str, Any]:
+    """`name=value` pairs; a value that reads as JSON is JSON, anything else is text."""
+    inputs: dict[str, Any] = {}
+    for item in given:
+        name, separator, value = item.partition("=")
+        if not separator or not name.strip():
+            raise ValueError(f"--input {item!r} is not NAME=VALUE")
+        try:
+            inputs[name.strip()] = json.loads(value)
+        except ValueError:
+            inputs[name.strip()] = value
+    return inputs
+
+
 async def _run(
     wiring: Wiring,
     bundle: dict[str, Any],
@@ -143,6 +169,7 @@ async def _run(
     stop_after: int | None,
     identity: str,
     tenant: str,
+    inputs: dict[str, Any],
 ) -> Run:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
         typer.echo(f"state  {services.storage}")
@@ -151,7 +178,7 @@ async def _run(
         )
         budget = _budget(version)
         if resume is None:
-            run = await _start(services, version, budget, identity, tenant, stop_after)
+            run = await _start(services, version, budget, identity, tenant, stop_after, inputs)
         else:
             run = await services.engine.resume(
                 ResumeRun(
@@ -177,8 +204,9 @@ async def _start(
     identity: str,
     tenant: str,
     stop_after: int | None,
+    inputs: dict[str, Any],
 ) -> Run:
-    command = _command(services, version, identity, tenant)
+    command = _command(services, version, identity, tenant, inputs)
     plan = await services.commission.execute(
         CommissionPlan(
             command=command,
@@ -197,18 +225,27 @@ async def _start(
             actor=identity,
             tenant=tenant,
             stop_after=stop_after,
+            inputs=inputs,
         )
     )
 
 
-def _command(services: Services, version: ProcessVersion, identity: str, tenant: str) -> Command:
-    """The invocation as a command on the `channel.cli` capability."""
+def _command(
+    services: Services,
+    version: ProcessVersion,
+    identity: str,
+    tenant: str,
+    inputs: dict[str, Any],
+) -> Command:
+    """The invocation as a command on the `channel.cli` capability; the inputs are its
+    context, the way an issue or a thread is a channel's."""
     return Command(
         id=services.ids.new("cmd"),
         channel="channel.cli",
         identity=identity,
         org_path=(tenant,),
         intent=Intent(raw=f"run {version.ref}", recognised="process.run"),
+        context={"inputs": inputs} if inputs else None,
         reply_to=ReplyTo(channel="channel.cli", address="stdout"),
         received_at=services.clock.now(),
     )

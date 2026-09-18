@@ -171,8 +171,9 @@ class CallContext(Value):
 
 def idempotency_key(run_id: str, step_id: str, attempt: int) -> str:
     """The run's key for one attempt of one step: derived, never stored, so that a resumed
-    attempt after a restart derives the same one."""
-    return f"{run_id}:{step_id}:{attempt}"
+    attempt after a restart derives the same one. The prefix names whose key it is where the
+    mark ends up in a record outside."""
+    return f"taktus:{run_id}:{step_id}:{attempt}"
 
 
 class Arguments(Value):

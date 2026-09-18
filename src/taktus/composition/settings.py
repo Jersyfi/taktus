@@ -136,6 +136,14 @@ def load_telemetry(configuration: Configuration) -> TelemetrySettings:
     )
 
 
+def load_connectors(configuration: Configuration) -> Mapping[str, str]:
+    """The connectors alone (`TAKTUS_CONNECTORS`): `taktusctl` reads them too. Each entry is a
+    label — the channel capability for intake — and the MCP URL of one connector, which
+    serves its actions as well; the run resolves an action's connector by the capabilities
+    the connector declares, not by the label."""
+    return _Reader(configuration).connectors()
+
+
 def load_execution(configuration: Configuration) -> ExecutionSettings:
     """The execution settings alone: `taktusctl` reads them too, without the daemon's."""
     reader = _Reader(configuration)

@@ -9,7 +9,8 @@ it first.
 
 The worker is what `TAKTUS_EXECUTION` says (`composition/execution.py`): the endpoint
 `--worker` names, or a unit started per job; it is registered under the adapter identifier
-`worker.<kind>` for every capability it declares.
+`worker.<kind>` for every capability it declares. The connectors are what `TAKTUS_CONNECTORS`
+names, each under `connector.<label>`, resolved by the capabilities they declare.
 """
 
 from __future__ import annotations
@@ -52,8 +53,8 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
-from taktus.composition.execution import open_worker, telemetry_of
-from taktus.composition.settings import load_execution, load_telemetry
+from taktus.composition.execution import connector_pool, open_worker, telemetry_of
+from taktus.composition.settings import load_connectors, load_execution, load_telemetry
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
     LedgerStore,
@@ -93,6 +94,7 @@ class LocalWiring:
         try:
             execution = load_execution(self._configuration)
             telemetry = telemetry_of(load_telemetry(self._configuration))
+            connectors = load_connectors(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         async with (
@@ -114,6 +116,7 @@ class LocalWiring:
                 ids=ids,
                 telemetry=telemetry,
                 queue=stores.queue,
+                connectors=connector_pool(connectors),
             )
             yield Services(
                 register_version=RegisterProcessVersionHandler(

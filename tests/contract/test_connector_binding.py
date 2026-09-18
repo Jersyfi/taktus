@@ -108,7 +108,8 @@ def test_the_enumerations_match() -> None:
 
 def test_the_idempotency_key_of_an_attempt_is_derived_and_valid() -> None:
     key = connector.idempotency_key("run_0123456789abcdef0123", "open-pr", 1)
-    assert key == "run_0123456789abcdef0123:open-pr:1"
+    assert key == "taktus:run_0123456789abcdef0123:open-pr:1"
+    assert len(connector.idempotency_key("run_1", "a", 1)) >= 16
     TypeAdapter(connector.CallContext).validate_python(
         {
             "tenant": "default",

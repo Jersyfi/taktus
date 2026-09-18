@@ -31,5 +31,10 @@ class NoWorker(RunError):
         )
 
 
+class NoConnector(RunError):
+    def __init__(self, step_id: str, capability: str) -> None:
+        super().__init__(f"step {step_id!r}: no configured connector serves {capability!r}")
+
+
 class UnknownRun(RunError):
     pass

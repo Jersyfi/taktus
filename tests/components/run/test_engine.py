@@ -557,16 +557,15 @@ def test_a_tampered_artifact_fails_the_check() -> None:
 
 
 async def test_a_plan_with_an_unexecutable_step_is_refused_before_anything_runs() -> None:
-    llm = Step(
-        id="draft",
-        method=Method.LLM,
+    statistics = Step(
+        id="forecast",
+        method=Method.STATISTICS,
         reason="r",
         rejected=(),
-        exactness=ExactnessClass.FREE,
-        fallback=Fallback(when="x", to=Method.HUMAN),
+        exactness=ExactnessClass.EXACT,
     )
-    h = Harness(rule("a", {"rule": "constant", "value": 1}), (llm, {"prompt": "x"}))
-    with pytest.raises(UnsupportedWork, match="no executor for method llm"):
+    h = Harness(rule("a", {"rule": "constant", "value": 1}), (statistics, {"series": "x"}))
+    with pytest.raises(UnsupportedWork, match="no executor for method statistics"):
         await h.start()
     async with h.persistence.transaction(TENANT):
         assert await h.runs.list(TENANT) == []

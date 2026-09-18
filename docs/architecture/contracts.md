@@ -76,7 +76,7 @@ types, held to `Connector.json` by `tests/contract`. A `rule` step whose work is
 
 **What idempotency requires of a connector, seen from the run.** The run derives the
 idempotency key of every call from the run, the step and the step's *attempt*:
-`<run id>:<step id>:<attempt>`. It is never stored, so that a resumed attempt after a restart
+`taktus:<run id>:<step id>:<attempt>`. It is never stored, so that a resumed attempt after a restart
 derives the same key; a step recovered from a crash, or resumed from a stop, therefore repeats
 its call with the key of the attempt that was interrupted, and a `marked` or `native` connector
 answers with the original record and `replayed: true`. The attempt advances only when a step is

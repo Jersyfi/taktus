@@ -116,6 +116,7 @@ async def a_run(given: Services, run_id: str = "run_1") -> Run:
         plan_id="pln_1",
         process_version="p@1",
         tenant=TENANT,
+        identity="idn_t",
         autonomy_level=2,
         budget=Limits(compute=ComputeLimit(seconds=10, resource_class="cpu.small")),
         steps=(

@@ -353,4 +353,5 @@ service: issues, pull requests, pipelines and comments as actions, webhook intak
 normalised into commands. It is named by capability in every process and document; the concrete
 service appears only in its own directory, its README and configuration. It is the example of
 idempotency, not the exception: opening a pull request twice for the same step is impossible,
-and `tests/adapters/connectors` tries — across a restart of the connector.
+and `tests/adapters/connectors` tries — across a restart of the connector, against a fake of
+the service in every run of the gate and against the real service when a credential is given.

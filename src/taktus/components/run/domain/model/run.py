@@ -126,6 +126,14 @@ class StepRun(Value):
     index: int = Field(ge=0)
     method: Method
     state: StepState = StepState.PLANNED
+    attempt: int = Field(default=1, ge=1)
+    """How many times the step has been started afresh. A resume from a stop or a recovery
+    after a crash continues the same attempt — and derives the same idempotency key for a
+    connector call — while a retry after a failure the connector said was not retryable
+    starts a new one."""
+    retryable: bool | None = None
+    """After a failure: whether the same call with the same key may be repeated without a
+    second effect, as the connector said. None for a failure that was not a connector's."""
     adapter: str | None = None
     assignment_id: AssignmentId | None = None
     estimate: ConsumptionQuantities | None = None
@@ -160,10 +168,16 @@ class Run(Value):
     plan_id: str = Field(min_length=1)
     process_version: str = Field(min_length=1)
     tenant: str = Field(min_length=1)
+    identity: str = Field(min_length=1)
+    """On whose behalf the run acts: the identity of the command that commissioned the plan.
+    Every connector call carries it, and the target system's permissions for it stand."""
     autonomy_level: AutonomyLevel
     budget: Limits
     steps: tuple[Step, ...] = Field(min_length=1)
     work: Mapping[StepId, Mapping[str, Any]] = Field(default_factory=dict)
+    inputs: Mapping[str, Any] = Field(default_factory=dict)
+    """What the run was given when it started — an issue number, a repository — and what
+    `$input` references in the work resolve to."""
     state: RunState = RunState.PLANNED
     cause: Cause | None = None
     reason: str | None = None

@@ -1,7 +1,7 @@
 # DEC-0012 — The limit guarantee holds per consumption kind
 
 **Category:** DEFECT
-**Raised in:** [#12](https://github.com/Jersyfi/taktus/pull/12), which adds the action half of the connector and the first end-to-end
+**Raised in:** [#13](https://github.com/Jersyfi/taktus/pull/13), which adds the action half of the connector and the first end-to-end
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -91,4 +91,4 @@ derives from tokens and compute, not from money, and is therefore the quantity a
 can hold a run against. `control-plane.md` §5.1 and §7 say the same.
 **What changed in substance:** nothing the software does. Admission checks estimates against
 running totals as before; the record now states which totals are exact.
-**Recorded in:** [#12](https://github.com/Jersyfi/taktus/pull/12)
+**Recorded in:** [#13](https://github.com/Jersyfi/taktus/pull/13)
