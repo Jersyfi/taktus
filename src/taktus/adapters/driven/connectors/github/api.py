@@ -59,6 +59,9 @@ class Api:
         self.repository = repository
         self.owner = repository.split("/", 1)[0]
         self.requests = 0
+        # Where a person looks at what the API names: the service's web address, derived from
+        # the API's for the real service and equal to it for a fake.
+        self.web = "https://github.com" if self.target == "https://api.github.com" else self.target
         self._client = httpx.AsyncClient(
             base_url=self.target,
             timeout=httpx.Timeout(timeout, connect=min(10.0, timeout)),

@@ -14,7 +14,7 @@ What happens around every step is the contract of ADR-0005 and is the same for e
 2. admit — the estimate is checked against what remains of the budget (`domain.service.
    admission`); a step that does not fit is *rejected* before anything starts, and the run halts
    with cause `limit`;
-3. run — through the worker port, the rule table, or the clock;
+3. run — through the worker port, the rule table, the connector port, or the clock;
 4. persist — the step run with its checkpoint, artifacts and raw consumption is written before
    the next step is looked at; every state change and the ledger entry that describes it are
    one transaction of the unit of work, and a step that finished with a result gets its
@@ -27,13 +27,24 @@ hands that checkpoint back to the worker, which produces nothing it produced bef
 engine records no artifact twice even if it did. The worker's own step boundaries are persisted
 as they arrive, so that an instance that dies mid-step loses at most the worker's current inner
 step, not the whole step (ADR-0013 A).
+
+A connector step (`rule: connector`) is where ADR-0005's promise meets the outside. The call
+carries an idempotency key derived from run, step and the step's attempt — never stored, so a
+step recovered after a crash derives the same key and a `marked` connector answers with the
+original record. An outward effect the connector reports becomes an `egress.write` or
+`egress.delivery` entry in the same transaction as `step.finished` (ADR-0022 §4). A classified
+failure ends the step failed with the connector's cause; the engine retries nothing on its
+own — a resume is a person's act, and for an operation the connector cannot recognise a repeat
+of (`idempotency: none`) the reason says that resuming repeats the call (ADR-0024 §3).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from taktus.components.run.domain.model import (
@@ -41,7 +52,11 @@ from taktus.components.run.domain.model import (
     RESUMABLE,
     Cause,
     Checkpoint,
+    CheckRule,
+    ConnectorRule,
     ConstantRule,
+    LlmWork,
+    NoConnector,
     NoWorker,
     RuleFailed,
     Run,
@@ -49,21 +64,37 @@ from taktus.components.run.domain.model import (
     RunState,
     StepRun,
     StepState,
+    TemplateRule,
     UnknownRun,
     UnsupportedWork,
     VerifyArtifactRule,
+    WaitUntil,
     WaitWork,
     Work,
     WorkerWork,
+    artifact_references,
     parse_work,
+    referenced_values,
     references,
     resolve,
+    select,
 )
 from taktus.components.run.domain.service import provenance, rules
 from taktus.components.run.domain.service.admission import admit, remaining
-from taktus.components.run.ports import WorkerPool
+from taktus.components.run.ports import ConnectorPool, ModelPool, WorkerPool
 from taktus.ports.clock import Clock, Identifiers
+from taktus.ports.connector import (
+    CallContext,
+    CallFailed,
+    ConnectorError,
+    EffectReport,
+    Operation,
+    ResolvedConnector,
+    Result,
+    idempotency_key,
+)
 from taktus.ports.ledger import Fact, Ledger
+from taktus.ports.model import ModelError, Prompt
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
 from taktus.ports.queue import RUN_EXECUTE, Job, Queue
@@ -89,6 +120,7 @@ from taktus.shared.v1 import (
     Artifact,
     Consumption,
     ConsumptionQuantities,
+    Digest,
     InputKind,
     LedgerEntry,
     LedgerRefs,
@@ -97,6 +129,10 @@ from taktus.shared.v1 import (
     Step,
     StepId,
 )
+
+SOURCE_REF_LENGTH = 200
+"""How much of an operation and its input a provenance source reference keeps (ADR-0021 §4
+bounds an input to 384 bytes)."""
 
 
 @dataclass(frozen=True)
@@ -108,6 +144,14 @@ class StartRun:
     actor: str
     tenant: Tenant
     stop_after: int | None = None
+    inputs: Mapping[str, Any] = field(default_factory=dict)
+    """What `$input` references in the work resolve to."""
+
+    @property
+    def identity(self) -> str:
+        """On whose behalf the run acts: whoever commissioned the plan, else the actor."""
+        commissioned = self.plan.commissioned
+        return commissioned.by if commissioned is not None else self.actor
 
 
 @dataclass(frozen=True)
@@ -129,10 +173,12 @@ class ResumeRun:
 @dataclass(frozen=True)
 class Trace:
     """What the provenance record of a step needs beyond the step run itself: what the step
-    read, and the version the worker declared."""
+    read, and the version the adapter declared — and, for a connector step whose effect left
+    the system, the egress entry to write beside `step.finished` (ADR-0022 §4)."""
 
     inputs: tuple[ProvenanceInput, ...] = ()
     adapter_version: str | None = None
+    egress: EffectReport | None = None
 
 
 @dataclass(frozen=True)
@@ -156,6 +202,8 @@ class RunEngine:
         telemetry: Telemetry,
         queue: Queue | None = None,
         options: EngineOptions | None = None,
+        connectors: ConnectorPool | None = None,
+        models: ModelPool | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -163,6 +211,8 @@ class RunEngine:
         self._ledger = ledger
         self._provenance = provenance
         self._workers = workers
+        self._connectors = connectors
+        self._models = models
         self._clock = clock
         self._ids = ids
         self._telemetry = telemetry
@@ -217,10 +267,12 @@ class RunEngine:
             plan_id=command.plan.id,
             process_version=command.process_version,
             tenant=command.tenant,
+            identity=command.identity,
             autonomy_level=command.plan.autonomy_level,
             budget=command.budget,
             steps=command.plan.steps,
             work=command.work,
+            inputs=dict(command.inputs),
             created_at=now,
             updated_at=now,
         )
@@ -277,9 +329,9 @@ class RunEngine:
             ancestors[step.id] = set()
             for dependency in step.dependencies:
                 ancestors[step.id] |= {dependency, *ancestors[dependency]}
-            work = parse_work(step, run.work.get(step.id))
-            if isinstance(work, WorkerWork):
-                for referenced in references(work.task.inputs):
+            work = parse_work(step, run.work.get(step.id), run.inputs)
+            for value in referenced_values(work):
+                for referenced in references(value):
                     if referenced not in ancestors[step.id]:
                         raise UnsupportedWork(
                             step.id, f"$from {referenced!r} is not a dependency of this step"
@@ -322,7 +374,7 @@ class RunEngine:
         async with self._telemetry.span(
             "step", {"run.id": run.id, "step.id": step.id, "step.method": step.method}
         ) as span:
-            work = parse_work(step, run.work.get(step.id))
+            work = parse_work(step, run.work.get(step.id), run.inputs)
             if isinstance(work, WorkerWork):
                 return await self._worker_step(run, step, step_run, work, span)
             return await self._local_step(run, step, step_run, work, span)
@@ -332,20 +384,33 @@ class RunEngine:
     async def _local_step(
         self, run: Run, step: Step, step_run: StepRun, work: Work, span: Span
     ) -> tuple[Run, StepRun]:
-        # A rule or a wait demands nothing of any limit: admission is a formality, recorded so
-        # that every step run reads the same in the ledger.
-        step_run = step_run.to(StepState.ADMITTED, estimate=None, reason=None)
+        # A rule, a wait or a connector call demands nothing of any limit that could be
+        # estimated: admission is a formality, recorded so that every step run reads the same
+        # in the ledger. A retry after a failure the connector called not retryable is a new
+        # attempt with a new idempotency key; every other resume continues the attempt.
+        attempt = step_run.attempt
+        if step_run.state is StepState.FAILED and not step_run.retryable:
+            attempt += 1
+        step_run = step_run.to(
+            StepState.ADMITTED, estimate=None, reason=None, retryable=None, attempt=attempt
+        )
         run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
         step_run = step_run.to(StepState.RUNNING, started_at=self._clock.now())
         run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
         trace = Trace()
+        consumption: Consumption | None = None
         try:
             result_digest: str | None = None
             artifacts: tuple[Artifact, ...] = ()
             if isinstance(work, WaitWork):
-                await self._clock.sleep(work.seconds)
+                if work.until is None:
+                    await self._clock.sleep(work.seconds)
+                else:
+                    step_run, consumption = await self._wait_until(run, step_run, work.until, span)
             else:
-                value, trace = await self._evaluate(run, work)
+                value, trace, consumption, adapter = await self._evaluate(run, step_run, work, span)
+                if adapter is not None:
+                    step_run = step_run.model_copy(update={"adapter": adapter})
                 content = json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
                 result_digest = await self._objects.put(content)
                 artifacts = (
@@ -367,6 +432,20 @@ class RunEngine:
                 run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
             )
             return run, step_run
+        except _StepFailed as failure:
+            span.record_failure(failure.outcome)
+            step_run = step_run.to(
+                StepState.FAILED,
+                adapter=failure.adapter,
+                consumption=failure.consumption,
+                reason=failure.reason,
+                retryable=failure.retryable,
+                finished_at=self._clock.now(),
+            )
+            run = await self._commit(
+                run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+            )
+            return run, step_run
         now = self._clock.now()
         checkpoint = Checkpoint(
             ref=f"ckpt/{run.id}/{step.id}",
@@ -376,7 +455,11 @@ class RunEngine:
             result_digest=result_digest,
         )
         step_run = step_run.to(
-            StepState.SUCCEEDED, artifacts=artifacts, checkpoint=checkpoint, finished_at=now
+            StepState.SUCCEEDED,
+            artifacts=artifacts,
+            checkpoint=checkpoint,
+            consumption=consumption,
+            finished_at=now,
         )
         run = await self._commit(
             run.with_step_run(step_run),
@@ -388,10 +471,13 @@ class RunEngine:
         _measured(span, step_run)
         return run, step_run
 
-    async def _evaluate(self, run: Run, work: Work) -> tuple[Any, Trace]:
-        """The rule's value, and what the rule read to produce it."""
+    async def _evaluate(
+        self, run: Run, step_run: StepRun, work: Work, span: Span
+    ) -> tuple[Any, Trace, Consumption | None, str | None]:
+        """The rule's value, what the rule read to produce it, what it consumed, and the
+        adapter that served it where one did."""
         if isinstance(work, ConstantRule):
-            return rules.constant(work), Trace()
+            return rules.constant(work), Trace(), None, None
         if isinstance(work, VerifyArtifactRule):
             producer = run.step_run(work.step)
             artifact = producer.artifact(work.artifact)
@@ -400,7 +486,7 @@ class RunEngine:
             value = rules.verify_artifact(work, artifact, content)
             if artifact is None:  # unreachable: the rule refuses a missing artifact
                 raise RuleFailed(f"step {work.step!r} produced no artifact {work.artifact!r}")
-            read = ProvenanceInput(
+            verified = ProvenanceInput(
                 kind=InputKind.ARTIFACT,
                 run_id=run.id,
                 step_id=producer.step_id,
@@ -408,8 +494,289 @@ class RunEngine:
                 digest=artifact.digest,
                 observed_at=observed_at,
             )
-            return value, Trace(inputs=(read,))
-        raise UnsupportedWork("?", f"no evaluator for {type(work).__name__}")  # unreachable
+            return value, Trace(inputs=(verified,)), None, None
+        if isinstance(work, CheckRule):
+            values, read = await self._resolved(
+                run, [condition.value for condition in work.conditions]
+            )
+            return rules.check(work, values), Trace(inputs=read), None, None
+        if isinstance(work, TemplateRule):
+            (values,), read = await self._resolved(run, [work.values])
+            return rules.template(work, values), Trace(inputs=read), None, None
+        if isinstance(work, ConnectorRule):
+            return await self._connector_call(run, step_run, work, span)
+        if isinstance(work, LlmWork):
+            return await self._llm_step(run, step_run, work, span)
+        raise UnsupportedWork(step_run.step_id, f"no evaluator for {type(work).__name__}")
+
+    # --- llm steps ------------------------------------------------------------------------------
+
+    async def _llm_step(
+        self, run: Run, step_run: StepRun, work: LlmWork, span: Span
+    ) -> tuple[Any, Trace, Consumption | None, str]:
+        """One completion from the model configured for the purpose. The text that leaves the
+        step is the model's, once it passes the pattern; the tokens are counted; the model
+        that answered goes into the provenance as the adapter's version, because a variable
+        method is reproducible only at a pinned one."""
+        resolved = None if self._models is None else await self._models.resolve(work.purpose)
+        if resolved is None:
+            raise _StepFailed(
+                reason=f"no model is configured for the purpose {work.purpose!r} "
+                "(TAKTUS_MODEL_ENDPOINT, TAKTUS_MODEL_NAME)",
+                retryable=True,
+                consumption=None,
+                adapter=None,
+                outcome="no model",
+            )
+        (values,), read = await self._resolved(run, [work.values])
+        rendered = rules.template(
+            TemplateRule(rule="template", text=work.prompt, values=work.values), values
+        )
+        prompt = Prompt(system=work.system, user=rendered, max_output_tokens=work.max_output_tokens)
+        span.set_attribute("adapter", resolved.adapter)
+        attributes: dict[str, str | int] = {
+            "run.id": run.id,
+            "step.id": step_run.step_id,
+            "adapter": resolved.adapter,
+            "model.purpose": work.purpose,
+        }
+        try:
+            async with self._telemetry.span("model.complete", attributes) as call:
+                completion = await resolved.model.complete(prompt)
+                call.set_attribute("model.name", completion.model)
+                call.set_attribute("model.finish", completion.finish)
+        except ModelError as error:
+            raise _StepFailed(
+                reason=str(error),
+                retryable=True,
+                consumption=None,
+                adapter=resolved.adapter,
+                outcome="model unavailable",
+            ) from error
+        consumption = Consumption(tokens_in=completion.tokens_in, tokens_out=completion.tokens_out)
+        if completion.finish == "length":
+            raise _StepFailed(
+                reason=f"the model stopped at the output limit of {work.max_output_tokens} "
+                "tokens; the answer is cut off and does not leave the step",
+                retryable=True,
+                consumption=consumption,
+                adapter=resolved.adapter,
+                outcome="answer cut off",
+            )
+        if work.pattern is not None and re.search(work.pattern, completion.text) is None:
+            raise _StepFailed(
+                reason=f"the model's answer does not match {work.pattern!r}; nothing leaves the "
+                "step (a variable method proposes, the check decides)",
+                retryable=True,
+                consumption=consumption,
+                adapter=resolved.adapter,
+                outcome="answer failed the check",
+            )
+        trace = Trace(inputs=read, adapter_version=completion.model)
+        return (
+            {"text": completion.text, "model": completion.model},
+            trace,
+            consumption,
+            resolved.adapter,
+        )
+
+    # --- connector steps ------------------------------------------------------------------------
+
+    async def _connector(self, step_id: StepId, capability: str) -> ResolvedConnector:
+        resolved = None
+        if self._connectors is not None:
+            resolved = await self._connectors.resolve(capability)
+        if resolved is None:
+            raise NoConnector(step_id, capability)
+        return resolved
+
+    async def _connector_call(
+        self, run: Run, step_run: StepRun, work: ConnectorRule, span: Span
+    ) -> tuple[Any, Trace, Consumption | None, str]:
+        """One operation, called once for this attempt of the step. What comes back is the
+        result as the contract shapes it — output, effect, consumption — and, for an outward
+        effect, the egress entry the commit writes beside `step.finished`."""
+        resolved = await self._connector(step_run.step_id, work.capability)
+        operation = resolved.declaration.operation(work.operation)
+        if operation is None:
+            raise NoConnector(step_run.step_id, work.operation)
+        (input,), read = await self._resolved(run, [work.input])
+        span.set_attribute("adapter", resolved.adapter)
+        result = await self._call(run, step_run, resolved, operation, input, work.credentials, span)
+        document = result.document()
+        inputs = list(read)
+        if not operation.outward:
+            inputs.append(self._source(operation, input, document["output"]))
+        egress = result.effect if operation.outward else None
+        trace = Trace(inputs=tuple(inputs), adapter_version=resolved.version, egress=egress)
+        return document, trace, result.consumption, resolved.adapter
+
+    async def _call(
+        self,
+        run: Run,
+        step_run: StepRun,
+        resolved: ResolvedConnector,
+        operation: Operation,
+        input: Mapping[str, Any],
+        credentials: tuple[Any, ...],
+        span: Span,
+    ) -> Result:
+        context = CallContext(
+            tenant=run.tenant,
+            identity=run.identity,
+            run_id=run.id,
+            step_id=step_run.step_id,
+            attempt=step_run.attempt,
+            idempotency_key=idempotency_key(run.id, step_run.step_id, step_run.attempt),
+            credentials=credentials,
+            autonomy_level=run.autonomy_level,
+        )
+        attributes: dict[str, str | int] = {
+            "run.id": run.id,
+            "step.id": step_run.step_id,
+            "adapter": resolved.adapter,
+            "connector.operation": operation.name,
+            "connector.effect": str(operation.effect),
+            "connector.attempt": step_run.attempt,
+        }
+        try:
+            async with self._telemetry.span("connector.call", attributes) as call:
+                result = await resolved.connector.call(operation.name, context, input)
+                if result.effect.replayed is not None:
+                    call.set_attribute("connector.replayed", result.effect.replayed)
+        except CallFailed as failed:
+            error = failed.error
+            reason = f"{operation.name} failed: {error.cause} — {error.detail}"
+            if error.effect == "unknown" and not operation.repeatable:
+                reason += (
+                    "; the operation cannot recognise a repeat (idempotency: none), so the run "
+                    "did not retry it. Check the target system whether the effect happened "
+                    "before resuming: resuming repeats the call"
+                )
+            raise _StepFailed(
+                reason=reason,
+                retryable=error.retryable,
+                consumption=error.consumption,
+                adapter=resolved.adapter,
+                outcome="connector failed",
+            ) from failed
+        except ConnectorError as broken:
+            # The connector did not answer, or answered outside the contract: whether the
+            # call acted is unknown unless the operation recognises a repeat.
+            reason = f"{operation.name}: {broken}"
+            if operation.outward and not operation.repeatable:
+                reason += (
+                    "; the operation cannot recognise a repeat (idempotency: none), so the run "
+                    "did not retry it. Check the target system whether the effect happened "
+                    "before resuming: resuming repeats the call"
+                )
+            raise _StepFailed(
+                reason=reason,
+                retryable=not operation.outward or operation.repeatable,
+                consumption=None,
+                adapter=resolved.adapter,
+                outcome="connector unreachable",
+            ) from broken
+        if result.effect.kind != operation.effect:
+            raise _StepFailed(
+                reason=f"{operation.name} reported effect {result.effect.kind}, declared "
+                f"{operation.effect}: the connector broke its contract",
+                retryable=False,
+                consumption=result.consumption,
+                adapter=resolved.adapter,
+                outcome="connector broke the contract",
+            )
+        return result
+
+    def _source(
+        self, operation: Operation, input: Mapping[str, Any], output: Any
+    ) -> ProvenanceInput:
+        """A read through a connector is an external source the step read, with the digest of
+        what it answered: the moment and the content, so that "since when" stays answerable."""
+        canonical = json.dumps(output, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        given = json.dumps(input, ensure_ascii=False, sort_keys=True)
+        ref = f"{operation.name} {given}"
+        return ProvenanceInput(
+            kind=InputKind.SOURCE,
+            capability=operation.capability,
+            ref=ref if len(ref) <= SOURCE_REF_LENGTH else ref[: SOURCE_REF_LENGTH - 1] + "…",
+            digest=_digest(canonical),
+            observed_at=self._clock.now(),
+        )
+
+    async def _wait_until(
+        self, run: Run, step_run: StepRun, until: WaitUntil, span: Span
+    ) -> tuple[StepRun, Consumption | None]:
+        """Poll a read operation until the selected part of its output is expected, within
+        the timeout. A wait produces no result (ADR-0018); what it consumed is counted."""
+        resolved = await self._connector(step_run.step_id, until.capability)
+        operation = resolved.declaration.operation(until.operation)
+        if operation is None:
+            raise NoConnector(step_run.step_id, until.operation)
+        if operation.outward:
+            raise UnsupportedWork(step_run.step_id, "a wait reads an external state, never writes")
+        (input,), _ = await self._resolved(run, [until.input])
+        step_run = step_run.model_copy(update={"adapter": resolved.adapter})
+        used: dict[str, Any] = {}
+        waited = 0.0
+        while True:
+            result = await self._call(
+                run, step_run, resolved, operation, input, until.credentials, span
+            )
+            _accumulate(used, result.consumption)
+            try:
+                observed = select(result.output, until.select)
+            except KeyError:
+                observed = None
+            if observed in until.expect:
+                span.set_attribute("wait.observed", str(observed))
+                return step_run, _consumption(used)
+            if waited >= until.timeout_seconds:
+                raise _StepFailed(
+                    reason=f"waited {waited:.0f}s for {until.operation} {until.select} to be one "
+                    f"of {list(until.expect)}; last observed {observed!r}",
+                    retryable=True,
+                    consumption=_consumption(used),
+                    adapter=resolved.adapter,
+                    outcome="wait timed out",
+                )
+            await self._clock.sleep(until.poll_seconds)
+            waited += until.poll_seconds
+
+    async def _resolved(
+        self, run: Run, values: list[Any]
+    ) -> tuple[list[Any], tuple[ProvenanceInput, ...]]:
+        """The values with every `$from` reference replaced, and what was read to do so."""
+        referenced: set[StepId] = set()
+        artifacts: set[tuple[StepId, str]] = set()
+        for value in values:
+            referenced |= references(value)
+            artifacts |= artifact_references(value)
+        results, read = await self._results(run, referenced, artifacts)
+        contents: dict[str, Any] = {}
+        for step_id, artifact_id in artifacts:
+            contents[f"{step_id}/{artifact_id}"] = await self._artifact_content(
+                run, step_id, artifact_id
+            )
+        try:
+            return [resolve(value, results, contents) for value in values], read
+        except KeyError as missing:
+            raise RuleFailed(f"reference to {missing.args[0]!r} cannot be resolved") from missing
+
+    async def _artifact_content(self, run: Run, step_id: StepId, artifact_id: str) -> Any:
+        artifact = run.step_run(step_id).artifact(artifact_id)
+        if artifact is None:
+            raise RuleFailed(f"step {step_id!r} produced no artifact {artifact_id!r}")
+        content = await self._objects.get(artifact.digest)
+        if content is None:
+            raise RuleFailed(f"the content of artifact {artifact_id!r} is not available")
+        text = content.decode("utf-8", errors="replace")
+        if (artifact.media_type or "").startswith("application/json"):
+            try:
+                return json.loads(text)
+            except ValueError as error:
+                raise RuleFailed(f"artifact {artifact_id!r} is not the JSON it claims") from error
+        return text
 
     # --- worker steps ----------------------------------------------------------------------------
 
@@ -423,15 +790,16 @@ class RunEngine:
         span.set_attribute("adapter", adapter)
         resuming = step_run.checkpoint if step_run.state is StepState.STOPPED else None
         left = remaining(run.budget, run.consumed())
-        results, read = await self._results(run, references(work.task.inputs))
+        (inputs,), read = await self._resolved(run, [work.task.inputs])
         trace = Trace(inputs=read, adapter_version=resolved.version)
         assignment = Assignment(
             assignment_id=self._ids.new("asg"),
             task=Task(
                 goal=work.task.goal,
                 acceptance=work.task.acceptance,
-                inputs=resolve(work.task.inputs, results),
+                inputs=inputs,
             ),
+            credentials=work.credentials or None,
             context=Context(
                 workspace=work.workspace,
                 checkpoint_ref=None if resuming is None else resuming.ref,
@@ -662,15 +1030,16 @@ class RunEngine:
         return run, step_run
 
     async def _results(
-        self, run: Run, referenced: set[StepId]
+        self, run: Run, referenced: set[StepId], artifacts: set[tuple[StepId, str]] | None = None
     ) -> tuple[dict[StepId, Any], tuple[ProvenanceInput, ...]]:
         """What the referenced steps produced, for `$from` — and the same as provenance
         inputs: a result by digest, or every artifact by identifier and digest, each with the
-        moment it was read."""
+        moment it was read. A step referenced only through one of its artifacts is read too."""
         results: dict[StepId, Any] = {}
         read: list[ProvenanceInput] = []
+        wanted = referenced | {step_id for step_id, _ in (artifacts or set())}
         for step_run in run.step_runs:
-            if not step_run.done or step_run.step_id not in referenced:
+            if not step_run.done or step_run.step_id not in wanted:
                 continue
             observed_at = self._clock.now()
             checkpoint = step_run.checkpoint
@@ -740,6 +1109,16 @@ class RunEngine:
                             at=self._clock.now(),
                         ),
                     )
+                    if trace.egress is not None:
+                        # The effect left the system: the egress entry names the step's
+                        # result artifact and the digest of what went out (ADR-0022 §4).
+                        await self._record(
+                            run,
+                            f"egress.{trace.egress.kind}",
+                            step=step,
+                            outcome="replayed" if trace.egress.replayed else "acted",
+                            digest=trace.egress.content_digest,
+                        )
         return run
 
     async def _record(
@@ -750,6 +1129,7 @@ class RunEngine:
         step: StepRun | None = None,
         outcome: str | None = None,
         actor: str | None = None,
+        digest: Digest | None = None,
     ) -> LedgerEntry:
         refs = LedgerRefs(
             tenant=run.tenant,
@@ -775,8 +1155,7 @@ class RunEngine:
                     )
             elif step.consumption is not None:
                 consumption = step.consumption
-        digest = None
-        if step is not None and step.checkpoint is not None:
+        if digest is None and step is not None and step.checkpoint is not None:
             digest = step.checkpoint.result_digest
         return await self._ledger.record(
             run.tenant,
@@ -790,6 +1169,22 @@ class RunEngine:
                 content_digest=digest,
             ),
         )
+
+
+@dataclass(frozen=True)
+class _StepFailed(Exception):
+    """A local step that did not complete for a reason that is not a rule's: the connector
+    refused, vanished or broke its contract, a wait ran out. Carries what the step run records."""
+
+    reason: str
+    retryable: bool | None
+    consumption: Consumption | None
+    adapter: str | None
+    outcome: str
+
+
+def _digest(content: bytes) -> str:
+    return "sha256:" + hashlib.sha256(content).hexdigest()
 
 
 def _measured(span: Span, step_run: StepRun) -> None:
@@ -808,7 +1203,7 @@ def _measured(span: Span, step_run: StepRun) -> None:
         span.set_attribute("consumption.resource_class", consumption.resource_class)
 
 
-def _accumulate(used: dict[str, Any], event: ConsumptionReported) -> None:
+def _accumulate(used: dict[str, Any], event: ConsumptionQuantities) -> None:
     for name, value in event.quantities().items():
         if name == "currency" and isinstance(value, dict):
             totals: dict[str, float] = used.setdefault("currency", {})

@@ -82,14 +82,36 @@ coding worker, passing the suite in both authentication modes with every fault, 
 per tool call, tokens per step, money at the end; OpenTelemetry spans for run, step, worker
 and connector calls with the trace identifier on every ledger entry and log line, exported
 where `TAKTUS_OTLP_*` says; each worker in its own image and none in the control plane image
-(DEC-0011). Not yet: governance and anchors, `mlbench`, the cluster execution adapter, the
-container registry build and the Helm chart, the action half of the connector port and the
-run's binding of connector steps (the reference connector exists; intake reaches it, nothing
-calls its operations from a process), the identity component that would complete an intake
-event into a command, time triggers (the scheduler leads and ticks; nothing is scheduled),
-event reactions (the automation role starts and waits; the outbox exists, nothing writes it),
-a live run of the coding worker against its real agent in CI (it needs a credential; the gate
-runs the stand-in).
+(DEC-0011) · the action half of the connector and the first end-to-end (#13): the connector
+port in both directions, connector steps in the run with an idempotency key derived from run,
+step and attempt — a crash after the target acted is replayed, never repeated — and an egress
+entry for every outward effect (ADR-0022 made checkable at the source); branches, labels and
+the pipeline's verdict in the reference connector, proven against the real service across a
+restart; the model port with its adapter over the chat-completions dialect and `llm` steps
+whose answer leaves only when it passes the step's check; a provisional operator identity per
+tenant, marked as such (DEC-0013), and intake events completed into commands by it; P-02
+Refinement and P-03 Implementation of the dev-orchestration blueprint as bundles that run —
+proven end to end with the outside faked and everything inside real, and run for real against
+this repository up to the model step and the admission check (`docs/first-run.md`); ADR-0005
+now says for which consumption kinds the limit guarantee holds (DEC-0012).
+
+**Is `0.1.0` complete?** No. The completion criterion has two halves. *Every step carries
+method, exactness class and consumption* holds: every step of every bundle carries its method,
+its reason, its alternatives, a fallback where the method varies and an exactness class, and
+every step run records what it used. *Taktus turns one of its own issues into a pull request
+that passes CI* has not happened: the first run (`docs/first-run.md`) reached the
+language-model step of P-02 and the admission check of P-03 against the real repository and
+stopped there, because the session had no credential for a model endpoint and none for the
+coding agent. `tools/first_run.sh 11` is the one command that finishes it once those exist;
+it needs this pull request merged first, so that the pipeline runs on the branch P-03 creates.
+Also not yet, from the list above: `mlbench` (its real work is `0.4.0`; no proof-case worker
+of that shape exists yet), the model contract as a schema with a conformance suite (the port
+and one adapter exist), governance and anchors, the cluster execution adapter, the container
+registry build and the Helm chart, the identity component (a provisional identity stands in
+for it), time triggers (the scheduler leads and ticks; nothing is scheduled), event reactions
+(the automation role starts and waits; the outbox exists, nothing writes it; an intake event is
+completed into a command by hand), and a live run of the coding worker against its real agent
+in CI (it needs a credential; the gate runs the stand-in).
 
 ### `0.2.0` — governance, limits, availability
 Autonomy levels 1–3 per process **and per action class** · anchors, configurable per tenant ·

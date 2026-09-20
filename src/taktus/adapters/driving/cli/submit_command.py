@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 import yaml
@@ -25,6 +25,9 @@ from taktus.adapters.driving.cli.run_command import (
     _budget,
     _command,
     _load,
+    parse_inputs,
+    require_inputs,
+    resolve_identity,
 )
 from taktus.adapters.driving.cli.wiring import NotOperable, Wiring
 from taktus.components.command.application.service import CommissionPlan
@@ -47,11 +50,20 @@ def submit(
         typer.Option("--state-dir", envvar="TAKTUS_STATE_DIR", help="Where artifact bytes go."),
     ] = Path(DEFAULT_STATE_DIR),
     identity: Annotated[
-        str, typer.Option("--identity", help="The identity the command is attributed to.")
-    ] = "idn_local",
+        str | None,
+        typer.Option(
+            "--identity",
+            help="The identity the command is attributed to; default: the provisional "
+            "operator identity of the tenant (TAKTUS_PROVISIONAL_IDENTITY).",
+        ),
+    ] = None,
     tenant: Annotated[
         str, typer.Option("--tenant", envvar="TAKTUS_TENANT", help="The tenant of the run.")
     ] = DEFAULT_TENANT,
+    input: Annotated[
+        list[str] | None,
+        typer.Option("--input", metavar="NAME=VALUE", help="One input of the run, repeatable."),
+    ] = None,
 ) -> None:
     """Queue a process bundle for the daemon and print the run's identifier.
 
@@ -61,6 +73,7 @@ def submit(
     wiring: Wiring = ctx.obj
     try:
         bundle = _load(process)
+        inputs = parse_inputs(input or [])
     except (OSError, yaml.YAMLError, ValueError) as error:
         typer.echo(f"cannot read {process}: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -73,6 +86,7 @@ def submit(
                 worker_endpoint=worker,
                 identity=identity,
                 tenant=tenant,
+                inputs=inputs,
             )
         )
     except InvalidProcess as error:
@@ -92,8 +106,9 @@ async def _submit(
     *,
     state_dir: Path,
     worker_endpoint: str,
-    identity: str,
+    identity: str | None,
     tenant: str,
+    inputs: dict[str, Any],
 ) -> str:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
         if not services.queued:
@@ -102,11 +117,13 @@ async def _submit(
                 "TAKTUS_DATABASE_URL_FILE (or TAKTUS_DATABASE_URL) — in memory, use `run`"
             )
         typer.echo(f"state  {services.storage}", err=True)
+        identity = await resolve_identity(services, identity, tenant)
         version = await services.register_version.execute(
             RegisterProcessVersion(bundle, tenant=tenant)
         )
         budget = _budget(version)
-        command = _command(services, version, identity, tenant)
+        require_inputs(version, inputs)
+        command = _command(services, version, identity, tenant, inputs)
         plan = await services.commission.execute(
             CommissionPlan(
                 command=command,
@@ -124,6 +141,7 @@ async def _submit(
                 process_version=version.ref,
                 actor=identity,
                 tenant=tenant,
+                inputs=inputs,
             )
         )
         return run.id

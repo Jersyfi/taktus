@@ -110,9 +110,14 @@ the worker's refusal is the record.
 
 `context.workspace` of kind `git` with a `location` is cloned into `<state>/workspaces/<id>`
 (the branch `ref` if given); any other kind starts empty. The workspace is made a repository if
-it is not one, and a baseline commit is made. The task's goal, acceptance and inputs become the
-agent's prompt. Every completed tool call that changed the workspace is committed and announced
-as an artifact `change-N` of kind `patch`; the final summary is the artifact `summary`.
+it is not one, and a baseline commit is made and tagged. The task's goal, acceptance and inputs
+become the agent's prompt. Every completed tool call that changed the workspace is committed and
+announced as an artifact `change-N` of kind `patch`; at the end, the artifact `summary` is the
+agent's own account of what it did, and the artifact `changeset` (`application/json`) is every
+file changed since the baseline with its full content — text as text, anything else as base64 —
+and every file deleted, by path: what a run hands to a repository connector to put the change
+on a branch (`repository.branches.create`), so that the worker never pushes and never holds a
+credential to the repository.
 
 ## What it cannot do
 

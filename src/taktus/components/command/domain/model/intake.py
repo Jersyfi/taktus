@@ -3,8 +3,10 @@ the identity component to say who the sender is (control-plane.md §2).
 
 A connector cannot know the Taktus identity behind an account, so what it accepts is not yet a
 command and gets no execution. It is kept, under the event identifier the source system gave
-the delivery — a redelivery replaces rather than duplicates — so that the identity component,
-when it exists, completes it, and so that a person can see what arrived and was not acted on.
+the delivery — a redelivery replaces rather than duplicates — so that it can be completed
+into a command by the identity the identity port answers (`complete_intake.py`; today the
+provisional operator identity, DEC-0013), and so that a person can see what arrived and was
+not acted on.
 """
 
 from __future__ import annotations
@@ -20,7 +22,9 @@ from taktus.shared.v1 import Capability, Value
 
 class IntakeStatus(StrEnum):
     AWAITING_IDENTITY = "awaiting_identity"
-    """Accepted by the connector; nobody has mapped the sender to an identity yet."""
+    """Accepted by the connector and placed in a tenant; not yet completed into a command."""
+    COMPLETED = "completed"
+    """Completed into the command `command_id` by the identity the resolver answered."""
 
 
 class IntakeEvent(Value):
@@ -39,3 +43,5 @@ class IntakeEvent(Value):
     occurred_at: datetime
     received_at: datetime
     status: IntakeStatus = IntakeStatus.AWAITING_IDENTITY
+    command_id: str | None = Field(default=None, min_length=1)
+    completed_at: datetime | None = None

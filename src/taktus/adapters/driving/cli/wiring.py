@@ -21,6 +21,7 @@ from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
+from taktus.ports.identity import IdentityResolver
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, UnitOfWork
 
@@ -47,6 +48,10 @@ class Services:
     queued: bool = False
     """Whether `engine.submit` has a queue a daemon claims from: true with a database, where
     `taktusd` runs; false in memory, where nothing else executes."""
+    identities: IdentityResolver | None = None
+    """Who a command line invocation acts as, when `--identity` does not say: today the
+    provisional operator identity of the tenant (DEC-0013); None when none is configured,
+    and then nothing executes without `--identity`."""
 
 
 class Wiring(Protocol):

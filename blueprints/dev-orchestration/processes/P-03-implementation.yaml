@@ -1,0 +1,317 @@
+# P-03 Implementation — an issue that is ready becomes a pull request.
+#
+# The third process of the dev-orchestration blueprint (blueprint.yaml, README.md), as a
+# bundle that runs. A coding worker implements the issue in a clone of the repository; the run
+# — not the worker — puts the change on a branch through the repository connector, waits for
+# the pipeline, takes the pipeline's verdict, and opens the pull request. Nothing here writes
+# to the base branch: the pull request is opened, the pipeline decides, a person merges.
+#
+#     uv run taktusctl run --process blueprints/dev-orchestration/processes/P-03-implementation.yaml \
+#         --input issue=11 --input repository_url=https://host/owner/name.git \
+#         --input repository_host=host --input coding_credential=CODING_AGENT_API_KEY
+#
+# Inputs: `issue`, the issue's number; `repository_url`, where the worker clones from;
+# `repository_host`, the one host the worker may reach (the clone's); `coding_credential`, the
+# name of the credential the coding worker's authentication needs (its README). The connector
+# configured for `repository.*` and the worker configured for `code.*` are what the
+# capabilities resolve to; no product is named here.
+
+id: p03-implementation
+version: "1"
+name: P-03 Implementation
+autonomy: 4
+author: the repository
+reason: the third process of the dev-orchestration blueprint, runnable
+
+triggers:
+  - event: issue.ready
+    condition: capacity.available
+
+inputs:
+  issue:
+    description: the number of the issue to implement
+    example: 11
+  repository_url:
+    description: where the coding worker clones the repository from
+    example: https://repo.example/owner/name.git
+  repository_host:
+    description: the one host the worker may reach — the clone's
+    example: repo.example
+  coding_credential:
+    description: the name of the credential the coding worker's authentication needs
+    example: CODING_AGENT_API_KEY
+
+# The worker's estimate is admitted against the currency and the quota; its tokens are counted
+# per step, its money at the end (ADR-0005, amendment). Connector calls count in requests.
+limits:
+  currency: { usd: 5.0 }
+  quota: { units: 200 }
+
+steps:
+  - id: read-issue
+    method: rule
+    reason: the issue is read verbatim from the system of record
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    work:
+      rule: connector
+      operation: repository.issues.read
+      input:
+        number: { $input: issue }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: read-comments
+    method: rule
+    reason: the acceptance criteria P-02 wrote are a comment; the discussion is context
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    depends_on: [read-issue]
+    work:
+      rule: connector
+      operation: repository.comments.list
+      input:
+        number: { $input: issue }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: context
+    method: rule
+    reason: the issue and its comments as one text, for the check and for the worker
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [read-issue, read-comments]
+    work:
+      rule: template
+      text: |
+        # ${title}
+
+        ${body}
+
+        ## Discussion (JSON)
+
+        ${comments}
+      values:
+        title: { $from: read-issue, $select: output.title }
+        body: { $from: read-issue, $select: output.body }
+        comments: { $from: read-comments, $select: output.comments }
+
+  - id: admit
+    method: rule
+    reason: >
+      ready means: open, not a pull request, and acceptance criteria present in the issue or
+      its discussion — a machine check; the run's budget is checked by admission control
+      before every step, not here
+    rejected:
+      - method: llm
+        why: a fixed set of conditions needs no judgement, and a judgement could be wrong
+    exactness: exact
+    depends_on: [context]
+    work:
+      rule: check
+      conditions:
+        - value: { $from: read-issue, $select: output.state }
+          equals: open
+        - value: { $from: read-issue, $select: output.is_pull_request }
+          equals: false
+        # Present anywhere in the issue or its discussion; the discussion is JSON text, so the
+        # heading is looked for as a phrase here, unlike P-02's check for its absence.
+        - value: { $from: context }
+          matches: "## Acceptance criteria"
+
+  - id: implement
+    method: worker
+    reason: >
+      changing code to meet acceptance criteria is multi-step work with tools in an isolated
+      workspace, which is what a worker offers; the worker proposes, the pipeline decides
+    rejected:
+      - method: llm
+        why: a single completion cannot read a repository, run its tests and revise
+      - method: rule
+        why: the core executes no code itself; that is the adapter obligation
+    exactness: tolerant
+    fallback:
+      when: the assignment fails, is stopped twice, or the pipeline is red
+      to: human
+    requires: [code.read, code.edit, code.test, shell.sandboxed]
+    depends_on: [admit]
+    work:
+      task:
+        goal: >
+          implement the issue given in the inputs — its title, text and discussion, with the
+          section "Acceptance criteria" — so that every criterion holds
+        acceptance:
+          - every item of the section "Acceptance criteria" in the issue or its discussion holds
+          - the repository's own checks pass where they can be run in the workspace
+          - no secret value is written into any file
+          - the change is small and touches only what the issue names
+        inputs:
+          issue: { $input: issue }
+          title: { $from: read-issue, $select: output.title }
+          context: { $from: context }
+      max_steps: 40
+      workspace:
+        kind: git
+        location: { $input: repository_url }
+      allowed_hosts:
+        - { $input: repository_host }
+      credentials:
+        - { name: { $input: coding_credential }, injected_as: env }
+
+  - id: branch-name
+    method: rule
+    reason: the branch is named by the issue, deterministically
+    rejected: []
+    exactness: exact
+    depends_on: [admit]
+    work:
+      rule: template
+      text: taktus/issue-${issue}
+      values:
+        issue: { $input: issue }
+
+  - id: create-branch
+    method: rule
+    reason: >
+      the worker's change goes onto a branch through the connector — the run writes outward,
+      never the worker — as one commit that carries the idempotency key; the effect leaves
+      the system
+    rejected:
+      - method: worker
+        why: a worker that pushes has a credential to the repository and writes outward past the ledger
+    exactness: sourced
+    depends_on: [implement, branch-name]
+    work:
+      rule: connector
+      operation: repository.branches.create
+      input:
+        name: { $from: branch-name }
+        base: main
+        message: { $from: read-issue, $select: output.title }
+        files: { $from: implement, $artifact: changeset, $select: files }
+        deleted: { $from: implement, $artifact: changeset, $select: deleted }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: wait-for-pipeline
+    method: wait
+    reason: the pipeline runs on its own time; the run waits for its verdict, polling the state
+    rejected: []
+    depends_on: [create-branch]
+    work:
+      until:
+        operation: repository.pipelines.status
+        input:
+          ref: { $from: branch-name }
+        credentials:
+          - { name: REPOSITORY_TOKEN, injected_as: env }
+        select: state
+        expect: [success, failure]
+        poll_seconds: 30
+        timeout_seconds: 2400
+
+  - id: read-pipeline
+    method: rule
+    reason: the pipeline's verdict, read once more so that the check below has a result to hold
+    rejected: []
+    exactness: sourced
+    depends_on: [wait-for-pipeline]
+    work:
+      rule: connector
+      operation: repository.pipelines.status
+      input:
+        ref: { $from: branch-name }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: verify
+    method: rule
+    reason: >
+      whether the change is acceptable is the pipeline's verdict, never the worker's opinion of
+      its own work: a check over the state the pipeline reported
+    rejected:
+      - method: worker
+        why: a variable method never produces an exact result (ADR-0014)
+      - method: llm
+        why: a judgement of test output is not a verdict; the pipeline's conclusion is
+    exactness: exact
+    depends_on: [read-pipeline]
+    work:
+      rule: check
+      conditions:
+        - value: { $from: read-pipeline, $select: output.state }
+          equals: success
+
+  - id: pull-request-title
+    method: rule
+    reason: the title names the issue, deterministically
+    rejected: []
+    exactness: exact
+    depends_on: [verify]
+    work:
+      rule: template
+      text: "${title} (#${issue})"
+      values:
+        title: { $from: read-issue, $select: output.title }
+        issue: { $input: issue }
+
+  - id: pull-request-body
+    method: rule
+    reason: the body links the issue and carries the worker's own summary of what it did
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model; the summary is the worker's
+    exactness: sourced
+    depends_on: [verify]
+    work:
+      rule: template
+      text: |
+        Closes #${issue}.
+
+        ${summary}
+
+        ---
+        Opened by Taktus, process P-03 Implementation: the change was made by a coding worker
+        in an isolated workspace, put on this branch by the run, and the pipeline's verdict
+        was read before this pull request was opened. A person merges.
+      values:
+        issue: { $input: issue }
+        summary: { $from: implement, $artifact: summary }
+
+  - id: open-pr
+    method: rule
+    reason: opening a pull request is an API call; a repeat after a restart finds the one opened
+    rejected: []
+    exactness: sourced
+    depends_on: [pull-request-title, pull-request-body]
+    work:
+      rule: connector
+      operation: repository.pullrequests.open
+      input:
+        head: { $from: branch-name }
+        base: main
+        title: { $from: pull-request-title }
+        body: { $from: pull-request-body }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: label
+    method: rule
+    reason: the pull request is marked as Taktus's, so that a reader sees who opened it
+    rejected: []
+    exactness: sourced
+    depends_on: [open-pr]
+    work:
+      rule: connector
+      operation: repository.labels.set
+      input:
+        number: { $from: open-pr, $select: output.number }
+        labels: [taktus]
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }

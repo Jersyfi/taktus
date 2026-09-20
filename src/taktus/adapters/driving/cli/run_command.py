@@ -11,6 +11,7 @@ step boundary; the bundle is read again, so that a changed `limits` block is a c
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from collections.abc import Sequence
 from pathlib import Path
@@ -36,6 +37,8 @@ from taktus.shared.v1 import Command, ConsumptionQuantities, Intent, LedgerEntry
 DEFAULT_WORKER = "http://127.0.0.1:9000"
 DEFAULT_STATE_DIR = "~/.cache/taktus/taktusctl"
 DEFAULT_TENANT = "default"
+CLI_ACCOUNT = "local"
+"""How the CLI channel names its one sender to the identity port: it authenticates nobody."""
 
 
 def run(
@@ -71,13 +74,15 @@ def run(
         ),
     ] = Path(DEFAULT_STATE_DIR),
     identity: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--identity",
-            help="The identity the command is attributed to. The CLI channel authenticates "
-            "nobody yet; this is an opaque label, not a name.",
+            help="The identity the command is attributed to and the run acts on behalf of. "
+            "Default: the provisional operator identity configured for the tenant "
+            "(TAKTUS_PROVISIONAL_IDENTITY). The CLI channel authenticates nobody yet; this is "
+            "an opaque label, not a name.",
         ),
-    ] = "idn_local",
+    ] = None,
     tenant: Annotated[
         str,
         typer.Option(
@@ -87,6 +92,15 @@ def run(
             "one, created by the migration.",
         ),
     ] = DEFAULT_TENANT,
+    input: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--input",
+            metavar="NAME=VALUE",
+            help="One input of the run, repeatable: what `$input` references in the bundle "
+            "resolve to. A value that reads as JSON is JSON, anything else is text.",
+        ),
+    ] = None,
 ) -> None:
     """Run a process bundle against a worker and print the ledger and the consumption.
 
@@ -96,6 +110,7 @@ def run(
     wiring: Wiring = ctx.obj
     try:
         bundle = _load(process)
+        inputs = parse_inputs(input or [])
     except (OSError, yaml.YAMLError, ValueError) as error:
         typer.echo(f"cannot read {process}: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -111,6 +126,7 @@ def run(
                 stop_after=stop_after,
                 identity=identity,
                 tenant=tenant,
+                inputs=inputs,
             )
         )
     except InvalidProcess as error:
@@ -132,6 +148,54 @@ def _load(path: Path) -> dict[str, Any]:
     return document
 
 
+def require_inputs(version: ProcessVersion, inputs: dict[str, Any]) -> None:
+    """Every input the bundle declares is given, or the invocation is refused naming each
+    missing one with its description and an example."""
+    missing = [name for name in version.inputs if name not in inputs]
+    if not missing:
+        return
+    lines = [
+        f"  --input {name}={json.dumps(version.inputs[name].example)}  "
+        f"({version.inputs[name].description})"
+        for name in missing
+    ]
+    raise NotOperable(
+        f"the bundle {version.ref} needs {len(missing)} more input(s):\n" + "\n".join(lines)
+    )
+
+
+async def resolve_identity(services: Services, given: str | None, tenant: str) -> str:
+    """The identity the invocation acts as: `--identity` when given, else what the identity
+    port answers for the CLI channel in this tenant. Nothing executes without one
+    (control-plane.md §2)."""
+    if given is not None:
+        return given
+    if services.identities is not None:
+        resolution = await services.identities.resolve("channel.cli", CLI_ACCOUNT, tenant=tenant)
+        if resolution is not None:
+            note = " (provisional: DEC-0013)" if resolution.provisional else ""
+            typer.echo(f"identity  {resolution.identity}{note}", err=True)
+            return resolution.identity
+    raise NotOperable(
+        "nothing executes without an identity: set TAKTUS_PROVISIONAL_IDENTITY="
+        f"{tenant}=<identity> (provisional, DEC-0013) or pass --identity"
+    )
+
+
+def parse_inputs(given: list[str]) -> dict[str, Any]:
+    """`name=value` pairs; a value that reads as JSON is JSON, anything else is text."""
+    inputs: dict[str, Any] = {}
+    for item in given:
+        name, separator, value = item.partition("=")
+        if not separator or not name.strip():
+            raise ValueError(f"--input {item!r} is not NAME=VALUE")
+        try:
+            inputs[name.strip()] = json.loads(value)
+        except ValueError:
+            inputs[name.strip()] = value
+    return inputs
+
+
 async def _run(
     wiring: Wiring,
     bundle: dict[str, Any],
@@ -141,17 +205,20 @@ async def _run(
     worker_endpoint: str,
     resume: str | None,
     stop_after: int | None,
-    identity: str,
+    identity: str | None,
     tenant: str,
+    inputs: dict[str, Any],
 ) -> Run:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
         typer.echo(f"state  {services.storage}")
+        identity = await resolve_identity(services, identity, tenant)
         version = await services.register_version.execute(
             RegisterProcessVersion(bundle, tenant=tenant)
         )
         budget = _budget(version)
         if resume is None:
-            run = await _start(services, version, budget, identity, tenant, stop_after)
+            require_inputs(version, inputs)
+            run = await _start(services, version, budget, identity, tenant, stop_after, inputs)
         else:
             run = await services.engine.resume(
                 ResumeRun(
@@ -177,8 +244,9 @@ async def _start(
     identity: str,
     tenant: str,
     stop_after: int | None,
+    inputs: dict[str, Any],
 ) -> Run:
-    command = _command(services, version, identity, tenant)
+    command = _command(services, version, identity, tenant, inputs)
     plan = await services.commission.execute(
         CommissionPlan(
             command=command,
@@ -197,18 +265,27 @@ async def _start(
             actor=identity,
             tenant=tenant,
             stop_after=stop_after,
+            inputs=inputs,
         )
     )
 
 
-def _command(services: Services, version: ProcessVersion, identity: str, tenant: str) -> Command:
-    """The invocation as a command on the `channel.cli` capability."""
+def _command(
+    services: Services,
+    version: ProcessVersion,
+    identity: str,
+    tenant: str,
+    inputs: dict[str, Any],
+) -> Command:
+    """The invocation as a command on the `channel.cli` capability; the inputs are its
+    context, the way an issue or a thread is a channel's."""
     return Command(
         id=services.ids.new("cmd"),
         channel="channel.cli",
         identity=identity,
         org_path=(tenant,),
         intent=Intent(raw=f"run {version.ref}", recognised="process.run"),
+        context={"inputs": inputs} if inputs else None,
         reply_to=ReplyTo(channel="channel.cli", address="stdout"),
         received_at=services.clock.now(),
     )

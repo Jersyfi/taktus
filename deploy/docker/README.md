@@ -33,7 +33,8 @@ which gives it volumes of its own. Nothing here removes a volume. From then on:
 | `http://127.0.0.1:8080/health` | liveness: the process is alive |
 | `http://127.0.0.1:8080/ready` | readiness: the database answers and is at the schema this build needs; `503` with the reason otherwise |
 | `http://127.0.0.1:8080/runs`, `/runs/{id}`, `/runs/{id}/ledger` | the read API |
-| `http://127.0.0.1:8080/intake/{channel}` | webhook intake for a channel a connector serves (`TAKTUS_CONNECTORS`) |
+| `http://127.0.0.1:8080/intake/{channel}` | webhook intake for a channel a connector serves (`TAKTUS_CONNECTORS`); the sender is placed by the provisional identity (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013) |
+| `http://127.0.0.1:8080/intake-events/{id}/complete` | completes an accepted delivery into a command that acts as the tenant's provisional operator identity |
 | `docker compose -f deploy/docker/compose.yml exec taktus taktusctl submit --process …` | queue a bundle for the daemon; prints the run's identifier |
 
 `make down` stops the containers and keeps every volume — the database, the artifact bytes,
@@ -42,7 +43,8 @@ and the reference worker's state if it ran. Removing a volume is the operator's 
 without asking (CLAUDE.md §9). The configuration is the `TAKTUS_*` variables of
 `.env.example`; `compose.yml` sets what a container needs (`0.0.0.0`, the secret file,
 migrations on start) and passes `TAKTUS_ROLES`, `TAKTUS_PATH_PREFIX`, `TAKTUS_WORKER`,
-`TAKTUS_HTTP_PORT`, `TAKTUS_SHUTDOWN_CEILING_SECONDS` and `TAKTUS_LOG_LEVEL` through from
+`TAKTUS_HTTP_PORT`, `TAKTUS_PROVISIONAL_IDENTITY` (default `default=idn_operator`, DEC-0013),
+`TAKTUS_SHUTDOWN_CEILING_SECONDS` and `TAKTUS_LOG_LEVEL` through from
 the environment of `make up`.
 
 **Readiness and health are different questions.** A container whose database is gone answers

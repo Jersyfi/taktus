@@ -54,7 +54,7 @@ taktus/
 │   │       ├── application/
 │   │       │   ├── service/         # one use case per module
 │   │       │   └── query/           # read side (CQRS): run/application/query/provenance.py walks and verifies the chain
-│   │       └── ports/               # ports this component alone needs (run/ports/workers.py)
+│   │       └── ports/               # ports this component alone needs (run/ports/workers.py, connectors.py, models.py)
 │   │   … run/domain/service/provenance.py builds and verifies the provenance chain (ADR-0021)
 │   │   … governance/domain/service/egress.py decides whether a result has left the system (ADR-0022)
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
@@ -62,11 +62,12 @@ taktus/
 │   │
 │   ├── ports/                       # cross-cutting ports
 │   │   ├── worker.py                # CONTRACT 1 — execution units: the contract's shapes and the protocol
-│   │   ├── connector.py             # CONTRACT 2 — tools and channels: the intake half today, the actions with 0.2.0
-│   │   ├── model.py                 # CONTRACT 3 — models
+│   │   ├── connector.py             # CONTRACT 2 — tools and channels: intake, and actions with a call context, a declared effect and a classified failure
+│   │   ├── model.py                 # CONTRACT 3 — models: a prompt in, a completion with its tokens and the answering model out; resolved by purpose
 │   │   ├── execution.py             # how a unit comes to exist for a job: process | container | cluster; the fail-closed refusal of no isolation from level 3
 │   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore, ProvenanceStore, UnitOfWork — every call names its tenant
 │   │   ├── ledger.py                # facts in, chained entries out, verify — one chain per tenant
+│   │   ├── identity.py              # who acts: a sender on a channel placed in a tenant as an identity; served PROVISIONALLY by adapters/driven/identity (DEC-0013)
 │   │   ├── configuration.py         # what an instance is told about itself, by key; Secret; ConfigurationError
 │   │   ├── queue.py                 # jobs a runner claims once, as a lease it renews (ADR-0002)
 │   │   ├── leadership.py            # one instance leads a singular role; a dead leader is replaced
@@ -87,9 +88,10 @@ taktus/
 │   │       ├── execution/           # process.py: a unit as a child process; container/: a unit per job in a container with limits, credentials in memory, an egress proxy
 │   │       ├── objectstore/ secret/ ledger/
 │   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
-│   │       ├── connectors/mcp/      # the connector port as an MCP client: intake today
+│   │       ├── connectors/mcp/      # the connector port as an MCP client: intake and actions; connectors/pool.py maps capabilities
 │   │       ├── connectors/{chat,http}/
-│   │       └── models/{openai_compatible,anthropic,ollama}/
+│   │       ├── identity/            # PROVISIONAL: one configured operator identity per tenant, until the identity component (DEC-0013)
+│   │       └── models/              # openai_compatible/: the model port over the chat-completions dialect; pool.py maps purposes
 │   │
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
@@ -251,5 +253,7 @@ role it would tie the core to a model stack and the removal test would be lost.
   process exits 0. A role still running at the ceiling is abandoned and its run recovered by
   the next runner from its last persisted boundary.
 - **Tenants.** Until the identity component exists, an instance is told which tenants it serves
-  (`TAKTUS_TENANTS`, default `default`); the runner claims for each in turn, and an intake
-  lands in the first.
+  (`TAKTUS_TENANTS`, default `default`); the runner claims for each in turn. An intake lands
+  in the tenant the identity port places its sender in — with the provisional identity
+  (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013), the one configured tenant; with none configured,
+  the first tenant, as a stated fallback.

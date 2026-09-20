@@ -31,6 +31,7 @@ from sqlalchemy.exc import DBAPIError
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
+from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
 from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.postgres import (
     PostgresLeadership,
@@ -48,6 +49,7 @@ from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.components.command.application.service import (
     CommissionPlanHandler,
+    CompleteIntakeHandler,
     ReceiveIntakeHandler,
 )
 from taktus.components.command.domain.model import IntakeEvent
@@ -65,7 +67,7 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
-from taktus.composition.execution import open_worker, telemetry_of
+from taktus.composition.execution import connector_pool, model_pool, open_worker, telemetry_of
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.settings import Role, Settings, load
 from taktus.ports.configuration import Configuration, ConfigurationError
@@ -95,6 +97,7 @@ class Wired:
     register_version: RegisterProcessVersionHandler
     commission: CommissionPlanHandler
     intake: ReceiveIntakeHandler
+    complete_intake: CompleteIntakeHandler | None
     leadership: Leadership
     clock: SystemClock
     ids: SystemIdentifiers
@@ -149,6 +152,14 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
         clock = SystemClock()
         ids = SystemIdentifiers()
         telemetry = telemetry_of(settings.telemetry)
+        # PROVISIONAL (DEC-0013): who acts is configured, not authenticated, until the
+        # identity component exists. Without it an intake is placed in the first tenant and
+        # can be completed by nobody.
+        identities = (
+            ProvisionalOperatorIdentity(settings.provisional_identity)
+            if settings.provisional_identity
+            else None
+        )
         runs = PostgresRepository(persistence, Run)
         ledger = ChainedLedger(PostgresLedgerStore(persistence), clock)
         provenance_store = PostgresProvenanceStore(persistence)
@@ -169,6 +180,8 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                 telemetry=telemetry,
                 queue=queue,
                 options=EngineOptions(step_ceiling_seconds=settings.shutdown_ceiling_seconds),
+                connectors=connector_pool(settings.connectors),
+                models=model_pool(settings.model),
             )
             wired = Wired(
                 settings=settings,
@@ -197,6 +210,17 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                     PostgresRepository(persistence, IntakeEvent),
                     persistence,
                     telemetry,
+                    identities,
+                ),
+                complete_intake=None
+                if identities is None
+                else CompleteIntakeHandler(
+                    PostgresRepository(persistence, IntakeEvent),
+                    PostgresRepository(persistence, Command),
+                    identities,
+                    persistence,
+                    clock,
+                    ids,
                 ),
                 leadership=PostgresLeadership(persistence.engine),
                 clock=clock,

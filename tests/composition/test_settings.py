@@ -40,6 +40,8 @@ def test_defaults_are_the_self_hosting_shape() -> None:
     assert loaded.instance == "host-1"
     assert loaded.migrate_on_start is False
     assert loaded.connectors == {}
+    assert loaded.provisional_identity == {}
+    assert loaded.model.endpoint is None and loaded.model.purposes == ("*",)
     assert loaded.database.reveal() == URL
     assert loaded.database_source == "environment"
 
@@ -62,6 +64,10 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
                 "TAKTUS_EXECUTION_MEMORY_MB": "256",
                 "TAKTUS_EXECUTION_WALL_SECONDS": "120",
                 "TAKTUS_CONNECTORS": "channel.repo=http://connector:9100/mcp",
+                "TAKTUS_PROVISIONAL_IDENTITY": "default=idn_owner,acme=idn_acme",
+                "TAKTUS_MODEL_ENDPOINT": "http://models:8000/v1",
+                "TAKTUS_MODEL_NAME": "local-model",
+                "TAKTUS_MODEL_PURPOSES": "reasoning,triage",
                 "TAKTUS_STATE_DIR": str(tmp_path / "state"),
                 "TAKTUS_TENANTS": "default,acme",
                 "TAKTUS_INSTANCE": "runner-7",
@@ -84,6 +90,9 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
     assert loaded.execution.unit == "python3 worker.py"
     assert (loaded.execution.memory_mb, loaded.execution.wall_seconds) == (256, 120)
     assert loaded.connectors == {"channel.repo": "http://connector:9100/mcp"}
+    assert loaded.provisional_identity == {"default": "idn_owner", "acme": "idn_acme"}
+    assert loaded.model.endpoint == "http://models:8000/v1" and loaded.model.name == "local-model"
+    assert loaded.model.purposes == ("reasoning", "triage") and loaded.model.credential is None
     assert loaded.state_dir == tmp_path / "state"
     assert loaded.tenants == ("default", "acme")
     assert loaded.instance == "runner-7"
@@ -111,6 +120,9 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
         ("TAKTUS_CONNECTORS", "Repo=http://x", "not a capability"),
         ("TAKTUS_CONNECTORS", "channel.repo=ftp://x", "not an http(s) URL"),
         ("TAKTUS_CONNECTORS", "channel.repo=http://x,channel.repo=http://y", "mapped twice"),
+        ("TAKTUS_PROVISIONAL_IDENTITY", "default", "not tenant=identity"),
+        ("TAKTUS_MODEL_ENDPOINT", "models:8000", "not an http(s) URL"),
+        ("TAKTUS_PROVISIONAL_IDENTITY", "default=a,default=b", "given twice"),
         ("TAKTUS_TENANTS", "a,a", "names an entry twice"),
         ("TAKTUS_SHUTDOWN_CEILING_SECONDS", "0", "at least 1"),
         ("TAKTUS_LEASE_SECONDS", "1", "at least 5"),
@@ -140,6 +152,8 @@ def test_a_launching_execution_kind_needs_its_unit() -> None:
     with pytest.raises(ConfigurationError, match="TAKTUS_EXECUTION_UNIT: is not set") as raised:
         settings(TAKTUS_EXECUTION="container")
     assert "an image reference" in str(raised.value)
+    with pytest.raises(ConfigurationError, match="TAKTUS_MODEL_NAME: is not set"):
+        settings(TAKTUS_MODEL_ENDPOINT="http://models:8000/v1")
 
 
 def test_the_prefix_is_normalised() -> None:
@@ -155,7 +169,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 31, "every setting is in the startup log"
+    assert len(effective) == 36, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:

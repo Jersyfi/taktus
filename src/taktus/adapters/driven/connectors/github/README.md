@@ -29,19 +29,30 @@ The resource `taktus://connector/v1/capabilities` ([`declaration.py`](declaratio
 | `repository.pullrequests.read` | read | — | |
 | `repository.pullrequests.open` | write | marked | the key in the body of the pull request for that head branch — exact, because the service keeps at most one open pull request per head |
 | `repository.pipelines.read` | read | — | |
+| `repository.pipelines.status` | read | — | the runs for the head of a branch (or a commit), and one word for their state: `none`, `pending`, `success`, `failure` — the pipeline's verdict, never the connector's |
 | `repository.pipelines.trigger` | write | **none** | not at all: a workflow dispatch answers 204 with no run identifier |
 | `repository.comments.list` | read | — | |
 | `repository.comments.create` | write | marked | the key in a comment of that issue, all pages |
+| `repository.branches.create` | write | marked | the branch by its name, which the service keeps unique; the key as a trailer `Taktus-Idempotency-Key:` in the message of the commit at its head. The branch carries one commit on top of its base with the given files (or none: an empty commit, so that a bare branch is findable too), made through the object interface — blobs, a tree, a commit, the reference. A branch of that name whose head carries another key, or none, is somebody else's: `conflict` |
+| `repository.labels.set` | write | marked | the label itself, on the issue: the operation reads the issue's labels before adding any, and a repeat that finds every requested label present adds nothing and reports `replayed`. **Weaker than a key in a body, and stated so:** the lookup is by label, not by key, so a repeat with a *new* key that sets a label already present is reported replayed as well — it acts on nothing either way |
 
 The mark is an HTML comment at the end of the body, `<!-- taktus-idempotency-key … -->`,
-invisible when rendered. Every `marked` operation looks for it **before** acting
-([`operations.py`](operations.py)); the connector keeps no memory of what it did, the service
-does, and that memory survives a restart of the connector. The test that tries to open a pull
-request twice for the same step across a restart is
-`tests/adapters/connectors/test_repository_actions.py`.
+invisible when rendered, or a git trailer in a commit message. Every `marked` operation looks
+for it **before** acting ([`operations.py`](operations.py)); the connector keeps no memory of
+what it did, the service does, and that memory survives a restart of the connector. The key the
+run derives is `taktus:<run id>:<step id>:<attempt>`. The test that tries to open a pull request
+twice for the same step across a restart is `tests/adapters/connectors/test_repository_actions.py`
+against the fake service, and `test_repository_live.py` against the real one — a branch, a pull
+request, a comment and a label, each twice across two connectors, with one record each; it runs
+when `TAKTUS_LIVE_REPOSITORY` and `REPOSITORY_TOKEN` are set and skips otherwise.
 
-`repository.pipelines.trigger` is the honest case of the contract's §4: the connector acts every
-time and says so; Taktus never repeats it on its own.
+**What it does when the target offers nothing to recognise a repeat by.**
+`repository.pipelines.trigger` is the honest case of the contract's §4: a workflow dispatch
+answers with no identifier and takes no key, so the connector declares `idempotency: none`,
+acts every time, and reports `replayed: false` always. Taktus never repeats it on its own: a
+call whose outcome is unknown ends the step failed, and the person who resumes the run has
+checked the service first (`docs/architecture/contracts.md` §2.2). The connector does not
+pretend — it does not, for example, look for a recent run of that workflow and call it ours.
 
 Consumption is counted in `quota` units named `requests`: every result reports how many API
 requests the call made.

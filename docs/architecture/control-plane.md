@@ -46,10 +46,23 @@ revocable by an administrator.
 A connector's intake (`contracts/connector/v1` §7) supplies the channel's half of this object:
 the sender as the source system names them, the intent, the context and the reply address — and
 only after the event's signature verified. The identity component maps the sender to `identity`
-and `org_path` and completes the command; the connector never holds that mapping. Until it
-exists, what the webhook intake of the HTTP surface accepts is kept as an **intake event**
-(`command` component, `awaiting_identity`) under the source system's delivery identifier — a
-redelivery replaces, never doubles — and nothing is executed from it.
+and `org_path` and completes the command; the connector never holds that mapping. What the
+webhook intake of the HTTP surface accepts is kept as an **intake event** (`command`
+component, `awaiting_identity`) under the source system's delivery identifier — a redelivery
+replaces, never doubles — in the tenant the identity port places the sender in, and nothing is
+executed from it. `POST /intake-events/{id}/complete` completes it into a command
+(`complete_intake.py`), and the command is then commissioned like any other.
+
+The identity port (`src/taktus/ports/identity.py`) is what the core asks: place a sender —
+tenant, identity, organisational path — or answer that the sender is unknown. **Until the
+identity component exists (`0.2.0`) the port is served by a provisional adapter:** one
+configured operator identity per tenant, `TAKTUS_PROVISIONAL_IDENTITY=<tenant>=<identity>`,
+which every command of that tenant acts as — from the command line, where `taktusctl run`
+takes it when `--identity` is not given and refuses to run with neither, and from a webhook,
+where every sender of the one configured tenant resolves to its operator. Every resolution it
+answers carries `provisional: true`, every command it completes carries
+`identity_provisional: true` in its context, and DEC-0013 states what it does not do and what
+replaces it.
 
 ---
 
@@ -102,9 +115,15 @@ by the run. `examples/README.md` is the reference for that shape.
 Results are persisted **per step**: checkpoint, artifacts, consumption, events. Three guarantees
 follow:
 
-- **No limit is ever breached.** Before each step its demand is estimated (the worker supplies the
-  estimate) and checked against what remains. A step starts only if it fits. The guarantee comes
-  from *admission*, not from aborting.
+- **No limit is ever breached — for what is reported per step.** Before each step its demand is
+  estimated (the worker supplies the estimate) and checked against what remains. A step starts
+  only if it fits. The guarantee comes from *admission*, not from aborting, and admission needs
+  a running total: for tokens, quota and compute seconds, which workers report per step, the
+  total is exact at every boundary and the guarantee holds. For currency it degrades to an
+  estimate where a worker learns its cost only when an assignment ends — the coding worker
+  does — so that the budget can be exceeded by the difference between one assignment's estimate
+  and its actual cost, visible in the ledger at the boundary where it was reported (ADR-0005,
+  amendment; DEC-0012).
 - **At most one step of work is lost.** A stop — by limit, emergency stop, user or anchor — takes
   effect at the next step boundary; the running step may finish up to a hard ceiling.
 - **Resume and replay.** After approval or a limit change, work continues at the step boundary.
@@ -232,7 +251,10 @@ class, step count, storage — and the normalised unit **Takt** is derived from 
 Admission control works against all applicable limits at once: budget in currency, a subscription
 window, a provider rate limit, available compute. If the estimate does not fit, the step does not
 start, and the block is recorded with cause and duration in the blocked-time account
-([throughput.md](throughput.md)).
+([throughput.md](throughput.md)). The line holds exactly for the kinds reported per step —
+tokens, quota, compute — and only up to the estimate for currency reported per assignment
+(ADR-0005, amendment). That is why the Takt derives from tokens and compute and not from money:
+it is the quantity admission control can actually hold a run against.
 
 Whether a model purpose is served by a subscription, an API key or local hardware is tenant
 configuration, not part of a process definition. See [accounting.md](accounting.md).

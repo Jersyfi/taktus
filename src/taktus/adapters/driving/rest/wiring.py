@@ -9,7 +9,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from taktus.components.command.application.service import ReceiveIntakeHandler
+from taktus.components.command.application.service import (
+    CompleteIntakeHandler,
+    ReceiveIntakeHandler,
+)
 from taktus.components.run.domain.model import Run
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -43,6 +46,11 @@ class RestServices(Protocol):
 
     @property
     def intake(self) -> ReceiveIntakeHandler: ...
+
+    @property
+    def complete_intake(self) -> CompleteIntakeHandler | None:
+        """None when no identity is configured: an intake event then cannot be completed."""
+        ...
 
     async def ready(self) -> str | None:
         """None when the process may receive traffic: the database answers and its schema is

@@ -26,6 +26,14 @@ STRICTNESS = (
 )
 
 
+class InputDeclaration(Value):
+    """One input a run needs: what it is, and an example a test can run the bundle with."""
+
+    description: str = Field(min_length=1)
+    # An example value of whatever JSON shape the input has.
+    example: Any
+
+
 class Process(Value):
     """A named process. The version that runs is `active_version`; the versions are bundles."""
 
@@ -78,6 +86,9 @@ class ProcessVersion(Value):
     slo: Slo | None = None
     work: Mapping[StepId, Work] = Field(default_factory=dict)
     limits: Work | None = None
+    inputs: Mapping[str, InputDeclaration] = Field(default_factory=dict)
+    """What a run of this version is given when it starts, by name: what `$input` references
+    in the work resolve to. A run that lacks one is refused before anything runs."""
     author: str | None = None
     reason: str | None = None
 

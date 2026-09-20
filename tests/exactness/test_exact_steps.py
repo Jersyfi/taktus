@@ -31,7 +31,9 @@ from taktus.shared.v1 import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-BUNDLES = sorted((ROOT / "examples" / "processes").glob("*.yaml"))
+BUNDLES = sorted((ROOT / "examples" / "processes").glob("*.yaml")) + sorted(
+    (ROOT / "blueprints").glob("*/processes/*.yaml")
+)
 SHARED_EXAMPLES = ROOT / "contracts" / "shared" / "v1" / "examples" / "step"
 
 
@@ -113,6 +115,7 @@ def test_an_exact_step_s_value_comes_from_a_rule_at_run_time(bundle_path: Path) 
     for step in version.steps:
         if step.exactness is not ExactnessClass.EXACT:
             continue
-        work = parse_work(step, version.work.get(step.id))
+        examples = {name: declared.example for name, declared in version.inputs.items()}
+        work = parse_work(step, version.work.get(step.id), examples)
         assert type(work).__name__.endswith("Rule"), f"{step.id} would not run as a rule"
         assert not step.required_capabilities, f"{step.id} would need an adapter"
