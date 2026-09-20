@@ -4,6 +4,12 @@ One directory per gate (docs/architecture/project-structure.md §2). A directory
 reports "no targets yet" and green: `tools/gate.py` turns pytest's "no tests collected" into
 success and nothing else.
 
+**Tests stay true over time, not once.** A hole in a gate's coverage found on the way is a
+finding — recorded, not noted — and a gate that has become too slow to be useful is a finding
+too, reported with its cost before and after: every gate prints its duration as its last line
+for that. A gate is weakened only under a notice that demonstrates it had no value
+(anchors.taktus.md M2.3); "it was slow" is a cost to report, not a reason to remove.
+
 PostgreSQL comes from testcontainers, once per session, migrated to the current schema
 (`conftest.py`). Without Docker the tests that need it skip and name the reason; with
 `TAKTUS_REQUIRE_DATABASE` set — CI — they fail instead. `TAKTUS_TEST_DATABASE_URL` points them

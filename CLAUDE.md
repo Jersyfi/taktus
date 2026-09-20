@@ -207,6 +207,12 @@ A misunderstood sentence in the documentation becomes wrong code later.
 6. has tests at the right level,
 7. carried its documentation along,
 8. introduced no secret value,
-9. carries an ADR if it has architectural effect,
+9. carries an ADR if it has architectural effect, and the ADR states where its promise ends,
 10. names every decision it raises by ID and category near the top of its description, and
-    stays a draft while one is blocking.
+    stays a draft while one is blocking; a mode-2 decision it made is a notice record,
+11. leaves the gates true: a hole in a gate's coverage met on the way is a finding — a
+    `DEFECT` record, or a notice where the gate changes — never a note; a suite that has become
+    too slow to be useful is a finding too, reported with the cost before and after (every
+    gate prints its duration for that), never a wish,
+12. keeps any remediation plan it produces or specifies executable by hand (UC-4.12): a person
+    can carry it out without Taktus.
