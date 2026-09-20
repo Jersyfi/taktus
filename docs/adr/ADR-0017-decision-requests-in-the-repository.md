@@ -205,3 +205,12 @@ raised and did not need to be" is a precedent as much as an answer is.
   rest.
 - The register starts with the four items of #1, backfilled in the new shape (DEC-0001 to
   DEC-0004), so that the standard has worked examples from day one.
+
+## Where this promise ends
+
+The gate checks shape: sections present, fields filled, a date, an index entry, a draft flag
+that matches. It cannot check that a request is decidable by a person who has read neither the
+diff nor the session — that is a reviewer's judgement — and it cannot check that a question
+tested against the anchor page was tested honestly. A notice's evidence, and an M2.3 notice's
+demonstration that a gate had no value, are checked for presence and for naming a gate, not
+for truth. The draft rule holds on GitHub; a repository hosted elsewhere needs its equivalent.

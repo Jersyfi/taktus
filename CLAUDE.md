@@ -167,7 +167,9 @@ the shape; CI enforces the draft.
   line masks it. **The repository is public.**
 - **No third-party contributions** while the licence is unsettled (ADR-0012).
 - **Generated code is never edited by hand.** Generation lives in `make generate`.
-- **Architectural changes arrive as an ADR** before the code does.
+- **Architectural changes arrive as an ADR** before the code does. **Every ADR that makes a
+  promise states where the promise ends**, in a section of that name; `make gate-adrs` fails
+  one that promises without bounding.
 - **Documentation freshness is a CI gate.**
 - **Everything in English** — code, comments, commits, documentation.
 - **Never delete without asking:** no volume, database, backup or process version history. Restores

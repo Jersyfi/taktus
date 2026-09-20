@@ -102,3 +102,13 @@ connector cannot write outward.
 - For the Taktus project itself the class applies as well: a correction to something already
   published under the project's name is the owner's (anchors.taktus.md M3.11); a correction to an
   unmerged branch is not.
+
+## Where this promise ends
+
+The predicate answers "has this left the system" from egress entries. It is exact for what
+connectors and channels record; a worker that writes outward through a host in its frame,
+without a connector, records no egress entry today, and its writes are invisible to the
+predicate until worker egress is recorded (`0.2.0`). Analysis is never anchored; the analysis
+itself, and the remediation plan, are `0.5.0`. The anchor halts a remediation at a step
+boundary; a remediation a person executes by hand is outside Taktus and outside the anchor,
+which is why the plan must be executable by hand (UC-4.12).

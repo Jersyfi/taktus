@@ -23,3 +23,11 @@ source.
 - For the Taktus project itself: mirroring on. A process change becomes a reviewable pull request.
 - The open bundle format is **not** pulled forward: the format exists internally from `0.3.0`; the
   open specification stays after `1.0.0`.
+
+## Where this promise ends
+
+The bundle is the truth inside Taktus. A mirror in Git is a projection: a change made in the
+repository and not in Taktus is not a process change until Taktus reads it back, and the
+mirroring that would read it back is `0.3.0`. Until the bundle format exists (`0.3.0`), a
+bundle is the process version of control-plane.md §4 as YAML, and the open specification is
+after `1.0.0`; a bundle written today is valid for this version of Taktus, not for a stranger's.

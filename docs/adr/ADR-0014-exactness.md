@@ -38,3 +38,14 @@ reach production.
   For a booking that is easy — totals, balances, document reconciliation. Where no check can be
   formulated, `exact` is unreachable and the step belongs to a person. That is more honest than a
   promise that does not hold.
+
+## Where this promise ends
+
+`exact` is machine-checkable in principle. It does not say that the check exists: somebody has
+to write it, per step, and where no check can be formulated `exact` is unreachable and the
+step belongs to a person. CI enforces that an `exact` result comes from a rule or a statistic;
+it does not enforce that the rule checks the right thing — a rule that compares a value with
+itself passes the gate. Exactness prevents a wrong value from being *produced*; it does not
+prevent a correct value from *becoming* wrong when its source changes (ADR-0021). What an
+exactness class covers and what it does not is stated per process in its exactness statement
+(`docs/usecases/UC-4-exactness-statement.md`, `0.5.0`).

@@ -83,3 +83,12 @@ its own resource usage — because observing changes nothing.
   at planning time once governance exists (`0.2.0`); until then, the rule is applied by the
   person who configures the instance.
 - The `it-operations` blueprint states where its instance runs before it states anything else.
+
+## Where this promise ends
+
+The rule is applied by the person who configures an instance; refusing a process that would
+give an instance credentials for its own infrastructure is `0.2.0`. "Administers" is defined
+by the credentials an instance holds, and a credential that is broader than its holder knows —
+a platform token with rights nobody listed — administers more than the rule sees. Two
+instances on one platform are kept apart by the platform's boundary, which the platform
+enforces, not Taktus.

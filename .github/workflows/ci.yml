@@ -47,6 +47,10 @@ jobs:
       - name: decisions (main)
         if: github.event_name != 'pull_request'
         run: uv run tools/check_decisions.py --forbid-open-blocking
+      # Every ADR that makes a promise states where the promise ends. Plain Markdown, the same
+      # standard-library tool shape as the decisions gate.
+      - name: architecture decision records
+        run: make gate-adrs
 
   gates:
     runs-on: ubuntu-latest

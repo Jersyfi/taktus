@@ -125,3 +125,14 @@ budget by the difference between one assignment's estimate and its actual cost" 
 becomes the whole of the residual, stated with its size in the report.
 
 The limits of this design are in *Where this promise ends* below.
+
+## Where this promise ends
+
+The first amendment states where the currency guarantee ends: a worker that reports money
+only when an assignment ends leaves the running total blind within the assignment, and the
+budget can be exceeded by one assignment's estimate error. The second amendment shrinks that
+residual and does not remove it: price-list drift after the run started, a worker that reports
+tokens but no money, and a wrong estimate remain, each stated in the report. "At most one step
+of work is lost" holds for what the worker persisted at its last boundary; a worker that
+reports no inner boundaries loses the whole step. Replaying a run reproduces the sequence of
+steps, not the answers of a variable method.

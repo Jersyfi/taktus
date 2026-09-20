@@ -51,3 +51,11 @@ meaning for it.
 - `docs/architecture/methods.md` §4, `control-plane.md` §4.1, `project-structure.md` §4 and
   CLAUDE.md §4 say "result-producing step".
 - ADR-0014 carries the amendment note and is otherwise untouched.
+
+## Where this promise ends
+
+The rule that `wait` and `human` carry no class is a schema rule and holds wherever the schema
+is validated. It says nothing about what a `wait` step passes on: a wait that reads an
+external state passes it on unchecked, and the step that reads the result is where a class
+applies. A `human` step is the authority for its decision; whether the person decided well is
+outside every class.

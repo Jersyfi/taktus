@@ -48,3 +48,13 @@ that classical ML exists in order to benefit from it.
 - The non-goal "no model training as a core product" needs sharpening: no foundation models, but
   task-specific models for process steps are a core function. That is the difference between a model
   vendor and an orchestrator that picks the right tool.
+
+## Where this promise ends
+
+Method selection promises that every step carries a method with its reason and that Taktus
+proposes a cheaper one when the measurements justify it. It does not promise that the cheaper
+method exists for every step: a step that needs language stays on a language model, and the
+proposal never arrives. It does not promise that a pinned model version is available for as
+long as a process needs it; a vendor withdraws models, and reproducibility then holds only for
+the runs the pinned version served. Maturation needs measurements per step over weeks; an
+installation younger than that has choices, not evidence.

@@ -50,3 +50,12 @@ estimate.
   formula. A price built on an uncalibrated formula burns trust once and for good.
 - Open for the owner: the free threshold, peak versus average, tiers versus linear, and how
   measurement works in an air-gapped installation.
+
+## Where this promise ends
+
+The Takt is proposed, not accepted: nothing is charged, the weights are a first draft, and the
+formula is fixed only after data from both reference use cases. "Recomputable from the ledger"
+holds for what the ledger measures — tokens, compute seconds, resource class, step counts,
+storage — and not for what a provider does not report; where money is reported per assignment
+the Takt is still exact, because it derives from tokens and compute (ADR-0005). A budget in
+Takte is enforced only once the Takt is measured (`0.2.0`).
