@@ -41,3 +41,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0024](ADR-0024-connector-contract.md) | Connector contract on MCP: two directions, a declared effect, an honest repeat | accepted |
 | [0025](ADR-0025-where-an-instance-may-run.md) | Where an instance may run | accepted |
 | [0026](ADR-0026-autonomy-carries-its-reason.md) | Autonomy carries its reason | accepted |
+| [0027](ADR-0027-taktus-reaches-itself-through-the-connector-port.md) | Taktus reaches itself through the connector port | accepted |
