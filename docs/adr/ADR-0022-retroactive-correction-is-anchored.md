@@ -97,7 +97,9 @@ connector cannot write outward.
   `egress.read`. That obligation is part of the connector contract (`contracts/connector/v1`)
   from its first version.
 - The remediation plan of UC-4.12 is executed by the run engine like any process, and the
-  anchor halts it where the predicate is true. The impact analysis of UC-4.11 reports, per
+  anchor halts it where the predicate is true. The plan is written so that a person can carry
+  it out without Taktus — system, record, before, after, done-check per step — because not
+  every partner can be automated and the plan is worthless if it only works inside the system. The impact analysis of UC-4.11 reports, per
   affected result, whether it has left the system and through which entry.
 - For the Taktus project itself the class applies as well: a correction to something already
   published under the project's name is the owner's (anchors.taktus.md M3.11); a correction to an

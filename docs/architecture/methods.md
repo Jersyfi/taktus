@@ -118,6 +118,14 @@ balances, document reconciliation. In other domains it can be hard or impossible
 **Where no machine check can be formulated, `exact` is unreachable and the step belongs to a
 person.** That is more honest than a promise that does not hold.
 
+Exactness is therefore a result, not a switch. From `0.5.0` Taktus works through with the user
+how a step becomes exact — reconciliation against a total, agreement with a second system,
+plausibility bounds, approval above a threshold, sampling — and every process carries an
+**exactness statement**: which checks apply, what they cover, what they do not cover, and what
+residual risk remains, visible in the dashboard and part of every report. Taktus never says
+"guaranteed correct"; it says what was checked against what and names the case that would slip
+through (`docs/usecases/UC-4-exactness-statement.md`).
+
 ---
 
 ## 5. Why this is not a workflow tool

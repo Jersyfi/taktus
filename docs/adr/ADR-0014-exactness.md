@@ -1,7 +1,8 @@
 # ADR-0014 — Exactness classes
 
 **Status:** accepted · amended by ADR-0018: the classes apply to result-producing steps; `wait`
-and `human` carry none
+and `human` carry none · specified further for `0.5.0` by UC-4.13 and UC-6.9: exactness is a
+result, not a switch, and every process carries an exactness statement
 
 ## Context
 A number in bookkeeping is either right or it is damage. A draft text, by contrast, should vary. A
