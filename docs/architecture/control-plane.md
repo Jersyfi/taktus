@@ -123,7 +123,11 @@ follow:
   estimate where a worker learns its cost only when an assignment ends — the coding worker
   does — so that the budget can be exceeded by the difference between one assignment's estimate
   and its actual cost, visible in the ledger at the boundary where it was reported (ADR-0005,
-  amendment; DEC-0012).
+  amendment; DEC-0012). The owner's position is that a limit is a limit: the second amendment
+  of ADR-0005 records the design that closes the gap as far as a provider allows — the
+  estimate reserved at admission, a currency budget converted into tokens and enforced there,
+  a named safety margin, estimate quality measured per worker, and the residual stated in
+  every report. It is designed, not yet implemented.
 - **At most one step of work is lost.** A stop — by limit, emergency stop, user or anchor — takes
   effect at the next step boundary; the running step may finish up to a hard ceiling.
 - **Resume and replay.** After approval or a limit change, work continues at the step boundary.
