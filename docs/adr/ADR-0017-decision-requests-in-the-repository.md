@@ -1,7 +1,9 @@
 # ADR-0017 — Decision requests as a repository mechanism
 
 **Status:** accepted · operationalises ADR-0008 for this repository · amended by ADR-0021: the
-category `DEFECT` is read as *documentation defect*; a wrong result is a *result defect*
+category `DEFECT` is read as *documentation defect*; a wrong result is a *result defect* ·
+amended 2026-09-21: the anchor list has four modes in two files (§1), and a mode-2 decision
+has a record type, the notice (§2a)
 
 ## Context
 ADR-0008 defines the decision request: the planned question about direction, with a fixed shape,
@@ -25,8 +27,20 @@ defects, all in the mechanism rather than in the work:
 ## Decision
 
 ### 1. The anchor list
-`docs/decisions/anchors.md` lists what the owner decides and what a session decides and records.
-A question is tested against that page before it is raised. It fixes defect (e).
+Two files, because they are two different things. `docs/decisions/anchors.md` is the shipped
+default: the anchor configuration a new tenant inherits, written as a template — product.
+`docs/decisions/anchors.taktus.md` is the configuration of the tenant that is the Taktus
+project: the owner's own answers — not product. A question is tested against the tenant's page
+before it is raised. It fixes defect (e).
+
+Both pages sort every question into one of **four modes**: (1) the operator decides, no notice;
+(2) the operator decides and records a notice (§2a); (3) the operator prepares a worked opinion
+and the owner decides — a decision request in the shape of §4; (4) the owner decides and the
+operator supplies data. The first version of the page had two lists, the owner's and the
+session's; the owner's answers of 2026-09-21 fell almost entirely between them. The same entry
+may sit in a different mode per tenant — a change to an accepted ADR is the owner's in a
+managed product and the session's in this project while the vision holds — and the entries of
+a page are identified (`M3.7`) so that a request can cite one and a tenant can move one.
 
 ### 2. Defects are corrected, not escalated
 When the repository's own documents are ambiguous, contradict each other, or turn out to be wrong,
@@ -80,7 +94,7 @@ Header, one line per field:
 | § | Section | Content |
 |---|---|---|
 | 1 | What this is about | the situation in plain sentences, without repository jargon |
-| 2 | Why you are being asked | the row of `anchors.md` §1 that makes this the owner's call |
+| 2 | Why you are being asked | the entry of `anchors.taktus.md`, mode 3 or 4, that makes this the owner's call |
 | 3 | What you must decide | exactly one answerable question |
 | 4 | What you need to know to decide | every term explained; the background needed to judge; what the decision commits the project to |
 | 5 | Options | two or three, each with concrete meaning, consequence, effort and reversibility; one marked recommended, with the reason |
@@ -100,7 +114,7 @@ Section 4 is the one #1 lacked and the reason its questions could not be answere
 A plain NOTE gets no file: it lives in the pull request description. A question that was raised
 as a decision and then reclassified gets a record, so that the register carries the precedent.
 
-Order of work for a new request: test the question against `anchors.md` → write the file from the
+Order of work for a new request: test the question against `anchors.taktus.md` → write the file from the
 template → open the issue from the issue template with the same content → put the issue link into
 the file → name the decision in the pull request description → if BLOCKING, keep the pull request
 a draft.

@@ -60,5 +60,5 @@ format has no `$id` field: its URL is its path.
   does not match the path.
 - Serving `https://taktus.eu/contracts/` is a task for the release that first ships a contract,
   no later than `1.0.0`, when the contracts are frozen (roadmap).
-- The namespace is public communication under the project's name (anchors.md, row O7). Changing
+- The namespace is public communication under the project's name (anchors.taktus.md, M3.7). Changing
   it is the owner's call.

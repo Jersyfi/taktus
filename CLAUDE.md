@@ -124,8 +124,15 @@ defines its own set; it can be reduced but never emptied. An anchor halts the ru
 boundary and raises a **decision request**. A free-text answer is never acted on silently: the
 interpretation is reflected back and confirmed first (ADR-0008).
 
-**For this repository the anchors are concrete.** `docs/decisions/anchors.md` lists what the owner
-decides and what a session decides and records. Test every question against it before raising it.
+**For this repository the anchors are concrete, in four modes.** Every question falls into one:
+(1) the session decides, no notice; (2) the session decides and records a **notice**
+(`NTC-NNNN`); (3) the session prepares a worked opinion, the owner decides; (4) the owner
+decides, the session supplies data. `docs/decisions/anchors.md` is the shipped default — the
+configuration a new tenant inherits, product. `docs/decisions/anchors.taktus.md` is the
+configuration of this tenant, the Taktus project — the owner's answers, not product. The same
+anchor may resolve differently per tenant. Test every question against the tenant's page before
+raising it. A question in neither list is not decided alone and not escalated: it is raised as
+a NON-BLOCKING request that proposes its mode.
 
 Everything a pull request tells the owner is one of four categories (ADR-0017):
 

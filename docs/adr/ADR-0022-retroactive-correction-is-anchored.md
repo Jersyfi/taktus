@@ -90,7 +90,7 @@ connector cannot write outward.
 
 ## Consequences
 - `contracts/shared/v1/Anchor.json` and `DecisionRequest.json` gain the class `correction`;
-  governance.md §2 and `docs/decisions/anchors.md` list it; the ledger's kind vocabulary gains
+  governance.md §2 and `docs/decisions/anchors.md` (M3.11) list it; the ledger's kind vocabulary gains
   `egress.write`, `egress.delivery` and `egress.read` (`LedgerEntry.json`).
 - Every connector and channel adapter, when it exists, records an egress entry for what it
   wrote or delivered; every driving adapter that serves a result to an external system records
@@ -100,5 +100,5 @@ connector cannot write outward.
   anchor halts it where the predicate is true. The impact analysis of UC-4.11 reports, per
   affected result, whether it has left the system and through which entry.
 - For the Taktus project itself the class applies as well: a correction to something already
-  published under the project's name is the owner's (anchors.md O7); a correction to an
+  published under the project's name is the owner's (anchors.taktus.md M3.11); a correction to an
   unmerged branch is not.

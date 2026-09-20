@@ -1,9 +1,12 @@
 # Decision register
 
-The decisions of the Taktus project itself: what the owner was asked, what was answered, and what
-was raised as a decision and turned out not to be one. The mechanism is ADR-0017; which questions
-reach the owner is stated in [anchors.md](anchors.md); the template is
-[TEMPLATE.md](TEMPLATE.md).
+The decisions of the Taktus project itself: what the owner was asked, what was answered, what
+was raised as a decision and turned out not to be one, and what a session decided on its own
+and gave notice of. The mechanism is ADR-0017. Which questions reach the owner is stated in
+four modes: [anchors.md](anchors.md) is the shipped default any tenant inherits, and
+[anchors.taktus.md](anchors.taktus.md) is the configuration of this tenant, the Taktus
+project. The template for a request is [TEMPLATE.md](TEMPLATE.md); the template for a notice
+is [TEMPLATE-NOTICE.md](TEMPLATE-NOTICE.md).
 
 The category `DEFECT` is a *documentation defect*: a fault in what the repository says, corrected
 and recorded, never asked. A wrong result produced by a run is a *result defect* (ADR-0021) and
