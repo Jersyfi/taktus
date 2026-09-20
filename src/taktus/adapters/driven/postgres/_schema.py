@@ -175,6 +175,20 @@ plan = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+# --- catalog --------------------------------------------------------------------------------------
+
+adapter_maturity = Table(
+    "adapter_maturity",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the adapter identifier, never a product name
+    Column("family", Text, nullable=False),
+    _at("conformance_passed_at", nullable=True),
+    Column("removal", JSONB),  # the last removal result, as its document
+    _at("updated_at"),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
 # --- run ------------------------------------------------------------------------------------------
 
 run = Table(

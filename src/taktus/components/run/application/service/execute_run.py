@@ -583,11 +583,20 @@ class RunEngine:
     # --- connector steps ------------------------------------------------------------------------
 
     async def _connector(self, step_id: StepId, capability: str) -> ResolvedConnector:
+        """The connector configured for the capability. None configured is a failed step, not
+        an exception: the run escalates at the boundary with the reason, and a resume after
+        the configuration changed retries it (the same as a model that is not configured)."""
         resolved = None
         if self._connectors is not None:
             resolved = await self._connectors.resolve(capability)
         if resolved is None:
-            raise NoConnector(step_id, capability)
+            raise _StepFailed(
+                reason=str(NoConnector(step_id, capability)),
+                retryable=True,
+                consumption=None,
+                adapter=None,
+                outcome="no connector",
+            )
         return resolved
 
     async def _connector_call(
@@ -599,7 +608,13 @@ class RunEngine:
         resolved = await self._connector(step_run.step_id, work.capability)
         operation = resolved.declaration.operation(work.operation)
         if operation is None:
-            raise NoConnector(step_run.step_id, work.operation)
+            raise _StepFailed(
+                reason=str(NoConnector(step_run.step_id, work.operation)),
+                retryable=True,
+                consumption=None,
+                adapter=resolved.adapter,
+                outcome="no connector",
+            )
         (input,), read = await self._resolved(run, [work.input])
         span.set_attribute("adapter", resolved.adapter)
         result = await self._call(run, step_run, resolved, operation, input, work.credentials, span)
@@ -712,7 +727,13 @@ class RunEngine:
         resolved = await self._connector(step_run.step_id, until.capability)
         operation = resolved.declaration.operation(until.operation)
         if operation is None:
-            raise NoConnector(step_run.step_id, until.operation)
+            raise _StepFailed(
+                reason=str(NoConnector(step_run.step_id, until.operation)),
+                retryable=True,
+                consumption=None,
+                adapter=resolved.adapter,
+                outcome="no connector",
+            )
         if operation.outward:
             raise UnsupportedWork(step_run.step_id, "a wait reads an external state, never writes")
         (input,), _ = await self._resolved(run, [until.input])
@@ -785,7 +806,19 @@ class RunEngine:
     ) -> tuple[Run, StepRun]:
         resolved = await self._workers.resolve(step.required_capabilities)
         if resolved is None:
-            raise NoWorker(step.id, step.required_capabilities)
+            # No configured worker offers the capabilities: a failed step, the run escalates
+            # at the boundary, and a resume after the configuration changed retries it.
+            span.record_failure("no worker")
+            step_run = step_run.to(
+                StepState.FAILED,
+                reason=str(NoWorker(step.id, step.required_capabilities)),
+                retryable=True,
+                finished_at=self._clock.now(),
+            )
+            run = await self._commit(
+                run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+            )
+            return run, step_run
         adapter, worker = resolved.adapter, resolved.worker
         span.set_attribute("adapter", adapter)
         resuming = step_run.checkpoint if step_run.state is StepState.STOPPED else None

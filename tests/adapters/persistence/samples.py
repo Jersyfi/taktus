@@ -9,6 +9,14 @@ from typing import Any
 
 import yaml
 
+from taktus.components.catalog.domain.model import (
+    AdapterMaturity,
+    ProcessFinding,
+    RemovalResult,
+    RunSummary,
+    StepFinding,
+    Verdict,
+)
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import Process, ProcessVersion, Slo, Trigger
@@ -21,6 +29,7 @@ from taktus.shared.v1 import (
     Consumption,
     ConsumptionQuantities,
     Intent,
+    Method,
     Plan,
     PlanResult,
     PlanStatus,
@@ -67,6 +76,47 @@ def command(id: str = "cmd_1", tenant: str = "t") -> Command:
         context={"issue": 7, "thread": "abc"},
         reply_to=ReplyTo(channel="channel.cli", address="stdout", thread="abc"),
         received_at=AT,
+    )
+
+
+def adapter_maturity(id: str = "worker.endpoint", tenant: str = "t") -> AdapterMaturity:
+    return AdapterMaturity(
+        id=id,
+        tenant=tenant,
+        family="worker",
+        conformance_passed_at=None,
+        removal=RemovalResult(
+            integration=id,
+            family="worker",
+            verdict=Verdict.CHANGED,
+            tested_at=AT,
+            run_id="run_removal_1",
+            processes=(
+                ProcessFinding(
+                    process="six-times-seven@1",
+                    exercised="run",
+                    verdict=Verdict.CHANGED,
+                    steps=(
+                        StepFinding(
+                            step="compute",
+                            served="shell.script",
+                            alternative=None,
+                            fallback=Method.HUMAN,
+                            verdict=Verdict.CHANGED,
+                            reason="no other adapter serves shell.script; a person takes over",
+                        ),
+                    ),
+                    baseline=RunSummary(
+                        run_id="run_a", state="halted", cause="limit", at_step="overreach"
+                    ),
+                    withheld=RunSummary(
+                        run_id="run_b", state="escalated", cause="failure", at_step="compute"
+                    ),
+                    note="stops at compute, where a person takes over",
+                ),
+            ),
+        ),
+        updated_at=AT + timedelta(seconds=5),
     )
 
 

@@ -101,7 +101,9 @@ component boundary.
 Processes reference adapters by capability only, never by product name.
 
 **Removal test:** for every integration it must be shown automatically that removing it changes
-quality or cost but breaks no process.
+quality or cost but breaks no process. It is a process Taktus runs for itself, weekly
+(`blueprints/self-operation/`, S-01): the verdict — *broke*, *changed*, *exception* — is in
+the ledger as `removal.tested` and in the adapter's maturity.
 
 ---
 

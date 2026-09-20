@@ -25,6 +25,9 @@ from sqlalchemy.exc import DBAPIError
 
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
+from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
+from taktus.adapters.driven.connectors.loopback import LoopbackConnector
+from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
@@ -33,6 +36,7 @@ from taktus.adapters.driven.memory import (
     MemoryProvenanceStore,
     MemoryRepository,
 )
+from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresPersistence,
@@ -45,6 +49,8 @@ from taktus.adapters.driven.postgres import (
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.cli.wiring import NotOperable, Services
+from taktus.components.catalog.application.service import RecordRemovalResultHandler
+from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
@@ -55,6 +61,7 @@ from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.composition.execution import connector_pool, model_pool, open_worker, telemetry_of
+from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.settings import (
     load_connectors,
     load_execution,
@@ -114,27 +121,56 @@ class LocalWiring:
         ):
             runs = stores.of(Run)
             ledger = ChainedLedger(stores.ledger_store, clock)
-            engine = RunEngine(
-                runs=runs,
-                work=stores.work,
-                objects=MemoryObjectStore(state_dir / "objects"),
-                ledger=ledger,
-                provenance=stores.provenance_store,
-                workers=StaticWorkerPool([(adapter, worker)]),
-                clock=clock,
-                ids=ids,
-                telemetry=telemetry,
-                queue=stores.queue,
-                connectors=connector_pool(connectors),
-                models=model_pool(model),
+            # The loopback connector is in the pool the engine resolves from and needs the
+            # engine; it is created first and bound last (composition/loopback.py).
+            loopback = LoopbackConnector()
+            pools = Pools(
+                StaticWorkerPool([(adapter, worker)]),
+                connector_pool(connectors, also=[(LOOPBACK, loopback)]),
+                model_pool(model),
+            )
+
+            def engine_for(
+                workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
+            ) -> RunEngine:
+                return RunEngine(
+                    runs=runs,
+                    work=stores.work,
+                    objects=MemoryObjectStore(state_dir / "objects"),
+                    ledger=ledger,
+                    provenance=stores.provenance_store,
+                    workers=workers,
+                    clock=clock,
+                    ids=ids,
+                    telemetry=telemetry,
+                    queue=stores.queue,
+                    connectors=connectors,
+                    models=models,
+                )
+
+            engine = engine_for(pools.workers, pools.connectors, pools.models)
+            commission = CommissionPlanHandler(
+                stores.of(Command), stores.of(Plan), stores.work, clock, ids
+            )
+            loopback.bind(
+                Loopback(
+                    pools=pools,
+                    versions=stores.of(ProcessVersion),
+                    work=stores.work,
+                    commission=commission,
+                    engine_for=engine_for,
+                    record=RecordRemovalResultHandler(
+                        stores.of(AdapterMaturity), stores.work, ledger, clock
+                    ),
+                    clock=clock,
+                    ids=ids,
+                )
             )
             yield Services(
                 register_version=RegisterProcessVersionHandler(
                     stores.of(ProcessVersion), stores.work
                 ),
-                commission=CommissionPlanHandler(
-                    stores.of(Command), stores.of(Plan), stores.work, clock, ids
-                ),
+                commission=commission,
                 engine=engine,
                 provenance=ProvenanceQuery(stores.provenance_store, runs, ledger, stores.work),
                 runs=runs,

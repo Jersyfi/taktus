@@ -243,13 +243,19 @@ async def test_a_reported_effect_that_contradicts_the_declaration_fails_the_step
     assert "broke its contract" in (run.step_run("write").reason or "")
 
 
-async def test_a_capability_no_connector_serves_is_named() -> None:
+async def test_a_capability_no_connector_serves_fails_the_step_and_escalates() -> None:
+    """A missing connector, or an operation the connector does not declare, is a failed step
+    naming what is missing; the run escalates at the boundary and a resume retries."""
     h = ConnectorHarness(call("read", "other.things.read", {"id": "x"}))
-    with pytest.raises(NoConnector, match=r"other\.things"):
-        await h.start()
+    run = await h.start()
+    assert run.state is RunState.ESCALATED
+    read = run.step_run("read")
+    assert read.state is StepState.FAILED and read.retryable is True
+    assert read.reason == str(NoConnector("read", "other.things"))
     h = ConnectorHarness(call("read", "fake.records.destroy", {"id": "x"}))
-    with pytest.raises(NoConnector, match=r"fake\.records\.destroy"):
-        await h.start()
+    run = await h.start()
+    assert run.state is RunState.ESCALATED
+    assert run.step_run("read").reason == str(NoConnector("read", "fake.records.destroy"))
 
 
 # --- checks, templates, artifacts ---------------------------------------------------------------

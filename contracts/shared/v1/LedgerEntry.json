@@ -8,7 +8,7 @@
     "seq": { "type": "integer", "minimum": 1 },
     "ts": { "type": "string", "format": "date-time" },
     "kind": {
-      "description": "What happened, as a lowercase dotted token: run.started, step.finished, decision.confirmed, assignment.rejected. Three kinds record that a result left the system (ADR-0022): egress.write (a connector wrote outward), egress.delivery (a channel delivered), egress.read (an external system read through Taktus); each references what went out in refs.artifact_ids or content_digest.",
+      "description": "What happened, as a lowercase dotted token: run.started, step.finished, decision.confirmed, assignment.rejected. Three kinds record that a result left the system (ADR-0022): egress.write (a connector wrote outward), egress.delivery (a channel delivered), egress.read (an external system read through Taktus); each references what went out in refs.artifact_ids or content_digest. removal.tested records the verdict of a removal test — broke, changed, exception, as outcome — for the integration named in adapter, with the result's digest in content_digest and the removal test's run in refs.run_id.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
     },

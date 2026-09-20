@@ -32,7 +32,11 @@ quality or cost but breaks no process.
   churn is highest.
 
 ## Consequences
-- The removal test becomes checkable rather than asserted.
+- The removal test becomes checkable rather than asserted. Since 2026-09-21 it is a process
+  Taktus runs for itself, weekly, once per configured integration
+  (`blueprints/self-operation/`): withhold, exercise, restore, record — *broke*, *changed* or
+  *exception* — in the ledger as `removal.tested` and in the adapter's maturity. The suites
+  report W-12 and C-10 as pending because the process, not the suite, is where the test runs.
 - More ceremony per integration. That is the price and it is intended.
 
 ## Where this promise ends

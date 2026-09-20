@@ -1,0 +1,182 @@
+# S-01 Removal test — one integration is withheld, the processes that use it are exercised,
+# and what happened is recorded: did anything break, or did only quality and cost change?
+#
+# The first process Taktus operates for itself, and the check of the product's own central
+# claim (CLAUDE.md §6, ADR-0003): every integration can be removed without breaking a process.
+# A test that runs once proves nothing; this one is triggered weekly, once per configured
+# integration. Until the scheduler acts on triggers (0.2.0), tools/removal_test.sh runs it.
+#
+#     uv run taktusctl run --process blueprints/self-operation/processes/S-01-removal-test.yaml \
+#         --input integration=worker.endpoint
+#
+# Every reference to the instance goes through a capability, never a direct call: the
+# capabilities `orchestrator.*` are served by the loopback connector, through which Taktus
+# reaches itself (docs/architecture/contracts.md §4). Its operations stay inside Taktus and
+# write no egress entry. The README beside this file says how a person runs the same test by
+# hand, which is the takeover test of ADR-0013 B for this process.
+
+id: s01-removal-test
+version: "1"
+name: S-01 Removal test
+autonomy: 3
+author: the repository
+reason: the removal test as a process that runs weekly, not a script that ran once
+
+triggers:
+  - schedule: weekly
+
+inputs:
+  integration:
+    description: the adapter identifier of the integration to withhold, as the ledger names it
+    example: worker.endpoint
+
+# Every step is one call of the loopback connector, counted as a unit of quota; a wide margin.
+limits:
+  quota: { units: 20 }
+
+steps:
+  - id: describe
+    method: rule
+    reason: >
+      what the integration serves, its alternatives and the processes that use it are read
+      from the instance's configuration
+    rejected:
+      - method: llm
+        why: a read of configuration needs no judgement
+    exactness: sourced
+    work:
+      rule: connector
+      operation: orchestrator.integrations.describe
+      input:
+        integration: { $input: integration }
+
+  - id: admit
+    method: rule
+    reason: >
+      the integration must be configured and of a known family before anything is withheld;
+      a machine check over what was read
+    rejected:
+      - method: llm
+        why: a fixed condition needs no model, and a judgement could be wrong
+    exactness: exact
+    depends_on: [describe]
+    work:
+      rule: check
+      conditions:
+        - value: { $from: describe, $select: output.integration }
+          equals: { $input: integration }
+        - value: { $from: describe, $select: output.family }
+          matches: "^(worker|connector|model|persistence)$"
+
+  # Remove, run, restore. An instance's configuration is its environment and does not change
+  # while it runs, so the three are one operation: the instance rehearses every process that
+  # uses the integration through the same engine over the same stores with the integration
+  # left out, and the unchanged configuration is the restored state. Every rehearsal run is a
+  # real run in the ledger. By hand, the three are three steps (README.md).
+  - id: exercise
+    method: rule
+    reason: >
+      withholding an adapter, running the processes that use it and comparing where each run
+      came to is observation and a fixed rule over the observations (the catalog component's
+      removal rules); the verdict is reproducible from the ledger
+    rejected:
+      - method: llm
+        why: whether something broke must be answered the same way every time; a judgement would not
+      - method: worker
+        why: nothing here needs a sandbox; the instance exercises itself
+    exactness: sourced
+    depends_on: [admit]
+    work:
+      rule: connector
+      operation: orchestrator.removal.exercise
+      input:
+        integration: { $input: integration }
+
+  - id: describe-after
+    method: rule
+    reason: the configuration is read again after the exercise, so that the restore is shown, not assumed
+    rejected:
+      - method: llm
+        why: a read of configuration needs no judgement
+    exactness: sourced
+    depends_on: [exercise]
+    work:
+      rule: connector
+      operation: orchestrator.integrations.describe
+      input:
+        integration: { $input: integration }
+
+  - id: verify-restored
+    method: rule
+    reason: the integration is configured again and serves what it served; a machine check
+    rejected:
+      - method: llm
+        why: a comparison of two reads needs no model
+    exactness: exact
+    depends_on: [describe-after]
+    work:
+      rule: check
+      conditions:
+        - value: { $from: describe-after, $select: output.integration }
+          equals: { $input: integration }
+        - value: { $from: describe-after, $select: output.serves }
+          not_matches: "^\\[\\]$"
+
+  - id: verdict
+    method: rule
+    reason: >
+      the result carries exactly one of three verdicts — broke, changed, exception — and this
+      step is the value that counts, checked, never judged
+    rejected:
+      - method: llm
+        why: the verdict is a token the rules produced; a model would only restate it, or misstate it
+    exactness: exact
+    depends_on: [exercise, verify-restored]
+    work:
+      rule: check
+      conditions:
+        - value: { $from: exercise, $select: output.verdict }
+          matches: "^(broke|changed|exception)$"
+        - value: { $from: exercise, $select: output.integration }
+          equals: { $input: integration }
+
+  - id: record
+    method: rule
+    reason: >
+      the result is written to the adapter's maturity and to the ledger as removal.tested, in
+      one transaction, by the catalog component
+    rejected:
+      - method: worker
+        why: a write inside the instance needs no sandbox
+    exactness: sourced
+    depends_on: [verdict]
+    work:
+      rule: connector
+      operation: orchestrator.maturity.record
+      input:
+        result: { $from: exercise, $select: output }
+
+  - id: report
+    method: rule
+    reason: one line a person reads, composed from the values above; nothing new is said in it
+    rejected:
+      - method: llm
+        why: a narrative is not needed for one line; the values speak
+    exactness: sourced
+    depends_on: [record]
+    work:
+      rule: template
+      text: |
+        Removal test of ${integration} (${family}): ${verdict}.
+        Processes exercised: ${processes}.
+        Maturity now ${maturity}; still missing for verified: ${missing}.
+        Ledger entry removal.tested seq ${seq}, digest ${digest}.
+      values:
+        integration: { $input: integration }
+        family: { $from: exercise, $select: output.family }
+        verdict: { $from: exercise, $select: output.verdict }
+        processes: { $from: exercise, $select: output.processes }
+        maturity: { $from: record, $select: output.maturity }
+        missing: { $from: record, $select: output.missing }
+        seq: { $from: record, $select: output.ledger_seq }
+        digest: { $from: record, $select: output.content_digest }

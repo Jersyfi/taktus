@@ -9,7 +9,7 @@ ledger records is `worker.<kind>` — never a product name (ADR-0003).
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -27,6 +27,7 @@ from taktus.composition.settings import (
     TelemetrySettings,
 )
 from taktus.ports.configuration import Configuration
+from taktus.ports.connector import ActionConnector
 from taktus.ports.execution import Execution, ExecutionUnit, ResourceLimits
 from taktus.ports.worker import Worker
 
@@ -48,15 +49,22 @@ def model_pool(settings: ModelSettings, *, timeout: float = 120.0) -> StaticMode
     return StaticModelPool([(MODEL_ADAPTER, settings.purposes, model, settings.name)])
 
 
-def connector_pool(connectors: Mapping[str, str], *, timeout: float = 120.0) -> StaticConnectorPool:
+def connector_pool(
+    connectors: Mapping[str, str],
+    *,
+    timeout: float = 120.0,
+    also: Sequence[tuple[str, ActionConnector]] = (),
+) -> StaticConnectorPool:
     """The configured connectors as the run's pool: one MCP client per entry of
     `TAKTUS_CONNECTORS`, registered under the adapter identifier `connector.<label>` — never a
-    product name (ADR-0003). The run resolves by the capabilities each declares."""
+    product name (ADR-0003) — and, after them, the connectors the instance brings itself
+    (`also`: the loopback). The run resolves by the capabilities each declares."""
     return StaticConnectorPool(
         [
             (f"connector.{label}", McpActionConnector(endpoint, timeout=timeout))
             for label, endpoint in connectors.items()
         ]
+        + list(also)
     )
 
 
