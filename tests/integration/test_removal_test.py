@@ -222,5 +222,5 @@ def test_the_bundle_and_the_blueprint_describe_the_same_process() -> None:
     blueprint = load(ROOT / "blueprints" / "self-operation" / "blueprint.yaml")
     (described,) = [p for p in blueprint["processes"] if p["id"] == "S-01"]
     assert [s["id"] for s in described["steps"]] == [s["id"] for s in bundle["steps"]]
-    assert described["autonomy"] == bundle["autonomy"]
+    assert described["autonomy"]["level"] == bundle["autonomy"]["level"]
     assert described["triggers"] == bundle["triggers"]

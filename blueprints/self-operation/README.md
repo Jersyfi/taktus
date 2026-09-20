@@ -59,6 +59,14 @@ loopback/`, `docs/architecture/contracts.md` §4). Its operations stay inside Ta
 no egress entry. The removal test never lists the loopback as an integration: Taktus is not an
 integration of Taktus.
 
+### Its autonomy, with the reason
+
+Level 3: every step is a read of the instance's own state or a rule over what was read, nothing
+leaves the system, and the verdict is reproducible from the ledger; a person watches the weekly
+report and samples the rehearsals. Toward level 4: a month of weekly runs whose verdicts a
+person checked against the rehearsal runs and found right, and the scheduler starting the run
+from the bundle's trigger (`0.2.0`); then Taktus proposes the raise with that evidence (M3.9).
+
 ### Running it
 
 ```bash

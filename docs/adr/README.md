@@ -40,3 +40,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0023](ADR-0023-automatic-emergency-stop-is-rule-based.md) | An automatic emergency stop is rule-based | accepted |
 | [0024](ADR-0024-connector-contract.md) | Connector contract on MCP: two directions, a declared effect, an honest repeat | accepted |
 | [0025](ADR-0025-where-an-instance-may-run.md) | Where an instance may run | accepted |
+| [0026](ADR-0026-autonomy-carries-its-reason.md) | Autonomy carries its reason | accepted |

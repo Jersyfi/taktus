@@ -42,7 +42,10 @@ anchors:
 processes:
   - id: P-01
     name: Roadmap control
-    autonomy: 3
+    autonomy:
+      level: 3
+      reason: reads the roadmap and the state and applies a reconciliation a rule computed; the diff is a model's judgement and is watched
+      toward_next: a quality history of applied reconciliations that nobody reverted
     triggers: [ { schedule: daily }, { event: roadmap.changed } ]
     steps:
       - { id: read-roadmap, method: rule }
@@ -53,7 +56,10 @@ processes:
 
   - id: P-02
     name: Refinement
-    autonomy: 3
+    autonomy:
+      level: 3
+      reason: the one outward effect is a comment a person reads before anything builds on it; the answer leaves only through a check
+      toward_next: a month of criteria nobody rewrote and a stronger check on the answer's structure
     triggers: [ { event: issue.opened, filter: "missing acceptance criteria" } ]
     steps:
       - { id: gather-context, method: rule }
@@ -62,7 +68,9 @@ processes:
 
   - id: P-03
     name: Implementation
-    autonomy: 4
+    autonomy:
+      level: 4
+      reason: nothing writes to a protected branch, the pipeline's verdict is the gate and a person merges; the worker runs in isolation
     triggers: [ { event: issue.ready, condition: "capacity.available" } ]
     steps:
       - { id: admit,     method: rule, exactness: exact }   # admission control against limits
@@ -76,7 +84,10 @@ processes:
 
   - id: P-04
     name: Review
-    autonomy: 3
+    autonomy:
+      level: 3
+      reason: a review is a judgement posted as a comment; the merge policy is a rule, and a person can still object before a merge
+      toward_next: a history of merges under the policy that nobody had to revert; the policy's conditions checked as rules, not read from the description
     triggers: [ { event: pullrequest.opened } ]
     steps:
       - { id: review, method: llm, reason: "judgement against principles and ADRs; not a rule set", exactness: sourced }
@@ -85,7 +96,10 @@ processes:
 
   - id: P-05
     name: Intake and triage
-    autonomy: 3
+    autonomy:
+      level: 3
+      reason: classification is a judgement with a measured error; a feature or a scope change escalates to a person by rule
+      toward_next: the classifier matured from a language model to a trained model with a measured error under the tolerance
     triggers: [ { event: issue.opened }, { event: discussion.created }, { event: chat.mention } ]
     steps:
       # starts on an llm; the maturation loop is expected to move this to `ml`
@@ -96,7 +110,10 @@ processes:
 
   - id: P-06
     name: Consistency check
-    autonomy: 3
+    autonomy:
+      level: 3
+      reason: drift detection is a judgement filed as issues that a person reads; nothing is changed by the process itself
+      toward_next: a history of filed issues a person accepted as real drift, without noise
     triggers: [ { event: merge }, { schedule: nightly } ]
     steps:
       - { id: collect,      method: rule }
@@ -105,7 +122,9 @@ processes:
 
   - id: P-07
     name: Quality reports
-    autonomy: 4
+    autonomy:
+      level: 4
+      reason: metrics are collected by rules and published as a report; the narrative is a model's text over exact numbers and changes nothing
     triggers: [ { schedule: weekly } ]
     steps:
       - { id: loadtest,        method: rule }
@@ -115,7 +134,10 @@ processes:
 
   - id: P-08
     name: Decision request
-    autonomy: anchor
+    autonomy:
+      level: 3
+      reason: "the process is the anchor mechanism itself: it composes a request, waits, and confirms an interpretation with a person before anything is recorded"
+      toward_next: "not allowed: an anchor keeps the decision with a person by definition (ADR-0008); the level does not rise"
     triggers: [ { event: anchor.hit } ]
     steps:
       - { id: compose,     method: llm, reason: "phrase options with consequence and a recommendation", exactness: sourced }
@@ -127,12 +149,16 @@ processes:
 
   - id: P-09
     name: Milestone report
-    autonomy: 4
+    autonomy:
+      level: 4
+      reason: "a report of a reached milestone: exact numbers from the ledger, a narrative over them, delivered; nothing outside changes"
     triggers: [ { event: milestone.reached } ]
 
   - id: P-10
     name: Repository hygiene
-    autonomy: 4
+    autonomy:
+      level: 4
+      reason: patch and minor updates are merged automatically under a green pipeline; a major update is an anchor and stays with a person
     triggers: [ { schedule: daily } ]
     guardrails:
       - auto_merge_only: [patch, minor]

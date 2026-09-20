@@ -19,7 +19,12 @@
 id: p03-implementation
 version: "1"
 name: P-03 Implementation
-autonomy: 4
+autonomy:
+  level: 4
+  reason: >
+    nothing writes to a protected branch, the pipeline's verdict is the gate and never the
+    worker's opinion, a person merges, and the worker runs in isolation with exactly the hosts
+    and credentials the frame names; every outward effect is reversible until the merge
 author: the repository
 reason: the third process of the dev-orchestration blueprint, runnable
 

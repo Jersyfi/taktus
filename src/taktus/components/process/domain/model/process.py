@@ -10,7 +10,7 @@ from pydantic import Field, model_validator
 
 from taktus.components.process.domain.model.errors import InvalidProcess
 from taktus.components.process.domain.service.validation import topological_order, validate_graph
-from taktus.shared.v1 import AutonomyLevel, ExactnessClass, Step, StepId, Value
+from taktus.shared.v1 import Autonomy, AutonomyLevel, ExactnessClass, Step, StepId, Value
 
 # What a step does when it runs — the task for a worker, the rule to evaluate, what to wait for.
 # Its shape belongs to the process bundle format, which arrives at 0.3.0 (ADR-0011,
@@ -80,7 +80,9 @@ class ProcessVersion(Value):
     process_id: str = Field(pattern=r"^[a-z][a-z0-9-]*$")
     version: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     name: str = Field(min_length=1)
-    autonomy_level: AutonomyLevel
+    autonomy: Autonomy
+    """The level the process runs at, why, and what is missing to go higher (ADR-0026). A
+    version without a reason does not exist."""
     steps: tuple[Step, ...] = Field(min_length=1)
     triggers: tuple[Trigger, ...] = ()
     slo: Slo | None = None
@@ -109,6 +111,11 @@ class ProcessVersion(Value):
     def ref(self) -> str:
         """How the ledger names this version."""
         return f"{self.process_id}@{self.version}"
+
+    @property
+    def autonomy_level(self) -> AutonomyLevel:
+        """The level alone, for the plan and the run, which carry no reason of their own."""
+        return self.autonomy.level
 
     @property
     def id(self) -> str:

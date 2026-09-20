@@ -14,7 +14,7 @@ from taktus.components.process.domain.model import (
     Trigger,
 )
 from taktus.components.process.domain.service import validation
-from taktus.shared.v1 import ExactnessClass, Fallback, Method, Step
+from taktus.shared.v1 import Autonomy, ExactnessClass, Fallback, Method, Step
 
 
 def step(
@@ -40,9 +40,17 @@ def step(
     )
 
 
+AUTONOMY = Autonomy(level=2, reason="a test", toward_next="nothing")
+
+
 def version(*steps: Step, **extra: object) -> ProcessVersion:
     return ProcessVersion(
-        process_id="p", version="1", name="P", autonomy_level=2, steps=steps, **extra
+        process_id="p",
+        version="1",
+        name="P",
+        autonomy=AUTONOMY,
+        steps=steps,
+        **extra,
     )
 
 

@@ -22,6 +22,12 @@ from backup automatically", and those are two actions inside one process.
 **Raising a level** requires explicit approval **and** a demonstrated quality history. Even at
 level 4 the emergency stop, the reporting duty and the escalation duty apply in full.
 
+**Every process carries its level with its reason** (ADR-0026): the level it runs at, why, and
+what is missing to go one level higher — or what forbids it where the process's requirements
+do not allow the next level. The direction is always towards level 4 and never forced. Where
+the conditions `toward_next` names are met, Taktus proposes the raise with the evidence; a
+person decides. The statement is shown wherever the process is shown.
+
 Level 4 is not reserved for large organisations. A private individual with three daily micro-jobs
 has the same claim to it as a corporation.
 

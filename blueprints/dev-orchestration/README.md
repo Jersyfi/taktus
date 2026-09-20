@@ -54,6 +54,16 @@ faked — the repository service, the model endpoint and the coding agent — an
 real: one comment, one branch with the worker's files on one marked commit, one pull request
 with one label, three egress entries.
 
+## Their autonomy, with the reason
+
+Every process carries its level with its reason and what is missing to go higher (ADR-0026);
+the bundles state it in full, and this is the short form.
+
+| Process | Level | Why | Toward the next level |
+|---|---|---|---|
+| P-02 Refinement | 3 | the one outward effect is a comment a person reads before anything builds on it; the model's answer leaves only through a check; a second run writes nothing | a quality history — criteria a person did not rewrite, over a month — and a stronger check on the answer's structure; then the raise is proposed (M3.9) |
+| P-03 Implementation | 4 | nothing writes to a protected branch, the pipeline's verdict is the gate, a person merges; the worker runs in isolation with exactly the hosts and credentials the frame names | — |
+
 ## Running them for real
 
 `tools/first_run.sh <issue>` runs P-02 and then P-03 against this repository with the reference

@@ -18,7 +18,17 @@
 id: s01-removal-test
 version: "1"
 name: S-01 Removal test
-autonomy: 3
+autonomy:
+  level: 3
+  reason: >
+    every step is a read of the instance's own state or a rule over what was read, nothing
+    leaves the system, and the verdict is reproducible from the ledger; a person watches the
+    weekly report and samples the rehearsals
+  toward_next: >
+    a quality history — a month of weekly runs whose verdicts a person checked against the
+    rehearsal runs in the ledger and found right — and the scheduler starting the run from the
+    bundle's trigger (0.2.0), so that nobody starts it by hand; then Taktus proposes level 4
+    with that evidence (anchors.taktus.md M3.9)
 author: the repository
 reason: the removal test as a process that runs weekly, not a script that ran once
 

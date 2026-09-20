@@ -91,7 +91,7 @@ async def test_the_process_adapter_is_refused_at_level_3_and_the_run_escalates(
     tmp_path: Path,
 ) -> None:
     document = bundle(with_overreach=False)
-    document["autonomy"] = 3
+    document["autonomy"] = {"level": 3, "reason": "the test needs the level", "toward_next": "-"}
     async with wiring().services(state_dir=tmp_path / "state", worker_endpoint="") as services:
         run = await start(services, document)
         assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE

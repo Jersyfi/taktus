@@ -79,7 +79,10 @@ process version.
 
 ## 4. Process
 
-A process is a **directed graph of steps**, not a script and not a prompt.
+A process is a **directed graph of steps**, not a script and not a prompt. Beside the graph a
+process carries its **autonomy statement** (ADR-0026): the level it runs at, why, and what is
+missing to go one level higher — or what forbids it. The statement is shown wherever the
+process is shown; a bundle with a bare level does not register.
 
 ### 4.1 What a step carries
 

@@ -82,7 +82,8 @@ process_version = Table(
     Column("process_id", Text, nullable=False),
     Column("version", Text, nullable=False),
     Column("name", Text, nullable=False),
-    Column("autonomy_level", Integer, nullable=False),
+    Column("autonomy_level", Integer, nullable=False),  # the level alone, for a query
+    Column("autonomy", JSONB, nullable=False),  # level, reason, toward_next (ADR-0026)
     Column("triggers", JSONB, nullable=False),
     Column("slo", JSONB),
     Column("work", JSONB, nullable=False),

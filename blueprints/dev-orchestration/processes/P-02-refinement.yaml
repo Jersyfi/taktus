@@ -15,7 +15,16 @@
 id: p02-refinement
 version: "1"
 name: P-02 Refinement
-autonomy: 3
+autonomy:
+  level: 3
+  reason: >
+    the one outward effect is a comment on an issue that a person reads before anything builds
+    on it, the model's answer leaves the step only through a check, and a second run on the same
+    issue writes nothing; a person watches through the comments themselves
+  toward_next: >
+    a demonstrated quality history — criteria that a person did not have to rewrite, over a
+    month of issues — and the check on the answer's structure strengthened beyond a pattern;
+    then the raise is proposed with that evidence (anchors.taktus.md M3.9)
 author: the repository
 reason: the second process of the dev-orchestration blueprint, runnable
 

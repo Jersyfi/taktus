@@ -26,7 +26,10 @@ anchors:
 processes:
   - id: S-01
     name: Removal test
-    autonomy: 3
+    autonomy:
+      level: 3
+      reason: every step reads the instance's own state or checks it by rule; nothing leaves the system; a person watches the weekly report
+      toward_next: a month of weekly verdicts a person checked against the rehearsal runs, and the scheduler starting the run from the trigger (0.2.0)
     triggers: [ { schedule: weekly } ]
     steps:
       - { id: describe,        method: rule, exactness: sourced }

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Autonomy.json",
+  "title": "Autonomy",
+  "description": "The autonomy of a process with its reason (ADR-0026): the level it runs at, why it runs at that level, and what is missing to go one level higher. The direction is always towards level 4 and never forced: a process whose requirements do not allow a higher level stays where it is, and toward_next says what forbids it. At level 4 there is no next level and toward_next is absent. Shown wherever the process is shown. See docs/architecture/governance.md.",
+  "type": "object",
+  "properties": {
+    "level": { "$ref": "AutonomyLevel.json" },
+    "reason": {
+      "description": "Why the process runs at this level: what the level rests on — the evidence, the anchors, the exactness of its results, the trust it has earned.",
+      "type": "string",
+      "minLength": 1
+    },
+    "toward_next": {
+      "description": "What is missing to go one level higher — a demonstrated quality history, a check that does not exist yet, an anchor that would have to move — or what forbids it where the process's requirements do not allow the next level. Required below level 4; absent at level 4.",
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": ["level", "reason"],
+  "additionalProperties": false,
+  "if": { "properties": { "level": { "const": 4 } } },
+  "then": { "not": { "required": ["toward_next"] } },
+  "else": { "required": ["toward_next"] }
+}
