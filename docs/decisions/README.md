@@ -13,7 +13,20 @@ and recorded, never asked. A wrong result produced by a run is a *result defect*
 never appears in this register.
 
 `open/` holds requests that wait for an answer. A request leaves `open/` in the same commit that
-creates its record here. `make gate-decisions` checks both.
+creates its record here. `make gate-decisions` checks both, and the notices.
+
+A **notice**, `NTC-NNNN`, is the record of a mode-2 decision (anchors.md §1): the session
+decided, nobody approves, and the record states what was decided, on what evidence, what was
+considered and which entry permits it. A notice that weakens a gate carries the demonstration
+that the gate had no value, in the record itself.
+
+## Notices
+
+| NTC | Title | Entry | What was decided |
+|---|---|---|---|
+| [0001](NTC-0001-anchors-split-into-two-files.md) | Anchors split into two files with four modes | M2.1 | the anchor page is the shipped default plus the Taktus tenant's configuration, entries identified `M<mode>.<n>`, the old rows mapped |
+
+## Decisions
 
 | DEC | Title | Category | Outcome |
 |---|---|---|---|

@@ -54,6 +54,21 @@ ambiguous. It fixes defect (d).
 One exception: if the correction would change what the software actually does, not only how it is
 described, the change is a decision and follows §3.
 
+### 2a. Mode-2 decisions are recorded as notices
+A decision the session makes alone and merely reports has, until now, no record type: it became
+a note in a pull request and disappeared with it. A decision of mode 2 — restructuring
+documentation, changing a test strategy, weakening a gate where it is demonstrated to have no
+value — is recorded as a **notice**: `docs/decisions/NTC-NNNN-<slug>.md`, in the register
+beside the decision records, with what was decided, the evidence it rests on, what was
+considered, and which mode-2 entry of `anchors.taktus.md` permits it. Nobody approves a
+notice; that is what mode 2 means. `docs/decisions/TEMPLATE-NOTICE.md` is the template.
+
+A gate weakened or removed under M2.3 additionally requires, in the record itself, the section
+*Why the gate had no value*: what the gate looked at, what it would have caught, the evidence
+that it caught nothing and could catch nothing. "It was in the way" is not evidence. The gate
+of §8 checks the shape and that the section names a gate; it cannot check the truth of the
+demonstration, and the reviewer can.
+
 ### 3. Four categories
 Everything a pull request wants to tell the owner falls into exactly one of these.
 
@@ -107,9 +122,10 @@ Section 4 is the one #1 lacked and the reason its questions could not be answere
 - `docs/decisions/open/DEC-NNNN-<slug>.md` — an open request, BLOCKING or NON-BLOCKING.
 - `docs/decisions/DEC-NNNN-<slug>.md` — a closed record: an answered request, a DEFECT record, or
   a question that was raised as a decision and reclassified as a NOTE.
-- `docs/decisions/README.md` — the register index; every record is listed there.
+- `docs/decisions/NTC-NNNN-<slug>.md` — a notice, the record of a mode-2 decision (§2a).
+- `docs/decisions/README.md` — the register index; every record and every notice is listed there.
 - Numbers are assigned once, in sequence, across open files and records, and never reused. A
-  record keeps the number of the request it closes.
+  record keeps the number of the request it closes. Notices have a sequence of their own.
 
 A plain NOTE gets no file: it lives in the pull request description. A question that was raised
 as a decision and then reclassified gets a record, so that the register carries the precedent.
@@ -149,7 +165,11 @@ quoted.
 - `tools/check_decisions.py`, run as `make gate-decisions`, part of `make gates` and of CI. It fails
   when an open request misses a section or keeps a placeholder; when a decision named in the pull
   request description has no file; when a record lacks an outcome or a date; when a file remains
-  under `open/` although its record exists; when a record is missing from the index.
+  under `open/` although its record exists; when a record is missing from the index. For
+  notices: when the header lacks a mode-2 entry that `anchors.taktus.md` defines, a date or
+  the pull request; when a section is missing, empty or out of order, or keeps a placeholder;
+  when an M2.3 notice lacks *Why the gate had no value* or that section names no gate; when a
+  notice is missing from the index.
 - The `decisions` CI job passes the pull request body and the draft flag to the same tool, which
   fails when a BLOCKING decision is named and the pull request is not a draft.
 - `.github/CODEOWNERS` names the owner, so every pull request requests their review.
