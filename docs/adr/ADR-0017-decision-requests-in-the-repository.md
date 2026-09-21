@@ -3,7 +3,8 @@
 **Status:** accepted · operationalises ADR-0008 for this repository · amended by ADR-0021: the
 category `DEFECT` is read as *documentation defect*; a wrong result is a *result defect* ·
 amended 2026-09-21: the anchor list has four modes in two files (§1), and a mode-2 decision
-has a record type, the notice (§2a)
+has a record type, the notice (§2a) · amended 2026-09-21 by DEC-0014: every notice carries a
+kind, and a behaviour change inside an agreed scope is a notice (§2a)
 
 ## Context
 ADR-0008 defines the decision request: the planned question about direction, with a fixed shape,
@@ -58,16 +59,27 @@ described, the change is a decision and follows §3.
 A decision the session makes alone and merely reports has, until now, no record type: it became
 a note in a pull request and disappeared with it. A decision of mode 2 — restructuring
 documentation, changing a test strategy, weakening a gate where it is demonstrated to have no
-value — is recorded as a **notice**: `docs/decisions/NTC-NNNN-<slug>.md`, in the register
-beside the decision records, with what was decided, the evidence it rests on, what was
-considered, and which mode-2 entry of `anchors.taktus.md` permits it. Nobody approves a
-notice; that is what mode 2 means. `docs/decisions/TEMPLATE-NOTICE.md` is the template.
+value, changing what the software does inside an agreed scope without breaking a contract,
+moving a limit or saying anything public — is recorded as a **notice**:
+`docs/decisions/NTC-NNNN-<slug>.md`, in the register beside the decision records, with what was
+decided, the evidence it rests on, what was considered, and which mode-2 entry of
+`anchors.taktus.md` permits it. Nobody approves a notice; that is what mode 2 means.
+`docs/decisions/TEMPLATE-NOTICE.md` is the template.
 
-A gate weakened or removed under M2.3 additionally requires, in the record itself, the section
-*Why the gate had no value*: what the gate looked at, what it would have caught, the evidence
-that it caught nothing and could catch nothing. "It was in the way" is not evidence. The gate
-of §8 checks the shape and that the section names a gate; it cannot check the truth of the
-demonstration, and the reviewer can.
+Every notice carries a **kind** in its header, and the register index shows it. The kinds are
+a vocabulary the shipped default defines (`anchors.md` §1): `restructuring`, `test-strategy`,
+`gate-weakened`, `behaviour-change`. Every mode-2 entry names its kind; a notice carries the
+kind of the entry it cites, and the gate of §8 fails on a mismatch. The kind exists beside the
+entry because an entry is one tenant's permission — it may be moved, split or renumbered —
+while the kind means the same in every tenant: a register is read by kind, and a weakened gate
+is found among any number of behaviour changes. This is the owner's answer to DEC-0014, the
+first question raised under *Neither list*.
+
+A notice of kind `gate-weakened` — a gate weakened or removed, entry M2.3 here — additionally
+requires, in the record itself, the section *Why the gate had no value*: what the gate looked
+at, what it would have caught, the evidence that it caught nothing and could catch nothing. "It
+was in the way" is not evidence. The gate of §8 checks the shape and that the section names a
+gate; it cannot check the truth of the demonstration, and the reviewer can.
 
 ### 3. Four categories
 Everything a pull request wants to tell the owner falls into exactly one of these.
@@ -166,10 +178,11 @@ quoted.
   when an open request misses a section or keeps a placeholder; when a decision named in the pull
   request description has no file; when a record lacks an outcome or a date; when a file remains
   under `open/` although its record exists; when a record is missing from the index. For
-  notices: when the header lacks a mode-2 entry that `anchors.taktus.md` defines, a date or
-  the pull request; when a section is missing, empty or out of order, or keeps a placeholder;
-  when an M2.3 notice lacks *Why the gate had no value* or that section names no gate; when a
-  notice is missing from the index.
+  notices: when the header lacks a mode-2 entry that `anchors.taktus.md` defines, a kind, a
+  date or the pull request; when the kind is not the one the entry names on that page; when a
+  section is missing, empty or out of order, or keeps a placeholder; when a `gate-weakened`
+  notice lacks *Why the gate had no value* or that section names no gate; when a notice is
+  missing from the index.
 - The `decisions` CI job passes the pull request body and the draft flag to the same tool, which
   fails when a BLOCKING decision is named and the pull request is not a draft.
 - `.github/CODEOWNERS` names the owner, so every pull request requests their review.
@@ -211,6 +224,8 @@ raised and did not need to be" is a precedent as much as an answer is.
 The gate checks shape: sections present, fields filled, a date, an index entry, a draft flag
 that matches. It cannot check that a request is decidable by a person who has read neither the
 diff nor the session — that is a reviewer's judgement — and it cannot check that a question
-tested against the anchor page was tested honestly. A notice's evidence, and an M2.3 notice's
-demonstration that a gate had no value, are checked for presence and for naming a gate, not
-for truth. The draft rule holds on GitHub; a repository hosted elsewhere needs its equivalent.
+tested against the anchor page was tested honestly. A notice's evidence, and a `gate-weakened`
+notice's demonstration that a gate had no value, are checked for presence and for naming a
+gate, not for truth. A notice's kind is checked against the entry it cites, not against what
+the notice describes: a behaviour change filed under `restructuring` passes the gate and fails
+the reviewer. The draft rule holds on GitHub; a repository hosted elsewhere needs its equivalent.

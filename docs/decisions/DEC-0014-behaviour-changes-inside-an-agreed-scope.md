@@ -92,3 +92,25 @@ rework.
 
 "DEC-0014: Option A." or "DEC-0014: Option B." A free-text answer is read back as an
 interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-09-21
+**Answer:** Option B, with one addition. The owner wrote: "DEC-0014: Option B. Notices are
+tagged by kind, so that a weakened gate stays distinguishable from a behaviour change." Read
+as: (1) entry M2.4 is added — a change of what the software does, made inside an agreed scope,
+that breaks no contract, moves no limit or autonomy level and says nothing public, is decided
+by the session and recorded as a notice; (2) every notice carries a **kind** in its header,
+from a vocabulary the shipped default defines — `restructuring`, `test-strategy`,
+`gate-weakened`, `behaviour-change` — and the register index shows it; each mode-2 entry names
+its kind, and the gate fails a notice whose kind is not the one its entry names. The kind is
+separate from the entry because an entry is one tenant's permission and may be moved or
+renumbered, while the kind means the same everywhere. This reading is the record; the pull
+request that carries it is where the owner confirms it.
+**Reasoning given:** the drawback the recommendation named — that a notice per behaviour change
+would bury the notices that matter, a weakened gate, among small ones — is answered by tagging
+rather than by not recording. A behaviour change then leaves a searchable record with its
+evidence and the alternatives considered, and a weakened gate is found by its kind, not by
+reading every notice.
+**Recorded in:** [#16](https://github.com/Jersyfi/taktus/pull/16); the behaviour change of #14
+is NTC-0002; `anchors.md` §1 defines the kinds; ADR-0017 §2a and §8 are amended

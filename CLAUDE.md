@@ -128,7 +128,7 @@ interpretation is reflected back and confirmed first (ADR-0008).
 
 **For this repository the anchors are concrete, in four modes.** Every question falls into one:
 (1) the session decides, no notice; (2) the session decides and records a **notice**
-(`NTC-NNNN`); (3) the session prepares a worked opinion, the owner decides; (4) the owner
+(`NTC-NNNN`, tagged by kind); (3) the session prepares a worked opinion, the owner decides; (4) the owner
 decides, the session supplies data. `docs/decisions/anchors.md` is the shipped default — the
 configuration a new tenant inherits, product. `docs/decisions/anchors.taktus.md` is the
 configuration of this tenant, the Taktus project — the owner's answers, not product. The same

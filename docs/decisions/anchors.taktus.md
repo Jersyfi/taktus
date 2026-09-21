@@ -32,11 +32,15 @@ that is intended: the same anchor resolves differently per tenant (anchors.md §
 
 ## Mode 2 — the session decides and records a notice
 
-| Entry | The session decides and records | The record |
-|---|---|---|
-| M2.1 | **Documentation restructuring** without changing what the documents say. | a notice, `NTC-NNNN` |
-| M2.2 | **A change of test strategy** and what the tests now cover. | a notice, `NTC-NNNN`; `tests/README.md` says the same |
-| M2.3 | **Weakening or removing a gate, only where it is demonstrated that the gate has no value.** A notice suffices; approval does not. The notice carries the demonstration: what the gate looked at, what it would have caught, the evidence that it caught nothing and could catch nothing. "It was in the way" or "it was slow" is not a demonstration. A gate that is slow is a finding to report with its cost, not a gate to remove (CLAUDE.md §11). | a notice, `NTC-NNNN`, with the section "Why the gate had no value" |
+| Entry | Kind | The session decides and records | The record |
+|---|---|---|---|
+| M2.1 | `restructuring` | **Documentation restructuring** without changing what the documents say. | a notice, `NTC-NNNN` |
+| M2.2 | `test-strategy` | **A change of test strategy** and what the tests now cover. | a notice, `NTC-NNNN`; `tests/README.md` says the same |
+| M2.3 | `gate-weakened` | **Weakening or removing a gate, only where it is demonstrated that the gate has no value.** A notice suffices; approval does not. The notice carries the demonstration: what the gate looked at, what it would have caught, the evidence that it caught nothing and could catch nothing. "It was in the way" or "it was slow" is not a demonstration. A gate that is slow is a finding to report with its cost, not a gate to remove (CLAUDE.md §11). | a notice, `NTC-NNNN`, with the section "Why the gate had no value" |
+| M2.4 | `behaviour-change` | **A change of what the software does, made inside an agreed scope**, that breaks no contract, moves no limit or autonomy level and says nothing public. Added by DEC-0014. The notice names the old behaviour, the new one and the reason the scope needed it; a change that would break a contract, move a limit or a level, or say something public is that entry's decision (M3.5, M3.10, M3.9, M3.7). | a notice, `NTC-NNNN` |
+
+The kind is the default's vocabulary (anchors.md §1); the entry is this tenant's permission. A
+notice carries both, and `make gate-decisions` fails when they do not match.
 
 ## Mode 3 — the session prepares, the owner decides
 
@@ -96,3 +100,6 @@ entirely between them, which is why there are four modes now. Records written be
 cite the old rows; `O1`/`O3` are now M1.7/M1.8, `O2` is M3.2, `O4` is M1.9, `O5` is M3.6, `O6`
 is M4.1 to M4.3, `O7` is M3.7, `O8` is M3.8, `O9` is M2.3, `O10` is M3.11, and `D1` to `D6`
 are M1.1 to M1.6. The restructuring is recorded as NTC-0001.
+
+M2.4 was added on 2026-09-21 from the owner's answer to DEC-0014, the first question raised
+under *Neither list*; the same answer gave every notice its kind.

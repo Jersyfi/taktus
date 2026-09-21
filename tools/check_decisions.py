@@ -16,9 +16,10 @@ Checks:
 3. a number is used once, and never both under open/ and as a record;
 4. every record is listed in docs/decisions/README.md;
 4a. every notice (NTC-NNNN, a mode-2 record, ADR-0017 §2a) has its header — a mode-2 entry of
-   anchors.taktus.md that exists, a date, the pull request — the four sections in order, no
-   placeholder, and is listed in the index; a notice under M2.3 (a gate weakened or removed)
-   additionally carries the section "Why the gate had no value", which names the gate;
+   anchors.taktus.md that exists, the kind that entry names there, a date, the pull request —
+   the four sections in order, no placeholder, and is listed in the index; a notice of kind
+   gate-weakened (a gate weakened or removed, entry M2.3) additionally carries the section
+   "Why the gate had no value", which names the gate;
 5. with --pr-body: the "Decisions required" section of a pull request description is either
    "None" or a list of DEC lines, every named decision has an open file with the same category,
    and every BLOCKING open file is named;
@@ -75,8 +76,9 @@ DATE_FIELDS = {"Needed by", "Decided", "Corrected", "Recorded"}
 FILENAME = re.compile(r"^DEC-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 TITLE = re.compile(r"^# DEC-(\d{4}) — (.+)$")
 
-# Notices: the record of a mode-2 decision (ADR-0017 §2a). Section 5 exists exactly for a
-# weakened gate, entry M2.3 of anchors.taktus.md.
+# Notices: the record of a mode-2 decision (ADR-0017 §2a). Every notice carries the kind its
+# entry names on the tenant's anchor page (DEC-0014); section 5 exists exactly for the kind
+# gate-weakened, a weakened or removed gate.
 NOTICE_SECTIONS = [
     "1. What was decided",
     "2. The evidence",
@@ -84,11 +86,13 @@ NOTICE_SECTIONS = [
     "4. Which entry permits it",
 ]
 GATE_SECTION = "5. Why the gate had no value"
-GATE_ENTRY = "M2.3"
+GATE_KIND = "gate-weakened"
 NOTICE_FILENAME = re.compile(r"^NTC-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 NOTICE_TITLE = re.compile(r"^# NTC-(\d{4}) — (.+)$")
 MODE_ENTRY = re.compile(r"^M2\.\d+$")
 ENTRY_ROW = re.compile(r"^\| (M[1-4]\.\d+) \|", re.MULTILINE)
+KIND = re.compile(r"^[a-z]+(?:-[a-z]+)*$")
+KIND_CELL = re.compile(r"^`([a-z]+(?:-[a-z]+)*)`$")
 GATE_NAME = re.compile(r"`make gate-[a-z-]+`|`tests/[a-z_/.-]+`|`make test`|`make lint`")
 FIELD = re.compile(r"^\*\*([A-Za-z ]+):\*\*\s*(.*)$")
 PLACEHOLDER = re.compile(r"<[^>\n]+>|\b(?:TODO|TBD|FIXME|XXX)\b|…")
@@ -306,22 +310,39 @@ def check_record(doc: Document, problems: list[str]) -> None:
 # --- notices -------------------------------------------------------------------------------------
 
 
-def mode_two_entries() -> set[str]:
-    """The entry identifiers the tenant's anchor page defines; a notice cites one of mode 2."""
+def anchor_entries() -> dict[str, str | None]:
+    """The entry identifiers the tenant's anchor page defines, each with the kind its row names
+    in a cell of its own (`restructuring`); None where the row names no kind."""
     if not ANCHORS.exists():
-        return set()
-    return set(ENTRY_ROW.findall(ANCHORS.read_text(encoding="utf-8")))
+        return {}
+    entries: dict[str, str | None] = {}
+    for line in ANCHORS.read_text(encoding="utf-8").splitlines():
+        if (row := ENTRY_ROW.match(line)) is None:
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        kinds = [m.group(1) for cell in cells[1:] if (m := KIND_CELL.match(cell))]
+        entries[row.group(1)] = kinds[0] if kinds else None
+    return entries
 
 
-def check_notice(doc: Document, problems: list[str], entries: set[str]) -> None:
-    check_fields(doc, ["Mode entry", "Decided", "Raised in"], problems)
+def check_notice(doc: Document, problems: list[str], entries: dict[str, str | None]) -> None:
+    check_fields(doc, ["Mode entry", "Kind", "Decided", "Raised in"], problems)
     entry = doc.fields.get("Mode entry", "")
+    kind = doc.fields.get("Kind", "")
     if entry and not MODE_ENTRY.match(entry):
         problems.append(f"`**Mode entry:**` is not a mode-2 entry (M2.N): {entry!r}")
     elif entry and entries and entry not in entries:
         problems.append(f"`**Mode entry:**` {entry} is not an entry of {ANCHORS.name}")
+    if kind and not KIND.match(kind):
+        problems.append(f"`**Kind:**` is not a kind (lowercase words joined by `-`): {kind!r}")
+    elif kind and entries.get(entry) is not None and kind != entries[entry]:
+        problems.append(
+            f"`**Kind:**` {kind} is not the kind {ANCHORS.name} names for {entry}: {entries[entry]}"
+        )
+    elif kind and entry in entries and entries[entry] is None:
+        problems.append(f"{ANCHORS.name} names no kind for {entry}; every mode-2 entry has one")
     present = list(doc.sections)
-    expected = NOTICE_SECTIONS + ([GATE_SECTION] if entry == GATE_ENTRY else [])
+    expected = NOTICE_SECTIONS + ([GATE_SECTION] if kind == GATE_KIND else [])
     if present != expected:
         missing = [name for name in expected if name not in present]
         unexpected = [name for name in present if name not in expected]
@@ -336,7 +357,7 @@ def check_notice(doc: Document, problems: list[str], entries: set[str]) -> None:
             problems.append(f"`## {name}` is empty")
         elif found := PLACEHOLDER.search(strip_code(body)):
             problems.append(f"`## {name}` keeps a placeholder: {found.group(0)!r}")
-    if entry == GATE_ENTRY and (body := doc.sections.get(GATE_SECTION)):
+    if kind == GATE_KIND and (body := doc.sections.get(GATE_SECTION)):
         if GATE_NAME.search(body) is None:
             problems.append(
                 f"`## {GATE_SECTION}` names no gate (`make gate-<name>`, `make test`, `make lint` "
@@ -347,13 +368,13 @@ def check_notice(doc: Document, problems: list[str], entries: set[str]) -> None:
                 f"`## {GATE_SECTION}` is too short to be a demonstration: state what the gate "
                 "looked at, what it would have caught, and the evidence it caught nothing"
             )
-    if entry and entry != GATE_ENTRY and GATE_SECTION in doc.sections:
-        problems.append(f"`## {GATE_SECTION}` belongs to {GATE_ENTRY} only")
+    if kind and kind != GATE_KIND and GATE_SECTION in doc.sections:
+        problems.append(f"`## {GATE_SECTION}` belongs to the kind {GATE_KIND} only")
 
 
 def check_notices(report: Report) -> list[Document]:
     print("notices")
-    entries = mode_two_entries()
+    entries = anchor_entries()
     notices: list[Document] = []
     seen: dict[str, str] = {}
     for path in sorted(REGISTER.glob("NTC-*.md")):

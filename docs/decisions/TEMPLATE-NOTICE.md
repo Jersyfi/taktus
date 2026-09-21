@@ -1,6 +1,7 @@
 # NTC-NNNN — <title: what was decided, in five words>
 
 **Mode entry:** <M2.N, the entry of anchors.taktus.md mode 2 that permits deciding this alone>
+**Kind:** <the kind that entry names in anchors.taktus.md: restructuring, test-strategy, gate-weakened or behaviour-change>
 **Decided:** <YYYY-MM-DD>
 **Raised in:** <link to the pull request>
 
@@ -10,8 +11,11 @@ Fill every section. Replace every <placeholder>; the gate fails on any that rema
 A notice is a mode-2 record (anchors.md §1): the session decided, nobody approves, and the
 record says what was decided and on what evidence. It is not a note in a pull request — a
 note disappears with the pull request; a notice stays in the register.
-Section 5 exists only for M2.3, a weakened or removed gate, and is then mandatory: the gate
-fails an M2.3 notice without it, and a notice of any other entry with it.
+The kind is the vocabulary every tenant shares (anchors.md §1); the entry is this tenant's
+permission. The gate fails when the kind is not the one the cited entry names.
+Section 5 exists only for the kind gate-weakened (entry M2.3 here), a weakened or removed
+gate, and is then mandatory: the gate fails such a notice without it, and a notice of any
+other kind with it.
 Mechanism: docs/adr/ADR-0017 §2a.
 -->
 

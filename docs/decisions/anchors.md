@@ -37,6 +37,23 @@ exists because a decision that is merely reported in a pull request disappears w
 request. A notice that weakens a gate carries, in the record itself, the evidence that the gate
 had no value. "It was in the way" is not evidence.
 
+**Every notice carries a kind.** The kind says what sort of thing was decided, in one word that
+means the same in every tenant, so that a register can be read by kind whatever a tenant's
+entries are numbered. Four kinds exist:
+
+| Kind | What was decided |
+|---|---|
+| `restructuring` | documentation was restructured; what it says did not change |
+| `test-strategy` | the test strategy changed, or what the tests cover |
+| `gate-weakened` | a gate was weakened or removed |
+| `behaviour-change` | what the software does changed, inside an agreed scope, breaking no contract |
+
+Every mode-2 entry names its kind; a notice carries the kind of the entry it cites, and the
+gate (ADR-0017 §8) fails on a mismatch. The kind is not the entry: the entry is a tenant's
+permission to decide alone and may be moved, split or renumbered; the kind is the vocabulary
+the tenants share. A weakened gate is therefore never buried among behaviour changes, however
+many notices a tenant writes.
+
 ---
 
 ## 2. The default entries
@@ -59,11 +76,12 @@ narrowed but not removed (governance.md §2).
 
 ### Mode 2 — the operator decides and records a notice
 
-| Entry | The operator decides and records |
-|---|---|
-| M2.1 | **Restructuring documentation** without changing what it says. |
-| M2.2 | **A change of test strategy** and what the tests now cover. |
-| M2.3 | **Weakening or removing a gate**, only where the notice demonstrates that the gate has no value. A *gate* is a check that must pass before a change is accepted. Narrowing what a gate looks at, adding an exception to it, or removing it weakens it. Making a gate correct without making it weaker is mode 1. |
+| Entry | Kind | The operator decides and records |
+|---|---|---|
+| M2.1 | `restructuring` | **Restructuring documentation** without changing what it says. |
+| M2.2 | `test-strategy` | **A change of test strategy** and what the tests now cover. |
+| M2.3 | `gate-weakened` | **Weakening or removing a gate**, only where the notice demonstrates that the gate has no value. A *gate* is a check that must pass before a change is accepted. Narrowing what a gate looks at, adding an exception to it, or removing it weakens it. Making a gate correct without making it weaker is mode 1. |
+| M2.4 | `behaviour-change` | **A change of what the software does, made inside an agreed scope**, that breaks no published contract, moves no limit or autonomy level and says nothing public. A change that would do one of those is that entry's decision (M3.5, M3.10, M3.9, M3.7). |
 
 ### Mode 3 — the operator prepares, the owner decides
 
