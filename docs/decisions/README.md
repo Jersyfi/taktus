@@ -6,14 +6,16 @@ and gave notice of. The mechanism is ADR-0017. Which questions reach the owner i
 four modes: [anchors.md](anchors.md) is the shipped default any tenant inherits, and
 [anchors.taktus.md](anchors.taktus.md) is the configuration of this tenant, the Taktus
 project. The template for a request is [TEMPLATE.md](TEMPLATE.md); the template for a notice
-is [TEMPLATE-NOTICE.md](TEMPLATE-NOTICE.md).
+is [TEMPLATE-NOTICE.md](TEMPLATE-NOTICE.md); the template for a needs request is
+[TEMPLATE-NEED.md](TEMPLATE-NEED.md).
 
 The category `DEFECT` is a *documentation defect*: a fault in what the repository says, corrected
 and recorded, never asked. A wrong result produced by a run is a *result defect* (ADR-0021) and
 never appears in this register.
 
-`open/` holds requests that wait for an answer. A request leaves `open/` in the same commit that
-creates its record here. `make gate-decisions` checks both, and the notices.
+`open/` holds requests that wait for an answer, and needs that wait to be provided. A request
+leaves `open/` in the same commit that creates its record here. `make gate-decisions` checks
+both, the notices, and the needs.
 
 A **notice**, `NTC-NNNN`, is the record of a mode-2 decision (anchors.md §1): the session
 decided, nobody approves, and the record states what was decided, on what evidence, what was
@@ -21,6 +23,20 @@ considered and which entry permits it. Every notice carries a **kind** — `rest
 `test-strategy`, `gate-weakened`, `behaviour-change` — so that the register reads by kind and
 a weakened gate is never buried among behaviour changes (DEC-0014). A notice that weakens a
 gate carries the demonstration that the gate had no value, in the record itself.
+
+A **needs request**, `NEED-NNNN`, is the record of something only the owner can provide — a
+credential, an account, access to a system, a purchase, an action on a server, information about
+an environment (ADR-0028). It is raised when it becomes foreseeable, not when it blocks; raising
+it is mode 2 (entry M2.5), providing it is the owner's act. An open need is under `open/` with an
+issue labelled `needs-owner`; a provided need is a record here with its outcome. What is open is
+in [../status.md](../status.md), section 3.
+
+## Needs
+
+| NEED | Title | Kind | Outcome |
+|---|---|---|---|
+
+*None provided yet. The open needs are listed in [../status.md](../status.md), section 3.*
 
 ## Notices
 

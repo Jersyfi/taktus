@@ -1,0 +1,91 @@
+name: Needs request
+description: Something only the owner can provide — a credential, an account, access, a purchase, an action, information (ADR-0028). Mirrors docs/decisions/TEMPLATE-NEED.md.
+title: "NEED-NNNN — "
+labels: ["needs-owner"]
+assignees: ["Jersyfi"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One file under `docs/decisions/open/` and this issue together form one needs request
+        (ADR-0028). Fill the seven sections with the same content as the file, then put this
+        issue's link into the file. Nothing here ever holds a secret value: the value goes where
+        section 5 says, and this issue is closed with the sentence from section 6 once section 7
+        confirms it.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - credential
+        - account
+        - access
+        - purchase
+        - action
+        - information
+    validations:
+      required: true
+  - type: input
+    id: file
+    attributes:
+      label: File
+      description: Path of the request under docs/decisions/open/.
+      placeholder: docs/decisions/open/NEED-NNNN-slug.md
+    validations:
+      required: true
+  - type: input
+    id: needed_by
+    attributes:
+      label: Needed by
+      placeholder: YYYY-MM-DD
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 1. What is needed
+      description: In plain words, for a reader who has read nothing else.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 2. Why
+      description: What it unlocks, and which milestone or task depends on it.
+    validations:
+      required: true
+  - type: textarea
+    id: when
+    attributes:
+      label: 3. By when
+      description: The date, and what happens if it is not there by then.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: 4. How to provide it
+      description: The steps, where it goes, which permissions and scope, how long it is valid; the literal commands, with no value in them.
+    validations:
+      required: true
+  - type: textarea
+    id: never
+    attributes:
+      label: 5. What it must never be
+      description: Never pasted into a chat, never committed, never sent to a session. Where it goes instead.
+    validations:
+      required: true
+  - type: textarea
+    id: next
+    attributes:
+      label: 6. What happens next
+      description: Once it is in place — what to tell the session, or what runs on its own.
+    validations:
+      required: true
+  - type: textarea
+    id: confirm
+    attributes:
+      label: 7. How to confirm
+      description: A check that says "provided correctly" without revealing the value.
+    validations:
+      required: true

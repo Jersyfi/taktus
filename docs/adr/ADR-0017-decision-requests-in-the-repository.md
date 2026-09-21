@@ -4,7 +4,9 @@
 category `DEFECT` is read as *documentation defect*; a wrong result is a *result defect* ·
 amended 2026-09-21: the anchor list has four modes in two files (§1), and a mode-2 decision
 has a record type, the notice (§2a) · amended 2026-09-21 by DEC-0014: every notice carries a
-kind, and a behaviour change inside an agreed scope is a notice (§2a)
+kind, and a behaviour change inside an agreed scope is a notice (§2a) · extended by ADR-0028: a fifth record kind, the needs
+request `NEED-NNNN`, for what only the owner can provide, and the status report
+`docs/status.md`
 
 ## Context
 ADR-0008 defines the decision request: the planned question about direction, with a fixed shape,

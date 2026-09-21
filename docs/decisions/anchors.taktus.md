@@ -41,6 +41,7 @@ that is intended: the same anchor resolves differently per tenant (anchors.md §
 
 The kind is the default's vocabulary (anchors.md §1); the entry is this tenant's permission. A
 notice carries both, and `make gate-decisions` fails when they do not match.
+| M2.5 | **Raising a needs request** — a credential, an account, access, a purchase, an action on a server, information about an environment — when it becomes foreseeable (ADR-0028). The session decides that the need exists and raises it; nobody approves the raising. Providing it is the owner's act. The owner's brief of 2026-09-21 places it here. | the needs request itself, `NEED-NNNN`, under `docs/decisions/open/` with an issue labelled `needs-owner`, assigned to the owner |
 
 ## Mode 3 — the session prepares, the owner decides
 
