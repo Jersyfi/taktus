@@ -43,7 +43,9 @@ The milestone is complete when two things hold. The first holds. The second does
 With those three in place, `tools/first_run.sh 11` is the one command that runs P-02 and
 then P-03 for issue #11 and opens the pull request; CI runs on the branch P-03 creates since
 #13 was merged. Whether that run passes CI is unknown until it has happened: the pipeline's
-verdict on a branch the coding worker produced has never been read for real.
+verdict on a branch the coding worker produced has never been read for real, and the first
+push of such a branch would have failed the documentation gate for lack of a comparison base
+until DEC-0017 corrected it in this pull request — found by reading, not by a run.
 
 **Done in `0.1.0`**, checked against the tree: the contracts for the worker and the connector
 as executable schemas with conformance suites that a third party can run (`contracts/worker`,

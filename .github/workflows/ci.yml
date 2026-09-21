@@ -64,7 +64,9 @@ jobs:
           --pr-body "$RUNNER_TEMP/pr-body.md"
       - name: status (main)
         if: github.event_name != 'pull_request'
-        run: uv run tools/check_status.py --base ${{ github.event.before }}
+        # A push to main compares with what main was; the first push of a `taktus/**` branch
+        # has no "before" (GitHub sends the null sha) and compares with main (DEC-0017).
+        run: uv run tools/check_status.py --base ${{ github.ref == 'refs/heads/main' && github.event.before || 'origin/main' }}
 
   gates:
     runs-on: ubuntu-latest
@@ -104,7 +106,10 @@ jobs:
 
       - name: documentation freshness
         env:
-          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+          # A pull request compares with its base; a push to main with what main was; the first
+          # push of a `taktus/**` branch has no "before" — GitHub sends the null sha, which no
+          # gate can diff against — and compares with main (DEC-0017).
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || (github.ref == 'refs/heads/main' && github.event.before || 'origin/main') }}
         run: make gate-docs BASE="$BASE"
 
       - name: decisions
