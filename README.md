@@ -100,8 +100,9 @@ you see the domain, not the framework.
 | [examples/README.md](examples/README.md) | Running a process bundle with `uv run taktusctl run`; the shape of a bundle |
 | [blueprints/dev-orchestration/README.md](blueprints/dev-orchestration/README.md) | The dev-orchestration blueprint: P-02 Refinement and P-03 Implementation run; the rest remain descriptions |
 | [docs/first-run.md](docs/first-run.md) | The first time Taktus was used against this repository rather than tested: how far it got, and every piece of friction |
-| [docs/adr/README.md](docs/adr/README.md) | 25 architecture decisions with the alternatives rejected |
-| [docs/decisions/](docs/decisions/README.md) | The project's decision register: which questions reach the owner, and what was answered |
+| [docs/adr/README.md](docs/adr/README.md) | every architecture decision with the alternatives rejected |
+| [docs/status.md](docs/status.md) | Where the project stands and what is needed from the owner, kept current by every pull request |
+| [docs/decisions/](docs/decisions/README.md) | The project's decision register: which questions reach the owner, what was answered, and what only the owner can provide |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones `0.1.0` to `1.0.0` |
 | [docs/usecases/](docs/usecases/) | The worked use cases |
 
