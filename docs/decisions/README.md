@@ -17,14 +17,17 @@ creates its record here. `make gate-decisions` checks both, and the notices.
 
 A **notice**, `NTC-NNNN`, is the record of a mode-2 decision (anchors.md §1): the session
 decided, nobody approves, and the record states what was decided, on what evidence, what was
-considered and which entry permits it. A notice that weakens a gate carries the demonstration
-that the gate had no value, in the record itself.
+considered and which entry permits it. Every notice carries a **kind** — `restructuring`,
+`test-strategy`, `gate-weakened`, `behaviour-change` — so that the register reads by kind and
+a weakened gate is never buried among behaviour changes (DEC-0014). A notice that weakens a
+gate carries the demonstration that the gate had no value, in the record itself.
 
 ## Notices
 
-| NTC | Title | Entry | What was decided |
-|---|---|---|---|
-| [0001](NTC-0001-anchors-split-into-two-files.md) | Anchors split into two files with four modes | M2.1 | the anchor page is the shipped default plus the Taktus tenant's configuration, entries identified `M<mode>.<n>`, the old rows mapped |
+| NTC | Title | Entry | Kind | What was decided |
+|---|---|---|---|---|
+| [0001](NTC-0001-anchors-split-into-two-files.md) | Anchors split into two files with four modes | M2.1 | `restructuring` | the anchor page is the shipped default plus the Taktus tenant's configuration, entries identified `M<mode>.<n>`, the old rows mapped |
+| [0002](NTC-0002-a-missing-adapter-fails-the-step.md) | A missing adapter fails the step at the boundary | M2.4 | `behaviour-change` | a step whose worker, connector or operation is not configured ends failed and retryable with the reason, and the run escalates at that boundary instead of raising out of the engine |
 
 ## Decisions
 
@@ -43,3 +46,4 @@ that the gate had no value, in the record itself.
 | [0011](DEC-0011-no-worker-code-in-the-control-plane-image.md) | No worker code in the control plane image | DEFECT | corrected: the reference worker has its own image; `compose.yml` is Taktus and PostgreSQL; `compose.reference-worker.yml` is the development layer; a check fails on worker code in the control plane image |
 | [0012](DEC-0012-the-limit-guarantee-holds-per-consumption-kind.md) | The limit guarantee holds per consumption kind | DEFECT | corrected: ADR-0005 names the kinds — tokens, quota, compute per step — for which no limit is breached, and states that a currency limit degrades to an estimate where money is reported per assignment |
 | [0013](DEC-0013-a-provisional-operator-identity.md) | A provisional operator identity until the identity component exists | NOTE | recorded: one configured identity per tenant (`TAKTUS_PROVISIONAL_IDENTITY`), marked provisional everywhere it appears; the identity component (`0.2.0`) replaces it and removes the variable |
+| [0014](DEC-0014-behaviour-changes-inside-an-agreed-scope.md) | Behaviour changes inside an agreed scope | NON-BLOCKING | answered: Option B — entry M2.4, a notice per behaviour change; and every notice carries a kind, so that a weakened gate stays distinguishable |

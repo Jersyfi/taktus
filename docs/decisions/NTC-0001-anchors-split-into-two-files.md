@@ -1,6 +1,7 @@
 # NTC-0001 — Anchors split into two files with four modes
 
 **Mode entry:** M2.1
+**Kind:** restructuring
 **Decided:** 2026-09-21
 **Raised in:** [#14](https://github.com/Jersyfi/taktus/pull/14), which rebuilds the decision model from the owner's answers
 
