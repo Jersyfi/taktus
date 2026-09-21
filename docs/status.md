@@ -1,8 +1,7 @@
 # Status
 
 **As of:** 2026-09-21
-**Accounts for:** `main` after #14, the open pull request #16, and the pull request that
-writes this version
+**Accounts for:** `main` after #16, and the pull request that writes this version (#22)
 **Kept current by:** every pull request that changes the state of the project; `make
 gate-status` fails when this file was not touched by one that did, and when section 3 differs
 from the register
@@ -79,9 +78,9 @@ bounded by *Where this promise ends*, with a gate.
 | a live run of the coding worker against its real agent in CI | the gate runs the stand-in; a live run needs a credential CI does not have |
 | governance and anchors in the product | the anchors exist for this repository as documents; nothing in the product evaluates an anchor at a step boundary yet |
 
-**In flight:** pull request #16 records the owner's answer to DEC-0014 (Option B: a behaviour
-change inside an agreed scope is a notice, and notices are tagged by kind). It is open, not
-merged; until it merges, DEC-0014 is still under `docs/decisions/open/` and issue #15 is open.
+**Decided since the last version:** DEC-0014 (#16, merged 2026-09-21): a behaviour change
+inside an agreed scope is a notice, entry M2.4, and every notice carries a kind. DEC-0015
+(this pull request): the owner-facing section of a description stays in English.
 
 **The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) was
 merged on 2026-09-21 after that day's hour had passed. It has not run yet. Its first scheduled
@@ -124,17 +123,13 @@ assigned to the owner with the steps.
 | NEED-0002 | The repository connector's token | 2026-10-05 | credential | #19 |
 | NEED-0003 | The model endpoint and its key | 2026-10-05 | credential | #20 |
 | NEED-0004 | The platform's current interface note | 2026-10-12 | information | #21 |
-| DEC-0014 | Behaviour changes inside an agreed scope | 2026-10-19 | NON-BLOCKING | #15 |
-| DEC-0015 | The owner-facing section in German | 2026-10-19 | NON-BLOCKING | #17 |
 <!-- end generated -->
 
 The three credentials (NEED-0001 to NEED-0003) are one set: the first live run needs all of
 them, and one without the others changes nothing. Each names the file to create and the line
 to add to `.env`; none asks for a value anywhere a session can read it. NEED-0004 is
-information, not a secret, and goes into a private place, not this repository. DEC-0014 is
-answered; #16 records the answer and is waiting to be merged. DEC-0015 asks whether this
-section, in the pull request description, should be in German; the provisional answer is
-English.
+information, not a secret, and goes into a private place, not this repository. No decision
+request is open.
 
 ## 4. Blocked
 
@@ -142,7 +137,6 @@ English.
 |---|---|---|
 | the first live end-to-end run — `0.1.0`'s completion criterion | NEED-0001, NEED-0002, NEED-0003 (section 3) | foreseeable since #8 (the connector), #10 (the coding worker) and #13 (the model step); stated as notes there; raised as needs only in this pull request, needed by 2026-10-05 |
 | deployment against the target platform | NEED-0004: the platform's current interface — the values keys, the names of the secret parameters, the namespaces, the egress mechanism, the webhook path — shape only | the platform changed since it was last described; the repository never held that description; needed by 2026-10-12 |
-| the record of DEC-0014 leaving `open/` | the merge of #16 | 2026-09-21 |
 | a removal-test verdict of *broke* on a real process, and *changed* through an alternative adapter | a second adapter for a capability a process uses; nothing today has one | #14 |
 
 Nothing else is blocked. Everything not listed here can be built by a session without the

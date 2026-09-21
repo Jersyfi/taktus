@@ -4,7 +4,6 @@
 **Raised in:** [#22](https://github.com/Jersyfi/taktus/pull/22), which adds the needs request and the status report
 **Issue:** [#17](https://github.com/Jersyfi/taktus/issues/17)
 **Needed by:** 2026-10-19
-**Provisional answer:** English, as the rule stands: the last section of every pull request description, *Needed from the owner*, is written in English; the pull request template and `tools/check_status.py` say so
 
 ## 1. What this is about
 
@@ -102,3 +101,14 @@ pull request and no rework.
 
 "DEC-0015: Option A.", "DEC-0015: Option B." or "DEC-0015: Option C." A free-text answer is
 read back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-09-21
+**Answer:** Option A. The owner-facing section of a pull request description, *Needed from the
+owner*, stays in English, generated from the register and checked by CI; the rule "everything
+in English" (CLAUDE.md §9, ADR-0017 §7) is unchanged. The question is placed in mode 1: the
+language of a description follows the written rule, and a session does not raise it again.
+**Reasoning given:** "DEC-0015 -> English", in the session of 2026-09-21; no further reason
+given, and none needed — the recommendation was Option A for the reasons in section 5.
+**Recorded in:** [#22](https://github.com/Jersyfi/taktus/pull/22)
