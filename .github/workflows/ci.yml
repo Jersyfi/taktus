@@ -32,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - name: pull request description
         if: github.event_name == 'pull_request'
@@ -51,6 +53,18 @@ jobs:
       # standard-library tool shape as the decisions gate.
       - name: architecture decision records
         run: make gate-adrs
+      # The status report is current: touched by every change to the state of the project,
+      # section 3 as the register generates it, and repeated as the last section of the pull
+      # request description so that the owner sees it without opening a file (ADR-0028).
+      - name: status (pull request)
+        if: github.event_name == 'pull_request'
+        run: >
+          uv run tools/check_status.py
+          --base origin/${{ github.base_ref }}
+          --pr-body "$RUNNER_TEMP/pr-body.md"
+      - name: status (main)
+        if: github.event_name != 'pull_request'
+        run: uv run tools/check_status.py --base ${{ github.event.before }}
 
   gates:
     runs-on: ubuntu-latest

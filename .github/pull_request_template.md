@@ -25,3 +25,11 @@ only an entry of mode 3 or 4 justifies a request. A mode-2 decision is a notice 
 ## Everything else
 
 <!-- What a reviewer needs; how CLAUDE.md §11 is met; defects corrected (with their DEC record). -->
+
+## Needed from the owner
+
+<!--
+The last section, always. Section 3 of docs/status.md, verbatim — the generated block between
+its markers: every open needs request and decision request, the most urgent first, with its
+date and issue. `make generate` writes it there; CI fails when this differs from it (ADR-0028).
+-->
