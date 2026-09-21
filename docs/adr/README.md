@@ -4,6 +4,15 @@ Every decision with its context, the alternatives rejected and its consequences.
 change arrives as an ADR, not as a pull request without context. Where code and an ADR disagree, the
 ADR wins.
 
+**Every ADR that makes a promise states where the promise ends.** A promise without a stated
+boundary reads as a guarantee, and that is where the disappointments come from that a product
+never recovers from: ADR-0005 said no limit is ever breached, and a currency limit could be;
+ADR-0014 said `exact` is machine-checkable, and did not say that somebody has to write the check.
+Both boundaries were documented somewhere other than where the promise was made. Hence the
+section `## Where this promise ends`, last in the file, mandatory in every ADR whose prose
+promises — `make gate-adrs` (`tools/check_adrs.py`) fails an ADR that promises without
+bounding. The section states the boundary; it does not point at it.
+
 | ADR | Title | Status |
 |---|---|---|
 | [0001](ADR-0001-language.md) | Python as the single server-side language | accepted |
@@ -31,3 +40,5 @@ ADR wins.
 | [0023](ADR-0023-automatic-emergency-stop-is-rule-based.md) | An automatic emergency stop is rule-based | accepted |
 | [0024](ADR-0024-connector-contract.md) | Connector contract on MCP: two directions, a declared effect, an honest repeat | accepted |
 | [0025](ADR-0025-where-an-instance-may-run.md) | Where an instance may run | accepted |
+| [0026](ADR-0026-autonomy-carries-its-reason.md) | Autonomy carries its reason | accepted |
+| [0027](ADR-0027-taktus-reaches-itself-through-the-connector-port.md) | Taktus reaches itself through the connector port | accepted |

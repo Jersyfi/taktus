@@ -30,3 +30,21 @@ class StaticWorkerPool:
             if needed <= capabilities:
                 return ResolvedWorker(adapter=adapter, worker=worker, version=version)
         return None
+
+    async def members(self) -> list[tuple[str, frozenset[str]]]:
+        """Every configured worker with the capabilities it declares — what the removal test
+        reads to know what is configured."""
+        found = []
+        for adapter, worker in self._workers:
+            if adapter not in self._declared:
+                declared = await worker.capabilities()
+                self._declared[adapter] = (frozenset(declared.capabilities), declared.version)
+            found.append((adapter, self._declared[adapter][0]))
+        return found
+
+    def without(self, adapter: str) -> StaticWorkerPool:
+        """The same configuration with one worker withheld: what the removal test runs a
+        process against. The original is untouched; restoring is not using this one."""
+        pool = StaticWorkerPool([(a, w) for a, w in self._workers if a != adapter])
+        pool._declared = {a: d for a, d in self._declared.items() if a != adapter}
+        return pool

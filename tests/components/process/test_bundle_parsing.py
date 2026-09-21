@@ -21,7 +21,7 @@ def bundle(**overrides: Any) -> dict[str, Any]:
         "id": "p",
         "version": "1",
         "name": "P",
-        "autonomy": 3,
+        "autonomy": {"level": 3, "reason": "r", "toward_next": "t"},
         "limits": {"compute": {"seconds": 5, "resource_class": "cpu.small"}},
         "triggers": [{"schedule": "daily"}],
         "slo": {"freshness": "24h"},
@@ -48,6 +48,17 @@ def bundle(**overrides: Any) -> dict[str, Any]:
     return document
 
 
+@pytest.mark.parametrize(
+    "raw", [3, "3", None, {"level": 3}, {"level": 4, "reason": "r", "toward_next": "x"}]
+)
+def test_autonomy_without_its_reason_is_refused(raw: object) -> None:
+    """A process carries its level, why, and what is missing to go higher (ADR-0026); a bare
+    level, a missing reason, a missing toward_next below 4 or one at 4 do not register."""
+    with pytest.raises(InvalidProcess) as raised:
+        parse_bundle(bundle(autonomy=raw))
+    assert any("autonomy" in f for f in raised.value.findings), raised.value.findings
+
+
 def test_a_bundle_becomes_a_version_with_work_split_out() -> None:
     version = parse_bundle(bundle())
     assert version.ref == "p@1"
@@ -57,6 +68,7 @@ def test_a_bundle_becomes_a_version_with_work_split_out() -> None:
     assert version.slo is not None and version.slo.freshness == timedelta(hours=24)
     assert version.triggers[0].schedule == "daily"
     assert version.autonomy_level == 3
+    assert version.autonomy.reason == "r" and version.autonomy.toward_next == "t"
 
 
 @pytest.mark.parametrize(

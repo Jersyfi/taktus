@@ -1,16 +1,32 @@
 # Decision register
 
-The decisions of the Taktus project itself: what the owner was asked, what was answered, and what
-was raised as a decision and turned out not to be one. The mechanism is ADR-0017; which questions
-reach the owner is stated in [anchors.md](anchors.md); the template is
-[TEMPLATE.md](TEMPLATE.md).
+The decisions of the Taktus project itself: what the owner was asked, what was answered, what
+was raised as a decision and turned out not to be one, and what a session decided on its own
+and gave notice of. The mechanism is ADR-0017. Which questions reach the owner is stated in
+four modes: [anchors.md](anchors.md) is the shipped default any tenant inherits, and
+[anchors.taktus.md](anchors.taktus.md) is the configuration of this tenant, the Taktus
+project. The template for a request is [TEMPLATE.md](TEMPLATE.md); the template for a notice
+is [TEMPLATE-NOTICE.md](TEMPLATE-NOTICE.md).
 
 The category `DEFECT` is a *documentation defect*: a fault in what the repository says, corrected
 and recorded, never asked. A wrong result produced by a run is a *result defect* (ADR-0021) and
 never appears in this register.
 
 `open/` holds requests that wait for an answer. A request leaves `open/` in the same commit that
-creates its record here. `make gate-decisions` checks both.
+creates its record here. `make gate-decisions` checks both, and the notices.
+
+A **notice**, `NTC-NNNN`, is the record of a mode-2 decision (anchors.md §1): the session
+decided, nobody approves, and the record states what was decided, on what evidence, what was
+considered and which entry permits it. A notice that weakens a gate carries the demonstration
+that the gate had no value, in the record itself.
+
+## Notices
+
+| NTC | Title | Entry | What was decided |
+|---|---|---|---|
+| [0001](NTC-0001-anchors-split-into-two-files.md) | Anchors split into two files with four modes | M2.1 | the anchor page is the shipped default plus the Taktus tenant's configuration, entries identified `M<mode>.<n>`, the old rows mapped |
+
+## Decisions
 
 | DEC | Title | Category | Outcome |
 |---|---|---|---|

@@ -1,0 +1,34 @@
+name: removal-test
+
+# The removal test runs weekly (blueprints/self-operation/README.md). A test that runs once in
+# its life proves nothing; one that runs weekly is evidence. Until the scheduler starts it
+# from the bundle's trigger (0.2.0), this job is the schedule: it runs S-01 for every
+# integration the CI instance is configured with — the reference worker, in memory, with the
+# shipped example registered — and keeps every run's output, ledger and snapshot as the
+# evidence of that week. It validates and reports; it never deploys.
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  removal-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - name: removal test, every configured integration
+        env:
+          TAKTUS_STATE_DIR: ${{ runner.temp }}/taktus
+        run: tools/removal_test.sh --with-example
+      - name: keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: removal-test-${{ github.run_id }}
+          path: ${{ runner.temp }}/taktus
+          retention-days: 90

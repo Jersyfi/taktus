@@ -114,6 +114,14 @@ Every re-produced result gets a provenance record of its own, whose inputs name 
 inputs; the wrong result is never overwritten and never deleted — it stays, with its record,
 and the incident links the two. Nothing else keeps "since when" answerable the next time.
 
+- **The plan is executable by hand.** It is written so that a person can carry it out without
+  Taktus: every step names the system to act in, the record to change, the value before and
+  the value after, the order, and how to tell that the step is done. Not every partner can be
+  automated — a tax authority takes a letter, a customer a phone call — and a plan that only
+  works inside the system is worthless exactly where it is needed most. The person who decides
+  the correction anchor receives the plan in that form, whether Taktus or a person executes
+  it, and the steps a person executed are recorded in the incident with who did them and when.
+
 **What it needs.** The impact analysis; the correction anchor in the tenant's anchor set; the
 run engine, which executes the plan like any process.
 
@@ -126,7 +134,10 @@ view.
 **Proven by.** A plan for a result inside the system runs without a halt; a plan with one
 outward correction halts exactly before that step with a `correction` decision request; the
 re-produced result carries a new provenance record and the old one is unchanged; the anchor
-holds at autonomy level 4 (`tests/governance`).
+holds at autonomy level 4 (`tests/governance`); and every plan passes the takeover test of
+ADR-0013 B — a test reads a generated plan and finds, for every step, the system, the record,
+the before, the after and the done-check, with no reference to a Taktus identifier a person
+could not look up.
 
 ---
 

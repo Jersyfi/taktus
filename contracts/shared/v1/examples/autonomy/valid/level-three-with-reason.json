@@ -1,0 +1,5 @@
+{
+  "level": 3,
+  "reason": "every result-producing step carries an exactness class and the one outward effect is a comment on an issue, which a person reads before anything builds on it; the run is watched through reports and samples",
+  "toward_next": "a demonstrated quality history: a month of runs in which no comment was corrected by a person, and the comment's structure checked by a rule rather than by the person who reads it"
+}

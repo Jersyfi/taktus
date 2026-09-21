@@ -54,8 +54,11 @@ gate-docs: need-uv ## A contract or behaviour change must touch its documentatio
 gate-secrets: need-gitleaks ## No secret value may ever enter this public repository
 	gitleaks detect --no-banner --redact
 
-gate-decisions: need-uv ## Decision requests are complete, recorded, and a blocking one keeps its pull request a draft
+gate-decisions: need-uv ## Decision requests are complete, recorded, and a blocking one keeps its pull request a draft; notices have their evidence
 	$(UV) run tools/check_decisions.py
+
+gate-adrs: need-uv ## Every ADR that makes a promise states where the promise ends
+	$(UV) run tools/check_adrs.py
 
 # The development database (deploy/docker/compose.dev.yml). `db-down` keeps the data volume:
 # nothing here deletes data without asking (CLAUDE.md §9).
@@ -100,6 +103,6 @@ lint: env ## Static analysis and types
 generate: env ## Regenerate what is generated: api/openapi.yaml from the REST interface (tools/README.md)
 	$(UV) run python tools/generate.py
 
-gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions test ## Everything CI runs
+gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs test ## Everything CI runs
 
-.PHONY: help doctor env install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions db-up db-down up up-dev down verify-compose migrate lint generate gates
+.PHONY: help doctor env install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs db-up db-down up up-dev down verify-compose migrate lint generate gates

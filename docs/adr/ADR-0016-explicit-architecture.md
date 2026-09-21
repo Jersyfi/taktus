@@ -36,3 +36,13 @@ Reading across a component boundary is allowed; writing is not.
 - `import-linter` contracts enforce: no direct import between components, no write across a
   boundary, no product name in the core.
 - The shared kernel stays small — every change there touches everything.
+
+## Where this promise ends
+
+The boundaries are enforced by `import-linter` and `tests/architecture` for Python imports
+and writes through repositories. They are not enforced for reads: reading across a component
+boundary is allowed and unmeasured, and a component that reads another's tables directly in
+SQL is a finding a reviewer must make. The shared kernel is small by discipline, not by a
+gate that measures it. "Components talk through events" is the design; today they talk
+through the composition root and the shared kernel, and the event bus is the outbox that
+nothing writes yet.

@@ -1,5 +1,5 @@
 name: Decision request
-description: A question that reaches the owner (docs/decisions/anchors.md). Mirrors docs/decisions/TEMPLATE.md.
+description: A question that reaches the owner (docs/decisions/anchors.taktus.md, mode 3 or 4). Mirrors docs/decisions/TEMPLATE.md.
 title: "DEC-NNNN — "
 labels: ["decision-request"]
 assignees: ["Jersyfi"]
@@ -46,7 +46,7 @@ body:
     id: why
     attributes:
       label: 2. Why you are being asked
-      description: The row of docs/decisions/anchors.md §1 that makes this the owner's call.
+      description: The entry of docs/decisions/anchors.taktus.md, mode 3 or 4, that makes this the owner's call.
     validations:
       required: true
   - type: textarea

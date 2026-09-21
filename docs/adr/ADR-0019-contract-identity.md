@@ -60,5 +60,13 @@ format has no `$id` field: its URL is its path.
   does not match the path.
 - Serving `https://taktus.eu/contracts/` is a task for the release that first ships a contract,
   no later than `1.0.0`, when the contracts are frozen (roadmap).
-- The namespace is public communication under the project's name (anchors.md, row O7). Changing
+- The namespace is public communication under the project's name (anchors.taktus.md, M3.7). Changing
   it is the owner's call.
+
+## Where this promise ends
+
+The `$id` names the contract; it does not yet resolve, and nothing depends on it resolving
+until the contracts are served (no later than `1.0.0`). "A released v1 schema is immutable"
+begins with the first release that uses it; until then `v1` may move, and has moved twice. The
+domain stays with the project for as long as the owner holds it; a domain is rented, and the
+commitment is the owner's, not the repository's.

@@ -36,3 +36,13 @@ lives in the data model, not in a policy.
   work, marginal value.
 - Point 4 lets autonomy grow through use without control being given away — the rule is decided by
   the person and can be withdrawn at any time.
+
+## Where this promise ends
+
+Blocked time is measured for blocks Taktus sees: admission refusals, waits on people, waits
+on external state. A block outside Taktus — a person who did not start the run — is not
+measured. Marginal value is an analysis of what admission control refused, which is exact for
+tokens, quota and compute and an estimate for money reported per assignment (ADR-0005). The
+protective rule keeps a person's response times with that person; it cannot keep a person
+from computing them by hand from their own view. Blocked-time accounts and the analysis arrive
+at `0.2.0` and `0.5.0`; today the ledger records rejections and waits, and nobody sums them.

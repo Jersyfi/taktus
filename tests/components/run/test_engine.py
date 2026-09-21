@@ -580,10 +580,17 @@ async def test_a_from_reference_must_name_a_dependency() -> None:
         await h.start()
 
 
-async def test_no_worker_for_the_capabilities_is_an_error() -> None:
+async def test_no_worker_for_the_capabilities_fails_the_step_and_escalates() -> None:
+    """A missing adapter is a failed step, not an exception: the run escalates at the
+    boundary with the reason, and a resume after the configuration changed retries it."""
     h = Harness(worker("do"), workers=[FakeWorker(capabilities_offered=("code.edit",))])
-    with pytest.raises(NoWorker, match=r"shell\.script"):
-        await h.start()
+    run = await h.start()
+    assert run.state is RunState.ESCALATED
+    do = run.step_run("do")
+    assert do.state is StepState.FAILED and do.retryable is True
+    assert (
+        "shell.script" in (do.reason or "") and str(NoWorker("do", ("shell.script",))) == do.reason
+    )
 
 
 async def test_a_failing_assignment_escalates_with_what_it_used() -> None:

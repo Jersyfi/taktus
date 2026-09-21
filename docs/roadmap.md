@@ -93,7 +93,16 @@ tenant, marked as such (DEC-0013), and intake events completed into commands by 
 Refinement and P-03 Implementation of the dev-orchestration blueprint as bundles that run —
 proven end to end with the outside faked and everything inside real, and run for real against
 this repository up to the model step and the admission check (`docs/first-run.md`); ADR-0005
-now says for which consumption kinds the limit guarantee holds (DEC-0012).
+now says for which consumption kinds the limit guarantee holds (DEC-0012) · the decision model
+rebuilt from the owner's answers (#14): four modes in two anchor files — the shipped default
+and the Taktus tenant's own — a notice record for mode-2 decisions with its gate, every ADR
+stating where its promise ends with a gate that fails one that does not; **the removal test as
+a process** (`blueprints/self-operation/`, S-01): the loopback connector through which Taktus
+reaches itself, the catalog's maturity record and the verdict rules, one run per configured
+integration, weekly, with the verdict in the ledger as `removal.tested` — run once for real,
+recorded in the blueprint's README; every process carrying its autonomy level with its reason
+and what is missing to go higher (ADR-0026); the design of a budget that is a budget (ADR-0005,
+second amendment); the exactness statement specified for `0.5.0` (UC-4.13, UC-6.9).
 
 **Is `0.1.0` complete?** No. The completion criterion has two halves. *Every step carries
 method, exactness class and consumption* holds: every step of every bundle carries its method,
@@ -115,9 +124,13 @@ in CI (it needs a credential; the gate runs the stand-in).
 
 ### `0.2.0` — governance, limits, availability
 Autonomy levels 1–3 per process **and per action class** · anchors, configurable per tenant ·
-decision requests and the register · budgets and admission control · **blocked-time accounts** ·
-**Takt measurement, not yet charged** · multi-instance operation with restart at step boundaries ·
-chat connector
+decision requests and the register · budgets and admission control — **a budget is a budget**:
+the estimate reserved at admission, a currency budget converted into tokens and enforced there,
+a named safety margin, estimate quality measured per worker, the residual in every report
+(ADR-0005, second amendment) · **blocked-time accounts** · **Takt measurement, not yet
+charged** · multi-instance operation with restart at step boundaries · the scheduler starting
+runs from a bundle's trigger, so that the removal test runs weekly without a script · chat
+connector
 
 **Complete when** Taktus maintains its own repository for **14 days** with no intervention in
 execution, and every block is analysable by cause and duration.
@@ -138,8 +151,12 @@ with change proposals · model hub for in-house models · second coding worker �
 measurably cheaper and reproducible — and the second tenant produces its first milestone.
 
 ### `0.5.0` — value and dependency measurable
-Value ledger with revert analysis · role-based views · takeover test and removal test automated ·
-marginal-value recommendations · BI export · **result defects handled**: deviation detection,
+Value ledger with revert analysis · role-based views · takeover test automated (the removal
+test runs since `0.1.0`; the conformance half of *verified* recorded, so that an adapter can
+reach it) · marginal-value recommendations · BI export · **exactness is a result, not a
+switch**: Taktus works out with the user how a step becomes exact, and every process carries
+an exactness statement — what was checked against what, what was not, what would slip
+through — in the dashboard and in every report (UC-4.13, UC-6.9) · **result defects handled**: deviation detection,
 error window and impact analysis over the provenance chain, remediation plans under the
 correction anchor, incidents delivered into the organisation's own tracking (UC-4.10 to
 UC-4.12, UC-6.8; ADR-0021 to ADR-0023)
@@ -164,7 +181,45 @@ Contracts frozen and versioned · **licence decided, contributions opened** · a
 calibrated from real data across both use cases · community adapters in their own repositories ·
 GDPR tooling and generated compliance evidence
 
-**Complete when** a stranger builds an adapter without asking.
+**Complete when** a stranger builds an adapter without asking, and every condition of *The road
+to 1.0.0* below holds.
+
+---
+
+## The road to 1.0.0
+
+What `1.0.0` needs beyond features. Each is a condition with a check, not a date that passes.
+None is pulled forward into a feature milestone, and none is dropped without a decision
+(anchors.taktus.md M3.6: preparing a release is the owner's).
+
+**Freezing the contracts is a milestone with its own check.** `v1` has moved twice since the
+first pull request, each time rightly. The moment it stops moving must be a deliberate act, not
+the absence of a change: a record under `contracts/` names every `v1` schema with its digest
+and the date, `make gate-contracts` fails on any change to a frozen schema, and a change after
+the freeze is `v2` under a new `$id` (ADR-0019). Freezing is proposed as a decision request
+(M3.5) with the evidence that no open use case needs a change, and the freeze holds through
+the stabilisation phase before the tag.
+
+| Condition | Checked by |
+|---|---|
+| **Contracts frozen, verified** | the freeze record exists; the gate fails on a frozen schema's change; both conformance suites pass against every reference adapter at the frozen version |
+| **A stabilisation phase with no new features** | a stated span before the tag in which every merged change is a fix or documentation; the register shows no accepted feature in it |
+| **The removal test green for every adapter, not one** | the last weekly S-01 run of every configured integration ended *changed* or *exception*, in an installation with an alternative for every capability a reference adapter serves |
+| **An upgrade path from `0.7.0` that loses no runs** | a migration test upgrades a database with runs in every state from `0.7.0` to `1.0.0` and back, and every run resumes at its boundary afterwards |
+| **Data export proven by re-import** | an export of a tenant — processes, runs, ledger, provenance, artifacts — is imported into a fresh instance, and the ledger chain and every provenance chain verify there |
+| **An external security review of the execution isolation** | a review by someone outside the project of the container and cluster adapters, its findings recorded and closed |
+| **GDPR tooling and generated compliance evidence** | a data-subject request answered from the ledger and the provenance chain without a query written by hand; the evidence generated, not written |
+| **Measured load behaviour** | a number: how many concurrent runs one instance carries at which latency, measured by S-04 on stated hardware, so that someone can answer the question instead of guessing |
+| **A restore drill that verifies the ledger chain** | S-03: an earlier version restored without Taktus (ADR-0013 C), and the check is that every tenant's chain verifies against a digest taken before, not that the database starts |
+| **Versioning and deprecation rules** | written: what a minor and a major change to the product and to a contract mean, how long a deprecated `v1` is served, and how an installation learns of it |
+| **Documentation a stranger can follow** | a person who has never seen the repository installs Taktus, registers a process and runs it from the documentation alone, and the places they stopped are fixed |
+| **The licence and a contributor agreement** | ADR-0012 decided (M4.1), the agreement in the repository, before the first outside contribution |
+| **The Takt calibrated from real data** | ADR-0010 accepted with weights derived from the ledgers of both reference use cases, the derivation recomputable |
+
+Two obligations hold on this road and after it, and are enforced rather than hoped for
+(CLAUDE.md §11): tests and documentation stay true over time — a gate whose coverage develops a
+hole is a finding, and a suite too slow to be useful is a finding reported with its cost before
+and after; and a retroactive correction stays executable by hand (UC-4.12).
 
 ---
 

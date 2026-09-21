@@ -51,7 +51,7 @@ Top level:
 | Field | Meaning |
 |---|---|
 | `id`, `version`, `name` | the process, its version, its name; the ledger refers to `id@version` |
-| `autonomy` | the autonomy level the run and its worker assignments carry, 1 to 4 |
+| `autonomy` | the autonomy statement (ADR-0026): `level` — what the run and its worker assignments carry, 1 to 4 — `reason`, why the process runs at that level, and `toward_next`, what is missing to go one level higher or what forbids it (required below 4, absent at 4). A bare level does not register |
 | `limits` | the run's budget: `currency`, `quota` and `compute` in the shape of the worker contract's `Limits` (`contracts/worker/v1`). Every worker step's estimate is admitted against what is left of it. |
 | `triggers`, `slo`, `author`, `reason` | as in control-plane.md §4; recorded, not yet acted on |
 | `steps` | the graph; edges are the `depends_on` lists. The graph is checked: acyclic, every dependency a step of the process, every step connected to the rest. |

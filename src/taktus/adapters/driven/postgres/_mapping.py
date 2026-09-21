@@ -154,7 +154,8 @@ class ProcessVersionMapper:
                 "process_id": document["process_id"],
                 "version": document["version"],
                 "name": document["name"],
-                "autonomy_level": document["autonomy_level"],
+                "autonomy_level": document["autonomy"]["level"],
+                "autonomy": document["autonomy"],
                 "triggers": document.get("triggers", []),
                 "slo": document.get("slo"),
                 "work": document.get("work", {}),
@@ -196,7 +197,7 @@ class ProcessVersionMapper:
                 "process_id": row.process_id,
                 "version": row.version,
                 "name": row.name,
-                "autonomy_level": row.autonomy_level,
+                "autonomy": row.autonomy,
                 "steps": [_step_from(step) for step in steps],
                 "triggers": row.triggers,
                 "slo": row.slo,
@@ -612,6 +613,49 @@ def _step_run_from(
     )
 
 
+# --- catalog --------------------------------------------------------------------------------------
+
+
+class AdapterMaturityMapper:
+    """One row per adapter identifier; the removal result stays a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.adapter_maturity, tenant, id)
+        return None if row is None else self._from(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.adapter_maturity,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "family": document["family"],
+                "conformance_passed_at": _at(document.get("conformance_passed_at")),
+                "removal": document.get("removal"),
+                "updated_at": _at(document["updated_at"]),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.adapter_maturity, tenant, s.adapter_maturity.c.id)
+        return [self._from(row) for row in rows]
+
+    @staticmethod
+    def _from(row: Row[Any]) -> Document:
+        return _present(
+            {
+                "id": row.id,
+                "tenant": row.tenant,
+                "family": row.family,
+                "conformance_passed_at": _iso(row.conformance_passed_at),
+                "removal": row.removal,
+                "updated_at": _iso(row.updated_at),
+            }
+        )
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -621,4 +665,5 @@ MAPPERS: dict[str, Mapper] = {
     "intake_event": IntakeEventMapper(),
     "plan": PlanMapper(),
     "run": RunMapper(),
+    "adapter_maturity": AdapterMaturityMapper(),
 }

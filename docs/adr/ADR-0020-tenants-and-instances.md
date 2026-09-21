@@ -73,3 +73,11 @@ Three reasons:
 - The project's own operating documentation describes two installations, not one.
 - A release that Taktus builds is proven on the development instance and deployed to a project
   instance by a person or by another instance (ADR-0013 D).
+
+## Where this promise ends
+
+Row-level security keeps tenants apart inside the database for the application role; a
+superuser and a backup file see everything. Two instances share nothing by rule; the rule is
+applied by whoever configures them, and nothing in Taktus can detect that two instances were
+pointed at one database. One tenant, `default`, exists until the identity component does
+(`0.2.0`); until then the tenant boundary is real in the schema and trivial in use.

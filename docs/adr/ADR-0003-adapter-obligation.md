@@ -32,5 +32,20 @@ quality or cost but breaks no process.
   churn is highest.
 
 ## Consequences
-- The removal test becomes checkable rather than asserted.
+- The removal test becomes checkable rather than asserted. Since 2026-09-21 it is a process
+  Taktus runs for itself, weekly, once per configured integration
+  (`blueprints/self-operation/`): withhold, exercise, restore, record — *broke*, *changed* or
+  *exception* — in the ledger as `removal.tested` and in the adapter's maturity. The suites
+  report W-12 and C-10 as pending because the process, not the suite, is where the test runs.
 - More ceremony per integration. That is the price and it is intended.
+
+## Where this promise ends
+
+The tests fail on what they can see: an import, a product name as a word, a write across a
+boundary. They do not see a product's *behaviour* copied into the core without its name, and
+they do not see an adapter whose declared capability is one only its product can serve. The
+removal test shows that an integration can be removed only for the integrations and processes
+that are configured and registered where it runs; it says nothing about an installation it has
+not run in. Until it has run in an installation, "changes quality or cost but breaks no
+process" is a claim for that installation, not a fact; the process under
+`blueprints/self-operation/` is where the fact is made, weekly.

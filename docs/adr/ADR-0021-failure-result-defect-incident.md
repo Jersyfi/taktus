@@ -138,3 +138,14 @@ order of magnitude. The bound, stated so that a test can measure it:
   (`docs/usecases/`) and built at `0.5.0`; the roadmap names them there.
 - Correction after the fact is a risk class of its own and gets its own decision: ADR-0022.
 - An automatic emergency stop, once detection can trigger one, is rule-based: ADR-0023.
+
+## Where this promise ends
+
+The provenance record makes "since when has this been wrong?" answerable for runs that
+happened after the record existed; runs before it are lost to the analysis for good, and that
+is why the record came first. Detection, windowing, impact analysis and remediation are
+`0.5.0`; today the chain is written and verified, and nothing reads it for a defect. The
+record names what a step read and when; it cannot name what a worker read inside its own
+workspace beyond the inputs it was given. Immutability holds at the database level for the
+application role; a superuser can change anything, and the ledger's hash chain is what makes
+that visible.

@@ -316,6 +316,12 @@ def render(
     lines = [f"run {run.id}  process {run.process_version}  state {_state(run)}"]
     if run.reason:
         lines.append(f"  {run.reason}")
+    # A process shows its autonomy with its reason wherever it is shown (ADR-0026).
+    lines.append(f"autonomy {version.autonomy.level} — {_one_line(version.autonomy.reason)}")
+    if version.autonomy.toward_next is not None:
+        lines.append(
+            f"  toward {version.autonomy.level + 1}: {_one_line(version.autonomy.toward_next)}"
+        )
     lines.append("")
     lines.append("steps")
     for step_run in run.step_runs:
@@ -365,6 +371,10 @@ def render(
             + ("" if run.tenant == DEFAULT_TENANT else f" --tenant {run.tenant}")
         )
     return "\n".join(lines)
+
+
+def _one_line(text: str) -> str:
+    return " ".join(text.split())
 
 
 def _state(run: Run) -> str:

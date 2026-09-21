@@ -34,7 +34,8 @@ async def test_a_run_with_a_worker_step_executes_in_a_container_stops_and_resume
     engine_socket: str, reference_worker_image: str, tmp_path: Path
 ) -> None:
     document = bundle(with_overreach=False)
-    document["autonomy"] = 4  # the level at which nothing but an isolated unit is allowed
+    # The level at which nothing but an isolated unit is allowed.
+    document["autonomy"] = {"level": 4, "reason": "the test needs the level"}
     compute = next(s for s in document["steps"] if s["id"] == "compute")
     compute["work"]["task"]["inputs"] = {
         "commands": ["expr 6 '*' 7", "sleep 0.5; echo two", "sleep 0.5; echo three", "echo four"]

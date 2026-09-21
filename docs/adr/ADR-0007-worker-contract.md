@@ -23,3 +23,13 @@ service, as a shell wrapper around a foreign CLI.
   no AI at all, and a training run that occupies a GPU for hours and returns a model artifact. A
   contract only one of them can satisfy is built around one specific agent.
 - A second real worker exists before any feature builds on worker behaviour.
+
+## Where this promise ends
+
+A worker buildable in any language is a promise about the transport and the schema, not about
+the effort of a *good* worker: estimating demand before starting (W-08) and signalling step
+boundaries (W-09) are the two obligations a wrapped foreign CLI struggles with, and a wrapper
+that cannot estimate gets a rejected assignment, not a pass. The conformance suite proves W-01
+to W-11 and W-13 against a live worker; W-12, the removal test, is proven by the process under
+`blueprints/self-operation/`, per installation, not by the suite (DEC-0005). Two proof cases
+are promised; the second, `mlbench`, does not exist yet.

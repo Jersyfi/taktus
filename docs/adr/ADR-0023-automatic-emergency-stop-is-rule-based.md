@@ -97,3 +97,12 @@ have no ground to stand on.
   tokens; the narrative is an artifact referenced from it, never the entry itself (ADR-0006).
 - The process's business relevance becomes a field of the process version at `0.2.0`, set at
   commissioning, so that the rule has it.
+
+## Where this promise ends
+
+The rule decides with the facts it has: the window, the class, egress, a legal anchor
+downstream, business relevance. A result defect no check has found (UC-4.10) fires no rule.
+The criteria and the rule arrive at `0.2.0` and the trigger at `0.5.0`; today no automatic
+stop exists and the emergency stop is a person's. "The same facts lead to the same decision"
+holds for the decision; the narrative a language model writes about it varies, and the reader
+checks it against the rule the entry names.

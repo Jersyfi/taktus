@@ -1,0 +1,43 @@
+# Blueprint: self-operation
+# The processes Taktus runs for itself, on itself: the checks of its own claims. The first is
+# the removal test. Later ones — the takeover test, the restore drill, the load measurement —
+# arrive with the versions the roadmap names for them (docs/roadmap.md, "The road to 1.0.0").
+
+apiVersion: taktus.eu/process-bundle/v1
+kind: Blueprint
+metadata:
+  id: self-operation
+  name: Self-operation
+  domain: operations
+  maturity: experimental       # draft | experimental | verified | reference
+
+# Capabilities, never product names. The orchestrator.* capabilities are served by the
+# loopback connector, through which an instance reaches itself.
+requires:
+  connectors:
+    - capability: orchestrator.integrations
+    - capability: orchestrator.removal
+    - capability: orchestrator.maturity
+
+anchors:
+  strategic: []
+  legal: []
+
+processes:
+  - id: S-01
+    name: Removal test
+    autonomy:
+      level: 3
+      reason: every step reads the instance's own state or checks it by rule; nothing leaves the system; a person watches the weekly report
+      toward_next: a month of weekly verdicts a person checked against the rehearsal runs, and the scheduler starting the run from the trigger (0.2.0)
+    triggers: [ { schedule: weekly } ]
+    steps:
+      - { id: describe,        method: rule, exactness: sourced }
+      - { id: admit,           method: rule, exactness: exact }
+      - { id: exercise,        method: rule, exactness: sourced }   # withhold, run, restore
+      - { id: describe-after,  method: rule, exactness: sourced }
+      - { id: verify-restored, method: rule, exactness: exact }
+      - { id: verdict,         method: rule, exactness: exact }
+      - { id: record,          method: rule, exactness: sourced }
+      - { id: report,          method: rule, exactness: sourced }
+    slo: { freshness: 7d }

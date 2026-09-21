@@ -9,7 +9,8 @@
 <!--
 Copy this file to docs/decisions/open/DEC-NNNN-<slug>.md, with the next free number.
 Fill every section. Replace every <placeholder>; the gate fails on any that remains.
-Before writing: test the question against anchors.md. Only a row of its §1 justifies a request.
+Before writing: test the question against anchors.taktus.md. Only an entry of mode 3 or 4
+justifies a request; the owner wants a worked opinion with context, not a question.
 The comprehension test: could a person decide this who has read neither the diff, nor the session,
 nor any ADR? If not, the request is not finished. Mechanism: docs/adr/ADR-0017.
 -->
@@ -22,8 +23,8 @@ to follow.>
 
 ## 2. Why you are being asked
 
-<The row of docs/decisions/anchors.md §1 that makes this the owner's call, quoted, and one
-sentence on why this question falls under it.>
+<The entry of docs/decisions/anchors.taktus.md, mode 3 or 4, that makes this the owner's call,
+quoted with its identifier, and one sentence on why this question falls under it.>
 
 ## 3. What you must decide
 

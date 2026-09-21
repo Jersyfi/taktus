@@ -23,7 +23,7 @@ from taktus.components.process.domain.model import (
     Trigger,
 )
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
-from taktus.shared.v1 import Step
+from taktus.shared.v1 import Autonomy, Step
 
 type Document = Mapping[str, Any]
 
@@ -81,7 +81,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             process_id=bundle.get("id", ""),
             version=str(bundle.get("version", "")),
             name=bundle.get("name", ""),
-            autonomy_level=bundle.get("autonomy", 2),
+            autonomy=_autonomy(bundle.get("autonomy")),
             steps=tuple(steps),
             triggers=tuple(Trigger.model_validate(t) for t in bundle.get("triggers", ())),
             slo=_slo(bundle.get("slo")),
@@ -93,6 +93,25 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
         )
     except ValidationError as error:
         raise InvalidProcess(tuple(_describe("bundle", error))) from error
+
+
+def _autonomy(raw: Any) -> Autonomy:
+    """`autonomy` names the level, the reason and what is missing to go higher (ADR-0026). A
+    bare level is refused with the shape it lacks, so that no process runs without its reason."""
+    if raw is None or isinstance(raw, int | str):
+        raise InvalidProcess(
+            (
+                "`autonomy` names the level, its reason and what is missing to go higher — "
+                "`autonomy: { level: 3, reason: ..., toward_next: ... }` (ADR-0026); "
+                f"found {raw!r}",
+            )
+        )
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`autonomy` is not a mapping",))
+    try:
+        return Autonomy.model_validate(raw)
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("autonomy", error))) from error
 
 
 def _inputs(raw: Any) -> dict[str, InputDeclaration]:

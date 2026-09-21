@@ -13,7 +13,9 @@ Either the single word "None", or one line per decision, nothing else:
 - DEC-NNNN — <title> — BLOCKING — #<issue>
 - DEC-NNNN — <title> — NON-BLOCKING — #<issue>
 Every line needs a file under docs/decisions/open/. A BLOCKING line keeps this pull request a
-draft; CI fails otherwise. Test the question against docs/decisions/anchors.md first.
+draft; CI fails otherwise. Test the question against docs/decisions/anchors.taktus.md first:
+only an entry of mode 3 or 4 justifies a request. A mode-2 decision is a notice record
+(docs/decisions/NTC-NNNN-<slug>.md), named under "Notes".
 -->
 
 ## Notes

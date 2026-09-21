@@ -48,3 +48,11 @@ language.
   isolation and resource reasons, not for language reasons.
 - Architecture enforcement moves from the compiler to the test suite. Those tests are therefore not
   optional and belong to `0.1.0`.
+
+## Where this promise ends
+
+The promise is one server-side language. It ends at the process boundary: a worker may be
+written in any language, because the worker contract is HTTP and JSON (ADR-0007), and the web
+app is TypeScript. It also ends where Python's runtime does: throughput under very high
+concurrency is a stated future limit, to be measured, not a property this decision secures.
+Nothing here promises that a step written in Python is fast, only that there is one toolchain.

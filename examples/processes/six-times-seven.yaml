@@ -15,7 +15,14 @@
 id: six-times-seven
 version: "1"
 name: Six times seven, checked
-autonomy: 2
+autonomy:
+  level: 2
+  reason: >
+    a worked example: every result is checked by a rule before it counts, but the example
+    exists to be watched step by step, and a person confirms it by running it
+  toward_next: >
+    nothing is missing but the point: an example is read, not operated; a process built on
+    this shape rises to level 3 once its results have been watched through reports for a while
 author: the repository
 reason: the worked example of the first control-plane slice
 

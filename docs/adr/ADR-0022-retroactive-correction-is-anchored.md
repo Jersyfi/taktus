@@ -90,15 +90,27 @@ connector cannot write outward.
 
 ## Consequences
 - `contracts/shared/v1/Anchor.json` and `DecisionRequest.json` gain the class `correction`;
-  governance.md §2 and `docs/decisions/anchors.md` list it; the ledger's kind vocabulary gains
+  governance.md §2 and `docs/decisions/anchors.md` (M3.11) list it; the ledger's kind vocabulary gains
   `egress.write`, `egress.delivery` and `egress.read` (`LedgerEntry.json`).
 - Every connector and channel adapter, when it exists, records an egress entry for what it
   wrote or delivered; every driving adapter that serves a result to an external system records
   `egress.read`. That obligation is part of the connector contract (`contracts/connector/v1`)
   from its first version.
 - The remediation plan of UC-4.12 is executed by the run engine like any process, and the
-  anchor halts it where the predicate is true. The impact analysis of UC-4.11 reports, per
+  anchor halts it where the predicate is true. The plan is written so that a person can carry
+  it out without Taktus — system, record, before, after, done-check per step — because not
+  every partner can be automated and the plan is worthless if it only works inside the system. The impact analysis of UC-4.11 reports, per
   affected result, whether it has left the system and through which entry.
 - For the Taktus project itself the class applies as well: a correction to something already
-  published under the project's name is the owner's (anchors.md O7); a correction to an
+  published under the project's name is the owner's (anchors.taktus.md M3.11); a correction to an
   unmerged branch is not.
+
+## Where this promise ends
+
+The predicate answers "has this left the system" from egress entries. It is exact for what
+connectors and channels record; a worker that writes outward through a host in its frame,
+without a connector, records no egress entry today, and its writes are invisible to the
+predicate until worker egress is recorded (`0.2.0`). Analysis is never anchored; the analysis
+itself, and the remediation plan, are `0.5.0`. The anchor halts a remediation at a step
+boundary; a remediation a person executes by hand is outside Taktus and outside the anchor,
+which is why the plan must be executable by hand (UC-4.12).

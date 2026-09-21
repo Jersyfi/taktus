@@ -15,6 +15,10 @@ Checks:
    answer (or, for a DEFECT, what it now says; for a NOTE, why it is a note);
 3. a number is used once, and never both under open/ and as a record;
 4. every record is listed in docs/decisions/README.md;
+4a. every notice (NTC-NNNN, a mode-2 record, ADR-0017 §2a) has its header — a mode-2 entry of
+   anchors.taktus.md that exists, a date, the pull request — the four sections in order, no
+   placeholder, and is listed in the index; a notice under M2.3 (a gate weakened or removed)
+   additionally carries the section "Why the gate had no value", which names the gate;
 5. with --pr-body: the "Decisions required" section of a pull request description is either
    "None" or a list of DEC lines, every named decision has an open file with the same category,
    and every BLOCKING open file is named;
@@ -39,6 +43,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REGISTER = ROOT / "docs" / "decisions"
 OPEN = REGISTER / "open"
 INDEX = REGISTER / "README.md"
+ANCHORS = REGISTER / "anchors.taktus.md"
 
 SECTIONS = [
     "1. What this is about",
@@ -69,6 +74,22 @@ DATE_FIELDS = {"Needed by", "Decided", "Corrected", "Recorded"}
 
 FILENAME = re.compile(r"^DEC-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 TITLE = re.compile(r"^# DEC-(\d{4}) — (.+)$")
+
+# Notices: the record of a mode-2 decision (ADR-0017 §2a). Section 5 exists exactly for a
+# weakened gate, entry M2.3 of anchors.taktus.md.
+NOTICE_SECTIONS = [
+    "1. What was decided",
+    "2. The evidence",
+    "3. What was considered",
+    "4. Which entry permits it",
+]
+GATE_SECTION = "5. Why the gate had no value"
+GATE_ENTRY = "M2.3"
+NOTICE_FILENAME = re.compile(r"^NTC-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+NOTICE_TITLE = re.compile(r"^# NTC-(\d{4}) — (.+)$")
+MODE_ENTRY = re.compile(r"^M2\.\d+$")
+ENTRY_ROW = re.compile(r"^\| (M[1-4]\.\d+) \|", re.MULTILINE)
+GATE_NAME = re.compile(r"`make gate-[a-z-]+`|`tests/[a-z_/.-]+`|`make test`|`make lint`")
 FIELD = re.compile(r"^\*\*([A-Za-z ]+):\*\*\s*(.*)$")
 PLACEHOLDER = re.compile(r"<[^>\n]+>|\b(?:TODO|TBD|FIXME|XXX)\b|…")
 OPTION = re.compile(r"^### Option [A-Z] — ")
@@ -123,19 +144,25 @@ def strip_code(text: str) -> str:
     return re.sub(r"`[^`\n]*`", "", text)
 
 
-def parse(path: Path) -> tuple[Document | None, list[str]]:
+def parse(
+    path: Path,
+    *,
+    prefix: str = "DEC",
+    title_pattern: re.Pattern[str] = TITLE,
+    name_pattern: re.Pattern[str] = FILENAME,
+) -> tuple[Document | None, list[str]]:
     problems: list[str] = []
     text = strip_comments(path.read_text(encoding="utf-8"))
     lines = text.splitlines()
-    match = TITLE.match(lines[0]) if lines else None
+    match = title_pattern.match(lines[0]) if lines else None
     if match is None:
-        return None, ["first line is not `# DEC-NNNN — Title`"]
+        return None, [f"first line is not `# {prefix}-NNNN — Title`"]
     number, title = match.groups()
-    name = FILENAME.match(path.name)
+    name = name_pattern.match(path.name)
     if name is None:
-        problems.append("file name is not DEC-NNNN-<slug>.md with a lowercase slug")
+        problems.append(f"file name is not {prefix}-NNNN-<slug>.md with a lowercase slug")
     elif name.group(1) != number:
-        problems.append(f"file name says DEC-{name.group(1)}, title says DEC-{number}")
+        problems.append(f"file name says {prefix}-{name.group(1)}, title says {prefix}-{number}")
 
     fields: dict[str, str] = {}
     body_start = 1
@@ -274,6 +301,89 @@ def check_record(doc: Document, problems: list[str]) -> None:
             problems.append(f"`**{name}:**` is not a date of the form YYYY-MM-DD: {value!r}")
     if PLACEHOLDER.search(strip_code(outcome)):
         problems.append("`## Outcome` keeps a placeholder")
+
+
+# --- notices -------------------------------------------------------------------------------------
+
+
+def mode_two_entries() -> set[str]:
+    """The entry identifiers the tenant's anchor page defines; a notice cites one of mode 2."""
+    if not ANCHORS.exists():
+        return set()
+    return set(ENTRY_ROW.findall(ANCHORS.read_text(encoding="utf-8")))
+
+
+def check_notice(doc: Document, problems: list[str], entries: set[str]) -> None:
+    check_fields(doc, ["Mode entry", "Decided", "Raised in"], problems)
+    entry = doc.fields.get("Mode entry", "")
+    if entry and not MODE_ENTRY.match(entry):
+        problems.append(f"`**Mode entry:**` is not a mode-2 entry (M2.N): {entry!r}")
+    elif entry and entries and entry not in entries:
+        problems.append(f"`**Mode entry:**` {entry} is not an entry of {ANCHORS.name}")
+    present = list(doc.sections)
+    expected = NOTICE_SECTIONS + ([GATE_SECTION] if entry == GATE_ENTRY else [])
+    if present != expected:
+        missing = [name for name in expected if name not in present]
+        unexpected = [name for name in present if name not in expected]
+        if missing:
+            problems.append("missing section(s): " + ", ".join(f"`## {m}`" for m in missing))
+        if unexpected:
+            problems.append("unexpected section(s): " + ", ".join(f"`## {u}`" for u in unexpected))
+        if not missing and not unexpected:
+            problems.append("sections are out of order")
+    for name, body in doc.sections.items():
+        if not body:
+            problems.append(f"`## {name}` is empty")
+        elif found := PLACEHOLDER.search(strip_code(body)):
+            problems.append(f"`## {name}` keeps a placeholder: {found.group(0)!r}")
+    if entry == GATE_ENTRY and (body := doc.sections.get(GATE_SECTION)):
+        if GATE_NAME.search(body) is None:
+            problems.append(
+                f"`## {GATE_SECTION}` names no gate (`make gate-<name>`, `make test`, `make lint` "
+                "or a `tests/<path>`)"
+            )
+        if len(body) < 300:
+            problems.append(
+                f"`## {GATE_SECTION}` is too short to be a demonstration: state what the gate "
+                "looked at, what it would have caught, and the evidence it caught nothing"
+            )
+    if entry and entry != GATE_ENTRY and GATE_SECTION in doc.sections:
+        problems.append(f"`## {GATE_SECTION}` belongs to {GATE_ENTRY} only")
+
+
+def check_notices(report: Report) -> list[Document]:
+    print("notices")
+    entries = mode_two_entries()
+    notices: list[Document] = []
+    seen: dict[str, str] = {}
+    for path in sorted(REGISTER.glob("NTC-*.md")):
+        doc, problems = parse(
+            path, prefix="NTC", title_pattern=NOTICE_TITLE, name_pattern=NOTICE_FILENAME
+        )
+        rel = str(path.relative_to(ROOT))
+        if doc is not None:
+            check_notice(doc, problems, entries)
+            if doc.number in seen:
+                problems.append(f"NTC-{doc.number} is also {seen[doc.number]}")
+            seen[doc.number] = rel
+            notices.append(doc)
+        if problems:
+            report.fail(rel, "; ".join(problems))
+        else:
+            report.ok(rel)
+    if not notices:
+        report.ok("no notices yet")
+        return notices
+    index = INDEX.read_text(encoding="utf-8") if INDEX.exists() else ""
+    unlisted = [doc for doc in notices if doc.path.name not in index]
+    if unlisted:
+        report.fail(
+            str(INDEX.relative_to(ROOT)),
+            "not listed: " + ", ".join(doc.path.name for doc in unlisted),
+        )
+    else:
+        report.ok(f"{INDEX.relative_to(ROOT)} lists every notice")
+    return notices
 
 
 def load(directory: Path, report: Report, checker: Check) -> list[Document]:
@@ -419,6 +529,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report = Report()
     open_docs, _records = check_register(report)
+    check_notices(report)
     if args.pr_body is not None:
         check_pull_request(args.pr_body.read_text(encoding="utf-8"), args.draft, open_docs, report)
     if args.forbid_open_blocking:

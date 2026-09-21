@@ -22,7 +22,9 @@ architecture documents already describe are listed with their place; the rest ha
 | UC-4.10 | Deviation detection | [UC-4-result-defects.md](UC-4-result-defects.md) | `0.5.0` |
 | UC-4.11 | Error window and impact analysis | [UC-4-result-defects.md](UC-4-result-defects.md) | `0.5.0` |
 | UC-4.12 | Remediation plan | [UC-4-result-defects.md](UC-4-result-defects.md) | `0.5.0` |
+| UC-4.13 | Working out how a step becomes exact | [UC-4-exactness-statement.md](UC-4-exactness-statement.md) | `0.5.0` |
 | UC-6.8 | Incident and incident report | [UC-4-result-defects.md](UC-4-result-defects.md) | `0.5.0` |
+| UC-6.9 | The exactness statement | [UC-4-exactness-statement.md](UC-4-exactness-statement.md) | `0.5.0` |
 | UC-7.2 | Emergency stop | [UC-4-result-defects.md](UC-4-result-defects.md) | by a person `0.2.0`, automatic `0.5.0` |
 
 A function-level case has five parts: the situation, what Taktus does, what it needs, what it

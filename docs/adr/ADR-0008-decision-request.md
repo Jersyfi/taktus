@@ -37,3 +37,13 @@ loop, producing an entry in the decision register.
 - Each decision costs one extra confirmation message. Worth it.
 - The decision register becomes a precedent memory. Once a pattern is consistent, Taktus proposes
   turning it into a rule — autonomy grows through use, without control being given away.
+
+## Where this promise ends
+
+Anchors keep an act with a person; they do not make the person answer. A decision request
+with no answer is a visible stall (governance.md §3.2), and the run stays halted at its
+boundary for as long as that takes. The confirmation loop protects against a misread answer,
+not against a wrong one. The set can be reduced but never emptied — enforced for the legal and
+the correction class; the strategic class is the tenant's to reduce to nothing, and a tenant
+that does so has handed over direction on purpose. The mechanism for this repository is
+ADR-0017 and needs a person reading GitHub; the product's mechanism arrives at `0.2.0`.

@@ -34,3 +34,14 @@ project itself and is not a general architectural claim.**
 - High availability moves from "later" to `0.2.0`.
 - The takeover test becomes a release condition for autonomy level 4, not a reporting metric.
 - The manual rollback path belongs in the operating documentation and in regular exercise.
+
+## Where this promise ends
+
+Requirement A is proven for one instance and for two daemons on one database, and depends on
+the platform underneath: an instance whose only database is gone does not run without
+interruption, whatever Taktus does. Requirement B holds for the processes that carry
+instructions — each blueprint's README says which do — and passes the takeover test only when a
+person has actually run the process by hand; today that is the removal test
+(`blueprints/self-operation/README.md`, *By hand*). Requirement C is documented and not yet
+exercised on a schedule; the restore drill is a 1.0.0 condition. Requirement D is a rule the
+Taktus project follows about itself and is not enforced in code.

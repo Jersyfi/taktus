@@ -57,6 +57,7 @@ taktus/
 │   │       └── ports/               # ports this component alone needs (run/ports/workers.py, connectors.py, models.py)
 │   │   … run/domain/service/provenance.py builds and verifies the provenance chain (ADR-0021)
 │   │   … governance/domain/service/egress.py decides whether a result has left the system (ADR-0022)
+│   │   … catalog/domain/model/maturity.py is an adapter's maturity with its last removal result; catalog/domain/service/removal.py the rules that decide broke, changed or exception; catalog/application/service/record_removal.py writes the result and the ledger entry `removal.tested`
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
 │   │     accounting/ knowledge/ value/ ledger/
 │   │
@@ -89,6 +90,7 @@ taktus/
 │   │       ├── objectstore/ secret/ ledger/
 │   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/mcp/      # the connector port as an MCP client: intake and actions; connectors/pool.py maps capabilities
+│   │       ├── connectors/loopback/ # Taktus reached by Taktus: the capabilities orchestrator.* behind the action side of the connector port, over an Orchestrator the composition root implements
 │   │       ├── connectors/{chat,http}/
 │   │       ├── identity/            # PROVISIONAL: one configured operator identity per tenant, until the identity component (DEC-0013)
 │   │       └── models/              # openai_compatible/: the model port over the chat-completions dialect; pool.py maps purposes
@@ -96,7 +98,7 @@ taktus/
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
-│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); local.py wires taktusctl; execution.py opens the worker and the telemetry both share
+│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs, the removal verdict observed
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 │   ├── script/                      # the reference worker: shell commands, no AI
@@ -110,7 +112,7 @@ taktus/
 ├── api/openapi.yaml                 # Taktus' OWN REST interface, generated from FastAPI by `make generate`, committed, held current by a test
 ├── migrations/                      # Alembic: alembic.ini, env.py, versions/ — explicit DDL, one head
 ├── deploy/{docker,k8s,observability}/   # docker/compose.yml: Taktus and PostgreSQL, `make up`; compose.reference-worker.yml: the worker layered in for development; compose.dev.yml: the development database
-├── blueprints/{dev-orchestration,it-operations}/
+├── blueprints/{dev-orchestration,it-operations,self-operation}/   # self-operation: what Taktus runs for itself — S-01 the removal test, weekly
 ├── examples/processes/              # process bundles that run as they are; each exercised by a test
 ├── web/                             # SvelteKit app, embedded into the image
 │

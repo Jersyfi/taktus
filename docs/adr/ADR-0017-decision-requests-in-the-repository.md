@@ -1,7 +1,9 @@
 # ADR-0017 — Decision requests as a repository mechanism
 
 **Status:** accepted · operationalises ADR-0008 for this repository · amended by ADR-0021: the
-category `DEFECT` is read as *documentation defect*; a wrong result is a *result defect*
+category `DEFECT` is read as *documentation defect*; a wrong result is a *result defect* ·
+amended 2026-09-21: the anchor list has four modes in two files (§1), and a mode-2 decision
+has a record type, the notice (§2a)
 
 ## Context
 ADR-0008 defines the decision request: the planned question about direction, with a fixed shape,
@@ -25,8 +27,20 @@ defects, all in the mechanism rather than in the work:
 ## Decision
 
 ### 1. The anchor list
-`docs/decisions/anchors.md` lists what the owner decides and what a session decides and records.
-A question is tested against that page before it is raised. It fixes defect (e).
+Two files, because they are two different things. `docs/decisions/anchors.md` is the shipped
+default: the anchor configuration a new tenant inherits, written as a template — product.
+`docs/decisions/anchors.taktus.md` is the configuration of the tenant that is the Taktus
+project: the owner's own answers — not product. A question is tested against the tenant's page
+before it is raised. It fixes defect (e).
+
+Both pages sort every question into one of **four modes**: (1) the operator decides, no notice;
+(2) the operator decides and records a notice (§2a); (3) the operator prepares a worked opinion
+and the owner decides — a decision request in the shape of §4; (4) the owner decides and the
+operator supplies data. The first version of the page had two lists, the owner's and the
+session's; the owner's answers of 2026-09-21 fell almost entirely between them. The same entry
+may sit in a different mode per tenant — a change to an accepted ADR is the owner's in a
+managed product and the session's in this project while the vision holds — and the entries of
+a page are identified (`M3.7`) so that a request can cite one and a tenant can move one.
 
 ### 2. Defects are corrected, not escalated
 When the repository's own documents are ambiguous, contradict each other, or turn out to be wrong,
@@ -39,6 +53,21 @@ ambiguous. It fixes defect (d).
 
 One exception: if the correction would change what the software actually does, not only how it is
 described, the change is a decision and follows §3.
+
+### 2a. Mode-2 decisions are recorded as notices
+A decision the session makes alone and merely reports has, until now, no record type: it became
+a note in a pull request and disappeared with it. A decision of mode 2 — restructuring
+documentation, changing a test strategy, weakening a gate where it is demonstrated to have no
+value — is recorded as a **notice**: `docs/decisions/NTC-NNNN-<slug>.md`, in the register
+beside the decision records, with what was decided, the evidence it rests on, what was
+considered, and which mode-2 entry of `anchors.taktus.md` permits it. Nobody approves a
+notice; that is what mode 2 means. `docs/decisions/TEMPLATE-NOTICE.md` is the template.
+
+A gate weakened or removed under M2.3 additionally requires, in the record itself, the section
+*Why the gate had no value*: what the gate looked at, what it would have caught, the evidence
+that it caught nothing and could catch nothing. "It was in the way" is not evidence. The gate
+of §8 checks the shape and that the section names a gate; it cannot check the truth of the
+demonstration, and the reviewer can.
 
 ### 3. Four categories
 Everything a pull request wants to tell the owner falls into exactly one of these.
@@ -80,7 +109,7 @@ Header, one line per field:
 | § | Section | Content |
 |---|---|---|
 | 1 | What this is about | the situation in plain sentences, without repository jargon |
-| 2 | Why you are being asked | the row of `anchors.md` §1 that makes this the owner's call |
+| 2 | Why you are being asked | the entry of `anchors.taktus.md`, mode 3 or 4, that makes this the owner's call |
 | 3 | What you must decide | exactly one answerable question |
 | 4 | What you need to know to decide | every term explained; the background needed to judge; what the decision commits the project to |
 | 5 | Options | two or three, each with concrete meaning, consequence, effort and reversibility; one marked recommended, with the reason |
@@ -93,14 +122,15 @@ Section 4 is the one #1 lacked and the reason its questions could not be answere
 - `docs/decisions/open/DEC-NNNN-<slug>.md` — an open request, BLOCKING or NON-BLOCKING.
 - `docs/decisions/DEC-NNNN-<slug>.md` — a closed record: an answered request, a DEFECT record, or
   a question that was raised as a decision and reclassified as a NOTE.
-- `docs/decisions/README.md` — the register index; every record is listed there.
+- `docs/decisions/NTC-NNNN-<slug>.md` — a notice, the record of a mode-2 decision (§2a).
+- `docs/decisions/README.md` — the register index; every record and every notice is listed there.
 - Numbers are assigned once, in sequence, across open files and records, and never reused. A
-  record keeps the number of the request it closes.
+  record keeps the number of the request it closes. Notices have a sequence of their own.
 
 A plain NOTE gets no file: it lives in the pull request description. A question that was raised
 as a decision and then reclassified gets a record, so that the register carries the precedent.
 
-Order of work for a new request: test the question against `anchors.md` → write the file from the
+Order of work for a new request: test the question against `anchors.taktus.md` → write the file from the
 template → open the issue from the issue template with the same content → put the issue link into
 the file → name the decision in the pull request description → if BLOCKING, keep the pull request
 a draft.
@@ -135,7 +165,11 @@ quoted.
 - `tools/check_decisions.py`, run as `make gate-decisions`, part of `make gates` and of CI. It fails
   when an open request misses a section or keeps a placeholder; when a decision named in the pull
   request description has no file; when a record lacks an outcome or a date; when a file remains
-  under `open/` although its record exists; when a record is missing from the index.
+  under `open/` although its record exists; when a record is missing from the index. For
+  notices: when the header lacks a mode-2 entry that `anchors.taktus.md` defines, a date or
+  the pull request; when a section is missing, empty or out of order, or keeps a placeholder;
+  when an M2.3 notice lacks *Why the gate had no value* or that section names no gate; when a
+  notice is missing from the index.
 - The `decisions` CI job passes the pull request body and the draft flag to the same tool, which
   fails when a BLOCKING decision is named and the pull request is not a draft.
 - `.github/CODEOWNERS` names the owner, so every pull request requests their review.
@@ -171,3 +205,12 @@ raised and did not need to be" is a precedent as much as an answer is.
   rest.
 - The register starts with the four items of #1, backfilled in the new shape (DEC-0001 to
   DEC-0004), so that the standard has worked examples from day one.
+
+## Where this promise ends
+
+The gate checks shape: sections present, fields filled, a date, an index entry, a draft flag
+that matches. It cannot check that a request is decidable by a person who has read neither the
+diff nor the session — that is a reviewer's judgement — and it cannot check that a question
+tested against the anchor page was tested honestly. A notice's evidence, and an M2.3 notice's
+demonstration that a gate had no value, are checked for presence and for naming a gate, not
+for truth. The draft rule holds on GitHub; a repository hosted elsewhere needs its equivalent.

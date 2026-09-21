@@ -30,3 +30,11 @@ legally be built.
 ## Consequence
 Community adoption is deferred. A deliberate trade for a clean legal position, reversible at any
 time.
+
+## Where this promise ends
+
+This ADR promises nothing about the licence; it records that the decision is open and what
+holds until it is taken. The reservation of rights holds for what this repository contains; it
+grants no right and takes none from work that is not here. "No third-party contributions" is a
+rule this project follows, not a mechanism: a pull request from outside is closed, not
+prevented.

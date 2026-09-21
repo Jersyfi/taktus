@@ -1,7 +1,9 @@
 # ADR-0005 — Step atomicity and admission control
 
 **Status:** accepted · amended 2026-09-19 (DEC-0012): the first guarantee holds per consumption
-kind, and §*Amendment* says for which
+kind, and §*Amendment* says for which · amended 2026-09-21: a budget is a budget — the design
+that brings a currency limit as close to the line as a provider allows (§*Second amendment*);
+the implementation follows in the next pull request
 
 ## Context
 A limit enforced by aborting destroys work and money at the same time: the tokens are spent and the
@@ -65,3 +67,72 @@ budget stated in a currency does not. That is an argument for the Takt that was 
 and belongs there once the Takt is measured (`0.2.0`).
 
 `docs/architecture/control-plane.md` §5.1 and §7 state the same table in the reader's words.
+
+## Second amendment — a budget is a budget
+
+The first amendment stated where the currency guarantee ends. The owner's position on that
+boundary: a limit is a limit. Where a provider makes it impossible to hold exactly, the answer
+is to get as close as possible and to say so everywhere — not to accept the gap. What follows is
+the design. It is recorded here so that the implementation, in the next pull request, is held
+to it; nothing of it is implemented yet.
+
+**1. Reserve, do not reconcile.** Admission control debits the *estimate* from the budget at
+the moment the step is admitted, not the actual at the moment the step completes. While the
+step runs, the budget already shows the estimate as spent. When the actual arrives, the
+reservation is replaced by it: released downward when the step cost less, corrected upward
+when it cost more. An overrun can then come from one source only — the estimate was wrong —
+never from the budget being blind between admission and report. Today the run holds only
+what was *reported* against the budget (`run.consumed()`): the estimate of a running step is
+not held while the step runs, which is harmless while steps run one after another and becomes
+a hole the moment two steps run at once or a worker reports money only at the end.
+
+**2. Enforce in tokens, not in money.** A budget stated in a currency is converted at the start
+of the run into a budget in tokens, per model, using the known price of the model configured
+for each purpose. The token budget is enforced where measurement happens: per step, exactly
+(the first amendment's table). The residual error of a currency budget then shrinks to
+*price-list drift* — the price changed after the run started — and to workers that report
+tokens but not money; both are named in the run's report. A budget in Takte needs no
+conversion, which is the argument for the Takt the first amendment already made.
+
+**3. A named safety margin.** A margin, configurable per tenant and per process, is subtracted
+from the budget before the first step is admitted. On a tight budget Taktus works more
+conservatively: it admits less than the budget says, by the margin. The margin is a
+configuration value with a name and a default, never a hidden constant, and the report of every
+run shows the budget, the margin and the line the run was actually held to.
+
+**4. Estimate quality is measured per worker.** For every worker step the ledger holds the
+estimate and the actual. Per worker — never per person — Taktus keeps the ratio over time. A
+worker that consistently underestimates earns a larger margin automatically: its estimates are
+scaled by its measured error before they are admitted. The system becomes more accurate instead
+of repeating a promise it cannot keep. The scaling is a statistic over the ledger, reproducible
+from it; a change to how it is computed is a change to this ADR.
+
+**5. Transparency, everywhere it belongs.**
+- Setting a budget shows the possible overrun range, not just a number: the largest single
+  step estimate the worker may exceed, the price-list drift since the run started, and the
+  workers whose money is reported per assignment.
+- A forecast names a band, not a point.
+- Every step whose actual exceeded its estimate appears in the run's report as a *calibration
+  signal* — a fact about the estimate, not a failure of the step.
+- Every place that shows a budget in a currency shows the token budget it was converted into
+  and the price it was converted at.
+
+**What this changes in the first amendment's table.** Nothing in the rows for tokens, quota and
+compute. The currency row gains a second line: with the reservation and the conversion in
+place, the running total in tokens is exact at every boundary, and the currency figure is that
+total at the conversion price plus the drift since. The sentence "the spend can exceed the
+budget by the difference between one assignment's estimate and its actual cost" stays true and
+becomes the whole of the residual, stated with its size in the report.
+
+The limits of this design are in *Where this promise ends* below.
+
+## Where this promise ends
+
+The first amendment states where the currency guarantee ends: a worker that reports money
+only when an assignment ends leaves the running total blind within the assignment, and the
+budget can be exceeded by one assignment's estimate error. The second amendment shrinks that
+residual and does not remove it: price-list drift after the run started, a worker that reports
+tokens but no money, and a wrong estimate remain, each stated in the report. "At most one step
+of work is lost" holds for what the worker persisted at its last boundary; a worker that
+reports no inner boundaries loses the whole step. Replaying a run reproduces the sequence of
+steps, not the answers of a variable method.

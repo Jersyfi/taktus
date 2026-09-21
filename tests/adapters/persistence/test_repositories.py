@@ -8,6 +8,7 @@ import pytest
 
 from adapters.persistence import samples
 from adapters.persistence.conftest import Backend
+from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.run.domain.model import Run, RunState, StepState
@@ -21,6 +22,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (IntakeEvent, samples.intake_event),
     (Plan, samples.plan),
     (Run, samples.run),
+    (AdapterMaturity, samples.adapter_maturity),
 ]
 
 

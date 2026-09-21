@@ -24,6 +24,7 @@ from taktus.shared.v1 import (
     EXACT_ADMISSIBLE,
     PRODUCING,
     VARIABLE,
+    Autonomy,
     ExactnessClass,
     Fallback,
     Method,
@@ -67,7 +68,11 @@ def test_the_process_domain_refuses_it_on_its_own(method: Method) -> None:
     assert any("classed exact" in f for f in validation.exactness_admits_method(unvalidated))
     with pytest.raises(InvalidProcess, match="classed exact"):
         ProcessVersion.model_construct(
-            process_id="p", version="1", name="P", autonomy_level=2, steps=(unvalidated,)
+            process_id="p",
+            version="1",
+            name="P",
+            autonomy=Autonomy(level=2, reason="r", toward_next="t"),
+            steps=(unvalidated,),
         )._valid_graph()
 
 
@@ -77,6 +82,7 @@ def test_a_process_with_an_exact_step_on_a_variable_method_does_not_exist(method
         "id": "p",
         "version": "1",
         "name": "P",
+        "autonomy": {"level": 2, "reason": "r", "toward_next": "t"},
         "steps": [{**exact_step(method), "fallback": {"when": "always", "to": "human"}, "id": "s"}],
     }
     with pytest.raises(InvalidProcess) as raised:

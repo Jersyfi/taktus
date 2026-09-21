@@ -1,0 +1,4 @@
+{
+  "level": 4,
+  "reason": "nothing writes to a protected branch, the pipeline's verdict is the gate and a person merges; the process can run unattended because every outward effect is reversible until the merge"
+}

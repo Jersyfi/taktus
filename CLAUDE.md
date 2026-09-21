@@ -101,7 +101,9 @@ component boundary.
 Processes reference adapters by capability only, never by product name.
 
 **Removal test:** for every integration it must be shown automatically that removing it changes
-quality or cost but breaks no process.
+quality or cost but breaks no process. It is a process Taktus runs for itself, weekly
+(`blueprints/self-operation/`, S-01): the verdict — *broke*, *changed*, *exception* — is in
+the ledger as `removal.tested` and in the adapter's maturity.
 
 ---
 
@@ -124,8 +126,15 @@ defines its own set; it can be reduced but never emptied. An anchor halts the ru
 boundary and raises a **decision request**. A free-text answer is never acted on silently: the
 interpretation is reflected back and confirmed first (ADR-0008).
 
-**For this repository the anchors are concrete.** `docs/decisions/anchors.md` lists what the owner
-decides and what a session decides and records. Test every question against it before raising it.
+**For this repository the anchors are concrete, in four modes.** Every question falls into one:
+(1) the session decides, no notice; (2) the session decides and records a **notice**
+(`NTC-NNNN`); (3) the session prepares a worked opinion, the owner decides; (4) the owner
+decides, the session supplies data. `docs/decisions/anchors.md` is the shipped default — the
+configuration a new tenant inherits, product. `docs/decisions/anchors.taktus.md` is the
+configuration of this tenant, the Taktus project — the owner's answers, not product. The same
+anchor may resolve differently per tenant. Test every question against the tenant's page before
+raising it. A question in neither list is not decided alone and not escalated: it is raised as
+a NON-BLOCKING request that proposes its mode.
 
 Everything a pull request tells the owner is one of four categories (ADR-0017):
 
@@ -160,7 +169,9 @@ the shape; CI enforces the draft.
   line masks it. **The repository is public.**
 - **No third-party contributions** while the licence is unsettled (ADR-0012).
 - **Generated code is never edited by hand.** Generation lives in `make generate`.
-- **Architectural changes arrive as an ADR** before the code does.
+- **Architectural changes arrive as an ADR** before the code does. **Every ADR that makes a
+  promise states where the promise ends**, in a section of that name; `make gate-adrs` fails
+  one that promises without bounding.
 - **Documentation freshness is a CI gate.**
 - **Everything in English** — code, comments, commits, documentation.
 - **Never delete without asking:** no volume, database, backup or process version history. Restores
@@ -196,6 +207,12 @@ A misunderstood sentence in the documentation becomes wrong code later.
 6. has tests at the right level,
 7. carried its documentation along,
 8. introduced no secret value,
-9. carries an ADR if it has architectural effect,
+9. carries an ADR if it has architectural effect, and the ADR states where its promise ends,
 10. names every decision it raises by ID and category near the top of its description, and
-    stays a draft while one is blocking.
+    stays a draft while one is blocking; a mode-2 decision it made is a notice record,
+11. leaves the gates true: a hole in a gate's coverage met on the way is a finding — a
+    `DEFECT` record, or a notice where the gate changes — never a note; a suite that has become
+    too slow to be useful is a finding too, reported with the cost before and after (every
+    gate prints its duration for that), never a wish,
+12. keeps any remediation plan it produces or specifies executable by hand (UC-4.12): a person
+    can carry it out without Taktus.

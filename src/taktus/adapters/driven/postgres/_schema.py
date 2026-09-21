@@ -82,7 +82,8 @@ process_version = Table(
     Column("process_id", Text, nullable=False),
     Column("version", Text, nullable=False),
     Column("name", Text, nullable=False),
-    Column("autonomy_level", Integer, nullable=False),
+    Column("autonomy_level", Integer, nullable=False),  # the level alone, for a query
+    Column("autonomy", JSONB, nullable=False),  # level, reason, toward_next (ADR-0026)
     Column("triggers", JSONB, nullable=False),
     Column("slo", JSONB),
     Column("work", JSONB, nullable=False),
@@ -172,6 +173,20 @@ plan = Table(
     Column("status", Text, nullable=False),
     Column("commissioned_by", Text),
     _at("commissioned_at", nullable=True),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+# --- catalog --------------------------------------------------------------------------------------
+
+adapter_maturity = Table(
+    "adapter_maturity",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the adapter identifier, never a product name
+    Column("family", Text, nullable=False),
+    _at("conformance_passed_at", nullable=True),
+    Column("removal", JSONB),  # the last removal result, as its document
+    _at("updated_at"),
     PrimaryKeyConstraint("tenant", "id"),
 )
 

@@ -191,8 +191,21 @@ Without it, "interchangeable" is an assertion.
 The suite lives in `src/taktus/conformance/` and imports nothing from the control plane; it talks
 to a worker over HTTP and SSE, and to a connector over MCP, as a foreign control plane would. It
 runs W-01 to W-11 and W-13 against a live worker and C-01 to C-09 against a live connector, and reports
-W-12 and C-10, the removal test, as *pending* until processes exist to remove an adapter from.
-Its report states which half of *verified* it proves. What both halves share — the report, the
+W-12 and C-10, the removal test, as *pending*: a suite that talks to one adapter cannot remove
+it from processes. Its report states which half of *verified* it proves.
+
+**The removal test is a process, not a suite check.** `blueprints/self-operation/processes/
+S-01-removal-test.yaml` runs weekly, once per configured integration: it withholds the
+integration, exercises the registered processes that use it — run twice, with and without,
+where running cannot leave the system; resolved statically otherwise — restores it, and records
+one of three verdicts in the ledger as `removal.tested` and in the adapter's maturity record
+(`components/catalog`, table `adapter_maturity`). *Broke*: a step lost its only adapter and no
+person takes it over. *Changed*: another adapter or a person serves the step; quality and cost
+changed. *Exception*: the integration cannot be removed by design — the database, ADR-0002.
+The maturity record derives *verified* from both halves and names which is missing; nothing
+records the conformance half yet, so no adapter is *verified* through it today. The blueprint's
+README carries the same test as instructions a person follows by hand, and the record of the
+first run. What both halves share — the report, the
 findings, the catalogue of checks, the schema validators — lives at the package level; the
 connector half is `src/taktus/conformance/connector/`. How a third party runs it against an
 adapter of their own: [`contracts/worker/v1/CONFORMANCE.md`](../../contracts/worker/v1/CONFORMANCE.md)
@@ -227,6 +240,7 @@ example, not a requirement. The core runs with all of them removed — it simply
 | Connector | `http` | the generic fallback for anything with a documented API |
 | Model | `openai_compatible` | covers Ollama, vLLM and most vendors. Exists (`src/taktus/adapters/driven/models/openai_compatible/`), proven against a fake of the endpoint; the one model `llm` steps ask |
 | Model | `anthropic` | native capabilities the common denominator does not carry |
+| Connector | `loopback` | Taktus reached by Taktus. Exists (`src/taktus/adapters/driven/connectors/loopback/`): the capabilities `orchestrator.integrations`, `orchestrator.removal` and `orchestrator.maturity` behind the action side of the connector port, every operation `read` because nothing it does leaves the system, over an `Orchestrator` the composition root implements on the instance's own services (`composition/loopback.py`; ADR-0027). It is what the removal test calls, and it is never itself an integration the removal test lists. In an installation with several instances the same capabilities can be served over the HTTP surface instead |
 
 **Rule:** a second real worker of each shape exists **before** features build on worker behaviour.
 Otherwise there is a contract with one implementation, and that is not a contract.

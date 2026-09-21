@@ -22,6 +22,12 @@ from backup automatically", and those are two actions inside one process.
 **Raising a level** requires explicit approval **and** a demonstrated quality history. Even at
 level 4 the emergency stop, the reporting duty and the escalation duty apply in full.
 
+**Every process carries its level with its reason** (ADR-0026): the level it runs at, why, and
+what is missing to go one level higher — or what forbids it where the process's requirements
+do not allow the next level. The direction is always towards level 4 and never forced. Where
+the conditions `toward_next` names are met, Taktus proposes the raise with the evidence; a
+person decides. The statement is shown wherever the process is shown.
+
 Level 4 is not reserved for large organisations. A private individual with three daily micro-jobs
 has the same claim to it as a corporation.
 
@@ -105,11 +111,6 @@ it in their sleep by the third one.
 3. **Blocked work is visible.** Whatever waits on an answer appears in the decider's view and in the
    run history. An unanswered request is never a silent stall.
 
-The Taktus project applies the same mechanism to its own repository: which questions reach the
-owner is listed in [`docs/decisions/anchors.md`](../decisions/anchors.md), the shape and the return
-path are in [ADR-0017](../adr/ADR-0017-decision-requests-in-the-repository.md), and the register is
-[`docs/decisions/`](../decisions/README.md).
-
 ### 3.3 Against escalation
 
 | | Decision request | Escalation |
@@ -118,6 +119,23 @@ path are in [ADR-0017](../adr/ADR-0017-decision-requests-in-the-repository.md), 
 | Content | options with a recommendation | situation package: what happened, what was tried, what is affected |
 | Urgency | a deadline | a response-time target |
 | Outcome | a decision in the register | a fix, jointly or manually |
+
+### 3.4 Four modes
+
+Not every question is a decision request. Every question an operator meets — Taktus at level 3
+or 4, or a session working in a repository — falls into one of four modes: the operator decides
+without notice; the operator decides and records a notice; the operator prepares a worked
+opinion and the owner decides; the owner decides and the operator supplies data. Which
+question falls into which mode is the tenant's anchor configuration. The shipped default is
+[`docs/decisions/anchors.md`](../decisions/anchors.md), a template a tenant inherits and
+adapts. The same anchor may resolve differently per tenant: a change to an accepted
+architecture decision is the owner's in a managed product and the operator's in the Taktus
+project while the vision holds.
+
+The Taktus project applies the same mechanism to its own repository: its own configuration is
+[`docs/decisions/anchors.taktus.md`](../decisions/anchors.taktus.md), the shape and the return
+path are in [ADR-0017](../adr/ADR-0017-decision-requests-in-the-repository.md), and the register
+— decisions and notices — is [`docs/decisions/`](../decisions/README.md).
 
 ---
 

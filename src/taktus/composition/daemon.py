@@ -30,9 +30,13 @@ from sqlalchemy.exc import DBAPIError
 
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
+from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
+from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
+from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
 from taktus.adapters.driven.memory import MemoryObjectStore
+from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.postgres import (
     PostgresLeadership,
     PostgresLedgerStore,
@@ -47,6 +51,8 @@ from taktus.adapters.driven.postgres import (
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
+from taktus.components.catalog.application.service import RecordRemovalResultHandler
+from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import (
     CommissionPlanHandler,
     CompleteIntakeHandler,
@@ -69,6 +75,7 @@ from taktus.components.run.domain.model import Run
 from taktus.composition import roles
 from taktus.composition.execution import connector_pool, model_pool, open_worker, telemetry_of
 from taktus.composition.logging import configure, log_effective_configuration
+from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.settings import Role, Settings, load
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.leadership import Leadership
@@ -168,20 +175,55 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
             adapter,
             worker,
         ):
-            engine = RunEngine(
-                runs=runs,
-                work=persistence,
-                objects=MemoryObjectStore(settings.state_dir / "objects"),
-                ledger=ledger,
-                provenance=provenance_store,
-                workers=StaticWorkerPool([(adapter, worker)]),
-                clock=clock,
-                ids=ids,
-                telemetry=telemetry,
-                queue=queue,
-                options=EngineOptions(step_ceiling_seconds=settings.shutdown_ceiling_seconds),
-                connectors=connector_pool(settings.connectors),
-                models=model_pool(settings.model),
+            # The loopback connector is in the pool the engine resolves from and needs the
+            # engine; it is created first and bound last (composition/loopback.py).
+            loopback = LoopbackConnector()
+            pools = Pools(
+                StaticWorkerPool([(adapter, worker)]),
+                connector_pool(settings.connectors, also=[(LOOPBACK, loopback)]),
+                model_pool(settings.model),
+            )
+
+            def engine_for(
+                workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
+            ) -> RunEngine:
+                return RunEngine(
+                    runs=runs,
+                    work=persistence,
+                    objects=MemoryObjectStore(settings.state_dir / "objects"),
+                    ledger=ledger,
+                    provenance=provenance_store,
+                    workers=workers,
+                    clock=clock,
+                    ids=ids,
+                    telemetry=telemetry,
+                    queue=queue,
+                    options=EngineOptions(step_ceiling_seconds=settings.shutdown_ceiling_seconds),
+                    connectors=connectors,
+                    models=models,
+                )
+
+            engine = engine_for(pools.workers, pools.connectors, pools.models)
+            commission = CommissionPlanHandler(
+                PostgresRepository(persistence, Command),
+                PostgresRepository(persistence, Plan),
+                persistence,
+                clock,
+                ids,
+            )
+            loopback.bind(
+                Loopback(
+                    pools=pools,
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    work=persistence,
+                    commission=commission,
+                    engine_for=engine_for,
+                    record=RecordRemovalResultHandler(
+                        PostgresRepository(persistence, AdapterMaturity), persistence, ledger, clock
+                    ),
+                    clock=clock,
+                    ids=ids,
+                )
             )
             wired = Wired(
                 settings=settings,
@@ -194,13 +236,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                 register_version=RegisterProcessVersionHandler(
                     PostgresRepository(persistence, ProcessVersion), persistence
                 ),
-                commission=CommissionPlanHandler(
-                    PostgresRepository(persistence, Command),
-                    PostgresRepository(persistence, Plan),
-                    persistence,
-                    clock,
-                    ids,
-                ),
+                commission=commission,
                 intake=ReceiveIntakeHandler(
                     # Capability → connector is configuration (ADR-0003): TAKTUS_CONNECTORS.
                     {

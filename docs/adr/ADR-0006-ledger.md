@@ -20,3 +20,12 @@ computes from a second source.
 ## Consequences
 - Fault analysis goes via referenced artifacts. Intended.
 - There are never two truths about what happened.
+
+## Where this promise ends
+
+The chain is tamper-evident, not tamper-proof: a rewrite of the whole chain from a point onward
+is detectable only against a copy of a hash taken earlier — a printed digest, an export, a
+second instance — and the restore drill of the 1.0.0 roadmap is what makes that copy exist. The
+ledger references content; when the referenced artifact is gone, the ledger still says what
+happened but not what the value was. "Single source for every metric" holds for metrics Taktus
+computes; a metric a person computes from an export is theirs.
