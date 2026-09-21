@@ -187,6 +187,12 @@ regenerates it, and `make gate-status` fails one that did not.
   count as potentially destructive and follow the same rule.
 - **Efficiency over verbosity.** Short descriptions, no restating the obvious, no report without a
   reader.
+- **A note in a pull request is not a message to the owner.** Anything the owner must act on —
+  a decision, a need, a date — becomes a record under `docs/decisions/` and an issue assigned
+  to him: a decision request (`DEC-NNNN`) or a needs request (`NEED-NNNN`), raised when it
+  becomes foreseeable. Never only a line in a description. The description's last section,
+  *Needed from the owner*, repeats what is open from `docs/status.md`; it is generated and
+  checked, not written (ADR-0028).
 
 ---
 
