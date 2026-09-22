@@ -6,14 +6,16 @@ and gave notice of. The mechanism is ADR-0017. Which questions reach the owner i
 four modes: [anchors.md](anchors.md) is the shipped default any tenant inherits, and
 [anchors.taktus.md](anchors.taktus.md) is the configuration of this tenant, the Taktus
 project. The template for a request is [TEMPLATE.md](TEMPLATE.md); the template for a notice
-is [TEMPLATE-NOTICE.md](TEMPLATE-NOTICE.md).
+is [TEMPLATE-NOTICE.md](TEMPLATE-NOTICE.md); the template for a needs request is
+[TEMPLATE-NEED.md](TEMPLATE-NEED.md).
 
 The category `DEFECT` is a *documentation defect*: a fault in what the repository says, corrected
 and recorded, never asked. A wrong result produced by a run is a *result defect* (ADR-0021) and
 never appears in this register.
 
-`open/` holds requests that wait for an answer. A request leaves `open/` in the same commit that
-creates its record here. `make gate-decisions` checks both, and the notices.
+`open/` holds requests that wait for an answer, and needs that wait to be provided. A request
+leaves `open/` in the same commit that creates its record here. `make gate-decisions` checks
+both, the notices, and the needs.
 
 A **notice**, `NTC-NNNN`, is the record of a mode-2 decision (anchors.md §1): the session
 decided, nobody approves, and the record states what was decided, on what evidence, what was
@@ -21,6 +23,20 @@ considered and which entry permits it. Every notice carries a **kind** — `rest
 `test-strategy`, `gate-weakened`, `behaviour-change` — so that the register reads by kind and
 a weakened gate is never buried among behaviour changes (DEC-0014). A notice that weakens a
 gate carries the demonstration that the gate had no value, in the record itself.
+
+A **needs request**, `NEED-NNNN`, is the record of something only the owner can provide — a
+credential, an account, access to a system, a purchase, an action on a server, information about
+an environment (ADR-0028). It is raised when it becomes foreseeable, not when it blocks; raising
+it is mode 2 (entry M2.5), providing it is the owner's act. An open need is under `open/` with an
+issue labelled `needs-owner`; a provided need is a record here with its outcome. What is open is
+in [../status.md](../status.md), section 3.
+
+## Needs
+
+| NEED | Title | Kind | Outcome |
+|---|---|---|---|
+
+*None provided yet. The open needs are listed in [../status.md](../status.md), section 3.*
 
 ## Notices
 
@@ -47,3 +63,6 @@ gate carries the demonstration that the gate had no value, in the record itself.
 | [0012](DEC-0012-the-limit-guarantee-holds-per-consumption-kind.md) | The limit guarantee holds per consumption kind | DEFECT | corrected: ADR-0005 names the kinds — tokens, quota, compute per step — for which no limit is breached, and states that a currency limit degrades to an estimate where money is reported per assignment |
 | [0013](DEC-0013-a-provisional-operator-identity.md) | A provisional operator identity until the identity component exists | NOTE | recorded: one configured identity per tenant (`TAKTUS_PROVISIONAL_IDENTITY`), marked provisional everywhere it appears; the identity component (`0.2.0`) replaces it and removes the variable |
 | [0014](DEC-0014-behaviour-changes-inside-an-agreed-scope.md) | Behaviour changes inside an agreed scope | NON-BLOCKING | answered: Option B — entry M2.4, a notice per behaviour change; and every notice carries a kind, so that a weakened gate stays distinguishable |
+| [0015](DEC-0015-the-owner-facing-section-in-german.md) | The owner-facing section in German | NON-BLOCKING | answered: Option A — English, as the rule stands; the section is generated and checked |
+| [0016](DEC-0016-the-first-runs-variables-are-not-in-env-example.md) | The first run's variables are not in `.env.example` | DEFECT | corrected: `REPOSITORY_TOKEN_FILE`, `CODING_AGENT_API_KEY_FILE` and `CODING_AGENT_SESSION_FILE` are listed in `.env.example`; the front page no longer counts the ADRs by hand |
+| [0017](DEC-0017-ci-had-no-base-on-the-first-push-of-a-branch.md) | CI had no base on the first push of a branch | DEFECT | corrected: the documentation gate and the status gate compare with `main` on the first push of a `taktus/**` branch, where the push's "before" is the null sha |

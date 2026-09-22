@@ -135,7 +135,11 @@ project while the vision holds.
 The Taktus project applies the same mechanism to its own repository: its own configuration is
 [`docs/decisions/anchors.taktus.md`](../decisions/anchors.taktus.md), the shape and the return
 path are in [ADR-0017](../adr/ADR-0017-decision-requests-in-the-repository.md), and the register
-— decisions and notices — is [`docs/decisions/`](../decisions/README.md).
+— decisions, notices and needs — is [`docs/decisions/`](../decisions/README.md). A *need* is
+what the work requires and only the owner can provide — a credential, an account, an access —
+and is raised when it becomes foreseeable, not when it blocks
+([ADR-0028](../adr/ADR-0028-what-the-owner-must-act-on-becomes-a-record.md)); what is open is
+in [`docs/status.md`](../status.md).
 
 ---
 

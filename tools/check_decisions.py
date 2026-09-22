@@ -20,6 +20,16 @@ Checks:
    the four sections in order, no placeholder, and is listed in the index; a notice of kind
    gate-weakened (a gate weakened or removed, entry M2.3) additionally carries the section
    "Why the gate had no value", which names the gate;
+4b. every needs request (NEED-NNNN, something only the owner can provide, ADR-0028) has its
+   header — a kind from the vocabulary, the pull request, an issue, a date, the pull request in
+   which it became foreseeable — the seven sections in order, no empty section, no placeholder,
+   and section 5 says what it must never be; a provided need has an Outcome with the date it
+   was provided, how it was confirmed and where it was recorded, and is listed in the index;
+4c. every credential the software reads is covered: every row of CREDENTIALS.md names the needs
+   request under which the owner provides the parameter, or `none` with the reason; every
+   needs request a row names has a file; every `<NAME>_FILE` variable the code names is
+   described in CREDENTIALS.md — so that a pull request cannot build something whose real use
+   depends on a credential nobody was asked for;
 5. with --pr-body: the "Decisions required" section of a pull request description is either
    "None" or a list of DEC lines, every named decision has an open file with the same category,
    and every BLOCKING open file is named;
@@ -27,7 +37,7 @@ Checks:
    stays a draft;
 7. with --forbid-open-blocking (push to main): no BLOCKING file is under open/ at all.
 
-A register with nothing in it reports green and says so.
+A register with nothing in it reports green and says so. The last line is the duration.
 """
 
 from __future__ import annotations
@@ -35,6 +45,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
@@ -71,7 +82,7 @@ OUTCOME_FIELDS: dict[str, list[str]] = {
     ],
     "NOTE": ["Recorded", "Why this is a note", "Recorded in"],
 }
-DATE_FIELDS = {"Needed by", "Decided", "Corrected", "Recorded"}
+DATE_FIELDS = {"Needed by", "Decided", "Corrected", "Recorded", "Provided"}
 
 FILENAME = re.compile(r"^DEC-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 TITLE = re.compile(r"^# DEC-(\d{4}) — (.+)$")
@@ -94,6 +105,33 @@ ENTRY_ROW = re.compile(r"^\| (M[1-4]\.\d+) \|", re.MULTILINE)
 KIND = re.compile(r"^[a-z]+(?:-[a-z]+)*$")
 KIND_CELL = re.compile(r"^`([a-z]+(?:-[a-z]+)*)`$")
 GATE_NAME = re.compile(r"`make gate-[a-z-]+`|`tests/[a-z_/.-]+`|`make test`|`make lint`")
+# Needs requests: something only the owner can provide (ADR-0028). The shape is seven sections
+# with the steps, and section 5 states where the value goes instead of a chat or a commit.
+NEED_SECTIONS = [
+    "1. What is needed",
+    "2. Why",
+    "3. By when",
+    "4. How to provide it",
+    "5. What it must never be",
+    "6. What happens next",
+    "7. How to confirm",
+]
+NEED_KINDS = {"credential", "account", "access", "purchase", "action", "information"}
+NEED_OUTCOME_FIELDS = ["Provided", "Confirmed by", "Recorded in"]
+NEED_FILENAME = re.compile(r"^NEED-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+NEED_TITLE = re.compile(r"^# NEED-(\d{4}) — (.+)$")
+NEED_REF = re.compile(r"\bNEED-(\d{4})\b")
+NEVER = re.compile(r"\bnever\b", re.IGNORECASE)
+
+# Credential coverage (ADR-0028 §2): the register of parameters, its column naming the need,
+# and the directories whose code names a credential file variable.
+CREDENTIALS = ROOT / "CREDENTIALS.md"
+NEEDS_COLUMN = "Needs request"
+CREDENTIAL_VARIABLE = re.compile(r"\b[A-Z][A-Z0-9_]+_FILE\b")
+CREDENTIAL_PREFIX = re.compile(r"^TAKTUS_CREDENTIAL_([A-Z0-9_]+)_FILE$")
+CODE_DIRECTORIES = ("src", "workers", "tools", "deploy", "blueprints")
+CODE_SUFFIXES = {".py", ".sh", ".yml", ".yaml"}
+
 FIELD = re.compile(r"^\*\*([A-Za-z ]+):\*\*\s*(.*)$")
 PLACEHOLDER = re.compile(r"<[^>\n]+>|\b(?:TODO|TBD|FIXME|XXX)\b|…")
 OPTION = re.compile(r"^### Option [A-Z] — ")
@@ -407,6 +445,181 @@ def check_notices(report: Report) -> list[Document]:
     return notices
 
 
+# --- needs ---------------------------------------------------------------------------------------
+
+
+def check_need(doc: Document, problems: list[str], *, provided: bool) -> None:
+    check_fields(doc, ["Kind", "Raised in", "Issue", "Needed by", "Foreseeable since"], problems)
+    kind = doc.fields.get("Kind", "")
+    if kind and kind not in NEED_KINDS:
+        problems.append(f"`**Kind:**` must be one of {sorted(NEED_KINDS)}, found {kind!r}")
+    if not ISSUE_REF.search(doc.fields.get("Issue", "")):
+        problems.append("`**Issue:**` names no issue (#N)")
+    present = [name for name in doc.sections if name != OUTCOME]
+    if present != NEED_SECTIONS:
+        missing = [name for name in NEED_SECTIONS if name not in present]
+        unexpected = [name for name in present if name not in NEED_SECTIONS]
+        if missing:
+            problems.append("missing section(s): " + ", ".join(f"`## {m}`" for m in missing))
+        if unexpected:
+            problems.append("unexpected section(s): " + ", ".join(f"`## {u}`" for u in unexpected))
+        if not missing and not unexpected:
+            problems.append("sections are out of order")
+    for name in NEED_SECTIONS:
+        body = doc.sections.get(name, "")
+        if not body:
+            if name in doc.sections:
+                problems.append(f"`## {name}` is empty")
+            continue
+        if found := PLACEHOLDER.search(strip_code(body)):
+            problems.append(f"`## {name}` keeps a placeholder: {found.group(0)!r}")
+    never_section = doc.sections.get(NEED_SECTIONS[4], "")
+    if never_section and NEVER.search(never_section) is None:
+        problems.append(
+            f"`## {NEED_SECTIONS[4]}` says nothing the value must never be; the repository is "
+            "public and a session never receives a secret value"
+        )
+    outcome = doc.sections.get(OUTCOME)
+    if not provided:
+        if outcome is not None:
+            problems.append("an open need has no `## Outcome`; move the file to docs/decisions/")
+        return
+    if outcome is None:
+        problems.append("`## Outcome` is missing: a provided need carries the date and the check")
+        return
+    fields = outcome_fields(outcome)
+    for name in NEED_OUTCOME_FIELDS:
+        value = fields.get(name, "")
+        if not value:
+            problems.append(f"`## Outcome` lacks `**{name}:**`")
+        elif name in DATE_FIELDS and not valid_date(value):
+            problems.append(f"`**{name}:**` is not a date of the form YYYY-MM-DD: {value!r}")
+    if PLACEHOLDER.search(strip_code(outcome)):
+        problems.append("`## Outcome` keeps a placeholder")
+
+
+def load_needs(directory: Path, report: Report, *, provided: bool) -> list[Document]:
+    docs: list[Document] = []
+    for path in sorted(directory.glob("NEED-*.md")):
+        doc, problems = parse(
+            path, prefix="NEED", title_pattern=NEED_TITLE, name_pattern=NEED_FILENAME
+        )
+        if doc is not None:
+            check_need(doc, problems, provided=provided)
+            docs.append(doc)
+        rel = str(path.relative_to(ROOT))
+        if problems:
+            report.fail(rel, "; ".join(problems))
+        else:
+            report.ok(rel)
+    return docs
+
+
+def check_needs(report: Report) -> tuple[list[Document], list[Document]]:
+    print("needs")
+    open_needs = load_needs(OPEN, report, provided=False) if OPEN.is_dir() else []
+    provided = load_needs(REGISTER, report, provided=True)
+    if not open_needs and not provided:
+        report.ok("no needs yet")
+    seen: dict[str, str] = {}
+    for doc in [*open_needs, *provided]:
+        if doc.number in seen:
+            report.fail(doc.rel, f"NEED-{doc.number} is also {seen[doc.number]}")
+        seen[doc.number] = doc.rel
+    if provided:
+        index = INDEX.read_text(encoding="utf-8") if INDEX.exists() else ""
+        unlisted = [doc for doc in provided if doc.path.name not in index]
+        if unlisted:
+            report.fail(
+                str(INDEX.relative_to(ROOT)),
+                "not listed: " + ", ".join(doc.path.name for doc in unlisted),
+            )
+        else:
+            report.ok(f"{INDEX.relative_to(ROOT)} lists every provided need")
+    return open_needs, provided
+
+
+def credential_rows(text: str) -> tuple[list[str], list[list[str]]]:
+    """The header and the rows of the parameter table in CREDENTIALS.md; cells stripped."""
+    header: list[str] = []
+    rows: list[list[str]] = []
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if not header:
+            if "Parameter" in cells:
+                header = cells
+            continue
+        if all(set(cell) <= {"-", ":"} for cell in cells):
+            continue
+        if cells and cells[0].startswith("**"):
+            rows.append(cells)
+    return header, rows
+
+
+def code_credential_variables() -> dict[str, str]:
+    """Every `<NAME>_FILE` variable the code names, with the first file naming it."""
+    found: dict[str, str] = {}
+    for directory in CODE_DIRECTORIES:
+        base = ROOT / directory
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*")):
+            if not path.is_file() or path.suffix not in CODE_SUFFIXES:
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for name in CREDENTIAL_VARIABLE.findall(text):
+                found.setdefault(name, str(path.relative_to(ROOT)))
+    return found
+
+
+def check_credentials(report: Report, needs: list[Document]) -> None:
+    """Every credential is covered by a need or a stated reason (ADR-0028 §2)."""
+    print("credentials")
+    rel = str(CREDENTIALS.relative_to(ROOT))
+    if not CREDENTIALS.exists():
+        report.fail(rel, "missing; every credential is a parameter described there")
+        return
+    text = CREDENTIALS.read_text(encoding="utf-8")
+    header, rows = credential_rows(text)
+    if NEEDS_COLUMN not in header:
+        report.fail(rel, f"the parameter table has no column `{NEEDS_COLUMN}`")
+        return
+    column = header.index(NEEDS_COLUMN)
+    known = {doc.number for doc in needs}
+    for cells in rows:
+        parameter = cells[0].strip("*")
+        cell = cells[column] if column < len(cells) else ""
+        refs = NEED_REF.findall(cell)
+        if refs:
+            absent = [f"NEED-{n}" for n in refs if n not in known]
+            if absent:
+                report.fail(rel, f"{parameter}: names {', '.join(absent)}, which has no file")
+            else:
+                report.ok(f"{parameter}: " + ", ".join(f"NEED-{n}" for n in refs))
+        elif cell.lower().startswith("none") and len(cell) > 8:
+            report.ok(f"{parameter}: none, with a reason")
+        else:
+            report.fail(
+                rel,
+                f"{parameter}: `{NEEDS_COLUMN}` names no NEED-NNNN and gives no reason "
+                "(`none — <why nobody provides it>`)",
+            )
+    for name, where in sorted(code_credential_variables().items()):
+        covered = name in text
+        if not covered and (match := CREDENTIAL_PREFIX.match(name)):
+            covered = match.group(1) in text
+        if covered:
+            report.ok(f"{name} ({where}) is described")
+        else:
+            report.fail(
+                rel,
+                f"{name} is read by {where} and not described here; add its parameter row, "
+                "naming the needs request under which the owner provides it",
+            )
+
+
 def load(directory: Path, report: Report, checker: Check) -> list[Document]:
     docs: list[Document] = []
     for path in sorted(directory.glob("DEC-*.md")):
@@ -548,9 +761,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    started = time.monotonic()
     report = Report()
     open_docs, _records = check_register(report)
     check_notices(report)
+    open_needs, provided_needs = check_needs(report)
+    check_credentials(report, [*open_needs, *provided_needs])
     if args.pr_body is not None:
         check_pull_request(args.pr_body.read_text(encoding="utf-8"), args.draft, open_docs, report)
     if args.forbid_open_blocking:
@@ -560,10 +776,11 @@ def main(argv: list[str] | None = None) -> int:
                     doc.rel, "BLOCKING request on the main branch; it was merged unanswered"
                 )
     print()
+    duration = f"{time.monotonic() - started:.2f}s"
     if report.failures:
-        print(f"{report.passed} passed, {len(report.failures)} failed")
+        print(f"{report.passed} passed, {len(report.failures)} failed in {duration}")
         return 1
-    print(f"{report.passed} passed")
+    print(f"{report.passed} passed in {duration}")
     return 0
 
 

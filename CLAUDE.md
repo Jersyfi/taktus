@@ -154,6 +154,15 @@ A request has seven sections and must be decidable by a person who has read neit
 the session nor any ADR. The answer becomes a `DEC-NNNN` record. `make gate-decisions` enforces
 the shape; CI enforces the draft.
 
+A fifth kind of record is not a decision: a **needs request**, `NEED-NNNN`, for what only the
+owner can provide — a credential, an account, access, a purchase, an action on a server,
+information about an environment (ADR-0028). It is raised when the need becomes **foreseeable**,
+not when it blocks, with a date and the steps; raising it is mode 2 (M2.5), providing it is the
+owner's act. Every row of `CREDENTIALS.md` names the need it is provided under, and the gate
+fails a credential the code reads without one. `docs/status.md` is the one file that says where
+the project stands and what is needed from the owner; every pull request that changes the state
+regenerates it, and `make gate-status` fails one that did not.
+
 ---
 
 ## 9. Working rules
@@ -178,6 +187,12 @@ the shape; CI enforces the draft.
   count as potentially destructive and follow the same rule.
 - **Efficiency over verbosity.** Short descriptions, no restating the obvious, no report without a
   reader.
+- **A note in a pull request is not a message to the owner.** Anything the owner must act on —
+  a decision, a need, a date — becomes a record under `docs/decisions/` and an issue assigned
+  to him: a decision request (`DEC-NNNN`) or a needs request (`NEED-NNNN`), raised when it
+  becomes foreseeable. Never only a line in a description. The description's last section,
+  *Needed from the owner*, repeats what is open from `docs/status.md`; it is generated and
+  checked, not written (ADR-0028).
 
 ---
 
@@ -209,7 +224,9 @@ A misunderstood sentence in the documentation becomes wrong code later.
 8. introduced no secret value,
 9. carries an ADR if it has architectural effect, and the ADR states where its promise ends,
 10. names every decision it raises by ID and category near the top of its description, and
-    stays a draft while one is blocking; a mode-2 decision it made is a notice record,
+    stays a draft while one is blocking; a mode-2 decision it made is a notice record; every
+    need it makes foreseeable is a needs request with an issue, and its description ends with
+    what is needed from the owner,
 11. leaves the gates true: a hole in a gate's coverage met on the way is a finding — a
     `DEFECT` record, or a notice where the gate changes — never a note; a suite that has become
     too slow to be useful is a finding too, reported with the cost before and after (every

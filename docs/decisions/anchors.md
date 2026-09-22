@@ -23,7 +23,7 @@ Every question falls into exactly one mode. The mode says who decides and what i
 | Mode | Who decides | What is recorded | Where |
 |---|---|---|---|
 | **1** | the operator, without notice | nothing beyond the change itself | the pull request, the run, the code comment |
-| **2** | the operator, and records a notice | what was decided, on what evidence, what was considered, and which entry of this page permits it | a **notice record** in the decision register, `NTC-NNNN` (ADR-0017 §2a) |
+| **2** | the operator, and records a notice | what was decided, on what evidence, what was considered, and which entry of this page permits it | a **notice record** in the decision register, `NTC-NNNN` (ADR-0017 §2a); for a need, the **needs request** itself, `NEED-NNNN` (ADR-0028) |
 | **3** | the owner; the operator prepares | a decision request in the seven-section shape, with a worked opinion — context, options, a recommendation with its reason — never a bare question | a **decision request**, `DEC-NNNN` (ADR-0017 §4) |
 | **4** | the owner; the operator supplies data | the data the owner asked for, and the owner's decision once made | a decision record, `DEC-NNNN`, written from the owner's answer |
 
@@ -39,7 +39,7 @@ had no value. "It was in the way" is not evidence.
 
 **Every notice carries a kind.** The kind says what sort of thing was decided, in one word that
 means the same in every tenant, so that a register can be read by kind whatever a tenant's
-entries are numbered. Four kinds exist:
+entries are numbered. Five kinds exist:
 
 | Kind | What was decided |
 |---|---|
@@ -47,6 +47,7 @@ entries are numbered. Four kinds exist:
 | `test-strategy` | the test strategy changed, or what the tests cover |
 | `gate-weakened` | a gate was weakened or removed |
 | `behaviour-change` | what the software does changed, inside an agreed scope, breaking no contract |
+| `need` | a need was raised: something only the owner can provide; the record is the needs request itself, `NEED-NNNN`, not a notice (ADR-0028) |
 
 Every mode-2 entry names its kind; a notice carries the kind of the entry it cites, and the
 gate (ADR-0017 §8) fails on a mismatch. The kind is not the entry: the entry is a tenant's
@@ -82,6 +83,7 @@ narrowed but not removed (governance.md §2).
 | M2.2 | `test-strategy` | **A change of test strategy** and what the tests now cover. |
 | M2.3 | `gate-weakened` | **Weakening or removing a gate**, only where the notice demonstrates that the gate has no value. A *gate* is a check that must pass before a change is accepted. Narrowing what a gate looks at, adding an exception to it, or removing it weakens it. Making a gate correct without making it weaker is mode 1. |
 | M2.4 | `behaviour-change` | **A change of what the software does, made inside an agreed scope**, that breaks no published contract, moves no limit or autonomy level and says nothing public. A change that would do one of those is that entry's decision (M3.5, M3.10, M3.9, M3.7). |
+| M2.5 | `need` | **Raising a needs request**: stating that the work needs something only the owner can provide — a credential, an account, access to a system, a purchase, an action on a server, information about an environment — with the steps to provide it (ADR-0028). The record is the needs request itself, `NEED-NNNN`, not a notice. It is raised when the need becomes foreseeable, not when it blocks. Providing it is the owner's act, and it is not a decision: no option is put to the owner. |
 
 ### Mode 3 — the operator prepares, the owner decides
 
