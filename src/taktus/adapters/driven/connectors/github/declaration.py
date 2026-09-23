@@ -100,8 +100,9 @@ OPERATIONS: list[Json] = [
         "effect": "write",
         "idempotency": "marked",
         "summary": "Create a branch from a base with one commit on it that carries the given "
-        "files, or none. The commit message carries the idempotency key as a trailer; a repeat "
-        "finds the branch and the mark at its head.",
+        "files, or none. A file keeps the mode it has in the base; a file the base does not "
+        "have is a plain file. The commit message carries the idempotency key as a trailer; "
+        "a repeat finds the branch and the mark at its head.",
     },
     {
         "name": "repository.labels.set",
