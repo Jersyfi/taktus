@@ -25,7 +25,8 @@ The milestone is complete when two things hold. The first holds. The second does
 2. *Taktus turns one of its own issues into a pull request that passes CI.* **Has not
    happened yet; nothing is missing for it any more.** No issue of this repository has ever
    been turned into a pull request by Taktus end to end. The closest so far, on 2026-09-19
-   (`docs/first-run.md`): P-02 ran against the real repository through the reference connector
+   (`docs/runs/2026-09-19-the-run-that-stopped.md`): P-02 ran against the real repository through the
+   reference connector
    up to its language-model step and stopped there, because no model endpoint was configured;
    P-03 ran up to its admission check and stopped there, correctly, because P-02 had not
    written the criteria. Pull request #12 was opened by the connector's live idempotency test,

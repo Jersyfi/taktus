@@ -67,7 +67,7 @@ the settings are the same three and the key may be absent.
 3. **A local model server instead** (an endpoint on your own machine that speaks the dialect):
    set `TAKTUS_MODEL_ENDPOINT` to its URL (`http://127.0.0.1:<port>/v1`), `TAKTUS_MODEL_NAME`
    to the model it serves, and leave `TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE` unset. The run then
-   costs nothing per token and the quality of the criteria is that model's; `docs/first-run.md`
+   costs nothing per token and the quality of the criteria is that model's; `docs/runs/2026-09-19-the-run-that-stopped.md`
    records which model produced them either way.
 
 4. **Validity and rotation:** as the key of NEED-0001. The adapter reads the file when it is
