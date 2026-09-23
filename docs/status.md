@@ -1,7 +1,7 @@
 # Status
 
-**As of:** 2026-09-21
-**Accounts for:** `main` after #16, and the pull request that writes this version (#22)
+**As of:** 2026-09-23
+**Accounts for:** `main` after #22, and the pull request that writes this version
 **Kept current by:** every pull request that changes the state of the project; `make
 gate-status` fails when this file was not touched by one that did, and when section 3 differs
 from the register
@@ -80,7 +80,9 @@ bounded by *Where this promise ends*, with a gate.
 
 **Decided since the last version:** DEC-0014 (#16, merged 2026-09-21): a behaviour change
 inside an agreed scope is a notice, entry M2.4, and every notice carries a kind. DEC-0015
-(this pull request): the owner-facing section of a description stays in English.
+(#22, merged 2026-09-21): the owner-facing section of a description stays in English.
+DEC-0016 (#22, merged 2026-09-21, documentation defect): the first run's variables were not in
+`.env.example`; corrected there.
 
 **The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) was
 merged on 2026-09-21 after that day's hour had passed. It has not run yet. Its first scheduled
@@ -88,22 +90,18 @@ run is 2026-09-28.
 
 ## 2. The next pull requests
 
-1. **This one (#22).** The needs request as a record type, this status file with its gate, the
-   four overdue needs raised, and the rule that a note in a pull request is not a message to
-   the owner. Without it, the owner does not learn what is needed; everything below waits on
-   what it raises.
-2. **The first live end-to-end run**, once the three needs of section 3 are provided:
+1. **The first live end-to-end run**, once the three needs of section 3 are provided:
    `tools/first_run.sh 11`, recorded in `docs/first-run.md` with what happened, and whatever
    the real agent and the real pipeline verdict reveal about the bundles. This is the
    completion criterion of `0.1.0` and the ordering rule of the roadmap says nothing of `0.2.0`
    is built while it is open. It cannot be started by a session on its own: the three
    credentials are the owner's to provide.
-3. **Deployment on the target platform**: the cluster execution adapter, the image build and
+2. **Deployment on the target platform**: the cluster execution adapter, the image build and
    the chart under `deploy/k8s`, built against the platform's current interface — which is
    why the platform note is the fourth need of section 3. It comes after the live run because
    a deployment of something that has never completed a run proves nothing about the
    deployment.
-4. **`0.2.0` starts with the budget** (ADR-0005, second amendment: the estimate reserved at
+3. **`0.2.0` starts with the budget** (ADR-0005, second amendment: the estimate reserved at
    admission, a currency budget converted into tokens and enforced there) and **the scheduler
    starting runs from a bundle's trigger**, so that the removal test runs weekly without a
    workflow. In that order because the budget is designed and the design is what the first live
