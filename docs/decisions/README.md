@@ -35,8 +35,11 @@ in [../status.md](../status.md), section 3.
 
 | NEED | Title | Kind | Outcome |
 |---|---|---|---|
+| [0001](NEED-0001-the-coding-agents-credential.md) | The coding agent's credential | `credential` | provided 2026-09-22 as an API key; confirmed 2026-09-23; renewed under NEED-0005 |
+| [0002](NEED-0002-the-repository-connectors-token.md) | The repository connector's token | `credential` | provided 2026-09-22 as a fine-grained token for this repository; confirmed 2026-09-23; renewed under NEED-0006 |
+| [0003](NEED-0003-the-model-endpoint-and-its-key.md) | The model endpoint and its key | `credential` | provided 2026-09-22 as the endpoint, the model and the key file of NEED-0001; confirmed 2026-09-23; the model chosen is DEC-0019 |
 
-*None provided yet. The open needs are listed in [../status.md](../status.md), section 3.*
+The open needs are listed in [../status.md](../status.md), section 3.
 
 ## Notices
 
@@ -44,6 +47,7 @@ in [../status.md](../status.md), section 3.
 |---|---|---|---|---|
 | [0001](NTC-0001-anchors-split-into-two-files.md) | Anchors split into two files with four modes | M2.1 | `restructuring` | the anchor page is the shipped default plus the Taktus tenant's configuration, entries identified `M<mode>.<n>`, the old rows mapped |
 | [0002](NTC-0002-a-missing-adapter-fails-the-step.md) | A missing adapter fails the step at the boundary | M2.4 | `behaviour-change` | a step whose worker, connector or operation is not configured ends failed and retryable with the reason, and the run escalates at that boundary instead of raising out of the engine |
+| [0003](NTC-0003-the-first-runs-credential-variables-renamed.md) | The first run's credential variables renamed | M2.4 | `behaviour-change` | `tools/first_run.sh` reads the repository token and the coding agent's credential under `TAKTUS_CREDENTIAL_<NAME>_FILE`, the one pattern every credential follows; the same files hold the same values |
 
 ## Decisions
 
@@ -66,3 +70,5 @@ in [../status.md](../status.md), section 3.
 | [0015](DEC-0015-the-owner-facing-section-in-german.md) | The owner-facing section in German | NON-BLOCKING | answered: Option A — English, as the rule stands; the section is generated and checked |
 | [0016](DEC-0016-the-first-runs-variables-are-not-in-env-example.md) | The first run's variables are not in `.env.example` | DEFECT | corrected: `REPOSITORY_TOKEN_FILE`, `CODING_AGENT_API_KEY_FILE` and `CODING_AGENT_SESSION_FILE` are listed in `.env.example`; the front page no longer counts the ADRs by hand |
 | [0017](DEC-0017-ci-had-no-base-on-the-first-push-of-a-branch.md) | CI had no base on the first push of a branch | DEFECT | corrected: the documentation gate and the status gate compare with `main` on the first push of a `taktus/**` branch, where the push's "before" is the null sha |
+| [0018](DEC-0018-one-pattern-for-every-credential-variable.md) | One pattern for every credential variable | DEFECT | corrected: every credential's file is named `TAKTUS_CREDENTIAL_<NAME>_FILE`, the same variable whoever reads it; the pattern is stated once in `CREDENTIALS.md` |
+| [0019](DEC-0019-the-model-for-the-reasoning-purpose.md) | The model for the purpose `reasoning` | NON-BLOCKING | answered: Option A — the smaller model of the family, the cheapest that does the job; method selection applied within the method, revisited on the evidence of the runs |

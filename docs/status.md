@@ -1,7 +1,7 @@
 # Status
 
-**As of:** 2026-09-21
-**Accounts for:** `main` after #16, and the pull request that writes this version (#22)
+**As of:** 2026-09-23
+**Accounts for:** `main` after #22, and the pull request that writes this version (#23)
 **Kept current by:** every pull request that changes the state of the project; `make
 gate-status` fails when this file was not touched by one that did, and when section 3 differs
 from the register
@@ -23,28 +23,39 @@ The milestone is complete when two things hold. The first holds. The second does
    varies, and an exactness class; `tests/exactness` holds the bundles to the rules, and every
    step run records what it consumed.
 2. *Taktus turns one of its own issues into a pull request that passes CI.* **Has not
-   happened.** No issue of this repository has ever been turned into a pull request by Taktus
-   end to end. The closest so far, on 2026-09-19 (`docs/first-run.md`): P-02 ran against the
-   real repository through the reference connector up to its language-model step and stopped
-   there, because no model endpoint was configured; P-03 ran up to its admission check and
-   stopped there, correctly, because P-02 had not written the criteria. Pull request #12 was
-   opened by the connector's live idempotency test, not by a process, and was closed by the
-   test. The coding worker has never run against its real agent inside a run.
+   happened yet; nothing is missing for it any more.** No issue of this repository has ever
+   been turned into a pull request by Taktus end to end. The closest so far, on 2026-09-19
+   (`docs/first-run.md`): P-02 ran against the real repository through the reference connector
+   up to its language-model step and stopped there, because no model endpoint was configured;
+   P-03 ran up to its admission check and stopped there, correctly, because P-02 had not
+   written the criteria. Pull request #12 was opened by the connector's live idempotency test,
+   not by a process, and was closed by the test. The coding worker has never run against its
+   real agent inside a run.
 
-**What exactly is missing for the second half**, in the order a run meets it:
+   What has changed with this pull request is that the three things the run was waiting for
+   are in place. The owner provided the coding agent's key, the repository token and the model
+   endpoint on 2026-09-22; this pull request wires them into `.env` under one naming pattern
+   (DEC-0018), confirms each with its own section 7 (all three answered `200` on 2026-09-23),
+   records the model chosen for the purpose `reasoning` (DEC-0019), and raises the two
+   renewals the validities make foreseeable (NEED-0005, NEED-0006). `tools/first_run.sh 11`
+   can now run. It has not run at the time this file is written; the pull request that runs it
+   records what happened in `docs/runs/first-run.md` and says here whether `0.1.0` is
+   complete.
 
-| Missing | What it is for | Where it is raised |
+**What the second half was waiting for**, in the order a run meets it, and where each stands:
+
+| What | What it is for | State |
 |---|---|---|
-| a model endpoint that speaks the chat-completions dialect, and its key where it needs one | P-02's step `refine` (`llm`, purpose `reasoning`) derives the acceptance criteria | NEED-0003, issue #20 |
-| a credential for the coding agent — an API key or a subscription token | P-03's step `implement` (`worker`) runs the coding worker against its real agent | NEED-0001, issue #18 |
-| a repository token issued for the identity Taktus acts as | every read and write of the reference connector; the first run used the developer's own login, which is not what the owner's run should use | NEED-0002, issue #19 |
+| a model endpoint that speaks the chat-completions dialect, and its key where it needs one | P-02's step `refine` (`llm`, purpose `reasoning`) derives the acceptance criteria | provided 2026-09-22, confirmed 2026-09-23 (NEED-0003, issue #20 closed); the model is the smaller one of the family, by the owner's choice (DEC-0019) |
+| a credential for the coding agent — an API key or a subscription token | P-03's step `implement` (`worker`) runs the coding worker against its real agent | provided 2026-09-22 as an API key, confirmed 2026-09-23 (NEED-0001, issue #18 closed); valid 30 days, renewed under NEED-0005 |
+| a repository token issued for the identity Taktus acts as | every read and write of the reference connector; the first run used the developer's own login, which is not what the owner's run should use | provided 2026-09-22 as a fine-grained token for this repository, confirmed 2026-09-23 (NEED-0002, issue #19 closed); valid 90 days, renewed under NEED-0006 |
 
 With those three in place, `tools/first_run.sh 11` is the one command that runs P-02 and
 then P-03 for issue #11 and opens the pull request; CI runs on the branch P-03 creates since
 #13 was merged. Whether that run passes CI is unknown until it has happened: the pipeline's
 verdict on a branch the coding worker produced has never been read for real, and the first
 push of such a branch would have failed the documentation gate for lack of a comparison base
-until DEC-0017 corrected it in this pull request — found by reading, not by a run.
+until DEC-0017 corrected it in #22 — found by reading, not by a run.
 
 **Done in `0.1.0`**, checked against the tree: the contracts for the worker and the connector
 as executable schemas with conformance suites that a third party can run (`contracts/worker`,
@@ -78,9 +89,11 @@ bounded by *Where this promise ends*, with a gate.
 | a live run of the coding worker against its real agent in CI | the gate runs the stand-in; a live run needs a credential CI does not have |
 | governance and anchors in the product | the anchors exist for this repository as documents; nothing in the product evaluates an anchor at a step boundary yet |
 
-**Decided since the last version:** DEC-0014 (#16, merged 2026-09-21): a behaviour change
-inside an agreed scope is a notice, entry M2.4, and every notice carries a kind. DEC-0015
-(this pull request): the owner-facing section of a description stays in English.
+**Decided since the last version:** DEC-0018 (this pull request): one pattern for every
+credential file variable, `TAKTUS_CREDENTIAL_<NAME>_FILE`, whoever reads it — a documentation
+defect, corrected, with the operator-visible half recorded as the notice NTC-0003. DEC-0019
+(this pull request): the purpose `reasoning` is served by the smaller model of the family, the
+cheapest that does the job, revisited on the evidence of the runs.
 
 **The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) was
 merged on 2026-09-21 after that day's hour had passed. It has not run yet. Its first scheduled
@@ -88,21 +101,20 @@ run is 2026-09-28.
 
 ## 2. The next pull requests
 
-1. **This one (#22).** The needs request as a record type, this status file with its gate, the
-   four overdue needs raised, and the rule that a note in a pull request is not a message to
-   the owner. Without it, the owner does not learn what is needed; everything below waits on
-   what it raises.
-2. **The first live end-to-end run**, once the three needs of section 3 are provided:
-   `tools/first_run.sh 11`, recorded in `docs/first-run.md` with what happened, and whatever
-   the real agent and the real pipeline verdict reveal about the bundles. This is the
-   completion criterion of `0.1.0` and the ordering rule of the roadmap says nothing of `0.2.0`
-   is built while it is open. It cannot be started by a session on its own: the three
-   credentials are the owner's to provide.
+1. **This one (#23).** The three provided credentials wired into `.env` under one naming
+   pattern, each confirmed by its own section 7; the model choice recorded; the two renewals
+   raised with their dates and with what Taktus does if a credential expires anyway. Without
+   it the credentials sit in files nothing reads, and the first live run cannot start.
+2. **The first live end-to-end run**, now that the three credentials are in place:
+   `tools/first_run.sh 11`, recorded in `docs/runs/first-run.md` with what happened, what each
+   step consumed against what was estimated, every point where a person had to step in, and
+   whatever the real agent and the real pipeline verdict reveal about the bundles. This is the
+   completion criterion of `0.1.0`, and the ordering rule of the roadmap says nothing of
+   `0.2.0` is built while it is open.
 3. **Deployment on the target platform**: the cluster execution adapter, the image build and
-   the chart under `deploy/k8s`, built against the platform's current interface — which is
-   why the platform note is the fourth need of section 3. It comes after the live run because
-   a deployment of something that has never completed a run proves nothing about the
-   deployment.
+   the chart under `deploy/k8s`, built against the platform's current interface. It comes
+   after the live run because a deployment of something that has never completed a run proves
+   nothing about the deployment.
 4. **`0.2.0` starts with the budget** (ADR-0005, second amendment: the estimate reserved at
    admission, a currency budget converted into tokens and enforced there) and **the scheduler
    starting runs from a bundle's trigger**, so that the removal test runs weekly without a
@@ -119,10 +131,9 @@ assigned to the owner with the steps.
 <!-- generated by tools/check_status.py from docs/decisions/open/; `make generate` writes it -->
 | Record | What | Needed by | Kind | Issue |
 |---|---|---|---|---|
-| NEED-0001 | The coding agent's credential | 2026-10-05 | credential | #18 |
-| NEED-0002 | The repository connector's token | 2026-10-05 | credential | #19 |
-| NEED-0003 | The model endpoint and its key | 2026-10-05 | credential | #20 |
 | NEED-0004 | The platform's current interface note | 2026-10-12 | information | #21 |
+| NEED-0005 | Renew the coding agent's key | 2026-10-15 | credential | #24 |
+| NEED-0006 | Renew the repository connector's token | 2026-12-14 | credential | #25 |
 <!-- end generated -->
 
 The three credentials (NEED-0001 to NEED-0003) are one set: the first live run needs all of
@@ -135,9 +146,14 @@ request is open.
 
 | What | On what | Since |
 |---|---|---|
-| the first live end-to-end run — `0.1.0`'s completion criterion | NEED-0001, NEED-0002, NEED-0003 (section 3) | foreseeable since #8 (the connector), #10 (the coding worker) and #13 (the model step); stated as notes there; raised as needs only in this pull request, needed by 2026-10-05 |
 | deployment against the target platform | NEED-0004: the platform's current interface — the values keys, the names of the secret parameters, the namespaces, the egress mechanism, the webhook path — shape only | the platform changed since it was last described; the repository never held that description; needed by 2026-10-12 |
 | a removal-test verdict of *broke* on a real process, and *changed* through an alternative adapter | a second adapter for a capability a process uses; nothing today has one | #14 |
+
+The first live end-to-end run is no longer blocked: NEED-0001, NEED-0002 and NEED-0003 were
+provided on 2026-09-22 and confirmed on 2026-09-23. It was blocked from #8, #10 and #13 — where
+each need was foreseeable and stated only as a note — until #22 raised the needs and #23 wired
+them: seventeen days from the first foreseeable moment to the credential, of which two were
+between the request and the answer.
 
 Nothing else is blocked. Everything not listed here can be built by a session without the
 owner.
@@ -163,3 +179,4 @@ rather than enforced, anything marked provisional.
 | `deploy/k8s`, `contracts/events/v1`, `blueprints/it-operations` | their README files | placeholders |
 | a live run of the coding worker in CI | `docs/roadmap.md` | the gate runs the stand-in; unchanged until CI has a credential, which is a decision not yet raised |
 | the components `accounting`, `decision`, `identity`, `knowledge`, `value` | `docs/architecture/project-structure.md` | packages with an `__init__.py` and nothing else |
+| every credential's file variable follows `TAKTUS_CREDENTIAL_<NAME>_FILE` | `CREDENTIALS.md`, DEC-0018 | true in the tree, enforced by reading. The coverage gate fails a variable the register does not describe; it does not check the *shape* of the name, so a seventh variable could break the pattern again without a red gate |
