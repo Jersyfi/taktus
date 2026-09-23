@@ -133,3 +133,21 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://api.github.com/repos/Jersyfi/t
 The scope is confirmed where it was set: GitHub → *Fine-grained tokens* → the token → the
 repository list shows `Jersyfi/taktus` alone and the permissions read as the table in section
 4. `tools/first_run.sh` checks the file's presence itself before it starts anything.
+
+## Outcome
+
+**Provided:** 2026-09-22
+**Confirmed by:** section 7, run on 2026-09-23 in the checkout of
+[#23](https://github.com/Jersyfi/taktus/pull/23). The file named by
+`TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE` in `.env` is present and not empty; a request for
+this repository carrying the token answered `200`. Neither check printed anything from the
+file, and no session read its content. The scope itself is confirmed where it was set, which
+is the owner's half of section 7: a token's permissions are not readable through the API by
+the token itself.
+**What was provided:** a fine-grained personal access token of the owner's account, valid 90
+days. The identity Taktus acts as stays provisional (DEC-0013) and is the owner.
+**Validity:** the expiry follows from the issue date. The renewal is raised as NEED-0006
+([#25](https://github.com/Jersyfi/taktus/issues/25)), due one week before it, with the steps.
+**What it unlocked:** every read and write of the reference connector in the first live run
+(`docs/runs/first-run.md`), together with NEED-0001 and NEED-0003.
+**Recorded in:** [#23](https://github.com/Jersyfi/taktus/pull/23)

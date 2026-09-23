@@ -184,3 +184,23 @@ CLAUDE_CODE_OAUTH_TOKEN="$(cat "$(sed -n 's/^TAKTUS_CREDENTIAL_CODING_AGENT_SESS
 
 `tools/first_run.sh` performs the file check itself before it starts anything and names the
 variable that is missing.
+
+## Outcome
+
+**Provided:** 2026-09-22
+**Confirmed by:** section 7, run on 2026-09-23 in the checkout of
+[#23](https://github.com/Jersyfi/taktus/pull/23). The file named by
+`TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE` in `.env` is present and not empty; a request to
+the provider's model list carrying the key answered `200`. Neither check printed anything from
+the file, and no session read its content.
+**What was provided:** Way A, an API key. The worker therefore runs in `api-key` mode, usage is
+billed per token, and money per assignment is a real figure rather than a count of turns.
+**One correction to section 4:** step 5 of Way A says "a key does not expire". The key as
+provided carries a validity of 30 days. The steps were right about the kind of credential and
+wrong about this one's lifetime, which is a property of how it was issued, not of the kind.
+The renewal is raised as NEED-0005 ([#24](https://github.com/Jersyfi/taktus/issues/24)), due
+one week before the expiry, with the steps; `CREDENTIALS.md` now says that a key may carry a
+validity and that the register's row names the renewal.
+**What it unlocked:** the first live run of `tools/first_run.sh 11`, recorded in
+`docs/runs/first-run.md`, together with NEED-0002 and NEED-0003.
+**Recorded in:** [#23](https://github.com/Jersyfi/taktus/pull/23)
