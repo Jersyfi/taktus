@@ -23,8 +23,11 @@ autonomy:
   level: 4
   reason: >
     nothing writes to a protected branch, the pipeline's verdict is the gate and never the
-    worker's opinion, a person merges, and the worker runs in isolation with exactly the hosts
-    and credentials the frame names; every outward effect is reversible until the merge
+    worker's opinion, a person merges, and every outward effect is reversible until the merge.
+    The fourth condition is the deployment's, not the bundle's: the worker runs in isolation
+    with exactly the hosts and credentials the frame names where the execution kind provides
+    it — `container` and `cluster` do, `process` and `endpoint` do not, and with those two the
+    isolation is whoever started the worker's (DEC-0022)
 author: the repository
 reason: the third process of the dev-orchestration blueprint, runnable
 
@@ -153,9 +156,17 @@ steps:
           section "Acceptance criteria" — so that every criterion holds
         acceptance:
           - every item of the section "Acceptance criteria" in the issue or its discussion holds
+          # PROVISIONAL until DEC-0021 is answered: whether a pull request Taktus opens must
+          # carry what every change of that repository must carry. Option A is in force.
+          - >
+            the repository's own rules for a change are met: whatever its contribution
+            documentation requires of every change, which the repository states and the
+            workspace carries
           - the repository's own checks pass where they can be run in the workspace
           - no secret value is written into any file
-          - the change is small and touches only what the issue names
+          - >
+            the change is small and touches what the issue names, and what the rules above
+            require of any change
         inputs:
           issue: { $input: issue }
           title: { $from: read-issue, $select: output.title }

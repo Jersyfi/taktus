@@ -54,7 +54,12 @@ PostgreSQL as the only mandatory dependency is a promise about what an installat
 not about what it *gets*: the default adapters — filesystem object store, encrypted secrets in
 the database, the outbox — are the smallest installation's fit, not a cluster's, and a cluster
 adds S3, an external secret store or a broker by configuration. The rule that `process` is
-refused from level 3 is enforced in code (`ports/execution.py`); the `kubernetes` adapter does
+refused from level 3 is enforced in code (`ports/execution.py`), and it reaches only the
+adapters that *start* a unit. A worker that is already running, reached by endpoint, is not in
+the table above and is outside the rule: the control plane did not start it, cannot see what is
+around it, and enforces neither its limits nor its `frame.allowed_hosts`. Its isolation is
+whoever started it, and a process at level 3 or above run that way is the operator's
+responsibility, not a guarantee of this ADR (DEC-0022). The `kubernetes` adapter does
 not exist yet, so the third row of the execution table is a plan until it does. The scaling
 claims — `runner` scales out freely, `scheduler` is elected — are proven for two daemons on one
 database (`tests/integration`), not for a cluster under load; the roadmap's 1.0.0 section names

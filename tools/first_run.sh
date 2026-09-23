@@ -33,6 +33,14 @@
 # (ignored by git; names in .env.example).
 #
 # Nothing here writes to the base branch: P-03 opens a pull request, CI decides, a person merges.
+#
+# WHAT THIS DOES NOT ISOLATE (DEC-0022). The worker is started here as a plain process on this
+# machine, reached by endpoint, so nothing stands between the coding agent and whatever this
+# machine can reach: not the frame's allowed_hosts, not the resource limits. P-03 declares
+# autonomy level 4, and the isolation half of that level is the operator's here, not the
+# core's — the core cannot check a worker it did not start. This is a development command.
+# An operating deployment runs the unit through the `container` or `cluster` execution kind,
+# where the frame is enforced.
 
 set -eu
 

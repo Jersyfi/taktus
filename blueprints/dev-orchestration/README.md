@@ -62,7 +62,12 @@ the bundles state it in full, and this is the short form.
 | Process | Level | Why | Toward the next level |
 |---|---|---|---|
 | P-02 Refinement | 3 | the one outward effect is a comment a person reads before anything builds on it; the model's answer leaves only through a check; a second run writes nothing | a quality history — criteria a person did not rewrite, over a month — and a stronger check on the answer's structure; then the raise is proposed (M3.9) |
-| P-03 Implementation | 4 | nothing writes to a protected branch, the pipeline's verdict is the gate, a person merges; the worker runs in isolation with exactly the hosts and credentials the frame names | — |
+| P-03 Implementation | 4 | nothing writes to a protected branch, the pipeline's verdict is the gate, a person merges, every outward effect is reversible until the merge; the worker runs in isolation with exactly the hosts and credentials the frame names **where the execution kind provides it** (DEC-0022) | — |
+
+The last condition is the deployment's, not the bundle's. `container` and `cluster` enforce the
+frame; `process` and `endpoint` do not, and with those two the isolation is whoever started the
+worker's. A bundle cannot check how it is run, so the condition is named here and in the bundle
+rather than assumed.
 
 ## Running them for real
 
@@ -71,8 +76,12 @@ connector, the coding worker and a configured model, from one command; `docs/fir
 the record of what happened the first time. The credentials it needs are parameters
 (`CREDENTIALS.md`): the repository token, the coding agent's key or session token, and the
 model endpoint's key if it needs one. The bundles' autonomy levels are the blueprint's; at level
-3 and above the process execution adapter is refused (ADR-0002), so the coding worker runs by
-endpoint or in a container.
+3 and above the `process` execution adapter is refused (ADR-0002), so the coding worker runs by
+endpoint or in a container. **`tools/first_run.sh` uses the endpoint kind and isolates
+nothing**: it starts the worker as a plain process on the machine, with the machine's whole
+network, which is a development shape and not what P-03's level-4 reason describes
+(DEC-0022). An operating deployment uses `container` or `cluster`, where the frame is
+enforced.
 
 ## What a run needs that the blueprint does not say
 
