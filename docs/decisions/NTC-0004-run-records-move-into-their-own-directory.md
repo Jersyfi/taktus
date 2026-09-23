@@ -3,7 +3,7 @@
 **Mode entry:** M2.1
 **Kind:** restructuring
 **Decided:** 2026-09-23
-**Raised in:** [#PR3](https://github.com/Jersyfi/taktus/pull/PR3)
+**Raised in:** [#39](https://github.com/Jersyfi/taktus/pull/39)
 
 ## 1. What was decided
 

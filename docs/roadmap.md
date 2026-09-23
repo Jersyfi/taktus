@@ -91,9 +91,10 @@ restart; the model port with its adapter over the chat-completions dialect and `
 whose answer leaves only when it passes the step's check; a provisional operator identity per
 tenant, marked as such (DEC-0013), and intake events completed into commands by it; P-02
 Refinement and P-03 Implementation of the dev-orchestration blueprint as bundles that run —
-proven end to end with the outside faked and everything inside real, and run for real against
-this repository up to the model step and the admission check
-(`docs/runs/2026-09-19-the-run-that-stopped.md`); ADR-0005
+proven end to end with the outside faked and everything inside real, and then **run for real
+against this repository all the way to a pull request that passes CI**
+(`docs/runs/first-run.md`; the attempt before the credentials existed is
+`docs/runs/2026-09-19-the-run-that-stopped.md`); ADR-0005
 now says for which consumption kinds the limit guarantee holds (DEC-0012) · the decision model
 rebuilt from the owner's answers (#14): four modes in two anchor files — the shipped default
 and the Taktus tenant's own — a notice record for mode-2 decisions with its gate, every ADR
@@ -109,12 +110,12 @@ second amendment); the exactness statement specified for `0.5.0` (UC-4.13, UC-6.
 method, exactness class and consumption* holds: every step of every bundle carries its method,
 its reason, its alternatives, a fallback where the method varies and an exactness class, and
 every step run records what it used. *Taktus turns one of its own issues into a pull request
-that passes CI* has not happened: the run of 2026-09-19
-(`docs/runs/2026-09-19-the-run-that-stopped.md`) reached the
-language-model step of P-02 and the admission check of P-03 against the real repository and
-stopped there, because the session had no credential for a model endpoint and none for the
-coding agent. `tools/first_run.sh 11` is the one command that finishes it once those exist;
-it needs this pull request merged first, so that the pipeline runs on the branch P-03 creates.
+that passes CI* **holds since 2026-09-23**: issue #11 became pull request #38, opened by
+Taktus through P-03 Implementation, with every check of that pull request green and the merge
+left to a person. It took P-02 one attempt and P-03 eight, of which seven failed on four
+defects in Taktus and one flaky test and none on the change itself; what each step consumed
+against what was estimated is in `docs/runs/first-run.md`, and those figures are the first
+calibration point for the budget of `0.2.0`.
 Also not yet, from the list above: `mlbench` (its real work is `0.4.0`; no proof-case worker
 of that shape exists yet), the model contract as a schema with a conformance suite (the port
 and one adapter exist), governance and anchors, the cluster execution adapter, the container
