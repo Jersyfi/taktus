@@ -84,12 +84,12 @@ which git ignores.
    does not exist yet; git ignores `.env`):
 
    ```bash
-   CODING_AGENT_API_KEY_FILE=/Users/<you>/.config/taktus/coding-agent-api-key
+   TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE=/Users/<you>/.config/taktus/coding-agent-api-key
    ```
 
-   For a worker the control plane starts in a container (`TAKTUS_EXECUTION=container`), the
-   same file is named as `TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE=` instead; the first run
-   uses the worker by endpoint and needs only the line above.
+   That is the same line whichever way the worker runs: by endpoint, as the first run starts
+   it, or in a container the control plane starts (`TAKTUS_EXECUTION=container`). One
+   credential has one variable (`CREDENTIALS.md`, DEC-0018).
 
 5. **Validity:** a key does not expire. **Rotation:** whenever it may have been seen, and at
    the latest when the identity component of `0.2.0` replaces the provisional identity —
@@ -110,7 +110,7 @@ which git ignores.
 3. In `.env`:
 
    ```bash
-   CODING_AGENT_SESSION_FILE=/Users/<you>/.config/taktus/coding-agent-session
+   TAKTUS_CREDENTIAL_CODING_AGENT_SESSION_FILE=/Users/<you>/.config/taktus/coding-agent-session
    ```
 
    Only one of the two lines is set; the one that is set decides the worker's authentication
@@ -162,15 +162,15 @@ with the same sentence.
 Without revealing the value:
 
 ```bash
-test -s "$(sed -n 's/^CODING_AGENT_API_KEY_FILE=//p' .env)" && echo "api-key file: present"
+test -s "$(sed -n 's/^TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE=//p' .env)" && echo "api-key file: present"
 ```
 
-or, for a subscription token, the same with `CODING_AGENT_SESSION_FILE`. Then that the
+or, for a subscription token, the same with `TAKTUS_CREDENTIAL_CODING_AGENT_SESSION_FILE`. Then that the
 credential works, which prints an HTTP status and nothing else — `200` means it does:
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' https://api.anthropic.com/v1/models \
-  -H "x-api-key: $(cat "$(sed -n 's/^CODING_AGENT_API_KEY_FILE=//p' .env)")" \
+  -H "x-api-key: $(cat "$(sed -n 's/^TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE=//p' .env)")" \
   -H "anthropic-version: 2023-06-01"
 ```
 
@@ -178,7 +178,7 @@ For a subscription token, the agent itself is the check — it answers `ok` when
 works and an authentication error when it does not:
 
 ```bash
-CLAUDE_CODE_OAUTH_TOKEN="$(cat "$(sed -n 's/^CODING_AGENT_SESSION_FILE=//p' .env)")" \
+CLAUDE_CODE_OAUTH_TOKEN="$(cat "$(sed -n 's/^TAKTUS_CREDENTIAL_CODING_AGENT_SESSION_FILE=//p' .env)")" \
   claude -p "reply with the word ok" --max-turns 1
 ```
 

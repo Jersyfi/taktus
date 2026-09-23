@@ -80,7 +80,7 @@ the identity component of `0.2.0`, and it is not needed for the first run.)
 5. Name the file in `.env` in the checkout (ignored by git):
 
    ```bash
-   REPOSITORY_TOKEN_FILE=/Users/<you>/.config/taktus/repository-token
+   TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE=/Users/<you>/.config/taktus/repository-token
    ```
 
 6. **Validity:** until the expiry you set. **Rotation:** before the expiry, and at once if it
@@ -122,12 +122,12 @@ Without revealing the value — the first command prints `present`, the second a
 where `200` means the token reaches the repository:
 
 ```bash
-test -s "$(sed -n 's/^REPOSITORY_TOKEN_FILE=//p' .env)" && echo "repository token file: present"
+test -s "$(sed -n 's/^TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE=//p' .env)" && echo "repository token file: present"
 ```
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' https://api.github.com/repos/Jersyfi/taktus \
-  -H "Authorization: Bearer $(cat "$(sed -n 's/^REPOSITORY_TOKEN_FILE=//p' .env)")"
+  -H "Authorization: Bearer $(cat "$(sed -n 's/^TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE=//p' .env)")"
 ```
 
 The scope is confirmed where it was set: GitHub → *Fine-grained tokens* → the token → the

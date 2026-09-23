@@ -9,17 +9,21 @@
 # processes, runs each bundle with `taktusctl run`, and stops them. Every run, its ledger and
 # its provenance are printed; the log of each process is under $TAKTUS_STATE_DIR/first-run/.
 #
-# What it needs, as parameters (CREDENTIALS.md); no value is ever an argument or a line here:
+# What it needs, as parameters (CREDENTIALS.md); no value is ever an argument or a line here.
+# Every credential is named the one way the repository names credentials, `credential.<name>`
+# through TAKTUS_CREDENTIAL_<NAME>_FILE (DEC-0018):
 #
-#   REPOSITORY_TOKEN_FILE            the file that holds the requesting identity's repository
-#                                    token: contents and pull requests write, issues read
-#   CODING_AGENT_API_KEY_FILE   or   the file that holds the coding agent's key, or its
-#   CODING_AGENT_SESSION_FILE        subscription token (workers/claudecode/README.md); the one
-#                                    given decides --auth
-#   TAKTUS_MODEL_ENDPOINT            the chat-completions endpoint the model adapter asks, and
-#   TAKTUS_MODEL_NAME                the model; TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE when the
-#                                    endpoint needs a key
-#   TAKTUS_PROVISIONAL_IDENTITY      default `default=idn_owner` (DEC-0013)
+#   TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE
+#       the file that holds the requesting identity's repository token: contents and pull
+#       requests write, issues read
+#   TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE  or  TAKTUS_CREDENTIAL_CODING_AGENT_SESSION_FILE
+#       the file that holds the coding agent's key, or its subscription token
+#       (workers/claudecode/README.md); the one that is set decides --auth
+#   TAKTUS_MODEL_ENDPOINT, TAKTUS_MODEL_NAME
+#       the chat-completions endpoint the model adapter asks and the model it asks for;
+#       TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE when the endpoint needs a key
+#   TAKTUS_PROVISIONAL_IDENTITY
+#       default `default=idn_owner` (DEC-0013)
 #
 # Optional: TAKTUS_FIRST_RUN_REPOSITORY (owner/name; default: from `git remote get-url origin`),
 # TAKTUS_STATE_DIR (default ~/.cache/taktus/taktusctl), TAKTUS_DATABASE_URL to keep the state
@@ -53,18 +57,18 @@ fail() {
     exit 2
 }
 
-[ -n "${REPOSITORY_TOKEN_FILE:-}" ] || fail "REPOSITORY_TOKEN_FILE is not set: the file that holds the repository token"
-[ -r "$REPOSITORY_TOKEN_FILE" ] || fail "REPOSITORY_TOKEN_FILE=$REPOSITORY_TOKEN_FILE cannot be read"
-if [ -n "${CODING_AGENT_API_KEY_FILE:-}" ]; then
+[ -n "${TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE:-}" ] || fail "TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE is not set: the file that holds the repository token"
+[ -r "$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE" ] || fail "TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE=$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE cannot be read"
+if [ -n "${TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE:-}" ]; then
     auth=api-key
     coding_credential=CODING_AGENT_API_KEY
-    coding_file="$CODING_AGENT_API_KEY_FILE"
-elif [ -n "${CODING_AGENT_SESSION_FILE:-}" ]; then
+    coding_file="$TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE"
+elif [ -n "${TAKTUS_CREDENTIAL_CODING_AGENT_SESSION_FILE:-}" ]; then
     auth=session
     coding_credential=CODING_AGENT_SESSION
-    coding_file="$CODING_AGENT_SESSION_FILE"
+    coding_file="$TAKTUS_CREDENTIAL_CODING_AGENT_SESSION_FILE"
 else
-    fail "neither CODING_AGENT_API_KEY_FILE nor CODING_AGENT_SESSION_FILE is set: the coding worker needs one (workers/claudecode/README.md)"
+    fail "neither TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE nor TAKTUS_CREDENTIAL_CODING_AGENT_SESSION_FILE is set: the coding worker needs one (workers/claudecode/README.md)"
 fi
 [ -r "$coding_file" ] || fail "$coding_file cannot be read"
 [ -n "${TAKTUS_MODEL_ENDPOINT:-}" ] || fail "TAKTUS_MODEL_ENDPOINT is not set: the model P-02 asks for the acceptance criteria"
@@ -101,7 +105,7 @@ echo "first_run: repository $repository, issue #$issue"
 echo "first_run: state under $state, logs under $logs"
 
 # The connector, with the requesting identity's token in its environment and nowhere else.
-REPOSITORY_TOKEN="$(cat "$REPOSITORY_TOKEN_FILE")" \
+REPOSITORY_TOKEN="$(cat "$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE")" \
     uv run python -m taktus.adapters.driven.connectors.github \
         --port "$connector_port" --repository "$repository" >"$logs/connector.log" 2>&1 &
 pids="$pids $!"
