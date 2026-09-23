@@ -85,7 +85,7 @@ ingress:
   className:
   host:                  # the public name; the webhook arrives at <host><pathPrefix>/intake/<channel>
   pathPrefix:            # TAKTUS_PATH_PREFIX when Taktus is served under a sub-path
-  tls: { secretName:, issuer:, issuerKind: }   # cert-manager, or an existing secret
+  tls: { secretName:, issuer:, issuerKind: }   # a certificate issuer, or an existing secret
 
 telemetry:
   otlp: { endpoint:, protocol:, headersSecret:, headersKey: }   # all empty: spans stay local
@@ -200,9 +200,9 @@ with an unenforced list. `execution.egress.enforce: false` is the operator's exp
 recorded choice to run without it, and the run's ledger records that the frame was not
 enforced. **The one thing that must never happen is the list quietly meaning nothing.**
 
-On the target cluster the enforcement is present: the NetworkPolicy controller is active and a
-policy in another namespace already works. Verified read-only on 2026-09-23; the verification
-and the cluster's own details are in the operator's private note, not here.
+On the target cluster the enforcement is present; it was verified read-only on 2026-09-23. The
+verification and every detail of that cluster are in the operator's private note and not here,
+because this repository is public (`CREDENTIALS.md`).
 
 ## 7. The cluster execution adapter
 

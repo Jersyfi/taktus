@@ -20,7 +20,7 @@ ADR to the letter finds the rule forbidding self-administration, finds the permi
 a case that does not apply, and finds nothing at all about theirs.
 
 The target decision of 2026-09-23 (DEC-0023) is exactly that case: the owner administers a
-k3s cluster; Taktus is given two namespaces in it and administers nothing. Allowed by §1,
+Kubernetes cluster; Taktus is given two namespaces in it and administers nothing. Allowed by §1,
 unmentioned by §2.
 
 The same section carries a second, quieter confusion. Its three conditions are about where the

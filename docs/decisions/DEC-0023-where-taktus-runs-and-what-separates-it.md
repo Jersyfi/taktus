@@ -48,35 +48,36 @@ boundary stronger than a container from the control plane beside them.
   would reach something that is not yours, or something you cannot rebuild. Here it would
   reach an integration server of yours that is rebuilt from a chart.
 - **What it would cost.** A second cluster to operate, or a kernel-isolating runtime installed
-  on the node. The read-only inspection of 2026-09-23 found neither: the node's runtime classes
-  are `crun`, `nvidia` and a set of WebAssembly handlers. There is no gVisor and no Kata. So
-  the earlier plan would have begun with an installation, and the installation would have to be
-  maintained and exercised like everything else that stands between Taktus and its own repair
-  (ADR-0013 C).
+  on the node. The read-only inspection of 2026-09-23 found neither: none of the runtimes the
+  node offers isolates a kernel. So the earlier plan would have begun with an installation, and
+  that installation would have to be maintained and exercised like everything else that stands
+  between Taktus and its own repair (ADR-0013 C).
 - **What is still needed, whatever the answer.** A container boundary that is actually set up:
   a namespace of its own for execution, a restricted pod-security policy, a default-deny
   network policy in both directions, no service-account token mounted into a job, a real CPU,
   memory and deadline limit on every job. None of that is a kernel boundary and all of it is
   the difference between "in a container" and "contained".
-- **What else is on the machine.** The Hubtask integration environment runs in its own
-  namespace on the same cluster, with its own database and its own network policy. Taktus does
-  not administer it and does not reach into it.
+- **What else is on the machine.** Another integration environment of the owner's runs in a
+  namespace of its own on the same cluster, with its own database and its own network policy.
+  Taktus does not administer it and does not reach into it. Which environment that is, and
+  every other name on that machine, is in the operator's private note and not here: this
+  repository is public (`CREDENTIALS.md`).
 
 ## 5. Options
 
 ### Option A — one cluster, two namespaces (recommended)
 
-Taktus runs on your integration server, in its k3s: the control plane in one namespace, the
+Taktus runs on your integration server, in its Kubernetes cluster: the control plane in one namespace, the
 execution units in a second, and the two separated by a namespace boundary, a restricted
-admission policy, a default-deny network policy and per-job limits. The Hubtask integration
-environment stays in its own namespace beside them.
+admission policy, a default-deny network policy and per-job limits. What already runs on that
+cluster stays in its own namespace beside them.
 
 For: the boundary matches the risk. Both the code and the data are yours, on your own
 integration server, so a kernel boundary protects nothing that is at risk. One cluster to
 operate, one thing to repair, and the repair path does not run through a second platform.
 Against: a break-out from a job container reaches the node, and the node also carries the
-Hubtask integration environment. The mitigation is that the integration environment is
-rebuildable and holds no production data, and that every job is small, short and limited.
+other integration environment. The mitigation is that that environment is rebuildable and
+holds no production data, and that every job is small, short and limited.
 
 ### Option B — a kernel boundary between the control plane and execution
 
@@ -112,10 +113,10 @@ below has arrived.
 ## Outcome
 
 **Decided:** 2026-09-23
-**Answer:** Option A. Taktus runs on the owner's integration server, in its k3s, with the
+**Answer:** Option A. Taktus runs on the owner's integration server, in its Kubernetes cluster, with the
 control plane and the execution units in the same cluster and in namespaces of their own. The
-Hubtask integration environment runs in a third namespace on the same cluster; Taktus does not
-administer the cluster and does not reach into that namespace.
+owner's other integration environment runs in a third namespace on the same cluster; Taktus
+does not administer the cluster and does not reach into that namespace.
 **Reasoning given:** the earlier plan put a kernel boundary between the control plane and
 execution because a coding worker runs foreign code. Here both the code and the data are the
 owner's own, on his own integration server, so that boundary protects nothing that is at risk.
@@ -127,8 +128,8 @@ a limit and a deadline on every job — and that is what the deployment plan spe
 1. **Taktus processing code from a repository the owner does not own.** The moment a workspace
    holds somebody else's code, "the code is ours" stops being true and the boundary has
    something to protect.
-2. **Taktus developing the Hubtask product itself.** Then the thing Taktus can break and the
-   thing running beside it are the same product, and a mistake in the first reaches the
+2. **Taktus developing the product that runs beside it.** Then the thing Taktus can break and
+   the thing running next to it are the same product, and a mistake in the first reaches the
    second.
 3. **A move to production**, which the owner will call. An integration server that is rebuilt
    from a chart and a production system are not the same risk, and this answer was given
