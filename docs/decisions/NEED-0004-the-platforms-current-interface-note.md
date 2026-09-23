@@ -132,3 +132,38 @@ prints `PRIVATE`; and the note has an answer — a value, a shape or "unknown" �
 the ten points of section 4. A session confirms the same two facts and nothing else before it
 records the outcome; the first real confirmation is the deployment pull request's own, when
 `deploy/k8s` renders against the keys the note names.
+
+## Outcome
+
+**Provided:** 2026-09-23
+**How:** **superseded, not answered.** The owner decided the target with the commission of that
+day (DEC-0023) and gave a session read-only access to the platform instead of a written note.
+The session inspected it and answered the ten points of section 4 itself.
+**Confirmed by:** the inspection, read-only: nothing on the server was created, changed,
+installed or restarted, and section 6 of the resulting note lists every command that was run.
+Each of the ten points of section 4 has an answer: the platform and how a workload reaches it
+(a Kubernetes distribution, push-based, no controller watching a repository — and the deployer
+pattern the platform already uses for something else, which the plan copies); the boundary
+(two namespaces, and the instance may create jobs in the second); the values keys (written as
+the chart's interface in `deploy/k8s/README.md`); the secret parameters (every one mounted as
+a file and read through its `TAKTUS_<KEY>_FILE` variable, and what is still missing is
+NEED-0007); the database (a decision the plan makes, with ADR-0020's reason); egress (a network
+policy controller that works, and *no* mechanism that can hold a job to a list of hostnames —
+see below); ingress and the webhook path (the mechanism is there, the name is NEED-0008); the
+image registry (public, pulled without a secret, and what changes if it is made private);
+telemetry (none, and nothing fails without it); and what changed since the last description.
+**Where the answers are:** outside this repository, in the operator's private note, because
+they are one machine's names, addresses and figures and this repository is public — which is
+what section 5 of this record asked for. The session told the owner the path. This repository
+received only the generic requirements, as `deploy/k8s/README.md`.
+**The one answer that changes the plan:** the platform can enforce a network policy and has
+nothing that can enforce a list of **hostnames**. So `frame.allowed_hosts` is not a network
+policy there and never could be: the plan puts a per-job egress proxy in a pod of its own, and
+a default-deny policy that permits the job exactly one destination — the proxy. Where that
+cannot be built, the adapter refuses to start a job whose frame names hosts rather than
+starting it with an unenforced list.
+**What replaces this need:** NEED-0007 (a kubeconfig for the deployment identity) and NEED-0008
+(a public name for the instance), both raised in the same pull request with the steps. The
+webhook signing secret is raised once the name exists, as this record's section 6 said it would
+be.
+**Recorded in:** [#40](https://github.com/Jersyfi/taktus/pull/40)
