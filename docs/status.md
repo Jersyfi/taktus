@@ -1,7 +1,7 @@
 # Status
 
-**As of:** 2026-09-21
-**Accounts for:** `main` after #16, and the pull request that writes this version (#22)
+**As of:** 2026-09-23
+**Accounts for:** `main` after #22, and the pull request that writes this version (issue #11)
 **Kept current by:** every pull request that changes the state of the project; `make
 gate-status` fails when this file was not touched by one that did, and when section 3 differs
 from the register
