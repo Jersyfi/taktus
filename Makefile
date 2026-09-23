@@ -48,7 +48,7 @@ gate-governance: env ## Anchors hold, limits never breach, least privilege
 gate-exactness: env ## `exact` steps never take their final value from a variable method
 	$(UV) run tools/gate.py exactness tests/exactness
 
-gate-docs: need-uv ## A contract or behaviour change must touch its documentation
+gate-docs: need-uv need-git ## A contract or behaviour change must touch its documentation
 	$(UV) run tools/checkdocs.py $(if $(BASE),--base $(BASE))
 
 gate-secrets: need-gitleaks ## No secret value may ever enter this public repository
