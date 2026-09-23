@@ -170,6 +170,15 @@ steps:
           - >
             the change is small and touches what the issue names, and what the rules above
             require of any change
+          # PROVISIONAL until DEC-0021 is answered, the same question one step further: the
+          # description of a pull request Taktus opens is the summary this assignment ends
+          # with, so the shape the repository asks of a description is asked of the summary.
+          - >
+            the summary this assignment ends with is the description of the pull request that
+            will carry the change: what it delivers, and what a reviewer must know. Where the
+            repository prescribes a shape for a pull request description — a template, or a
+            section one of its checks requires — the summary is written in that shape, with
+            every required section present and truthful
         inputs:
           issue: { $input: issue }
           title: { $from: read-issue, $select: output.title }
@@ -290,15 +299,16 @@ steps:
     depends_on: [verify]
     work:
       rule: template
+      # What Taktus says about itself comes first, not last: a repository whose checks read the
+      # description read its *last* section, and that section belongs to the summary (DEC-0025).
       text: |
         Closes #${issue}.
 
-        ${summary}
+        *Opened by Taktus, process P-03 Implementation: the change was made by a coding worker
+        in an isolated workspace, put on this branch by the run, and the pipeline's verdict was
+        read before this pull request was opened. A person merges.*
 
-        ---
-        Opened by Taktus, process P-03 Implementation: the change was made by a coding worker
-        in an isolated workspace, put on this branch by the run, and the pipeline's verdict
-        was read before this pull request was opened. A person merges.
+        ${summary}
       values:
         issue: { $input: issue }
         summary: { $from: implement, $artifact: summary }
