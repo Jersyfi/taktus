@@ -92,8 +92,8 @@ bounded by *Where this promise ends*, with a gate.
 | `mlbench` worker | does not exist; its real work is `0.4.0` |
 | the model contract as a schema with a conformance suite | `contracts/model/v1` is a README that says the schema is not yet written; the port and one adapter exist |
 | the events contract | `contracts/events/v1` is a placeholder |
-| the cluster execution adapter | does not exist; the port and two adapters do |
-| the container registry build and the Helm chart | `deploy/k8s` is a placeholder; images are built locally by `make up` and by the tests |
+| the cluster execution adapter | does not exist; the port and two adapters do. `deploy/k8s/README.md` §7 specifies it, including what it must refuse |
+| the container registry build and the Helm chart | `deploy/k8s/README.md` is now the **specification** for both, written against a platform read in full on 2026-09-23 (#40); nothing under `deploy/k8s/` renders yet, and images are still built locally by `make up` and by the tests |
 | the identity component | a provisional identity per tenant stands in (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013) |
 | time triggers | the scheduler leads and ticks; nothing is scheduled; the weekly removal test is a CI workflow instead |
 | event reactions | the automation role starts and waits; the outbox exists and nothing writes it; an intake event is completed into a command by hand |
