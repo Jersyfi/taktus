@@ -102,6 +102,8 @@ bounded by *Where this promise ends*, with a gate.
 mode each file has in the base, so that an executable a change touches stays executable.
 DEC-0022 (#26): the `endpoint` execution kind isolates nothing of its own, `tools/first_run.sh`
 gives it none, and ADR-0002's isolation rule reaches only the adapters that start a unit.
+DEC-0025 (#26): the description P-03 writes carries the sections this repository's checks
+require, and the worker's summary is the description.
 DEC-0018 (#23): one pattern for every
 credential file variable, `TAKTUS_CREDENTIAL_<NAME>_FILE`, whoever reads it — a documentation
 defect, corrected, with the operator-visible half recorded as the notice NTC-0003. DEC-0019 (#23):
