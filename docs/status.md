@@ -1,7 +1,7 @@
 # Status
 
-**As of:** 2026-09-21
-**Accounts for:** `main` after #16, and the pull request that writes this version (#22)
+**As of:** 2026-09-23
+**Accounts for:** `main` after #22, and the pull request that writes this version (issue #11)
 **Kept current by:** every pull request that changes the state of the project; `make
 gate-status` fails when this file was not touched by one that did, and when section 3 differs
 from the register
@@ -80,7 +80,9 @@ bounded by *Where this promise ends*, with a gate.
 
 **Decided since the last version:** DEC-0014 (#16, merged 2026-09-21): a behaviour change
 inside an agreed scope is a notice, entry M2.4, and every notice carries a kind. DEC-0015
-(this pull request): the owner-facing section of a description stays in English.
+(#22): the owner-facing section of a description stays in English. DEC-0016 (#22): the
+first-run script's variables are not in `.env.example`. `make doctor` now reports `git` as a
+required system tool; `make gate-docs` depends on `need-git` (issue #11, this pull request).
 
 **The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) was
 merged on 2026-09-21 after that day's hour had passed. It has not run yet. Its first scheduled
@@ -88,10 +90,9 @@ run is 2026-09-28.
 
 ## 2. The next pull requests
 
-1. **This one (#22).** The needs request as a record type, this status file with its gate, the
-   four overdue needs raised, and the rule that a note in a pull request is not a message to
-   the owner. Without it, the owner does not learn what is needed; everything below waits on
-   what it raises.
+1. **This one (issue #11).** `make doctor` now reports `git` as a required tool; `make gate-docs`
+   now depends on `need-git`. Without it, `make doctor` reported a machine as complete on which
+   `make gate-docs` could not run.
 2. **The first live end-to-end run**, once the three needs of section 3 are provided:
    `tools/first_run.sh 11`, recorded in `docs/first-run.md` with what happened, and whatever
    the real agent and the real pipeline verdict reveal about the bundles. This is the
