@@ -308,12 +308,13 @@ steps:
 
         *Opened by Taktus, process P-03 Implementation: the change was made by a coding worker
         in an isolated workspace, put on this branch by the run, and the pipeline's verdict was
-        read before this pull request was opened. A person merges.*
+        read before this pull request was opened. A person merges. A run raises no decision
+        request — a process has no way to — so the section below is `None`, and a question this
+        change turns out to raise is raised by the person who reviews it.*
 
         ## Decisions required
 
-        None. A run raises no decision request: a process has no way to, and a question this
-        change turns out to raise is raised by the person who reviews it.
+        None
 
         ${summary}
       values:
