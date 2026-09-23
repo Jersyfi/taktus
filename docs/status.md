@@ -1,7 +1,7 @@
 # Status
 
-**As of:** 2026-09-21
-**Accounts for:** `main` after #16, and the pull request that writes this version (#22)
+**As of:** 2026-09-23
+**Accounts for:** `main` after #22, and the pull request that writes this version (issue #11)
 **Kept current by:** every pull request that changes the state of the project; `make
 gate-status` fails when this file was not touched by one that did, and when section 3 differs
 from the register
@@ -80,7 +80,10 @@ bounded by *Where this promise ends*, with a gate.
 
 **Decided since the last version:** DEC-0014 (#16, merged 2026-09-21): a behaviour change
 inside an agreed scope is a notice, entry M2.4, and every notice carries a kind. DEC-0015
-(this pull request): the owner-facing section of a description stays in English.
+(#22): the owner-facing section of a description stays in English. DEC-0016 (#22): the first
+run's variables are not in `.env.example`. The pull request for issue #11 (this version): no
+new decision; `make doctor` now reports `git` as a required tool alongside `uv` and `gitleaks`,
+and `make gate-docs` depends on `need-git`.
 
 **The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) was
 merged on 2026-09-21 after that day's hour had passed. It has not run yet. Its first scheduled
