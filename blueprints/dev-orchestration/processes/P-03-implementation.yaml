@@ -162,7 +162,10 @@ steps:
             the repository's own rules for a change are met: whatever its contribution
             documentation requires of every change, which the repository states and the
             workspace carries
-          - the repository's own checks pass where they can be run in the workspace
+          - >
+            the repository's own checks are run in the workspace and pass. Where one cannot be
+            run there — it needs the network, or a tool the workspace does not have — the
+            summary names it and says why; no check is passed over in silence
           - no secret value is written into any file
           - >
             the change is small and touches what the issue names, and what the rules above
