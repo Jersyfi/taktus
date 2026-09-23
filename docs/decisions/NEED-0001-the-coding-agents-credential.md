@@ -22,7 +22,7 @@ into a pull request that passes CI.* Process P-03 Implementation of the dev-orch
 blueprint has a step `implement` that hands the issue and its acceptance criteria to the coding
 worker; the worker starts the agent, and the agent needs to authenticate. Without the
 credential the worker rejects the assignment before the agent starts, and the step never runs.
-The first run of 2026-09-19 (`docs/first-run.md`) stopped for exactly this reason. The command
+The first run of 2026-09-19 (`docs/runs/2026-09-19-the-run-that-stopped.md`) stopped for exactly this reason. The command
 that finishes it, `tools/first_run.sh 11`, checks for the credential's file before it does
 anything and stops with a sentence naming it when the file is absent.
 

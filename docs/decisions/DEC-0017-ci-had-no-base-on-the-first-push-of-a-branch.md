@@ -70,7 +70,7 @@ push of a branch that value is the null sha, the gate cannot resolve it, and fai
 gate was about to be wired the same way.
 **Why it was wrong:** the pipeline's verdict on the branch P-03 creates is the one verdict the
 process reads before opening a pull request; a verdict that is red for every new branch
-regardless of its content is not a verdict. `docs/first-run.md` §4 said the push runs the same
+regardless of its content is not a verdict. `docs/runs/2026-09-19-the-run-that-stopped.md` §4 said the push runs the same
 gates as a pull request, and it would not have.
 **What it now says:** the base is the pull request's base branch on a pull request, the
 previous commit on a push to `main`, and `origin/main` on any other push, for `make gate-docs`
