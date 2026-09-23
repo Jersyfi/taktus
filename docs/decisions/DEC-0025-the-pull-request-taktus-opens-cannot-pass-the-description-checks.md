@@ -77,8 +77,9 @@ rather than by convenience:
   statement of how the change was made, and the section that says which decisions the change
   requires — the one word `None`, which is not a judgement: a run has no way to raise a
   decision request, so the answer is the same every time, and the word is the one the check
-  reads. Why it is `None` is said in the statement above it, where a reader is, and not in the
-  section, where only the checker is. A fixed answer produced by a language model is the
+  reads, alone: the section that follows it opens the summary, so that nothing the worker
+  writes can fall into the section that must contain one word. Why it is `None` is said in the
+  statement above it, where a reader is, and not in the section, where only the checker is. A fixed answer produced by a language model is the
   wrong method for it, and the first attempt showed why: the model wrote a fine description
   and left that section out.
 - **What is a judgement is the worker's.** The summary is the rest of the body: what the

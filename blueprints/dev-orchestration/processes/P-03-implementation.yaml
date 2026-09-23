@@ -316,6 +316,8 @@ steps:
 
         None
 
+        ## What this delivers
+
         ${summary}
       values:
         issue: { $input: issue }
