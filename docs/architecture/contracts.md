@@ -235,7 +235,11 @@ example, not a requirement. The core runs with all of them removed — it simply
 | Worker | `mlbench` | training, evaluation, embeddings, classical ML. The second proof case: hours of runtime, a GPU held, a model artifact returned. |
 | Worker | `claudecode` | the first real coding worker. Exists (`workers/claudecode/`), passes the suite in both authentication modes, faults included, against a stand-in for its agent; a live run needs a credential the operator supplies |
 | Worker | `codex` | the second real coding worker; validates the contract against a second vendor |
-| Connector | `github` | repository: issues, pull requests, pipelines, comments, branches, labels — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector against the fake and, with a credential, against the real service (`tests/adapters/connectors/test_repository_live.py`). Reached by the daemon's webhook intake and by the run's connector steps |
+| Connector | `github` | repository: issues, pull requests, pipelines, comments, branches, labels — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector against the fake and, with a credential, against the real service (`tests/adapters/connectors/test_repository_live.py`). Reached by the daemon's webhook intake and by the run's connector steps. A branch it writes
+keeps the mode each file has in the base — an executable a change touches stays executable —
+read from the base tree before the new tree is written (DEC-0020); a file the base does not
+have is written as a plain file, because nothing in the operation's input or in the worker's
+changeset can say otherwise |
 | Connector | `chat` | both a command channel and a delivery channel |
 | Connector | `http` | the generic fallback for anything with a documented API |
 | Model | `openai_compatible` | covers Ollama, vLLM and most vendors. Exists (`src/taktus/adapters/driven/models/openai_compatible/`), proven against a fake of the endpoint; the one model `llm` steps ask |

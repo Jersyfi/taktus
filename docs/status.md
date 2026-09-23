@@ -1,7 +1,7 @@
 # Status
 
 **As of:** 2026-09-23
-**Accounts for:** `main` after #22, and the pull request that writes this version (#23)
+**Accounts for:** `main` after #22, and the pull requests that write this version (#23, #26)
 **Kept current by:** every pull request that changes the state of the project; `make
 gate-status` fails when this file was not touched by one that did, and when section 3 differs
 from the register
@@ -32,15 +32,23 @@ The milestone is complete when two things hold. The first holds. The second does
    not by a process, and was closed by the test. The coding worker has never run against its
    real agent inside a run.
 
-   What has changed with this pull request is that the three things the run was waiting for
-   are in place. The owner provided the coding agent's key, the repository token and the model
-   endpoint on 2026-09-22; this pull request wires them into `.env` under one naming pattern
-   (DEC-0018), confirms each with its own section 7 (all three answered `200` on 2026-09-23),
-   records the model chosen for the purpose `reasoning` (DEC-0019), and raises the two
-   renewals the validities make foreseeable (NEED-0005, NEED-0006). `tools/first_run.sh 11`
-   can now run. It has not run at the time this file is written; the pull request that runs it
-   records what happened in `docs/runs/first-run.md` and says here whether `0.1.0` is
-   complete.
+   What has changed with #23 is that the three things the run was waiting for are in place. The owner provided the coding agent's key, the repository token and the model
+   endpoint on 2026-09-22; #23 wires them into `.env` under one naming pattern (DEC-0018),
+   confirms each with its own section 7 (all three answered `200` on 2026-09-23), records the
+   model chosen for the purpose `reasoning` (DEC-0019), and raises the two renewals the
+   validities make foreseeable (NEED-0005, NEED-0006).
+
+   `tools/first_run.sh 11` then ran, on 2026-09-23. **P-02 completed**: it read the issue,
+   derived the acceptance criteria with the model and wrote them as a comment on issue #11 —
+   the first outward effect Taktus has produced from a process. **P-03 did not**: the coding
+   worker implemented the issue correctly, the run put the change on the branch
+   `taktus/issue-11`, and every job of the pipeline failed on its first line, because the
+   branch the connector wrote had dropped the executable bit of a file the change touched.
+   The step `verify` refused the change on that verdict, correctly, and no pull request was
+   opened. That defect is DEC-0020 and is corrected in this pull request (#26), with a test
+   that fails without the fix; two further findings of the same run are DEC-0021 and DEC-0022.
+   The run's own report, with what every step consumed against what was estimated, is
+   `docs/runs/first-run.md`, written by the pull request that follows this one.
 
 **What the second half was waiting for**, in the order a run meets it, and where each stands:
 
@@ -89,11 +97,19 @@ bounded by *Where this promise ends*, with a gate.
 | a live run of the coding worker against its real agent in CI | the gate runs the stand-in; a live run needs a credential CI does not have |
 | governance and anchors in the product | the anchors exist for this repository as documents; nothing in the product evaluates an anchor at a step boundary yet |
 
-**Decided since the last version:** DEC-0018 (this pull request): one pattern for every
+**Decided since the last version:** DEC-0020 (#26): a branch the connector writes keeps the
+mode each file has in the base, so that an executable a change touches stays executable.
+DEC-0022 (#26): the `endpoint` execution kind isolates nothing of its own, `tools/first_run.sh`
+gives it none, and ADR-0002's isolation rule reaches only the adapters that start a unit.
+DEC-0025 (#26): the description P-03 writes carries the sections this repository's checks
+require, and the worker's summary is the description.
+DEC-0018 (#23): one pattern for every
 credential file variable, `TAKTUS_CREDENTIAL_<NAME>_FILE`, whoever reads it — a documentation
-defect, corrected, with the operator-visible half recorded as the notice NTC-0003. DEC-0019
-(this pull request): the purpose `reasoning` is served by the smaller model of the family, the
-cheapest that does the job, revisited on the evidence of the runs.
+defect, corrected, with the operator-visible half recorded as the notice NTC-0003. DEC-0019 (#23):
+the purpose `reasoning` is served by the smaller model of the family, the cheapest that does
+the job, revisited on the evidence of the runs. **Open:** DEC-0021 (#26, issue #27) — must a
+pull request Taktus opens carry a status update like any other? Provisionally yes; the work
+continues on that answer.
 
 **The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) was
 merged on 2026-09-21 after that day's hour had passed. It has not run yet. Its first scheduled
@@ -101,21 +117,25 @@ run is 2026-09-28.
 
 ## 2. The next pull requests
 
-1. **This one (#23).** The three provided credentials wired into `.env` under one naming
-   pattern, each confirmed by its own section 7; the model choice recorded; the two renewals
-   raised with their dates and with what Taktus does if a credential expires anyway. Without
-   it the credentials sit in files nothing reads, and the first live run cannot start.
-2. **The first live end-to-end run**, now that the three credentials are in place:
-   `tools/first_run.sh 11`, recorded in `docs/runs/first-run.md` with what happened, what each
-   step consumed against what was estimated, every point where a person had to step in, and
-   whatever the real agent and the real pipeline verdict reveal about the bundles. This is the
-   completion criterion of `0.1.0`, and the ordering rule of the roadmap says nothing of
-   `0.2.0` is built while it is open.
-3. **Deployment on the target platform**: the cluster execution adapter, the image build and
+1. **#23**, which wires the three provided credentials into `.env` under one naming pattern,
+   each confirmed by its own section 7, records the model choice, and raises the two renewals.
+   Without it the credentials sit in files nothing reads.
+2. **This one (#26).** The three findings of the first live run: the branch write that dropped
+   a file's mode and killed the pipeline (DEC-0020, corrected with a test), the question of
+   whether a pull request Taktus opens must carry a status update (DEC-0021, open, provisional
+   answer in force), and the isolation the endpoint worker does not provide and nobody said so
+   (DEC-0022, corrected). Without the first, no pull request Taktus opens can ever pass its
+   own pipeline.
+3. **The first live run's report**, `docs/runs/first-run.md`: what happened, what each step
+   consumed against what was estimated, every point where a person had to step in, and what
+   the real agent and the real pipeline verdict revealed about the bundles. It is written
+   once the repeated run has finished, and it says whether `0.1.0`'s completion criterion is
+   met.
+4. **Deployment on the target platform**: the cluster execution adapter, the image build and
    the chart under `deploy/k8s`, built against the platform's current interface. It comes
    after the live run because a deployment of something that has never completed a run proves
    nothing about the deployment.
-4. **`0.2.0` starts with the budget** (ADR-0005, second amendment: the estimate reserved at
+5. **`0.2.0` starts with the budget** (ADR-0005, second amendment: the estimate reserved at
    admission, a currency budget converted into tokens and enforced there) and **the scheduler
    starting runs from a bundle's trigger**, so that the removal test runs weekly without a
    workflow. In that order because the budget is designed and the design is what the first live
@@ -133,6 +153,7 @@ assigned to the owner with the steps.
 |---|---|---|---|---|
 | NEED-0004 | The platform's current interface note | 2026-10-12 | information | #21 |
 | NEED-0005 | Renew the coding agent's key | 2026-10-15 | credential | #24 |
+| DEC-0021 | Must a pull request Taktus opens update the status report? | 2026-10-21 | NON-BLOCKING | #27 |
 | NEED-0006 | Renew the repository connector's token | 2026-12-14 | credential | #25 |
 <!-- end generated -->
 

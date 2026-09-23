@@ -23,8 +23,11 @@ autonomy:
   level: 4
   reason: >
     nothing writes to a protected branch, the pipeline's verdict is the gate and never the
-    worker's opinion, a person merges, and the worker runs in isolation with exactly the hosts
-    and credentials the frame names; every outward effect is reversible until the merge
+    worker's opinion, a person merges, and every outward effect is reversible until the merge.
+    The fourth condition is the deployment's, not the bundle's: the worker runs in isolation
+    with exactly the hosts and credentials the frame names where the execution kind provides
+    it — `container` and `cluster` do, `process` and `endpoint` do not, and with those two the
+    isolation is whoever started the worker's (DEC-0022)
 author: the repository
 reason: the third process of the dev-orchestration blueprint, runnable
 
@@ -153,9 +156,31 @@ steps:
           section "Acceptance criteria" — so that every criterion holds
         acceptance:
           - every item of the section "Acceptance criteria" in the issue or its discussion holds
-          - the repository's own checks pass where they can be run in the workspace
+          # PROVISIONAL until DEC-0021 is answered: whether a pull request Taktus opens must
+          # carry what every change of that repository must carry. Option A is in force.
+          - >
+            the repository's own rules for a change are met: whatever its contribution
+            documentation requires of every change, which the repository states and the
+            workspace carries
+          - >
+            the repository's own checks are run in the workspace and pass. Where one cannot be
+            run there — it needs the network, or a tool the workspace does not have — the
+            summary names it and says why; no check is passed over in silence
           - no secret value is written into any file
-          - the change is small and touches only what the issue names
+          - >
+            the change is small and touches what the issue names, and what the rules above
+            require of any change
+          # PROVISIONAL until DEC-0021 is answered, the same question one step further: the
+          # description of a pull request Taktus opens is the summary this assignment ends
+          # with, so the shape the repository asks of a description is asked of the summary.
+          - >
+            the summary this assignment ends with is the body of the pull request that will
+            carry the change: what it delivers, and what a reviewer must know. Where the
+            repository prescribes a shape for a pull request description — a template, or a
+            section one of its checks reads — the summary is written in that shape, with the
+            same headings at the same level, every required section present and truthful, and
+            the section the repository puts last, last. A section whose content the repository
+            generates is copied from the repository, not written afresh
         inputs:
           issue: { $input: issue }
           title: { $from: read-issue, $select: output.title }
@@ -276,15 +301,24 @@ steps:
     depends_on: [verify]
     work:
       rule: template
+      # What Taktus says about itself comes first, not last: a repository whose checks read the
+      # description read its *last* section, and that section belongs to the summary (DEC-0025).
       text: |
         Closes #${issue}.
 
-        ${summary}
+        *Opened by Taktus, process P-03 Implementation: the change was made by a coding worker
+        in an isolated workspace, put on this branch by the run, and the pipeline's verdict was
+        read before this pull request was opened. A person merges. A run raises no decision
+        request — a process has no way to — so the section below is `None`, and a question this
+        change turns out to raise is raised by the person who reviews it.*
 
-        ---
-        Opened by Taktus, process P-03 Implementation: the change was made by a coding worker
-        in an isolated workspace, put on this branch by the run, and the pipeline's verdict
-        was read before this pull request was opened. A person merges.
+        ## Decisions required
+
+        None
+
+        ## What this delivers
+
+        ${summary}
       values:
         issue: { $input: issue }
         summary: { $from: implement, $artifact: summary }
