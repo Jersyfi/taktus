@@ -70,13 +70,31 @@ Nothing here. DEC-0021 is where the question is.
 
 ## 5. Options
 
-None for the owner. What the session did: the body template puts `Closes`, Taktus's own
-statement and then the summary, in that order and nothing after it; the task's acceptance asks
-that the summary *be* the pull request's description, in the shape the repository prescribes
-where it prescribes one. Both are generic: no section name of this repository is in the
-blueprint.
+None for the owner. What the session did, in two halves, split by method selection (ADR-0004)
+rather than by convenience:
 
-**What is not done:** nothing makes the summary right. A missing section is caught by the
+- **What is deterministic is a rule.** The body template writes `Closes #N`, Taktus's own
+  statement of how the change was made, and the section that says which decisions the change
+  requires — `None`, which is not a judgement: a run has no way to raise a decision request,
+  so the answer is the same every time. A fixed answer produced by a language model is the
+  wrong method for it, and the first attempt showed why: the model wrote a fine description
+  and left that section out.
+- **What is a judgement is the worker's.** The summary is the rest of the body: what the
+  change delivers and what a reviewer must know. The task's acceptance asks for it in the
+  shape the repository prescribes — the same headings at the same level, the section the
+  repository puts last, last, and a section whose content the repository *generates* copied
+  rather than written afresh.
+
+Both halves are generic: no section name of this repository is in the blueprint. The names
+come from the repository, which the worker has in front of it.
+
+**What is not done, and is [issue #34](https://github.com/Jersyfi/taktus/issues/34):** the section the repository generates — the one that
+tells the owner what is needed — is a copy of a block that is in the repository, and a copy is
+deterministic. The run cannot make it, because no connector operation reads a file, so it is
+asked of the model instead. That is the wrong method for a copy and it is in the bundle
+knowingly, with the reason and the fix in the issue.
+
+Beyond that, nothing makes the summary right. A missing section is caught by the
 pull request's own pipeline and a person, not by the run, because the run opens the pull
 request before that pipeline exists. A run cannot check its own description.
 
@@ -99,9 +117,11 @@ refused by its own pipeline: no `## Decisions required` section.
 accepts. The branch's verdict, which P-03 reads, says nothing about the description, so the
 process could not have found out for itself.
 **What it now says:** the body is `Closes #N`, Taktus's own statement of how the change was
-made, and then the worker's summary, with nothing after it; and the assignment's acceptance
-asks that the summary be the pull request's description in the shape the repository
-prescribes. The blueprint names no section of this repository.
+made, the section naming the decisions the change requires — `None`, from the template,
+because a run raises none — and then the worker's summary, with nothing after it. The
+assignment's acceptance asks that the summary be the rest of the description, in the shape the
+repository prescribes, with the section the repository puts last, last, and a generated
+section copied rather than rewritten. The blueprint names no section of this repository.
 **What changed in substance:** the shape of the description P-03 writes, and one more thing
 asked of the coding worker. The change itself, the branch, the verdict and the label are
 untouched.
