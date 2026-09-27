@@ -116,3 +116,26 @@ curl -sS -o /dev/null -w '%{http_code}\n' \
 `tools/first_run.sh` checks that the endpoint and the model name are set before it starts
 anything. The first real confirmation is P-02's own: its `refine` step ends `succeeded` and the
 ledger of that run shows the tokens it consumed.
+
+## Outcome
+
+**Provided:** 2026-09-22
+**Confirmed by:** section 7, run on 2026-09-23 in the checkout of
+[#23](https://github.com/Jersyfi/taktus/pull/23). One request of a few tokens on the exact path
+the adapter uses — the endpoint named by `TAKTUS_MODEL_ENDPOINT` plus `/chat/completions`, the
+model named by `TAKTUS_MODEL_NAME`, the key from the file named by
+`TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE` — answered `200`. The check printed a status and nothing
+else.
+**What was provided:** the recommended shape of section 4. The endpoint is the provider's
+chat-completions-compatible one; the key is the file of NEED-0001, so there is one credential
+to rotate and its renewal is NEED-0005, not a second one. `TAKTUS_MODEL_PURPOSES` stays unset:
+the one configured model serves every purpose a process names, and `reasoning` is the only one
+any bundle names today.
+**Which model:** the owner chose the smaller model of the family rather than the current
+default that section 4 gave as an example — the cheapest model that does the job, method
+selection applied to the model within the method. The choice, its reasons and what would
+revisit it are DEC-0019. The model's name is in this deployment's `.env` and in no file of
+this repository.
+**What it unlocked:** P-02's step `refine`, which is where the run of 2026-09-19 stopped, and
+with it the first live run (`docs/runs/first-run.md`).
+**Recorded in:** [#23](https://github.com/Jersyfi/taktus/pull/23)
