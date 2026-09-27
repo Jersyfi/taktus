@@ -72,7 +72,7 @@ rather than assumed.
 ## Running them for real
 
 `tools/first_run.sh <issue>` runs P-02 and then P-03 against this repository with the reference
-connector, the coding worker and a configured model, from one command; `docs/first-run.md` is
+connector, the coding worker and a configured model, from one command; `docs/runs/` holds
 the record of what happened the first time. The credentials it needs are parameters
 (`CREDENTIALS.md`): the repository token, the coding agent's key or session token, and the
 model endpoint's key if it needs one. The bundles' autonomy levels are the blueprint's; at level

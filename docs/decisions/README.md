@@ -48,6 +48,7 @@ The open needs are listed in [../status.md](../status.md), section 3.
 | [0001](NTC-0001-anchors-split-into-two-files.md) | Anchors split into two files with four modes | M2.1 | `restructuring` | the anchor page is the shipped default plus the Taktus tenant's configuration, entries identified `M<mode>.<n>`, the old rows mapped |
 | [0002](NTC-0002-a-missing-adapter-fails-the-step.md) | A missing adapter fails the step at the boundary | M2.4 | `behaviour-change` | a step whose worker, connector or operation is not configured ends failed and retryable with the reason, and the run escalates at that boundary instead of raising out of the engine |
 | [0003](NTC-0003-the-first-runs-credential-variables-renamed.md) | The first run's credential variables renamed | M2.4 | `behaviour-change` | `tools/first_run.sh` reads the repository token and the coding agent's credential under `TAKTUS_CREDENTIAL_<NAME>_FILE`, the one pattern every credential follows; the same files hold the same values |
+| [0004](NTC-0004-run-records-move-into-their-own-directory.md) | Run records move into their own directory | M2.1 | `restructuring` | `docs/runs/` holds one record per run worth keeping, with a `README.md` that says what belongs there; the record of 2026-09-19 keeps its content under its date |
 
 ## Decisions
 
