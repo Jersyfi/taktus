@@ -36,6 +36,10 @@ MAX_PAGES = 20  # how many pages of comments a repeat is looked for in
 MAX_RUNS = 50  # how many pipeline runs of one head are read
 SHA = re.compile(r"^[0-9a-f]{40}$")
 FILE_MODE = "100644"
+# A file keeps the mode it has in the base: an executable that a change touches stays
+# executable, and a symbolic link stays a link (DEC-0020). Anything else the base carries —
+# a submodule — cannot be written back as a blob, so such a path gets the plain file mode.
+BLOB_MODES = frozenset({"100644", "100755", "120000"})
 
 
 @dataclass(frozen=True)
@@ -344,13 +348,20 @@ async def create_branch(api: Api, input: Json, key: str) -> Outcome:
         raise TargetError("not_found", "none", False, f"base branch {base!r} does not exist")
     base_commit = await api.get(api.repo(f"git/commits/{base_sha}"))
     tree_sha = str(base_commit.get("tree", {}).get("sha", ""))
+    modes = await _modes_in(api, tree_sha, [str(file["path"]) for file in files])
     entries: list[Json] = []
     for file in files:
         blob = await api.post(
             api.repo("git/blobs"), {"content": file["content"], "encoding": file["encoding"]}
         )
+        path = str(file["path"])
         entries.append(
-            {"path": file["path"], "mode": FILE_MODE, "type": "blob", "sha": str(blob["sha"])}
+            {
+                "path": path,
+                "mode": modes.get(path, FILE_MODE),
+                "type": "blob",
+                "sha": str(blob["sha"]),
+            }
         )
     entries.extend(
         {"path": path, "mode": FILE_MODE, "type": "blob", "sha": None} for path in deleted
@@ -366,6 +377,57 @@ async def create_branch(api: Api, input: Json, key: str) -> Outcome:
     await api.post(api.repo("git/refs"), {"ref": f"refs/heads/{name}", "sha": sha})
     output = _branch_output(api, name, sha, base, str(commit.get("html_url", "")))
     return Outcome(output, write_effect(_branch_records(output), digest, replayed=False))
+
+
+async def _modes_in(api: Api, tree_sha: str, paths: list[str]) -> dict[str, str]:
+    """The mode each of `paths` already has in the base tree, for the paths that are there.
+
+    A tree entry carries the file's mode, and a write that does not carry it forward silently
+    makes the file plain: an executable script that a change touches stops being executable,
+    and the first thing that runs it fails (DEC-0020). The whole tree comes in one request;
+    a tree too large for one answer comes back marked truncated, and the paths it did not
+    carry are then looked up along their own directories, one request per directory.
+    """
+    if not paths or not tree_sha:
+        return {}
+    wanted = set(paths)
+    answer = await api.get(api.repo(f"git/trees/{tree_sha}"), {"recursive": "1"})
+    modes = _blob_modes(answer, wanted)
+    if answer.get("truncated"):
+        for path in sorted(wanted - set(modes)):
+            if (mode := await _mode_along(api, tree_sha, path)) is not None:
+                modes[path] = mode
+    return modes
+
+
+def _blob_modes(tree: Json, wanted: set[str]) -> dict[str, str]:
+    """The entries of one tree answer that are blobs, are wanted, and carry a mode a blob may
+    be written back with."""
+    found: dict[str, str] = {}
+    for entry in tree.get("tree", []):
+        if not isinstance(entry, dict) or entry.get("type") != "blob":
+            continue
+        path, mode = str(entry.get("path", "")), str(entry.get("mode", ""))
+        if path in wanted and mode in BLOB_MODES:
+            found[path] = mode
+    return found
+
+
+async def _mode_along(api: Api, tree_sha: str, path: str) -> str | None:
+    """One path's mode, walking the directories from the root tree. Used only where the tree
+    was too large to come in one answer."""
+    head, *rest = path.split("/")
+    answer = await api.get(api.repo(f"git/trees/{tree_sha}"))
+    for entry in answer.get("tree", []):
+        if not isinstance(entry, dict) or entry.get("path") != head:
+            continue
+        if not rest:
+            mode = str(entry.get("mode", ""))
+            return mode if entry.get("type") == "blob" and mode in BLOB_MODES else None
+        if entry.get("type") != "tree":
+            return None
+        return await _mode_along(api, str(entry.get("sha", "")), "/".join(rest))
+    return None
 
 
 async def _ref(api: Api, name: str) -> str | None:

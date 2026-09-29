@@ -161,7 +161,8 @@ not when it blocks, with a date and the steps; raising it is mode 2 (M2.5), prov
 owner's act. Every row of `CREDENTIALS.md` names the need it is provided under, and the gate
 fails a credential the code reads without one. `docs/status.md` is the one file that says where
 the project stands and what is needed from the owner; every pull request that changes the state
-regenerates it, and `make gate-status` fails one that did not.
+updates it, and `make gate-status` fails one that did not. The list of what is open is
+generated (`make status`) and never stored in the file (DEC-0026).
 
 ---
 
@@ -191,8 +192,18 @@ regenerates it, and `make gate-status` fails one that did not.
   a decision, a need, a date — becomes a record under `docs/decisions/` and an issue assigned
   to him: a decision request (`DEC-NNNN`) or a needs request (`NEED-NNNN`), raised when it
   becomes foreseeable. Never only a line in a description. The description's last section,
-  *Needed from the owner*, repeats what is open from `docs/status.md`; it is generated and
-  checked, not written (ADR-0028).
+  *Needed from the owner*, is the output of `make status`; it is generated and checked, not
+  written (ADR-0028).
+- **Every pull request targets `main`.** A change that needs another, unmerged change waits
+  for it to merge and is then rebased on `main`; it is never opened against the other
+  change's branch. Squash merges discard the branch's history, so a stacked pull request
+  conflicts with the very commits it was built on, merges into the wrong branch when merged
+  out of order, and is closed by the host when its base branch is deleted. CI fails a pull
+  request whose base is not `main` (DEC-0026).
+- **Nothing generated is stored in a file that pull requests edit by hand.** A generated
+  artifact that must be committed (`api/openapi.yaml`) is regenerated, never merged by hand;
+  a generated list that only a reader needs is printed on demand and carried where it cannot
+  conflict (DEC-0026).
 
 ---
 

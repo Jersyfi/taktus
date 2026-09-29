@@ -29,7 +29,11 @@ only an entry of mode 3 or 4 justifies a request. A mode-2 decision is a notice 
 ## Needed from the owner
 
 <!--
-The last section, always. Section 3 of docs/status.md, verbatim — the generated block between
-its markers: every open needs request and decision request, the most urgent first, with its
-date and issue. `make generate` writes it there; CI fails when this differs from it (ADR-0028).
+The last section, always: the output of `make status`, verbatim — every open needs request and
+decision request, the most urgent first, with its date and issue, generated from the register
+of this branch. CI fails when this differs from what the register generates (ADR-0028,
+DEC-0026). The list is carried here and nowhere else: never paste it into docs/status.md.
+
+The pull request targets main. A change that needs another unmerged change waits for it to
+merge, then rebases on main; CI fails a pull request based on any other branch (DEC-0026).
 -->

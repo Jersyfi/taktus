@@ -110,22 +110,31 @@ enforced, anything marked provisional.
 Facts only. No forecast dressed as a fact, no "almost done". Where something is unknown, the
 file says it is unknown.
 
-Section 3, *Needed from the owner*, is generated: `tools/check_status.py --write`, run by
-`make generate`, writes it from the open needs and decision requests of the register, sorted by
-the date each is needed. The other four sections are written by hand by the pull request that
-changes the state.
+Section 3, *Needed from the owner*, is generated and **not stored**:
+`tools/check_status.py --print` (`make status`) prints it from the open needs and decision
+requests of the register, sorted by the date each is needed. The file's section 3 says where
+the list is — the pull request description, `make status`, and the open issues labelled
+`needs-owner` or `decision-request` — and holds no copy of it. The other four sections are
+written by hand by the pull request that changes the state.
+
+*Amended 2026-09-29 (DEC-0026).* Until then the list was written into the file by `make
+generate`. A generated list in a committed file is edited by every pull request that touches
+the register, so any two such pull requests conflict on it, and whichever merges first makes
+the other's copy stale. That happened to all four pull requests of 2026-09-23 at once.
 
 **Every pull request that changes the state of the project regenerates the file**, and
 `make gate-status` fails when it did not: when a change under `src/`, `workers/`, `blueprints/`,
 `contracts/`, `deploy/`, `migrations/`, `tools/`, `docs/roadmap.md`, `docs/adr/` or
 `docs/decisions/` reaches the base branch without a change to `docs/status.md`; when section 3
-differs from what the register generates; when the file's date is older than the newest record
+stores a list instead of saying where it is; when the file's date is older than the newest record
 in the register; when a section is missing, empty, out of order or keeps a placeholder; when
 the milestone named in section 1 is not a milestone of the roadmap.
 
-**The pull request description carries section 3.** Its last section, `## Needed from the
-owner`, is the generated section verbatim, so that the owner sees what is needed without
-opening a file. CI compares the two and fails when they differ.
+**The pull request description carries the list.** Its last section, `## Needed from the
+owner`, is what `make status` prints for that branch, so that the owner sees what is needed
+without opening a file. CI generates the list from the branch's register and fails when the
+description differs from it. The description is the one place the list is carried: it
+belongs to one branch and is never merged with another.
 
 ### 4. The working rule
 CLAUDE.md §9 gains the rule that this ADR exists for: **a note in a pull request is not a
@@ -152,8 +161,9 @@ record and an issue assigned to him. Never only a line in a description.
 - A pull request that builds something needing a credential costs one more file and one issue.
   That is the price of the owner learning it in time, and it is paid by the session, not the
   owner.
-- The owner has one file to open. What it asks of him is at the top of the pull request
-  description too, with a date.
+- The owner has one file to open. What it asks of him is in every pull request description,
+  with a date, and one click from the file: the open issues labelled `needs-owner` or
+  `decision-request`. Since DEC-0026 the file points at the list rather than holding it.
 - The three needs that were overdue when this ADR was written — the coding agent's credential,
   the repository connector's token, the model endpoint's key — and the platform's interface
   note are raised in the same pull request, with `**Foreseeable since:**` naming the pull
@@ -163,12 +173,14 @@ record and an issue assigned to him. Never only a line in a description.
 
 ## Where this promise ends
 
-The gate checks shape and presence: sections, dates, the generated section, a row per
-credential variable, an index entry. It cannot check that the steps of a needs request work,
+The gate checks shape and presence: sections, dates, that section 3 points at the list and
+stores none, a row per credential variable, an index entry. It cannot check that the steps of a needs request work,
 that its date is right, or that the rest of the status file is true; a reviewer can, and the
 owner will notice when he follows the steps. The coverage check finds credential variables by
 their naming convention, `<NAME>_FILE`, in the code directories; a credential read under
 another convention, or by a test, is not seen. The freshness check
 of the status file sees a *touch*, not a truthful update. The issue is created by the session
 with the repository's tooling; a repository hosted elsewhere needs its equivalent. Nothing here
-makes the owner provide what is asked; it makes sure he knows.
+makes the owner provide what is asked; it makes sure he knows. The list lives in pull request
+descriptions and in the issue tracker, not in the file: an owner who reads only the file sees
+where the list is, not the list.

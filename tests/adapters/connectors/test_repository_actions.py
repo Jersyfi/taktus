@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from mcp import Client
 
@@ -416,6 +417,96 @@ async def test_a_branch_without_files_carries_an_empty_marked_commit(service: Se
     )
     assert error
     assert missing["cause"] == "not_found"
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_a_changed_file_keeps_the_mode_it_had(service: Service) -> None:
+    """An executable file that a change touches stays executable (DEC-0020).
+
+    The tree entry carries the mode, and a write that does not carry it forward makes the file
+    plain. The first live run met exactly this: the coding worker changed `tools/preflight.sh`,
+    the branch carried it as a plain file, and every job of the pipeline died on
+    `Permission denied` before it ran a single check.
+    """
+    base = _base_with_executable(service, "tools/script.sh")
+    error, result = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("modes", "run_01:modes:1-0123456789"),
+        {
+            "name": "taktus/modes",
+            "base": base,
+            "message": "change both",
+            "files": [
+                {"path": "tools/script.sh", "content": "#!/bin/sh\necho changed\n"},
+                {"path": "docs/note.md", "content": "# Note\n"},
+            ],
+        },
+    )
+    assert not error, result
+    modes = _tree_modes(service, str(result["output"]["sha"]))
+    assert modes["tools/script.sh"] == "100755", "the executable stayed executable"
+    assert modes["docs/note.md"] == "100644", "a new file is a plain file"
+
+
+def _base_with_executable(service: Service, path: str) -> str:
+    """A branch of the fake service whose tree carries `path` as an executable file, built
+    through the service's own object interface, so that the connector has a real base to
+    preserve a mode from."""
+    name = "with-executable"
+    ref = _service_get(service, f"/repos/{REPOSITORY}/git/ref/heads/main")
+    head = _service_get(service, f"/repos/{REPOSITORY}/git/commits/{ref['object']['sha']}")
+    blob = _service_post(
+        service, f"/repos/{REPOSITORY}/git/blobs", {"content": "#!/bin/sh\n", "encoding": "utf-8"}
+    )
+    tree = _service_post(
+        service,
+        f"/repos/{REPOSITORY}/git/trees",
+        {
+            "base_tree": head["tree"]["sha"],
+            "tree": [{"path": path, "mode": "100755", "type": "blob", "sha": blob["sha"]}],
+        },
+    )
+    commit = _service_post(
+        service,
+        f"/repos/{REPOSITORY}/git/commits",
+        {"message": "an executable", "tree": tree["sha"], "parents": [ref["object"]["sha"]]},
+    )
+    _service_post(
+        service,
+        f"/repos/{REPOSITORY}/git/refs",
+        {"ref": f"refs/heads/{name}", "sha": commit["sha"]},
+    )
+    return name
+
+
+def _tree_modes(service: Service, commit_sha: str) -> dict[str, str]:
+    commit = _service_get(service, f"/repos/{REPOSITORY}/git/commits/{commit_sha}")
+    tree = _service_get(service, f"/repos/{REPOSITORY}/git/trees/{commit['tree']['sha']}")
+    return {str(e["path"]): str(e["mode"]) for e in tree["tree"]}
+
+
+def _service_get(service: Service, path: str) -> Json:
+    answer = httpx.get(
+        f"{service.url}{path}",
+        headers={"Authorization": f"Bearer {service.write_value}"},
+        timeout=5.0,
+    )
+    answer.raise_for_status()
+    result: Json = answer.json()
+    return result
+
+
+def _service_post(service: Service, path: str, body: Json) -> Json:
+    answer = httpx.post(
+        f"{service.url}{path}",
+        json=body,
+        headers={"Authorization": f"Bearer {service.write_value}"},
+        timeout=5.0,
+    )
+    answer.raise_for_status()
+    result: Json = answer.json()
+    return result
 
 
 @pytest.mark.usefixtures("credentials")
