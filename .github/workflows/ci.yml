@@ -67,6 +67,11 @@ jobs:
       # standard-library tool shape as the decisions gate.
       - name: architecture decision records
         run: make gate-adrs
+      # The vision layer holds together and every principle is served by a use case. Plain
+      # Markdown, standard library; the use cases themselves are checked in the gates job, which
+      # has the project environment their named tests need.
+      - name: vision
+        run: make gate-vision
       # The status report is current: touched by every change to the state of the project,
       # section 3 as the register generates it, and repeated as the last section of the pull
       # request description so that the owner sees it without opening a file (ADR-0028).
@@ -128,6 +133,15 @@ jobs:
 
       - name: decisions
         run: make gate-decisions
+
+      # Every use case has a state, a verification condition and a principle; a verified one's
+      # named tests are run and must be green; an ADR that moved under a use case fails until it
+      # is checked again; a pull request may not change a requirement and its implementation
+      # together (CLAUDE.md §9). Compared with the same base as the documentation gate.
+      - name: use cases
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || (github.ref == 'refs/heads/main' && github.event.before || 'origin/main') }}
+        run: make gate-usecases BASE="$BASE"
 
       # The runner has Docker; the PostgreSQL tests run in a container and may not skip here.
       - name: test

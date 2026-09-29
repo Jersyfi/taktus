@@ -13,39 +13,9 @@ failures are UC-4.5 and UC-4.6 and already handled by the run model.
 
 ## UC-4.10 — Deviation detection
 
-**Situation.** A run has finished. Every step reports success. Nothing in the run model says
-whether the result is right. A result defect is silent until something checks the result
-against what it should be.
-
-**What Taktus does.** After every completed step that produces a result, and after every
-completed run, Taktus checks the result against *expected properties*, not the run against
-success. Four families of property, each a rule or a statistic, never a language model:
-
-| Family | The check | Example |
-|---|---|---|
-| **Distribution** | the value, or a statistic of the result, lies where this step's earlier results lie: within a band around the moving median, the same order of magnitude, the same sign | a monthly total ten times the previous eleven; a classifier that assigns one class to 100% of documents this week and 30% last week |
-| **Completeness** | the result has every part it should have: the number of records, the fields per record, the artifacts a step announces | an export with 412 rows where the source has 418; an invoice without a due date |
-| **Reference points** | the result agrees with an independent source it must agree with: a control total, a second system's count, a sum that must balance | a ledger total that does not match the bank statement; a headcount that differs from the payroll system |
-| **Schema shape of the source** | the source a step read has the shape the step was written for: columns, types, order, encoding, a version marker | a partner file whose column order changed; a reference table with a new mandatory field |
-
-A property is declared on the step, in the process version, beside method and exactness class,
-as a *check* with a method (`rule` or `statistics`), a tolerance, and what to do when it fails:
-`escalate` or `stop` (UC-7.2). A step of class `exact` or `sourced` carries at least one check;
-`tolerant` and `free` may carry none. A check that fails marks the result *suspect* and opens
-UC-4.11 for it. A check does not change the result and does not stop the run on its own; the
-rule of UC-7.2 decides that.
-
-**What it needs.** The provenance chain (ADR-0021) for the inputs a check compares against;
-the ledger for earlier results; the value ledger (`0.5.0`) for distributions over time; the
-connector contract for reference points in other systems.
-
-**What it never does.** It never lets a language model decide whether a result is wrong. It
-never checks a person's work against a person's earlier work — checks are on process steps, and
-a `human` step produces no result to check (ADR-0018, principle 14).
-
-**Proven by.** A property of each family is violated in a test process and each violation is
-found on the step that produced it; a result within tolerance is not marked; the check's
-method is `rule` or `statistics` on every example bundle (`tests/exactness`).
+Moved to [run/UC-4.10-deviation-detection.md](run/UC-4.10-deviation-detection.md), in the use
+case format, on 2026-09-29. The rest of this file follows in the second step of the migration
+(`MIGRATION.md`).
 
 ---
 

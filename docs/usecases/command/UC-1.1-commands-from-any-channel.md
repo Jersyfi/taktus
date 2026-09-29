@@ -1,0 +1,53 @@
+---
+id: UC-1.1
+title: Commands from any channel
+component: command
+epic: E1
+serves: [P1, P4]
+state: building
+version: 0.2.0
+tests: [tests/components/command/test_complete_intake.py::test_the_resolver_places_the_event_and_completes_it_as_the_operator]
+adrs: {ADR-0003: d0268914fed9, ADR-0024: ac6a1fe1610a}
+supersedes: null
+---
+
+# UC-1.1 — Commands from any channel
+
+## 1. What must be achieved
+
+A person gives Taktus a task where they already work: as a mention in a comment of their ticket
+system, in their knowledge tool, on the command line, in the web app, on the desktop or on the
+phone. Taktus turns every such input into the same kind of command, so that what happens next
+does not depend on where the task came from. The answer, or a question back, arrives in the
+channel the task came from.
+
+A new channel is added without changing the core.
+
+## 2. How it is verified
+
+- The same instruction arriving through two different channels produces two commands that are
+  equal in every field except the channel and the identity of the message.
+- A reply or a question about a command is delivered through the channel the command arrived on,
+  to the thread or conversation it arrived in.
+- A channel is added by adding a connector that implements the intake half of the connector
+  contract (ADR-0024); a test adds a channel this way and changes nothing under
+  `src/taktus/components/`.
+- A channel is referred to by its capability, never by a product name (ADR-0003).
+
+**Proven so far:** an event arriving through a channel becomes a command that carries its
+channel and the address a reply goes to, by the named test. The equality of two commands from two
+channels is not tested; a reply delivered to that address, and a chat channel, are not built.
+
+## 3. Where the boundary lies
+
+**Not planning.** Working a plan out with the person is UC-1.2; this use case ends when the
+input is a command. **Not identity.** Who the sender is, and whether they may give this command,
+is the identity component's. **Not every channel.** Which channels ship when is the roadmap's;
+this use case requires that any channel can be added, not that all exist. **Not delivery
+guarantees** of the channel itself.
+
+## 4. What it rests on
+
+The connector contract and its intake half (ADR-0024); the adapter obligation (ADR-0003);
+`taktusctl submit` and the webhook intake of `0.1.0`; the chat connector of `0.2.0`, hence the
+version. Definition `UC-1.1`.

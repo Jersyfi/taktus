@@ -29,6 +29,7 @@ that is intended: the same anchor resolves differently per tenant (anchors.md §
 | M1.7 | **Milestone scope: which feature lands in which milestone.** The default keeps this with the owner (M3.1). Here it is the session's, because the roadmap states the completion criteria and the session is the one holding the work against them. | `docs/roadmap.md` |
 | M1.8 | **Version assignment once a feature is accepted.** The default keeps this with the owner (M3.3). Accepting the feature is still M3.2. | `docs/roadmap.md` |
 | M1.9 | **A change to the substance of an accepted ADR, as long as the vision holds.** The default keeps this with the owner (M3.4). Here it is the session's while the change keeps every guiding principle (CLAUDE.md §5), keeps the four requirements of ADR-0013, and touches no entry of mode 3 or 4 of this page. A change that would touch one of those is that entry's decision. The record is the amendment itself, in the ADR, with its date and reason. | the ADR |
+| M1.10 | **How a use case is described**: its wording, examples and links, its state, the tests it names, and the digest of each ADR it was checked against once it has been checked again. Not what it requires — that is M3.15. Given by the owner on 2026-09-29. | the use case file under `docs/usecases/` |
 
 ## Mode 2 — the session decides and records a notice
 
@@ -48,6 +49,10 @@ notice carries both, and `make gate-decisions` fails when they do not match.
 The owner wants a worked opinion with context, not a question. Every request in this mode has
 the seven sections of ADR-0017 §4, two or three options, one recommended with its reason.
 
+A request that arises from work names what was attempted and where exactly it failed. Failing a
+task is allowed; reporting instead of working is not, and a request that does not name the
+attempt and the point of failure is returned as an evasion (CLAUDE.md §9).
+
 | Entry | The owner decides |
 |---|---|
 | M3.2 | **Accepting or rejecting a feature**, with the session's worked recommendation. A proposal from a session, an issue or the owner's own notes is a proposal until the owner accepts it. |
@@ -61,6 +66,7 @@ the seven sections of ADR-0017 §4, two or three options, one recommended with i
 | M3.12 | **Binding a model purpose to a provider.** |
 | M3.13 | **Choosing a method within an exactness class**, where the class admits more than one. |
 | M3.14 | **Routing between approved models.** |
+| M3.15 | **What a use case requires**: its outcome, its verification condition and its boundary — sections 1 to 3 of a file under `docs/usecases/`; adding one, changing one, retiring one. Never in the pull request that implements it: whoever finds while building that a requirement does not hold raises a request naming the precise point where it fails, the use cases involved, and a worked proposal, and the implementation waits. `make gate-usecases` fails a pull request that touches both. Given by the owner on 2026-09-29. |
 
 ## Mode 4 — the owner decides, the session supplies data
 
@@ -69,6 +75,7 @@ the seven sections of ADR-0017 §4, two or three options, one recommended with i
 | M4.1 | **The licence** (ADR-0012). |
 | M4.2 | **The price.** |
 | M4.3 | **The accounting basis**: the Takt, its weights and what is charged (ADR-0010). |
+| M4.5 | **The vision layer**, `docs/vision/`: what Taktus is for, the fourteen principles with their reasons and what they forbid, the personas, the non-goals. A session that believes something there is wrong raises a request and does not edit it. Given by the owner on 2026-09-29. |
 
 The Taktus project has no legal anchor of its own yet (M4.4 of the default is empty here): the
 repository signs nothing, pays nothing and files nothing. The entry returns the moment it does.
@@ -104,3 +111,8 @@ are M1.1 to M1.6. The restructuring is recorded as NTC-0001.
 
 M2.4 was added on 2026-09-21 from the owner's answer to DEC-0014, the first question raised
 under *Neither list*; the same answer gave every notice its kind.
+
+M1.10, M3.15 and M4.5 were added on 2026-09-29 from the owner's brief that brought the vision
+layer and the use case format into the repository: the vision is the owner's, what a use case
+requires is decided by the owner on a worked opinion, and how a use case is described is the
+session's.

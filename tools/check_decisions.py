@@ -33,6 +33,10 @@ Checks:
 5. with --pr-body: the "Decisions required" section of a pull request description is either
    "None" or a list of DEC lines, every named decision has an open file with the same category,
    and every BLOCKING open file is named;
+5a. with --pr-body: the description carries, in this order, "What this is about", "What was
+   done", "Why this way" and "What to check", none empty and none a placeholder — so that a
+   reviewer who has not read the diff can act on it (ADR-0017 §7). The gate sees that the four
+   are there and filled, not that they are true or readable without the diff;
 6. with --draft false: no BLOCKING decision is open — a pull request with a BLOCKING decision
    stays a draft;
 7. with --forbid-open-blocking (push to main): no BLOCKING file is under open/ at all.
@@ -137,6 +141,9 @@ PLACEHOLDER = re.compile(r"<[^>\n]+>|\b(?:TODO|TBD|FIXME|XXX)\b|…")
 OPTION = re.compile(r"^### Option [A-Z] — ")
 RECOMMENDED = re.compile(r"^### Option [A-Z] — .*\(recommended\)\s*$")
 DEC_REF = re.compile(r"\bDEC-(\d{4})\b")
+# What every pull request description states without assuming the reader has read the diff
+# (ADR-0017 §7): what it is about, what was done, why that way, what the reviewer should check.
+DESCRIPTION = ["What this is about", "What was done", "Why this way", "What to check"]
 ISSUE_REF = re.compile(r"#\d+\b")
 
 type Check = Callable[[Document, list[str]], None]
@@ -690,6 +697,55 @@ def decisions_section(body: str) -> str | None:
     return "\n".join(collected).strip() if inside else None
 
 
+def description_sections(body: str) -> list[tuple[str, str]]:
+    """`(heading, text)` for every `## ` heading of a description, comments removed."""
+    found: list[tuple[str, str]] = []
+    current: str | None = None
+    buffer: list[str] = []
+    for line in strip_comments(body).splitlines():
+        if line.startswith("## "):
+            if current is not None:
+                found.append((current, "\n".join(buffer).strip()))
+            current = line[3:].strip()
+            buffer = []
+        elif current is not None:
+            buffer.append(line)
+    if current is not None:
+        found.append((current, "\n".join(buffer).strip()))
+    return found
+
+
+def check_description(body: str, report: Report) -> None:
+    print("description")
+    found = description_sections(body)
+    by_name = {name.lower(): text for name, text in found}
+    order = [name.lower() for name, _ in found]
+    problems: list[str] = []
+    positions: list[int] = []
+    for name in DESCRIPTION:
+        key = name.lower()
+        if key not in by_name:
+            problems.append(f"no `## {name}`")
+            continue
+        positions.append(order.index(key))
+        text = by_name[key]
+        if not text:
+            problems.append(f"`## {name}` is empty")
+        elif hit := PLACEHOLDER.search(strip_code(text)):
+            problems.append(f"`## {name}` keeps a placeholder: {hit.group(0)!r}")
+    if not problems and positions != sorted(positions):
+        problems.append("the four sections are out of order: " + ", ".join(DESCRIPTION))
+    if problems:
+        report.fail(
+            "description",
+            "; ".join(problems)
+            + " — every description says, without assuming the diff, what the change is about, "
+            "what was done, why that way, and what to check (ADR-0017 §7)",
+        )
+    else:
+        report.ok("the description says what, what was done, why, and what to check")
+
+
 def check_pull_request(
     body: str, draft: bool | None, open_docs: list[Document], report: Report
 ) -> None:
@@ -768,7 +824,9 @@ def main(argv: list[str] | None = None) -> int:
     open_needs, provided_needs = check_needs(report)
     check_credentials(report, [*open_needs, *provided_needs])
     if args.pr_body is not None:
-        check_pull_request(args.pr_body.read_text(encoding="utf-8"), args.draft, open_docs, report)
+        body = args.pr_body.read_text(encoding="utf-8")
+        check_description(body, report)
+        check_pull_request(body, args.draft, open_docs, report)
     if args.forbid_open_blocking:
         for doc in open_docs:
             if doc.category == "BLOCKING":

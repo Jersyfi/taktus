@@ -1,9 +1,10 @@
 # Status
 
-**As of:** 2026-09-29
 **Kept current by:** every pull request that changes the state of the project; `make
-gate-status` fails when this file was not touched by one that did, and when section 3 stores a
-list instead of saying where it is (DEC-0026)
+gate-status` fails when this file was not touched by one that did, when section 3 stores a list
+instead of saying where it is (DEC-0026), and when the file carries a line every pull request
+rewrites — a date, a running list of decisions (DEC-0027). How current it is: the date of its last
+commit. What was decided when: the register's index, `docs/decisions/README.md`.
 
 This is the one file that says where the project stands and what is needed from the owner.
 It states facts. Where something is not known, it says so. The roadmap (`docs/roadmap.md`)
@@ -99,24 +100,45 @@ bounded by *Where this promise ends*, with a gate.
 | a live run of the coding worker against its real agent in CI | the gate runs the stand-in; a live run needs a credential CI does not have |
 | governance and anchors in the product | the anchors exist for this repository as documents; nothing in the product evaluates an anchor at a step boundary yet |
 
-**Decided since the last version:** DEC-0026 (#26): every pull request targets `main`, CI fails one that does not, and the list of what is open is generated and never stored in this file — the cause of the merge of 2026-09-27, in which #26 conflicted, #39 landed in #26's branch and #40 was closed unmerged. DEC-0023 (#26, formerly #40): Taktus runs on the owner's integration
-server, control plane and execution in namespaces of one cluster — a kernel boundary between
-them protects nothing that is at risk while both the code and the data are the owner's, and
-the record names the three situations that would change that. DEC-0024 (#26, formerly #40): ADR-0025's
-permission names any administrator that is not this instance, including a person, and its
-conditions are about the boundary rather than a count of clusters. DEC-0020 (#26): a branch the connector writes keeps the
-mode each file has in the base, so that an executable a change touches stays executable.
-DEC-0022 (#26): the `endpoint` execution kind isolates nothing of its own, `tools/first_run.sh`
-gives it none, and ADR-0002's isolation rule reaches only the adapters that start a unit.
-DEC-0025 (#26): the description P-03 writes carries the sections this repository's checks
-require, and the worker's summary is the description.
-DEC-0018 (#23): one pattern for every
-credential file variable, `TAKTUS_CREDENTIAL_<NAME>_FILE`, whoever reads it — a documentation
-defect, corrected, with the operator-visible half recorded as the notice NTC-0003. DEC-0019 (#23):
-the purpose `reasoning` is served by the smaller model of the family, the cheapest that does
-the job, revisited on the evidence of the runs. **Open:** DEC-0021 (#26, issue #27) — must a
-pull request Taktus opens carry a status update like any other? Provisionally yes; the work
-continues on that answer.
+**What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
+each with the pull request that recorded it. **Open:** DEC-0021 (issue #27) — must a pull request
+Taktus opens carry a status update like any other? Provisionally yes. DEC-0028, DEC-0029 and
+DEC-0030, raised by the pull request that brought in the vision layer; below.
+
+**The vision layer and the use cases.** Since the pull request that brought in `docs/vision/`,
+the repository says why Taktus exists — fourteen principles, each with its reason and what it
+forbids — and holds what it must do as use cases with a state that is derived, not claimed. That
+answers, for the first time, how much of the vision stands:
+
+- **Every one of the fourteen principles is served by at least one use case**; `make gate-vision`
+  fails when one is not.
+- **Thirteen use cases exist in the new format. None is verified and none is built.** Four are
+  *building* — part of what they require is built and named tests prove that part: UC-1.1
+  commands from any channel, UC-4.5 halt or escalate at the boundary, UC-6.1 the complete activity
+  log, UC-8.9 changing a vendor breaks nothing. Nine are *specified* and nothing of them is built.
+- **Principles served only by specified use cases**, so that nothing of them stands yet beyond the
+  text: P2 AI at the core, P5 coupled or decoupled control, P7 transparency fitted to the role, P8
+  repeatability and cost control, P9 efficiency over verbosity, P14 people at the centre. The
+  others — P1, P3, P4, P6, P10, P11, P12, P13 — have a use case in *building*.
+- The requirements of the thirteen are the owner's decision, asked as DEC-0030 and in force
+  provisionally. `make usecases` prints the list with states; `make gate-vision` prints which use
+  case serves which principle.
+- **Not yet in the format**: UC-4.6, UC-4.11 to UC-4.13, UC-6.8, UC-6.9 and UC-7.2, still in the
+  files they were first written in, and every other use case of the original definition, which is
+  not in the repository at all.
+
+**The migration of the project definition** into `docs/vision/` and `docs/usecases/` runs in four
+pull requests (`docs/usecases/MIGRATION.md`):
+
+1. **`vision/`, the use case format, the two gates, the rules, the three findings** — done in the
+   pull request that brought in the vision layer. The findings: reporting is a component and
+   enablement is not (ADR-0029); use case numbers are reconciled, the repository's winning, in
+   `docs/usecases/NUMBERING.md`.
+2. **The use cases of `process`, `run` and `governance`** — next; the ones closest to what is built,
+   so contradictions surface early.
+3. **`command`, `identity`, `catalog`, `accounting`.**
+4. **`knowledge`, `value`, `ledger`, `reporting`, and what moves into `blueprints/`**; then
+   `MIGRATION.md` is deleted.
 
 **The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) ran on
 its schedule for the first time on 2026-09-28, green, in 25 seconds — started by the host at
@@ -124,24 +146,23 @@ its schedule for the first time on 2026-09-28, green, in 25 seconds — started 
 
 ## 2. The next pull requests
 
-1. **#26, which now carries four things**, and is the one pull request to merge next. The
-   four findings of the first live run: the branch write that dropped a file's mode
-   (DEC-0020, corrected with a test), the open question whether a pull request Taktus opens
-   must carry a status update (DEC-0021, provisional answer in force), the isolation the
-   endpoint worker does not provide (DEC-0022, corrected), and the description the
-   repository's own checks refused (DEC-0025, corrected). The first run's report
-   (`docs/runs/first-run.md`, NTC-0004), which the owner merged as #39 on 2026-09-27 and which
-   landed in #26's branch because that was its base. The target and the deployment plan
-   (DEC-0023, DEC-0024, NEED-0007, NEED-0008, NEED-0004 closed), which were #40 until the host
-   closed it unmerged. And the fix for why all of that went wrong (DEC-0026): every pull
-   request targets `main`, and the list of what is open is printed, not stored here.
-2. **The deployment itself**: the chart, the registry build and the cluster execution
-   adapter, against `deploy/k8s/README.md` and the platform as the read-only inspection of
-   2026-09-23 found it.
-3. **`0.2.0` starts with the budget** (ADR-0005, second amendment: the estimate reserved at
-   admission, a currency budget converted into tokens and enforced there) and **the scheduler
-   starting runs from a bundle's trigger**, so that the removal test runs weekly without a
-   workflow. The budget now has measurements to be built against, and §1 says what they are.
+1. **The vision layer, step 1 of the migration.** `docs/vision/`, checked against the ADRs and
+   corrected where the drafts disagreed with the repository; the use case format and thirteen use
+   cases; `make gate-vision` and `make gate-usecases`; the rule that a use case is never changed in
+   the pull request that implements it, and the rule that a decision request names what was
+   attempted; ADR-0029; the status file without the lines every pull request rewrote (DEC-0027);
+   every pull request description in four sections a reader can act on without the diff (ADR-0017
+   §7).
+2. **Step 2 of the migration**: the use cases of `process`, `run` and `governance`, starting from
+   what is already written in `UC-4-result-defects.md` and `UC-4-exactness-statement.md`, and
+   with UC-4.5 and UC-8.5 reconciled with ADR-0021, ADR-0005 and ADR-0010.
+3. **#38**, which Taktus opened for issue #11 on 2026-09-23 and which conflicts with `main` on this
+   file's header: rebased on `main`, its status sentence rewritten in the current shape. Its
+   description was rewritten on 2026-09-29 so that it can be acted on without the diff.
+4. **The deployment itself**: the chart, the registry build and the cluster execution adapter,
+   against `deploy/k8s/README.md`.
+5. **`0.2.0` starts with the budget** (ADR-0005, second amendment) **and the scheduler starting
+   runs from a bundle's trigger**, so that the removal test runs weekly without a workflow.
 
 ## 3. Needed from the owner
 
@@ -203,5 +224,9 @@ rather than enforced, anything marked provisional.
 | `deploy/k8s` renders a chart | `deploy/k8s/README.md` | **a specification, not a chart.** The file is the plan the next pull request builds: the values keys, two namespaces with a restricted admission policy, default-deny network policies both ways, no service-account token in a job, a limit and a deadline on every job, and the egress proxy that makes a host list mean something. Nothing under `deploy/k8s/` renders yet |
 | the cluster execution adapter | ADR-0002's execution table, `deploy/k8s/README.md` | does not exist; the port and two adapters do. The plan says what it must refuse: a job it cannot give limits to, and a frame whose hosts it cannot enforce |
 | a live run of the coding worker in CI | `docs/roadmap.md` | the gate runs the stand-in; unchanged until CI has a credential, which is a decision not yet raised. The worker has now run live eight times outside CI (`docs/runs/first-run.md`) |
-| the components `accounting`, `decision`, `identity`, `knowledge`, `value` | `docs/architecture/project-structure.md` | packages with an `__init__.py` and nothing else |
+| the components `accounting`, `decision`, `identity`, `knowledge`, `value` | `docs/architecture/project-structure.md` | packages with an `__init__.py` and nothing else; `reporting` (ADR-0029) has no package yet |
+| principle 14 is enforced in the data model, not in a policy | `CLAUDE.md` §5, `docs/architecture/governance.md` §6, ADR-0015 | nothing enforces it yet, because nothing measures anything about a person yet; UC-13.5 and UC-6.4 require the test that will |
+| the legal-anchor catalogue holds | `docs/architecture/governance.md` §2, `docs/decisions/anchors.md` M4.4 | not legally reviewed for any jurisdiction; who reviews it is DEC-0029 |
+| every principle is served by a use case, and a use case's state says how much of it stands | `docs/vision/README.md`, `docs/usecases/README.md` | the gates check that each principle is served and that a `verified` use case's tests pass; they cannot check that a use case *covers* its principle, or that a `building` use case's tests prove the part it says they prove |
+| a pull request description can be acted on without the diff | ADR-0017 §7 | the gate checks that the four sections are there, filled and in order; not that they are readable without the diff |
 | every credential's file variable follows `TAKTUS_CREDENTIAL_<NAME>_FILE` | `CREDENTIALS.md`, DEC-0018 | true in the tree, enforced by reading. The coverage gate fails a variable the register does not describe; it does not check the *shape* of the name, so a seventh variable could break the pattern again without a red gate |

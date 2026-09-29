@@ -44,6 +44,10 @@ Three classes:
 | **Strategic anchor** | conceptual and strategic direction | scope · accepting or rejecting a feature · version assignment · architectural change · releases · licensing and pricing · public communication |
 | **Correction anchor** | correcting a result after it has left the system (ADR-0022) | re-issuing an invoice a customer received · re-sending a partner file · restating a value a tax authority holds · retracting a delivered report |
 
+The legal-anchor class above is the project's own list, not legally reviewed for any jurisdiction.
+Who reviews it, and when, is open as DEC-0029; until it is answered, no finance or personnel
+blueprint is used by a tenant.
+
 The correction anchor has a checkable trigger. A result *has left the system* when the ledger
 holds an egress entry for it or for anything derived from it: `egress.write` (a connector wrote
 outward), `egress.delivery` (a channel delivered), `egress.read` (an external system read through
