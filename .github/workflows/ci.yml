@@ -35,6 +35,20 @@ jobs:
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
+      # A pull request targets main, and only main (DEC-0026). A pull request stacked on another
+      # one's branch loses its history when that one is squash-merged, merges into the branch
+      # instead of main when it is merged first, and is closed by the host when that branch is
+      # deleted. All three happened on 2026-09-27. A change that needs an unmerged change waits
+      # for it and is then rebased on main.
+      - name: pull request targets main
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$BASE_REF" != main ]; then
+            echo "this pull request targets '$BASE_REF'; every pull request targets main (DEC-0026)"
+            exit 1
+          fi
       - name: pull request description
         if: github.event_name == 'pull_request'
         env:

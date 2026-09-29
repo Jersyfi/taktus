@@ -60,7 +60,7 @@ gate-decisions: need-uv ## Decision requests are complete, recorded, and a block
 gate-adrs: need-uv ## Every ADR that makes a promise states where the promise ends
 	$(UV) run tools/check_adrs.py
 
-gate-status: need-uv ## docs/status.md is current: its shape, its milestone, its date, section 3 as the register generates it, and touched by every change to the state of the project
+gate-status: need-uv ## docs/status.md is current: its shape, its milestone, its date, section 3 pointing at `make status` rather than storing a list, and touched by every change to the state of the project
 	$(UV) run tools/check_status.py $(if $(BASE),--base $(BASE))
 
 # The development database (deploy/docker/compose.dev.yml). `db-down` keeps the data volume:
@@ -103,10 +103,12 @@ lint: env ## Static analysis and types
 	$(UV) run ruff format --check .
 	$(UV) run mypy
 
-generate: env ## Regenerate what is generated: api/openapi.yaml from the REST interface, section 3 of docs/status.md from the register (tools/README.md)
+generate: env ## Regenerate what is generated and committed: api/openapi.yaml from the REST interface (tools/README.md)
 	$(UV) run python tools/generate.py
-	$(UV) run tools/check_status.py --write
+
+status: need-uv ## Print what is needed from the owner, from the register: the last section of every pull request description (DEC-0026)
+	@$(UV) run tools/check_status.py --print
 
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status test ## Everything CI runs
 
-.PHONY: help doctor env install test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status db-up db-down up up-dev down verify-compose migrate lint generate gates
+.PHONY: help doctor env install status test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status db-up db-down up up-dev down verify-compose migrate lint generate gates

@@ -1,10 +1,9 @@
 # Status
 
-**As of:** 2026-09-23
-**Accounts for:** `main` after #22, and the pull requests that write this version (#23, #26, #39, #40)
+**As of:** 2026-09-29
 **Kept current by:** every pull request that changes the state of the project; `make
-gate-status` fails when this file was not touched by one that did, and when section 3 differs
-from the register
+gate-status` fails when this file was not touched by one that did, and when section 3 stores a
+list instead of saying where it is (DEC-0026)
 
 This is the one file that says where the project stands and what is needed from the owner.
 It states facts. Where something is not known, it says so. The roadmap (`docs/roadmap.md`)
@@ -93,17 +92,17 @@ bounded by *Where this promise ends*, with a gate.
 | the model contract as a schema with a conformance suite | `contracts/model/v1` is a README that says the schema is not yet written; the port and one adapter exist |
 | the events contract | `contracts/events/v1` is a placeholder |
 | the cluster execution adapter | does not exist; the port and two adapters do. `deploy/k8s/README.md` §7 specifies it, including what it must refuse |
-| the container registry build and the Helm chart | `deploy/k8s/README.md` is now the **specification** for both, written against a platform read in full on 2026-09-23 (#40); nothing under `deploy/k8s/` renders yet, and images are still built locally by `make up` and by the tests |
+| the container registry build and the Helm chart | `deploy/k8s/README.md` is now the **specification** for both, written against a platform read in full on 2026-09-23 (#26); nothing under `deploy/k8s/` renders yet, and images are still built locally by `make up` and by the tests |
 | the identity component | a provisional identity per tenant stands in (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013) |
 | time triggers | the scheduler leads and ticks; nothing is scheduled; the weekly removal test is a CI workflow instead |
 | event reactions | the automation role starts and waits; the outbox exists and nothing writes it; an intake event is completed into a command by hand |
 | a live run of the coding worker against its real agent in CI | the gate runs the stand-in; a live run needs a credential CI does not have |
 | governance and anchors in the product | the anchors exist for this repository as documents; nothing in the product evaluates an anchor at a step boundary yet |
 
-**Decided since the last version:** DEC-0023 (#40): Taktus runs on the owner's integration
+**Decided since the last version:** DEC-0026 (#26): every pull request targets `main`, CI fails one that does not, and the list of what is open is generated and never stored in this file — the cause of the merge of 2026-09-27, in which #26 conflicted, #39 landed in #26's branch and #40 was closed unmerged. DEC-0023 (#26, formerly #40): Taktus runs on the owner's integration
 server, control plane and execution in namespaces of one cluster — a kernel boundary between
 them protects nothing that is at risk while both the code and the data are the owner's, and
-the record names the three situations that would change that. DEC-0024 (#40): ADR-0025's
+the record names the three situations that would change that. DEC-0024 (#26, formerly #40): ADR-0025's
 permission names any administrator that is not this instance, including a person, and its
 conditions are about the boundary rather than a count of clusters. DEC-0020 (#26): a branch the connector writes keeps the
 mode each file has in the base, so that an executable a change touches stays executable.
@@ -119,37 +118,27 @@ the job, revisited on the evidence of the runs. **Open:** DEC-0021 (#26, issue #
 pull request Taktus opens carry a status update like any other? Provisionally yes; the work
 continues on that answer.
 
-**The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) was
-merged on 2026-09-21 after that day's hour had passed. It has not run yet. Its first scheduled
-run is 2026-09-28.
+**The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) ran on
+its schedule for the first time on 2026-09-28, green, in 25 seconds — started by the host at
+12:51 UTC, not 06:00, which is the host's scheduling and not the workflow's.
 
 ## 2. The next pull requests
 
-1. **#23**, which wires the three provided credentials into `.env` under one naming pattern,
-   each confirmed by its own section 7, records the model choice, and raises the two renewals.
-   Without it the credentials sit in files nothing reads.
-2. **#26.** The four findings of the first live run: the branch write that dropped
-   a file's mode and killed the pipeline (DEC-0020, corrected with a test), the question of
-   whether a pull request Taktus opens must carry a status update (DEC-0021, open, provisional
-   answer in force), and the isolation the endpoint worker does not provide and nobody said so
-   (DEC-0022, corrected), and the description P-03 wrote that this repository's own checks
-   refused (DEC-0025, corrected). Without the first and the last, no pull request Taktus opens
-   can pass its own pipeline.
-3. **This one (#39).** The first live run's report, `docs/runs/first-run.md`: what happened,
-   what each step consumed against what was estimated, every point where a person had to step
-   in, what was slow or surprising, and what the removal test shows now that real processes
-   stand behind it. Run records move into `docs/runs/` (NTC-0004). Without it the only record
-   of the day is eight closed pull requests and a ledger.
-4. **This one (#40).** Where Taktus runs and what separates it from what it builds, recorded
-   with what would change it (DEC-0023); ADR-0025 corrected to say that the rule is about who
-   administers what runs and not about how many clusters there are (DEC-0024); and
-   `deploy/k8s/README.md` as the specification for the pull request that builds the chart, the
-   registry build and the cluster execution adapter. NEED-0004 is closed as superseded, and the
-   two things the inspection showed are needed are raised as NEED-0007 and NEED-0008.
-5. **The deployment itself**: the chart, the registry build and the cluster execution
-   adapter, against the plan of #4 and the platform as the read-only inspection of 2026-09-23
-   found it.
-6. **`0.2.0` starts with the budget** (ADR-0005, second amendment: the estimate reserved at
+1. **#26, which now carries four things**, and is the one pull request to merge next. The
+   four findings of the first live run: the branch write that dropped a file's mode
+   (DEC-0020, corrected with a test), the open question whether a pull request Taktus opens
+   must carry a status update (DEC-0021, provisional answer in force), the isolation the
+   endpoint worker does not provide (DEC-0022, corrected), and the description the
+   repository's own checks refused (DEC-0025, corrected). The first run's report
+   (`docs/runs/first-run.md`, NTC-0004), which the owner merged as #39 on 2026-09-27 and which
+   landed in #26's branch because that was its base. The target and the deployment plan
+   (DEC-0023, DEC-0024, NEED-0007, NEED-0008, NEED-0004 closed), which were #40 until the host
+   closed it unmerged. And the fix for why all of that went wrong (DEC-0026): every pull
+   request targets `main`, and the list of what is open is printed, not stored here.
+2. **The deployment itself**: the chart, the registry build and the cluster execution
+   adapter, against `deploy/k8s/README.md` and the platform as the read-only inspection of
+   2026-09-23 found it.
+3. **`0.2.0` starts with the budget** (ADR-0005, second amendment: the estimate reserved at
    admission, a currency budget converted into tokens and enforced there) and **the scheduler
    starting runs from a bundle's trigger**, so that the removal test runs weekly without a
    workflow. The budget now has measurements to be built against, and §1 says what they are.
@@ -161,21 +150,13 @@ something only the owner can provide — a credential, an account, access, a pur
 information. A decision request is a question only the owner can answer. Each has an issue
 assigned to the owner with the steps.
 
-<!-- generated by tools/check_status.py from docs/decisions/open/; `make generate` writes it -->
-| Record | What | Needed by | Kind | Issue |
-|---|---|---|---|---|
-| NEED-0005 | Renew the coding agent's key | 2026-10-15 | credential | #24 |
-| NEED-0007 | A kubeconfig for the deployment identity | 2026-10-20 | access | #41 |
-| NEED-0008 | A public name for the Taktus instance | 2026-10-20 | information | #42 |
-| DEC-0021 | Must a pull request Taktus opens update the status report? | 2026-10-21 | NON-BLOCKING | #27 |
-| NEED-0006 | Renew the repository connector's token | 2026-12-14 | credential | #25 |
-<!-- end generated -->
+**The list is not kept in this file.** It is generated from the open records of the register
+and carried in three places, none of which two pull requests can edit at once (DEC-0026):
 
-The three credentials (NEED-0001 to NEED-0003) are one set: the first live run needs all of
-them, and one without the others changes nothing. Each names the file to create and the line
-to add to `.env`; none asks for a value anywhere a session can read it. NEED-0004 is
-information, not a secret, and goes into a private place, not this repository. No decision
-request is open.
+- the last section of every pull request description, `## Needed from the owner`, checked by
+  CI against the branch's register;
+- [the open issues labelled `needs-owner` or `decision-request`](https://github.com/Jersyfi/taktus/issues?q=is%3Aopen+label%3Aneeds-owner%2Cdecision-request);
+- `make status` in a checkout, which prints it.
 
 ## 4. Blocked
 
@@ -214,7 +195,7 @@ rather than enforced, anything marked provisional.
 | several instances with load spread across them, a restart without data loss | ADR-0013 A | proven for one instance; the election of a scheduler is proven with two; runners on several instances are `0.2.0` |
 | the coding worker's boundaries lie between tool calls; a stop inside a tool call waits up to the ceiling; money is known only at the end | `workers/claudecode/README.md` | documented limits of the agent, not enforced by Taktus; admission control on a currency limit works against the estimate only |
 | `frame.allowed_hosts` names the hosts a unit may reach | DEC-0008, `contracts/worker/v1` | enforced by the `container` adapter through a per-job egress proxy. With the `process` and `endpoint` kinds it is declared and not enforced, and `tools/first_run.sh` uses `endpoint` — so the first live run's worker reached whatever the machine could (DEC-0022) |
-| the weekly removal test runs weekly | `blueprints/self-operation/README.md` | has run twice, both times by hand — 2026-09-21 with one example process, 2026-09-23 with P-02 and P-03 registered; the workflow's first scheduled run is 2026-09-28 |
+| the weekly removal test runs weekly | `blueprints/self-operation/README.md` | ran by hand on 2026-09-21 and 2026-09-23, and on its schedule for the first time on 2026-09-28, against the example process and the reference worker (so its `worker.*` row says nothing, issue #36); the scheduler of `0.2.0` does not start it yet |
 | exactness is a result, not a switch: the exactness statement | UC-4.13, UC-6.9 | specified; `0.5.0` |
 | result defects are detected and remediated under the correction anchor | ADR-0021 to ADR-0023 | the terms and the anchor exist; detection and repair are `0.5.0` |
 | the model contract has a schema and a conformance suite | `contracts/model/v1/README.md` | not written; the port is held to nothing but its tests |
