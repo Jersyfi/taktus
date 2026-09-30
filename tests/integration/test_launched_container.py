@@ -26,10 +26,11 @@ def wiring(engine_socket: str, image: str) -> LocalWiring:
                 "TAKTUS_EXECUTION_MEMORY_MB": "128",
                 "TAKTUS_EXECUTION_WALL_SECONDS": "120",
                 # The reference worker plans 0.3 s a step whatever the command, and a command
-                # in a container takes longer: an underestimating worker. Half the budget held
-                # back lets the worker use twice its reservation before it must halt (W-14), so
-                # that this test proves the stop and the resume and nothing about the budget.
-                "TAKTUS_BUDGET_MARGIN": "0.5",
+                # in a container takes longer: an underestimating worker. Four fifths of the
+                # budget held back lets the worker use five times its reservation before it
+                # must halt (W-14), so that this test proves the stop and the resume and nothing
+                # about the budget; the budget below is raised to leave the line above the step.
+                "TAKTUS_BUDGET_MARGIN": "0.8",
             }
         )
     )
@@ -41,6 +42,7 @@ async def test_a_run_with_a_worker_step_executes_in_a_container_stops_and_resume
     document = bundle(with_overreach=False)
     # The level at which nothing but an isolated unit is allowed.
     document["autonomy"] = {"level": 4, "reason": "the test needs the level"}
+    document["limits"] = {"compute": {"seconds": 20, "resource_class": "cpu.small"}}
     compute = next(s for s in document["steps"] if s["id"] == "compute")
     compute["work"]["task"]["inputs"] = {
         "commands": ["expr 6 '*' 7", "sleep 0.5; echo two", "sleep 0.5; echo three", "echo four"]
@@ -48,12 +50,16 @@ async def test_a_run_with_a_worker_step_executes_in_a_container_stops_and_resume
     local = wiring(engine_socket, reference_worker_image)
     async with local.services(state_dir=tmp_path / "state", worker_endpoint="") as services:
         running = asyncio.create_task(start(services, document))
-        while True:
-            async with services.work.transaction(TENANT):
-                runs = await services.runs.list(TENANT)
-            if runs and runs[0].step_run("compute").state is StepState.RUNNING:
-                break
-            await asyncio.sleep(0.05)
+        async with asyncio.timeout(120):
+            while True:
+                if running.done():
+                    ended = running.result()
+                    raise AssertionError(f"the run ended before its step ran: {ended.reason}")
+                async with services.work.transaction(TENANT):
+                    runs = await services.runs.list(TENANT)
+                if runs and runs[0].step_run("compute").state is StepState.RUNNING:
+                    break
+                await asyncio.sleep(0.05)
         await services.engine.request_stop(runs[0].id)
         run = await running
         assert run.state is RunState.HALTED and run.cause is Cause.STOP

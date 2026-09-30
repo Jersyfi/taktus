@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from taktus.components.accounting.application.service import CostOfRunHandler
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import ReportCapacityHandler
 from taktus.components.process.application.service.register_version import (
@@ -49,6 +50,8 @@ class Services:
     queued: bool = False
     """Whether `engine.submit` has a queue a daemon claims from: true with a database, where
     `taktusd` runs; false in memory, where nothing else executes."""
+    cost: CostOfRunHandler | None = None
+    """What a run cost, recomputed from the ledger at its price table (`taktusctl cost`)."""
     identities: IdentityResolver | None = None
     """Who a command line invocation acts as, when `--identity` does not say: today the
     provisional operator identity of the tenant (DEC-0013); None when none is configured,

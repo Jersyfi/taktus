@@ -309,3 +309,23 @@ def test_nothing_executes_without_an_identity(
     assert "TAKTUS_PROVISIONAL_IDENTITY=default=<identity>" in completed.stderr
     assert "--identity" in completed.stderr
     assert not (tmp_path / "state" / "ledger.json").exists()
+
+
+async def test_what_a_run_cost_is_read_back_from_the_ledger(
+    worker_endpoint: str, tmp_path: Path
+) -> None:
+    from taktus.adapters.driving.cli.cost_command import render
+    from taktus.components.accounting.application.service import CostOfRun
+
+    async with LocalWiring().services(
+        state_dir=tmp_path / "state", worker_endpoint=worker_endpoint
+    ) as services:
+        run = await start(services, bundle())
+        assert services.cost is not None
+        cost = await services.cost.execute(CostOfRun(run.id, TENANT))
+    assert cost.meter.steps["worker"] == 1 and cost.meter.compute_seconds["cpu.small"] > 0
+    assert cost.priced is None and cost.unpriced == (), (
+        "no tokens: nothing to price, nothing hidden"
+    )
+    shown = render(cost)
+    assert shown.startswith(f"run      {run.id}") and "compute  " in shown

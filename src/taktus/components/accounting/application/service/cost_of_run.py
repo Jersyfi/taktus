@@ -77,13 +77,12 @@ class CostOfRunHandler:
             unpriced=tuple(unpriced),
         )
 
-    async def _table_of(
-        self, entries: list[LedgerEntry]
-    ) -> tuple[PriceTable | None, str | None]:
-        statements = [e for e in entries if e.kind == "budget.set" and e.content_digest]
-        if not statements:
+    async def _table_of(self, entries: list[LedgerEntry]) -> tuple[PriceTable | None, str | None]:
+        statements = [e.content_digest for e in entries if e.kind == "budget.set"]
+        latest = next((d for d in reversed(statements) if d is not None), None)
+        if latest is None:
             return None, None
-        content = await self._objects.get(statements[-1].content_digest)
+        content = await self._objects.get(latest)
         if content is None:
             return None, None
         reference = json.loads(content).get("price_table")

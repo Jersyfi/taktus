@@ -50,6 +50,7 @@ from taktus.adapters.driven.postgres import (
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.cli.wiring import CapacityServices, NotOperable, Services
+from taktus.components.accounting.application.service import CostOfRunHandler
 from taktus.components.catalog.application.service import RecordRemovalResultHandler
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
@@ -209,6 +210,9 @@ class LocalWiring:
                 ids=ids,
                 storage=stores.storage,
                 queued=stores.queue is not None,
+                cost=CostOfRunHandler(
+                    ledger, MemoryObjectStore(state_dir / "objects"), stores.work
+                ),
                 # PROVISIONAL (DEC-0013): the configured operator identity, until the identity
                 # component exists. None when nothing is configured.
                 identities=ProvisionalOperatorIdentity(operators) if operators else None,
