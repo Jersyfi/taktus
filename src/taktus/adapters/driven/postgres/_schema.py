@@ -24,6 +24,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    Float,
     BigInteger,
     Boolean,
     Column,
@@ -202,6 +203,7 @@ run = Table(
     Column("identity", Text, nullable=False),
     Column("autonomy_level", Integer, nullable=False),
     Column("budget", JSONB, nullable=False),
+    Column("margin", Float, nullable=False, server_default="0"),
     Column("steps", JSONB, nullable=False),
     Column("work", JSONB, nullable=False),
     Column("inputs", JSONB, nullable=False),
@@ -228,6 +230,7 @@ step_run = Table(
     Column("adapter", Text),
     Column("assignment_id", Text),
     Column("estimate", JSONB),
+    Column("reservation", JSONB),
     Column("consumption", JSONB),
     Column("reason", Text),
     _at("started_at", nullable=True),

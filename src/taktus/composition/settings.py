@@ -10,12 +10,14 @@ does, and a test hands in a mapping.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
+from taktus.ports.model import PriceTable
 
 
 class Role(StrEnum):
@@ -152,6 +154,17 @@ class ModelSettings:
     """`credential.model_api_key`: the bearer credential, from
     `TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE`; absent for an endpoint that needs none."""
     credential_source: str | None
+    billing: str = "per_token"
+    """`TAKTUS_MODEL_BILLING`: how the endpoint's provider bills — `per_token`, `per_window`
+    (a share of a subscription's time window) or `per_hardware_time` (own hardware). It decides
+    which budget can be enforced, and the run says so when its budget is set."""
+    output_cap: str = "soft"
+    """`TAKTUS_MODEL_OUTPUT_CAP`: whether the provider holds the output limit a call sets,
+    reasoning included — `hard`, `soft` or `none`. `soft` unless the provider's terms say
+    otherwise (docs/research/2026-09-30-what-providers-allow.md)."""
+    provider_limit: str = "unknown"
+    """`TAKTUS_MODEL_PROVIDER_LIMIT`: what the provider enforces itself over a month — `hard`,
+    `alert`, `none`, `unknown`. Information only; Taktus never relies on it."""
 
     def effective(self) -> list[tuple[str, str]]:
         credential = "" if self.credential is None else f"*** (from {self.credential_source})"
@@ -159,8 +172,63 @@ class ModelSettings:
             ("TAKTUS_MODEL_ENDPOINT", self.endpoint or ""),
             ("TAKTUS_MODEL_NAME", self.name),
             ("TAKTUS_MODEL_PURPOSES", ",".join(self.purposes)),
+            ("TAKTUS_MODEL_BILLING", self.billing),
+            ("TAKTUS_MODEL_OUTPUT_CAP", self.output_cap),
+            ("TAKTUS_MODEL_PROVIDER_LIMIT", self.provider_limit),
             ("TAKTUS_CREDENTIAL_MODEL_API_KEY", credential),
         ]
+
+
+@dataclass(frozen=True)
+class BudgetSettings:
+    """What a budget is held with: the price table money is computed at, and the named safety
+    margin subtracted from every budget before the first step is admitted (ADR-0005)."""
+
+    price_table: Path | None
+    """`TAKTUS_PRICE_TABLE`: a file in the shape of `contracts/model/v1/Model.json#/$defs/
+    PriceTable`. Absent: no model has a price, a currency budget cannot be converted, and the
+    run says so when its budget is set."""
+    margin: float
+    """`TAKTUS_BUDGET_MARGIN`: the share of every limit held back, 0 to 0.9; provisional 0.10
+    until DEC-0034 is answered."""
+
+    def table(self) -> PriceTable | None:
+        """The price table the file holds, validated; None when none is configured."""
+        if self.price_table is None:
+            return None
+        try:
+            document = json.loads(self.price_table.read_text(encoding="utf-8"))
+            return PriceTable.model_validate(document)
+        except (OSError, ValueError) as error:
+            raise ConfigurationError(
+                "TAKTUS_PRICE_TABLE",
+                f"{self.price_table} is not a price table (contracts/model/v1/Model.json#/$defs/"
+                f"PriceTable): {str(error)[:200]}",
+            ) from error
+
+    def effective(self) -> list[tuple[str, str]]:
+        return [
+            ("TAKTUS_PRICE_TABLE", "" if self.price_table is None else str(self.price_table)),
+            ("TAKTUS_BUDGET_MARGIN", f"{self.margin:g}"),
+        ]
+
+
+DEFAULT_MARGIN = 0.10
+"""The safety margin until the owner decides its default (M3.10): DEC-0034, provisional."""
+
+
+def load_budget(configuration: Configuration) -> BudgetSettings:
+    reader = _Reader(configuration)
+    table = reader.text("price.table", "") or None
+    margin = reader.number("budget.margin", DEFAULT_MARGIN, low=0.0)
+    if margin > 0.9:
+        raise ConfigurationError(
+            configuration.name("budget.margin"),
+            f"{margin:g} holds back more than nine tenths of every budget; the most is 0.9",
+        )
+    return BudgetSettings(
+        price_table=None if table is None else Path(table).expanduser(), margin=margin
+    )
 
 
 MODEL_CREDENTIAL = "credential.model_api_key"
@@ -189,6 +257,13 @@ def load_model(configuration: Configuration) -> ModelSettings:
         purposes=reader.names("model.purposes", ("*",)),
         credential=configuration.secret(MODEL_CREDENTIAL),
         credential_source=configuration.source(MODEL_CREDENTIAL),
+        billing=reader.choice(
+            "model.billing", "per_token", ("per_token", "per_window", "per_hardware_time")
+        ),
+        output_cap=reader.choice("model.output.cap", "soft", ("hard", "soft", "none")),
+        provider_limit=reader.choice(
+            "model.provider.limit", "unknown", ("hard", "alert", "none", "unknown")
+        ),
     )
 
 
@@ -256,6 +331,7 @@ class Settings:
     telemetry: TelemetrySettings
     """Where spans are exported, if anywhere."""
     model: ModelSettings
+    budget: BudgetSettings
     """The model `llm` steps ask, if one is configured."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
@@ -296,6 +372,7 @@ class Settings:
             *self.execution.effective(),
             *self.telemetry.effective(),
             *self.model.effective(),
+            *self.budget.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
             (
                 "TAKTUS_PROVISIONAL_IDENTITY",
@@ -341,6 +418,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         execution=load_execution(configuration),
         telemetry=load_telemetry(configuration),
         model=load_model(configuration),
+        budget=load_budget(configuration),
         connectors=reader.connectors(),
         provisional_identity=load_provisional_identity(configuration),
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),

@@ -1,0 +1,6 @@
+{
+  "contract": "model/v1",
+  "input_count": "exact",
+  "output_cap": "hard",
+  "usage_kinds": ["input", "output"]
+}

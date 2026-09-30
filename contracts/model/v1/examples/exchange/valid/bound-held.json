@@ -1,0 +1,7 @@
+{
+  "declaration": { "contract": "model/v1", "input_count": "upper_bound", "output_cap": "hard",
+                   "usage_kinds": ["input", "output"], "billing": "per_token" },
+  "counted": 1840, "max_output_tokens": 256, "finish": "stop",
+  "usage": { "model": "example-small@2026-06", "tokens_in": 456, "tokens_out": 218,
+             "by_kind": { "input": 456, "output": 218 } }
+}

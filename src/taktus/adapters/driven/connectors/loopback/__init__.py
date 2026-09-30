@@ -89,12 +89,14 @@ DECLARATION = Capabilities.model_validate(
                 "name": LIST,
                 "capability": INTEGRATIONS,
                 "effect": "read",
+                "demand": {"quota_units": 1},
                 "summary": "Every integration configured in this instance, by family.",
             },
             {
                 "name": DESCRIBE,
                 "capability": INTEGRATIONS,
                 "effect": "read",
+                "demand": {"quota_units": 1},
                 "summary": "One integration: what it serves, its alternatives, the processes "
                 "that use it.",
             },
@@ -102,6 +104,7 @@ DECLARATION = Capabilities.model_validate(
                 "name": EXERCISE,
                 "capability": REMOVAL,
                 "effect": "read",
+                "demand": {"quota_units": 1},
                 "summary": "Withhold the integration, exercise the processes that use it, "
                 "restore it; the removal result.",
             },
@@ -109,6 +112,7 @@ DECLARATION = Capabilities.model_validate(
                 "name": RECORD,
                 "capability": MATURITY,
                 "effect": "read",
+                "demand": {"quota_units": 1},
                 "summary": "Record a removal result in the adapter's maturity and the ledger.",
             },
         ],

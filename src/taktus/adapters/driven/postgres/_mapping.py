@@ -425,6 +425,7 @@ class RunMapper:
                 "identity": document["identity"],
                 "autonomy_level": document["autonomy_level"],
                 "budget": document["budget"],
+                "margin": document.get("margin", 0.0),
                 "steps": document["steps"],
                 "work": document.get("work", {}),
                 "inputs": document.get("inputs", {}),
@@ -455,6 +456,7 @@ class RunMapper:
                     "adapter": sr.get("adapter"),
                     "assignment_id": sr.get("assignment_id"),
                     "estimate": sr.get("estimate"),
+                    "reservation": sr.get("reservation"),
                     "consumption": sr.get("consumption"),
                     "reason": sr.get("reason"),
                     "started_at": _at(sr.get("started_at")),
@@ -547,6 +549,7 @@ class RunMapper:
                 "identity": row.identity,
                 "autonomy_level": row.autonomy_level,
                 "budget": row.budget,
+                "margin": row.margin,
                 "steps": row.steps,
                 "work": row.work,
                 "inputs": row.inputs,
@@ -579,6 +582,7 @@ def _step_run_from(
             "adapter": row.adapter,
             "assignment_id": row.assignment_id,
             "estimate": row.estimate,
+            "reservation": row.reservation,
             "consumption": row.consumption,
             "artifacts": [
                 _present(

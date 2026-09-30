@@ -38,7 +38,7 @@ def test_submit_queues_the_run_in_a_database(postgres_url: str, tmp_path: Path) 
         try:
             run = await database.run(run_id)
             assert run is not None and run.state is RunState.PLANNED
-            assert [e.kind for e in await database.entries(run_id)] == ["run.created"]
+            assert [e.kind for e in await database.entries(run_id)] == ["run.created", "budget.set"]
             async with database.persistence.transaction(TENANT):
                 queue = PostgresQueue(database.persistence)
                 claimed = await queue.claim(TENANT, "probe", 50)

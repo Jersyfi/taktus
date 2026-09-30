@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from taktus.ports.model import Completion, Model, ModelError, Prompt
+from taktus.ports.model import Calculability, Completion, Model, ModelError, Prompt
+from taktus.shared.v1 import PriceKinds
 
 
 @dataclass
@@ -14,15 +15,41 @@ class FakeModel(Model):
     finish: str = "stop"
     unreachable: str | None = None
     prompts: list[Prompt] = field(default_factory=list)
+    declaration: Calculability = field(
+        default_factory=lambda: Calculability(
+            input_count="exact",
+            output_cap="hard",
+            usage_kinds=("input", "output"),
+            billing="per_token",
+        )
+    )
+    """What the fake says it can compute; a test sets `input_count="none"` to see the step
+    refused for want of an estimate, or `billing="per_window"` to see the budget say so."""
+
+    def calculability(self) -> Calculability:
+        return self.declaration
+
+    async def count(self, prompt: Prompt) -> int | None:
+        if self.declaration.input_count == "none":
+            return None
+        return _words(prompt)
 
     async def complete(self, prompt: Prompt) -> Completion:
         self.prompts.append(prompt)
         if self.unreachable is not None:
             raise ModelError(self.unreachable)
+        tokens_in = _words(prompt)
+        tokens_out = len(self.answer.split())
         return Completion(
             text=self.answer,
             model=self.name,
-            tokens_in=len(prompt.user.split()) + len((prompt.system or "").split()),
-            tokens_out=len(self.answer.split()),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            by_kind=PriceKinds(input=tokens_in, output=tokens_out),
             finish=self.finish,  # type: ignore[arg-type]
         )
+
+
+def _words(prompt: Prompt) -> int:
+    """Tokens counted as words: the fake's tokenizer, the same before and after the call."""
+    return len(prompt.user.split()) + len((prompt.system or "").split())

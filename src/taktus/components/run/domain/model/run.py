@@ -20,7 +20,9 @@ from taktus.shared.v1 import (
     Method,
     Step,
     StepId,
+    TokensByModel,
     Value,
+    add_tokens_by_model,
 )
 
 
@@ -38,6 +40,8 @@ class Cause(StrEnum):
     """Why a run halted or escalated. Tokens, so that the ledger can carry them."""
 
     LIMIT = "limit"
+    NO_ESTIMATE = "no_estimate"
+    """A step could not be estimated and was refused, not admitted (ADR-0005)."""
     STOP = "stop"
     FAILURE = "failure"
     CEILING = "ceiling"
@@ -86,6 +90,8 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
         (StepState.PLANNED, StepState.REJECTED),
         (StepState.REJECTED, StepState.ADMITTED),  # after a limit change, on resume
         (StepState.REJECTED, StepState.REJECTED),  # rejected again on resume
+        (StepState.FAILED, StepState.REJECTED),  # on retry, the estimate no longer fits
+        (StepState.STOPPED, StepState.REJECTED),  # on resume, the rest no longer fits
         (StepState.ADMITTED, StepState.RUNNING),
         (StepState.ADMITTED, StepState.REJECTED),  # the worker rejected what the core admitted
         (StepState.ADMITTED, StepState.STOPPED),  # the instance stopped before the step ran
@@ -137,6 +143,11 @@ class StepRun(Value):
     adapter: str | None = None
     assignment_id: AssignmentId | None = None
     estimate: ConsumptionQuantities | None = None
+    """What the step was estimated to use, as the adapter or the method said."""
+    reservation: ConsumptionQuantities | None = None
+    """What admission debited from the budget for the step: the estimate scaled by the measured
+    error of its adapter (ADR-0005). While the step runs the budget counts it as spent; when
+    the step ends its actual replaces it."""
     consumption: Consumption | None = None
     artifacts: tuple[Artifact, ...] = ()
     checkpoint: Checkpoint | None = None
@@ -173,6 +184,9 @@ class Run(Value):
     Every connector call carries it, and the target system's permissions for it stand."""
     autonomy_level: AutonomyLevel
     budget: Limits
+    margin: float = Field(default=0.0, ge=0.0, le=0.9)
+    """The share of every limit held back from the first step on; the run is held to the
+    budget less the margin (ADR-0005)."""
     steps: tuple[Step, ...] = Field(min_length=1)
     work: Mapping[StepId, Mapping[str, Any]] = Field(default_factory=dict)
     inputs: Mapping[str, Any] = Field(default_factory=dict)
@@ -248,13 +262,17 @@ class Run(Value):
         return None
 
     def consumed(self) -> ConsumptionQuantities:
-        """What every step so far used, summed per quantity. Compute seconds sum within the
-        budget's resource class only; a step in another class never passed admission."""
+        """What every step so far used, and every running step reserved, summed per quantity:
+        reserve, do not reconcile (ADR-0005). A step in flight counts as the larger of its
+        reservation and what it has reported so far; a step that ended counts as what it used.
+        Compute seconds sum within the budget's resource class only; a step in another class
+        never passed admission."""
         totals: dict[str, float | int] = {}
         currency: dict[str, float] = {}
+        by_model: TokensByModel | None = None
         resource_class = self.budget.compute.resource_class if self.budget.compute else None
         for step_run in self.step_runs:
-            used = step_run.consumption
+            used = _counted(step_run)
             if used is None:
                 continue
             for name in ("tokens_in", "tokens_out", "quota_units", "storage_bytes"):
@@ -267,10 +285,40 @@ class Run(Value):
                 totals["compute_seconds"] = (
                     totals.get("compute_seconds", 0.0) + used.compute_seconds
                 )
+            by_model = add_tokens_by_model(by_model, used.tokens_by_model)
         return ConsumptionQuantities.model_validate(
             {
                 **totals,
+                "tokens_by_model": by_model,
                 "currency": currency or None,
                 "resource_class": resource_class if "compute_seconds" in totals else None,
             }
         )
+
+
+def _counted(step_run: StepRun) -> ConsumptionQuantities | None:
+    """What a step counts against the budget: its actual once it ended; the larger of its
+    reservation and its actual so far while it is in flight."""
+    used = step_run.consumption
+    reserved = step_run.reservation
+    if step_run.state not in IN_FLIGHT or reserved is None:
+        return used
+    if used is None:
+        return reserved
+    larger: dict[str, object] = {}
+    for name in ("tokens_in", "tokens_out", "quota_units", "storage_bytes", "compute_seconds"):
+        values = [v for v in (getattr(used, name), getattr(reserved, name)) if v is not None]
+        if values:
+            larger[name] = max(values)
+    codes = set(used.currency or {}) | set(reserved.currency or {})
+    if codes:
+        larger["currency"] = {
+            code: max(
+                (used.currency or {}).get(code, 0.0), (reserved.currency or {}).get(code, 0.0)
+            )
+            for code in codes
+        }
+    if "compute_seconds" in larger:
+        larger["resource_class"] = used.resource_class or reserved.resource_class
+    larger["tokens_by_model"] = used.tokens_by_model
+    return ConsumptionQuantities.model_validate(larger)

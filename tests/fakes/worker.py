@@ -54,6 +54,9 @@ class FakeWorker:
     resource_class: str = "cpu.small"
     reject_with: str | None = None
     fail_at: str | None = None  # the inner step at which the assignment fails
+    halt_on_limit: str | None = None
+    """A consumption kind: the worker halts at its first boundary as if its running total would
+    cross its ceiling in that kind next (W-14)."""
     unreachable: str | None = None  # every call fails with this WorkerError, as a dead unit does
     on_event: Callable[[Event], Awaitable[None]] | None = None
     assignments: list[Assignment] = field(default_factory=list)
@@ -182,6 +185,18 @@ class FakeWorker:
                     **base(), type="step.boundary", step_id=inner.step_id, checkpoint_ref=checkpoint
                 )
             )
+            if self.halt_on_limit is not None and index < len(self.script) - 1:
+                yield await emit(
+                    AssignmentFinished(
+                        **base(),
+                        type="assignment.finished",
+                        outcome=Outcome.STOPPED,
+                        checkpoint_ref=checkpoint,
+                        reason=f"the next step would cross the {self.halt_on_limit} ceiling",
+                        limit=self.halt_on_limit,  # type: ignore[arg-type]
+                    )
+                )
+                return
             if assignment_id in self._stop_requested and index < len(self.script) - 1:
                 yield await emit(
                     AssignmentFinished(

@@ -1,0 +1,2 @@
+{ "model": "example-large@2026-08", "tokens_in": 1200, "tokens_out": 80,
+  "by_kind": { "input": 200, "cache_read": 1000, "output": 80 } }

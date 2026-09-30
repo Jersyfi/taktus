@@ -169,7 +169,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 36, "every setting is in the startup log"
+    assert len(effective) == 41, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -207,3 +207,25 @@ class _Capture:
         self._lines.append(message)
 
     debug = info = warning = error = critical = msg
+
+
+def test_the_budget_settings_are_validated_and_the_price_table_read(tmp_path: Path) -> None:
+    from taktus.composition.settings import load_budget
+
+    table = tmp_path / "prices.json"
+    table.write_text(
+        '{"version": "t-1", "valid_from": "2026-09-30T00:00:00Z", "currency": "usd", '
+        '"unit_tokens": 1000000, "source": "a test", "prices": {"m@1": {"input": 1.0}}}',
+        encoding="utf-8",
+    )
+    budget = load_budget(EnvironmentConfiguration({"TAKTUS_PRICE_TABLE": str(table)}))
+    assert budget.margin == 0.10, "the provisional margin of DEC-0034"
+    loaded = budget.table()
+    assert loaded is not None and loaded.version == "t-1"
+    with pytest.raises(ConfigurationError, match="TAKTUS_BUDGET_MARGIN"):
+        load_budget(EnvironmentConfiguration({"TAKTUS_BUDGET_MARGIN": "0.95"}))
+    table.write_text("{}", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="is not a price table"):
+        load_budget(EnvironmentConfiguration({"TAKTUS_PRICE_TABLE": str(table)})).table()
+    with pytest.raises(ConfigurationError, match="TAKTUS_MODEL_BILLING"):
+        settings(TAKTUS_MODEL_BILLING="per_mood")

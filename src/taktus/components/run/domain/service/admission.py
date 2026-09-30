@@ -1,14 +1,16 @@
-"""Admission control (ADR-0005): does a step's estimated demand fit what remains of the budget?
+"""Admission control (ADR-0005): does a step's reserved demand fit what remains of the budget?
 
-Every applicable limit is checked at once: money per currency, quota units, compute seconds in
-the budget's resource class. A limit the budget does not set does not apply. A demand in a
-resource class the budget does not name has no budget at all and does not fit. The verdict lists
-every quantity that does not fit, so that the reason is complete rather than the first one.
+Every applicable limit is checked at once: money per currency, tokens in and out, quota units,
+compute seconds in the budget's resource class. A limit the budget does not set does not apply.
+A demand in a resource class the budget does not name has no budget at all and does not fit.
+The verdict lists every quantity that does not fit, so that the reason is complete rather than
+the first one. What remains is the line the run is held to — the budget less the margin — less
+what every step used and every running step reserved (`Run.consumed`).
 """
 
 from __future__ import annotations
 
-from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit
+from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit, TokenLimit
 from taktus.shared.v1 import ConsumptionQuantities, Value
 
 
@@ -42,10 +44,33 @@ def remaining(budget: Limits, consumed: ConsumptionQuantities) -> Limits | None:
             if left > 0
             else None
         )
+    tokens: TokenLimit | None = None
+    if budget.tokens is not None:
+        left_in = _left(budget.tokens.tokens_in, consumed.tokens_in)
+        left_out = _left(budget.tokens.tokens_out, consumed.tokens_out)
+        if left_in or left_out:
+            tokens = TokenLimit.of(left_in or None, left_out or None)
     exhausted_currency = currency is not None and all(v <= 0 for v in currency.values())
-    if (currency is None or exhausted_currency) and quota is None and compute is None:
+    if (
+        (currency is None or exhausted_currency)
+        and quota is None
+        and compute is None
+        and tokens is None
+    ):
         return None
-    return Limits(currency=None if exhausted_currency else currency, quota=quota, compute=compute)
+    return Limits(
+        currency=None if exhausted_currency else currency,
+        quota=quota,
+        compute=compute,
+        tokens=tokens,
+    )
+
+
+def _left(limit: int | None, used: int | None) -> int | None:
+    """What is left of a token limit; None where the budget sets none, 0 where none is left."""
+    if limit is None:
+        return None
+    return max(0, limit - (used or 0))
 
 
 def admit(demand: ConsumptionQuantities, left: Limits | None, budget: Limits) -> Admission:
@@ -61,6 +86,21 @@ def admit(demand: ConsumptionQuantities, left: Limits | None, budget: Limits) ->
         available = 0.0 if left is None or left.quota is None else left.quota.units
         if demand.quota_units > available:
             findings.append(f"{demand.quota_units} quota units needed, {available} left")
+    if budget.tokens is not None:
+        for name, limit, needed in (
+            ("input", budget.tokens.tokens_in, demand.tokens_in),
+            ("output", budget.tokens.tokens_out, demand.tokens_out),
+        ):
+            if limit is None or needed is None:
+                continue
+            tokens = None if left is None else left.tokens
+            available = (
+                0
+                if tokens is None
+                else (getattr(tokens, f"tokens_{'in' if name == 'input' else 'out'}") or 0)
+            )
+            if needed > available:
+                findings.append(f"{needed} {name} tokens needed, {available} left")
     if demand.compute_seconds is not None and budget.compute is not None:
         if demand.resource_class != budget.compute.resource_class:
             findings.append(

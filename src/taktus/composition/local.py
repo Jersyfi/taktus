@@ -58,11 +58,12 @@ from taktus.components.process.application.service.register_version import (
 )
 from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery
-from taktus.components.run.application.service import RunEngine
+from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.composition.execution import connector_pool, model_pool, open_worker, telemetry_of
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.settings import (
+    load_budget,
     load_connectors,
     load_execution,
     load_model,
@@ -110,6 +111,8 @@ class LocalWiring:
             telemetry = telemetry_of(load_telemetry(self._configuration))
             connectors = load_connectors(self._configuration)
             model = load_model(self._configuration)
+            budget = load_budget(self._configuration)
+            prices = budget.table()
             operators = load_provisional_identity(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
@@ -146,6 +149,7 @@ class LocalWiring:
                     queue=stores.queue,
                     connectors=connectors,
                     models=models,
+                    options=EngineOptions(prices=prices, margin=budget.margin),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

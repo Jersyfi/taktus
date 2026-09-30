@@ -175,16 +175,40 @@ class ComputeLimit(Value):
     resource_class: ResourceClass
 
 
+class TokenLimit(Value):
+    """Language-model tokens, input and output: `{"in": N, "out": M}` on the wire."""
+
+    tokens_in: int | None = Field(default=None, ge=1, alias="in")
+    tokens_out: int | None = Field(default=None, ge=1, alias="out")
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> TokenLimit:
+        if self.tokens_in is None and self.tokens_out is None:
+            raise ValueError("a token limit names input, output or both")
+        return self
+
+    @classmethod
+    def of(cls, tokens_in: int | None, tokens_out: int | None) -> TokenLimit:
+        """By the Python names, whatever the wire calls them."""
+        return cls.model_validate({"in": tokens_in, "out": tokens_out})
+
+
 class Limits(Value):
     """What an assignment may consume, per consumption kind; at least one kind."""
 
     currency: CurrencyAmounts | None = None
     quota: QuotaLimit | None = None
     compute: ComputeLimit | None = None
+    tokens: TokenLimit | None = None
 
     @model_validator(mode="after")
     def _at_least_one_kind(self) -> Limits:
-        if self.currency is None and self.quota is None and self.compute is None:
+        if (
+            self.currency is None
+            and self.quota is None
+            and self.compute is None
+            and self.tokens is None
+        ):
             raise ValueError("limits name at least one consumption kind")
         return self
 
@@ -360,6 +384,9 @@ class AssignmentFinished(EventBase):
     checkpoint_ref: CheckpointRef | None = None
     reason: str | None = Field(default=None, min_length=1)
     summary: str | None = None
+    limit: Literal["currency", "quota", "compute", "tokens"] | None = None
+    """On a stop the worker made itself: the kind whose ceiling its running total would have
+    crossed (W-14). Absent on a stop that was requested."""
 
     @model_validator(mode="after")
     def _outcome_brings_its_detail(self) -> AssignmentFinished:

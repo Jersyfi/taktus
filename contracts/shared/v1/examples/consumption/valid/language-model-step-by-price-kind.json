@@ -1,0 +1,9 @@
+{
+  "tokens_in": 206393,
+  "tokens_out": 170,
+  "tokens_by_model": {
+    "example-large@2026-08": { "input": 12, "cache_read": 181204, "cache_write": 22961, "output": 150 },
+    "example-small@2026-06": { "input": 2216, "output": 20 }
+  },
+  "currency": { "usd": 0.766 }
+}

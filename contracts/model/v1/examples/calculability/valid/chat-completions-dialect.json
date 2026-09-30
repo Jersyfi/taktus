@@ -1,0 +1,9 @@
+{
+  "contract": "model/v1",
+  "input_count": "upper_bound",
+  "output_cap": "hard",
+  "usage_kinds": ["input", "output", "cache_read"],
+  "billing": "per_token",
+  "provider_limit": "unknown",
+  "evidence": "docs/research/2026-09-30-what-providers-allow.md"
+}

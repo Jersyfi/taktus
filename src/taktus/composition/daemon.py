@@ -183,6 +183,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                 connector_pool(settings.connectors, also=[(LOOPBACK, loopback)]),
                 model_pool(settings.model),
             )
+            prices = settings.budget.table()
 
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
@@ -198,7 +199,11 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                     ids=ids,
                     telemetry=telemetry,
                     queue=queue,
-                    options=EngineOptions(step_ceiling_seconds=settings.shutdown_ceiling_seconds),
+                    options=EngineOptions(
+                        step_ceiling_seconds=settings.shutdown_ceiling_seconds,
+                        prices=prices,
+                        margin=settings.budget.margin,
+                    ),
                     connectors=connectors,
                     models=models,
                 )

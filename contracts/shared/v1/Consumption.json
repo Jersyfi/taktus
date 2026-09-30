@@ -2,9 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://taktus.eu/contracts/shared/v1/Consumption.json",
   "title": "Consumption",
-  "description": "The raw quantities one step used or is expected to use. Nothing here is converted into money; the control plane derives the normalised Takt from these quantities (docs/architecture/accounting.md). At least one quantity is present. compute_seconds is meaningless without its resource_class.",
+  "description": "The raw quantities one step used or is expected to use. Nothing here is converted into money: money follows from these quantities and a versioned price table, and the normalised Takt from the same quantities and a weighting table (docs/architecture/accounting.md). At least one quantity is present. compute_seconds is meaningless without its resource_class.",
   "type": "object",
-  "allOf": [{ "$ref": "#/$defs/quantities" }, { "$ref": "#/$defs/atLeastOneQuantity" }],
+  "allOf": [
+    {
+      "$ref": "#/$defs/quantities"
+    },
+    {
+      "$ref": "#/$defs/atLeastOneQuantity"
+    }
+  ],
   "unevaluatedProperties": false,
   "$defs": {
     "quantities": {
@@ -13,16 +20,21 @@
       "type": "object",
       "properties": {
         "tokens_in": {
-          "description": "Language-model input tokens.",
+          "description": "Language-model input tokens, of every price kind: uncached input, input read from a cache and input written to one. tokens_by_model splits the same total by model and price kind.",
           "type": "integer",
           "minimum": 0
         },
         "tokens_out": {
-          "description": "Language-model output tokens.",
+          "description": "Language-model output tokens, reasoning included where the model reasons: a provider bills reasoning as output.",
           "type": "integer",
           "minimum": 0
         },
-        "currency": { "$ref": "#/$defs/currencyAmounts" },
+        "tokens_by_model": {
+          "$ref": "#/$defs/tokensByModel"
+        },
+        "currency": {
+          "$ref": "#/$defs/currencyAmounts"
+        },
         "quota_units": {
           "description": "Units of a subscription window, in the unit the worker declares in its capabilities.",
           "type": "number",
@@ -33,7 +45,9 @@
           "type": "number",
           "minimum": 0
         },
-        "resource_class": { "$ref": "#/$defs/resourceClass" },
+        "resource_class": {
+          "$ref": "#/$defs/resourceClass"
+        },
         "storage_bytes": {
           "description": "Bytes of persistent state written.",
           "type": "integer",
@@ -41,17 +55,48 @@
         }
       },
       "dependentRequired": {
-        "compute_seconds": ["resource_class"]
+        "compute_seconds": [
+          "resource_class"
+        ]
       }
     },
     "atLeastOneQuantity": {
       "anyOf": [
-        { "required": ["tokens_in"] },
-        { "required": ["tokens_out"] },
-        { "required": ["currency"] },
-        { "required": ["quota_units"] },
-        { "required": ["compute_seconds"] },
-        { "required": ["storage_bytes"] }
+        {
+          "required": [
+            "tokens_in"
+          ]
+        },
+        {
+          "required": [
+            "tokens_out"
+          ]
+        },
+        {
+          "required": [
+            "tokens_by_model"
+          ]
+        },
+        {
+          "required": [
+            "currency"
+          ]
+        },
+        {
+          "required": [
+            "quota_units"
+          ]
+        },
+        {
+          "required": [
+            "compute_seconds"
+          ]
+        },
+        {
+          "required": [
+            "storage_bytes"
+          ]
+        }
       ]
     },
     "currencyAmounts": {
@@ -59,14 +104,66 @@
       "description": "Money by ISO 4217 code in lowercase, for example {\"eur\": 3.2}. A map rather than a fixed currency so that no currency is baked into the contract.",
       "type": "object",
       "minProperties": 1,
-      "propertyNames": { "pattern": "^[a-z]{3}$" },
-      "additionalProperties": { "type": "number", "minimum": 0 }
+      "propertyNames": {
+        "pattern": "^[a-z]{3}$"
+      },
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0
+      }
     },
     "resourceClass": {
       "title": "ResourceClass",
       "description": "A class of compute, named by the operator: cpu.small, gpu.small, accelerator.large. The weighting table maps classes to Takt.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9-]+)*$"
+    },
+    "tokensByModel": {
+      "title": "TokensByModel",
+      "description": "Language-model tokens per model and per price kind, so that money is computable from what is recorded (ADR-0010): a price table prices each kind of each model, and the same breakdown feeds the Takt. The key is the model as the endpoint named it when it answered — the name the provenance records. input is uncached input; cache_read is input read from a cache; cache_write is input written to one; output is output, reasoning included. The four input-side and output-side sums over all models equal tokens_in and tokens_out where those are present.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/priceKinds"
+      }
+    },
+    "priceKinds": {
+      "title": "PriceKinds",
+      "description": "Tokens of one model, by the kinds a provider prices differently. At least one kind is present.",
+      "type": "object",
+      "properties": {
+        "input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_read": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_write": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "priceKindName": {
+      "title": "PriceKindName",
+      "description": "One of the kinds of token a provider prices differently.",
+      "enum": [
+        "input",
+        "output",
+        "cache_read",
+        "cache_write"
+      ]
     }
   }
 }

@@ -1,0 +1,7 @@
+{
+  "declaration": { "contract": "model/v1", "input_count": "exact", "output_cap": "hard",
+                   "usage_kinds": ["input", "output", "cache_read"], "billing": "per_token" },
+  "counted": 912, "max_output_tokens": 16, "finish": "length",
+  "usage": { "model": "example-large@2026-08", "tokens_in": 912, "tokens_out": 16,
+             "by_kind": { "input": 112, "cache_read": 800, "output": 16 } }
+}

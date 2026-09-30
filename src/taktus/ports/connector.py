@@ -29,7 +29,14 @@ from typing import Any, Literal, Protocol
 from pydantic import Field, model_validator
 
 from taktus.ports.worker import ConsumptionDeclaration, CredentialReference
-from taktus.shared.v1 import AutonomyLevel, Capability, Consumption, Digest, Value
+from taktus.shared.v1 import (
+    AutonomyLevel,
+    Capability,
+    Consumption,
+    CurrencyAmounts,
+    Digest,
+    Value,
+)
 
 OPERATION_PATTERN = r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}$"
 IDEMPOTENCY_KEY_PATTERN = r"^[A-Za-z0-9_.:-]{16,128}$"
@@ -66,11 +73,28 @@ class Idempotency(StrEnum):
     NONE = "none"
 
 
+class Demand(Value):
+    """The most one call of an operation consumes: what the run reserves before calling it."""
+
+    quota_units: float | None = Field(default=None, ge=0)
+    compute_seconds: float | None = Field(default=None, ge=0)
+    currency: CurrencyAmounts | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> Demand:
+        if self.quota_units is None and self.compute_seconds is None and self.currency is None:
+            raise ValueError("a demand names at least one quantity")
+        return self
+
+
 class Operation(Value):
     name: str = Field(pattern=OPERATION_PATTERN)
     capability: Capability
     effect: Effect
     idempotency: Idempotency | None = None
+    demand: Demand | None = None
+    """The most one call consumes. Without it the run cannot estimate a call and refuses it
+    (ADR-0005)."""
     summary: str = Field(min_length=1)
 
     @model_validator(mode="after")

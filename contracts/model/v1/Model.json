@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/model/v1/Model.json",
+  "title": "Model",
+  "description": "Contract 3, the model contract: what a model adapter declares about what it can compute before a call, what a completion reports it used, and the price table money is computed with. The dialect on the wire is the chat-completions dialect most endpoints answer; this schema fixes what the core relies on beyond the dialect. See README.md.",
+  "$defs": {
+    "Calculability": {
+      "title": "Calculability",
+      "description": "What an adapter can say about a call before it is made, and how its provider bills. Taktus derives from it which budget it can enforce and says so when a budget is set (ADR-0005, third amendment). An adapter declares no more than its provider permits; docs/research holds the evidence a declaration rests on.",
+      "type": "object",
+      "properties": {
+        "contract": {
+          "const": "model/v1"
+        },
+        "input_count": {
+          "description": "How the adapter counts a prompt's input tokens before the call. exact: the count equals what the provider bills. upper_bound: the count is never below what the provider bills. estimate: the count may lie on either side. none: the adapter cannot count.",
+          "enum": [
+            "exact",
+            "upper_bound",
+            "estimate",
+            "none"
+          ]
+        },
+        "output_cap": {
+          "description": "Whether the output limit a call sets holds. hard: the provider never produces more output than the limit, reasoning included. soft: a limit exists but reasoning or tool output may lie outside it. none: output is unbounded.",
+          "enum": [
+            "hard",
+            "soft",
+            "none"
+          ]
+        },
+        "usage_kinds": {
+          "description": "The price kinds the provider reports per call after it: input (uncached), output, cache_read, cache_write. Money is recomputable exactly only from kinds that are reported.",
+          "type": "array",
+          "items": {
+            "$ref": "../../shared/v1/Consumption.json#/$defs/priceKindName"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "billing": {
+          "description": "How the provider bills. per_token: each call by its tokens. per_window: a share of a time window of a subscription; money is not a function of tokens. per_hardware_time: the time of hardware the operator owns or rents.",
+          "enum": [
+            "per_token",
+            "per_window",
+            "per_hardware_time"
+          ]
+        },
+        "provider_limit": {
+          "description": "What the provider itself enforces over a longer period, as information: hard (requests are refused beyond it), alert (only a notice), none, unknown. Taktus never relies on it.",
+          "enum": [
+            "hard",
+            "alert",
+            "none",
+            "unknown"
+          ]
+        },
+        "evidence": {
+          "description": "Where the declaration's evidence is written down, with its date.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "contract",
+        "input_count",
+        "output_cap",
+        "usage_kinds",
+        "billing"
+      ],
+      "additionalProperties": false
+    },
+    "PriceTable": {
+      "title": "PriceTable",
+      "description": "One version of the prices money is computed with. A version is never changed once used: a new price is a new version, and the ledger names the version (by its digest) a run was converted at, so that money stays recomputable from the ledger (ADR-0010). A price is per unit_tokens tokens of one price kind of one model; a kind without a price is unpriced, and a cost that needs it says so instead of counting it as zero.",
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[a-z]{3}$"
+        },
+        "unit_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source": {
+          "description": "Where the prices were read, and when.",
+          "type": "string",
+          "minLength": 1
+        },
+        "prices": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": false,
+            "properties": {
+              "input": {
+                "type": "number",
+                "minimum": 0
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_read": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_write": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "version",
+        "valid_from",
+        "currency",
+        "unit_tokens",
+        "source",
+        "prices"
+      ],
+      "additionalProperties": false
+    },
+    "Exchange": {
+      "title": "Exchange",
+      "description": "One call as the conformance suite observed it: the declaration, what the adapter counted before the call, the output limit the call set, and the usage the provider reported after it. The checks M-02 to M-04 are rules over an exchange (src/taktus/conformance/model/rules.py); a schema cannot express them, so their must-fail fixtures are schema-valid.",
+      "type": "object",
+      "properties": {
+        "declaration": {
+          "$ref": "#/$defs/Calculability"
+        },
+        "counted": {
+          "description": "The adapter's count of the input before the call; absent when it declares none.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "finish": {
+          "enum": [
+            "stop",
+            "length",
+            "other"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "declaration",
+        "max_output_tokens",
+        "finish",
+        "usage"
+      ],
+      "additionalProperties": false
+    },
+    "Usage": {
+      "title": "Usage",
+      "description": "What one completion used, as the adapter reports it to the core: the totals, and the split by price kind of the one model that answered.",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$"
+        },
+        "tokens_in": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens_out": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_kind": {
+          "$ref": "../../shared/v1/Consumption.json#/$defs/priceKinds"
+        }
+      },
+      "required": [
+        "model",
+        "tokens_in",
+        "tokens_out"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

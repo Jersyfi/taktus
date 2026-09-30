@@ -1,0 +1,8 @@
+{
+  "contract": "model/v1",
+  "input_count": "exact",
+  "output_cap": "hard",
+  "usage_kinds": ["input", "output", "cache_read"],
+  "billing": "per_hardware_time",
+  "provider_limit": "none"
+}

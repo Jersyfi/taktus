@@ -44,7 +44,13 @@ def model_pool(settings: ModelSettings, *, timeout: float = 120.0) -> StaticMode
     if settings.endpoint is None:
         return StaticModelPool()
     model = OpenAiCompatibleModel(
-        settings.endpoint, settings.name, credential=settings.credential, timeout=timeout
+        settings.endpoint,
+        settings.name,
+        credential=settings.credential,
+        timeout=timeout,
+        billing=settings.billing,  # type: ignore[arg-type]  # validated by load_model
+        output_cap=settings.output_cap,  # type: ignore[arg-type]
+        provider_limit=settings.provider_limit,  # type: ignore[arg-type]
     )
     return StaticModelPool([(MODEL_ADAPTER, settings.purposes, model, settings.name)])
 

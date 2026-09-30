@@ -1,0 +1,7 @@
+{
+  "contract": "model/v1",
+  "input_count": "roughly",
+  "output_cap": "hard",
+  "usage_kinds": ["input", "output"],
+  "billing": "per_token"
+}
