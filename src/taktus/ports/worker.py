@@ -389,9 +389,6 @@ class AssignmentFinished(EventBase):
     """The ceiling whose running total halted the assignment; absent for a requested stop."""
     reason: str | None = Field(default=None, min_length=1)
     summary: str | None = None
-    limit: Literal["currency", "quota", "compute", "tokens"] | None = None
-    """On a stop the worker made itself: the kind whose ceiling its running total would have
-    crossed (W-14). Absent on a stop that was requested."""
 
     @model_validator(mode="after")
     def _outcome_brings_its_detail(self) -> AssignmentFinished:
