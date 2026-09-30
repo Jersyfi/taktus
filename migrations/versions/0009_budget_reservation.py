@@ -1,7 +1,7 @@
 """A budget is a budget: the margin a run is held with, and what each step reserved (ADR-0005).
 
-Revision: 0008
-Revises: 0007
+Revision: 0009
+Revises: 0008
 
 What this adds: `run.margin`, the share of every limit the run holds back from the first step
 on; and `step_run.reservation`, what admission debited from the budget for the step — its
@@ -15,8 +15,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision = "0008"
-down_revision = "0007"
+revision = "0009"
+down_revision = "0008"
 branch_labels = None
 depends_on = None
 
