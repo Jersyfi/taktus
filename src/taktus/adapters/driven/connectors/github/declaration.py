@@ -1,10 +1,17 @@
 """What the reference connector declares about itself: the document served as the resource
 `taktus://connector/v1/capabilities`, in the shape of `Connector.json#/$defs/Capabilities`.
 
-Every operation here is an MCP tool of the same name (`server.py`). The effect and the
-idempotency of each are facts about the target's API, stated once: a pull request, an issue and a
-comment carry a mark in their body and are found again by it (`marked`); a pipeline dispatch
-answers with nothing that could be found again (`none`).
+Every operation here is an MCP tool of the same name (`server.py`). Each declares its
+`demand`: the most requests to the service one call makes, which is what a run reserves before
+calling it (ADR-0005). The figures are the requests each implementation in `operations.py`
+makes, rounded up where the service pages its answers; `repository.branches.create` makes one
+request per file and per directory besides a fixed six, so its 64 hold for a changeset of
+about fifty files, and a larger one reports what it used and is recorded as a calibration
+signal. Every call of the first live run used its figure or less (`docs/runs/first-run.md` §2).
+
+The effect and the idempotency of each are facts about the target's API, stated once: a pull
+request, an issue and a comment carry a mark in their body and are found again by it
+(`marked`); a pipeline dispatch answers with nothing that could be found again (`none`).
 """
 
 from __future__ import annotations
@@ -33,12 +40,14 @@ CAPABILITIES = [
 OPERATIONS: list[Json] = [
     {
         "name": "repository.issues.read",
+        "demand": {"quota_units": 1},
         "capability": "repository.issues",
         "effect": "read",
         "summary": "Read one issue by number.",
     },
     {
         "name": "repository.issues.create",
+        "demand": {"quota_units": 3},
         "capability": "repository.issues",
         "effect": "write",
         "idempotency": "marked",
@@ -47,12 +56,14 @@ OPERATIONS: list[Json] = [
     },
     {
         "name": "repository.pullrequests.read",
+        "demand": {"quota_units": 1},
         "capability": "repository.pullrequests",
         "effect": "read",
         "summary": "Read one pull request by number.",
     },
     {
         "name": "repository.pullrequests.open",
+        "demand": {"quota_units": 3},
         "capability": "repository.pullrequests",
         "effect": "write",
         "idempotency": "marked",
@@ -62,12 +73,14 @@ OPERATIONS: list[Json] = [
     },
     {
         "name": "repository.pipelines.read",
+        "demand": {"quota_units": 2},
         "capability": "repository.pipelines",
         "effect": "read",
         "summary": "Read the state of one pipeline run by id.",
     },
     {
         "name": "repository.pipelines.status",
+        "demand": {"quota_units": 2},
         "capability": "repository.pipelines",
         "effect": "read",
         "summary": "The state of the pipeline runs for the head of a branch: none, pending, "
@@ -75,6 +88,7 @@ OPERATIONS: list[Json] = [
     },
     {
         "name": "repository.pipelines.trigger",
+        "demand": {"quota_units": 1},
         "capability": "repository.pipelines",
         "effect": "write",
         "idempotency": "none",
@@ -83,12 +97,14 @@ OPERATIONS: list[Json] = [
     },
     {
         "name": "repository.comments.list",
+        "demand": {"quota_units": 10},
         "capability": "repository.comments",
         "effect": "read",
         "summary": "List the comments of an issue or pull request.",
     },
     {
         "name": "repository.comments.create",
+        "demand": {"quota_units": 3},
         "capability": "repository.comments",
         "effect": "write",
         "idempotency": "marked",
@@ -97,6 +113,7 @@ OPERATIONS: list[Json] = [
     },
     {
         "name": "repository.branches.create",
+        "demand": {"quota_units": 64},
         "capability": "repository.branches",
         "effect": "write",
         "idempotency": "marked",
@@ -108,6 +125,7 @@ OPERATIONS: list[Json] = [
     },
     {
         "name": "repository.labels.set",
+        "demand": {"quota_units": 3},
         "capability": "repository.labels",
         "effect": "write",
         "idempotency": "marked",
@@ -116,6 +134,7 @@ OPERATIONS: list[Json] = [
     },
     {
         "name": "repository.files.read",
+        "demand": {"quota_units": 2},
         "capability": "repository.files",
         "effect": "read",
         "summary": "Read one file of the repository at a ref — a branch, a tag or a commit; "
