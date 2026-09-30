@@ -18,8 +18,8 @@ import os
 import shutil
 import subprocess
 from collections.abc import Iterator
-from pathlib import Path
 
+import images
 import pytest
 
 
@@ -83,16 +83,35 @@ def engine_socket() -> str:
     return "/var/run/docker.sock"
 
 
-@pytest.fixture(scope="session")
+def built(image: images.Image) -> str:
+    """The content tag of a test image, built first only when its content changed
+    (tests/images.py).
+
+    A build that fails, times out or stalls fails the test with the diagnosis — the image, the
+    step it stopped in, the last lines, the log — locally as in CI: a hung build is a finding,
+    not a skip. The first test that needs the image reports it in full; every later one in the
+    session fails with one line pointing there. Without Docker the test has already skipped
+    (or failed under TAKTUS_REQUIRE_DATABASE) through `engine_socket`."""
+    try:
+        return images.ensure(image)
+    except images.ImageBuildError as error:
+        message = str(error)
+    pytest.fail(message, pytrace=False)  # outside the handler: the diagnosis once, not chained
+
+
+@pytest.fixture
 def reference_worker_image(engine_socket: str) -> str:
-    """The reference worker's own image, built once from workers/script/Dockerfile."""
-    root = Path(__file__).resolve().parents[1]
-    tag = "taktus-worker-script:test"
-    dockerfile = root / "workers" / "script" / "Dockerfile"
-    subprocess.run(  # noqa: S603 — our own Dockerfile, fixed arguments
-        ["docker", "build", "-q", "-f", str(dockerfile), "-t", tag, str(root)],  # noqa: S607
-        check=True,
-        capture_output=True,
-        timeout=600,
-    )
-    return tag
+    """The reference worker's own image, from workers/script/Dockerfile."""
+    return built(images.REFERENCE_WORKER)
+
+
+@pytest.fixture
+def control_plane_image(engine_socket: str) -> str:
+    """The control plane image, from deploy/docker/Dockerfile."""
+    return built(images.CONTROL_PLANE)
+
+
+@pytest.fixture
+def hog_image(engine_socket: str) -> str:
+    """A unit that takes more memory than its limit, from tests/adapters/execution/hog/."""
+    return built(images.HOG)

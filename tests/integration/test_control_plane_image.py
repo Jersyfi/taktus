@@ -1,42 +1,12 @@
 # ruff: noqa: S607 — a test drives the engine's command line
 """The control plane image, built and inspected: it carries no worker code (DEC-0011), and no
 worker image carries the control plane. Needs Docker; skips without it (fails in CI, where
-Docker is required). `deploy/docker/verify.sh` asks the same question on the way to its run."""
+Docker is required). The images come from tests/images.py, built only when their content
+changed. `deploy/docker/verify.sh` asks the same question on the way to its run."""
 
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
-
-import pytest
-
-ROOT = Path(__file__).resolve().parents[2]
-CONTROL_PLANE = "taktus:test"
-
-
-@pytest.fixture(scope="module")
-def control_plane_image(engine_socket: str) -> str:
-    command = [
-        "docker",
-        "build",
-        "-q",
-        "-f",
-        str(ROOT / "deploy/docker/Dockerfile"),
-        "-t",
-        CONTROL_PLANE,
-        str(ROOT),
-    ]
-    # A build pulls base images and packages; one transient failure is retried once, and a
-    # second one fails the test with the engine's own words.
-    for attempt in (1, 2):
-        completed = subprocess.run(  # noqa: S603 — our own Dockerfile, fixed arguments
-            command, capture_output=True, text=True, timeout=900, check=False
-        )
-        if completed.returncode == 0:
-            return CONTROL_PLANE
-        if attempt == 2:
-            pytest.fail(f"docker build failed twice:\n{completed.stderr[-2000:]}")
-    return CONTROL_PLANE  # unreachable
 
 
 def inside(image: str, script: str) -> str:
