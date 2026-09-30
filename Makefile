@@ -60,8 +60,19 @@ gate-decisions: need-uv ## Decision requests are complete, recorded, and a block
 gate-adrs: need-uv ## Every ADR that makes a promise states where the promise ends
 	$(UV) run tools/check_adrs.py
 
-gate-status: need-uv ## docs/status.md is current: its shape, its milestone, its date, section 3 pointing at `make status` rather than storing a list, and touched by every change to the state of the project
+gate-status: need-uv ## docs/status.md is current: its shape, its milestone, no line every pull request rewrites, section 3 pointing at `make status` rather than storing a list, and touched by every change to the state of the project
 	$(UV) run tools/check_status.py $(if $(BASE),--base $(BASE))
+
+gate-vision: need-uv ## The vision layer holds together — the fourteen principles as CLAUDE.md names them, each with why and what it forbids — and every principle is served by a use case
+	$(UV) run tools/check_vision.py
+
+# The use case gate runs the named tests of a `verified` use case, so it needs the project
+# environment: `uv run python` rather than `uv run <script>`, which would isolate the script.
+gate-usecases: env ## Every use case has a state, a verification condition and a principle; built names tests, verified ones are green; no ADR moved under one unchecked; no requirement changed where it is implemented
+	$(UV) run python tools/check_usecases.py $(if $(BASE),--base $(BASE))
+
+usecases: env ## Print every use case with its component, state and version
+	@$(UV) run python tools/check_usecases.py --print
 
 # The development database (deploy/docker/compose.dev.yml). `db-down` keeps the data volume:
 # nothing here deletes data without asking (CLAUDE.md §9).
@@ -109,6 +120,6 @@ generate: env ## Regenerate what is generated and committed: api/openapi.yaml fr
 status: need-uv ## Print what is needed from the owner, from the register: the last section of every pull request description (DEC-0026)
 	@$(UV) run tools/check_status.py --print
 
-gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status test ## Everything CI runs
+gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases test ## Everything CI runs
 
-.PHONY: help doctor env install status test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status db-up db-down up up-dev down verify-compose migrate lint generate gates
+.PHONY: help doctor env install status usecases test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates

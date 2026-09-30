@@ -1,8 +1,16 @@
-<!-- The order of the sections is fixed (ADR-0017 §7). Keep the headings as they are. -->
+<!--
+The order of the sections is fixed (ADR-0017 §7). Keep the headings as they are.
 
-## What this delivers
+Write for a reader who has not opened the diff, the session or any ADR. Every section below
+must make sense to them on its own: name the problem, not the file; say what changed, not
+where; give the reason, not the history. CI fails a description without the first four
+sections, with one of them empty, or with them out of order (tools/check_decisions.py).
+-->
 
-<!-- Five lines at most. -->
+## What this is about
+
+<!-- The problem or the goal, in plain sentences. What was wrong, missing or wanted, and for
+whom. A reader who knows Taktus only from the README can follow it. -->
 
 ## Decisions required
 
@@ -18,13 +26,23 @@ only an entry of mode 3 or 4 justifies a request. A mode-2 decision is a notice 
 (docs/decisions/NTC-NNNN-<slug>.md), named under "Notes".
 -->
 
+## What was done
+
+<!-- What is different after this change, as behaviour and as documents, not as a file list.
+Records it creates or corrects, by ID. -->
+
+## Why this way
+
+<!-- The reason for this shape over the alternatives that were considered, and what it costs. -->
+
+## What to check
+
+<!-- What the reviewer should look at, in order of risk: the place a mistake would hurt most,
+the claim that is hardest to verify, the thing the gates cannot see. How CLAUDE.md §11 is met. -->
+
 ## Notes
 
 <!-- Information for the owner. Statements, never questions. Delete the section if empty. -->
-
-## Everything else
-
-<!-- What a reviewer needs; how CLAUDE.md §11 is met; defects corrected (with their DEC record). -->
 
 ## Needed from the owner
 

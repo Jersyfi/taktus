@@ -10,5 +10,6 @@ application layers inside. No component imports another; what they share is the 
 | `ledger` | the content-free hash chain and its verification |
 | `command` | command → commissioned plan |
 | every other | a package with its docstring; filled from the version that needs it (`docs/roadmap.md`) |
+| `reporting` | no package yet (ADR-0029): it is created with the first `reporting` use case that is built |
 
 Each package's docstring states what it owns and where its lines are drawn.

@@ -1,6 +1,6 @@
 # ADR-0016 — Explicit Architecture: cut by component
 
-**Status:** accepted
+**Status:** accepted · amended by ADR-0029: a twelfth component, `reporting`
 
 ## Context
 Ports and adapters orders the outer boundary, not the inside. An orchestrator holding governance,
@@ -18,7 +18,8 @@ together. Four commitments:
    mirror the API of the tool it will later cover.
 3. **The coarse cut is by component, not by layer.** The top-level division follows the bounded
    contexts: `identity`, `command`, `process`, `run`, `governance`, `decision`, `catalog`,
-   `accounting`, `knowledge`, `value`, `ledger`. Layers live *inside* each component. Open the
+   `accounting`, `knowledge`, `value`, `ledger` — and, since ADR-0029, `reporting`. Layers live
+   *inside* each component. Open the
    repository and you see the domain, not the framework.
 4. **Components talk through events.** A component knows no class of another. What they share lives
    in the **shared kernel**, and that kernel is **language-neutral** (JSON Schema), because the web

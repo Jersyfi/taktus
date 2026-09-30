@@ -1,7 +1,8 @@
 # ADR-0028 — What the owner must act on becomes a record: needs requests and the status report
 
 **Status:** accepted · extends ADR-0017 with a fifth record kind and a status report the owner
-does not have to ask for
+does not have to ask for · amended 2026-09-29 by DEC-0026 and DEC-0027: the status file
+stores neither the generated list nor a line every pull request rewrites (§3)
 
 ## Context
 Pull request #1 buried four open questions at the end of a long description, and the owner could
@@ -122,13 +123,22 @@ generate`. A generated list in a committed file is edited by every pull request 
 the register, so any two such pull requests conflict on it, and whichever merges first makes
 the other's copy stale. That happened to all four pull requests of 2026-09-23 at once.
 
-**Every pull request that changes the state of the project regenerates the file**, and
+**Every pull request that changes the state of the project updates the file**, and
 `make gate-status` fails when it did not: when a change under `src/`, `workers/`, `blueprints/`,
 `contracts/`, `deploy/`, `migrations/`, `tools/`, `docs/roadmap.md`, `docs/adr/` or
 `docs/decisions/` reaches the base branch without a change to `docs/status.md`; when section 3
-stores a list instead of saying where it is; when the file's date is older than the newest record
-in the register; when a section is missing, empty, out of order or keeps a placeholder; when
-the milestone named in section 1 is not a milestone of the roadmap.
+stores a list instead of saying where it is; when the file carries a line every pull request
+rewrites — a stored date, or a running list of what was decided since the last version; when a
+section is missing, empty, out of order or keeps a placeholder; when the milestone named in
+section 1 is not a milestone of the roadmap.
+
+*Amended 2026-09-29 (DEC-0027).* Until then the file carried an `As of` date that the gate held
+to the newest record of the register, and a paragraph listing what had been decided since the
+last version. Every pull request rewrote both, so any two conflicted on them even after the
+generated list had left the file. The date of the status is the date of its last commit; what
+was decided when is the register's index. A record the status has not accounted for is still
+caught, because every record lives under `docs/decisions/` and a change there counts as a change
+to the state.
 
 **The pull request description carries the list.** Its last section, `## Needed from the
 owner`, is what `make status` prints for that branch, so that the owner sees what is needed
@@ -183,4 +193,6 @@ of the status file sees a *touch*, not a truthful update. The issue is created b
 with the repository's tooling; a repository hosted elsewhere needs its equivalent. Nothing here
 makes the owner provide what is asked; it makes sure he knows. The list lives in pull request
 descriptions and in the issue tracker, not in the file: an owner who reads only the file sees
-where the list is, not the list.
+where the list is, not the list. The file carries no date of its own: a reader of the file
+alone learns how current it is from the date of its last commit, which the host shows beside it,
+not from the text.

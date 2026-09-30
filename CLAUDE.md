@@ -15,8 +15,13 @@ that into processes, decides for each step which method suits it best, runs it o
 measures the result, corrects within an agreed frame, and reports. At autonomy level 4 whole
 departments run this way.
 
-The architecture is in `docs/architecture/`, the decisions in `docs/adr/`. **Where code and an ADR
-disagree, the ADR wins** — the code becomes the finding, not the ADR a footnote.
+Four layers, each answering one question. `docs/vision/` says **why** Taktus exists and what it
+refuses to be; `docs/usecases/` says **what** it must be able to do, as requirements with a
+verification condition and a state; `docs/adr/` says **how it was decided**;
+`docs/architecture/` says **how it is built**. **Where code and an ADR disagree, the ADR wins** —
+the code becomes the finding, not the ADR a footnote. Where an ADR and a use case disagree, the
+ADR has to say so: `make gate-usecases` fails an ADR that changed under a use case resting on it
+until the use case was checked against it again.
 
 ---
 
@@ -84,8 +89,13 @@ verbosity. 10. The whole autonomy range, with guardrails. 11. European values an
 12. Production-ready. 13. Freedom instead of vendor lock-in. 14. People at the centre — **never
 surveillance or performance assessment of individuals.**
 
+Each principle, with why it exists and what it forbids, is in `docs/vision/principles.md`; that
+file is what point 1 of the definition of done is checked against, and every principle is served
+by at least one use case (`make gate-vision`).
+
 Principle 14 is enforced in the data model: no metric assesses a named person. This includes
-decision response times — that analysis belongs to the decider and is visible only to them.
+decision response times — that analysis belongs to the decider and is visible only to them by
+default; aggregation is by role or department, never by person (ADR-0015).
 
 ---
 
@@ -203,7 +213,22 @@ generated (`make status`) and never stored in the file (DEC-0026).
 - **Nothing generated is stored in a file that pull requests edit by hand.** A generated
   artifact that must be committed (`api/openapi.yaml`) is regenerated, never merged by hand;
   a generated list that only a reader needs is printed on demand and carried where it cannot
-  conflict (DEC-0026).
+  conflict (DEC-0026). **No file carries a line that every pull request must rewrite** — a
+  stored date, a running list of what changed since last time. Two pull requests then conflict
+  on it whatever else they do; the history already holds both (DEC-0027).
+- **Every pull request description can be acted on without the diff.** It states what the
+  change is about, what was done, why that way, and what the reviewer should check, in four
+  sections of those names (ADR-0017 §7). CI fails a description without them.
+- **A use case is never changed in the same pull request that implements it.** Whoever finds
+  while building that a requirement does not hold opens a decision request naming the precise
+  point where it fails, the use cases involved, and a worked proposal; the implementation
+  waits. `make gate-usecases` fails a pull request that touches both a use case's requirement
+  sections and its implementation. What a use case requires is mode 3; how it is described,
+  its state and its test references are mode 1; `docs/vision/` is mode 4
+  (`docs/decisions/anchors.taktus.md`).
+- **Failing a task is allowed; reporting instead of working is not.** A decision request that
+  arises from work names what was attempted and where exactly it failed. One that does not is
+  an evasion and is returned as one.
 
 ---
 
@@ -225,7 +250,7 @@ A misunderstood sentence in the documentation becomes wrong code later.
 
 ## 11. Definition of done
 
-1. violates no guiding principle,
+1. violates no guiding principle (`docs/vision/principles.md`),
 2. passes the architecture tests,
 3. passes `make gate-contracts` and the conformance suite if it touches a contract,
 4. does not break the removal test,
@@ -243,4 +268,7 @@ A misunderstood sentence in the documentation becomes wrong code later.
     too slow to be useful is a finding too, reported with the cost before and after (every
     gate prints its duration for that), never a wish,
 12. keeps any remediation plan it produces or specifies executable by hand (UC-4.12): a person
-    can carry it out without Taktus.
+    can carry it out without Taktus,
+13. meets the requirement of every use case it implements, or argues its failure in a decision
+    request. **A requirement is met, or its failure is argued. It is never adjusted in order to
+    become meetable.**

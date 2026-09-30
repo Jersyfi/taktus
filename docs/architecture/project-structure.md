@@ -24,6 +24,7 @@ boundaries, `import-linter` contracts and `tests/architecture` are not optional 
 | `knowledge` | knowledge sources, embeddings, citations |
 | `value` | value ledger, cost and benefit entries, revert analysis |
 | `ledger` | hash chain, verification, export |
+| `reporting` | views and who may see them, reports and their delivery, the explanation of an action on request; owns no figure — every number is read from the component that produces it (ADR-0029). No package yet: it arrives with the first `reporting` use case that is built |
 
 **Rules between components:** no direct import · communication through events · reading another
 component's data is allowed, writing is not · what is shared lives in the **language-neutral** shared

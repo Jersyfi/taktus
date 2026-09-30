@@ -74,6 +74,10 @@ narrowed but not removed (governance.md §2).
 | M1.4 | **Fixing a documentation defect** in the tenant's own documents: an ambiguity, a contradiction, a statement that turns out to be wrong. The correction is recorded as a `DEFECT` record (ADR-0017 §2). If the correction would change what the software does, it is not a documentation defect and mode 3 applies. |
 | M1.5 | **The wording of documentation** that states something already decided. |
 | M1.6 | **Test strategy and fixtures** for an agreed scope. |
+| M1.10 | **How a requirement is described**: its wording, examples and links, its state, the tests it names, and the architecture decisions it was checked against. Not what it requires (M3.15). |
+
+Identifiers are shared between this page and the tenants' own; a gap in the numbering is an
+identifier a tenant uses for an entry of its own (M1.7 to M1.9 in the Taktus project).
 
 ### Mode 2 — the operator decides and records a notice
 
@@ -86,6 +90,10 @@ narrowed but not removed (governance.md §2).
 | M2.5 | `need` | **Raising a needs request**: stating that the work needs something only the owner can provide — a credential, an account, access to a system, a purchase, an action on a server, information about an environment — with the steps to provide it (ADR-0028). The record is the needs request itself, `NEED-NNNN`, not a notice. It is raised when the need becomes foreseeable, not when it blocks. Providing it is the owner's act, and it is not a decision: no option is put to the owner. |
 
 ### Mode 3 — the operator prepares, the owner decides
+
+A request that arises from work names what was attempted and where exactly it failed. Failing a
+task is allowed; reporting instead of working is not, and a request without the attempt and the
+point of failure is returned to the operator as an evasion.
 
 | Entry | The owner decides, with a worked opinion in hand |
 |---|---|
@@ -103,6 +111,7 @@ narrowed but not removed (governance.md §2).
 | M3.12 | **Binding a model purpose to a provider.** A process names a purpose, never a product; which provider serves the purpose is configuration, and changing it is this entry. |
 | M3.13 | **Choosing a method within an exactness class**, where more than one method is admissible for the class. |
 | M3.14 | **Routing between approved models**: which of several configured models a purpose uses, and when. |
+| M3.15 | **What a requirement requires**: the outcome a use case asks for, the condition that verifies it, and where it ends. Never changed in the change that implements it: whoever finds while building that a requirement does not hold raises a decision request naming the point where it fails, the requirements involved, and a worked proposal, and the implementation waits. |
 
 ### Mode 4 — the owner decides, the operator supplies data
 
@@ -112,6 +121,7 @@ narrowed but not removed (governance.md §2).
 | M4.2 | **The price**, and what is charged for. |
 | M4.3 | **The accounting basis**: the unit in which work is counted and the weights behind it. |
 | M4.4 | **Every legal anchor** of the tenant: signature, payment release above a threshold, a filing, a termination, a notification, a contract (governance.md §2). |
+| M4.5 | **The tenant's vision and guiding principles**: what the organisation is for and what it refuses to do. The operator supplies what the owner needs to decide, and does not edit them. |
 
 ---
 

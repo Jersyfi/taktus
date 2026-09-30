@@ -30,8 +30,8 @@ bounding. The section states the boundary; it does not point at it.
 | [0013](ADR-0013-business-critical.md) | Taktus is business-critical: what follows | accepted |
 | [0014](ADR-0014-exactness.md) | Exactness classes | accepted, amended by 0018 |
 | [0015](ADR-0015-bottlenecks.md) | Measure waiting, report the marginal value of a change | accepted |
-| [0016](ADR-0016-explicit-architecture.md) | Explicit Architecture: cut by component | accepted |
-| [0017](ADR-0017-decision-requests-in-the-repository.md) | Decision requests as a repository mechanism | accepted, amended by 0021, extended by 0028 |
+| [0016](ADR-0016-explicit-architecture.md) | Explicit Architecture: cut by component | accepted, amended by 0029 |
+| [0017](ADR-0017-decision-requests-in-the-repository.md) | Decision requests as a repository mechanism | accepted, amended by 0021, extended by 0028, amended 2026-09-29 (§7) |
 | [0018](ADR-0018-exactness-applies-to-result-producing-steps.md) | Exactness classes apply to result-producing steps only | accepted |
 | [0019](ADR-0019-contract-identity.md) | Contract identity | accepted |
 | [0020](ADR-0020-tenants-and-instances.md) | Tenants and instances are different boundaries | accepted |
@@ -43,3 +43,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0026](ADR-0026-autonomy-carries-its-reason.md) | Autonomy carries its reason | accepted |
 | [0027](ADR-0027-taktus-reaches-itself-through-the-connector-port.md) | Taktus reaches itself through the connector port | accepted |
 | [0028](ADR-0028-what-the-owner-must-act-on-becomes-a-record.md) | What the owner must act on becomes a record: needs requests and the status report | accepted |
+| [0029](ADR-0029-views-are-a-component-enablement-is-not.md) | Views are a component; enablement is not | accepted |

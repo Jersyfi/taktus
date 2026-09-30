@@ -15,11 +15,14 @@ The rest is written by hand by every pull request that changes the state of the 
 
 Checks:
 
-1. the file exists, starts with `# Status`, carries `**As of:**` with a date, and has the five
-   sections in order, none empty, no placeholder;
+1. the file exists, starts with `# Status`, and has the five sections in order, none empty, no
+   placeholder;
 2. the milestone named first in section 1 is a milestone of docs/roadmap.md;
-3. `**As of:**` is not older than the newest dated record of the register — a status that
-   predates a decision cannot account for it;
+3. the file stores no line that every pull request rewrites: no `**As of:**` date and no running
+   `**Decided since …**` list. Both were edited by every pull request that touched the file, so
+   any two such pull requests conflicted on them (DEC-0027). The date of the status is the date
+   of its last commit; what was decided when is the register's index. A decision the status
+   has not accounted for is caught by check 5, because every record lives under docs/decisions/;
 4. section 3 stores no list: it points at `make status`, which prints what the register
    generates — every open need and decision request, the most urgent first. A generated list
    in a committed file conflicts between any two pull requests that touch the register, and
@@ -46,7 +49,6 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -86,7 +88,9 @@ FIELD = re.compile(r"^\*\*([A-Za-z ]+):\*\*\s*(.*)$")
 MILESTONE = re.compile(r"`(\d+\.\d+\.\d+)`")
 ISSUE_REF = re.compile(r"#\d+\b")
 PLACEHOLDER = re.compile(r"<[^>\n]+>|\b(?:TODO|TBD|FIXME|XXX)\b|…")
-RECORD_DATES = {"Decided", "Corrected", "Recorded", "Provided"}
+# Lines every pull request rewrote, and therefore the lines any two of them conflicted on
+# (DEC-0027): a stored date and a running list of what was decided since the last version.
+REWRITTEN = re.compile(r"^\*\*(As of|Decided since[^*]*):\*\*", re.MULTILINE)
 
 
 @dataclass
@@ -158,14 +162,6 @@ def sections(text: str) -> dict[str, str]:
     return found
 
 
-def valid_date(value: str) -> bool:
-    try:
-        date.fromisoformat(value)
-    except ValueError:
-        return False
-    return True
-
-
 # --- the register --------------------------------------------------------------------------------
 
 
@@ -203,17 +199,6 @@ def generated(records: list[Open]) -> str:
         f"| {r.identifier} | {r.title} | {r.needed_by} | {r.kind} | {r.issue} |" for r in records
     ]
     return "\n".join([COLUMNS, *rows])
-
-
-def newest_record_date() -> str | None:
-    newest: str | None = None
-    for path in REGISTER.glob("*.md"):
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if (match := FIELD.match(line)) and match.group(1) in RECORD_DATES:
-                value = match.group(2).strip()
-                if valid_date(value) and (newest is None or value > newest):
-                    newest = value
-    return newest
 
 
 # --- the generated list ------------------------------------------------------------------------
@@ -271,12 +256,12 @@ def check_shape(text: str, report: Report) -> dict[str, str]:
     lines = text.splitlines()
     if not lines or lines[0].strip() != "# Status":
         problems.append("the first line is not `# Status`")
-    fields = header_fields(text)
-    as_of = fields.get("As of", "")
-    if not as_of:
-        problems.append("`**As of:**` is missing")
-    elif not valid_date(as_of):
-        problems.append(f"`**As of:**` is not a date of the form YYYY-MM-DD: {as_of!r}")
+    for match in REWRITTEN.finditer(text):
+        problems.append(
+            f"`**{match.group(1)}:**` is a line every pull request rewrites, and two pull "
+            "requests conflict on it; the date is the file's last commit, and what was decided "
+            "when is docs/decisions/README.md (DEC-0027)"
+        )
     found = sections(text)
     present = list(found)
     if present != SECTIONS:
@@ -296,7 +281,7 @@ def check_shape(text: str, report: Report) -> dict[str, str]:
     if problems:
         report.fail(STATUS_PATH, "; ".join(problems))
     else:
-        report.ok(f"{STATUS_PATH}: `# Status`, `**As of:** {as_of}`, five sections in order")
+        report.ok(f"{STATUS_PATH}: `# Status`, five sections in order, no rewritten line")
     return found
 
 
@@ -315,24 +300,6 @@ def check_milestone(found: dict[str, str], report: Report) -> None:
         report.fail(
             STATUS_PATH,
             f"`{milestone}` is not a milestone heading of {ROADMAP.relative_to(ROOT)}",
-        )
-
-
-def check_date(text: str, report: Report) -> None:
-    print("date")
-    as_of = header_fields(text).get("As of", "")
-    newest = newest_record_date()
-    if not valid_date(as_of):
-        return  # reported by the shape check
-    if newest is None:
-        report.ok("no dated record in the register yet")
-    elif as_of >= newest:
-        report.ok(f"as of {as_of}, the newest record is {newest}")
-    else:
-        report.fail(
-            STATUS_PATH,
-            f"`**As of:** {as_of}` is older than the newest record of the register ({newest}); "
-            "the status cannot account for it",
         )
 
 
@@ -435,7 +402,6 @@ def main(argv: list[str] | None = None) -> int:
         text = STATUS.read_text(encoding="utf-8")
         found = check_shape(text, report)
         check_milestone(found, report)
-        check_date(text, report)
         check_pointer(found, report)
     check_freshness(args.base, report)
     if args.pr_body is not None:

@@ -6,7 +6,8 @@ amended 2026-09-21: the anchor list has four modes in two files (§1), and a mod
 has a record type, the notice (§2a) · amended 2026-09-21 by DEC-0014: every notice carries a
 kind, and a behaviour change inside an agreed scope is a notice (§2a) · extended by ADR-0028: a fifth record kind, the needs
 request `NEED-NNNN`, for what only the owner can provide, and the status report
-`docs/status.md`
+`docs/status.md` · amended 2026-09-29: every pull request description states what the change is
+about, what was done, why that way and what to check (§7)
 
 ## Context
 ADR-0008 defines the decision request: the planned question about direction, with a fixed shape,
@@ -164,12 +165,26 @@ and if the answer left room for more than one reading, the interpretation is con
 owner before the record is written.
 
 ### 7. Pull request description order
-Fixed, in this order, enforced by `.github/pull_request_template.md`:
+Fixed, in this order, given by `.github/pull_request_template.md`:
 
-1. **What this delivers** — five lines at most.
+1. **What this is about** — the problem or the goal, in plain sentences.
 2. **Decisions required** — either `None` or one line per decision: ID, title, category, issue.
    Near the top, never at the end.
-3. Everything else — notes, how the definition of done is met, anything a reviewer needs.
+3. **What was done** — what is different afterwards, as behaviour and as documents.
+4. **Why this way** — the reason for this shape over the alternatives considered.
+5. **What to check** — what the reviewer should look at, in order of risk.
+6. Notes, if any — statements for the owner, never questions.
+7. **Needed from the owner** — last, generated (ADR-0028).
+
+Sections 1, 3, 4 and 5 are written for a reader who has not opened the diff. A description that
+says "see the diff", or that lists files where it should say what changed, cannot be acted on
+by the owner, who decides from the description.
+
+*Amended 2026-09-29.* Until then the description had "What this delivers", the decisions and
+"everything else". Pull request #38 — the first one Taktus opened itself — followed that shape
+and still could not be acted on: its summary assumed the reader had read the diff. The four
+sections make the missing parts explicit, and `tools/check_decisions.py` fails a description
+without them, with one empty, or with them out of order.
 
 The language is English throughout: the description, the issue, and every file under
 `docs/decisions/`. An answer given in another language is recorded in English, with the original
@@ -186,7 +201,9 @@ quoted.
   notice lacks *Why the gate had no value* or that section names no gate; when a notice is
   missing from the index.
 - The `decisions` CI job passes the pull request body and the draft flag to the same tool, which
-  fails when a BLOCKING decision is named and the pull request is not a draft.
+  fails when a BLOCKING decision is named and the pull request is not a draft, and when the
+  description lacks one of the four sections of §7 — about, done, why, check — or leaves one
+  empty or out of order.
 - `.github/CODEOWNERS` names the owner, so every pull request requests their review.
 - `.github/ISSUE_TEMPLATE/decision-request.yml` mirrors the seven sections.
 
@@ -224,7 +241,8 @@ raised and did not need to be" is a precedent as much as an answer is.
 ## Where this promise ends
 
 The gate checks shape: sections present, fields filled, a date, an index entry, a draft flag
-that matches. It cannot check that a request is decidable by a person who has read neither the
+that matches. For a pull request description it checks that the four sections of §7 are there,
+filled and in order; it cannot check that they are readable without the diff. It cannot check that a request is decidable by a person who has read neither the
 diff nor the session — that is a reviewer's judgement — and it cannot check that a question
 tested against the anchor page was tested honestly. A notice's evidence, and a `gate-weakened`
 notice's demonstration that a gate had no value, are checked for presence and for naming a
