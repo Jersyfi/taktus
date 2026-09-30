@@ -26,31 +26,43 @@ runs weekly is evidence.
 1. **describe** — reads from the instance what the integration serves, which other configured
    adapter serves the same, and which registered processes use it.
 2. **admit** — checks that the integration is configured and of a known family (`exact`).
-3. **exercise** — withholds the integration, runs every registered process that uses it, and
-   restores it. An instance's configuration is its environment and does not change while it
-   runs, so the three are one operation: the instance builds the same engine over the same
-   stores with the integration left out of the adapter pools, runs the process through it, and
-   the unchanged configuration is the restored state. A process is *run* only when running it
-   cannot leave the system — no connector operation declared `write` or `delivery`, no worker
-   with hosts it may reach — and every input it declares has an example; otherwise its verdict
-   rests on *resolution* alone: which adapter would serve each step without the integration,
-   and what the step's declared fallback is. A process that is run is run twice, with and
-   without, and the two are compared by where each came to. Every rehearsal run is a real run
-   in the ledger.
+3. **exercise** — withholds the integration, rehearses every registered process that uses
+   it, and restores it. An instance's configuration is its environment and does not change
+   while it runs, so the three are one operation: the instance builds the same engine over the
+   same stores with the integration left out of the adapter pools, runs the process through
+   it, and the unchanged configuration is the restored state. A process is run twice, with and
+   without, and both runs are **rehearsals** (ADR-0030): a connector operation declared
+   `write` or `delivery` is never sent, and answers with the recorded response of its most
+   recent real call through the same adapter; reads are real. The two runs are compared by
+   where each came to. A process is not run, and its verdict rests on *resolution* alone —
+   which adapter would serve each step without the integration, and what the step's declared
+   fallback is — when an outward operation it would call has never been called for real on
+   this instance, when a worker step may reach hosts, or when an input has no example. The
+   finding says which. Every rehearsal run is in the ledger, and every one of its entries
+   carries `rehearsal: true`; a rehearsed outward step finishes `rehearsed` and writes no
+   egress entry.
 4. **describe-after** and **verify-restored** — read the configuration again and check that the
    integration is there and serves what it served (`exact`).
-5. **verdict** — checks that the result carries exactly one of three verdicts (`exact`).
+5. **verdict** — checks that the result carries exactly one of four verdicts (`exact`).
 6. **record** — writes the result to the adapter's maturity and to the ledger as
    `removal.tested`, in one transaction.
 7. **report** — one line a person reads.
 
-**The three verdicts.** *Broke*: a step loses its only adapter and nobody takes it over — no
+**The four verdicts.** *Broke*: a step loses its only adapter and nobody takes it over — no
 alternative adapter, and no fallback to a person. *Changed*: every process still reaches its
 point — another adapter served the step, or the step falls back to a person, who does it at a
-person's cost; quality and cost changed, nothing broke. *Exception*: the integration cannot be
-removed by design; the database is the one (ADR-0002), and its removal test is the restore
+person's cost; quality and cost changed, nothing broke. *Untested*: no registered process uses
+the integration, so nothing was exercised and nothing learned; it does not count towards
+*verified*, and the maturity record says so (issue #36). *Exception*: the integration cannot
+be removed by design; the database is the one (ADR-0002), and its removal test is the restore
 drill. The verdict is a rule over what was observed (`components/catalog`,
 `domain/service/removal.py`), never a judgement, which is why the `verdict` step is `exact`.
+
+**What a verdict was taken under.** Every result carries `configuration`: the adapter that
+served the identifier, the capabilities, purposes or operations it declared, and its version
+where it declares one. The same identifier can name another adapter next week — a worker that
+serves other capabilities gives another verdict — so the report prints it, and the digest in
+`removal.tested` covers it.
 
 **Where it reaches the instance.** Every step is a call of a capability — `orchestrator.
 integrations`, `orchestrator.removal`, `orchestrator.maturity` — served by the *loopback
@@ -99,16 +111,20 @@ A person runs the same test without Taktus (ADR-0013 B). It needs the instance's
 3. **Run.** For every process from step 1 whose steps would not leave the system, run it once
    with the original configuration and once with the reduced one (`uv run taktusctl run
    --process <bundle> --input <declared examples>`). Note for each run its final state, the
-   step it ended at, and the consumption line.
+   step it ended at, and the consumption line. A process that writes outward is not run by
+   hand: running it would write twice. Its verdict rests on step 4, as it does in Taktus when
+   no recorded response exists.
 4. **Measure.** For every step the integration served: does another configured adapter serve
    it? If not, does the step's `fallback:` name `human`? If neither, the process *broke*. If the
    reduced run reached the same point as the original, or stopped exactly at a step a person
-   takes over, the process *changed*. The integration's verdict is *broke* if any process broke.
+   takes over, the process *changed*. The integration's verdict is *broke* if any process broke,
+   and *untested* if step 1 found no process that uses it.
 5. **Restore.** Put the configuration back and run step 1 again: the integration serves what
    it served.
-6. **Record.** Write the verdict, the date, the processes and the run identifiers into the
-   register of adapter maturity — today the `adapter_maturity` table, or the notes of the
-   operating documentation — and keep the two runs' output as the evidence.
+6. **Record.** Write the verdict, the date, what the integration served and its version from
+   step 1, the processes and the run identifiers into the register of adapter maturity —
+   today the `adapter_maturity` table, or the notes of the operating documentation — and keep
+   the two runs' output as the evidence.
 
 ### The first run
 

@@ -54,11 +54,11 @@ taktus/
 │   │       │   └── event/
 │   │       ├── application/
 │   │       │   ├── service/         # one use case per module
-│   │       │   └── query/           # read side (CQRS): run/application/query/provenance.py walks and verifies the chain
+│   │       │   └── query/           # read side (CQRS): run/application/query/provenance.py walks and verifies the chain; recordings.py finds the recorded response a rehearsal answers an outward call with (ADR-0030)
 │   │       └── ports/               # ports this component alone needs (run/ports/workers.py, connectors.py, models.py)
-│   │   … run/domain/service/provenance.py builds and verifies the provenance chain (ADR-0021)
+│   │   … run/domain/service/provenance.py builds and verifies the provenance chain (ADR-0021); run/domain/service/rehearsal.py chooses the recording — the last real call, never a rehearsal (ADR-0030)
 │   │   … governance/domain/service/egress.py decides whether a result has left the system (ADR-0022)
-│   │   … catalog/domain/model/maturity.py is an adapter's maturity with its last removal result; catalog/domain/service/removal.py the rules that decide broke, changed or exception; catalog/application/service/record_removal.py writes the result and the ledger entry `removal.tested`
+│   │   … catalog/domain/model/maturity.py is an adapter's maturity with its last removal result; catalog/domain/service/removal.py the rules that decide broke, changed, untested or exception, and when a process can be rehearsed; catalog/application/service/record_removal.py writes the result and the ledger entry `removal.tested`
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
 │   │     accounting/ knowledge/ value/ ledger/
 │   │
@@ -99,7 +99,7 @@ taktus/
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
-│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs, the removal verdict observed
+│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 │   ├── script/                      # the reference worker: shell commands, no AI

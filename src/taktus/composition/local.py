@@ -57,7 +57,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.domain.model import ProcessVersion
-from taktus.components.run.application.query import ProvenanceQuery
+from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.composition.execution import connector_pool, model_pool, open_worker, telemetry_of
@@ -124,6 +124,8 @@ class LocalWiring:
         ):
             runs = stores.of(Run)
             ledger = ChainedLedger(stores.ledger_store, clock)
+            objects = MemoryObjectStore(state_dir / "objects")
+            recordings = RecordedResponses(runs, stores.work, objects)
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
@@ -139,7 +141,7 @@ class LocalWiring:
                 return RunEngine(
                     runs=runs,
                     work=stores.work,
-                    objects=MemoryObjectStore(state_dir / "objects"),
+                    objects=objects,
                     ledger=ledger,
                     provenance=stores.provenance_store,
                     workers=workers,
@@ -150,6 +152,7 @@ class LocalWiring:
                     connectors=connectors,
                     models=models,
                     options=EngineOptions(prices=prices, margin=budget.margin),
+                    recordings=recordings,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -166,6 +169,7 @@ class LocalWiring:
                     record=RecordRemovalResultHandler(
                         stores.of(AdapterMaturity), stores.work, ledger, clock
                     ),
+                    recordings=recordings,
                     clock=clock,
                     ids=ids,
                 )

@@ -24,11 +24,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
-    Float,
     BigInteger,
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Identity,
@@ -207,6 +207,7 @@ run = Table(
     Column("steps", JSONB, nullable=False),
     Column("work", JSONB, nullable=False),
     Column("inputs", JSONB, nullable=False),
+    Column("rehearsal", Boolean, nullable=False),  # ADR-0030
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),
@@ -302,6 +303,7 @@ ledger_entry = Table(
     Column("consumption", JSONB),
     Column("outcome", Text),
     Column("content_digest", Text),
+    Column("rehearsal", Boolean),  # true on every entry of a rehearsal run (ADR-0030)
     PrimaryKeyConstraint("tenant", "seq"),
     Index("ledger_entry_run", "tenant", text("(refs ->> 'run_id')")),
 )

@@ -81,8 +81,10 @@ steps:
   # Remove, run, restore. An instance's configuration is its environment and does not change
   # while it runs, so the three are one operation: the instance rehearses every process that
   # uses the integration through the same engine over the same stores with the integration
-  # left out, and the unchanged configuration is the restored state. Every rehearsal run is a
-  # real run in the ledger. By hand, the three are three steps (README.md).
+  # left out, and the unchanged configuration is the restored state. A rehearsal sends nothing
+  # out: every outward connector operation answers with the recorded response of its last real
+  # call (ADR-0030), and every ledger entry of a rehearsal run says it is one. By hand, the
+  # three are three steps (README.md).
   - id: exercise
     method: rule
     reason: >
@@ -135,8 +137,8 @@ steps:
   - id: verdict
     method: rule
     reason: >
-      the result carries exactly one of three verdicts — broke, changed, exception — and this
-      step is the value that counts, checked, never judged
+      the result carries exactly one of four verdicts — broke, changed, untested, exception —
+      and this step is the value that counts, checked, never judged
     rejected:
       - method: llm
         why: the verdict is a token the rules produced; a model would only restate it, or misstate it
@@ -146,7 +148,7 @@ steps:
       rule: check
       conditions:
         - value: { $from: exercise, $select: output.verdict }
-          matches: "^(broke|changed|exception)$"
+          matches: "^(broke|changed|untested|exception)$"
         - value: { $from: exercise, $select: output.integration }
           equals: { $input: integration }
 
@@ -178,6 +180,7 @@ steps:
       rule: template
       text: |
         Removal test of ${integration} (${family}): ${verdict}.
+        Taken under: ${configuration}.
         Processes exercised: ${processes}.
         Maturity now ${maturity}; still missing for verified: ${missing}.
         Ledger entry removal.tested seq ${seq}, digest ${digest}.
@@ -185,6 +188,7 @@ steps:
         integration: { $input: integration }
         family: { $from: exercise, $select: output.family }
         verdict: { $from: exercise, $select: output.verdict }
+        configuration: { $from: exercise, $select: output.configuration }
         processes: { $from: exercise, $select: output.processes }
         maturity: { $from: record, $select: output.maturity }
         missing: { $from: record, $select: output.missing }

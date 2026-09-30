@@ -39,6 +39,11 @@ class Verdict(StrEnum):
     """Every process still reaches its point: another adapter served the step, or the step
     falls back to a person. Quality and cost changed; nothing broke."""
 
+    UNTESTED = "untested"
+    """No registered process uses the integration, so there was nothing to exercise. Nothing
+    was learned about removing it, and the removal half of its maturity is not earned
+    (ADR-0030)."""
+
     EXCEPTION = "exception"
     """The integration cannot be removed by design, and the reason is recorded — the database
     is the one deliberate exception (ADR-0002). Not a failure of the test."""
@@ -72,8 +77,9 @@ class ProcessFinding(Value):
     process: str = Field(min_length=1)
     """The process version, as the ledger names it: `id@version`."""
     exercised: Literal["run", "resolved"]
-    """`run`: the process ran twice, with and without the integration, and the summaries are
-    below. `resolved`: it was not safe to run — an outward effect, a worker with hosts — and
+    """`run`: the process was rehearsed twice, with and without the integration, and the
+    summaries are below (ADR-0030). `resolved`: it could not be rehearsed — an outward
+    operation never called for real, a worker with hosts, an input without an example — and
     the verdict rests on resolution alone."""
     verdict: Verdict
     steps: tuple[StepFinding, ...]
@@ -81,6 +87,22 @@ class ProcessFinding(Value):
     withheld: RunSummary | None = None
     note: str | None = None
     """Why the process was not run, or what the two runs showed, in words."""
+
+
+class Configuration(Value):
+    """What stood behind the integration's identifier when the verdict was taken. The same
+    identifier can name different adapters on different days — a worker that serves other
+    capabilities gives another verdict — so a verdict is only as good as the configuration it
+    names. Identifiers, capabilities and versions; never a product."""
+
+    adapter: str = Field(min_length=1)
+    """The adapter identifier that served the integration, as the ledger names it."""
+    serves: tuple[str, ...] = ()
+    """What it declared: a worker's or a connector's capabilities, a model's purposes."""
+    operations: tuple[str, ...] | None = None
+    """For a connector: the operations it declared. Absent for the other families."""
+    version: str | None = None
+    """The version the adapter declared, where it declares one."""
 
 
 class RemovalResult(Value):
@@ -95,7 +117,11 @@ class RemovalResult(Value):
     """The run of the removal-test process that produced this result."""
     processes: tuple[ProcessFinding, ...] = ()
     reason: str | None = None
-    """For `exception`: why the integration cannot be removed. For the others: optional."""
+    """For `exception`: why the integration cannot be removed. For `untested`: that no
+    registered process uses it. For the others: optional."""
+    configuration: Configuration | None = None
+    """The configuration the verdict was taken under (issue #36); None only for results
+    recorded before it was recorded."""
 
 
 class AdapterMaturity(Value):
@@ -129,6 +155,11 @@ class AdapterMaturity(Value):
             gaps.append("the conformance suite has not been recorded as passed")
         if self.removal is None:
             gaps.append("the removal test has not run")
+        elif self.removal.verdict is Verdict.UNTESTED:
+            gaps.append(
+                "the last removal test found no registered process that uses the integration, "
+                "so nothing was exercised"
+            )
         elif self.removal.verdict is not Verdict.CHANGED:
             gaps.append(f"the last removal test ended {self.removal.verdict}")
         return tuple(gaps)

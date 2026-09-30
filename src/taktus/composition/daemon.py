@@ -64,7 +64,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.domain.model import ProcessVersion
-from taktus.components.run.application.query import ProvenanceQuery
+from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import (
     EngineOptions,
     RunEngine,
@@ -178,6 +178,8 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
+            objects = MemoryObjectStore(settings.state_dir / "objects")
+            recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
                 StaticWorkerPool([(adapter, worker)]),
                 connector_pool(settings.connectors, also=[(LOOPBACK, loopback)]),
@@ -191,7 +193,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                 return RunEngine(
                     runs=runs,
                     work=persistence,
-                    objects=MemoryObjectStore(settings.state_dir / "objects"),
+                    objects=objects,
                     ledger=ledger,
                     provenance=provenance_store,
                     workers=workers,
@@ -206,6 +208,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                     ),
                     connectors=connectors,
                     models=models,
+                    recordings=recordings,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -226,6 +229,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                     record=RecordRemovalResultHandler(
                         PostgresRepository(persistence, AdapterMaturity), persistence, ledger, clock
                     ),
+                    recordings=recordings,
                     clock=clock,
                     ids=ids,
                 )

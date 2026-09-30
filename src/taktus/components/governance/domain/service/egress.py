@@ -3,7 +3,8 @@
 A result has left the system when the ledger holds an egress entry — `egress.write`,
 `egress.delivery`, `egress.read` — for it or for anything derived from it. *Derived from* is
 the provenance chain read forward: the outputs of every step run whose inputs name the result,
-transitively, across runs. Pure functions over provenance records and ledger entries; the
+transitively, across runs. A rehearsal run (ADR-0030) sends nothing out and records no egress, so
+nothing it produced has left. Pure functions over provenance records and ledger entries; the
 records and the entries are read from their components, never written here.
 """
 
@@ -40,10 +41,12 @@ def left_the_system(
     result: ResultRef, records: Sequence[Provenance], entries: Iterable[LedgerEntry]
 ) -> Egress | None:
     """The first egress entry that names the result or anything derived from it, or None:
-    the result is still inside, and correcting it is not anchored."""
+    the result is still inside, and correcting it is not anchored. An entry of a rehearsal
+    run is never evidence that anything left (ADR-0030): a rehearsal writes no egress entry,
+    and one that claimed to would not count."""
     members = closure(result, records)
     for entry in entries:
-        if entry.kind not in EGRESS_KINDS:
+        if entry.kind not in EGRESS_KINDS or entry.rehearsal:
             continue
         for member in members:
             if _names(entry, member):

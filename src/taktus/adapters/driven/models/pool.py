@@ -24,10 +24,10 @@ class StaticModelPool:
                 return ResolvedModel(adapter=adapter, model=model, version=version)
         return None
 
-    def members(self) -> list[tuple[str, tuple[str, ...]]]:
-        """Every configured model with the purposes it serves — what the removal test reads
-        to know what is configured."""
-        return [(adapter, purposes) for adapter, purposes, _, _ in self._models]
+    def members(self) -> list[tuple[str, tuple[str, ...], str | None]]:
+        """Every configured model with the purposes it serves and its pinned version — what
+        the removal test reads to know what is configured, and records its verdict under."""
+        return [(adapter, purposes, version) for adapter, purposes, _, version in self._models]
 
     def without(self, adapter: str) -> StaticModelPool:
         """The same configuration with one model withheld; the original is untouched."""

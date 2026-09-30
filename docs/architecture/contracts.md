@@ -196,12 +196,19 @@ it from processes. Its report states which half of *verified* it proves.
 
 **The removal test is a process, not a suite check.** `blueprints/self-operation/processes/
 S-01-removal-test.yaml` runs weekly, once per configured integration: it withholds the
-integration, exercises the registered processes that use it — run twice, with and without,
-where running cannot leave the system; resolved statically otherwise — restores it, and records
-one of three verdicts in the ledger as `removal.tested` and in the adapter's maturity record
-(`components/catalog`, table `adapter_maturity`). *Broke*: a step lost its only adapter and no
-person takes it over. *Changed*: another adapter or a person serves the step; quality and cost
-changed. *Exception*: the integration cannot be removed by design — the database, ADR-0002.
+integration, exercises the registered processes that use it, restores it, and records one of
+four verdicts in the ledger as `removal.tested` and in the adapter's maturity record
+(`components/catalog`, table `adapter_maturity`). A process is exercised by **rehearsing** it
+twice, with and without the integration (ADR-0030): a rehearsal run sends no outward connector
+call, answers each with the recorded response of the operation's last real call through the
+same adapter, and marks every ledger entry `rehearsal: true`. A process whose outward
+operation was never called for real, or whose worker may reach hosts, is resolved statically
+instead, and the finding says why. *Broke*: a step lost its only adapter and no person takes it
+over. *Changed*: another adapter or a person serves the step; quality and cost changed.
+*Untested*: no registered process uses the integration, so nothing was exercised; it does not
+count towards *verified*. *Exception*: the integration cannot be removed by design — the
+database, ADR-0002. Every result names the configuration it was taken under: the adapter that
+served the identifier, what it declared and its version.
 The maturity record derives *verified* from both halves and names which is missing; nothing
 records the conformance half yet, so no adapter is *verified* through it today. The blueprint's
 README carries the same test as instructions a person follows by hand, and the record of the

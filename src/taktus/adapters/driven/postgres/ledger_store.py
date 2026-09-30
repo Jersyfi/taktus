@@ -44,6 +44,7 @@ class PostgresLedgerStore:
             consumption=document.get("consumption"),
             outcome=document.get("outcome"),
             content_digest=document.get("content_digest"),
+            rehearsal=document.get("rehearsal"),
         )
         try:
             await connection.execute(statement)
@@ -87,7 +88,15 @@ def _entry(row: Row[Any]) -> LedgerEntry:
         "hash": row.hash,
         "refs": row.refs,
     }
-    for name in ("method", "model", "adapter", "consumption", "outcome", "content_digest"):
+    for name in (
+        "method",
+        "model",
+        "adapter",
+        "consumption",
+        "outcome",
+        "content_digest",
+        "rehearsal",
+    ):
         value = getattr(row, name)
         if value is not None:
             document[name] = value

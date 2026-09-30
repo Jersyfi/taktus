@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import Field, model_validator
 
@@ -62,6 +63,9 @@ class LedgerEntry(Value):
     consumption: Consumption | None = None
     outcome: str | None = Field(default=None, pattern=OUTCOME_PATTERN)
     content_digest: Digest | None = None
+    rehearsal: Literal[True] | None = None
+    """True on every entry of a rehearsal run, absent otherwise (ADR-0030): nothing outside
+    was acted on, and no such entry is evidence that anything was."""
 
     def document(self) -> dict[str, object]:
         # prev_hash is required by the schema and null for the first entry: keep it when None.

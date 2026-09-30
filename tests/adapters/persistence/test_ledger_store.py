@@ -43,8 +43,9 @@ async def test_entries_come_back_in_sequence_with_every_field(backend: Backend) 
         model="llama@3.1",
         adapter="worker.http",
         consumption={"compute_seconds": 1.5, "resource_class": "cpu.small", "tokens_in": 3},
-        outcome="succeeded",
+        outcome="rehearsed",
         content_digest=ZERO,
+        rehearsal=True,
     )
     async with backend.work.transaction(tenant):
         assert await store.last(tenant) is None

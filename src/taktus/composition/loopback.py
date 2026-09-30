@@ -11,9 +11,20 @@ wiring, and it is here because only the composition root may hold all of that at
 **Withholding is not mutation.** An instance's configuration is its environment and does not
 change while it runs. The removal test therefore rehearses: it builds the same engine over the
 same stores with one adapter left out of the pools, runs the process through it, and the
-original engine is the restored state — nothing was ever changed. Every rehearsal run is a
-real run in the ledger, attributed to the removal test's identity, so that "what did the
-removal test do" is answerable from the ledger like everything else.
+original engine is the restored state — nothing was ever changed.
+
+**Rehearsing is not acting** (ADR-0030). Both runs of a process — with the integration and
+without it — are rehearsal runs: every outward connector operation answers with the recorded
+response of the most recent real call of that operation through that adapter, and nothing
+leaves the system. A process can be rehearsed only when every outward operation it would call,
+in either configuration, has such a recording, and no worker step may reach hosts; otherwise
+its verdict rests on resolution alone, and the finding says why. Every rehearsal run is in the
+ledger, attributed to the removal test's identity and marked as a rehearsal on every entry, so
+that "what did the removal test do" is answerable from the ledger like everything else.
+
+**A verdict names its configuration** (issue #36): the result records which adapter stood
+behind the identifier, what it declared and its version, because the same identifier can name
+a different adapter next week.
 
 **Which steps an integration serves** is decided the way the run decides it: the step's work
 is parsed, and the pool that would serve it — a worker for the capabilities it requires, a
@@ -37,6 +48,7 @@ from taktus.components.catalog.application.service import (
     RecordRemovalResultHandler,
 )
 from taktus.components.catalog.domain.model import (
+    Configuration,
     ProcessFinding,
     RemovalResult,
     RunSummary,
@@ -46,6 +58,7 @@ from taktus.components.catalog.domain.model import (
 from taktus.components.catalog.domain.service import removal
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
 from taktus.components.process.domain.model import ProcessVersion
+from taktus.components.run.application.query import RecordedResponses
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import (
     ConnectorRule,
@@ -105,10 +118,8 @@ class Pools:
         return None
 
     async def outward(self, work: Any) -> bool:
-        """Whether running the step could leave the system: a connector operation declared
-        outward, or a worker with hosts it may reach."""
-        if isinstance(work, WorkerWork):
-            return bool(work.allowed_hosts)
+        """Whether the step's connector operation is declared outward: its effect would leave
+        the system, and a rehearsal answers it from a recording instead."""
         if isinstance(work, ConnectorRule):
             connector = await self.connectors.resolve(work.capability)
             if connector is None:
@@ -130,10 +141,12 @@ class Loopback:
         commission: CommissionPlanHandler,
         engine_for: EngineFactory,
         record: RecordRemovalResultHandler,
+        recordings: RecordedResponses,
         clock: Clock,
         ids: Identifiers,
     ) -> None:
         self._pools = pools
+        self._recordings = recordings
         self._versions = versions
         self._work = work
         self._commission = commission
@@ -146,22 +159,42 @@ class Loopback:
 
     async def list_integrations(self, tenant: Tenant) -> list[dict[str, Any]]:
         found: list[dict[str, Any]] = []
-        for adapter, capabilities in await self._pools.workers.members():
+        for adapter, capabilities, version in await self._pools.workers.members():
             found.append(
-                {"integration": adapter, "family": "worker", "serves": sorted(capabilities)}
+                _present(
+                    {
+                        "integration": adapter,
+                        "family": "worker",
+                        "serves": sorted(capabilities),
+                        "version": version,
+                    }
+                )
             )
         for adapter, declaration in await self._pools.connectors.members():
             if adapter == LOOPBACK:
                 continue  # Taktus itself is not an integration of Taktus
             found.append(
-                {
-                    "integration": adapter,
-                    "family": "connector",
-                    "serves": list(declaration.capabilities),
-                }
+                _present(
+                    {
+                        "integration": adapter,
+                        "family": "connector",
+                        "serves": list(declaration.capabilities),
+                        "operations": [operation.name for operation in declaration.operations],
+                        "version": declaration.version,
+                    }
+                )
             )
-        for adapter, purposes in self._pools.models.members():
-            found.append({"integration": adapter, "family": "model", "serves": list(purposes)})
+        for adapter, purposes, version in self._pools.models.members():
+            found.append(
+                _present(
+                    {
+                        "integration": adapter,
+                        "family": "model",
+                        "serves": list(purposes),
+                        "version": version,
+                    }
+                )
+            )
         found.append(
             {
                 "integration": DATABASE,
@@ -193,6 +226,12 @@ class Loopback:
         self, tenant: Tenant, integration: str, *, run_id: str, identity: str
     ) -> dict[str, Any]:
         entry = await self._entry(tenant, integration)
+        configuration = Configuration(
+            adapter=integration,
+            serves=tuple(entry["serves"]),
+            operations=tuple(entry["operations"]) if "operations" in entry else None,
+            version=entry.get("version"),
+        )
         if integration in removal.EXCEPTIONS:
             return RemovalResult(
                 integration=integration,
@@ -201,6 +240,7 @@ class Loopback:
                 tested_at=self._clock.now(),
                 run_id=run_id,
                 reason=removal.EXCEPTIONS[integration],
+                configuration=configuration,
             ).document()
         withheld = self._pools.without(integration)
         processes: list[ProcessFinding] = []
@@ -208,9 +248,14 @@ class Loopback:
             uses = await self._uses(version, integration)
             if not uses:
                 continue
-            findings, outward, unparsed = uses
+            findings, hosts, calls, unparsed = uses
             missing = [name for name, given in version.inputs.items() if given.example is None]
-            why_not = removal.safe_to_run(outward, missing)
+            unrecorded = [
+                f"{operation} through {adapter}"
+                for operation, adapter in calls
+                if await self._recordings.find(tenant, adapter, operation) is None
+            ]
+            why_not = removal.safe_to_run(hosts, unrecorded, missing)
             if unparsed:
                 why_not = f"not run: {unparsed}"
             if why_not is not None:
@@ -226,7 +271,8 @@ class Loopback:
             tested_at=self._clock.now(),
             run_id=run_id,
             processes=tuple(processes),
-            reason=None if processes else "no registered process uses this integration",
+            reason=None if processes else removal.UNUSED,
+            configuration=configuration,
         ).document()
 
     async def record(self, tenant: Tenant, result: dict[str, Any]) -> dict[str, Any]:
@@ -254,15 +300,18 @@ class Loopback:
 
     async def _uses(
         self, version: ProcessVersion, integration: str
-    ) -> tuple[list[StepFinding], list[str], str | None] | None:
+    ) -> tuple[list[StepFinding], list[str], list[tuple[str, str]], str | None] | None:
         """The steps of the version the integration serves, with their findings when it is
-        withheld; the steps whose effect would leave the system; and why the work could not
-        be read, if it could not. None when the version does not use the integration — or is
-        the removal test itself, which reaches Taktus through the loopback."""
+        withheld; the worker steps whose frame allows hosts; every outward connector call a
+        rehearsal must answer from a recording, as (operation, adapter), in either
+        configuration; and why the work could not be read, if it could not. None when the
+        version does not use the integration — or is the removal test itself, which reaches
+        Taktus through the loopback."""
         withheld = self._pools.without(integration)
         examples = {name: given.example for name, given in version.inputs.items()}
         findings: list[StepFinding] = []
-        outward: list[str] = []
+        hosts: list[str] = []
+        calls: list[tuple[str, str]] = []
         unparsed: str | None = None
         for step in version.ordered():
             try:
@@ -276,15 +325,20 @@ class Loopback:
             what, adapter = served
             if adapter == LOOPBACK:
                 return None
-            if await self._pools.outward(work):
-                outward.append(step.id)
+            alternative = await withheld.serving(step, work)
+            if isinstance(work, WorkerWork) and work.allowed_hosts:
+                hosts.append(step.id)
+            elif isinstance(work, ConnectorRule) and await self._pools.outward(work):
+                instead = None if alternative is None else alternative[1]
+                for serving in dict.fromkeys((adapter, instead)):
+                    if serving is not None:
+                        calls.append((work.operation, serving))
             if adapter != integration:
                 continue
-            alternative = await withheld.serving(step, work)
             findings.append(
                 removal.step_finding(step, what, None if alternative is None else alternative[1])
             )
-        return (findings, outward, unparsed) if findings else None
+        return (findings, hosts, calls, unparsed) if findings else None
 
     async def _rehearse(
         self, tenant: Tenant, version: ProcessVersion, pools: Pools, identity: str, of: str
@@ -324,6 +378,7 @@ class Loopback:
                     actor=identity,
                     tenant=tenant,
                     inputs=inputs,
+                    rehearsal=True,
                 )
             )
         except (RunError, ValueError) as error:
@@ -344,6 +399,11 @@ def summary(run: Run) -> RunSummary:
         at_step=ended,
         consumption=run.consumed(),
     )
+
+
+def _present(entry: dict[str, Any]) -> dict[str, Any]:
+    """The entry without the fields the adapter did not declare."""
+    return {key: value for key, value in entry.items() if value is not None}
 
 
 async def _alternatives(pools: Pools, family: str, served: str) -> list[str]:

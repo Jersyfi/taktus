@@ -8,6 +8,7 @@ import pytest
 
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
+    Configuration,
     Maturity,
     RemovalResult,
     RunSummary,
@@ -144,19 +145,46 @@ def test_two_runs_are_compared_by_where_they_came_to(
     assert words in said
 
 
+# The name is the one UC-8.9 names; what it holds since issue #36 is "untested when nothing
+# uses it": nothing exercised is not a finding that removing the integration changes nothing.
 def test_the_integration_breaks_if_any_process_does_and_changes_when_nothing_uses_it() -> None:
     changed = removal.resolved_only("p@1", [finding("a", Verdict.CHANGED)], "not run: x")
     broke = removal.resolved_only("q@1", [finding("b", Verdict.BROKE)], "not run: y")
-    assert removal.overall([]) is Verdict.CHANGED
+    assert removal.overall([]) is Verdict.UNTESTED
     assert removal.overall([changed]) is Verdict.CHANGED
     assert removal.overall([changed, broke]) is Verdict.BROKE
     assert changed.note == "not run: x" and changed.exercised == "resolved"
 
 
-def test_a_process_is_run_only_when_nothing_leaves_and_every_input_has_an_example() -> None:
-    assert removal.safe_to_run([], []) is None
-    assert "would leave the system" in (removal.safe_to_run(["write"], []) or "")
-    assert "no example for input" in (removal.safe_to_run([], ["issue"]) or "")
+@pytest.mark.parametrize(
+    ("hosts", "unrecorded", "missing", "says"),
+    [
+        ([], [], [], None),
+        # A worker that may reach hosts is outward, and a rehearsal cannot answer for it.
+        (["implement"], [], [], "step(s) implement would leave the system — a worker"),
+        # An outward operation never called for real has nothing to be rehearsed with.
+        (
+            [],
+            ["fake.records.create through connector.fake"],
+            [],
+            "no recorded response for fake.records.create through connector.fake — it has "
+            "never been called for real on this instance",
+        ),
+        ([], [], ["issue"], "no example for input(s) issue"),
+        # Every reason is named, each operation once.
+        (["implement"], ["a.b.c through x", "a.b.c through x"], ["issue"], "; no example"),
+    ],
+)
+def test_a_process_is_rehearsed_only_when_every_outward_call_has_a_recording(
+    hosts: list[str], unrecorded: list[str], missing: list[str], says: str | None
+) -> None:
+    why = removal.safe_to_run(hosts, unrecorded, missing)
+    if says is None:
+        assert why is None
+        return
+    assert why is not None and why.startswith("not run: ")
+    assert says in why
+    assert why.count("a.b.c through x") <= 1
 
 
 def test_the_database_is_the_known_exception() -> None:
@@ -171,6 +199,9 @@ def result(verdict: Verdict) -> RemovalResult:
         verdict=verdict,
         tested_at=AT,
         run_id="run_removal",
+        configuration=Configuration(
+            adapter="worker.endpoint", serves=("shell.script",), version="0.1.0"
+        ),
     )
 
 
@@ -186,5 +217,20 @@ def test_verified_needs_both_halves_and_the_record_names_what_is_missing() -> No
     assert removed.missing == ("the conformance suite has not been recorded as passed",)
     broke = nothing.model_copy(update={"removal": result(Verdict.BROKE)})
     assert not broke.removal_passed and "ended broke" in broke.missing[1]
+    untested = nothing.model_copy(update={"removal": result(Verdict.UNTESTED)})
+    assert not untested.removal_passed and untested.maturity is Maturity.EXPERIMENTAL
+    assert "no registered process that uses the integration" in untested.missing[1]
     both = removed.model_copy(update={"conformance_passed_at": AT})
     assert both.maturity is Maturity.VERIFIED and both.missing == ()
+
+
+def test_a_verdict_names_the_configuration_it_was_taken_under() -> None:
+    """Issue #36: the same identifier can name another adapter next week; the result — and so
+    the digest the ledger entry carries, and the maturity record — says which one it was."""
+    document = result(Verdict.UNTESTED).document()
+    assert document["configuration"] == {
+        "adapter": "worker.endpoint",
+        "serves": ["shell.script"],
+        "version": "0.1.0",
+    }
+    assert RemovalResult.model_validate(document) == result(Verdict.UNTESTED)

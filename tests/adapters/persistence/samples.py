@@ -228,3 +228,8 @@ def run(id: str = "run_1", tenant: str = "t") -> Run:
         }
     )
     return fresh.with_step_run(first).with_step_run(second)
+
+
+def rehearsal_run(id: str = "run_2", tenant: str = "t") -> Run:
+    """The same run as a rehearsal (ADR-0030): the flag survives the round trip."""
+    return run(id, tenant).model_copy(update={"rehearsal": True})

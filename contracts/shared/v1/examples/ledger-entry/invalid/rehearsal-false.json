@@ -1,0 +1,12 @@
+{
+  "seq": 42,
+  "ts": "2026-09-30T08:12:04Z",
+  "kind": "run.finished",
+  "prev_hash": "sha256:690396b0e760bb1a655c81fe146dd04fdd7ed9686a1916cf90e4c223914ae917",
+  "hash": "sha256:40093ead2c5f20a05dfd08796e7f24d7b8ccf0b2345f71d0fdb80c493e331a07",
+  "refs": {
+    "run_id": "run_20931"
+  },
+  "outcome": "succeeded",
+  "rehearsal": false
+}

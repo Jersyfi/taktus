@@ -192,6 +192,9 @@ class Run(Value):
     inputs: Mapping[str, Any] = Field(default_factory=dict)
     """What the run was given when it started — an issue number, a repository — and what
     `$input` references in the work resolve to."""
+    rehearsal: bool = False
+    """A rehearsal (ADR-0030): no outward connector operation acts; each answers with the
+    recorded response of an earlier real call, and every ledger entry of the run says so."""
     state: RunState = RunState.PLANNED
     cause: Cause | None = None
     reason: str | None = None

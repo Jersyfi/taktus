@@ -13,7 +13,7 @@ transaction.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import Field
 
@@ -34,6 +34,8 @@ class Fact(Value):
     consumption: Consumption | None = None
     outcome: str | None = Field(default=None, pattern=OUTCOME_PATTERN)
     content_digest: Digest | None = None
+    rehearsal: Literal[True] | None = None
+    """Set on every fact of a rehearsal run (ADR-0030); None on every other."""
 
 
 class Verification(Value):

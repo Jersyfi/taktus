@@ -43,6 +43,12 @@ original record. An outward effect the connector reports becomes an `egress.writ
 failure ends the step failed with the connector's cause; the engine retries nothing on its
 own — a resume is a person's act, and for an operation the connector cannot recognise a repeat
 of (`idempotency: none`) the reason says that resuming repeats the call (ADR-0024 §3).
+
+A run can be a *rehearsal* (ADR-0030): an outward connector operation is not called, and the
+step answers with the recorded response of the most recent real call of the same operation
+through the same adapter (`application/query/recordings.py`); it finishes with outcome
+`rehearsed`, writes no egress entry, and every ledger entry of the run carries
+`rehearsal: true`. Reads, rules, llm and worker steps run as they do in any run.
 """
 
 from __future__ import annotations
@@ -54,6 +60,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from taktus.components.run.application.query.recordings import RecordedResponses
 from taktus.components.run.domain.model import (
     INTERRUPTIBLE,
     RESUMABLE,
@@ -89,6 +96,7 @@ from taktus.components.run.domain.model import (
 from taktus.components.run.domain.service import budget as budgeting
 from taktus.components.run.domain.service import provenance, rules
 from taktus.components.run.domain.service.admission import admit, remaining
+from taktus.components.run.domain.service.rehearsal import REHEARSED
 from taktus.components.run.ports import ConnectorPool, ModelPool, WorkerPool
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
@@ -160,6 +168,8 @@ class StartRun:
     margin: float | None = None
     """The share of every limit held back from the first step on (ADR-0005); None takes the
     engine's configured margin."""
+    rehearsal: bool = False
+    """A rehearsal: no outward connector operation acts (ADR-0030)."""
 
     @property
     def identity(self) -> str:
@@ -193,6 +203,8 @@ class Trace:
     inputs: tuple[ProvenanceInput, ...] = ()
     adapter_version: str | None = None
     egress: EffectReport | None = None
+    rehearsed: bool = False
+    """The step answered from a recording instead of acting outward (ADR-0030)."""
 
 
 @dataclass(frozen=True)
@@ -241,6 +253,7 @@ class RunEngine:
         options: EngineOptions | None = None,
         connectors: ConnectorPool | None = None,
         models: ModelPool | None = None,
+        recordings: RecordedResponses | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -250,6 +263,7 @@ class RunEngine:
         self._workers = workers
         self._connectors = connectors
         self._models = models
+        self._recordings = recordings or RecordedResponses(runs, work, objects)
         self._clock = clock
         self._ids = ids
         self._telemetry = telemetry
@@ -314,6 +328,7 @@ class RunEngine:
             steps=command.plan.steps,
             work=command.work,
             inputs=dict(command.inputs),
+            rehearsal=command.rehearsal,
             created_at=now,
             updated_at=now,
         )
@@ -574,7 +589,7 @@ class RunEngine:
             run.with_step_run(step_run),
             "step.finished",
             step=step_run,
-            outcome="succeeded",
+            outcome=REHEARSED if trace.rehearsed else "succeeded",
             trace=trace,
         )
         _measured(span, step_run)
@@ -829,8 +844,8 @@ class RunEngine:
             entries = await self._ledger.entries(tenant)
         for entry in entries:
             run_id, step_id = entry.refs.run_id, entry.refs.step_id
-            if run_id is None or step_id is None:
-                continue
+            if run_id is None or step_id is None or entry.rehearsal:
+                continue  # a rehearsal replays recorded answers: it measures no adapter
             if entry.kind == "step.admitted" and entry.consumption is not None:
                 estimates[(run_id, step_id)] = entry.consumption
             elif entry.kind == "step.finished" and entry.consumption is not None:
@@ -961,6 +976,8 @@ class RunEngine:
             )
         (input,), read = await self._resolved(run, [work.input])
         span.set_attribute("adapter", resolved.adapter)
+        if run.rehearsal and operation.outward:
+            return await self._rehearsed(run, resolved, operation, read)
         result = await self._call(run, step_run, resolved, operation, input, work.credentials, span)
         document = result.document()
         inputs = list(read)
@@ -969,6 +986,46 @@ class RunEngine:
         egress = result.effect if operation.outward else None
         trace = Trace(inputs=tuple(inputs), adapter_version=resolved.version, egress=egress)
         return document, trace, result.consumption, resolved.adapter
+
+    # --- rehearsal (ADR-0030) ------------------------------------------------------------------
+
+    async def _rehearsed(
+        self,
+        run: Run,
+        resolved: ResolvedConnector,
+        operation: Operation,
+        read: tuple[ProvenanceInput, ...],
+    ) -> tuple[Any, Trace, Consumption | None, str]:
+        """An outward operation in a rehearsal: nothing is sent. The step answers with the
+        recorded response of the most recent real call of the operation through the adapter,
+        reads it as that run's result, and consumes nothing. Without a recording the step
+        fails: the process cannot be rehearsed past it."""
+        found = await self._recordings.response(run.tenant, resolved.adapter, operation.name)
+        if found is None:
+            raise _StepFailed(
+                reason=f"rehearsal: no recorded response for {operation.name} through "
+                f"{resolved.adapter} — it has never been called for real on this instance",
+                retryable=False,
+                consumption=None,
+                adapter=resolved.adapter,
+                outcome="no recording",
+            )
+        recording, document = found
+        recorded = ProvenanceInput(
+            kind=InputKind.RESULT,
+            run_id=recording.run_id,
+            step_id=recording.step_id,
+            digest=recording.digest,
+            observed_at=self._clock.now(),
+        )
+        replayed = {
+            **document,
+            "rehearsed_from": {"run_id": recording.run_id, "step_id": recording.step_id},
+        }
+        trace = Trace(inputs=(*read, recorded), adapter_version=resolved.version, rehearsed=True)
+        return replayed, trace, None, resolved.adapter
+
+    # --- end of rehearsal ----------------------------------------------------------------------
 
     async def _call(
         self,
@@ -1555,6 +1612,7 @@ class RunEngine:
                 consumption=consumption,
                 outcome=outcome,
                 content_digest=digest,
+                rehearsal=True if run.rehearsal else None,  # ADR-0030
             ),
         )
 

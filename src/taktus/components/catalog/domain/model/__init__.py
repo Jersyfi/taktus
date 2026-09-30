@@ -1,5 +1,6 @@
 from taktus.components.catalog.domain.model.maturity import (
     AdapterMaturity,
+    Configuration,
     Family,
     Maturity,
     ProcessFinding,
@@ -11,6 +12,7 @@ from taktus.components.catalog.domain.model.maturity import (
 
 __all__ = [
     "AdapterMaturity",
+    "Configuration",
     "Family",
     "Maturity",
     "ProcessFinding",

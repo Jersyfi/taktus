@@ -31,15 +31,16 @@ class StaticWorkerPool:
                 return ResolvedWorker(adapter=adapter, worker=worker, version=version)
         return None
 
-    async def members(self) -> list[tuple[str, frozenset[str]]]:
-        """Every configured worker with the capabilities it declares — what the removal test
-        reads to know what is configured."""
+    async def members(self) -> list[tuple[str, frozenset[str], str | None]]:
+        """Every configured worker with the capabilities and the version it declares — what
+        the removal test reads to know what is configured, and records its verdict under."""
         found = []
         for adapter, worker in self._workers:
             if adapter not in self._declared:
                 declared = await worker.capabilities()
                 self._declared[adapter] = (frozenset(declared.capabilities), declared.version)
-            found.append((adapter, self._declared[adapter][0]))
+            capabilities, version = self._declared[adapter]
+            found.append((adapter, capabilities, version))
         return found
 
     def without(self, adapter: str) -> StaticWorkerPool:
