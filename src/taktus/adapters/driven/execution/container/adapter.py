@@ -4,8 +4,11 @@ The default in operation (ADR-0002). Every job gets:
 
 - **a container of its own** from the unit's image, with the image's own command behind a
   launcher (`launch.sh`) that this adapter places into it; no capability, no privilege
-  escalation, a process limit, a memory limit without swap, a CPU limit — the engine kills a
-  job that exceeds the memory limit, and this adapter kills one that exceeds the wall clock;
+  escalation, a process limit, a memory limit without swap (the swap limit equal to the
+  memory limit), a CPU limit — the engine kills a job that exceeds the memory limit, and this
+  adapter kills one that exceeds the wall clock. An engine that says it cannot limit memory
+  or swap (`/info`: `MemoryLimit`, `SwapLimit`) would take the limits and silently not apply
+  them, so the job is refused before anything is created (`limits_refusal`);
 - **a network of its own**, internal: no route out, no route in. The only other member is the
   job's **egress container** (`egress.py`), which sits on that network and on the network the
   control plane reaches. Inbound, it forwards the unit's port so the control plane can talk to
@@ -44,12 +47,18 @@ from taktus.adapters.driven.execution._common import (
     resolve_credentials,
     wait_until_healthy,
 )
-from taktus.adapters.driven.execution.container.engine import Engine, EngineError, config_of
+from taktus.adapters.driven.execution.container.engine import (
+    Engine,
+    EngineError,
+    Json,
+    config_of,
+)
 from taktus.ports.configuration import Configuration
 from taktus.ports.execution import (
     UNIT_PORT_VARIABLE,
     UNIT_STATE_DIR_VARIABLE,
     ExecutionError,
+    ExecutionRefused,
     Isolation,
     JobExit,
     JobRequest,
@@ -117,6 +126,14 @@ class ContainerExecution:
         suffix = secrets.token_hex(3)
         names = _Names(f"{request.job_id}-{suffix}".lower().replace("_", "-"))
         engine = Engine(self._socket)
+        try:
+            why = limits_refusal(await engine.info())
+        except BaseException:
+            await engine.close()
+            raise
+        if why is not None:
+            await engine.close()
+            raise ExecutionRefused(why)
         job: ContainerJob | None = None
         timer: asyncio.Task[None] | None = None
         try:
@@ -337,6 +354,22 @@ class ContainerExecution:
         except EngineError:
             return
         (directory / f"job-{request.job_id}.log").write_bytes(content)
+
+
+def limits_refusal(info: Json) -> str | None:
+    """Why the engine cannot be trusted with a job's limits, or None when it can. An engine
+    without memory limiting accepts `Memory` and applies nothing; one without swap limiting
+    accepts `MemorySwap` and lets the job swap past its limit. Either way the limit would be a
+    number in a configuration and nothing on the machine: the job is refused, as a job the
+    adapter cannot give limits to is refused (deploy/k8s/README.md)."""
+    missing = [name for name in ("MemoryLimit", "SwapLimit") if info.get(name) is not True]
+    if not missing:
+        return None
+    return (
+        f"the container engine reports {' and '.join(f'{n}: false' for n in missing)}: it "
+        "cannot enforce the job's memory limit without swap, and a limit it does not enforce "
+        "is refused rather than trusted"
+    )
 
 
 @dataclass(frozen=True)
