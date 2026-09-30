@@ -975,11 +975,28 @@ class RunEngine:
                 outcome="no connector",
             )
         (input,), read = await self._resolved(run, [work.input])
+        if work.expect and operation.outward:
+            raise UnsupportedWork(
+                step_run.step_id, "only a reading carries an expectation; a write acts once"
+            )
         span.set_attribute("adapter", resolved.adapter)
         if run.rehearsal and operation.outward:
             return await self._rehearsed(run, resolved, operation, read)
         result = await self._call(run, step_run, resolved, operation, input, work.credentials, span)
         document = result.document()
+        unmet = [why for e in work.expect if (why := rules.unmet(e, document["output"]))]
+        if unmet:
+            # The reading fails its own step, so that a resume reads again: the state outside
+            # may be what was expected by then (issue #31).
+            raise _StepFailed(
+                reason=f"{operation.name} did not show what the step expects: "
+                + "; ".join(unmet)
+                + ". A resume reads it again",
+                retryable=True,
+                consumption=result.consumption,
+                adapter=resolved.adapter,
+                outcome="reading not as expected",
+            )
         inputs = list(read)
         if not operation.outward:
             inputs.append(self._source(operation, input, document["output"]))

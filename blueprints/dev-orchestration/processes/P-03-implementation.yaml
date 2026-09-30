@@ -264,7 +264,10 @@ steps:
 
   - id: read-pipeline
     method: rule
-    reason: the pipeline's verdict, read once more so that the check below has a result to hold
+    reason: >
+      the pipeline's verdict, read once more so that the check below has a result to hold; the
+      reading expects success and fails its own step otherwise, so that a resume after the
+      pipeline was re-run reads it again instead of judging the old reading (issue #31)
     rejected: []
     exactness: sourced
     depends_on: [wait-for-pipeline]
@@ -275,6 +278,8 @@ steps:
         ref: { $from: branch-name }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: state, equals: success }
 
   - id: verify
     method: rule

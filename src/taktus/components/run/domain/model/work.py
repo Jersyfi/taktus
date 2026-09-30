@@ -94,18 +94,35 @@ class TemplateRule(Value):
     values: dict[str, Any] = Field(default_factory=dict)
 
 
+class Expectation(Value):
+    """What a reading must show: the part of the output `select` names, equal to something,
+    matching a pattern, or not — the conditions of a `check`, over what was just read."""
+
+    select: str = Field(min_length=1)
+    equals: Any | None = None
+    matches: str | None = None
+    not_matches: str | None = None
+
+
 class ConnectorRule(Value):
     """The result is what one connector operation answered: its output, the effect it reported
     and what it consumed (`contracts/connector/v1` §5). The operation's capability — every
     segment but the last of its name — chooses the connector; `credentials` name, never hold,
     the requesting identity's credentials for the target. An outward effect the connector
-    reports becomes an egress entry in the ledger (ADR-0022)."""
+    reports becomes an egress entry in the ledger (ADR-0022).
+
+    A read may carry `expect`: what the reading must show for the step to succeed. A reading
+    that does not show it fails the step itself, and is therefore read again when the run is
+    resumed — the state outside may have changed since (issue #31). A reading that succeeded is
+    a stored result and is never read again; a check in a later step over it would judge the
+    old reading for ever."""
 
     rule: Literal["connector"]
     operation: str = Field(pattern=r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}$")
     # The operation's own input, with references; its shape belongs to the operation.
     input: dict[str, Any] = Field(default_factory=dict)
     credentials: tuple[CredentialReference, ...] = ()
+    expect: tuple[Expectation, ...] = ()
 
     @property
     def capability(self) -> str:
