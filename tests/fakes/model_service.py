@@ -7,8 +7,11 @@ with is scripted: `FAKE_MODEL_ANSWER` (or the `answer` given to `make_server`) i
 every completion, with `{prompt}` replaced by the user message, so that a test can see the
 prompt came through. Tokens are counted as words. `FAKE_MODEL_TOKEN`, when set, is the one
 bearer value accepted; anything else is 401. `POST /_fake/answer` changes the answer and the
-finish reason for the calls that follow. Standard library only; runnable as
-`python3 tests/fakes/model_service.py --port 9300`.
+finish reason for the calls that follow. The output limit a call sets (`max_tokens`) is held —
+the answer is cut to it and the finish reason is `length` — unless `ignore_limit` is set, which
+is the fault the model contract's M-03 must catch; `cached`, when set, is reported as input read
+from a cache. Standard library only; runnable as `python3 tests/fakes/model_service.py --port
+9300`.
 """
 
 from __future__ import annotations
@@ -33,6 +36,8 @@ class Script:
     finish: str = "stop"
     token: str | None = None
     status: int = 200
+    ignore_limit: bool = False
+    cached: int | None = None
     requests: list[Json] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -65,6 +70,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.script.answer = str(body.get("answer", self.script.answer))
                 self.script.finish = str(body.get("finish", self.script.finish))
                 self.script.status = int(body.get("status", 200))
+                self.script.ignore_limit = bool(body.get("ignore_limit", False))
+                cached = body.get("cached")
+                self.script.cached = None if cached is None else int(cached)
             self._send(200, {"ok": True})
             return
         if self.path != "/chat/completions":
@@ -86,7 +94,19 @@ class Handler(BaseHTTPRequestHandler):
             )
             text = self.script.answer.replace("{prompt}", str(user))
             finish = self.script.finish
+            limit = body.get("max_tokens")
+            words = text.split()
+            if isinstance(limit, int) and len(words) > limit and not self.script.ignore_limit:
+                text, finish = " ".join(words[:limit]), "length"
+            cached = self.script.cached
         prompt_tokens = sum(len(str(m.get("content", "")).split()) for m in messages)
+        usage: Json = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": len(text.split()),
+            "total_tokens": prompt_tokens + len(text.split()),
+        }
+        if cached is not None:
+            usage["prompt_tokens_details"] = {"cached_tokens": min(cached, prompt_tokens)}
         self._send(
             200,
             {
@@ -100,11 +120,7 @@ class Handler(BaseHTTPRequestHandler):
                         "finish_reason": finish,
                     }
                 ],
-                "usage": {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": len(text.split()),
-                    "total_tokens": prompt_tokens + len(text.split()),
-                },
+                "usage": usage,
             },
         )
 

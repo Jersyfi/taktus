@@ -87,3 +87,25 @@ async def test_the_pool_resolves_by_purpose_or_every_purpose() -> None:
     every = StaticModelPool([("model.endpoint", ["*"], model, "m")])
     resolved = await every.resolve("triage")
     assert resolved is not None and resolved.adapter == "model.endpoint" and resolved.version == "m"
+
+
+async def test_the_adapter_declares_what_it_can_compute_and_splits_usage_by_price_kind(
+    endpoint: tuple[str, model_service.Script],
+) -> None:
+    url, script = endpoint
+    model = OpenAiCompatibleModel(
+        url, "fake-model", credential=Secret(KEY), timeout=5.0, billing="per_window"
+    )
+    declared = model.calculability()
+    assert declared.input_count == "upper_bound" and declared.output_cap == "soft"
+    assert declared.billing == "per_window", "the operator's word for the endpoint"
+    prompt = Prompt(system="Be brief.", user="Issue #11: report git")
+    counted = await model.count(prompt)
+    completion = await model.complete(prompt)
+    assert counted is not None and counted >= completion.tokens_in, "a bound, never below"
+    assert completion.by_kind is not None
+    assert completion.by_kind.input == completion.tokens_in, "no cache reported: all uncached"
+    script.cached = 3
+    cached = await model.complete(prompt)
+    assert cached.by_kind is not None and cached.by_kind.cache_read == 3
+    assert cached.by_kind.tokens_in == cached.tokens_in, "the kinds add up to the total"

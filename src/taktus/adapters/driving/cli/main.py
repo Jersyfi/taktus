@@ -1,7 +1,7 @@
 """`taktusctl` — the command line of Taktus.
 
 Three commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
-worker or the connector contract; the suite is not part of the control plane and needs no
+worker, the connector or the model contract; the suite is not part of the control plane and needs no
 wiring. `run` and `submit` drive the control plane: `run` executes a bundle in this process,
 `submit` queues it for the daemon. Both need services, which the composition root provides as
 the typer context object (see `wiring`); the console script `taktusctl` therefore starts in
@@ -22,9 +22,11 @@ import typer
 from taktus.adapters.driving.cli import run_command, submit_command
 from taktus.conformance import (
     ConnectorSuiteOptions,
+    ModelSuiteOptions,
     Report,
     SuiteOptions,
     run_connector_suite,
+    run_model_suite,
     run_suite,
 )
 from taktus.conformance.suite import DEFAULT_CREDENTIAL
@@ -40,7 +42,17 @@ app.add_typer(conformance, name="conformance")
 app.command("run")(run_command.run)
 app.command("submit")(submit_command.submit)
 
-CONTRACTS = {"worker/v1", "connector/v1"}
+CONTRACTS = {"worker/v1", "connector/v1", "model/v1"}
+
+DIALECT_DECLARATION = {
+    "contract": "model/v1",
+    "input_count": "upper_bound",
+    "output_cap": "soft",
+    "usage_kinds": ["input", "output"],
+    "billing": "per_token",
+}
+"""What the chat-completions adapter declares when the operator says nothing more: the
+dialect's upper-bound count, a soft output limit, billing per token (contracts/model/v1)."""
 
 
 @conformance.command("run")
@@ -53,7 +65,8 @@ def conformance_run(
         typer.Option(
             "--endpoint",
             help="Where the adapter listens: the base URL of a worker, the MCP URL of a "
-            "connector (for example http://localhost:9100/mcp).",
+            "connector (for example http://localhost:9100/mcp), the base URL that serves "
+            "/chat/completions for a model.",
         ),
     ],
     json_path: Annotated[
@@ -94,6 +107,21 @@ def conformance_run(
             "the recorded payloads for intake (contracts/connector/v1/CONFORMANCE.md).",
         ),
     ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model", help="model/v1 only, required: the model the endpoint is asked for."
+        ),
+    ] = None,
+    declaration: Annotated[
+        Path | None,
+        typer.Option(
+            "--declaration",
+            help="model/v1 only: a JSON file in the shape of Model.json#/$defs/Calculability — "
+            "what the adapter declares for this endpoint. Without it, the chat-completions "
+            "adapter's default: an upper-bound count, a soft output limit, billing per token.",
+        ),
+    ] = None,
     adapter_log: Annotated[
         Path | None,
         typer.Option(
@@ -126,7 +154,26 @@ def conformance_run(
         )
         raise typer.Exit(code=2)
     report: Report
-    if contract == "connector/v1":
+    if contract == "model/v1":
+        if model is None:
+            typer.echo("model/v1 needs --model; see contracts/model/v1/README.md", err=True)
+            raise typer.Exit(code=2)
+        declared = DIALECT_DECLARATION
+        if declaration is not None:
+            with declaration.open(encoding="utf-8") as handle:
+                declared = json.load(handle)
+        report = asyncio.run(
+            run_model_suite(
+                ModelSuiteOptions(
+                    endpoint=endpoint,
+                    model=model,
+                    declaration=declared,
+                    credential_value=os.environ.get(credential) or None,
+                    timeout=timeout,
+                )
+            )
+        )
+    elif contract == "connector/v1":
         if scenario is None:
             typer.echo(
                 "connector/v1 needs --scenario; see contracts/connector/v1/CONFORMANCE.md", err=True
