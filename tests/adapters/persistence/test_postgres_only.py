@@ -239,3 +239,11 @@ async def test_two_instances_append_to_one_chain_in_sequence(postgres_url: str) 
     finally:
         await one.close()
         await two.close()
+
+
+async def test_the_database_reports_its_size(postgres: Backend) -> None:
+    """The `StateSize` port over the database: a positive number of bytes, the figure the
+    capacity report divides by the runs to find the growth per run."""
+    assert isinstance(postgres.work, PostgresPersistence)
+    size = await postgres.work.state_bytes()
+    assert size is not None and size > 0

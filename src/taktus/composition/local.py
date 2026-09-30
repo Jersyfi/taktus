@@ -48,7 +48,7 @@ from taktus.adapters.driven.postgres import (
 )
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
-from taktus.adapters.driving.cli.wiring import NotOperable, Services
+from taktus.adapters.driving.cli.wiring import CapacityServices, NotOperable, Services
 from taktus.components.catalog.application.service import RecordRemovalResultHandler
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
@@ -60,21 +60,31 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
-from taktus.composition.execution import connector_pool, model_pool, open_worker, telemetry_of
+from taktus.composition.capacity import capacity_report
+from taktus.composition.execution import (
+    connector_pool,
+    memory_demand,
+    model_pool,
+    open_worker,
+    telemetry_of,
+)
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.settings import (
     load_budget,
+    load_capacity,
     load_connectors,
     load_execution,
     load_model,
     load_provisional_identity,
     load_telemetry,
+    load_tenants,
 )
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
     LedgerStore,
     ProvenanceStore,
     Repository,
+    StateSize,
     Stored,
     UnitOfWork,
 )
@@ -96,6 +106,9 @@ class Stores:
     provenance_store: ProvenanceStore
     storage: str
     queue: Queue | None = None
+    size: StateSize | None = None
+    """The database, which reports its own size; None when the state is files under the state
+    directory, which the platform measures."""
 
 
 class LocalWiring:
@@ -195,6 +208,30 @@ class LocalWiring:
             telemetry.shutdown()
 
     @asynccontextmanager
+    async def capacity(self, *, state_dir: Path) -> AsyncIterator[CapacityServices]:
+        try:
+            settings = load_capacity(self._configuration)
+            tenants = load_tenants(self._configuration)
+            execution = load_execution(self._configuration)
+        except ConfigurationError as error:
+            raise NotOperable(str(error)) from error
+        clock = SystemClock()
+        async with self._stores(state_dir) as stores:
+            yield CapacityServices(
+                report=capacity_report(
+                    settings,
+                    clock=clock,
+                    state_dir=state_dir,
+                    ledger_store=stores.ledger_store,
+                    ledger=ChainedLedger(stores.ledger_store, clock),
+                    work=stores.work,
+                    database=stores.size,
+                ),
+                tenants=tenants,
+                job_memory_bytes=memory_demand(execution),
+            )
+
+    @asynccontextmanager
     async def _stores(self, state_dir: Path) -> AsyncIterator[Stores]:
         try:
             database = self._configuration.secret("database.url")
@@ -240,6 +277,7 @@ class LocalWiring:
                 provenance_store=PostgresProvenanceStore(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
                 queue=PostgresQueue(postgres),
+                size=postgres,
             )
         finally:
             await postgres.close()

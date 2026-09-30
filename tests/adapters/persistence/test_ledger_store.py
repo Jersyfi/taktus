@@ -127,3 +127,25 @@ async def test_a_sequence_number_is_used_once(backend: Backend) -> None:
                 await store.append(tenant, entry(2, ZERO))
     async with backend.work.transaction(tenant):
         assert [e.seq for e in await store.entries(tenant)] == [1], "the spoilt block left nothing"
+
+
+async def test_a_summary_counts_one_kind_without_reading_the_chain(backend: Backend) -> None:
+    """What a capacity report asks every hour: how many runs, how many recently, since when,
+    and the newest entry of a kind — the same answer from both implementations."""
+    tenant = await backend.tenant()
+    store = backend.ledger_store
+    early, late = datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 9, 20, tzinfo=UTC)
+    async with backend.work.transaction(tenant):
+        empty = await store.summary(tenant, "run.created", since=early)
+        await store.append(tenant, entry(1, None, ts=early))
+        await store.append(tenant, entry(2, ZERO, ts=late, kind="step.finished"))
+        await store.append(tenant, entry(3, ZERO, ts=late, outcome="second"))
+    assert (empty.total, empty.since, empty.first, empty.latest) == (0, 0, None, None)
+    async with backend.work.transaction(tenant):
+        summary = await store.summary(tenant, "run.created", since=late)
+        other = await store.summary(tenant, "capacity.memory", since=early)
+    assert (summary.total, summary.since) == (2, 1)
+    assert summary.first == early
+    assert summary.latest is not None and summary.latest.seq == 3
+    assert summary.latest.outcome == "second"
+    assert other.total == 0 and other.latest is None

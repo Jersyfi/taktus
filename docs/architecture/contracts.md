@@ -124,7 +124,7 @@ so that a resumed assignment finds them in a new unit.
 | `TAKTUS_EXECUTION` | Isolation | Adapter | For |
 |---|---|---|---|
 | `endpoint` | whoever runs the worker | `adapters/driven/workers/http/` | a worker that is already running, at `TAKTUS_WORKER`; the default |
-| `process` | none | `adapters/driven/execution/process.py` | local development, a single user. **Refused from autonomy level 3 upwards, and when the level is unknown** — the rule is `ports/execution.py:refusal()`, and `tests/governance` holds the adapter to it |
+| `process` | none | `adapters/driven/execution/process.py` | local development, a single user. **Refused from autonomy level 3 upwards, and when the level is unknown** — the rule is `ports/execution.py:refusal()`, and `tests/governance` holds the adapter to it. The unit's memory limit is enforced on Linux (`RLIMIT_DATA`, per process) and refused elsewhere unless `TAKTUS_EXECUTION_MEMORY_UNENFORCED=true` accepts it unenforced (`docs/architecture/platform.md` §5) |
 | `container` | process, filesystem, network | `adapters/driven/execution/container/` | operation. One container per job with limits, credentials in memory only, and a network that reaches `frame.allowed_hosts` and nothing else |
 | cluster | pod with quota and network policy | next pull request | the same shape with a pod instead of two containers; the port does not change |
 
@@ -152,7 +152,8 @@ container's recorded configuration, on a command line, or in a log.
 
 **The container adapter's wall**, per job: a container from the unit's image with no
 capability, no privilege escalation, a process limit, a memory limit without swap and a CPU
-limit — the engine kills on memory, the adapter on the wall clock; a network of its own,
+limit — the engine kills on memory, the adapter on the wall clock; an engine that reports it
+cannot limit memory or swap is refused before anything is created; a network of its own,
 internal, whose only other member is the job's *egress container*, which forwards the unit's
 port inward so the control plane can reach it and is an HTTP proxy outward that admits
 exactly `frame.allowed_hosts` and answers 403 to every other host, an empty list reaching

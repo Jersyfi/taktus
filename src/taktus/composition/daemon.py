@@ -59,6 +59,10 @@ from taktus.components.command.application.service import (
     ReceiveIntakeHandler,
 )
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.governance.application.service import (
+    ReportCapacity,
+    ReportCapacityHandler,
+)
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
@@ -73,7 +77,14 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
-from taktus.composition.execution import connector_pool, model_pool, open_worker, telemetry_of
+from taktus.composition.capacity import capacity_report, capacity_tick
+from taktus.composition.execution import (
+    connector_pool,
+    memory_demand,
+    model_pool,
+    open_worker,
+    telemetry_of,
+)
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.settings import Role, Settings, load
@@ -108,6 +119,8 @@ class Wired:
     leadership: Leadership
     clock: SystemClock
     ids: SystemIdentifiers
+    capacity: ReportCapacityHandler
+    """The capacity report the scheduler runs every `TAKTUS_CAPACITY_INTERVAL_SECONDS`."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -168,7 +181,8 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
             else None
         )
         runs = PostgresRepository(persistence, Run)
-        ledger = ChainedLedger(PostgresLedgerStore(persistence), clock)
+        ledger_store = PostgresLedgerStore(persistence)
+        ledger = ChainedLedger(ledger_store, clock)
         provenance_store = PostgresProvenanceStore(persistence)
         queue = PostgresQueue(persistence, lease_seconds=settings.lease_seconds)
         async with open_worker(settings.execution, configuration, state_dir=settings.state_dir) as (
@@ -270,6 +284,15 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                 leadership=PostgresLeadership(persistence.engine),
                 clock=clock,
                 ids=ids,
+                capacity=capacity_report(
+                    settings.capacity,
+                    clock=clock,
+                    state_dir=settings.state_dir,
+                    ledger_store=ledger_store,
+                    ledger=ledger,
+                    work=persistence,
+                    database=persistence,
+                ),
             )
             if Role.RUNNER in settings.roles:
                 wired.runner = Runner(
@@ -390,6 +413,20 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         def on_lead(leading: bool) -> None:
             wired.leading = leading
 
+        # While it leads, the scheduler looks at the platform every interval: one report for
+        # the instance, however many schedulers stand by (docs/architecture/platform.md).
+        tick = capacity_tick(
+            wired.capacity,
+            ReportCapacity(
+                tenants=settings.tenants, job_memory_bytes=memory_demand(settings.execution)
+            ),
+            wired.clock,
+            interval_seconds=settings.capacity.interval_seconds,
+        )
+
+        async def scheduled() -> None:
+            await tick()
+
         tasks.append(
             asyncio.create_task(
                 roles.run_scheduler(
@@ -397,6 +434,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
                     wired.clock,
                     stop,
                     poll_seconds=settings.poll_seconds,
+                    tick=scheduled,
                     on_lead=on_lead,
                 ),
                 name="scheduler",

@@ -9,6 +9,7 @@ application layers inside. No component imports another; what they share is the 
 | `run` | run, step run, checkpoint; the engine with step atomicity and admission control; the built-in rules |
 | `ledger` | the content-free hash chain and its verification |
 | `command` | command → commissioned plan |
+| `governance` | whether a result has left the system (ADR-0022); the capacity report — what the platform has left and the date a person must act by (`docs/architecture/platform.md`) |
 | every other | a package with its docstring; filled from the version that needs it (`docs/roadmap.md`) |
 | `reporting` | no package yet (ADR-0029): it is created with the first `reporting` use case that is built |
 

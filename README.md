@@ -93,6 +93,7 @@ you see the domain, not the framework.
 | [docs/architecture/throughput.md](docs/architecture/throughput.md) | Blocked-time accounts, bottlenecks, marginal value of raising a limit |
 | [docs/architecture/accounting.md](docs/architecture/accounting.md) | Consumption measurement and the Takt as a unit |
 | [docs/architecture/contracts.md](docs/architecture/contracts.md) | Worker, connector and model contracts; maturity levels |
+| [docs/architecture/platform.md](docs/architecture/platform.md) | The platform an instance runs on: what is left, how fast it is used, the date a person must act by; every job's memory limit enforced or refused |
 | [contracts/worker/v1/CONFORMANCE.md](contracts/worker/v1/CONFORMANCE.md) | How to check a worker of your own against the contract |
 | [contracts/connector/v1/CONFORMANCE.md](contracts/connector/v1/CONFORMANCE.md) | How to check a connector of your own against the contract |
 | [workers/README.md](workers/README.md) | The workers of this repository, each in its own image: the reference worker, and the coding worker with what it can and cannot do |

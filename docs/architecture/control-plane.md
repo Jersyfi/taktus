@@ -263,6 +263,11 @@ tokens, quota, compute — and only up to the estimate for currency reported per
 (ADR-0005, amendment). That is why the Takt derives from tokens and compute and not from money:
 it is the quantity admission control can actually hold a run against.
 
+*Available compute* is the platform's: what the machine or container the instance runs on has
+left of memory, processor and storage. Taktus observes it, reports the date a person must act by
+before it is tight, and refuses a job the platform cannot hold (`uv run taktusctl capacity`;
+[platform.md](platform.md)).
+
 Whether a model purpose is served by a subscription, an API key or local hardware is tenant
 configuration, not part of a process definition. See [accounting.md](accounting.md).
 

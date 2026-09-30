@@ -59,3 +59,19 @@ async def test_object_store_is_content_addressed(tmp_path: Path) -> None:
     assert await store.get(digest) == b"hello"
     assert await MemoryObjectStore(tmp_path / "objects").get(digest) == b"hello", "read from disk"
     assert await store.get(ZERO) is None
+
+
+async def test_the_snapshot_size_is_the_state_size(tmp_path: Path) -> None:
+    """The `StateSize` port over the development store: nothing on disk without a snapshot,
+    and the snapshot files' size with one, growing as entries are committed."""
+    assert await MemoryPersistence().state_bytes() is None
+    memory = MemoryPersistence(tmp_path)
+    assert await memory.state_bytes() == 0
+    ledger = MemoryLedgerStore(memory)
+    entry = LedgerEntry(
+        seq=1, ts=AT, kind="run.created", prev_hash=None, hash=ZERO, refs=LedgerRefs(run_id="r")
+    )
+    async with memory.transaction("t1"):
+        await ledger.append("t1", entry)
+    size = await memory.state_bytes()
+    assert size is not None and size == (tmp_path / "ledger.json").stat().st_size > 0
