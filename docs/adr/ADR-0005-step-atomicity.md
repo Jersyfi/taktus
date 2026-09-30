@@ -2,8 +2,10 @@
 
 **Status:** accepted · amended 2026-09-19 (DEC-0012): the first guarantee holds per consumption
 kind, and §*Amendment* says for which · amended 2026-09-21: a budget is a budget — the design
-that brings a currency limit as close to the line as a provider allows (§*Second amendment*);
-the implementation follows in the next pull request
+that brings a currency limit as close to the line as a provider allows (§*Second amendment*) ·
+amended 2026-09-30 (DEC-0035): which promise yields when one step overruns, every step
+estimated, money from the record, and a budget only as strong as the provider allows
+(§*Third amendment*); implemented in the same pull request
 
 ## Context
 A limit enforced by aborting destroys work and money at the same time: the tokens are spent and the
@@ -126,6 +128,75 @@ becomes the whole of the residual, stated with its size in the report.
 
 The limits of this design are in *Where this promise ends* below.
 
+## Third amendment — the first run's findings, and which promise yields
+
+The first live run (2026-09-23, `docs/runs/first-run.md` §2) measured the design against real
+numbers and found three faults. This amendment corrects them and records what was built. The
+decision record is DEC-0035.
+
+**1. The two guarantees collide when one step overruns, and "no limit is breached" yields by at
+most one inner step.** "At most one step of work is lost" and "no limit is ever breached" cannot
+both hold when a single step uses more than was reserved for it: stopping it at once loses
+work, and letting it finish crosses the line. Attempt 4 of the first run spent 7.8 % more money
+than its step was estimated at. The resolution goes through the worker contract's `limits`:
+
+- the reservation — the estimate as calibration scales it (point 4 of the second amendment) —
+  is passed to the worker as its `limits`, grown by the run's margin and never more than what
+  is left of the whole budget;
+- the worker halts at its next step boundary when its running total plus its next inner step's
+  demand would cross a limit, and ends `stopped`, naming the `limit`, with its checkpoint
+  (check W-14 of `contracts/worker/v1`, beside W-10, which refuses *before* the start);
+- the run halts with cause `limit`, and a person raises the limit or lets it be (M3.10).
+
+**Which promise yields, and why.** "At most one step of work is lost" holds without exception:
+the worker stops only at a boundary, with a checkpoint, and a resume continues from it.
+"No limit is ever breached" yields by at most the overrun of the one inner step during which
+the running total crossed the line: a step whose demand was not knowable before it started
+cannot be stopped inside itself without losing it. The margin exists to absorb exactly that
+overrun, which is why the worker may use its share of it. Work lost is lost for good; a
+bounded overrun is recorded, calibrated against and reported. The first promise is therefore
+the one kept whole.
+
+**2. Every step is estimated, and a step that cannot be is refused, not admitted.** An `llm`
+step passed admission with no estimate at all. Now every step has one before it is admitted:
+
+| Step | Its estimate |
+|---|---|
+| `worker` | the worker's answer to `POST /v1/estimate`, as before |
+| `llm` | input tokens counted before the call by the model adapter (exactly, or as an upper bound, as it declares); output tokens bounded by the limit the step sets; money at the price table, with every input token priced as the dearest input kind, because whether it will be read from a cache is not knowable before the call |
+| a connector call | what the operation declares one call consumes (`contracts/connector/v1`, `Demand`) |
+| a wait on a connector | that demand for as many calls as the wait can make |
+| a rule, a wait on the clock | nothing, and exactly so |
+
+A model that cannot count, an operation that declares no demand, or a budget in a currency
+over a model the price table does not price leaves the step without an estimate: it is refused
+(`step.rejected`, outcome `no_estimate`) and the run halts with cause `no_estimate`.
+
+**3. Money follows from the record.** Consumption carries tokens per model and per price kind —
+uncached input, output, input read from a cache, input written to one (`contracts/shared/v1`,
+`tokens_by_model`) — and a versioned price table prices them (`contracts/model/v1`,
+`PriceTable`). The run's budget statement names the table by the digest of its document, so
+that money is recomputable from the ledger at the prices it was held to. This is what ADR-0010
+asks of the Takt: the same breakdown feeds both.
+
+**4. Estimate quality is measured and acted on.** Calibration (point 4 of the second amendment)
+is built: per adapter and method, the largest ratio of actual to estimate over the last twenty
+observations of the ledger, never below one. For an adapter nothing has measured yet, a seed
+stands in: the eight attempts of the first run for a worker that serves the coding
+capabilities, which reserves 4.3 times its input estimate and 1.08 times its money estimate.
+
+**5. The budget says what it can promise when it is set.** A model adapter declares its
+`Calculability` (`contracts/model/v1`): how it counts input, whether its output limit is hard,
+which price kinds its provider reports, and how the provider bills. From the declarations the
+run derives, per limited kind, how it is held — exactly per step, as an estimate, only as a
+share of a subscription's time window, or not at all — and records that statement as
+`budget.set` before the first step. Where a provider bills per time window, the statement says
+that a currency budget cannot be enforced, only a share of the window. The evidence for what
+providers permit is `docs/research/2026-09-30-what-providers-allow.md`.
+
+**6. A named safety margin** (point 3 of the second amendment) is `TAKTUS_BUDGET_MARGIN`,
+provisionally 0.10 until its default is decided (DEC-0034).
+
 ## Where this promise ends
 
 The first amendment states where the currency guarantee ends: a worker that reports money
@@ -136,3 +207,14 @@ tokens but no money, and a wrong estimate remain, each stated in the report. "At
 of work is lost" holds for what the worker persisted at its last boundary; a worker that
 reports no inner boundaries loses the whole step. Replaying a run reproduces the sequence of
 steps, not the answers of a variable method.
+
+The third amendment moves the boundary, and does not remove it. The overrun of the inner step
+during which a running total crossed the line is spent; a worker that reports a quantity only
+when its assignment ends — the coding worker's money — cannot halt on it, and is held by the
+quantities it does report per step, tokens. An upper-bound count over-reserves by design; an
+estimate a provider calls exact may differ from its bill by a small amount (the research names
+one that does). A connector call that needs more than its operation declares reports more
+after it, and is recorded as a calibration signal. Calibration learns only from the ledger it
+reads: the first run of an adapter no seed matches is held at its estimate as given. The
+refusal for want of an estimate holds for the four ways a step is estimated today; a method
+added later brings its own.

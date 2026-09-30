@@ -25,6 +25,11 @@ def wiring(engine_socket: str, image: str) -> LocalWiring:
                 "TAKTUS_EXECUTION_ENGINE_SOCKET": engine_socket,
                 "TAKTUS_EXECUTION_MEMORY_MB": "128",
                 "TAKTUS_EXECUTION_WALL_SECONDS": "120",
+                # The reference worker plans 0.3 s a step whatever the command, and a command
+                # in a container takes longer: an underestimating worker. Half the budget held
+                # back lets the worker use twice its reservation before it must halt (W-14), so
+                # that this test proves the stop and the resume and nothing about the budget.
+                "TAKTUS_BUDGET_MARGIN": "0.5",
             }
         )
     )
@@ -60,7 +65,7 @@ async def test_a_run_with_a_worker_step_executes_in_a_container_stops_and_resume
         run = await services.engine.resume(
             ResumeRun(run_id=run.id, actor="idn_test", tenant=TENANT)
         )
-        assert run.state is RunState.FINISHED
+        assert run.state is RunState.FINISHED, (run.cause, run.reason)
         assert [s.state for s in run.step_runs] == [StepState.SUCCEEDED] * 4
         assert [a.id for a in run.step_run("compute").artifacts] == [
             "output-1",

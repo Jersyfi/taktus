@@ -96,6 +96,11 @@ from taktus.components.run.domain.model import (
 from taktus.components.run.domain.service import budget as budgeting
 from taktus.components.run.domain.service import provenance, rules
 from taktus.components.run.domain.service.admission import admit, remaining
+from taktus.components.run.domain.service.capacity import (
+    CapacityDemand,
+    CapacityRules,
+    admit_capacity,
+)
 from taktus.components.run.domain.service.rehearsal import REHEARSED
 from taktus.components.run.ports import ConnectorPool, ModelPool, WorkerPool
 from taktus.ports.clock import Clock, Identifiers
@@ -113,6 +118,7 @@ from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.model import Calculability, ModelError, PriceTable, Prompt, price
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
+from taktus.ports.platform import Platform
 from taktus.ports.queue import RUN_EXECUTE, Job, Queue
 from taktus.ports.telemetry import Span, Telemetry
 from taktus.ports.worker import (
@@ -140,6 +146,7 @@ from taktus.shared.v1 import (
     InputKind,
     LedgerEntry,
     LedgerRefs,
+    Method,
     Plan,
     PriceKinds,
     ProvenanceInput,
@@ -219,6 +226,11 @@ class EngineOptions:
     (`TAKTUS_BUDGET_MARGIN`)."""
     seeds: tuple[budgeting.Seed, ...] = budgeting.SEED
     """What calibration starts from for an adapter nothing has measured yet."""
+    capacity: CapacityRules = field(default_factory=CapacityRules)
+    """What admission against the platform holds a job to (docs/architecture/platform.md)."""
+    unit_memory_bytes: int | None = None
+    """The memory limit of the execution unit a worker step starts on this platform; None when
+    a worker step starts none here — a worker reached by endpoint runs elsewhere."""
 
 
 @dataclass(frozen=True)
@@ -253,6 +265,7 @@ class RunEngine:
         options: EngineOptions | None = None,
         connectors: ConnectorPool | None = None,
         models: ModelPool | None = None,
+        platform: Platform | None = None,
         recordings: RecordedResponses | None = None,
     ) -> None:
         self._runs = runs
@@ -263,6 +276,7 @@ class RunEngine:
         self._workers = workers
         self._connectors = connectors
         self._models = models
+        self._platform = platform
         self._recordings = recordings or RecordedResponses(runs, work, objects)
         self._clock = clock
         self._ids = ids
@@ -450,6 +464,9 @@ class RunEngine:
             self._limit_halts.discard(run.id)
 
     async def _steps(self, run: Run, stop_after: int | None, span: Span) -> Run:
+        refused = await self._platform_refuses(None)
+        if refused is not None:
+            return await self._end(run, RunState.HALTED, Cause.LIMIT, refused, span)
         completed_now = 0
         while (step_run := run.next_step_run()) is not None:
             step = run.step(step_run.step_id)
@@ -779,6 +796,28 @@ class RunEngine:
         reservation = budgeting.reserve(demand.quantities, scale)
         line = self._line(run)
         verdict = admit(reservation, remaining(line, _without(run, step_run.step_id)), line)
+        refused = (
+            await self._platform_refuses(self._options.unit_memory_bytes)
+            if step.method is Method.WORKER and verdict.fits
+            else None
+        )
+        if refused is not None:
+            span.record_failure("rejected by the platform")
+            step_run = step_run.to(
+                StepState.REJECTED,
+                adapter=adapter,
+                estimate=demand.quantities,
+                reservation=reservation,
+                reason=refused,
+                **changes,
+            )
+            run = await self._commit(
+                run.with_step_run(step_run),
+                "step.rejected",
+                step=step_run,
+                outcome="rejected_by_capacity",
+            )
+            return run, step_run, False
         if not verdict.fits:
             span.record_failure("rejected by admission control")
             step_run = step_run.to(
@@ -808,6 +847,21 @@ class RunEngine:
         if reservation != demand.quantities:
             run = await self._commit(run, "step.reserved", step=step_run, outcome="calibrated")
         return run, step_run, True
+
+    async def _platform_refuses(self, memory_bytes: int | None) -> str | None:
+        """Why the platform cannot hold what is about to start, or None: memory for the unit a
+        worker step starts here, and storage above its refusal share for anything at all. What
+        the platform could not observe refuses nothing (docs/architecture/platform.md)."""
+        if self._platform is None:
+            return None
+        verdict = admit_capacity(
+            await self._platform.observe(),
+            CapacityDemand(memory_bytes=memory_bytes),
+            self._options.capacity,
+        )
+        if verdict.fits:
+            return None
+        return "the platform cannot hold it: " + "; ".join(verdict.findings)
 
     async def _failed_before(
         self,
@@ -1288,15 +1342,16 @@ class RunEngine:
         )
         if not admitted:
             return run, step_run
-        # The worker's ceiling is what was reserved for it, never more than what is left: it
-        # halts at its next boundary before its running total would cross it (W-14).
+        # The worker's ceiling is what was reserved for it with its share of the margin, never
+        # more than what is left of the whole budget: it halts at its next boundary before its
+        # running total would cross it (W-14).
         reservation = step_run.reservation or demand
         assignment = assignment.model_copy(
             update={
                 "limits": budgeting.ceiling(
-                    reservation,
-                    remaining(self._line(run), _without(run, step_run.step_id)),
-                    self._line(run),
+                    budgeting.grow(reservation, run.margin),
+                    remaining(run.budget, _without(run, step_run.step_id)),
+                    run.budget,
                 )
             }
         )

@@ -123,3 +123,14 @@ def test_a_window_share_is_said_plainly_where_the_budget_is_set() -> None:
 def test_money_reported_per_assignment_is_held_as_an_estimate() -> None:
     (promise,) = b.promise(Limits(currency={"usd": 1.0}), [], ["the worker step(s) implement"])
     assert promise.how == b.ESTIMATE and "one inner step" in promise.reason
+
+
+def test_the_margin_absorbs_an_overrun_and_nothing_beyond_it() -> None:
+    reservation = Q(compute_seconds=9.0, resource_class="cpu.small", currency={"usd": 0.9})
+    grown = b.grow(reservation, 0.10)
+    assert grown.compute_seconds == pytest.approx(10.0)
+    assert grown.currency == {"usd": pytest.approx(1.0)}
+    assert b.grow(reservation, 0.0) == reservation, "no margin: the reservation is the ceiling"
+    budget = Limits(compute=ComputeLimit(seconds=9.5, resource_class="cpu.small"))
+    capped = b.ceiling(grown, budget, budget)
+    assert capped.compute is not None and capped.compute.seconds == 9.5, "never past the budget"

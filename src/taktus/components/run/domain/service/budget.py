@@ -18,8 +18,10 @@ workers' consumption kinds, how each limited kind is held — exactly per step, 
 only as a share of a time window, or not at all — and the run records that statement when its
 budget is set, not afterwards.
 
-**Where a worker must stop.** The reservation is the worker's hard ceiling (`ceiling`): the
-worker halts at its next boundary when its running total would cross it (W-14).
+**Where a worker must stop.** The reservation, grown by the run's margin, is the worker's hard
+ceiling (`grow`, `ceiling`), and never more than what is left of the whole budget: the worker
+halts at its next boundary when its running total would cross it (W-14). The margin is what
+absorbs a step that overruns its estimate; with no margin the ceiling is the reservation.
 """
 
 from __future__ import annotations
@@ -193,6 +195,20 @@ def scale_for(
 
 
 # --- the ceiling a worker is given ------------------------------------------------------------
+
+
+def grow(reservation: ConsumptionQuantities, margin: float) -> ConsumptionQuantities:
+    """The reservation with its share of the margin: what a step may use before its worker
+    must halt. The margin is held back from the budget to absorb exactly this — a step that
+    overruns its estimate — so a worker may use it, and nothing beyond it."""
+    if margin <= 0:
+        return reservation
+    return reserve(reservation, {name: 1 / (1 - margin) for name in _factor_names(reservation)})
+
+
+def _factor_names(quantities: ConsumptionQuantities) -> list[str]:
+    names = [name for name in SCALED if getattr(quantities, name) is not None]
+    return names + [f"currency.{code}" for code in quantities.currency or {}]
 
 
 def ceiling(reservation: ConsumptionQuantities, left: Limits | None, budget: Limits) -> Limits:

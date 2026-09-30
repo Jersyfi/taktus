@@ -37,6 +37,7 @@ from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
 from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.models.pool import StaticModelPool
+from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresLeadership,
     PostgresLedgerStore,
@@ -77,7 +78,7 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
-from taktus.composition.capacity import capacity_report, capacity_tick
+from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.execution import (
     connector_pool,
     memory_demand,
@@ -219,7 +220,10 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                         step_ceiling_seconds=settings.shutdown_ceiling_seconds,
                         prices=prices,
                         margin=settings.budget.margin,
+                        capacity=rules_of(settings.capacity),
+                        unit_memory_bytes=memory_demand(settings.execution),
                     ),
+                    platform=HostPlatform(clock, state_dir=settings.state_dir),
                     connectors=connectors,
                     models=models,
                     recordings=recordings,

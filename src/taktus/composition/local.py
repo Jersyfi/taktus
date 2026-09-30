@@ -37,6 +37,7 @@ from taktus.adapters.driven.memory import (
     MemoryRepository,
 )
 from taktus.adapters.driven.models.pool import StaticModelPool
+from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresPersistence,
@@ -60,7 +61,7 @@ from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
-from taktus.composition.capacity import capacity_report
+from taktus.composition.capacity import capacity_report, rules_of
 from taktus.composition.execution import (
     connector_pool,
     memory_demand,
@@ -125,6 +126,7 @@ class LocalWiring:
             connectors = load_connectors(self._configuration)
             model = load_model(self._configuration)
             budget = load_budget(self._configuration)
+            capacity = load_capacity(self._configuration)
             prices = budget.table()
             operators = load_provisional_identity(self._configuration)
         except ConfigurationError as error:
@@ -164,7 +166,13 @@ class LocalWiring:
                     queue=stores.queue,
                     connectors=connectors,
                     models=models,
-                    options=EngineOptions(prices=prices, margin=budget.margin),
+                    options=EngineOptions(
+                        prices=prices,
+                        margin=budget.margin,
+                        capacity=rules_of(capacity),
+                        unit_memory_bytes=memory_demand(execution),
+                    ),
+                    platform=HostPlatform(clock, state_dir=state_dir),
                     recordings=recordings,
                 )
 
