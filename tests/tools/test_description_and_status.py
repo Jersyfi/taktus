@@ -97,3 +97,24 @@ def test_a_status_without_such_a_line_passes() -> None:
     report = check_status.Report()
     check_status.check_shape(f"# Status\n\n{STATUS}\n", report)
     assert report.failures == []
+
+
+@pytest.mark.parametrize(
+    ("path", "counted"),
+    [
+        ("docs/roadmap.md", True),
+        ("contracts/worker/v1/Worker.json", True),
+        ("docs/adr/ADR-0005-step-atomicity.md", True),
+        ("docs/decisions/DEC-0021-must-a-taktus-pull-request-update-the-status-report.md", True),
+        ("docs/decisions/DEC-0020-a-branch-the-connector-writes-loses-the-file-mode.md", False),
+        ("src/taktus/components/run/application/service/execute_run.py", False),
+        ("tools/first_run.sh", False),
+        ("workers/claudecode/worker.py", False),
+    ],
+)
+def test_the_state_changes_with_a_milestone_a_need_a_decision_or_a_contract(
+    path: str, counted: bool
+) -> None:
+    """DEC-0021, as the owner answered it: a defect's record and a change of code alone do not
+    change the state of the project."""
+    assert check_status.counts(path) is counted

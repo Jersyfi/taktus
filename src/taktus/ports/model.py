@@ -49,7 +49,7 @@ class Calculability(Value):
     output_cap: OutputCap
     usage_kinds: tuple[PriceKindName, ...] = Field(min_length=1)
     billing: Billing
-    provider_limit: ProviderLimit | None = None
+    provider_limit: Literal["hard", "alert", "none", "unknown"] | None = None
     evidence: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")

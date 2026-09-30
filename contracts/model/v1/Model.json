@@ -10,7 +10,8 @@
       "type": "object",
       "properties": {
         "contract": {
-          "const": "model/v1"
+          "const": "model/v1",
+          "description": "The contract the declaration belongs to; implied where absent."
         },
         "input_count": {
           "description": "How the adapter counts a prompt's input tokens before the call. exact: the count equals what the provider bills. upper_bound: the count is never below what the provider bills. estimate: the count may lie on either side. none: the adapter cannot count.",
@@ -62,7 +63,6 @@
         }
       },
       "required": [
-        "contract",
         "input_count",
         "output_cap",
         "usage_kinds",
