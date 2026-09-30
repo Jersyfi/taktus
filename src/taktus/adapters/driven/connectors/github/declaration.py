@@ -27,6 +27,7 @@ CAPABILITIES = [
     "repository.comments",
     "repository.branches",
     "repository.labels",
+    "repository.files",
 ]
 
 OPERATIONS: list[Json] = [
@@ -100,9 +101,10 @@ OPERATIONS: list[Json] = [
         "effect": "write",
         "idempotency": "marked",
         "summary": "Create a branch from a base with one commit on it that carries the given "
-        "files, or none. A file keeps the mode it has in the base; a file the base does not "
-        "have is a plain file. The commit message carries the idempotency key as a trailer; "
-        "a repeat finds the branch and the mark at its head.",
+        "files, or none. A file marked `executable: true` is written executable, one marked "
+        "`false` plain; an unmarked file keeps the mode it has in the base, and one the base "
+        "does not have is a plain file. The commit message carries the idempotency key as a "
+        "trailer; a repeat finds the branch and the mark at its head.",
     },
     {
         "name": "repository.labels.set",
@@ -111,6 +113,14 @@ OPERATIONS: list[Json] = [
         "idempotency": "marked",
         "summary": "Put labels on an issue or pull request. The mark is the label itself: a "
         "repeat finds every requested label present and adds nothing.",
+    },
+    {
+        "name": "repository.files.read",
+        "capability": "repository.files",
+        "effect": "read",
+        "summary": "Read one file of the repository at a ref — a branch, a tag or a commit; "
+        "the default branch when none is given. Text as text, anything else as base64, with "
+        "the commit the ref resolved to.",
     },
 ]
 

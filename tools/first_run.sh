@@ -1,13 +1,38 @@
 #!/bin/sh
 # The first end-to-end, in one command: an issue of this repository becomes a pull request.
 #
-#     tools/first_run.sh <issue number>
+#     tools/first_run.sh <issue number> [--only P-02|P-03 | --from P-02|P-03] [--resume RUN_ID]
 #
 # Runs P-02 Refinement and then P-03 Implementation of the dev-orchestration blueprint against
 # the repository this checkout was cloned from, with the reference connector, the coding worker
 # and a configured model — everything real. It starts the connector and the worker as
 # processes, runs each bundle with `taktusctl run`, and stops them. Every run, its ledger and
 # its provenance are printed; the log of each process is under $TAKTUS_STATE_DIR/first-run/.
+#
+# Run again, which is the normal case after an attempt found a defect (issue #30):
+#
+#   --only P-03      runs P-03 alone, with the same processes started the same way;
+#                    --only P-02 runs P-02 alone. --from P-03 is the same as --only P-03,
+#                    --from P-02 is the default.
+#   --resume RUN_ID  continues a halted or escalated run of the bundle --only names, with the
+#                    connector and the worker started again; `taktusctl run --resume` alone
+#                    would find neither running.
+#
+# When P-02 stops at its admission check because the issue already carries its acceptance
+# criteria, that is "already done", not a failure: the script says so and goes on to P-03.
+# Any other stop of P-02 ends the script.
+#
+# The branch P-03 creates, taktus/issue-<n>, carries the idempotency key of the run that made
+# it. A new run has a new key, so a branch left by an earlier attempt makes the new run end
+# `conflict` at create-branch — after it has paid for the coding step. The script looks for
+# that branch before it starts anything and stops with the two ways on: resume the run that
+# made it, or delete the branch and start again. It never deletes a branch itself.
+#
+# P-03's pull request description ends with the section this repository generates for every
+# description, `## Needed from the owner` (ADR-0028). The script generates it from the register
+# of `main` — the base P-03 branches from — with `tools/check_status.py --print`, and hands it
+# to the run as the input `closing_section`; the run appends it after the worker's summary, by
+# a template. A language model never writes it (issue #34).
 #
 # What it needs, as parameters (CREDENTIALS.md); no value is ever an argument or a line here.
 # Every credential is named the one way the repository names credentials, `credential.<name>`
@@ -44,6 +69,68 @@
 
 set -eu
 
+# What `taktusctl run` prints when a run stops for the two reasons this script tells apart from
+# any other failure. tests/integration/test_dev_orchestration.py holds both against the real
+# output, so that a change of wording there fails a test and not a live run.
+#
+# P-02's admission check refused the issue because the section is already there: the issue
+# body (condition 3) or a comment (condition 4) matches the heading it must not.
+P02_ALREADY_REFINED="admit +rule +exact +failed .*condition [34] does not hold: .*## Acceptance criteria', which it must not"
+# P-03 found the branch it would create, carrying another run's key.
+P03_LEFTOVER_BRANCH="repository\.branches\.create failed: conflict .*exists and was not created for this step"
+
+usage="usage: tools/first_run.sh <issue number> [--only P-02|P-03 | --from P-02|P-03] [--resume RUN_ID]"
+
+fail() {
+    echo "first_run: $1" >&2
+    exit 2
+}
+
+issue=""
+only=""
+from=""
+resume=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --only | --from | --resume)
+            [ "$#" -ge 2 ] || fail "$1 needs a value; $usage"
+            case "$1" in
+                --only) only="$2" ;;
+                --from) from="$2" ;;
+                --resume) resume="$2" ;;
+            esac
+            shift 2
+            ;;
+        -h | --help)
+            echo "$usage"
+            exit 0
+            ;;
+        -*) fail "unknown option $1; $usage" ;;
+        *)
+            [ -z "$issue" ] || fail "one issue at a time; $usage"
+            issue="$1"
+            shift
+            ;;
+    esac
+done
+
+case "$issue" in
+    '' | *[!0-9]*) fail "$usage" ;;
+esac
+for bundle in "$only" "$from"; do
+    case "$bundle" in
+        '' | P-02 | P-03) ;;
+        *) fail "there is no bundle $bundle here: P-02 or P-03" ;;
+    esac
+done
+[ -z "$only" ] || [ -z "$from" ] || fail "--only and --from exclude each other"
+[ -z "$resume" ] || [ -n "$only" ] || fail "--resume continues one run: name its bundle with --only P-02 or --only P-03"
+
+run_p02=yes
+run_p03=yes
+[ "$only" != P-03 ] && [ "$from" != P-03 ] || run_p02=no
+[ "$only" != P-02 ] || run_p03=no
+
 here="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$here"
 
@@ -53,17 +140,6 @@ if [ -f .env ]; then
     . ./.env
     set +a
 fi
-
-issue="${1:-}"
-if [ -z "$issue" ]; then
-    echo "usage: tools/first_run.sh <issue number>" >&2
-    exit 2
-fi
-
-fail() {
-    echo "first_run: $1" >&2
-    exit 2
-}
 
 [ -n "${TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE:-}" ] || fail "TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE is not set: the file that holds the repository token"
 [ -r "$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE" ] || fail "TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE=$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE cannot be read"
@@ -79,8 +155,10 @@ else
     fail "neither TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE nor TAKTUS_CREDENTIAL_CODING_AGENT_SESSION_FILE is set: the coding worker needs one (workers/claudecode/README.md)"
 fi
 [ -r "$coding_file" ] || fail "$coding_file cannot be read"
-[ -n "${TAKTUS_MODEL_ENDPOINT:-}" ] || fail "TAKTUS_MODEL_ENDPOINT is not set: the model P-02 asks for the acceptance criteria"
-[ -n "${TAKTUS_MODEL_NAME:-}" ] || fail "TAKTUS_MODEL_NAME is not set"
+if [ "$run_p02" = yes ]; then
+    [ -n "${TAKTUS_MODEL_ENDPOINT:-}" ] || fail "TAKTUS_MODEL_ENDPOINT is not set: the model P-02 asks for the acceptance criteria"
+    [ -n "${TAKTUS_MODEL_NAME:-}" ] || fail "TAKTUS_MODEL_NAME is not set"
+fi
 command -v git >/dev/null 2>&1 || fail "git is not on the path; the coding worker needs it"
 
 origin="$(git remote get-url origin 2>/dev/null || true)"
@@ -88,6 +166,42 @@ repository="${TAKTUS_FIRST_RUN_REPOSITORY:-$(printf '%s' "$origin" | sed -E 's#^
 host="$(printf '%s' "$origin" | sed -E 's#^https://([^/]+)/.*#\1#; s#^git@([^:]+):.*#\1#')"
 [ -n "$repository" ] && [ -n "$host" ] || fail "the repository cannot be derived from the origin remote; set TAKTUS_FIRST_RUN_REPOSITORY"
 clone_url="https://$host/$repository.git"
+branch="taktus/issue-$issue"
+
+# The advice for a branch an earlier attempt left, with the run that made it when its head
+# commit names one: the key in its trailer is taktus:<run id>:<step id>:<attempt>.
+leftover_branch() {
+    made_by=""
+    if GIT_TERMINAL_PROMPT=0 git fetch --quiet "$clone_url" "refs/heads/$branch" 2>/dev/null; then
+        made_by="$(git log -1 --format=%B FETCH_HEAD | sed -n 's/^Taktus-Idempotency-Key: taktus:\([^:]*\):.*/\1/p' | head -n 1)"
+    fi
+    {
+        echo "first_run: the branch $branch exists on $repository, left by an earlier attempt${made_by:+ (run $made_by)}."
+        echo "  It carries that run's idempotency key, so a new run of P-03 would end 'conflict' at"
+        echo "  create-branch, after paying for the coding step. Two ways on:"
+        echo "  - resume the run that made it; its state must be on this machine, under $state:"
+        echo "        tools/first_run.sh $issue --only P-03 --resume ${made_by:-<run id>}"
+        echo "  - or delete the branch on the repository, and start again:"
+        echo "        tools/first_run.sh $issue --only P-03"
+        echo "  This script never deletes a branch."
+    } >&2
+}
+
+# The section every pull request description of this repository ends with, generated from the
+# register of main — the base P-03 branches from — rather than from whatever this checkout
+# holds. main is fetched first; if that fails, the origin/main last fetched is used, and without
+# one this checkout.
+closing_section() {
+    GIT_TERMINAL_PROMPT=0 git fetch --quiet origin main 2>/dev/null ||
+        echo "first_run: could not fetch main; the closing section comes from the last fetched origin/main" >&2
+    ref=origin/main
+    git rev-parse --verify --quiet "$ref^{commit}" >/dev/null || ref=HEAD
+    scratch="$(mktemp -d)"
+    git archive "$ref" tools/check_status.py docs/decisions/open | tar -x -C "$scratch"
+    block="$(python3 "$scratch/tools/check_status.py" --print)"
+    rm -rf "$scratch"
+    printf '## Needed from the owner\n\n%s\n' "$block"
+}
 
 state="${TAKTUS_STATE_DIR:-$HOME/.cache/taktus/taktusctl}"
 logs="$state/first-run"
@@ -95,6 +209,21 @@ mkdir -p "$logs"
 export TAKTUS_STATE_DIR="$state"
 export TAKTUS_PROVISIONAL_IDENTITY="${TAKTUS_PROVISIONAL_IDENTITY:-default=idn_owner}"
 export TAKTUS_EXECUTION="${TAKTUS_EXECUTION:-endpoint}"
+
+echo "first_run: repository $repository, issue #$issue"
+echo "first_run: state under $state, logs under $logs"
+
+# Before anything starts or costs: a new P-03 run cannot create a branch that already exists.
+if [ "$run_p03" = yes ] && [ -z "$resume" ]; then
+    if heads="$(GIT_TERMINAL_PROMPT=0 git ls-remote --heads "$clone_url" "refs/heads/$branch" 2>/dev/null)"; then
+        if [ -n "$heads" ]; then
+            leftover_branch
+            exit 2
+        fi
+    else
+        echo "first_run: could not ask $clone_url whether $branch exists; going on" >&2
+    fi
+fi
 
 connector_port="${TAKTUS_FIRST_RUN_CONNECTOR_PORT:-9100}"
 worker_port="${TAKTUS_FIRST_RUN_WORKER_PORT:-9010}"
@@ -108,9 +237,6 @@ stop() {
     done
 }
 trap stop EXIT INT TERM
-
-echo "first_run: repository $repository, issue #$issue"
-echo "first_run: state under $state, logs under $logs"
 
 # The connector, with the requesting identity's token in its environment and nowhere else.
 REPOSITORY_TOKEN="$(cat "$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE")" \
@@ -138,25 +264,68 @@ ready() {
 ready "http://127.0.0.1:$connector_port/health" connector
 ready "http://127.0.0.1:$worker_port/v1/health" "coding worker"
 
+# One bundle with `taktusctl run`; its output is printed and kept under $logs/<name>.txt. The
+# exit status is the command's: 0 finished, 3 halted or escalated, 2 not runnable.
 run_bundle() {
     name="$1"; shift
     echo
     echo "first_run: $name"
-    status=0
-    uv run taktusctl run "$@" >"$logs/$name.txt" 2>&1 || status=$?
+    code=0
+    uv run taktusctl run "$@" >"$logs/$name.txt" 2>&1 || code=$?
     cat "$logs/$name.txt"
-    if [ "$status" -ne 0 ]; then
-        echo "first_run: $name did not finish (exit $status); the last line above says how to resume" >&2
-        exit "$status"
-    fi
+    return "$code"
 }
 
-run_bundle P-02 --process blueprints/dev-orchestration/processes/P-02-refinement.yaml \
-    --input "issue=$issue"
+# How to continue a run that stopped, with the processes started again by this script.
+did_not_finish() {
+    name="$1"; code="$2"
+    run_id="$(sed -n 's/^run \(run_[A-Za-z0-9_]*\) .*/\1/p' "$logs/$name.txt" | head -n 1)"
+    echo "first_run: $name did not finish (exit $code)" >&2
+    if [ -n "$run_id" ]; then
+        echo "first_run: to continue it once the cause is dealt with: tools/first_run.sh $issue --only $name --resume $run_id" >&2
+    fi
+    exit "$code"
+}
 
-run_bundle P-03 --process blueprints/dev-orchestration/processes/P-03-implementation.yaml \
-    --input "issue=$issue" --input "repository_url=$clone_url" --input "repository_host=$host" \
-    --input "coding_credential=$coding_credential"
+p02_process=blueprints/dev-orchestration/processes/P-02-refinement.yaml
+p03_process=blueprints/dev-orchestration/processes/P-03-implementation.yaml
 
-echo
-echo "first_run: done — P-03 opened the pull request; CI decides, a person merges"
+if [ "$run_p02" = yes ]; then
+    if [ -n "$resume" ]; then
+        set -- --resume "$resume"
+    else
+        set -- --input "issue=$issue"
+    fi
+    status=0
+    run_bundle P-02 --process "$p02_process" "$@" || status=$?
+    if [ "$status" -eq 3 ] && grep -Eq "$P02_ALREADY_REFINED" "$logs/P-02.txt"; then
+        echo
+        echo "first_run: P-02 stopped at its admission check because the issue already carries its acceptance criteria — already done, not failed"
+    elif [ "$status" -ne 0 ]; then
+        did_not_finish P-02 "$status"
+    fi
+fi
+
+if [ "$run_p03" = yes ]; then
+    if [ -n "$resume" ]; then
+        set -- --resume "$resume"
+    else
+        closing="$(closing_section)"
+        set -- --input "issue=$issue" --input "repository_url=$clone_url" \
+            --input "repository_host=$host" --input "coding_credential=$coding_credential" \
+            --input "closing_section=$closing"
+    fi
+    status=0
+    run_bundle P-03 --process "$p03_process" "$@" || status=$?
+    if [ "$status" -ne 0 ]; then
+        if grep -Eq "$P03_LEFTOVER_BRANCH" "$logs/P-03.txt"; then
+            leftover_branch
+        fi
+        did_not_finish P-03 "$status"
+    fi
+    echo
+    echo "first_run: done — P-03 opened the pull request; CI decides, a person merges"
+else
+    echo
+    echo "first_run: done"
+fi

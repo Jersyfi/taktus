@@ -16,6 +16,11 @@ endpoint (`tests/fakes/model_service.py`, a thread), the coding agent
 afterwards is the proof: one comment with the criteria, one branch with the worker's files on
 one marked commit, one pull request with one label, and the run's ledger with an egress entry
 for each of the three writes.
+
+`tools/first_run.sh` tells two stops apart from any other failure by what `taktusctl run`
+prints: P-02 refusing an issue whose criteria are already there, and P-03 finding the branch an
+earlier attempt left. Both patterns are read from the script and held against the real output
+here, so that a change of wording fails this test and not a live run (issue #30).
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ BLUEPRINT = ROOT / "blueprints" / "dev-orchestration" / "processes"
 FAKE_SERVICE = ROOT / "tests" / "fakes" / "repository_service.py"
 CODING_WORKER = ROOT / "workers" / "claudecode" / "worker.py"
 FAKE_AGENT = ROOT / "workers" / "claudecode" / "fake_agent.py"
+FIRST_RUN = ROOT / "tools" / "first_run.sh"
 REPOSITORY = "acme/product"
 ISSUE = 1  # the fake seeds every repository with issue #1, without acceptance criteria
 
@@ -213,6 +219,18 @@ def run_bundle(outside: Outside, state_dir: Path, bundle: str, *inputs: str) -> 
     return completed.stdout
 
 
+def first_run_pattern(name: str) -> re.Pattern[str]:
+    """One of the patterns `tools/first_run.sh` greps the output of `taktusctl run` with."""
+    found = re.search(rf'^{name}="(.*)"$', FIRST_RUN.read_text(encoding="utf-8"), re.MULTILINE)
+    assert found is not None, f"{name} is not defined in {FIRST_RUN}"
+    return re.compile(found.group(1))
+
+
+# What `tools/first_run.sh` generates with `tools/check_status.py --print` and hands to P-03:
+# the section a description ends with. Here a fixed text, since the fake has no register.
+CLOSING = "## Needed from the owner\n\n<!-- generated -->\nNothing is open.\n<!-- end -->"
+
+
 def test_refinement_then_implementation_end_to_end(outside: Outside, tmp_path: Path) -> None:
     state_dir = tmp_path / "state"
 
@@ -245,6 +263,8 @@ def test_refinement_then_implementation_end_to_end(outside: Outside, tmp_path: P
     )
     assert again.returncode == 3, again.stdout + again.stderr
     assert "condition 4 does not hold" in again.stdout, again.stdout
+    refused = first_run_pattern("P02_ALREADY_REFINED")
+    assert any(refused.search(line) for line in again.stdout.splitlines()), again.stdout
     assert outside.state()[REPOSITORY]["comments"] == 1  # type: ignore[index]
 
     # P-03: the coding worker implements, the run branches, waits for the pipeline, opens the
@@ -257,6 +277,7 @@ def test_refinement_then_implementation_end_to_end(outside: Outside, tmp_path: P
         f"repository_url={outside.clone_url}",
         "repository_host=localhost",
         "coding_credential=CODING_AGENT_API_KEY",
+        f"closing_section={CLOSING}",
     )
     assert "state finished" in output, output
     for step in ("admit", "verify"):
@@ -295,6 +316,11 @@ def test_refinement_then_implementation_end_to_end(outside: Outside, tmp_path: P
     assert pull["title"] == f"Seed issue (#{ISSUE})"
     assert f"Closes #{ISSUE}." in pull["body"] and "Opened by Taktus, process P-03" in pull["body"]
     assert "Wrote notes/plan.md" in pull["body"], "the worker's own summary"
+    # The generated section closes the description, after the summary and verbatim; the mark
+    # that makes a repeat findable is an HTML comment after it, which the check strips.
+    body = pull["body"].split("<!-- taktus-idempotency-key")[0].rstrip()
+    assert body.endswith(CLOSING), body
+    assert body.index("Wrote notes/plan.md") < body.index("## Needed from the owner")
     assert [label["name"] for label in pull["labels"]] == ["taktus"]
 
     # Every write is in the ledger as egress, and the chain and the provenance verify.
@@ -308,3 +334,35 @@ def test_refinement_then_implementation_end_to_end(outside: Outside, tmp_path: P
     ]
     assert all(e["content_digest"].startswith("sha256:") for e in egress)
     assert "DOES NOT VERIFY" not in output
+
+    # P-03 again, as a second attempt after a defect would start it: the branch the first run
+    # made carries that run's key, so the new run ends `conflict` at create-branch, opens
+    # nothing, and says so in the words `tools/first_run.sh` looks for.
+    second = subprocess.run(  # noqa: S603
+        [
+            taktusctl(),
+            "run",
+            "--process",
+            str(BLUEPRINT / "P-03-implementation.yaml"),
+            "--input",
+            f"issue={ISSUE}",
+            "--input",
+            f"repository_url={outside.clone_url}",
+            "--input",
+            "repository_host=localhost",
+            "--input",
+            "coding_credential=CODING_AGENT_API_KEY",
+            "--input",
+            f"closing_section={CLOSING}",
+        ],
+        capture_output=True,
+        text=True,
+        env=outside.environment(state_dir),
+        check=False,
+        timeout=300,
+    )
+    assert second.returncode == 3, second.stdout + second.stderr
+    leftover = first_run_pattern("P03_LEFTOVER_BRANCH")
+    assert any(leftover.search(line) for line in second.stdout.splitlines()), second.stdout
+    assert outside.state()[REPOSITORY]["pulls"] == 1  # type: ignore[index]
+    assert outside.state()[REPOSITORY]["branches"] == 2  # type: ignore[index]

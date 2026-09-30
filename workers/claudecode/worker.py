@@ -919,11 +919,16 @@ class _Run:
         """Every file the assignment changed since the baseline, with its full content, as one
         JSON document: what a connector needs to put the change on a branch without a
         repository of its own (`repository.branches.create`). Text as text, anything else as
-        base64; a deleted file by path. Renames count as a deletion and an addition."""
+        base64; a deleted file by path. Renames count as a deletion and an addition.
+
+        A file the index records as executable (mode 100755) carries `executable: true`, so
+        that a script the change adds arrives executable on the branch; any other file carries
+        no flag, and the connector keeps the mode the base has (DEC-0020, issue #28)."""
         base = self._git(["git", "rev-parse", BASELINE_TAG], check=False).stdout.strip()
         listed = self._git(
             ["git", "diff", "--name-status", "--no-renames", f"{BASELINE_TAG}..HEAD"], check=False
         ).stdout
+        executable = self._executable_paths()
         files: list[Json] = []
         deleted: list[str] = []
         for line in listed.splitlines():
@@ -935,12 +940,28 @@ class _Run:
                 continue
             raw = (self.workspace / path).read_bytes()
             try:
-                files.append({"path": path, "content": raw.decode("utf-8"), "encoding": "utf-8"})
+                entry: Json = {"path": path, "content": raw.decode("utf-8"), "encoding": "utf-8"}
             except UnicodeDecodeError:
-                files.append(
-                    {"path": path, "content": base64.b64encode(raw).decode(), "encoding": "base64"}
-                )
+                entry = {
+                    "path": path,
+                    "content": base64.b64encode(raw).decode(),
+                    "encoding": "base64",
+                }
+            if path in executable:
+                entry["executable"] = True
+            files.append(entry)
         return json.dumps({"base": base, "files": files, "deleted": deleted}, ensure_ascii=False)
+
+    def _executable_paths(self) -> set[str]:
+        """The paths the index records with mode 100755. Every change is committed at its
+        boundary, so the index is the tree of the last commit."""
+        staged = self._git(["git", "ls-files", "--stage"], check=False).stdout
+        found: set[str] = set()
+        for line in staged.splitlines():
+            meta, _, path = line.partition("\t")
+            if path and meta.split(" ", 1)[0] == "100755":
+                found.add(path)
+        return found
 
     def _commit_change(self, step: Step) -> str | None:
         """What the agent changed in this step, committed and announced as a patch."""
