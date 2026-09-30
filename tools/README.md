@@ -46,5 +46,22 @@ the volume), and `make migrate` runs the Alembic migrations against
 `TAKTUS_DATABASE_URL_FILE` or `TAKTUS_DATABASE_URL`. All seven need `docker` except
 `migrate`.
 
+`make images` builds, ahead of the tests, the images the container tests need — the reference
+worker, the control plane, the memory hog — through `tests/images.py`, the one helper every
+test image is built by. Each image carries a label with the digest of its Dockerfile and of
+every file that Dockerfile copies (after `.dockerignore`), and a tag naming that content
+(`taktus:test-4754d2516c29`) besides its plain one; the tests run the content tag, so that
+checkouts sharing one engine cannot move an image under each other. An image whose content
+tag exists with a matching label is not handed to `docker build` at all, so a rerun touches
+neither the builder nor a registry, and a newer base image upstream is taken only when the
+content changes or with `REBUILD=1`. Content tags no longer used stay until a person removes
+them. A
+build that is needed runs with plain progress into `.pytest_cache/taktus-images/<tag>.log`;
+one that prints nothing for 120 s, or exceeds its bound (600 s, the control plane 900 s), is
+stopped, and the error names the image, the steps that had started and not finished, the
+last lines, the elapsed time and the log. The tests build the same way on first use, and a
+build that failed is reported in full by the first test that needed it and in one line by
+every later one. Needs `docker`.
+
 **A gate that cannot run says why.** An unclear message is a defect, not a minor annoyance —
 the same rule ADR-0017 applies to decision requests, applied to tooling.

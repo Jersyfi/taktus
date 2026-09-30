@@ -32,6 +32,12 @@ install: need-uv ## Create or refresh the environment
 test: env ## Unit and domain tests — everything under tests/ that is not a gate
 	$(UV) run tools/gate.py test tests $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
 
+# The images the container tests need (tests/images.py). Each is built only when its Dockerfile
+# or a file it copies changed; an unchanged one is not handed to the builder at all. The tests
+# build them the same way on first use; this target does it ahead, with each build's time.
+images: env need-docker ## Build the test images whose content changed; REBUILD=1 builds them all
+	$(UV) run python tests/images.py $(if $(REBUILD),--rebuild)
+
 gate-contracts: need-uv ## Schemas are valid 2020-12, examples validate, must-fail examples fail
 	$(UV) run tools/validate_contracts.py
 
@@ -122,4 +128,4 @@ status: need-uv ## Print what is needed from the owner, from the register: the l
 
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases test ## Everything CI runs
 
-.PHONY: help doctor env install status usecases test gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates
+.PHONY: help doctor env install status usecases test images gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates
