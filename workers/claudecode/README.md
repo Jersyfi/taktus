@@ -47,7 +47,11 @@ a `report` step whose artifact is that text.
 **Tokens come per step.** Every assistant message of the agent carries the tokens it used
 (input, cache creation, cache read, output); the worker attributes them to the step the
 message's tool call starts and reports `tokens_in` and `tokens_out` in `consumption.reported`
-before the next step starts (W-04).
+before the next step starts (W-04). The agent streams one message in several lines, and the
+usage is counted once, with the first line. When that line carries text and the call comes in a
+later line, the tokens wait for the call. A message that calls no tool — the closing summary —
+gives its tokens to the `report` step. Until this was so, a message whose text came before its
+call was reported with zero tokens.
 
 **Money comes only at the end.** The agent reports `total_cost_usd` once, with its final
 result. The worker reports it as `currency` on the last step, after that step's boundary and
@@ -55,6 +59,17 @@ before `assignment.finished`. This is a real limitation, not a detail: admission
 currency limit works against the estimate, not against a running total — a run cannot be
 stopped by its cost mid-assignment, only refused before it starts. Tokens are exact per step;
 money is settled per assignment.
+
+**The limits are the ceiling while the agent runs.** At every boundary the worker holds its
+running total against the limits it can see per turn: `limits.tokens` (input and output apart)
+and, in `session` mode, `limits.quota` in turns. Once one is reached, the worker ends the agent
+there, as it does for a stop, and the assignment ends `stopped` with that boundary's checkpoint,
+`limit` naming the kind, and the numbers in `reason` (W-14). The resumed assignment continues
+the same session. The worker cannot know what the agent's next call will use, so it halts on
+what was reported, not on an expectation. The call that crossed the limit has already run; it
+is the one step the limit yields by. A currency limit is held against the estimate before the
+start and never while running, because the money arrives with the final result. A budget that
+must hold while the agent runs is given in tokens.
 
 **Subscription quota is a proxy.** In `session` mode the worker declares consumption kind
 `quota` with a five-hour window and the unit `turns`, and reports one unit per step. The agent
@@ -145,7 +160,10 @@ reads the same authentication variables, writes the same stream, and really perf
 plan of tool calls in the workspace. It proves the worker's mechanics without a subscription
 and deterministically; it does not think. `FAKE_AGENT_EXPIRE_AFTER=N` makes it fail with an
 authentication error after N tool results, `FAKE_AGENT_WINDOW_AFTER=N` makes it report an
-exhausted window; `--agent-env` passes those through. The real agent is run with
+exhausted window; `--agent-env` passes those through. Its usage is fixed and overruns the
+worker's default estimate — about 620 000 input tokens against 60 000, where the real agent
+used 1.8 to 4.3 times the estimate in the first live run — so that the suite's `tight` run
+can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales every token count. The real agent is run with
 `--agent claude` (the default), and a live run needs a credential the operator supplies.
 
 ## Configuration

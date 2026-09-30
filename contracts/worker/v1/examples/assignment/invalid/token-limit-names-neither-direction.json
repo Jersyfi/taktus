@@ -1,0 +1,54 @@
+{
+  "assignment_id": "asg_01J8RB4F7K2M9QX3T6V8N0CPWD",
+  "task": {
+    "goal": "Pin the model version on every ml step in blueprints/dev-orchestration.",
+    "acceptance": [
+      "every ml step carries model as name@version",
+      "make gates passes"
+    ],
+    "inputs": {
+      "issue": "412"
+    }
+  },
+  "context": {
+    "workspace": {
+      "kind": "git",
+      "ref": "main",
+      "location": "/workspace/repo"
+    },
+    "documents": [
+      {
+        "id": "doc-issue-412",
+        "kind": "document",
+        "digest": "sha256:e87b613f1a167bb89bdce86e8df129d1f201511c1d6279ef8737283cb5c07b18",
+        "media_type": "text/markdown",
+        "uri": "/workspace/inputs/issue-412.md"
+      }
+    ]
+  },
+  "frame": {
+    "autonomy_level": 3,
+    "allowed_tools": [
+      "code.edit",
+      "code.test",
+      "vcs.branch"
+    ],
+    "allowed_hosts": [
+      "repo.example"
+    ],
+    "max_steps": 40,
+    "deadline": "2026-09-16T04:00:00Z"
+  },
+  "limits": {
+    "tokens": {}
+  },
+  "credentials": [
+    {
+      "name": "VCS_TOKEN",
+      "injected_as": "env"
+    }
+  ],
+  "callback": {
+    "events": "sse"
+  }
+}

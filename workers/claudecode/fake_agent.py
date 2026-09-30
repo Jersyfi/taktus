@@ -16,6 +16,12 @@ agent's judgement. Two variables make it misbehave on purpose, so that the worke
 to handle it: `FAKE_AGENT_EXPIRE_AFTER=N` ends the run with an authentication error after N
 tool results, as an expired subscription token does; `FAKE_AGENT_WINDOW_AFTER=N` reports the
 subscription window as exhausted after N tool results.
+
+Its usage is fixed too, and it overruns: about 620 000 input tokens for the whole plan, ten
+times the worker's default estimate of 60 000 — the real agent used 1.8 to 4.3 times that
+estimate in the first live run. So the worker can be shown to halt when a running total
+reaches its limit (W-14). `FAKE_AGENT_USAGE_FACTOR` scales every token count (default 1); a
+small factor keeps the run within the estimate.
 """
 
 from __future__ import annotations
@@ -54,12 +60,14 @@ def emit(line: Json) -> None:
 
 
 def usage(n: int) -> Json:
-    return {
+    factor = float(os.environ.get("FAKE_AGENT_USAGE_FACTOR") or 1)
+    counts = {
         "input_tokens": 3,
         "cache_creation_input_tokens": 1000 + 100 * n,
         "cache_read_input_tokens": 5000 * n,
         "output_tokens": 40 + n,
     }
+    return {name: max(0, round(factor * count)) for name, count in counts.items()}
 
 
 def perform(tool: str, arguments: Json) -> tuple[str, bool]:

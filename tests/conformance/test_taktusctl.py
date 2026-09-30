@@ -42,7 +42,7 @@ def test_taktusctl_conformance_run(start_worker: StartWorker, tmp_path: Path) ->
         check=False,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "12 passed, 0 failed, 0 inconclusive, 1 pending" in completed.stdout
+    assert "13 passed, 0 failed, 0 inconclusive, 1 pending" in completed.stdout
     assert "verified: no" in completed.stdout
     report = json.loads(report_path.read_text())
     assert report["summary"]["exit_code"] == 0

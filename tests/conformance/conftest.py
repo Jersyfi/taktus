@@ -128,9 +128,13 @@ type StartWorker = Callable[..., RunningWorker]
 def start_worker(tmp_path: Path) -> Iterator[StartWorker]:
     started: list[subprocess.Popen[bytes]] = []
 
-    def start(*, profile: str = "quick", fault: str | None = None) -> RunningWorker:
+    def start(
+        *, profile: str = "quick", fault: str | None = None, estimate_factor: float = 0.5
+    ) -> RunningWorker:
+        """`estimate_factor` below 1 makes the worker underestimate, so that the suite's tight
+        run can make it cross a limit its estimate fits (W-14); above 1 it never can."""
         port = free_port()
-        log = tmp_path / f"worker-{profile}-{fault or 'honest'}.log"
+        log = tmp_path / f"worker-{profile}-{fault or 'honest'}-{estimate_factor}.log"
         value = "conf-" + secrets.token_hex(12)
         env = {**os.environ, CREDENTIAL: value}
         args = [
@@ -146,6 +150,8 @@ def start_worker(tmp_path: Path) -> Iterator[StartWorker]:
             "0.2",
             "--epoch-seconds",
             "0.3",
+            "--estimate-factor",
+            str(estimate_factor),
         ]
         if fault:
             args += ["--fault", fault]

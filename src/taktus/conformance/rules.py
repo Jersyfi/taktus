@@ -2,9 +2,9 @@
 
 A stream rule cannot be expressed in JSON Schema because it concerns the order and the
 completeness of events, not the shape of one. These are the executable reading of the checks
-W-03 to W-07, W-10, W-11 and W-13 of contracts/worker/v1/README.md §7. They take a transcript — the
-assignment, the estimate the worker gave for it, and every event in order — and return every
-violation found, each naming its check.
+W-03 to W-07, W-10, W-11, W-13 and W-14 of contracts/worker/v1/README.md §7. They take a
+transcript — the assignment, the estimate the worker gave for it, and every event in order — and
+return every violation found, each naming its check.
 
 The same functions serve two callers: the gate under tests/conformance, which applies them to the
 fixtures under contracts/worker/v1/examples/transcript, and the live suite, which applies them to
@@ -35,6 +35,8 @@ CHECKS: dict[str, str] = {
     "W-11": "resuming from a checkpoint produces no duplicate artifact",
     "W-12": "the adapter passes the removal test: removing it breaks no process",
     "W-13": "a host outside allowed_hosts is refused, not ignored",
+    "W-14": "a running total that would cross limits halts the assignment at its next step "
+    "boundary",
 }
 
 # Where the README states each rule. A failure cites this so that the reader can look it up.
@@ -52,6 +54,7 @@ SECTIONS: dict[str, str] = {
     "W-11": "§3 Assignment and §4 Events",
     "W-12": "§7 Conformance",
     "W-13": "§3 Assignment and §4 Events",
+    "W-14": "§6 Stopping",
 }
 
 REQUIREMENTS: dict[str, str] = {
@@ -86,6 +89,9 @@ REQUIREMENTS: dict[str, str] = {
     "W-13": "a tool.called that reaches a host names it in host; a host outside the frame's "
     "allowed_hosts carries refused: true and is not reached — an absent or empty list allows "
     "no host at all",
+    "W-14": "no step starts once the reported running total of a limited kind has reached its "
+    "limit; an assignment halted by a limit ends stopped at the boundary it is at, with that "
+    "boundary's checkpoint_ref, and names the limit in assignment.finished",
 }
 
 CATALOGUE = Catalogue.build(
@@ -121,7 +127,129 @@ def exceeds_limits(estimate: Json, limits: Json) -> str | None:
     if compute and estimate.get("resource_class") == compute["resource_class"]:
         if estimate.get("compute_seconds", 0) > compute["seconds"]:
             return f"compute {estimate['compute_seconds']} > {compute['seconds']}"
+    for direction in ("in", "out"):
+        ceiling = limits.get("tokens", {}).get(direction)
+        amount = estimate.get(f"tokens_{direction}", 0)
+        if ceiling is not None and amount > ceiling:
+            return f"tokens {direction} {amount} > {ceiling}"
     return None
+
+
+def ceilings(limits: Json) -> dict[str, tuple[str, float]]:
+    """Every quantity the limits bound, by the name a running total is kept under, with the
+    limit kind it belongs to and its ceiling."""
+    out: dict[str, tuple[str, float]] = {}
+    for code, amount in limits.get("currency", {}).items():
+        out[f"currency {code}"] = ("currency", float(amount))
+    if "quota" in limits:
+        out["quota units"] = ("quota", float(limits["quota"]["units"]))
+    if "compute" in limits:
+        compute = limits["compute"]
+        out[f"compute seconds in {compute['resource_class']}"] = (
+            "compute",
+            float(compute["seconds"]),
+        )
+    for direction in ("in", "out"):
+        if direction in limits.get("tokens", {}):
+            out[f"tokens {direction}"] = ("tokens", float(limits["tokens"][direction]))
+    return out
+
+
+def reported(event: Json, limits: Json) -> dict[str, float]:
+    """The quantities of one consumption.reported that count against the limits, by the names
+    `ceilings` keeps them under."""
+    out: dict[str, float] = {}
+    for code, amount in (event.get("currency") or {}).items():
+        out[f"currency {code}"] = float(amount)
+    if "quota_units" in event:
+        out["quota units"] = float(event["quota_units"])
+    compute = limits.get("compute")
+    if compute and "compute_seconds" in event:
+        if event.get("resource_class") == compute["resource_class"]:
+            out[f"compute seconds in {compute['resource_class']}"] = float(event["compute_seconds"])
+    for direction in ("in", "out"):
+        if f"tokens_{direction}" in event:
+            out[f"tokens {direction}"] = float(event[f"tokens_{direction}"])
+    return out
+
+
+def running_totals(events: Sequence[Json], limits: Json) -> dict[str, float]:
+    """What the stream reported in total, per quantity the limits bound."""
+    totals = dict.fromkeys(ceilings(limits), 0.0)
+    for event in (e for e in events if e.get("type") == "consumption.reported"):
+        for name, amount in reported(event, limits).items():
+            if name in totals:
+                totals[name] += amount
+    return totals
+
+
+def limit_violations(
+    assignment: Json, events: Sequence[Json], *, stop_requested: bool
+) -> list[Violation]:
+    """W-14: the limits are the worker's hard ceiling. Once the reported running total of a
+    limited quantity has reached its limit, no further step starts. An assignment that names
+    the limit that halted it ends stopped — the boundary part is `stop_violations` — and names
+    a kind its limits set; one that ends stopped after reaching a limit, without a stop being
+    requested, names the limit."""
+    out: list[Violation] = []
+    limits = assignment["limits"]
+    bounds = ceilings(limits)
+    totals = dict.fromkeys(bounds, 0.0)
+    reached: tuple[str, int] | None = None
+    for event in events:
+        kind = event.get("type")
+        if kind == "consumption.reported":
+            for name, amount in reported(event, limits).items():
+                if name in totals:
+                    totals[name] += amount
+            if reached is None:
+                for name, (_, ceiling) in bounds.items():
+                    if totals[name] >= ceiling:
+                        reached = (name, int(event["seq"]))
+                        break
+        elif kind == "step.started" and reached is not None:
+            name, seq = reached
+            out.append(
+                Violation(
+                    "W-14",
+                    f"step {event.get('step_id')!r} started (seq {event['seq']}) after the "
+                    f"running total of {name} had reached its limit of {bounds[name][1]:g} "
+                    f"(seq {seq}): the worker did not halt at the boundary",
+                )
+            )
+            break
+    finished = [e for e in events if e.get("type") == "assignment.finished"]
+    if not finished:
+        return out
+    last = finished[-1]
+    named = last.get("limit")
+    if named is not None:
+        if last.get("outcome") != "stopped":
+            out.append(
+                Violation(
+                    "W-14",
+                    f"assignment.finished names the limit {named!r} with outcome "
+                    f"{last.get('outcome')!r}: only a halted assignment names one, and it ends "
+                    "stopped",
+                )
+            )
+        if named not in limits:
+            out.append(
+                Violation(
+                    "W-14",
+                    f"assignment.finished names the limit {named!r}, which the assignment's "
+                    f"limits do not set (they set {sorted(limits)})",
+                )
+            )
+    elif last.get("outcome") == "stopped" and reached is not None and not stop_requested:
+        out.append(
+            Violation(
+                "W-14",
+                f"the running total of {reached[0]} reached its limit and the assignment ended "
+                "stopped without a stop being requested, but assignment.finished names no limit",
+            )
+        )
+    return out
 
 
 def stream_violations(
@@ -198,7 +326,10 @@ def stream_violations(
         out.append(Violation("W-05", f"step.boundary for step(s) {unknown} that never started"))
 
     if (stopped or outcome == "stopped") and boundaries:
-        out.extend(stop_violations(events, last, boundaries))
+        # A halt at a limit has the shape of a requested stop; its faults are W-14's.
+        check = "W-14" if last.get("limit") and not stopped else "W-06"
+        out.extend(stop_violations(events, last, boundaries, check=check))
+    out.extend(limit_violations(assignment, events, stop_requested=stopped))
 
     for event in (e for e in events if e.get("type") == "tool.called"):
         tool = event.get("tool", "")
@@ -260,16 +391,17 @@ def consumption_violations(events: Sequence[Json], started: Sequence[str]) -> li
 
 
 def stop_violations(
-    events: Sequence[Json], last: Json, boundaries: Sequence[Json]
+    events: Sequence[Json], last: Json, boundaries: Sequence[Json], *, check: str = "W-06"
 ) -> list[Violation]:
     """W-06: after an acknowledged stop the assignment ends at a boundary: no step starts after
-    the last step.boundary, the outcome is stopped, and the checkpoint is the boundary's."""
+    the last step.boundary, the outcome is stopped, and the checkpoint is the boundary's. A halt
+    at a limit (W-14) has the same shape, and `check` names which of the two is judged."""
     out: list[Violation] = []
     outcome = last.get("outcome")
     if outcome != "stopped":
         out.append(
             Violation(
-                "W-06",
+                check,
                 f"a stop was requested and acknowledged, but the outcome is {outcome!r}, "
                 "not 'stopped'",
             )
@@ -280,7 +412,7 @@ def stop_violations(
     if after:
         out.append(
             Violation(
-                "W-06",
+                check,
                 f"step {after[0].get('step_id')!r} started (seq {after[0]['seq']}) after the last "
                 f"step.boundary (seq {final['seq']}): the stop did not take effect at a boundary",
             )
@@ -288,12 +420,12 @@ def stop_violations(
     checkpoint = last.get("checkpoint_ref")
     if not checkpoint:
         out.append(
-            Violation("W-06", "assignment.finished with outcome stopped carries no checkpoint_ref")
+            Violation(check, "assignment.finished with outcome stopped carries no checkpoint_ref")
         )
     elif checkpoint != final.get("checkpoint_ref"):
         out.append(
             Violation(
-                "W-06",
+                check,
                 f"checkpoint_ref {checkpoint!r} of assignment.finished differs from the last "
                 f"boundary's {final.get('checkpoint_ref')!r}",
             )

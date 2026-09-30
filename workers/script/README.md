@@ -4,7 +4,7 @@ A shell wrapper behind the worker contract v1. It runs shell commands as steps a
 the contract asks for: capabilities, an estimate, an event stream that resumes from any `seq`,
 consumption after every step, a boundary with a checkpoint after every step, a stop that lands on
 that boundary, refusal of tools outside the frame, rejection before starting when the limits do
-not fit, artifacts, health. It declares its own version in its capabilities (`VERSION` in
+not fit, a halt at the next boundary when the running total would cross them, artifacts, health. It declares its own version in its capabilities (`VERSION` in
 `worker.py`), so that the provenance of every artifact it produces names the worker version
 that made it (`contracts/shared/v1/Provenance.json`, ADR-0021).
 
@@ -41,7 +41,8 @@ and a short sleep. It shows that the contract fits that shape; it is no evidence
 works. The worker that trains, `mlbench`, arrives at `0.4.0` (`docs/roadmap.md`).
 
 Tunables: `--step-seconds` (quick, default 0.3), `--epochs` (longrun, default 4),
-`--epoch-seconds` (longrun, default 0.5), `--resource-class`, `--state-dir` for checkpoints
+`--epoch-seconds` (longrun, default 0.5), `--estimate-factor` (default 1.0, see *Limits*),
+`--resource-class`, `--state-dir` for checkpoints
 (default a fresh directory under `~/.cache/taktus-script-worker/`). When an execution adapter
 starts this worker it sets `TAKTUS_UNIT_PORT` and `TAKTUS_UNIT_STATE_DIR` — the launch
 convention of the execution port (`docs/architecture/contracts.md` §2.4) — and the worker
@@ -71,7 +72,20 @@ an estimate above `limits.compute.seconds`, a missing compute limit, a foreign r
 few `max_steps` or a deadline before the estimated end all give `finished` / `rejected` (W-10).
 
 A stop request is honoured after the running step's boundary; the assignment ends `stopped` with
-that boundary's `checkpoint_ref`. An assignment whose `context.checkpoint_ref` names a checkpoint
+that boundary's `checkpoint_ref`.
+
+**Limits.** The compute limit is this worker's hard ceiling while it runs, too (W-14). It keeps
+the running total of the compute seconds it has reported. After every boundary it adds the next
+step's expected seconds; if the sum would exceed `limits.compute.seconds`, the next step does
+not start, and the assignment ends `stopped` with the boundary's `checkpoint_ref`, `limit:
+"compute"` and the numbers in `reason`. A step that ran longer than expected is not cut short;
+the halt comes at the boundary after it.
+
+A step's expected seconds are its planned seconds times `--estimate-factor`, and so is the
+estimate. Below 1 the worker underestimates, as a real worker may: the suite's `tight` run can
+then make it cross a limit its estimate fits, which is how W-14 is observed. At 1 it estimates
+what it plans, and its measured seconds exceed the plan by the time a command takes to start.
+Above 1 it overestimates, and no limit its estimate fits is ever crossed. An assignment whose `context.checkpoint_ref` names a checkpoint
 this worker wrote continues after it and does not produce the artifacts recorded there again.
 
 Credentials arrive as names. The worker logs whether each is present in its environment and
@@ -100,6 +114,8 @@ that check and only on that check.
 | `W-09` | W-09 | sends the command in clear as `arguments_digest` |
 | `W-10` | W-10 | accepts an estimate above the limits and fails after the first step |
 | `W-11` | W-11 | produces the artifacts from before a checkpoint again after resuming |
+| `W-13` | W-13 | reaches a host outside `allowed_hosts` and reports it without `refused: true` |
+| `W-14` | W-14 | ignores the limits once running: keeps starting steps after the running total reached them |
 
 W-12, the removal test, has no fault: it is not something a worker does at runtime.
 

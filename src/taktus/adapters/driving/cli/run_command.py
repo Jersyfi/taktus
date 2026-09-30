@@ -402,4 +402,11 @@ def _limits(limits: Limits) -> str:
         parts.append(f"quota {limits.quota.units}")
     if limits.compute is not None:
         parts.append(f"compute {limits.compute.seconds}s {limits.compute.resource_class}")
+    if limits.tokens is not None:
+        for direction, amount in (
+            ("in", limits.tokens.tokens_in),
+            ("out", limits.tokens.tokens_out),
+        ):
+            if amount is not None:
+                parts.append(f"tokens {direction} {amount}")
     return ", ".join(parts)

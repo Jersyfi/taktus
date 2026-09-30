@@ -5,8 +5,9 @@ ADR-0007 makes this worker mandatory: a contract a shell script cannot satisfy i
 specific coding agent. Everything the contract asks for is here — capabilities, estimate,
 assignment, a resumable event stream, consumption per step, step boundaries with checkpoints, a
 stop that lands on a boundary, refusal of tools outside the frame, rejection before start when the
-limits do not fit, artifacts, health — in one file that needs nothing but Python's standard
-library. Run it: `python3 workers/script/worker.py --port 9000`.
+limits do not fit, a halt at the next boundary when the running total would cross them,
+artifacts, health — in one file that needs nothing but Python's standard library. Run it:
+`python3 workers/script/worker.py --port 9000`.
 
 Two profiles (`--profile`):
 
@@ -74,6 +75,7 @@ FAULTS: dict[str, str] = {
     "W-10": "an estimate above the limits is accepted; the assignment fails after its first step",
     "W-11": "a resumed assignment produces the artifacts from before its checkpoint again",
     "W-13": "a host outside allowed_hosts is reached and reported without refused: true",
+    "W-14": "the limits are ignored once running: steps keep starting after the total crossed them",
 }
 
 
@@ -317,11 +319,16 @@ class Worker:
             "max_concurrent_assignments": MAX_CONCURRENT,
         }
 
+    def expected(self, step: PlannedStep) -> float:
+        """A step's own expected demand in compute seconds: its planned seconds, scaled by
+        `--estimate-factor` — below 1 this worker underestimates, as a real one may."""
+        return float(self.options.estimate_factor) * step.seconds
+
     def estimate(self, request: Json) -> Json:
         plan = plan_for(request.get("task", {}), self.profile, self.options)
         start = self._resume_index(request.get("context", {}).get("checkpoint_ref"), plan)
         remaining = plan[start:]
-        seconds = round(sum(s.seconds for s in remaining), 3)
+        seconds = round(sum(self.expected(s) for s in remaining), 3)
         return {
             "confidence": "low",
             "compute_seconds": seconds,
@@ -480,6 +487,7 @@ class Worker:
         frame = assignment.body["frame"]
         credential = self._first_credential(assignment.body)
         deferred: list[Json] = []
+        used = 0.0  # compute seconds this assignment has consumed: its running total
         last_checkpoint: str | None = assignment.body.get("context", {}).get("checkpoint_ref")
         with assignment.lock:
             assignment.status = "running"
@@ -584,6 +592,7 @@ class Worker:
                 "compute_seconds": round(max(time.monotonic() - began, 0.001), 3),
                 "resource_class": self.resource_class,
             }
+            used += consumption["compute_seconds"]
             with assignment.lock:
                 if self.fault == "W-04":
                     deferred.append(consumption)
@@ -613,6 +622,18 @@ class Worker:
                 if assignment.stop_requested:
                     self._finish(assignment, "stopped", checkpoint_ref=last_checkpoint)
                     return
+                following = index + 1 < len(assignment.plan)
+                if following and self.fault != "W-14":
+                    halt = self._over_ceiling(assignment.body, used, assignment.plan[index + 1])
+                    if halt is not None:
+                        self._finish(
+                            assignment,
+                            "stopped",
+                            reason=halt,
+                            checkpoint_ref=last_checkpoint,
+                            limit="compute",
+                        )
+                        return
         with assignment.lock:
             for consumption in deferred:
                 self._emit(assignment, consumption)
@@ -621,6 +642,24 @@ class Worker:
                 "succeeded",
                 summary=f"{len(assignment.plan) - assignment.start_index} step(s) completed",
             )
+
+    def _over_ceiling(self, body: Json, used: float, following: PlannedStep) -> str | None:
+        """The limits are this worker's hard ceiling (W-14): the next step does not start when
+        the running total plus that step's expected demand would exceed the compute limit.
+        The reason, or None when the step fits. A step that overran after it started is the
+        one step the promise yields by; the halt comes at the boundary right after it."""
+        compute = body["limits"].get("compute") or {}
+        if compute.get("resource_class") != self.resource_class:
+            return None
+        ceiling = float(compute["seconds"])
+        expected = self.expected(following)
+        if used >= ceiling or used + expected > ceiling:
+            return (
+                f"the running total of {used:.3f}s of {self.resource_class} and the "
+                f"{expected:.3f}s step {following.step_id!r} expects would exceed the limit of "
+                f"{ceiling:g}s; halted at the boundary"
+            )
+        return None
 
     def _limit_excess(self, body: Json) -> str | None:
         estimate = self.estimate(body)
@@ -661,6 +700,7 @@ class Worker:
         reason: str | None = None,
         checkpoint_ref: str | None = None,
         summary: str | None = None,
+        limit: str | None = None,
     ) -> None:
         """Caller holds the assignment's lock."""
         event: Json = {"type": "assignment.finished", "outcome": outcome}
@@ -668,6 +708,8 @@ class Worker:
             event["reason"] = reason
         if checkpoint_ref is not None:
             event["checkpoint_ref"] = checkpoint_ref
+        if limit is not None:
+            event["limit"] = limit
         if summary is not None:
             event["summary"] = summary
         assignment.status = "finished"
@@ -903,7 +945,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--epoch-seconds", type=float, default=0.5, help="longrun: seconds per epoch"
     )
+    parser.add_argument(
+        "--estimate-factor",
+        type=float,
+        default=1.0,
+        help="the estimate is this factor times the plan; below 1 the worker underestimates, "
+        "which makes the halt at a limit (W-14) observable",
+    )
     args = parser.parse_args(argv)
+    if args.estimate_factor <= 0:
+        parser.error("--estimate-factor must be above 0")
     if args.state_dir is None:
         args.state_dir = str(Path.home() / ".cache" / "taktus-script-worker" / secrets.token_hex(4))
     return args

@@ -36,6 +36,12 @@
       "type": "string",
       "enum": ["currency", "quota", "compute"]
     },
+    "LimitKind": {
+      "title": "LimitKind",
+      "description": "The consumption kind of one ceiling in limits: the kinds of ConsumptionKind, and tokens, the language-model tokens that consumption.reported carries as tokens_in and tokens_out. An assignment.finished that ends stopped because a running total would cross a ceiling names its kind.",
+      "type": "string",
+      "enum": ["currency", "quota", "compute", "tokens"]
+    },
     "Outcome": {
       "title": "Outcome",
       "description": "How an assignment ended. rejected means it never started, because the estimate did not fit the limits or the frame could not be honoured.",
@@ -214,7 +220,7 @@
 
     "Limits": {
       "title": "Limits",
-      "description": "What the assignment may consume, per consumption kind. At least one kind. Checked against the estimate before the first step; a step that would breach a limit does not start.",
+      "description": "What the assignment may consume, per consumption kind: the worker's hard ceiling, which the control plane sets to what it reserved for the assignment. At least one kind. Checked against the estimate before the first step (W-10). While the assignment runs, a step does not start when the running total reported so far plus that step's expected demand would exceed a limit: the worker halts at the boundary it is at and ends stopped, naming the limit (W-14). tokens holds the same quantities as tokens_in and tokens_out in consumption.reported.",
       "type": "object",
       "properties": {
         "currency": { "$ref": "../../shared/v1/Consumption.json#/$defs/currencyAmounts" },
@@ -233,6 +239,16 @@
             "resource_class": { "$ref": "../../shared/v1/Consumption.json#/$defs/resourceClass" }
           },
           "required": ["seconds", "resource_class"],
+          "additionalProperties": false
+        },
+        "tokens": {
+          "description": "Language-model tokens, input and output apart, as consumption.reported counts them in tokens_in and tokens_out. At least one of the two.",
+          "type": "object",
+          "properties": {
+            "in": { "type": "integer", "minimum": 1 },
+            "out": { "type": "integer", "minimum": 1 }
+          },
+          "minProperties": 1,
           "additionalProperties": false
         }
       },
@@ -533,13 +549,17 @@
 
     "AssignmentFinished": {
       "title": "AssignmentFinished",
-      "description": "The last event of a stream. stopped carries the checkpoint to resume from; failed and rejected carry a reason.",
+      "description": "The last event of a stream. stopped carries the checkpoint to resume from; failed and rejected carry a reason. limit names the kind of the ceiling in limits that halted the assignment: only with stopped, and never for a stop requested through POST /stop.",
       "type": "object",
       "allOf": [
         { "$ref": "#/$defs/EventBase" },
         {
           "if": { "properties": { "outcome": { "const": "stopped" } } },
           "then": { "required": ["checkpoint_ref"] }
+        },
+        {
+          "if": { "required": ["limit"] },
+          "then": { "properties": { "outcome": { "const": "stopped" } } }
         },
         {
           "if": { "properties": { "outcome": { "enum": ["failed", "rejected"] } } },
@@ -550,6 +570,10 @@
         "type": { "const": "assignment.finished" },
         "outcome": { "$ref": "#/$defs/Outcome" },
         "checkpoint_ref": { "$ref": "#/$defs/CheckpointRef" },
+        "limit": {
+          "description": "The kind of the ceiling whose running total halted the assignment at a step boundary (W-14). Absent when the stop was requested.",
+          "$ref": "#/$defs/LimitKind"
+        },
         "reason": { "type": "string", "minLength": 1 },
         "summary": { "type": "string" }
       },
@@ -575,7 +599,7 @@
 
     "Transcript": {
       "title": "Transcript",
-      "description": "Not a wire object. The fixture shape for the conformance suite: one assignment, the estimate the worker gave for it, and every event of its stream in order. The suite checks the stream rules W-03 to W-07, W-10 and W-11 against this shape.",
+      "description": "Not a wire object. The fixture shape for the conformance suite: one assignment, the estimate the worker gave for it, and every event of its stream in order. The suite checks the stream rules W-03 to W-07, W-10, W-11, W-13 and W-14 against this shape.",
       "type": "object",
       "properties": {
         "assignment": { "$ref": "#/$defs/Assignment" },

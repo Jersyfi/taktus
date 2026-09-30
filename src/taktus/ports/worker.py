@@ -51,6 +51,11 @@ class ConsumptionKind(StrEnum):
     COMPUTE = "compute"
 
 
+type LimitKind = Literal["currency", "quota", "compute", "tokens"]
+"""The kind of one ceiling in `limits`: the consumption kinds, and tokens. An assignment halted
+by a running total names it (W-14)."""
+
+
 class Outcome(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -176,7 +181,8 @@ class ComputeLimit(Value):
 
 
 class TokenLimit(Value):
-    """Language-model tokens, input and output: `{"in": N, "out": M}` on the wire."""
+    """Language-model tokens, input and output apart — the quantities `tokens_in` and
+    `tokens_out` of a consumption report, named `in` and `out` on the wire. At least one."""
 
     tokens_in: int | None = Field(default=None, ge=1, alias="in")
     tokens_out: int | None = Field(default=None, ge=1, alias="out")
@@ -184,7 +190,7 @@ class TokenLimit(Value):
     @model_validator(mode="after")
     def _at_least_one(self) -> TokenLimit:
         if self.tokens_in is None and self.tokens_out is None:
-            raise ValueError("a token limit names input, output or both")
+            raise ValueError("a token limit names in, out or both")
         return self
 
     @classmethod
@@ -194,7 +200,9 @@ class TokenLimit(Value):
 
 
 class Limits(Value):
-    """What an assignment may consume, per consumption kind; at least one kind."""
+    """What an assignment may consume, per consumption kind; at least one kind. The worker's
+    hard ceiling: checked against the estimate before the first step (W-10), and against the
+    running total before every further step (W-14)."""
 
     currency: CurrencyAmounts | None = None
     quota: QuotaLimit | None = None
@@ -203,12 +211,7 @@ class Limits(Value):
 
     @model_validator(mode="after")
     def _at_least_one_kind(self) -> Limits:
-        if (
-            self.currency is None
-            and self.quota is None
-            and self.compute is None
-            and self.tokens is None
-        ):
+        if all(k is None for k in (self.currency, self.quota, self.compute, self.tokens)):
             raise ValueError("limits name at least one consumption kind")
         return self
 
@@ -382,6 +385,8 @@ class AssignmentFinished(EventBase):
     type: Literal["assignment.finished"]
     outcome: Outcome
     checkpoint_ref: CheckpointRef | None = None
+    limit: LimitKind | None = None
+    """The ceiling whose running total halted the assignment; absent for a requested stop."""
     reason: str | None = Field(default=None, min_length=1)
     summary: str | None = None
     limit: Literal["currency", "quota", "compute", "tokens"] | None = None
@@ -392,6 +397,8 @@ class AssignmentFinished(EventBase):
     def _outcome_brings_its_detail(self) -> AssignmentFinished:
         if self.outcome is Outcome.STOPPED and self.checkpoint_ref is None:
             raise ValueError("a stopped assignment names the checkpoint to resume from")
+        if self.limit is not None and self.outcome is not Outcome.STOPPED:
+            raise ValueError("only a stopped assignment names the limit that halted it")
         if self.outcome in (Outcome.FAILED, Outcome.REJECTED) and self.reason is None:
             raise ValueError(f"a {self.outcome} assignment gives a reason")
         return self

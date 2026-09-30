@@ -15,7 +15,7 @@ Checks, in order:
 2. every `openapi.yaml` is OpenAPI 3.1 and every `$ref` in it resolves;
 3. every example under `examples/<target>/valid/` validates against its target;
 4. every example under `examples/<target>/invalid/` fails by schema, and every conformance check
-   — W-01..W-13 of the worker contract, C-01..C-10 of the connector contract, M-01..M-04 of the
+   — W-01..W-14 of the worker contract, C-01..C-10 of the connector contract, M-01..M-04 of the
    model contract — has at least one fixture named after it;
 5. every target has at least two valid examples.
 
@@ -55,11 +55,11 @@ ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS = ROOT / "contracts"
 NAMESPACE = "https://taktus.eu/contracts/"  # ADR-0019: the $id of a schema is its path under here
 CHECKS = (
-    [f"W-{n:02d}" for n in range(1, 14)]
+    [f"W-{n:02d}" for n in range(1, 15)]
     + [f"C-{n:02d}" for n in range(1, 11)]
     + [f"M-{n:02d}" for n in range(1, 5)]
 )
-CHECK_RANGES = ("W-01..W-13", "C-01..C-10", "M-01..M-04")
+CHECK_RANGES = ("W-01..W-14", "C-01..C-10", "M-01..M-04")
 MIN_VALID_EXAMPLES = 2
 RULE_TARGETS = frozenset({"transcript", "exchange"})
 """Targets whose must-fail fixtures break a rule no schema can express — the order of a stream,

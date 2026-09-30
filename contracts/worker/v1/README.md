@@ -103,7 +103,8 @@ declared so that a reader of the response sees the obligation.
   "limits": {
     "currency": { "eur": 4.0 },
     "quota": { "units": 120 },
-    "compute": { "seconds": 7200, "resource_class": "gpu.small" }
+    "compute": { "seconds": 7200, "resource_class": "gpu.small" },
+    "tokens": { "in": 260000, "out": 8000 }
   },
   "credentials": [ { "name": "VCS_TOKEN", "injected_as": "env" } ],
   "callback": { "events": "sse" }
@@ -124,6 +125,17 @@ no "everything but". An absent or empty `allowed_hosts` means no outbound access
 is the right default for most work: an assignment that needs a host names it. The execution
 environment enforces the same list at the network — a proxy that admits exactly these hosts —
 and this field is what it is given. `frame` is a ceiling, not a suggestion.
+
+**Limits are the worker's hard ceiling.** The control plane sets `limits` to what it reserved for
+this assignment. Each kind is optional, and at least one is present. `currency` is a map by ISO
+4217 code, `quota` is units of the declared window, `compute` is seconds in a resource class.
+`tokens` bounds language-model tokens: `in` and `out` are the same quantities as `tokens_in` and
+`tokens_out` in `consumption.reported`, and at least one of the two is present. A worker that
+does not consume a kind it is given a limit for has nothing to hold against it.
+
+The limits are held at two points. Before the first step, the estimate is held against them
+(*Rejection*, below). While the assignment runs, the running total is held against them: section
+6 says how.
 
 **Rejection.** If the estimate does not fit `limits`, or the frame cannot be honoured, the worker
 does not start. The response to `POST /v1/assignments` is the assignment state with `status:
@@ -150,7 +162,7 @@ everything after it. A worker honours both.
 | `consumption.reported` | `step_id`, and any of `tokens_in` / `tokens_out` / `currency` / `quota_units` / `compute_seconds` with `resource_class` |
 | `step.boundary` | `step_id`, `checkpoint_ref` — **a stop may take effect here** |
 | `artifact.produced` | `artifact_id`, `kind`, `digest` |
-| `assignment.finished` | `outcome`: `succeeded` · `failed` · `stopped` · `rejected`; `checkpoint_ref` when stopped, `reason` when failed or rejected |
+| `assignment.finished` | `outcome`: `succeeded` · `failed` · `stopped` · `rejected`; `checkpoint_ref` when stopped, `reason` when failed or rejected; `limit` — one of `currency`, `quota`, `compute`, `tokens` — when a limit halted the assignment (section 6) |
 
 `consumption.reported` comes **per step**, not at the end. A worker that only settles up at the end
 makes admission control impossible. `currency` is a map by ISO 4217 code in lowercase,
@@ -195,6 +207,24 @@ then `assignment.finished` with `outcome: "stopped"` and the same `checkpoint_re
 
 A worker that aborts immediately and discards the running step violates the contract.
 
+**A limit stops the assignment the same way.** A *running total* is what the worker has reported
+in `consumption.reported` so far in this assignment, per quantity. Before the worker starts a
+step, it adds that step's own expected demand to the running total. If the sum would exceed a
+limit, the step does not start. The worker ends the assignment at the boundary it is at:
+`assignment.finished` with `outcome: "stopped"`, that boundary's `checkpoint_ref`, and `limit`
+naming the kind whose ceiling halted it. A stop requested through `POST /stop` carries no
+`limit`.
+
+A step can use more than it was expected to, after it started. That step is not aborted: it
+finishes, and the worker halts at the boundary right after it and starts nothing more. The limit
+then yields by at most that one step's overrun. No work is lost: the checkpoint is kept, and an
+assignment that resumes from it continues. Once the reported running total of a limited quantity
+has reached its limit, no further step starts (W-14).
+
+A worker that learns a quantity only at the end of an assignment — money, for some — cannot halt
+on it while running. It holds what it learns per step and says in its own documentation which
+quantity that is.
+
 ---
 
 ## 7. Conformance
@@ -218,10 +248,13 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 | W-11 | resuming from a checkpoint produces no duplicate artifact |
 | W-12 | the adapter passes the removal test: removing it breaks no process |
 | W-13 | a host outside `allowed_hosts` is refused, not ignored |
+| W-14 | a running total that would cross `limits` halts the assignment at its next step boundary: no step starts once the reported running total of a limited kind has reached its limit, and the assignment ends `stopped` with a checkpoint and names the `limit` |
 
-The suite runs W-01 to W-11 and W-13 against a live worker and reports W-12 as *pending*: the removal test
+The suite runs W-01 to W-11, W-13 and W-14 against a live worker and reports W-12 as *pending*: the removal test
 takes the adapter out of running processes, which a suite talking to one endpoint cannot do, and
-which needs processes to exist (DEC-0005). A passed suite plus a passed removal test is maturity
+which needs processes to exist (DEC-0005). W-14 can only be provoked in a worker whose actual
+consumption exceeds its own estimate: a limit the estimate fits is otherwise never crossed, and
+the suite reports W-14 *inconclusive* with the numbers. A passed suite plus a passed removal test is maturity
 *verified*. Production processes at autonomy level 3 and above may only use adapters at
 *verified* or above.
 
@@ -230,7 +263,7 @@ a failure tells you to fix: [CONFORMANCE.md](CONFORMANCE.md).
 
 **Fixtures.** `examples/<definition>/valid/` holds what a conforming worker produces;
 `examples/<definition>/invalid/W-NN-*.json` holds one violation per check. Checks that concern a
-whole stream — W-03 to W-07, W-10, W-11, W-13 — use the `Transcript` shape: the assignment, the estimate
+whole stream — W-03 to W-07, W-10, W-11, W-13, W-14 — use the `Transcript` shape: the assignment, the estimate
 the worker gave for it, and every event in order. The stream rules that judge them live in the
 suite (`src/taktus/conformance/rules.py`) and are applied to the fixtures by `tests/conformance`
 and to a live worker by `uv run taktusctl conformance run`. `tools/validate_contracts.py` checks that
