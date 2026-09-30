@@ -1,12 +1,14 @@
 # Market picture
 
-> **Stale by construction. Last established: August 2026. Not currently maintained.**
+> **Stale by construction. Last established: September 2026. Not currently maintained.**
 >
-> The definition dated its market chapter August 2026. Its two figures were attributed to an
-> analyst firm by name, with no report, date or link, and neither has been checked since. Three
-> of the categories below — personal agent runtimes, observability and evaluation platforms,
-> process mining — were added later in conversation, without new research. Do not use any of
-> it in anything published, in a pitch or in a decision. The first pull request that needs a
+> The definition (version 2) dates its market chapter September 2026. Its two figures are
+> attributed to an analyst firm by name, with no report, date or link, and neither has been
+> checked since. Its categories named product examples, which this file leaves out. This file
+> also differs from that chapter: it adds process mining and the gap "the right kind of AI per
+> step", both from later conversation and without research, and it leaves out the category of
+> development-only orchestration and the gap "own core, interchangeable execution", which is
+> principle 13 now. Do not use any of it in anything published, in a pitch or in a decision. The first pull request that needs a
 > market statement re-establishes it with sources and access dates and replaces this file.
 >
 > It is kept because the *shape* of the analysis — the categories and where the gap is — has

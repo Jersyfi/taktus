@@ -4,83 +4,86 @@
 **Raised in:** [#46](https://github.com/Jersyfi/taktus/pull/46)
 **Issue:** [#43](https://github.com/Jersyfi/taktus/issues/43)
 **Needed by:** 2026-12-31
-**Provisional answer:** Option A. No skill is approved automatically; every skill is approved by a person until the skill lifecycle of `0.6.0` is designed against this answer. Marked here; nothing in the code approves a skill yet.
+**Provisional answer:** Option A. There is a floor for n that no configuration can go below; its value is set when the skill lifecycle of `0.6.0` is designed, from the evaluation data `0.5.0` produces. Until then nothing approves a skill automatically, because nothing of the lifecycle is built. Marked here.
 
 ## 1. What this is about
 
 A **skill** is a reusable, versioned piece of know-how that a model or a worker uses for one kind
-of task: how to reconcile a certain statement, how to triage a certain kind of issue. Taktus will
-draft skills itself. The architecture already says when: a fault that was healed three times the
-same way is a design fault, and Taktus proposes a draft skill that removes it.
+of task: how to reconcile a certain statement, how to triage a certain kind of issue. The project
+definition requires Taktus to learn skills from its own work, under governance: it notices a
+recurring way of working, writes it down as a draft skill, evaluates it, and approves it. At
+autonomy levels 1 to 3 a person approves. At level 4 — whole process chains running unattended —
+the definition requires approval to be automatic once the skill has passed **n** evaluations, with
+**n** configurable. A skill that later performs worse falls back to its previous version on its
+own.
 
-A drafted skill changes what later runs do. Today a person would approve every one. The original
-project definition asked whether Taktus may approve some of them itself, and if so, what the least
-evidence is that a skill must show first — the **lower bound**. It left the question open. It was
-carried as an open question in the definition's last chapter; the vision layer now records it, and
-this request is where it is answered.
+The definition's own open questions ask whether n needs a **floor**: a smallest value that no
+organisation can configure below. Without one, an organisation can set n to 1, and a skill that
+passed a single evaluation changes what every later run does.
 
 ## 2. Why you are being asked
 
-Approving a skill without a person is autonomy for the act of approving, and raising autonomy is
-entry M3.9 of `docs/decisions/anchors.taktus.md`: *"Raising an autonomy level of a process,
-including the project's own processes."* It also sets how much evidence counts as enough, which is
-the same judgement M3.9 asks of a raise. The question does not fit the entry word for word; if you
-see it elsewhere, say which entry, and the page gains it.
+Approving a skill without a person is autonomy for the act of approving, and the floor sets how
+much evidence counts as enough. That is the judgement entry M3.9 of
+`docs/decisions/anchors.taktus.md` gives you: *"Raising an autonomy level of a process, including
+the project's own processes."* The question does not fit the entry word for word; if you see it
+elsewhere, say which entry, and the page gains it.
 
 ## 3. What you must decide
 
-What the least evidence is before Taktus may approve a skill without a person — or whether it never
-may.
+Whether there is a value of n below which automatic approval at level 4 cannot be configured — and
+if there is, whether it is set now or from data.
 
 ## 4. What you need to know to decide
 
-- **What exists.** Nothing of the skill lifecycle is built; it is part of `0.6.0` on the roadmap,
-  after the ML bench and the value ledger. No decision here changes code today.
-- **What the repository already asks of a raise in autonomy.** A process carries its autonomy level
-  with the reason and with what is missing to go higher — a demonstrated quality history, a check
-  that does not exist yet (ADR-0026). A skill approved automatically would need at least as much.
-- **Where it would be dangerous.** A skill used by a step whose result must be exact — an amount, a
-  tax code — or used before an act with legal force, changes exactly what the principles keep with
-  a person or with a rule.
-- **What a skill may never contain.** A person's behavioural pattern: skills learn at process level
-  (principle 14). That holds whatever is decided here.
+- **What is already required.** Definition UC-14.2: no skill reaches production without passed
+  evaluations; a person approves at levels 1 to 3; approval is automatic at level 4 after n passed
+  evaluations; quality is measured and a worse skill falls back automatically; learning happens
+  at process level, never from a person's behaviour. None of that is in question here.
+- **What exists.** Nothing of the skill lifecycle is built; the roadmap places it in `0.6.0`,
+  after the evaluation data of `0.5.0`. No answer changes code today.
+- **What the repository asks of evidence elsewhere.** Raising a process's autonomy requires a
+  demonstrated quality history, and the process says what is missing to go higher (ADR-0026). A
+  floor for n is the same kind of rule for skills.
+- **Where a floor matters most.** A skill used by a step whose result must be exact — an amount, a
+  tax code — changes what the principles keep with a rule; a skill used before an act with legal
+  force changes what a person then signs. The legal anchors hold regardless of any skill, but the
+  person signs what the skill prepared.
 
 ## 5. Options
 
-### Option A — the same bound as a raise in autonomy, never for exact steps or legal anchors (recommended)
+### Option A — a floor, its value set from data (recommended)
 
-- **Meaning:** a skill may be approved automatically only when it shows what a raise in autonomy
-  shows: a quality history on the processes that would use it, measured by the value ledger, and a
-  passed evaluation. Never for a skill used by a step of class `exact`, and never for one used
-  before a legal anchor. The number of runs the history needs is set when `0.6.0` is designed, from
-  the data `0.5.0` produces.
-- **Consequence:** one rule for "enough evidence" in the whole product; the exact and legal cases
-  stay with a person.
+- **Meaning:** n has a floor no configuration can go below. Its value is fixed when `0.6.0` is
+  designed, from how often skills that passed k evaluations later fell back in `0.5.0`'s data, and
+  it is higher for skills used by `exact` steps.
+- **Consequence:** automatic approval exists as the definition requires, and cannot be configured
+  into a single evaluation; the number rests on measurement.
 - **Effort:** none now; part of designing `0.6.0`.
 - **Reversibility:** cheap until `0.6.0` is built.
-- **Why recommended:** it reuses a standard you have already accepted instead of inventing a second
-  one, and it names the two places where no evidence is enough.
+- **Why recommended:** it answers the question the definition asks — yes, a floor — without
+  inventing a number no measurement supports.
 
-### Option B — a fixed number now
+### Option B — a floor, fixed now
 
-- **Meaning:** for example, twenty uses without a correction and a passed evaluation, decided today.
-- **Consequence:** a bound exists before any skill does; the number is not based on any measurement.
+- **Meaning:** for example, n is never below 20, decided today.
+- **Consequence:** the rule exists before any skill does; the number is not based on any
+  measurement and may be changed by a request later.
 - **Effort:** none now.
-- **Reversibility:** cheap until `0.6.0`; a number that turns out wrong is then changed by a request.
+- **Reversibility:** cheap until `0.6.0`.
 
-### Option C — never
+### Option C — no floor
 
-- **Meaning:** every skill is approved by a person, at every autonomy level.
-- **Consequence:** the skill lifecycle always waits for a person, and `0.6.0`'s criterion — a release
-  end to end without intervention — holds only if no new skill is needed on the way.
+- **Meaning:** n is freely configurable, as the definition currently reads.
+- **Consequence:** an organisation can approve a skill automatically after one evaluation; the
+  protection is the automatic fallback and the organisation's own judgement.
 - **Effort:** none.
 - **Reversibility:** cheap.
 
 ## 6. What is blocked
 
-Nothing until the skill lifecycle of `0.6.0` is designed; the provisional answer — a person
-approves every skill — is what happens anyway while nothing approves skills. The date is when you
-are asked to look, well before that design starts.
+Nothing until the skill lifecycle of `0.6.0` is designed; nothing approves skills before then. The
+date is when you are asked to look, well before that design starts.
 
 ## 7. How to answer
 

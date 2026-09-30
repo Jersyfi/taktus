@@ -121,11 +121,15 @@ answers, for the first time, how much of the vision stands:
   repeatability and cost control, P9 efficiency over verbosity, P14 people at the centre. The
   others — P1, P3, P4, P6, P10, P11, P12, P13 — have a use case in *building*.
 - The requirements of the thirteen are the owner's decision, asked as DEC-0030 and in force
-  provisionally. `make usecases` prints the list with states; `make gate-vision` prints which use
+  provisionally. Four of them fall short of what the definition asks, and DEC-0030 names the
+  amendment for each. `make usecases` prints the list with states; `make gate-vision` prints which use
   case serves which principle.
 - **Not yet in the format**: UC-4.6, UC-4.11 to UC-4.13, UC-6.8, UC-6.9 and UC-7.2, still in the
-  files they were first written in, and every other use case of the original definition, which is
-  not in the repository at all.
+  files they were first written in, and every other use case of the definition — version 2, epics
+  E1 to E15, the one the vision layer is checked against — which is not in the repository at all.
+  That includes the whole of E14, the worker interface and the skill lifecycle, and E15, the
+  virtual agent business, which is the level-4 vision itself; `MIGRATION.md` maps both from their
+  text.
 
 **The migration of the project definition** into `docs/vision/` and `docs/usecases/` runs in four
 pull requests (`docs/usecases/MIGRATION.md`):
@@ -135,9 +139,11 @@ pull requests (`docs/usecases/MIGRATION.md`):
    enablement is not (ADR-0029); use case numbers are reconciled, the repository's winning, in
    `docs/usecases/NUMBERING.md`.
 2. **The use cases of `process`, `run` and `governance`** — next; the ones closest to what is built,
-   so contradictions surface early.
-3. **`command`, `identity`, `catalog`, `accounting`.**
-4. **`knowledge`, `value`, `ledger`, `reporting`, and what moves into `blueprints/`**; then
+   so contradictions surface early; with them UC-15.3, UC-15.4 and UC-15.5 of E15.
+3. **`command`, `identity`, `catalog`, `accounting`**, with E14 and UC-15.1.
+4. **`knowledge`, `value`, `ledger`, `reporting`, and what moves into `blueprints/`**, with the
+   finance domain of UC-15.2 and three requirements the owner stated outside the definition — the
+   owner-facing channel, documentation beyond the repository, and the product finding; then
    `MIGRATION.md` is deleted.
 
 **The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) ran on
@@ -156,9 +162,9 @@ its schedule for the first time on 2026-09-28, green, in 25 seconds — started 
 2. **Step 2 of the migration**: the use cases of `process`, `run` and `governance`, starting from
    what is already written in `UC-4-result-defects.md` and `UC-4-exactness-statement.md`, and
    with UC-4.5 and UC-8.5 reconciled with ADR-0021, ADR-0005 and ADR-0010.
-3. **#38**, which Taktus opened for issue #11 on 2026-09-23 and which conflicts with `main` on this
-   file's header: rebased on `main`, its status sentence rewritten in the current shape. Its
-   description was rewritten on 2026-09-29 so that it can be acted on without the diff.
+3. **#38**, which Taktus opened for issue #11 on 2026-09-23: `make doctor` reports `git`. Rebased
+   on `main` on 2026-09-30, its conflicts resolved, its description rewritten so that it can be
+   acted on without the diff; it merges without conflict before or after this one.
 4. **The deployment itself**: the chart, the registry build and the cluster execution adapter,
    against `deploy/k8s/README.md`.
 5. **`0.2.0` starts with the budget** (ADR-0005, second amendment) **and the scheduler starting

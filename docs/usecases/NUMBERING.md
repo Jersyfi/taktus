@@ -24,9 +24,10 @@ definition is complete, so that an old reference stays findable.
 
 ## Where the definition and the repository disagree
 
-The definition exists in versions. The one the repository was checked against is the version of
-2026-09-01, epics E1 to E13. Later versions added epics E14 and E15 and several cases in
-conversation; they are listed below by the titles `MIGRATION.md` gives them.
+The definition exists in versions. The one the repository is checked against is **version 2**,
+epics E1 to E15, market chapter dated September 2026. An earlier version of 2026-09-01 had epics
+E1 to E13 only; nothing it numbered was renumbered by version 2. A few cases were numbered later
+still, in conversation, and are listed at the end.
 
 | Used elsewhere | Meant there | In this repository |
 |---|---|---|
@@ -43,12 +44,23 @@ detection, `UC-4.11` error window and impact analysis, `UC-4.12` remediation pla
 working out how a step becomes exact, `UC-6.8` incident and incident report, `UC-6.9` the
 exactness statement, `UC-7.2` emergency stop — and the blueprint-level `UC-01` and `UC-02`.
 
-## Numbers added after the definition of 2026-09-01
+## Numbers of version 2 not in the earlier version
 
-Free in the repository and kept with the meaning they were given: `UC-1.8` a session with
-project knowledge; `UC-6.7` the bus-factor index; `UC-7.4` the decision request; `UC-9.5`
-bottleneck and waiting analysis; `UC-15.5` the responsibility anchor; and the epics E14,
-execution layer — workers and skills, and E15, the virtual agent business. Their text is not in
-the repository yet; it arrives with the step of the migration that files them.
+Kept with the meaning version 2 gives them: `UC-1.7` channel identity — every command belongs to
+one Taktus identity; `UC-5.8` connecting observability and evaluation platforms, optional;
+`UC-6.7` the bus-factor index; `UC-8.11` role-based agents — one agent, many departments;
+`UC-14.1` the worker interface, `UC-14.2` the skill lifecycle, `UC-14.3` the skill hub (epic E14,
+the execution layer: workers, skills and the learning loop); `UC-15.1` domain blueprints,
+`UC-15.2` the finance reference domain under legal anchors, `UC-15.3` partner interfaces,
+`UC-15.4` end-to-end processes across domains, `UC-15.5` the responsibility anchor (epic E15,
+the virtual agent business). Where each is filed is `MIGRATION.md`.
 
-Every other number of the definition, `UC-1.1` to `UC-13.5`, keeps its meaning.
+## Numbers given after version 2
+
+Numbered in conversation, in no version of the definition, known to the repository by the titles
+`MIGRATION.md` gives them: `UC-1.8` a session with project knowledge (the roadmap's `0.3.0` names
+it); `UC-7.4` the decision request (ADR-0008 and ADR-0017 carry it); `UC-9.5` bottleneck and
+waiting analysis (ADR-0015 carries it). Their text arrives with the step of the migration that
+files them.
+
+Every other number of the definition, `UC-1.1` to `UC-15.5`, keeps its meaning.

@@ -15,8 +15,10 @@ It ships a catalogue of them as the default every organisation inherits; each or
 to it and narrow it, never empty it.
 
 The catalogue was written by the project, not by a lawyer. Whether it is complete and correct for a
-given country is a legal question. The original project definition asked who reviews it and when,
-and left the question open. It was carried as an open question in the definition's last chapter;
+given country is a legal question. The project definition asks who reviews it and when, and says
+what kind of review it means: a professional one — tax advice for finance, labour law for
+personnel — before a finance or personnel blueprint is put into production. It leaves open by whom
+and when. It was carried as an open question in the definition's last chapter;
 the vision layer now records it, and this request is where it is answered.
 
 ## 2. Why you are being asked
@@ -38,22 +40,26 @@ at which moments it is reviewed again.
   the shipped default (`docs/decisions/anchors.md`, entry M4.4) makes every one of them the owner's.
   Nothing in the product evaluates an anchor at run time yet; that is `0.2.0`.
 - **When it starts to matter.** A blueprint for finance or personnel — invoicing, payroll, tax —
-  runs exactly the acts the catalogue anchors. None exists yet; the second domain on the roadmap is
-  systems operation, not finance. The project's own repository has no legal anchor: it signs,
+  runs exactly the acts the catalogue anchors. The definition makes finance the reference domain of
+  the virtual agent business (UC-15.2) and requires the catalogue per domain and jurisdiction,
+  configurable, never empty, and shown in the conformity evidence (UC-15.5). No such blueprint
+  exists yet; the second domain on the roadmap is systems operation, not finance. The project's own repository has no legal anchor: it signs,
   pays and files nothing.
 - **What a review cannot do.** It holds for a jurisdiction and a date. A catalogue reviewed for
   Germany says nothing about another country, and law changes.
 
 ## 5. Options
 
-### Option A — a lawyer of the jurisdiction, before the first such blueprint, and at every change (recommended)
+### Option A — qualified reviewers of the jurisdiction, before the first such blueprint, and at every change (recommended)
 
-- **Meaning:** before any finance or personnel blueprint is used by a tenant, a lawyer qualified in
-  that tenant's jurisdiction reviews the catalogue for it; the review is recorded with its date and
+- **Meaning:** before any finance or personnel blueprint is used by a tenant, the catalogue is
+  reviewed for that tenant's jurisdiction by a tax adviser for the finance acts and a labour-law
+  specialist for the personnel acts, as the definition names them; the review is recorded with its date and
   jurisdiction; every change to the catalogue, and every new jurisdiction, is reviewed again. Until
   then the catalogue is marked as not legally reviewed wherever it is shown.
 - **Consequence:** a cost per jurisdiction, and a date before which such blueprints cannot be used.
-- **Effort:** a legal review per jurisdiction; a session prepares the catalogue and the questions.
+- **Effort:** a review per jurisdiction and domain; a session prepares the catalogue and the
+  questions.
 - **Reversibility:** cheap until a blueprint is live.
 - **Why recommended:** it is the only option under which the project can state that the catalogue
   holds, and it costs nothing before it is needed.

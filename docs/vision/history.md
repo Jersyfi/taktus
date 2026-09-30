@@ -2,7 +2,8 @@
 
 Material from the original project definition that is settled, superseded or no longer
 maintained. The definition was written in German, outside this repository, and exists in
-several versions; the owner holds them. Where a use case number from it is still quoted, the
+several versions; the owner holds them. The one this layer was checked against is version 2,
+epics E1 to E15, market chapter dated September 2026. Where a use case number from it is still quoted, the
 mapping to the numbers this repository uses is `docs/usecases/NUMBERING.md`. Kept so that the reasoning is not lost, clearly marked so that nobody mistakes it
 for current.
 
@@ -30,9 +31,18 @@ before any commercial launch.
 ## Architecture guardrails — superseded by the ADRs
 
 The original chapter 5 described three layers, the adapter obligation, the removal test,
-capabilities instead of product names, telemetry from day one, and the integration code in two
-tiers. All of it is now decided and enforced in `docs/adr/` and `docs/architecture/`, in more
-detail and with the boundaries of each promise stated.
+capabilities instead of product names, telemetry from day one, the integration code in two
+tiers with maturity levels, and two directions of channel. Almost all of it is now decided and
+enforced in `docs/adr/` and `docs/architecture/`, in more detail and with the boundaries of each
+promise stated.
+
+Two parts are not in the repository yet. **The skill format**: the chapter named an open skill
+format (`SKILL.md`) as the contract for skills and method scaffolds; no ADR has chosen it, and
+one must before the skill lifecycle of epic E14 is built. **Command channels and rollout
+channels**: a person commanding Taktus acts with their own rights, while a person using an
+assistant Taktus rolled out acts with the agent's rights plus their own credentials. The second
+half is in `docs/architecture/governance.md` for shared agents; the distinction between the two
+kinds of channel is not written down. Both are carried in `docs/usecases/MIGRATION.md`.
 
 Where the chapter and an ADR disagree, **the ADR wins**. The chapter is not maintained.
 
@@ -58,7 +68,7 @@ The original chapter 11 listed nine questions for the owner. Their current state
 | The maturity threshold for autonomy level 3 | Kept at *verified* from level 3 |
 | Product names in the market chapter | Removed. `market.md` names categories, not products |
 | A lower bound for automatic skill approval | **Still open**: DEC-0028. Belongs with the skill lifecycle |
-| The second reference domain | Finance, as originally proposed. Unchanged |
+| The second reference domain | Finance remains the reference domain for the virtual agent business and its legal anchors (definition UC-15.2). It is not on the roadmap yet: the second domain the roadmap schedules, `0.7.0`, is systems operation. Placing finance is part of migrating epic E15 |
 | Who reviews the legal-anchor catalogue, and when | **Still open**: DEC-0029. Needed before any finance or personnel blueprint goes live |
 
 The two still open are carried as decision requests, DEC-0028 and DEC-0029, not as a chapter.

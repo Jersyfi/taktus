@@ -47,6 +47,7 @@ The use cases of E6 are filed as follows:
 | UC-6.4 | role-based views | `reporting` |
 | UC-6.5 | Taktus explains its actions | `reporting` |
 | UC-6.6 | the proof of value | `value` for the figures; the view is `reporting`'s, filed with the figures |
+| UC-6.7 | the bus-factor index | `value` — a figure computed from takeover and removal test results; the views show it |
 | UC-6.8 | incident and incident report | `governance` for the incident; the report is an artifact of the incident |
 | UC-6.9 | the exactness statement | `process` — it is generated from the process version |
 
