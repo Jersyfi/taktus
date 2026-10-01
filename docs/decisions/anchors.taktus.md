@@ -167,7 +167,7 @@ fits no entry is decided by the session in the direction of the vision and recor
 `unlisted` notice (M2.6); a question is raised only where the vision gives no direction. The
 derivability test and the register as precedent were added with it.
 
-On 2026-10-02 the owner's answers DEC-0040 to DEC-0043 extended the page: how a decision under
+On 2026-10-01 the owner's answers DEC-0040 to DEC-0043 extended the page: how a decision under
 the reversed default follows its source, and the tie between options both consistent with the
 sources (M2.6); bringing a use case up to the owner's definition as mode 2 (M2.7, narrowing
 M3.15); the review of the override rate after twenty notices; and the safety margin's readings,

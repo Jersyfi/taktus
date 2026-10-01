@@ -3,6 +3,7 @@
 **Category:** NON-BLOCKING
 **Raised in:** [#23](https://github.com/Jersyfi/taktus/pull/23), which wires the three credentials and raises their renewals
 **Issue:** none; the owner gave the answer with the commission, and the record carries it
+**Written after the answer:** the owner gave the answer with the commission of #23, before the request was written; left out of the acceptance rate (DEC-0042).
 
 ## 1. What this is about
 

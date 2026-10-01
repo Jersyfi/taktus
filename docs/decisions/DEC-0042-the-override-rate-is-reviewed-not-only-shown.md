@@ -1,9 +1,10 @@
 # DEC-0042 — The override rate is reviewed, not only shown
 
 **Category:** NON-BLOCKING
-**Raised in:** the audit of the decision register, 2026-10-02; recorded in [#52](https://github.com/Jersyfi/taktus/pull/52)
+**Raised in:** the audit of the decision register, 2026-10-01; recorded in [#52](https://github.com/Jersyfi/taktus/pull/52)
 **Issue:** none; the owner decided before a request was written, and this record is the question with his answer
-**Needed by:** 2026-10-02
+**Needed by:** 2026-10-01
+**Written after the answer:** the owner answered in the audit's brief of 2026-10-01; the record was written from it; left out of the acceptance rate (DEC-0042).
 
 ## 1. What this is about
 
@@ -53,7 +54,7 @@ Nothing.
 
 ## Outcome
 
-**Decided:** 2026-10-02
+**Decided:** 2026-10-01
 **Answer:** Option A, as the owner gave it: the override rate is reviewed, not only shown. After
 twenty notices under the reversed default, raise a decision request to the owner automatically,
 carrying the rate at which he overrode them.

@@ -1,9 +1,10 @@
 # DEC-0040 — A decision under the reversed default follows its source
 
 **Category:** NON-BLOCKING
-**Raised in:** the audit of the decision register, 2026-10-02; recorded in [#52](https://github.com/Jersyfi/taktus/pull/52)
+**Raised in:** the audit of the decision register, 2026-10-01; recorded in [#52](https://github.com/Jersyfi/taktus/pull/52)
 **Issue:** none; the owner decided before a request was written, and this record is the question with his answer
-**Needed by:** 2026-10-02
+**Needed by:** 2026-10-01
+**Written after the answer:** the owner answered in the audit's brief of 2026-10-01; the record was written from it; left out of the acceptance rate (DEC-0042).
 
 ## 1. What this is about
 
@@ -59,7 +60,7 @@ Nothing.
 
 ## Outcome
 
-**Decided:** 2026-10-02
+**Decided:** 2026-10-01
 **Answer:** Option A, as the owner gave it: under the reversed "neither list" default, a session
 decides according to the source it cites, and the record shows HOW the decision follows that
 source — not merely that a source was named. Where two options are both consistent with the

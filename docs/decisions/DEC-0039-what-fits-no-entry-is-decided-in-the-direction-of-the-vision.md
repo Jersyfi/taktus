@@ -4,6 +4,7 @@
 **Raised in:** the owner's brief of 2026-10-01, which decided it; recorded in [#52](https://github.com/Jersyfi/taktus/pull/52)
 **Issue:** none; the owner decided before a request was written, and this record is the question with his answer
 **Needed by:** 2026-10-01
+**Written after the answer:** the owner decided in his brief of 2026-10-01 before a request was written; left out of the acceptance rate (DEC-0042).
 
 ## 1. What this is about
 

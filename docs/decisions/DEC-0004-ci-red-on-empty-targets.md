@@ -58,7 +58,7 @@ more work is merged on top of red checks?
 
 ## 5. Options
 
-### Option A — make every gate correct on an empty target (recommended)
+### Option A — make every gate correct on an empty target
 
 - **Meaning:** the package skeleton exists so that install and type checks have something to
   check; the test gates report "no targets yet" and green when they find no tests, and every other
@@ -67,16 +67,20 @@ more work is merged on top of red checks?
 - **Effort:** about a day: build configuration, one empty package per component, a small test
   runner wrapper, a documentation check with real rules.
 - **Reversibility:** not needed; nothing is weakened.
-- **Why recommended:** it is the only option under which the gates keep their meaning and no
+- **What speaks for it:** it is the only option under which the gates keep their meaning and no
   future pull request inherits a red main branch.
 
-### Option B — merge with the checks red, fix them in the next pull request
+### Option B — merge with the checks red, fix them in the next pull request (recommended)
 
 - **Meaning:** what #1 recommended. The new contracts job is green, the rest stays red.
 - **Consequence:** at least one merge under red checks, and a main branch on which "red" cannot be
   distinguished from "broken" until somebody fixes it. Weakens the gate for the duration.
 - **Effort:** none now, the same day later.
 - **Reversibility:** the red period cannot be undone; what was merged during it stays unverified.
+- **Why recommended:** #1 recommended it, to merge the contracts without waiting for the other
+  gates. This record first marked Option A, the owner's answer, as recommended — written after
+  the answer; corrected on 2026-10-01 after the audit of the register (DEC-0042), so that the
+  acceptance rate counts what was actually recommended.
 
 ### Option C — mark the failing job as not required
 

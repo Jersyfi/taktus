@@ -9,7 +9,7 @@ request `NEED-NNNN`, for what only the owner can provide, and the status report
 `docs/status.md` · amended 2026-09-29: every pull request description states what the change is
 about, what was done, why that way and what to check (§7) · amended 2026-10-01 (DEC-0039): what
 fits no entry is decided in the direction of the vision (§1a), the derivability test, the
-register as precedent and the acceptance rate (§9) · amended 2026-10-02 (DEC-0040 to DEC-0042):
+register as precedent and the acceptance rate (§9) · amended 2026-10-01 (DEC-0040 to DEC-0042):
 a decision states how it follows its source, restoring a use case is mode 2 (§1a), the override
 rate is reviewed and counts only what was asked before it was answered (§9)
 
@@ -64,7 +64,7 @@ raised only where the vision gives no direction. Entries of mode 3 and mode 4 ar
 The owner overrides a notice that went the wrong way with a decision; the notice then names it
 in `**Overridden by:**`.
 
-*Amended 2026-10-02 (DEC-0040, DEC-0041).* **A decision follows its source.** The session decides
+*Amended 2026-10-01 (DEC-0040, DEC-0041).* **A decision follows its source.** The session decides
 according to the source it cites, and the notice states, in `**How it follows:**`, how the
 decision follows from it; naming a source is not following it. Where two options are both
 consistent with the sources: strict in substance, sparing in ceremony. The gate checks that the
@@ -159,7 +159,7 @@ Header, one line per field:
 | 2 | Why you are being asked | the entry of `anchors.taktus.md`, mode 3 or 4, that makes this the owner's call |
 | 3 | What you must decide | exactly one answerable question |
 | 4 | What you need to know to decide | every term explained; the background needed to judge; what the decision commits the project to |
-| 5 | Options | two or three, each with concrete meaning, consequence, effort and reversibility; one marked recommended, with the reason |
+| 5 | Options | two or three, each with concrete meaning, consequence, effort and reversibility; one marked recommended, with the reason — except in mode 4, where the question is the owner's own: the request names its entry in `**Mode entry:**` and marks no option recommended (anchors.md §1; DEC-0045, 2026-10-01) |
 | 6 | What is blocked | what waits, a date by which an answer is needed, and what happens without one |
 | 7 | How to answer | the literal sentence the owner can write back |
 
@@ -252,13 +252,13 @@ recommended option, and for every notice, whether a later decision overrode it. 
 accepted recommendations near 100 % means too much is asked; many overridden notices mean too
 much is decided alone.
 
-*Amended 2026-10-02 (DEC-0042, the audit).* **The rate is reviewed, not only shown.** After every
+*Amended 2026-10-01 (DEC-0042, the audit).* **The rate is reviewed, not only shown.** After every
 twenty `unlisted` notices a request carrying the override rate is raised to the owner; the gate
 fails the register when the count is reached and the request — a record carrying
 `**Override review:**` — is missing. **The rate counts only what was asked before it was
 answered.** A record written after the owner had answered carries `**Written after the
 answer:**` and is left out of the rate, because its recommendation was written knowing the
-answer: the naive count showed 5 of 6 recommendations taken where the audit of 2026-10-02 found 1
+answer: the naive count showed 5 of 6 recommendations taken where the audit of 2026-10-01 found 1
 of 6.
 
 ## Alternatives

@@ -4,6 +4,7 @@
 **Raised in:** [#1](https://github.com/Jersyfi/taktus/pull/1), as open point 1 of its description
 **Issue:** none; raised before ADR-0017, in the description only
 **Provisional answer:** no identifier; the schemas referenced each other by relative file path, which works from disk and is changed by one additive edit
+**Written after the answer:** the owner had answered #1's open point before this record, its options and its recommendation were written; left out of the acceptance rate (DEC-0042).
 
 ## 1. What this is about
 

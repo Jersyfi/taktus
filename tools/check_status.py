@@ -39,9 +39,12 @@ Checks:
    another.
 
 `--print` prints the list (`make status`), followed by one line on the balance of asking and
-deciding alone: how many answered requests took the recommended option, and how many notices a
-later decision overrode (DEC-0039). The line is part of the generated block, so the description
-carries it too. Nothing writes it into a file.
+deciding alone: how many requests asked before they were answered took the recommended option,
+how many notices a later decision overrode, and how many notices were decided under the reversed
+default, with the count at which the override rate goes to the owner (DEC-0039, DEC-0042). A
+record marked `**Written after the answer:**` and a mode-4 request are left out of the rate. The
+line is part of the generated block, so the description carries it too. Nothing writes it into
+a file.
 
 A register with nothing open generates "nothing is open" and says so. The last line is the
 duration.
@@ -228,17 +231,32 @@ RECOMMENDED = re.compile(r"^### Option ([A-Z])\b[^\n]*\(recommended\)", re.MULTI
 ANSWERED_OPTION = re.compile(r"\*\*Answer:\*\*\s*Option ([A-Z])\b")
 
 
+WRITTEN_AFTER = "Written after the answer"
+"""A record whose request was written after the owner had answered: its recommendation was
+written knowing the answer, so it says nothing about how often a recommendation is taken."""
+OWNERS_OWN = re.compile(r"^M4\.\d+$")
+"""A mode-4 request carries no recommendation (DEC-0045); there is nothing to accept."""
+REVIEW_EVERY = 20
+"""After every twenty unlisted notices a request puts the override rate to the owner (DEC-0042)."""
+
+
 def acceptance() -> str:
     """The balance of asking and deciding alone (DEC-0039), from the register: for every
-    answered request, whether the owner chose the recommended option; for every notice, whether
-    a later decision overrode it. Near 100 % accepted means too much is asked; many overridden
-    notices mean too much is decided alone."""
-    answered = recommended = other = own = 0
+    request asked before it was answered, whether the owner chose the recommended option; for
+    every notice, whether a later decision overrode it. Near 100 % accepted means too much is
+    asked; many overridden notices mean too much is decided alone. A record written after the
+    answer and a mode-4 request are left out (DEC-0042, DEC-0045); the count of unlisted notices
+    says when the override rate is next put to the owner."""
+    answered = recommended = other = own = left_out = 0
     for path in sorted(REGISTER.glob("DEC-*.md")):
         text = strip_comments(path.read_text(encoding="utf-8"))
-        if header_fields(text).get("Category") not in ("BLOCKING", "NON-BLOCKING"):
+        fields = header_fields(text)
+        if fields.get("Category") not in ("BLOCKING", "NON-BLOCKING"):
             continue
         if "\n## Outcome" not in text:
+            continue
+        if fields.get(WRITTEN_AFTER) or OWNERS_OWN.match(fields.get("Mode entry", "")):
+            left_out += 1
             continue
         outcome = text.split("\n## Outcome", 1)[1]
         answered += 1
@@ -250,18 +268,24 @@ def acceptance() -> str:
             recommended += 1
         else:
             other += 1
-    notices = overridden = 0
+    notices = overridden = unlisted = 0
     for path in sorted(REGISTER.glob("NTC-*.md")):
         notices += 1
-        if header_fields(path.read_text(encoding="utf-8")).get("Overridden by"):
+        fields = header_fields(path.read_text(encoding="utf-8"))
+        if fields.get("Overridden by"):
             overridden += 1
-    share = f" ({recommended * 100 // answered} %)" if answered else ""
+        if fields.get("Kind") == "unlisted":
+            unlisted += 1
+    share = f" ({round(recommended * 100 / answered)} %)" if answered else ""
+    review = (unlisted // REVIEW_EVERY + 1) * REVIEW_EVERY
     return (
-        f"Acceptance: of {answered} answered request(s), {recommended} took the recommended "
-        f"option{share}, {other} another option, {own} an answer of the owner's own; of "
-        f"{notices} notice(s), {overridden} overridden by a later decision. Near 100 % accepted "
-        "means too much is asked; many overridden notices mean too much is decided alone "
-        "(DEC-0039)."
+        f"Acceptance: of {answered} request(s) asked before they were answered, {recommended} "
+        f"took the recommended option{share}, {other} another option, {own} an answer of the "
+        f"owner's own ({left_out} written after the answer or of mode 4, left out); of "
+        f"{notices} notice(s), {overridden} overridden by a later decision; {unlisted} decided "
+        f"under the reversed default, the override rate goes to the owner at {review}. Near "
+        "100 % accepted means too much is asked; many overridden notices mean too much is "
+        "decided alone (DEC-0039, DEC-0042)."
     )
 
 
