@@ -20,7 +20,7 @@ both, the notices, and the needs.
 A **notice**, `NTC-NNNN`, is the record of a mode-2 decision (anchors.md §1): the session
 decided, nobody approves, and the record states what was decided, on what evidence, what was
 considered and which entry permits it. Every notice carries a **kind** — `restructuring`,
-`test-strategy`, `gate-weakened`, `behaviour-change` — so that the register reads by kind and
+`test-strategy`, `gate-weakened`, `behaviour-change`, `unlisted` — so that the register reads by kind and
 a weakened gate is never buried among behaviour changes (DEC-0014). A notice that weakens a
 gate carries the demonstration that the gate had no value, in the record itself.
 
@@ -59,6 +59,11 @@ The open needs are printed by `make status` (DEC-0026).
 | [0011](NTC-0011-first-run-findings-in-the-connector-the-worker-and-the-script.md) | The connector, the worker and first_run.sh | M2.4 | `behaviour-change` | executable flag (#28), `repository.files.read` and P-03's `closing_section` (#34), `first_run.sh` runs twice (#30), token accounting and W-14 in both workers |
 | [0012](NTC-0012-a-memory-limit-is-enforced-or-the-job-refused.md) | A memory limit is enforced or refused | M2.4 | `behaviour-change` | the process adapter enforces memory on Linux and refuses elsewhere unless accepted; the container adapter refuses an engine that cannot limit memory or swap |
 | [0013](NTC-0013-the-description-check-runs-on-an-edit-and-is-scoped-to-its-authors.md) | The description check runs on an edit, and is scoped to its authors | M2.4 | `behaviour-change` | a `description` workflow that runs when a description is edited; a dependency bot's own description is not held to the shape, every code gate still runs |
+| [0014](NTC-0014-uc-1-1-carries-the-senders-identity-context-and-reply-address.md) | UC-1.1 carries the sender's identity, context and reply address | M2.7 | `restoration` | brought up to definition UC-1.1/UC-1.7; "not identity" narrowed to "not authorisation" (DEC-0030 narrowed) |
+| [0015](NTC-0015-uc-6-1-the-log-is-exportable-as-a-telemetry-signal.md) | UC-6.1: the log is exportable as a telemetry signal | M2.7 | `restoration` | brought up to definition UC-6.1; the record stays distinct from telemetry |
+| [0016](NTC-0016-uc-6-3-the-instructions-name-the-skills-by-version.md) | UC-6.3: the instructions name the skills by version | M2.7 | `restoration` | brought up to definition UC-6.3/UC-14.2; six items per step |
+| [0017](NTC-0017-uc-8-9-a-process-leaves-as-one-package-skills-included.md) | UC-8.9: a process leaves as one package, skills included | M2.7 | `restoration` | brought up to definition UC-8.9 |
+| [0018](NTC-0018-a-session-spends-on-the-owners-key-to-derive-instead-of-asking.md) | A session spends on the owner's key to derive instead of asking | M2.6 | `unlisted` | two calls, under one cent, to measure the output limit (M-03); proposes M2.8 `spend` |
 
 ## Decisions
 
@@ -99,3 +104,10 @@ The open needs are printed by `make status` (DEC-0026).
 | [0036](DEC-0036-make-gates-was-not-green-in-one-command.md) | `make gates` was not green in one command on the owner's machine | DEFECT | corrected: two hung image builds, seven errors; a test image is built only when its content changed, and a hung build names where it stopped |
 | [0037](DEC-0037-where-a-triggered-implementation-gets-its-closing-section.md) | Where a triggered implementation gets its closing section | NON-BLOCKING | answered: where a generated text is produced inside a run is the session's (M1.11); the session chose the worker running the generator after its change |
 | [0038](DEC-0038-the-first-runs-output-tokens-may-be-undercounted.md) | The first run's output token figures may be undercounted | DEFECT | corrected: the coding worker counted a message's tokens once, on its first line; the record marks its output figures and the worker counts whole messages |
+| [0039](DEC-0039-what-fits-no-entry-is-decided-in-the-direction-of-the-vision.md) | What fits no entry: a question, or a decision in the direction of the vision | NON-BLOCKING | answered by the owner: decided in the direction of the vision and recorded as an `unlisted` notice; the derivability test; the register as precedent; the acceptance rate in `make status` |
+| [0040](DEC-0040-a-decision-under-the-reversed-default-follows-its-source.md) | A decision under the reversed default follows its source | NON-BLOCKING | answered: the record shows how a decision under the reversed default follows its source; between options both consistent with the sources, strict in substance, sparing in ceremony |
+| [0041](DEC-0041-bringing-a-use-case-up-to-the-owners-definition-is-mode-2.md) | Bringing a use case up to the owner's definition is mode 2 | NON-BLOCKING | answered: an amendment that only restores what the vision and the owner's definition already require is mode 2, a notice; new requirements stay mode 3 |
+| [0042](DEC-0042-the-override-rate-is-reviewed-not-only-shown.md) | The override rate is reviewed, not only shown | NON-BLOCKING | answered: after twenty notices under the reversed default, a request carrying the override rate is raised automatically |
+| [0043](DEC-0043-dec-0034s-readings-confirmed-and-extended.md) | DEC-0034's readings, confirmed and extended | NON-BLOCKING | answered: both readings of DEC-0034 confirmed; the margin never falls below 10 %; a worker's history resets when its model version changes |
+| [0045](DEC-0045-a-mode-4-request-carries-no-recommendation.md) | A mode-4 request carries no recommendation; the gate demanded one | DEFECT | corrected: ADR-0017 §4 and the gate now ask a mode-4 request for its entry and options without a recommendation; mode 4 is left out of the acceptance rate |
+| [0046](DEC-0046-the-coding-workers-suite-promised-a-live-test-it-does-not-have.md) | The coding worker's suite promised a live test it does not have | DEFECT | corrected: the suite's description says it runs against the stand-in only; the live test waits for the CI key (NEED-0012) |

@@ -97,8 +97,9 @@ answer is read back as an interpretation and confirmed before it is acted on.
 ## Outcome
 
 **Decided:** 2026-10-01
-**Answer:** Option A, decided by the session. The owner's answer was about the mode: if the
-question concerns only where a generated text is produced, the session decides it, mode 1. It
+**Answer:** the owner's own, not one of the options: if the question concerns only where a
+generated text is produced, the session decides it, mode 1 (entry M1.11). The session then
+decided Option A. It
 does: the three options differ in which step and which method produce the same fixed text, and
 none changes what the text is, who reads it, or any limit, level or public statement. Option B,
 which would have reversed part of DEC-0026, is not taken. So the worker, after its change, runs

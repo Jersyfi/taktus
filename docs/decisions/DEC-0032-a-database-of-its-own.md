@@ -4,6 +4,7 @@
 **Raised in:** [#26](https://github.com/Jersyfi/taktus/pull/26), whose deployment plan lists "the database decision" among what is needed from the owner (`deploy/k8s/README.md` §8); answered in conversation and recorded in [#51](https://github.com/Jersyfi/taktus/pull/51)
 **Issue:** none; the owner answered before a request was written, and this record is the request with its answer
 **Needed by:** 2026-10-20
+**Written after the answer:** the owner answered in conversation before a request was written; left out of the acceptance rate (DEC-0042).
 
 ## 1. What this is about
 
