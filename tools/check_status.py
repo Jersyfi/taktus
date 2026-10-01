@@ -97,6 +97,8 @@ def counts(path: str) -> bool:
         except OSError:
             return True  # deleted or moved: the register changed
     return True
+
+
 STATUS_PATH = "docs/status.md"
 
 TITLE = re.compile(r"^# (DEC|NEED)-(\d{4}) — (.+)$")
