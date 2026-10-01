@@ -39,7 +39,7 @@ had no value. "It was in the way" is not evidence.
 
 **Every notice carries a kind.** The kind says what sort of thing was decided, in one word that
 means the same in every tenant, so that a register can be read by kind whatever a tenant's
-entries are numbered. Six kinds exist:
+entries are numbered. Seven kinds exist:
 
 | Kind | What was decided |
 |---|---|
@@ -48,7 +48,8 @@ entries are numbered. Six kinds exist:
 | `gate-weakened` | a gate was weakened or removed |
 | `behaviour-change` | what the software does changed, inside an agreed scope, breaking no contract |
 | `need` | a need was raised: something only the owner can provide; the record is the needs request itself, `NEED-NNNN`, not a notice (ADR-0028) |
-| `unlisted` | a situation that fits no entry was decided in the direction the vision and the existing anchors point; the notice names the entry it proposes (§4) |
+| `unlisted` | a situation that fits no entry was decided according to the source the vision and the existing anchors provide; the notice states how it follows that source and names the entry it proposes (§4) |
+| `restoration` | a requirement was brought up to what the owner's vision and definition already require; the notice states how it restores them (§4) |
 
 Every mode-2 entry names its kind; a notice carries the kind of the entry it cites, and the
 gate (ADR-0017 §8) fails on a mismatch. The kind is not the entry: the entry is a tenant's
@@ -147,6 +148,26 @@ gives no direction: then it is a `NON-BLOCKING` decision request (ADR-0017 §3) 
 mode, and the work continues on a provisional answer. Entries of mode 3 and mode 4 are never
 decided this way. The owner may override a notice with a decision; the owner's answers and the
 notices together extend this page or the tenant's own. The lists grow by use.
+
+**How a decision follows its source** — a configurable default. The operator decides according
+to the source it cites, and the notice states, in `**How it follows:**`, how the decision follows
+from that source, not merely that one was named. Where two options are both consistent with the
+sources, the default is **strict in substance, sparing in ceremony**. The reason is the product's
+principles, not one owner's history: a system on the business-critical path takes the reading
+of what it must hold that fails safe (principle 12, *production-ready*), and adds no record,
+step or notification beyond what that reading needs (principle 9, *efficiency over
+verbosity*). A tenant may change this default on its own page; the Taktus project derived the
+same direction from its owner's decisions (`anchors.taktus.md`, DEC-0040).
+
+**Bringing a requirement up to the owner's own definition** — a configurable default. An
+amendment of what a use case requires that only restores what the tenant's vision and its own
+definition already require is decided by the operator and recorded as a notice of kind
+`restoration`; a new requirement stays with the owner. A tenant may keep every such amendment
+with its owner instead.
+
+**The override rate is reviewed** — a configurable default. After every twenty `unlisted`
+notices, a decision request carrying the rate at which the owner overrode them is raised to the
+owner. A tenant may set another count on its own page.
 
 **Before any decision request**, the operator checks the vision, the architecture decisions,
 the anchor pages and the register, and the request names the sources it checked and why none of

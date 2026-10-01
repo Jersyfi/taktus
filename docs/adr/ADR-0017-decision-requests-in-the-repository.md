@@ -9,7 +9,9 @@ request `NEED-NNNN`, for what only the owner can provide, and the status report
 `docs/status.md` · amended 2026-09-29: every pull request description states what the change is
 about, what was done, why that way and what to check (§7) · amended 2026-10-01 (DEC-0039): what
 fits no entry is decided in the direction of the vision (§1a), the derivability test, the
-register as precedent and the acceptance rate (§9)
+register as precedent and the acceptance rate (§9) · amended 2026-10-02 (DEC-0040 to DEC-0042):
+a decision states how it follows its source, restoring a use case is mode 2 (§1a), the override
+rate is reviewed and counts only what was asked before it was answered (§9)
 
 ## Context
 ADR-0008 defines the decision request: the planned question about direction, with a fixed shape,
@@ -61,6 +63,15 @@ those sources and, in its section 5, the entry it proposes for the anchor page. 
 raised only where the vision gives no direction. Entries of mode 3 and mode 4 are untouched.
 The owner overrides a notice that went the wrong way with a decision; the notice then names it
 in `**Overridden by:**`.
+
+*Amended 2026-10-02 (DEC-0040, DEC-0041).* **A decision follows its source.** The session decides
+according to the source it cites, and the notice states, in `**How it follows:**`, how the
+decision follows from it; naming a source is not following it. Where two options are both
+consistent with the sources: strict in substance, sparing in ceremony. The gate checks that the
+statement is there; whether it holds is for review. **Bringing a use case up to the owner's own
+definition** — an amendment that only restores what `docs/vision/` and the owner's project
+definition already require — is decided by the session and recorded as a notice of kind
+`restoration` (entry M2.7); a new requirement stays mode 3.
 
 **The derivability test.** Before raising any decision request, the session checks the vision,
 the ADRs, both anchor pages and the register. The request names the sources checked and why
@@ -240,6 +251,15 @@ continuously:** `make status` shows, for every answered request, whether the own
 recommended option, and for every notice, whether a later decision overrode it. A rate of
 accepted recommendations near 100 % means too much is asked; many overridden notices mean too
 much is decided alone.
+
+*Amended 2026-10-02 (DEC-0042, the audit).* **The rate is reviewed, not only shown.** After every
+twenty `unlisted` notices a request carrying the override rate is raised to the owner; the gate
+fails the register when the count is reached and the request — a record carrying
+`**Override review:**` — is missing. **The rate counts only what was asked before it was
+answered.** A record written after the owner had answered carries `**Written after the
+answer:**` and is left out of the rate, because its recommendation was written knowing the
+answer: the naive count showed 5 of 6 recommendations taken where the audit of 2026-10-02 found 1
+of 6.
 
 ## Alternatives
 - **A checklist in CLAUDE.md, no tooling.** #1 was written under CLAUDE.md §8 and still failed. A

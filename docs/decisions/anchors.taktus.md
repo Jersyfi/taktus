@@ -41,7 +41,8 @@ that is intended: the same anchor resolves differently per tenant (anchors.md §
 | M2.3 | `gate-weakened` | **Weakening or removing a gate, only where it is demonstrated that the gate has no value.** A notice suffices; approval does not. The notice carries the demonstration: what the gate looked at, what it would have caught, the evidence that it caught nothing and could catch nothing. "It was in the way" or "it was slow" is not a demonstration. A gate that is slow is a finding to report with its cost, not a gate to remove (CLAUDE.md §11). | a notice, `NTC-NNNN`, with the section "Why the gate had no value" |
 | M2.4 | `behaviour-change` | **A change of what the software does, made inside an agreed scope**, that breaks no contract, moves no limit or autonomy level and says nothing public. Added by DEC-0014. The notice names the old behaviour, the new one and the reason the scope needed it; a change that would break a contract, move a limit or a level, or say something public is that entry's decision (M3.5, M3.10, M3.9, M3.7). | a notice, `NTC-NNNN` |
 | M2.5 | `need` | **Raising a needs request** — a credential, an account, access, a purchase, an action on a server, information about an environment — when it becomes foreseeable (ADR-0028). The session decides that the need exists and raises it; nobody approves the raising. Providing it is the owner's act. The owner's brief of 2026-09-21 places it here. | the needs request itself, `NEED-NNNN`, under `docs/decisions/open/` with an issue labelled `needs-owner`, assigned to the owner |
-| M2.6 | `unlisted` | **A situation that fits no entry of this page**, decided in the direction the vision and the existing anchors point (DEC-0039). The notice names the sources that point that way and, in its section 5, the entry it proposes for this page. Where the vision gives no direction this entry does not apply: a request is raised. | a notice, `NTC-NNNN`, with the section "The entry it proposes" |
+| M2.6 | `unlisted` | **A situation that fits no entry of this page**, decided according to the source the vision and the existing anchors provide (DEC-0039, DEC-0040). The notice names the source and states, in `**How it follows:**`, how the decision follows from it — not merely that it was named; where two options are both consistent with the sources, the stricter in substance and the one with less ceremony. Its section 5 names the entry it proposes for this page. Where the vision gives no direction this entry does not apply: a request is raised. | a notice, `NTC-NNNN`, with `**How it follows:**` and the section "The entry it proposes" |
+| M2.7 | `restoration` | **Bringing a use case up to the owner's own definition**: an amendment of what a use case requires that only restores what `docs/vision/` and the owner's project definition already require (DEC-0041). The notice names the place in the vision or the definition and states, in `**How it follows:**`, how the amendment restores it. A new requirement — one neither of them contains — is M3.15. | a notice, `NTC-NNNN`, with `**How it follows:**` |
 
 The kind is the default's vocabulary (anchors.md §1); the entry is this tenant's permission. A
 notice carries both, and `make gate-decisions` fails when they do not match.
@@ -63,12 +64,12 @@ attempt and the point of failure is returned as an evasion (CLAUDE.md §9).
 | M3.7 | **Anything published under the project's name**: `README.md` claims, website copy, public statements, the contract namespace `https://taktus.eu/contracts/` (ADR-0019). |
 | M3.8 | **A new dependency at integration-code tier 1** — what Taktus itself needs in order to run: database, queue, secret store, telemetry, reference workers (`docs/architecture/contracts.md` §7). Tier 2 is not in this entry. |
 | M3.9 | **Raising an autonomy level** of a process, including the project's own processes. The session proposes the raise with evidence (governance.md §1; ADR-0026). |
-| M3.10 | **Raising or lowering a limit**: a budget, a quota, a compute bound, a safety margin (ADR-0005). |
+| M3.10 | **Raising or lowering a limit**: a budget, a quota, a compute bound, a safety margin (ADR-0005). Decided for this tenant: a worker without calibration history reserves its estimate plus 100 %; after n observations the margin is 1/(n+1) of that and a larger measured error wins; it never falls below 10 %; a stopped step is no history; a worker's history resets when its model version changes (DEC-0034, DEC-0043). |
 | M3.11 | **Retroactive correction after the effect has left**: a tagged release, a published package, a public statement, a contract a third party relies on (ADR-0022). Correcting an unmerged branch, or `main` before a release, is not in this entry: nothing has left. |
 | M3.12 | **Binding a model purpose to a provider.** |
-| M3.13 | **Choosing a method within an exactness class**, where the class admits more than one. |
+| M3.13 | **Choosing the method kind of a step** — `rule`, `statistics`, `ml`, `neural`, `llm`, `worker`, `human`, `wait` (CLAUDE.md §3) — where the step's exactness class admits more than one kind. It is not where an output is produced, nor which component or step produces it within the chosen kind: that is M1.11. |
 | M3.14 | **Routing between approved models.** |
-| M3.15 | **What a use case requires**: its outcome, its verification condition and its boundary — sections 1 to 3 of a file under `docs/usecases/`; adding one, changing one, retiring one. Never in the pull request that implements it: whoever finds while building that a requirement does not hold raises a request naming the precise point where it fails, the use cases involved, and a worked proposal, and the implementation waits. `make gate-usecases` fails a pull request that touches both. Given by the owner on 2026-09-29. |
+| M3.15 | **What a use case requires** — what is new beyond `docs/vision/` and the owner's project definition; bringing a use case up to them is M2.7: its outcome, its verification condition and its boundary — sections 1 to 3 of a file under `docs/usecases/`; adding one, changing one, retiring one. Never in the pull request that implements it: whoever finds while building that a requirement does not hold raises a request naming the precise point where it fails, the use cases involved, and a worked proposal, and the implementation waits. `make gate-usecases` fails a pull request that touches both. Given by the owner on 2026-09-29. |
 
 ## Mode 4 — the owner decides, the session supplies data
 
@@ -93,6 +94,18 @@ then it is a `NON-BLOCKING` decision request that proposes its mode, and the wor
 provisional answer. Mode 3 and mode 4 are untouched: what is the owner's stays the owner's. The
 owner reads the notice, and overrides it with a decision where it went the wrong way; the page
 grows by use either way (DEC-0039).
+
+**How a decision follows its source** (DEC-0040). A session decides according to the source it
+cites, and the record shows how the decision follows that source — not merely that a source was
+named. Where two options are both consistent with the sources: **strict in substance, sparing in
+ceremony.** The owner's evidence: in DEC-0014 and DEC-0021 the session found the right source and
+still recommended the option the owner rejected; in 4 of 5 rejected recommendations the owner
+chose the stricter option, and in the fifth the one with less ceremony.
+
+**The override rate is reviewed** (DEC-0042). After every twenty `unlisted` notices a decision
+request is raised to the owner, carrying the rate at which he overrode them; `make gate-decisions`
+fails the register when the count is reached and the request is missing, and `make status` shows
+the count towards it.
 
 **Why the default is reversed.** In a young project almost every situation is new, so a rule
 that sends every new situation to the owner generates questions by design. A non-blocking
@@ -153,3 +166,10 @@ The *Neither list* default was reversed on 2026-10-01 by the owner (DEC-0039): a
 fits no entry is decided by the session in the direction of the vision and recorded as an
 `unlisted` notice (M2.6); a question is raised only where the vision gives no direction. The
 derivability test and the register as precedent were added with it.
+
+On 2026-10-02 the owner's answers DEC-0040 to DEC-0043 extended the page: how a decision under
+the reversed default follows its source, and the tie between options both consistent with the
+sources (M2.6); bringing a use case up to the owner's definition as mode 2 (M2.7, narrowing
+M3.15); the review of the override rate after twenty notices; and the safety margin's readings,
+floor and reset (M3.10). M3.13 was reworded so that it names the choice of method kind and
+nothing else.
