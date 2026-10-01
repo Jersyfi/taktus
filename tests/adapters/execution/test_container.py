@@ -169,10 +169,11 @@ async def test_the_job_is_walled_in_and_torn_down(
         ).stdout
         assert "taktus-unit-state-reference" in volumes.split()
     assert outputs["output-1"].strip().endswith("no-socket")
-    assert "launch" not in outputs["output-2"], (
-        "the launcher gave way to the unit: PID 1 is the worker"
+    assert outputs["output-2"].startswith("/bin/sh /taktus/launch"), (
+        "the launcher stays in front of the unit, to read the kernel's record of an "
+        "out-of-memory kill after it (issue #29)"
     )
-    assert "worker.py" in outputs["output-2"]
+    assert "worker.py" in outputs["output-2"], "and runs the image's own command as its child"
     assert outputs["output-3"].strip() == PLANTED, "the env credential is in the unit's environment"
     assert outputs["output-4"] == "key-77aa", "the file credential is at its path, exactly"
     assert outputs["output-5"].strip() == "not-in-env"
@@ -225,18 +226,17 @@ async def test_an_empty_allowlist_reaches_nothing_and_a_named_host_is_reached_th
 
 
 async def test_a_job_that_exceeds_its_memory_limit_is_killed_and_says_so(
-    execution: ContainerExecution, engine_socket: str, hog_image: str
+    execution: ContainerExecution, hog_image: str
 ) -> None:
-    """A unit that answers health and then takes more memory than the limit. Taktus's promise
-    is the job's: it ends — a failure, never a hang — with a non-zero exit and a reason. That
-    the cause was memory is the engine's to say, and the adapter repeats it exactly when the
-    engine said it: `killed == "memory"` if and only if the engine reported OOMKilled.
+    """A unit that answers health and then takes more memory than the limit: the job ends — a
+    failure, never a hang — and says it was the memory limit.
 
-    The engine does not always say it. Under cgroup v2 the kernel's OOM killer may take a
-    process inside the container's cgroup without the engine setting OOMKilled; what is left
-    is exit code 137, a SIGKILL, which on its own does not say who sent it (issue #29). In that
-    branch the adapter names no cause — a guess in a field named `killed` is worse than none —
-    and the reason carries the exit code. Both branches are asserted; neither passes silently.
+    The adapter does not rely on the engine alone for that. The engine's `OOMKilled` flag is set
+    by an event separate from the exit, which may arrive after the exit is visible, or not at
+    all (issue #29). The launcher in front of the unit reads the kernel's own counter of
+    out-of-memory kills in the unit's cgroup after the unit died, and says so in the log; the
+    adapter classifies the kill from either record. So the test asserts the memory kill
+    without a weaker branch.
     """
     small = ExecutionUnit(
         name="hog",
@@ -244,7 +244,7 @@ async def test_a_job_that_exceeds_its_memory_limit_is_killed_and_says_so(
         limits=ResourceLimits(cpus=1, memory_bytes=32 * 1024 * 1024, wall_seconds=60),
     )
     request = JobRequest(job_id="asg_hog", unit=small, autonomy_level=4)
-    async with Engine(engine_socket) as engine, execution.launch(request) as job:
+    async with execution.launch(request) as job:
         async with httpx.AsyncClient() as client:
             await client.get(f"{job.endpoint}/v1/hog", timeout=10.0)
         exit = None
@@ -253,17 +253,9 @@ async def test_a_job_that_exceeds_its_memory_limit_is_killed_and_says_so(
             if exit is not None:
                 break
             await asyncio.sleep(0.2)
-        engine_state = ((await engine.inspect(job.unit)) or {}).get("State", {})
     assert exit is not None, "the job ended: a failure, never a hang"
-    assert exit.code not in (None, 0) and exit.reason, exit
-    if engine_state.get("OOMKilled"):
-        # The engine named the cause; the adapter repeats it.
-        assert exit.killed == "memory" and "memory limit" in exit.reason, exit
-    else:
-        # The weaker branch, stated: the engine did not name the cause, so neither does the
-        # adapter. What is known — a SIGKILL, exit 137 — is in the reason.
-        assert exit.killed is None, f"the adapter guessed a cause the engine did not report: {exit}"
-        assert exit.code == 137 and "137" in exit.reason, exit
+    assert exit.code == 137 and exit.killed == "memory", exit
+    assert "memory limit" in exit.reason, exit
 
 
 async def test_the_wall_clock_kills_a_job(

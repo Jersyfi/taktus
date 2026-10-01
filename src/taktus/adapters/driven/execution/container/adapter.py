@@ -71,6 +71,17 @@ CREDENTIALS_DIR = "/run/taktus/credentials"
 PROXY_PORT = 3128
 PIDS_LIMIT = 512
 EGRESS_MEMORY_BYTES = 64 * 1024 * 1024
+KILLED = 137
+"""128 + SIGKILL: the exit status of a unit killed by the kernel, or by anyone else."""
+OOM_RECORD = b"taktus-launch: oom_kill "
+"""The line `launch.sh` writes when the unit died killed and the cgroup's kernel counter of
+out-of-memory kills rose while it ran."""
+
+
+def memory_kill_recorded(log: bytes) -> bool:
+    """Whether the launcher found the kernel's record of an out-of-memory kill in the log."""
+    return any(line.startswith(OOM_RECORD) for line in log.splitlines())
+
 
 log = structlog.get_logger("taktus.execution.container")
 
@@ -92,13 +103,22 @@ class ContainerJob:
         state = ((await self.engine.inspect(self.unit)) or {}).get("State") or {}
         if not state or state.get("Running"):
             return None
+        code = int(state.get("ExitCode") or 0)
         if state.get("OOMKilled"):
             return JobExit(
-                code=int(state.get("ExitCode") or 137),
+                code=code or 137,
                 killed="memory",
                 reason="the memory limit was exceeded and the engine killed the unit",
             )
-        code = int(state.get("ExitCode") or 0)
+        if code == KILLED and memory_kill_recorded(await self.engine.logs(self.unit)):
+            # The kernel's record, read by the launcher after the unit died: the engine's flag
+            # comes from a separate event that may arrive late or never (issue #29).
+            return JobExit(
+                code=code,
+                killed="memory",
+                reason="the memory limit was exceeded and the kernel killed the unit "
+                "(its out-of-memory record counts the kill)",
+            )
         return JobExit(code=code, reason=f"the unit exited with {code}")
 
 

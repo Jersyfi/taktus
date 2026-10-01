@@ -118,3 +118,33 @@ def test_the_state_changes_with_a_milestone_a_need_a_decision_or_a_contract(
     """DEC-0021, as the owner answered it: a defect's record and a change of code alone do not
     change the state of the project."""
     assert check_status.counts(path) is counted
+
+
+DEPENDABOT_BODY = (
+    "Bumps [pyjwt](https://example.org) from 2.14.0 to 2.15.0.\n\n"
+    "<details><summary>Release notes</summary>…</details>\n"
+)
+
+
+def run_tool(module: object, *argv: str) -> int:
+    return module.main(list(argv))  # type: ignore[attr-defined, no-any-return]
+
+
+@pytest.mark.parametrize("tool", [check_decisions, check_status])
+def test_a_dependency_bots_description_is_not_held_to_the_shape(
+    tool: object, tmp_path: Path
+) -> None:
+    """NTC-0013: the shape is a session's and Taktus's; a dependency bot explains its own change.
+    Everything else the tool checks still runs."""
+    body = tmp_path / "body.md"
+    body.write_text(DEPENDABOT_BODY, encoding="utf-8")
+    base = ["--base", "HEAD"] if tool is check_status else []
+    assert run_tool(tool, *base, "--pr-body", str(body), "--author", "dependabot[bot]") == 0
+    assert run_tool(tool, *base, "--pr-body", str(body), "--author", "Jersyfi") == 1, (
+        "the same text from a person or from Taktus fails"
+    )
+    assert run_tool(tool, *base, "--pr-body", str(body)) == 1, "no author: held to the shape"
+
+
+def test_both_tools_name_the_same_dependency_bots() -> None:
+    assert check_decisions.DEPENDENCY_BOTS == check_status.DEPENDENCY_BOTS

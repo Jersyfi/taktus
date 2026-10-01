@@ -156,8 +156,12 @@ the unit's environment and refuses a credential injected as a file: without a fi
 its own, a job has nowhere to keep one. The `container` adapter starts the unit's container
 behind a launcher it places there, writes each value into a memory-backed directory after
 the container has started, and the launcher exports the environment kind and removes the
-files before it becomes the unit: no value is on a volume, in an image layer, in the
-container's recorded configuration, on a command line, or in a log.
+files before it starts the unit: no value is on a volume, in an image layer, in the
+container's recorded configuration, on a command line, or in a log. The launcher stays in front
+of the unit as its parent, forwards signals to it, and after the unit died reads the kernel's
+own count of out-of-memory kills in the unit's cgroup. The engine's flag for such a kill comes
+from a separate event that may arrive late or never, so the adapter classifies a memory kill
+from either record (issue #29).
 
 **The container adapter's wall**, per job: a container from the unit's image with no
 capability, no privilege escalation, a process limit, a memory limit without swap and a CPU

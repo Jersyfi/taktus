@@ -32,7 +32,7 @@ Checks:
    a milestone item, a need, a decision or a contract — docs/roadmap.md, a record under
    docs/decisions/ or an ADR, a file under contracts/ — and not when it fixes a defect: the
    record of a documentation defect alone does not count (the owner's answer to DEC-0021);
-6. with --pr-body: the last section of the pull request description, `## Needed from the
+6. with --pr-body, unless --author names a dependency bot (NTC-0013): the last section of the pull request description, `## Needed from the
    owner`, carries what the register generates, so that the owner sees it without opening a
    file. The description is the one place the generated list is carried: it is written from
    the branch it describes and never merged with another.
@@ -100,6 +100,8 @@ def counts(path: str) -> bool:
 
 
 STATUS_PATH = "docs/status.md"
+DEPENDENCY_BOTS = frozenset({"dependabot[bot]"})
+"""The same authors `tools/check_decisions.py` names, for the same reason (NTC-0013)."""
 
 TITLE = re.compile(r"^# (DEC|NEED)-(\d{4}) — (.+)$")
 FIELD = re.compile(r"^\*\*([A-Za-z ]+):\*\*\s*(.*)$")
@@ -400,6 +402,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base", help="commit or branch to compare with (default origin/main)")
     parser.add_argument("--pr-body", type=Path, help="file holding the pull request description")
     parser.add_argument(
+        "--author", help="github.event.pull_request.user.login: who wrote the description"
+    )
+    parser.add_argument(
         "--print",
         dest="show",
         action="store_true",
@@ -422,7 +427,10 @@ def main(argv: list[str] | None = None) -> int:
         check_milestone(found, report)
         check_pointer(found, report)
     check_freshness(args.base, report)
-    if args.pr_body is not None:
+    if args.pr_body is not None and args.author in DEPENDENCY_BOTS:
+        print("pull request")
+        report.ok(f"written by {args.author}, a dependency bot: no owner section asked (NTC-0013)")
+    elif args.pr_body is not None:
         check_pull_request(args.pr_body.read_text(encoding="utf-8"), expected, report)
     print()
     duration = f"{time.monotonic() - started:.2f}s"

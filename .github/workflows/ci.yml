@@ -25,9 +25,9 @@ jobs:
       - name: contracts
         run: make gate-contracts
 
-  # The decision register is plain Markdown and needs no installed project either. On a pull
-  # request the job also reads the description and the draft flag: a pull request that names a
-  # BLOCKING decision while not being a draft fails here (ADR-0017).
+  # The decision register is plain Markdown and needs no installed project either. What a pull
+  # request's description says — and the draft flag a BLOCKING decision requires — is the
+  # `description` workflow's, which runs on an edit too.
   decisions:
     runs-on: ubuntu-latest
     steps:
@@ -35,31 +35,11 @@ jobs:
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
-      # A pull request targets main, and only main (DEC-0026). A pull request stacked on another
-      # one's branch loses its history when that one is squash-merged, merges into the branch
-      # instead of main when it is merged first, and is closed by the host when that branch is
-      # deleted. All three happened on 2026-09-27. A change that needs an unmerged change waits
-      # for it and is then rebased on main.
-      - name: pull request targets main
+      # What a pull request's description says is checked by the `description` workflow, which
+      # also runs when a description is edited (NTC-0013). Here: the register itself.
+      - name: decisions
         if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          if [ "$BASE_REF" != main ]; then
-            echo "this pull request targets '$BASE_REF'; every pull request targets main (DEC-0026)"
-            exit 1
-          fi
-      - name: pull request description
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
-      - name: decisions (pull request)
-        if: github.event_name == 'pull_request'
-        run: >
-          uv run tools/check_decisions.py
-          --pr-body "$RUNNER_TEMP/pr-body.md"
-          --draft ${{ github.event.pull_request.draft }}
+        run: uv run tools/check_decisions.py
       - name: decisions (main)
         if: github.event_name != 'pull_request'
         run: uv run tools/check_decisions.py --forbid-open-blocking
@@ -72,15 +52,12 @@ jobs:
       # has the project environment their named tests need.
       - name: vision
         run: make gate-vision
-      # The status report is current: touched by every change to the state of the project,
-      # section 3 as the register generates it, and repeated as the last section of the pull
-      # request description so that the owner sees it without opening a file (ADR-0028).
+      # The status report is current: touched by every change to the state of the project, and
+      # section 3 pointing at `make status` (ADR-0028). The last section of a description is the
+      # `description` workflow's.
       - name: status (pull request)
         if: github.event_name == 'pull_request'
-        run: >
-          uv run tools/check_status.py
-          --base origin/${{ github.base_ref }}
-          --pr-body "$RUNNER_TEMP/pr-body.md"
+        run: uv run tools/check_status.py --base origin/${{ github.base_ref }}
       - name: status (main)
         if: github.event_name != 'pull_request'
         # A push to main compares with what main was; the first push of a `taktus/**` branch

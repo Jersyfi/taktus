@@ -30,7 +30,7 @@ Checks:
    needs request a row names has a file; every `<NAME>_FILE` variable the code names is
    described in CREDENTIALS.md — so that a pull request cannot build something whose real use
    depends on a credential nobody was asked for;
-5. with --pr-body: the "Decisions required" section of a pull request description is either
+5. with --pr-body (and --author, the description's author): the "Decisions required" section of a pull request description is either
    "None" or a list of DEC lines, every named decision has an open file with the same category,
    and every BLOCKING open file is named;
 5a. with --pr-body: the description carries, in this order, "What this is about", "What was
@@ -40,6 +40,9 @@ Checks:
 6. with --draft false: no BLOCKING decision is open — a pull request with a BLOCKING decision
    stays a draft;
 7. with --forbid-open-blocking (push to main): no BLOCKING file is under open/ at all.
+
+Checks 5 and 5a are not asked of a description a dependency bot wrote (`DEPENDENCY_BOTS`,
+NTC-0013): it carries its own explanation of what it changes. Every other check still runs.
 
 A register with nothing in it reports green and says so. The last line is the duration.
 """
@@ -795,6 +798,21 @@ def check_pull_request(
         report.ok("draft state matches the decisions named")
 
 
+# --- who wrote the description -----------------------------------------------------------------
+
+DEPENDENCY_BOTS = frozenset({"dependabot[bot]"})
+"""Authors whose descriptions the shape is not asked of: a dependency bot writes its own
+description — what is bumped, from which version to which, the upstream release notes — and
+never the repository's sections. That serves the check's purpose, that the owner understands
+what he reviews; asking it of a bot would fail every such pull request for ever. Every code gate,
+the register and the status gates still run on its pull requests (NTC-0013). A pull request
+written by a session or by Taktus — under the owner's login, today — is held to the shape."""
+
+
+def written_by_a_dependency_bot(author: str | None) -> bool:
+    return author is not None and author in DEPENDENCY_BOTS
+
+
 # --- main ----------------------------------------------------------------------------------------
 
 
@@ -811,6 +829,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pr-body", type=Path, help="file holding the pull request description")
     parser.add_argument("--draft", type=parse_bool, help="github.event.pull_request.draft")
     parser.add_argument(
+        "--author", help="github.event.pull_request.user.login: who wrote the description"
+    )
+    parser.add_argument(
         "--forbid-open-blocking",
         action="store_true",
         help="fail on any BLOCKING file under open/ (use on the main branch)",
@@ -823,7 +844,13 @@ def main(argv: list[str] | None = None) -> int:
     check_notices(report)
     open_needs, provided_needs = check_needs(report)
     check_credentials(report, [*open_needs, *provided_needs])
-    if args.pr_body is not None:
+    if args.pr_body is not None and written_by_a_dependency_bot(args.author):
+        print("description")
+        report.ok(
+            f"written by {args.author}, a dependency bot, which carries its own explanation; "
+            "the shape is asked of a session's and Taktus's descriptions (NTC-0013)"
+        )
+    elif args.pr_body is not None:
         body = args.pr_body.read_text(encoding="utf-8")
         check_description(body, report)
         check_pull_request(body, args.draft, open_docs, report)

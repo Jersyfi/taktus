@@ -1,0 +1,64 @@
+name: description
+
+# What a pull request tells its reviewer, checked whenever it can change: when the pull request is
+# opened or reopened, when a push changes its branch, and when its description or its draft state
+# is edited. The `ci` workflow does not listen to an edit, so a description corrected without a
+# push could never turn its check green — a gate that cannot be satisfied by doing the right
+# thing (NTC-0013). This workflow reads the description from the event, which carries the text
+# as it is after the edit, and runs only what depends on it; every code gate stays in `ci`.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: description-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  description:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      # A pull request targets main, and only main (DEC-0026). A pull request stacked on another
+      # one's branch loses its history when that one is squash-merged, merges into the branch
+      # instead of main when it is merged first, and is closed by the host when that branch is
+      # deleted. All three happened on 2026-09-27.
+      - name: pull request targets main
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$BASE_REF" != main ]; then
+            echo "this pull request targets '$BASE_REF'; every pull request targets main (DEC-0026)"
+            exit 1
+          fi
+      - name: pull request description
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+      # The four sections a reader can act on without the diff (ADR-0017 §7), the decisions it
+      # raises, and a BLOCKING one keeping the pull request a draft. A dependency bot's own
+      # description is not held to the shape (NTC-0013); the register is checked all the same.
+      - name: decisions in the description
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: >
+          uv run tools/check_decisions.py
+          --pr-body "$RUNNER_TEMP/pr-body.md"
+          --draft ${{ github.event.pull_request.draft }}
+          --author "$AUTHOR"
+      # The last section, what is needed from the owner, as the branch's register generates it
+      # (ADR-0028, DEC-0026).
+      - name: status in the description
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: >
+          uv run tools/check_status.py
+          --base origin/${{ github.base_ref }}
+          --pr-body "$RUNNER_TEMP/pr-body.md"
+          --author "$AUTHOR"
