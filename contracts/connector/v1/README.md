@@ -90,7 +90,7 @@ An **operation** belongs to one capability and is named by it: the capability, a
 `repository.issues.read` belongs to `repository.issues`. An operation name has at least three
 segments, a capability at least two, so that neither ever validates as the other.
 
-Three things every operation declares, because they are what makes a connector different from a
+Four things every connector declares, because they are what makes a connector different from a
 worker:
 
 **Effect** (`read`, `write`, `delivery`) says whether the effect of the operation leaves Taktus.
@@ -100,6 +100,13 @@ A `read` changes nothing outside. A `write` creates, updates or deletes an exter
 `egress.delivery` in the ledger, and from then on correcting their result is anchored
 ([ADR-0022](../../../docs/adr/ADR-0022-retroactive-correction-is-anchored.md)). Without this
 declaration "has left the system" would be a judgement; with it, it is a field.
+
+**Demand** (`quota_units`, `compute_seconds`, `currency`), optional in the schema and needed in
+practice, says the most one call of the operation consumes. A run reserves it before the call,
+because no step is admitted without an estimate
+([ADR-0005](../../../docs/adr/ADR-0005-step-atomicity.md), third amendment): an operation that
+declares none is refused, not called. A call that needed more reports more, and the run records
+the difference as a calibration signal.
 
 **Idempotency** (`native`, `marked`, `none`) is declared exactly for operations whose effect
 leaves the system, and says how a repeat is recognised. §4 defines the three.

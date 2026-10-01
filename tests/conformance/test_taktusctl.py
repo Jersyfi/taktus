@@ -54,7 +54,7 @@ def test_taktusctl_refuses_an_unknown_contract() -> None:
     taktusctl = shutil.which("taktusctl")
     assert taktusctl is not None
     completed = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
-        [taktusctl, "conformance", "run", "--contract", "model/v1", "--endpoint", "http://x"],
+        [taktusctl, "conformance", "run", "--contract", "events/v1", "--endpoint", "http://x"],
         capture_output=True,
         text=True,
         check=False,
