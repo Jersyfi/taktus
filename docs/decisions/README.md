@@ -20,7 +20,7 @@ both, the notices, and the needs.
 A **notice**, `NTC-NNNN`, is the record of a mode-2 decision (anchors.md §1): the session
 decided, nobody approves, and the record states what was decided, on what evidence, what was
 considered and which entry permits it. Every notice carries a **kind** — `restructuring`,
-`test-strategy`, `gate-weakened`, `behaviour-change` — so that the register reads by kind and
+`test-strategy`, `gate-weakened`, `behaviour-change`, `unlisted` — so that the register reads by kind and
 a weakened gate is never buried among behaviour changes (DEC-0014). A notice that weakens a
 gate carries the demonstration that the gate had no value, in the record itself.
 
@@ -99,3 +99,4 @@ The open needs are printed by `make status` (DEC-0026).
 | [0036](DEC-0036-make-gates-was-not-green-in-one-command.md) | `make gates` was not green in one command on the owner's machine | DEFECT | corrected: two hung image builds, seven errors; a test image is built only when its content changed, and a hung build names where it stopped |
 | [0037](DEC-0037-where-a-triggered-implementation-gets-its-closing-section.md) | Where a triggered implementation gets its closing section | NON-BLOCKING | answered: where a generated text is produced inside a run is the session's (M1.11); the session chose the worker running the generator after its change |
 | [0038](DEC-0038-the-first-runs-output-tokens-may-be-undercounted.md) | The first run's output token figures may be undercounted | DEFECT | corrected: the coding worker counted a message's tokens once, on its first line; the record marks its output figures and the worker counts whole messages |
+| [0039](DEC-0039-what-fits-no-entry-is-decided-in-the-direction-of-the-vision.md) | What fits no entry: a question, or a decision in the direction of the vision | NON-BLOCKING | answered by the owner: decided in the direction of the vision and recorded as an `unlisted` notice; the derivability test; the register as precedent; the acceptance rate in `make status` |

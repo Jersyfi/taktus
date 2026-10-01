@@ -115,6 +115,12 @@ bounded by *Where this promise ends*, with a gate.
 | a live run of the coding worker against its real agent in CI | the gate runs the stand-in; a live run needs a credential CI does not have |
 | governance and anchors in the product | the anchors exist for this repository as documents; nothing in the product evaluates an anchor at a step boundary yet |
 
+**How the owner is asked** changed on 2026-10-01 (DEC-0039): a situation that fits no entry of
+the anchors is decided by a session in the direction of the vision and recorded as a notice; a
+question is raised only where the vision gives no direction, and only after the vision, the
+ADRs, the anchors and the register were checked. `make status` shows how often the owner took
+the recommended option and how often a notice was overridden.
+
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
 each with the pull request that recorded it. **Open:** DEC-0028, DEC-0029 and DEC-0030, raised
 by the pull request that brought in the vision layer. DEC-0034 and DEC-0037, raised by the

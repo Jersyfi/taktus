@@ -10,7 +10,9 @@ Runs as `make gate-decisions`. Standard library only, so `uv run tools/check_dec
 Checks:
 
 1. every open request under docs/decisions/open/ has the header, the seven sections in order,
-   no empty section, no placeholder, at least two options with exactly one recommended;
+   no empty section, no placeholder, at least two options with exactly one recommended; from
+   DEC-0039 on, its section 2 names `**Sources checked:**` — the vision, the ADRs, the anchor
+   pages, the register — and why none of them answers it (the derivability test);
 2. every record under docs/decisions/ has the same shape plus an Outcome with a date and an
    answer (or, for a DEFECT, what it now says; for a NOTE, why it is a note);
 3. a number is used once, and never both under open/ and as a record;
@@ -19,7 +21,10 @@ Checks:
    anchors.taktus.md that exists, the kind that entry names there, a date, the pull request —
    the four sections in order, no placeholder, and is listed in the index; a notice of kind
    gate-weakened (a gate weakened or removed, entry M2.3) additionally carries the section
-   "Why the gate had no value", which names the gate;
+   "Why the gate had no value", which names the gate; a notice of kind unlisted (a situation that
+   fit no entry, decided in the direction of the vision, entry M2.6) carries the section "The
+   entry it proposes", which names one; a notice a later decision overrode says so in
+   `**Overridden by:** DEC-NNNN`;
 4b. every needs request (NEED-NNNN, something only the owner can provide, ADR-0028) has its
    header — a kind from the vocabulary, the pull request, an issue, a date, the pull request in
    which it became foreseeable — the seven sections in order, no empty section, no placeholder,
@@ -105,6 +110,22 @@ NOTICE_SECTIONS = [
 ]
 GATE_SECTION = "5. Why the gate had no value"
 GATE_KIND = "gate-weakened"
+UNLISTED_SECTION = "5. The entry it proposes"
+UNLISTED_KIND = "unlisted"
+"""A situation that fit no entry, decided in the direction of the vision (DEC-0039): the notice
+proposes the entry that would have covered it."""
+FIFTH_SECTION = {GATE_KIND: GATE_SECTION, UNLISTED_KIND: UNLISTED_SECTION}
+SOURCES = re.compile(r"\*\*Sources checked:\*\*(.+)", re.DOTALL)
+SOURCE_PLACES = {
+    "the vision": re.compile(r"docs/vision|\bvision\b", re.IGNORECASE),
+    "the ADRs": re.compile(r"\bADR-\d{4}|\bADRs?\b"),
+    "the anchor pages": re.compile(r"anchors(\.taktus)?\.md|\banchor"),
+    "the register": re.compile(r"\bregister\b|\bDEC-\d{4}|\bNTC-\d{4}"),
+}
+DERIVABILITY_FROM = 39
+"""The first request number the derivability test applies to (DEC-0039): the requests raised
+before it are the owner's to read as they are."""
+OVERRIDDEN = re.compile(r"^DEC-\d{4}\b")
 NOTICE_FILENAME = re.compile(r"^NTC-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 NOTICE_TITLE = re.compile(r"^# NTC-(\d{4}) — (.+)$")
 MODE_ENTRY = re.compile(r"^M2\.\d+$")
@@ -327,8 +348,26 @@ def check_open(doc: Document, problems: list[str]) -> None:
         problems.append("`**Issue:**` names no issue (#N)")
     check_sections(doc, problems)
     check_options(doc, problems)
+    check_derivability(doc, problems)
     if OUTCOME in doc.sections:
         problems.append("an open request has no `## Outcome`; move the file to docs/decisions/")
+
+
+def check_derivability(doc: Document, problems: list[str]) -> None:
+    """The derivability test (DEC-0039): a request names, in its section 2, the sources it
+    checked — the vision, the ADRs, the anchor pages, the register — and why none answers it."""
+    if int(doc.number) < DERIVABILITY_FROM:
+        return
+    found = SOURCES.search(doc.sections.get(SECTIONS[1], ""))
+    if found is None:
+        problems.append(
+            "section 2 names no `**Sources checked:**`: the vision, the ADRs, the anchor pages "
+            "and the register, and why none of them answers the question (DEC-0039)"
+        )
+        return
+    missing = [place for place, pattern in SOURCE_PLACES.items() if not pattern.search(found[1])]
+    if missing:
+        problems.append("`**Sources checked:**` does not name " + ", ".join(missing))
 
 
 def check_record(doc: Document, problems: list[str]) -> None:
@@ -375,6 +414,9 @@ def anchor_entries() -> dict[str, str | None]:
 
 def check_notice(doc: Document, problems: list[str], entries: dict[str, str | None]) -> None:
     check_fields(doc, ["Mode entry", "Kind", "Decided", "Raised in"], problems)
+    overridden = doc.fields.get("Overridden by")
+    if overridden is not None and OVERRIDDEN.match(overridden) is None:
+        problems.append(f"`**Overridden by:**` names no decision (DEC-NNNN): {overridden!r}")
     entry = doc.fields.get("Mode entry", "")
     kind = doc.fields.get("Kind", "")
     if entry and not MODE_ENTRY.match(entry):
@@ -390,7 +432,7 @@ def check_notice(doc: Document, problems: list[str], entries: dict[str, str | No
     elif kind and entry in entries and entries[entry] is None:
         problems.append(f"{ANCHORS.name} names no kind for {entry}; every mode-2 entry has one")
     present = list(doc.sections)
-    expected = NOTICE_SECTIONS + ([GATE_SECTION] if kind == GATE_KIND else [])
+    expected = NOTICE_SECTIONS + ([FIFTH_SECTION[kind]] if kind in FIFTH_SECTION else [])
     if present != expected:
         missing = [name for name in expected if name not in present]
         unexpected = [name for name in present if name not in expected]
@@ -418,6 +460,11 @@ def check_notice(doc: Document, problems: list[str], entries: dict[str, str | No
             )
     if kind and kind != GATE_KIND and GATE_SECTION in doc.sections:
         problems.append(f"`## {GATE_SECTION}` belongs to the kind {GATE_KIND} only")
+    if kind == UNLISTED_KIND and (body := doc.sections.get(UNLISTED_SECTION)):
+        if re.search(r"\bM[1-4]\.\d+\b", body) is None:
+            problems.append(
+                f"`## {UNLISTED_SECTION}` names no entry (`M<mode>.<n>`) for the anchor page"
+            )
 
 
 def check_notices(report: Report) -> list[Document]:

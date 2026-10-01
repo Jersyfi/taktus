@@ -38,7 +38,10 @@ Checks:
    generated list is carried: it is written from the branch it describes and never merged with
    another.
 
-`--print` prints the list (`make status`). Nothing writes it into a file.
+`--print` prints the list (`make status`), followed by one line on the balance of asking and
+deciding alone: how many answered requests took the recommended option, and how many notices a
+later decision overrode (DEC-0039). The line is part of the generated block, so the description
+carries it too. Nothing writes it into a file.
 
 A register with nothing open generates "nothing is open" and says so. The last line is the
 duration.
@@ -214,12 +217,52 @@ def open_records() -> list[Open]:
 
 
 def generated(records: list[Open]) -> str:
-    if not records:
-        return NOTHING_OPEN
     rows = [
         f"| {r.identifier} | {r.title} | {r.needed_by} | {r.kind} | {r.issue} |" for r in records
     ]
-    return "\n".join([COLUMNS, *rows])
+    listed = "\n".join([COLUMNS, *rows]) if records else NOTHING_OPEN
+    return listed + "\n\n" + acceptance()
+
+
+RECOMMENDED = re.compile(r"^### Option ([A-Z])\b[^\n]*\(recommended\)", re.MULTILINE)
+ANSWERED_OPTION = re.compile(r"\*\*Answer:\*\*\s*Option ([A-Z])\b")
+
+
+def acceptance() -> str:
+    """The balance of asking and deciding alone (DEC-0039), from the register: for every
+    answered request, whether the owner chose the recommended option; for every notice, whether
+    a later decision overrode it. Near 100 % accepted means too much is asked; many overridden
+    notices mean too much is decided alone."""
+    answered = recommended = other = own = 0
+    for path in sorted(REGISTER.glob("DEC-*.md")):
+        text = strip_comments(path.read_text(encoding="utf-8"))
+        if header_fields(text).get("Category") not in ("BLOCKING", "NON-BLOCKING"):
+            continue
+        if "\n## Outcome" not in text:
+            continue
+        outcome = text.split("\n## Outcome", 1)[1]
+        answered += 1
+        chosen = ANSWERED_OPTION.search(outcome)
+        advised = RECOMMENDED.search(text)
+        if chosen is None:
+            own += 1
+        elif advised is not None and chosen.group(1) == advised.group(1):
+            recommended += 1
+        else:
+            other += 1
+    notices = overridden = 0
+    for path in sorted(REGISTER.glob("NTC-*.md")):
+        notices += 1
+        if header_fields(path.read_text(encoding="utf-8")).get("Overridden by"):
+            overridden += 1
+    share = f" ({recommended * 100 // answered} %)" if answered else ""
+    return (
+        f"Acceptance: of {answered} answered request(s), {recommended} took the recommended "
+        f"option{share}, {other} another option, {own} an answer of the owner's own; of "
+        f"{notices} notice(s), {overridden} overridden by a later decision. Near 100 % accepted "
+        "means too much is asked; many overridden notices mean too much is decided alone "
+        "(DEC-0039)."
+    )
 
 
 # --- the generated list ------------------------------------------------------------------------

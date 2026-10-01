@@ -41,6 +41,7 @@ that is intended: the same anchor resolves differently per tenant (anchors.md §
 | M2.3 | `gate-weakened` | **Weakening or removing a gate, only where it is demonstrated that the gate has no value.** A notice suffices; approval does not. The notice carries the demonstration: what the gate looked at, what it would have caught, the evidence that it caught nothing and could catch nothing. "It was in the way" or "it was slow" is not a demonstration. A gate that is slow is a finding to report with its cost, not a gate to remove (CLAUDE.md §11). | a notice, `NTC-NNNN`, with the section "Why the gate had no value" |
 | M2.4 | `behaviour-change` | **A change of what the software does, made inside an agreed scope**, that breaks no contract, moves no limit or autonomy level and says nothing public. Added by DEC-0014. The notice names the old behaviour, the new one and the reason the scope needed it; a change that would break a contract, move a limit or a level, or say something public is that entry's decision (M3.5, M3.10, M3.9, M3.7). | a notice, `NTC-NNNN` |
 | M2.5 | `need` | **Raising a needs request** — a credential, an account, access, a purchase, an action on a server, information about an environment — when it becomes foreseeable (ADR-0028). The session decides that the need exists and raises it; nobody approves the raising. Providing it is the owner's act. The owner's brief of 2026-09-21 places it here. | the needs request itself, `NEED-NNNN`, under `docs/decisions/open/` with an issue labelled `needs-owner`, assigned to the owner |
+| M2.6 | `unlisted` | **A situation that fits no entry of this page**, decided in the direction the vision and the existing anchors point (DEC-0039). The notice names the sources that point that way and, in its section 5, the entry it proposes for this page. Where the vision gives no direction this entry does not apply: a request is raised. | a notice, `NTC-NNNN`, with the section "The entry it proposes" |
 
 The kind is the default's vocabulary (anchors.md §1); the entry is this tenant's permission. A
 notice carries both, and `make gate-decisions` fails when they do not match.
@@ -85,10 +86,34 @@ repository signs nothing, pays nothing and files nothing. The entry returns the 
 
 ## Neither list
 
-A question that fits no entry is not decided alone and not escalated. It is raised as a
-`NON-BLOCKING` decision request (ADR-0017 §3), the work continues on a provisional answer, and
-the request proposes which mode the question belongs in. The owner's answer then extends this
-page. The lists grow by use.
+A situation that fits no entry is **decided by the session in the direction the vision and the
+existing anchors point**, and recorded as a notice (entry M2.6, kind `unlisted`) that names the
+entry it proposes for this page. A question is raised only where the vision gives no direction:
+then it is a `NON-BLOCKING` decision request that proposes its mode, and the work continues on a
+provisional answer. Mode 3 and mode 4 are untouched: what is the owner's stays the owner's. The
+owner reads the notice, and overrides it with a decision where it went the wrong way; the page
+grows by use either way (DEC-0039).
+
+**Why the default is reversed.** In a young project almost every situation is new, so a rule
+that sends every new situation to the owner generates questions by design. A non-blocking
+question costs the session nothing and the owner reading time; a project that develops itself
+cannot spend its time asking.
+
+## Before any request: derive, then cite precedent
+
+**The derivability test.** Before raising any decision request, the session checks the vision
+(`docs/vision/`), the ADRs, both anchor pages and the register. The request names the sources it
+checked and why none of them answers it, in a line `**Sources checked:**` in its section 2. A
+request that does not is returned, and `make gate-decisions` fails it.
+
+**The register as precedent.** A question an earlier decision already answers is not a question.
+The session applies the precedent and cites it — in the notice, the change or the pull request —
+and raises nothing.
+
+**The balance, measured.** `make status` shows, for every answered request, whether the owner
+chose the recommended option, and for every notice, whether a later decision overrode it. A rate
+of accepted recommendations near 100 % means too much is asked; many overridden notices mean too
+much is decided alone.
 
 ## How to test a question
 
@@ -97,8 +122,11 @@ page. The lists grow by use.
 2. If there is none, find the entry in mode 2. If there is one, decide, write the notice, and
    move on.
 3. If there is none, find the entry in mode 1. If there is one, decide and move on.
-4. If there is none anywhere, *Neither list* applies.
-5. If the question is "which of two readings of a document is right", stop: that is a
+4. If there is none anywhere, *Neither list* applies: decide in the direction the vision points
+   and write an `unlisted` notice; raise a request only where the vision gives no direction.
+5. Before raising any request: is it derivable from the vision, the ADRs, the anchor pages or the
+   register? Is there a precedent? If so, it is not a question.
+6. If the question is "which of two readings of a document is right", stop: that is a
    documentation defect (M1.4), not a decision. Correct the document.
 
 ## History
@@ -120,3 +148,8 @@ M1.10, M3.15 and M4.5 were added on 2026-09-29 from the owner's brief that broug
 layer and the use case format into the repository: the vision is the owner's, what a use case
 requires is decided by the owner on a worked opinion, and how a use case is described is the
 session's.
+
+The *Neither list* default was reversed on 2026-10-01 by the owner (DEC-0039): a situation that
+fits no entry is decided by the session in the direction of the vision and recorded as an
+`unlisted` notice (M2.6); a question is raised only where the vision gives no direction. The
+derivability test and the register as precedent were added with it.

@@ -145,8 +145,10 @@ decides, the session supplies data. `docs/decisions/anchors.md` is the shipped d
 configuration a new tenant inherits, product. `docs/decisions/anchors.taktus.md` is the
 configuration of this tenant, the Taktus project — the owner's answers, not product. The same
 anchor may resolve differently per tenant. Test every question against the tenant's page before
-raising it. A question in neither list is not decided alone and not escalated: it is raised as
-a NON-BLOCKING request that proposes its mode.
+raising it. A situation in neither list is decided by the session in the direction the vision
+and the existing anchors point, and recorded as an `unlisted` notice that proposes its entry; a
+question is raised only where the vision gives no direction. Mode 3 and mode 4 stay the
+owner's (DEC-0039).
 
 Everything a pull request tells the owner is one of four categories (ADR-0017):
 
@@ -234,6 +236,13 @@ generated (`make status`) and never stored in the file (DEC-0026).
   need it". A decision and its reasoning: yes. That the owner asked about it on a Tuesday: no.
   A repository record may link to where a conversation happened — the link, never the content.
   The owner-facing channel is built on this rule.
+- **Derive before asking.** Before raising any decision request, a session checks
+  `docs/vision/`, the ADRs, both anchor pages and the register; the request names the sources
+  checked and why none answers it (`**Sources checked:**`), and a request without it is returned.
+  **A question an earlier decision answers is not a question**: the precedent is applied and
+  cited. `make status` shows how often the owner took the recommended option and how often a
+  notice was overridden — the balance between asking too much and deciding too much alone
+  (DEC-0039).
 - **Failing a task is allowed; reporting instead of working is not.** A decision request that
   arises from work names what was attempted and where exactly it failed. One that does not is
   an evasion and is returned as one.
