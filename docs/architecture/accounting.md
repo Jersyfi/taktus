@@ -78,6 +78,23 @@ impact estimate.
 
 ---
 
+## 5a. One breakdown, two tables — built
+
+What is built of this page (ADR-0010, amendment of 2026-09-30):
+
+- **The record.** Every step's consumption carries its language-model tokens per model and per
+  price kind — uncached input, output, cache read, cache write — beside compute seconds per
+  resource class and quota units (`contracts/shared/v1/Consumption.json`, `tokens_by_model`).
+- **The meter.** `components/accounting` builds one breakdown of a run from its `step.finished`
+  entries: tokens per model and kind, compute per class, quota, steps per method, and the money
+  workers reported themselves.
+- **Money.** The breakdown at a versioned price table (`contracts/model/v1`, `PriceTable`), the
+  one the run's budget statement names by digest: `taktusctl cost <run>` prints it, or prices
+  the same tokens at another table with `--prices`. A model or a kind without a price is named,
+  never counted as free.
+- **The Takt** will be the same breakdown at a weighting table. The weights are not fixed; they
+  are the owner's (M4.3), and section 6 says when.
+
 ## 6. Calibration
 
 The formula is a setting, not a measurement. Before anything is charged, data is collected from real

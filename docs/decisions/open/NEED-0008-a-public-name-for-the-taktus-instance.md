@@ -41,6 +41,24 @@ matters for reacting to events.
 
 ## 4. How to provide it
 
+**Update of 2026-09-30.** The owner holds `taktus.eu` and wants it used. Its root is reserved for
+the project's website and for the contract namespace (`https://taktus.eu/contracts/`, ADR-0019),
+so the integration server gets a subdomain. **Proposed: `int.taktus.eu`** — a proposal, not a
+decision; any other subdomain works the same way, and a name published under the project's
+domain is the owner's to choose (M3.7). The exact record to create, at the DNS provider of
+`taktus.eu`:
+
+| Name | Type | Value | TTL |
+|---|---|---|---|
+| `int` (that is, `int.taktus.eu`) | `A` | the public IPv4 address the integration server's ingress already answers on — the address in the private note, not written here | 3600 |
+| `int` | `AAAA` | the server's public IPv6 address, only if it has one and the ingress answers on it | 3600 |
+
+It points at the machine's ingress, not at Taktus itself: the platform's ingress controller
+routes the name to the instance once the chart declares it. Serve Taktus at the root of the
+name; the name is not shared with anything else. Then steps 3 and 4 below apply as written.
+
+The general steps, for any name:
+
 1. **Choose the name.** A subdomain of a domain you already control is enough. Point it at the
    machine that runs the cluster — the same address the platform's ingress already answers on;
    an `A` record is all it takes, and if the machine already serves other names on that address
@@ -64,10 +82,13 @@ it cannot verify against it.
 
 ## 5. What it must never be
 
-- **Never in this repository.** A deployment's hostname is that deployment's own business and
-  this repository is public (`CREDENTIALS.md`: deployment-specific names belong in the
-  operator's private configuration). The chart holds the *key* `ingress.host`; the value is
-  yours.
+- **Never in this repository, beyond the name itself.** A deployment's hostname is that
+  deployment's own business and this repository is public (`CREDENTIALS.md`: deployment-specific
+  names belong in the operator's private configuration). The chart holds the *key*
+  `ingress.host`; the value is yours. The one exception is a name under the project's own domain,
+  proposed above: it is public the moment a certificate is issued for it, because every
+  certificate's names are published in the certificate transparency logs. The address it points
+  at is never written here.
 - **Never pasted into a chat or a session as something to remember.** Put it in the private
   note and tell the session where the note is; it reads it there.
 - **Never a name that already serves something else**, unless you have chosen the sub-path

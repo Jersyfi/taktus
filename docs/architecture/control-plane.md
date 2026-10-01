@@ -118,19 +118,20 @@ by the run. `examples/README.md` is the reference for that shape.
 Results are persisted **per step**: checkpoint, artifacts, consumption, events. Three guarantees
 follow:
 
-- **No limit is ever breached — for what is reported per step.** Before each step its demand is
-  estimated (the worker supplies the estimate) and checked against what remains. A step starts
-  only if it fits. The guarantee comes from *admission*, not from aborting, and admission needs
-  a running total: for tokens, quota and compute seconds, which workers report per step, the
-  total is exact at every boundary and the guarantee holds. For currency it degrades to an
-  estimate where a worker learns its cost only when an assignment ends — the coding worker
-  does — so that the budget can be exceeded by the difference between one assignment's estimate
-  and its actual cost, visible in the ledger at the boundary where it was reported (ADR-0005,
-  amendment; DEC-0012). The owner's position is that a limit is a limit: the second amendment
-  of ADR-0005 records the design that closes the gap as far as a provider allows — the
-  estimate reserved at admission, a currency budget converted into tokens and enforced there,
-  a named safety margin, estimate quality measured per worker, and the residual stated in
-  every report. It is designed, not yet implemented.
+- **No limit is ever breached — beyond the one inner step during which a running total
+  crossed it.** Before each step its demand is estimated — a worker by its own estimate, an
+  `llm` step by the input its model counts and the output limit it sets, a connector call by its
+  operation's declared demand, a rule by nothing — and a step that cannot be estimated is
+  refused, not admitted. The estimate, scaled by its adapter's measured error, is *reserved*
+  against what remains of the line the run is held to: its budget less a named safety margin.
+  A worker receives its reservation, grown by the margin, as its `limits`, and halts at its next
+  boundary before crossing them (W-14). The overrun of the one inner step during which a total
+  crossed the line is the residual; the margin exists to absorb it (ADR-0005, third amendment;
+  DEC-0035). For money reported only when an assignment ends — the coding worker's — the worker
+  cannot halt on it and is held by the tokens it reports per step. When a budget is set, the run
+  records what it can promise per kind — exactly per step, as an estimate, only as a share of a
+  subscription's time window, or not at all — derived from what each model adapter declares it
+  can compute (`contracts/model/v1`), as `budget.set`.
 - **At most one step of work is lost.** A stop — by limit, emergency stop, user or anchor — takes
   effect at the next step boundary; the running step may finish up to a hard ceiling.
 - **Resume and replay.** After approval or a limit change, work continues at the step boundary.
@@ -140,9 +141,10 @@ Workers with native pause support refine the granularity but are not required: t
 worker-agnostic.
 
 In code, `src/taktus/components/run/` does exactly this around every step, whatever its method:
-estimate, admit against what remains of the run's budget, run, persist checkpoint, artifacts and
+estimate, reserve against what remains of the run's line, run, persist checkpoint, artifacts and
 raw consumption, then honour a pending stop at the boundary. A step rejected by admission control
-halts the run with cause `limit`; a raised budget on resume lets it continue. A worker step
+halts the run with cause `limit`, one without an estimate with cause `no_estimate`; a raised
+budget on resume lets it continue. A worker step
 stopped mid-way ends with the worker's checkpoint, and the resumed assignment starts from it.
 
 Every state change is one transaction with the ledger entry that describes it: the run as it
@@ -258,10 +260,15 @@ class, step count, storage — and the normalised unit **Takt** is derived from 
 Admission control works against all applicable limits at once: budget in currency, a subscription
 window, a provider rate limit, available compute. If the estimate does not fit, the step does not
 start, and the block is recorded with cause and duration in the blocked-time account
-([throughput.md](throughput.md)). The line holds exactly for the kinds reported per step —
-tokens, quota, compute — and only up to the estimate for currency reported per assignment
-(ADR-0005, amendment). That is why the Takt derives from tokens and compute and not from money:
-it is the quantity admission control can actually hold a run against.
+([throughput.md](throughput.md)). The line holds for the kinds reported per step — tokens,
+quota, compute — up to one inner step's overrun, and only up to the estimate for currency
+reported per assignment (ADR-0005, amendments).
+
+What a step used is recorded raw, with language-model tokens **per model and per price kind** —
+uncached input, output, cache read, cache write. Money is that record at a versioned price
+table, which the run's budget statement names by digest, so that `taktusctl cost <run>`
+recomputes it from the ledger (`components/accounting`); the Takt will be the same record at a
+weighting table (ADR-0010, amendment).
 
 *Available compute* is the platform's: what the machine or container the instance runs on has
 left of memory, processor and storage. Taktus observes it, reports the date a person must act by

@@ -105,7 +105,9 @@ The same issue, the same acceptance criteria, the same brief, eight times:
 - **Input tokens: under by 1.8× to 4.3×.** Estimated 60 000, measured 110 531 to 257 289. The
   estimate is a configured constant (`--estimate-tokens-in`, default 60 000), and the worker
   says as much: `confidence: low`.
-- **Output tokens: over by 30× to 70×.** Estimated 6 000, measured 84 to 195. What the worker
+- **Output tokens: over by 30× to 70×** — *as measured; the measurement may be low.* The
+  coding worker counted a message's tokens once, on its first line, which undercounts any
+  message whose text came before its tool call; corrected after this run (DEC-0038). Estimated 6 000, measured 84 to 195. What the worker
   reports as output is the agent's closing text, not what it wrote into files along the way.
   The estimate is for one quantity and the measurement is of another.
 - **Money: the closest of the three, and it was exceeded once.** Estimated $1.00, measured

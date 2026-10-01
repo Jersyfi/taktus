@@ -4,7 +4,6 @@
 **Raised in:** [#26](https://github.com/Jersyfi/taktus/pull/26), which corrects the defect the first live run met
 **Issue:** [#27](https://github.com/Jersyfi/taktus/issues/27)
 **Needed by:** 2026-10-21
-**Provisional answer:** Option A. P-03's task carries one more acceptance criterion — the repository's own rules for a change are met — and the first live run was repeated with it. Marked in the bundle by the comment above that criterion, and here.
 
 ## 1. What this is about
 
@@ -110,3 +109,25 @@ comes back out and the gate gains a way to be told; no work is thrown away eithe
 sentence on why. Option A also ends the question of who writes the update: the worker, under
 the criterion, and the reviewer corrects it. Your answer extends
 `docs/decisions/anchors.taktus.md` with the entry this request proposes.
+
+## Outcome
+
+**Decided:** 2026-09-30
+**Answer:** Neither option as written. The owner answered in conversation, and the answer was
+recorded on 2026-09-30: **the status is updated when a pull request touches a milestone item, a
+need, a decision or a contract — not when it fixes a defect.** Close the question; align the
+gate. Read as: (1) a pull request that changes the roadmap's items, a record of the register or
+an ADR, or a contract carries a status update, whoever opens it; (2) a pull request that only
+fixes something — code, a tool, a worker, a blueprint, the deployment, or a documentation defect
+recorded as `DEFECT` — does not; (3) `make gate-status` counts exactly those four kinds of file
+and nothing else. This reading is the record; the pull request that carries it is where the
+owner confirms it.
+**Reasoning given:** none was recorded with the answer. The rule carries its own: the status file
+says where the project stands against its milestones, its needs, its decisions and its
+contracts, and a fix that moves none of them has nothing true to add to it — which is what
+§4 found for the first pull request Taktus opened.
+**Recorded in:** PR_LINK. `tools/check_status.py` counts the four kinds of file and skips the
+record of a documentation defect; ADR-0028 and `CLAUDE.md` §8 say the same. P-03's acceptance
+criterion that the repository's own rules for a change are met stays, because it names no rule.
+The mode this request proposed for the question — a new mode-3 entry — was not answered, and
+`anchors.taktus.md` is not extended.

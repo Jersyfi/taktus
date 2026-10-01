@@ -101,8 +101,10 @@ enforced.
   of every pull request description, verbatim with its heading, or empty. The run cannot
   generate it — a template composes, it does not run the repository's generator — so whoever
   starts the run does, from the base branch; `tools/first_run.sh` runs
-  `tools/check_status.py --print` on `main` for this repository. The triggers in `blueprint.yaml` will supply these from the event that
-  starts a run, once event reactions exist (`0.2.0`).
+  `tools/check_status.py --print` on `main` for this repository. The triggers in
+  `blueprint.yaml` will supply the other inputs from the event that starts a run, once event
+  reactions exist (`0.2.0`). Where an automatic start takes `closing_section` from is DEC-0037,
+  open; this input is its provisional answer.
 - **The pipeline on a branch.** P-03 reads the pipeline's verdict before it opens the pull
   request, so the pipeline must run for a pushed branch; this repository's
   `.github/workflows/ci.yml` runs on pushes to `taktus/**` for that reason.

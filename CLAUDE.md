@@ -112,8 +112,10 @@ Processes reference adapters by capability only, never by product name.
 
 **Removal test:** for every integration it must be shown automatically that removing it changes
 quality or cost but breaks no process. It is a process Taktus runs for itself, weekly
-(`blueprints/self-operation/`, S-01): the verdict — *broke*, *changed*, *exception* — is in
-the ledger as `removal.tested` and in the adapter's maturity.
+(`blueprints/self-operation/`, S-01): the verdict — *broke*, *changed*, *untested*,
+*exception* — is in the ledger as `removal.tested` and in the adapter's maturity, with the
+configuration it was taken under. The processes it exercises run as rehearsals: an outward
+operation answers from the recording of its last real call and acts on nothing (ADR-0030).
 
 ---
 
@@ -170,8 +172,9 @@ information about an environment (ADR-0028). It is raised when the need becomes 
 not when it blocks, with a date and the steps; raising it is mode 2 (M2.5), providing it is the
 owner's act. Every row of `CREDENTIALS.md` names the need it is provided under, and the gate
 fails a credential the code reads without one. `docs/status.md` is the one file that says where
-the project stands and what is needed from the owner; every pull request that changes the state
-updates it, and `make gate-status` fails one that did not. The list of what is open is
+the project stands and what is needed from the owner. A pull request that touches a milestone
+item, a need, a decision or a contract updates it; one that fixes a defect does not (DEC-0021),
+and `make gate-status` fails one that should have and did not. The list of what is open is
 generated (`make status`) and never stored in the file (DEC-0026).
 
 ---
@@ -226,6 +229,11 @@ generated (`make status`) and never stored in the file (DEC-0026).
   sections and its implementation. What a use case requires is mode 3; how it is described,
   its state and its test references are mode 1; `docs/vision/` is mode 4
   (`docs/decisions/anchors.taktus.md`).
+- **What future work needs belongs in the repository. What concerned only one person stays in
+  the channel.** The test is not "is it confidential" but "will someone working here in a year
+  need it". A decision and its reasoning: yes. That the owner asked about it on a Tuesday: no.
+  A repository record may link to where a conversation happened — the link, never the content.
+  The owner-facing channel is built on this rule.
 - **Failing a task is allowed; reporting instead of working is not.** A decision request that
   arises from work names what was attempted and where exactly it failed. One that does not is
   an evasion and is returned as one.

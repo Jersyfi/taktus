@@ -61,13 +61,14 @@ taktus/
 │   │   … governance/domain/service/capacity.py turns platform observations and growth per run into findings with a figure and a date; application/service/report_capacity.py records a crossing (docs/architecture/platform.md)
 │   │   … run/domain/service/capacity.py admits a job against the platform: memory for the unit plus a reserve, storage above its refusal share
 │   │   … catalog/domain/model/maturity.py is an adapter's maturity with its last removal result; catalog/domain/service/removal.py the rules that decide broke, changed, untested or exception, and when a process can be rehearsed; catalog/application/service/record_removal.py writes the result and the ledger entry `removal.tested`
+│   │   … run/domain/service/budget.py the budget's rules: the line less the margin, calibration and its seed, the reservation, the worker's ceiling, what a budget can promise; accounting/ meters a run from the ledger and prices it at the table its budget statement names (`taktusctl cost`)
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
 │   │     accounting/ knowledge/ value/ ledger/
 │   │
 │   ├── ports/                       # cross-cutting ports
 │   │   ├── worker.py                # CONTRACT 1 — execution units: the contract's shapes and the protocol
 │   │   ├── connector.py             # CONTRACT 2 — tools and channels: intake, and actions with a call context, a declared effect and a classified failure
-│   │   ├── model.py                 # CONTRACT 3 — models: a prompt in, a completion with its tokens and the answering model out; resolved by purpose
+│   │   ├── model.py                 # CONTRACT 3 — models: a prompt in, a completion with its tokens by price kind and the answering model out; the declaration of what it can compute before a call; the price table; resolved by purpose
 │   │   ├── execution.py             # how a unit comes to exist for a job: process | container | cluster; the fail-closed refusal of no isolation from level 3
 │   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore (with `summary`: a kind counted without reading the chain), ProvenanceStore, UnitOfWork — every call names its tenant; StateSize: the state's size on disk
 │   │   ├── ledger.py                # facts in, chained entries out, verify — one chain per tenant
@@ -132,7 +133,7 @@ taktus/
 │   ├── integration/                 # the whole slice against the reference worker — by endpoint, as a process started per job, as a container started per job; the restart test; two runners, two schedulers, a real SIGTERM, the daemon under a prefix; the control plane image built and inspected
 │   └── security/ resilience/
 │
-├── docs/{architecture,adr,usecases,roadmap.md}
+├── docs/{architecture,adr,usecases,vision,decisions,runs,research,roadmap.md}   # research: dated, sourced evidence a decision rests on
 ├── tools/                           # gates, checkdocs, preflight, generators
 ├── pyproject.toml  Makefile  .importlinter  .env.example   # .env.example lists TAKTUS_* names, never values
 └── CLAUDE.md  README.md  LICENSE  NOTICE  CONTRIBUTING.md  CREDENTIALS.md

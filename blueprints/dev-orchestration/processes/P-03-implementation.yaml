@@ -169,8 +169,9 @@ steps:
           section "Acceptance criteria" — so that every criterion holds
         acceptance:
           - every item of the section "Acceptance criteria" in the issue or its discussion holds
-          # PROVISIONAL until DEC-0021 is answered: whether a pull request Taktus opens must
-          # carry what every change of that repository must carry. Option A is in force.
+          # DEC-0021, answered: a pull request Taktus opens carries what every change of that
+          # repository must carry, like any other; which changes need a status update is the
+          # repository's own rule, and this criterion names no rule.
           - >
             the repository's own rules for a change are met: whatever its contribution
             documentation requires of every change, which the repository states and the
@@ -183,11 +184,11 @@ steps:
           - >
             the change is small and touches what the issue names, and what the rules above
             require of any change
-          # PROVISIONAL until DEC-0021 is answered, the same question one step further: the
-          # description of a pull request Taktus opens is the summary this assignment ends
+          # The description of a pull request Taktus opens is the summary this assignment ends
           # with, so the shape the repository asks of a description is asked of the summary.
           # The section the repository generates is not asked of it: the run appends that
-          # section itself, by a template, after the summary (issue #34).
+          # section itself, by a template, after the summary (issue #34). Where an automatic
+          # start takes that section from is DEC-0037, open.
           - >
             the summary this assignment ends with is the body of the pull request that will
             carry the change: what it delivers, and what a reviewer must know. Where the

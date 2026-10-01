@@ -29,7 +29,7 @@ credential, an account, access to a system, a purchase, an action on a server, i
 an environment (ADR-0028). It is raised when it becomes foreseeable, not when it blocks; raising
 it is mode 2 (entry M2.5), providing it is the owner's act. An open need is under `open/` with an
 issue labelled `needs-owner`; a provided need is a record here with its outcome. What is open is
-in [../status.md](../status.md), section 3.
+printed by `make status` and carried by every pull request description (DEC-0026).
 
 ## Needs
 
@@ -40,7 +40,7 @@ in [../status.md](../status.md), section 3.
 | [0003](NEED-0003-the-model-endpoint-and-its-key.md) | The model endpoint and its key | `credential` | provided 2026-09-22 as the endpoint, the model and the key file of NEED-0001; confirmed 2026-09-23; the model chosen is DEC-0019 |
 | [0004](NEED-0004-the-platforms-current-interface-note.md) | The platform's current interface note | `information` | superseded 2026-09-23: the owner decided the target (DEC-0023) and gave read-only access instead of a note; a session inspected the platform and answered all ten points, outside this repository. Replaced by NEED-0007 and NEED-0008 |
 
-The open needs are listed in [../status.md](../status.md), section 3.
+The open needs are printed by `make status` (DEC-0026).
 
 ## Notices
 
@@ -51,6 +51,13 @@ The open needs are listed in [../status.md](../status.md), section 3.
 | [0003](NTC-0003-the-first-runs-credential-variables-renamed.md) | The first run's credential variables renamed | M2.4 | `behaviour-change` | `tools/first_run.sh` reads the repository token and the coding agent's credential under `TAKTUS_CREDENTIAL_<NAME>_FILE`, the one pattern every credential follows; the same files hold the same values |
 | [0004](NTC-0004-run-records-move-into-their-own-directory.md) | Run records move into their own directory | M2.1 | `restructuring` | `docs/runs/` holds one record per run worth keeping, with a `README.md` that says what belongs there; the record of 2026-09-19 keeps its content under its date |
 | [0005](NTC-0005-the-status-date-check-is-removed.md) | The status date check is removed | M2.3 | `gate-weakened` | the status file carries no date, so `make gate-status` no longer compares one with the register; every case it caught is caught by the freshness check, which fails a register change that does not touch the status file |
+| [0006](NTC-0006-the-memory-kill-test-asserts-taktuss-promise.md) | The memory-kill test asserts Taktus's promise | M2.2 | `test-strategy` | the job ends non-zero with a reason; `killed == "memory"` only where the engine reported it, the weaker branch stated (#29) |
+| [0007](NTC-0007-test-images-are-built-only-when-their-content-changed.md) | Test images are built only when their content changed | M2.2 | `test-strategy` | one helper builds every test image, skips the build when its content digest exists, and stops a silent build naming its step (DEC-0036) |
+| [0008](NTC-0008-every-step-is-estimated-or-refused.md) | Every step is estimated or refused | M2.4 | `behaviour-change` | every step is estimated before admission or refused with cause `no_estimate`; a worker's limits are its reservation grown by the margin; `budget.set` and `step.reserved` in the ledger |
+| [0009](NTC-0009-the-removal-test-rehearses-and-says-untested.md) | The removal test rehearses, and says untested | M2.4 | `behaviour-change` | outward calls answered from recordings in marked rehearsal runs; `untested` for an integration nobody uses; every verdict names its configuration (#36) |
+| [0010](NTC-0010-a-reading-that-is-not-as-expected-is-read-again.md) | A reading not as expected is read again | M2.4 | `behaviour-change` | a connector read may carry `expect` and fails its own step otherwise, so a resume reads again; P-03's pipeline read expects success (#31) |
+| [0011](NTC-0011-first-run-findings-in-the-connector-the-worker-and-the-script.md) | The connector, the worker and first_run.sh | M2.4 | `behaviour-change` | executable flag (#28), `repository.files.read` and P-03's `closing_section` (#34), `first_run.sh` runs twice (#30), token accounting and W-14 in both workers |
+| [0012](NTC-0012-a-memory-limit-is-enforced-or-the-job-refused.md) | A memory limit is enforced or refused | M2.4 | `behaviour-change` | the process adapter enforces memory on Linux and refuses elsewhere unless accepted; the container adapter refuses an engine that cannot limit memory or swap |
 
 ## Decisions
 
@@ -76,6 +83,7 @@ The open needs are listed in [../status.md](../status.md), section 3.
 | [0018](DEC-0018-one-pattern-for-every-credential-variable.md) | One pattern for every credential variable | DEFECT | corrected: every credential's file is named `TAKTUS_CREDENTIAL_<NAME>_FILE`, the same variable whoever reads it; the pattern is stated once in `CREDENTIALS.md` |
 | [0019](DEC-0019-the-model-for-the-reasoning-purpose.md) | The model for the purpose `reasoning` | NON-BLOCKING | answered: Option A — the smaller model of the family, the cheapest that does the job; method selection applied within the method, revisited on the evidence of the runs |
 | [0020](DEC-0020-a-branch-the-connector-writes-loses-the-file-mode.md) | A branch the connector writes loses the file mode | DEFECT | corrected: a file keeps the mode it has in the base, read from the base tree before the new tree is written; a new file is a plain file, and issue #28 carries what that still costs |
+| [0021](DEC-0021-must-a-taktus-pull-request-update-the-status-report.md) | Must a pull request Taktus opens update the status report? | NON-BLOCKING | answered: the status is updated when a pull request touches a milestone item, a need, a decision or a contract — not when it fixes a defect; the gate counts exactly those |
 | [0022](DEC-0022-the-endpoint-worker-isolates-nothing-and-said-so-nowhere.md) | The endpoint worker isolates nothing, and the operator was not told | DEFECT | corrected: `endpoint` carries whatever isolation the person who started the worker gave it, `tools/first_run.sh` gives it none, and ADR-0002's rule reaches only the adapters that start a unit |
 | [0023](DEC-0023-where-taktus-runs-and-what-separates-it.md) | Where Taktus runs, and what separates it from what it builds | NON-BLOCKING | answered: Option A — one cluster on the owner's integration server, control plane and execution in namespaces of their own; a kernel boundary protects nothing that is at risk while both the code and the data are the owner's, and the record names the three situations that would change that |
 | [0024](DEC-0024-adr-0025-asked-how-many-instances.md) | ADR-0025 asked how many instances, not who owns what runs | DEFECT | corrected: the permission is to run on infrastructure administered by anyone that is not this instance — a person, an organisation or another instance — and its conditions are about the boundary, not about a count of clusters |
@@ -83,3 +91,8 @@ The open needs are listed in [../status.md](../status.md), section 3.
 | [0026](DEC-0026-stacked-pull-requests-and-a-stored-generated-list.md) | Stacked pull requests and a stored generated list | DEFECT | corrected: every pull request targets `main` and CI fails one that does not; `docs/status.md` no longer stores the generated list of what is open — `make status` prints it and the pull request description carries it |
 | [0027](DEC-0027-two-lines-every-pull-request-rewrote.md) | Two lines every pull request rewrote | DEFECT | corrected: `docs/status.md` carries no `As of` date and no running list of what was decided; the gate fails a file that does, because every pull request rewrote those lines and any two conflicted on them |
 | [0031](DEC-0031-principle-14-in-the-doctrine-was-stricter-than-its-adr.md) | Principle 14 in the doctrine was stricter than its ADR | DEFECT | corrected: `CLAUDE.md` §5 says, as ADR-0015 does, that a decider's response times are visible only to them by default, aggregated by role or department, never by person |
+| [0032](DEC-0032-a-database-of-its-own.md) | The Taktus instance's database: its own, or shared | NON-BLOCKING | answered: a PostgreSQL of its own, in its own namespace — a shared database means the system meant to report a failure fails with it |
+| [0033](DEC-0033-the-database-volume-is-twenty-gibibytes.md) | The size of the database's volume | NON-BLOCKING | answered: 20 Gi by default; effectively irreversible on the target's storage class, and the growth per run is measured from the first day |
+| [0035](DEC-0035-adr-0005-promised-two-things-that-collide.md) | ADR-0005 promised two things that collide when one step overruns | DEFECT | corrected: the work promise holds, the limit promise yields by at most one inner step's overrun; every step estimated or refused; money from the record (ADR-0005, third amendment) |
+| [0036](DEC-0036-make-gates-was-not-green-in-one-command.md) | `make gates` was not green in one command on the owner's machine | DEFECT | corrected: two hung image builds, seven errors; a test image is built only when its content changed, and a hung build names where it stopped |
+| [0038](DEC-0038-the-first-runs-output-tokens-may-be-undercounted.md) | The first run's output token figures may be undercounted | DEFECT | corrected: the coding worker counted a message's tokens once, on its first line; the record marks its output figures and the worker counts whole messages |
