@@ -4,7 +4,7 @@ The schemas live under contracts/ in the repository and are copied into the whee
 suite works from a checkout and from an installed package alike. Every schema is registered under
 the `$id` its path prescribes (ADR-0019); relative `$ref`s between a contract and the shared
 kernel resolve through that registry. `validator` and `first_error` serve the worker contract by
-default and the connector contract on request.
+default and the connector and the model contract on request.
 """
 
 from __future__ import annotations
@@ -24,7 +24,8 @@ from referencing.jsonschema import DRAFT202012
 NAMESPACE = "https://taktus.eu/contracts/"
 WORKER = NAMESPACE + "worker/v1/Worker.json"
 CONNECTOR = NAMESPACE + "connector/v1/Connector.json"
-SCHEMAS = {"worker/v1": WORKER, "connector/v1": CONNECTOR}
+MODEL = NAMESPACE + "model/v1/Model.json"
+SCHEMAS = {"worker/v1": WORKER, "connector/v1": CONNECTOR, "model/v1": MODEL}
 
 type Json = dict[str, Any]
 type SchemaRegistry = Registry[bool | Mapping[str, Any]]

@@ -25,7 +25,7 @@ from taktus.adapters.driven.memory import (
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
-from taktus.components.run.application.service import ResumeRun, RunEngine, StartRun
+from taktus.components.run.application.service import EngineOptions, ResumeRun, RunEngine, StartRun
 from taktus.components.run.domain.model import (
     Cause,
     NoWorker,
@@ -115,6 +115,9 @@ class Harness:
             clock=self.clock,
             ids=self.ids,
             telemetry=NoTelemetry(),
+            # The engine's mechanics are tested at the estimate the fake gives; what an
+            # uncalibrated worker reserves beyond it (DEC-0034) is test_estimates.py's.
+            options=EngineOptions(uncalibrated_margin=0.0),
         )
         self.steps = tuple(step for step, _ in definitions)
         self.work = {step.id: work for step, work in definitions}
@@ -190,6 +193,7 @@ async def test_a_run_completes_and_every_state_change_is_in_the_ledger() -> None
     assert h.workers[0].assignments[0].frame.allowed_tools == ("shell.script",)
     assert await h.kinds(run) == [
         "run.created",
+        "budget.set",
         "run.started",
         "step.admitted:prep",
         "step.started:prep",
@@ -263,7 +267,9 @@ async def test_admission_counts_what_earlier_steps_used() -> None:
     assert run.step_run("second").state is StepState.REJECTED
     assert "5.0s of cpu.small needed, 4.000s left" in (run.step_run("second").reason or "")
     assert fake.assignments[0].limits.compute is not None
-    assert fake.assignments[0].limits.compute.seconds == 10
+    assert fake.assignments[0].limits.compute.seconds == 5, (
+        "the worker's ceiling is its reservation, not everything left (W-14)"
+    )
 
 
 async def test_a_rejected_run_resumes_with_a_raised_limit() -> None:

@@ -13,8 +13,10 @@ from taktus.components.run.domain.model.work import (
     CheckRule,
     Condition,
     ConstantRule,
+    Expectation,
     TemplateRule,
     VerifyArtifactRule,
+    select,
 )
 from taktus.shared.v1 import Artifact
 
@@ -51,6 +53,24 @@ def check(rule: CheckRule, values: list[Any]) -> list[Any]:
         if (why := _violated(condition, value)) is not None:
             raise RuleFailed(f"condition {position + 1} does not hold: {why}")
     return values
+
+
+def unmet(expectation: Expectation, output: Any) -> str | None:
+    """Why a reading does not show what its step expects of it, or None when it does."""
+    try:
+        value = select(output, expectation.select)
+    except KeyError:
+        return f"the reading has no {expectation.select}"
+    why = _violated(
+        Condition(
+            value=value,
+            equals=expectation.equals,
+            matches=expectation.matches,
+            not_matches=expectation.not_matches,
+        ),
+        value,
+    )
+    return None if why is None else f"{expectation.select}: {why}"
 
 
 def _violated(condition: Condition, value: Any) -> str | None:

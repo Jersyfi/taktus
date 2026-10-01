@@ -1,7 +1,7 @@
-"""The suite: W-01 to W-13 against a live worker.
+"""The suite: W-01 to W-14 against a live worker.
 
 The endpoint is the only required input. The suite reads the worker's capabilities, asks for an
-estimate, and then posts up to five assignments, each for a purpose:
+estimate, and then posts up to seven assignments, each for a purpose:
 
 1. `main` — the worker's default work within a frame that admits every declared capability
    and the hosts the caller names. Proves W-03, W-04, W-05, W-09 and the artifact half of
@@ -12,6 +12,11 @@ estimate, and then posts up to five assignments, each for a purpose:
 4. `stopped` — the same work, stopped while a step runs. Proves W-06.
 5. `resumed` — the same work resumed from the checkpoint of the stopped run. Proves W-11.
 6. `over-limit` — the same work with a limit below the estimate. Proves W-10.
+7. `tight` — the same work with one kind's limit equal to the estimate, where the main run's
+   actual consumption of that kind exceeded the estimate. The estimate fits, so the worker must
+   start (W-10); the running total must then cross the limit, so the worker must halt at a
+   boundary and name the limit. Proves W-14. A worker whose actual never exceeded its estimate
+   cannot be made to cross a limit its estimate fits, and W-14 is then inconclusive.
 
 W-08 scans everything the suite saw for the value of the credential it referenced by name. W-12
 is reported as pending: the removal test needs processes, and the suite has none.
@@ -158,6 +163,7 @@ async def run_suite(options: SuiteOptions) -> Report:
             stopped = await _w06(client, options, main, declared, fitting, estimate, findings, runs)
             await _w11(client, options, stopped, declared, fitting, estimate, findings, runs)
             await _w10(client, options, declared, estimate, findings, runs)
+            await _w14(client, options, main, declared, fitting, estimate, findings, runs)
         except httpx.HTTPError as error:
             report.notes.append(f"the worker at {options.endpoint} stopped answering: {error!r}")
             if not findings.evidence["W-01"]:
@@ -459,6 +465,8 @@ async def _judge(client: WorkerClient, run: Run, estimate: Json | None, findings
 def _owner(event: Json) -> str:
     kind = str(event.get("type"))
     if kind == "assignment.finished":
+        if event.get("limit") is not None:
+            return "W-14"
         return {"stopped": "W-06", "rejected": "W-10"}.get(str(event.get("outcome")), "W-03")
     return EVENT_OWNER.get(kind, "W-03")
 
@@ -844,6 +852,175 @@ async def _w10(
         findings.fail("W-10", f"with {how}, the rejection carries no reason")
         return
     findings.ok("W-10", f"with {how}, rejected before starting with one event and a reason")
+
+
+# --- W-14 tight limits ------------------------------------------------------------------------
+
+
+def _actual(events: Sequence[Json]) -> dict[str, float]:
+    """What a stream reported in total, per quantity: tokens_in, tokens_out, quota_units,
+    compute_seconds per resource class (`compute_seconds <class>`), currency per code
+    (`currency <code>`)."""
+    totals: dict[str, float] = {}
+
+    def add(name: str, amount: Any) -> None:
+        totals[name] = totals.get(name, 0.0) + float(amount)
+
+    for event in (e for e in events if e.get("type") == "consumption.reported"):
+        for quantity in ("tokens_in", "tokens_out", "quota_units"):
+            if quantity in event:
+                add(quantity, event[quantity])
+        if "compute_seconds" in event:
+            add(f"compute_seconds {event.get('resource_class')}", event["compute_seconds"])
+        for code, amount in (event.get("currency") or {}).items():
+            add(f"currency {code}", amount)
+    return totals
+
+
+def _overrun(estimate: Json, actual: dict[str, float]) -> tuple[str, Json, str] | None:
+    """The first quantity the worker used more of than it estimated: the limit kind, that
+    kind's limit set to the estimate, and how, with the numbers. Tokens first — a budget is
+    enforced in tokens (ADR-0005) — and money last, because a worker may learn it only at the
+    end of an assignment. None when the actual stayed within the estimate everywhere."""
+    tokens = {
+        direction: int(estimate.get(f"tokens_{direction}", 0))
+        for direction in ("in", "out")
+        if int(estimate.get(f"tokens_{direction}", 0)) >= 1
+    }
+    for direction, amount in tokens.items():
+        used = actual.get(f"tokens_{direction}", 0.0)
+        if used > amount:
+            how = f"tokens {direction} set to the estimate {amount}; the main run used {used:g}"
+            return "tokens", {"tokens": dict(tokens)}, how
+    quota = float(estimate.get("quota_units", 0))
+    if quota > 0 and actual.get("quota_units", 0.0) > quota:
+        used = actual["quota_units"]
+        return (
+            "quota",
+            {"quota": {"units": quota}},
+            (f"quota set to the estimate {quota:g} units; the main run used {used:g}"),
+        )
+    compute = float(estimate.get("compute_seconds", 0))
+    resource_class = estimate.get("resource_class")
+    used = actual.get(f"compute_seconds {resource_class}", 0.0)
+    if compute > 0 and resource_class and used > compute:
+        limits = {"compute": {"seconds": compute, "resource_class": resource_class}}
+        return (
+            "compute",
+            limits,
+            (
+                f"compute set to the estimate {compute:g}s of {resource_class}; the main run used "
+                f"{used:g}s"
+            ),
+        )
+    for code, amount in (estimate.get("currency") or {}).items():
+        used = actual.get(f"currency {code}", 0.0)
+        if amount > 0 and used > amount:
+            return (
+                "currency",
+                {"currency": {code: amount}},
+                (f"currency set to the estimate {amount:g} {code}; the main run used {used:g}"),
+            )
+    return None
+
+
+def _estimated_and_used(estimate: Json, actual: dict[str, float]) -> str:
+    parts = []
+    for quantity in ("tokens_in", "tokens_out", "quota_units"):
+        if quantity in estimate:
+            used = actual.get(quantity, 0.0)
+            parts.append(f"{quantity} {estimate[quantity]:g} estimated, {used:g} used")
+    if "compute_seconds" in estimate:
+        used = actual.get(f"compute_seconds {estimate.get('resource_class')}", 0.0)
+        parts.append(f"compute_seconds {estimate['compute_seconds']:g} estimated, {used:g} used")
+    for code, amount in (estimate.get("currency") or {}).items():
+        parts.append(f"{code} {amount:g} estimated, {actual.get(f'currency {code}', 0):g} used")
+    return "; ".join(parts) or "the estimate names no quantity"
+
+
+async def _w14(
+    client: WorkerClient,
+    options: SuiteOptions,
+    main: Run,
+    declared: list[str],
+    fitting: Json,
+    estimate: Json | None,
+    findings: Findings,
+    runs: list[Run],
+) -> None:
+    """The limits are the worker's hard ceiling. A limit equal to the estimate is one the
+    worker must accept (W-10); where the main run used more of a quantity than estimated, the
+    same work under that limit must cross it, and the worker must halt at a boundary instead
+    of starting another step. The stream rule judges the halt; this names the situation."""
+    if estimate is None:
+        findings.inconclusive["W-14"] = "no estimate to set a limit to (see W-02)"
+        return
+    actual = _actual(main.events)
+    overrun = _overrun(estimate, actual)
+    if overrun is None:
+        findings.inconclusive["W-14"] = (
+            "the main run's actual consumption never exceeded the estimate "
+            f"({_estimated_and_used(estimate, actual)}), so no limit the estimate fits can be "
+            "crossed, and a halt at the limit cannot be provoked"
+        )
+        return
+    kind, tightened, how = overrun
+    limits = {**fitting, **tightened}
+    run = await _run(client, options, "tight", declared, limits)
+    runs.append(run)
+    await _judge(client, run, estimate, findings)
+    if findings.violations["W-14"]:
+        return
+    finished = run.events[-1] if run.events else {}
+    totals = rules.running_totals(run.events, tightened)
+    reached = ", ".join(
+        f"{name} {totals[name]:g} of {ceiling:g}"
+        for name, (_, ceiling) in rules.ceilings(tightened).items()
+    )
+    if run.outcome == "rejected":
+        findings.inconclusive["W-14"] = (
+            f"{how}; the worker rejected the assignment although its estimate fits the limit "
+            f"({finished.get('reason')}), so no halt could be observed"
+        )
+        return
+    if run.outcome == "failed" and main.outcome == "succeeded":
+        findings.fail(
+            "W-14",
+            f"{how}; the tight run ended failed ({finished.get('reason')}) where the main run "
+            f"succeeded: a limit halts the assignment at a boundary with outcome stopped, it "
+            f"does not fail it (running total {reached})",
+        )
+        return
+    if run.outcome != "stopped" or not finished.get("limit"):
+        findings.inconclusive["W-14"] = (
+            f"{how}; the tight run ended {run.outcome!r} without naming a limit, and no step "
+            f"started after its running total reached the limit ({reached}): nothing remained "
+            "to be withheld, so the halt could not be observed"
+        )
+        return
+    boundaries = [e for e in run.events if e.get("type") == "step.boundary"]
+    if not boundaries:
+        findings.inconclusive["W-14"] = (
+            f"{how}; the tight run carried no step.boundary at all (see W-05), so there was no "
+            "boundary the halt could take effect at"
+        )
+        return
+    final = run.final.json if run.final else {}
+    if final and final.get("checkpoint_ref") != finished.get("checkpoint_ref"):
+        findings.fail(
+            "W-14",
+            f"the state of {run.id} carries checkpoint_ref {final.get('checkpoint_ref')!r}, "
+            f"the stream {finished.get('checkpoint_ref')!r}",
+        )
+        return
+    findings.ok(
+        "W-14",
+        f"{how}; the worker halted at the boundary of step {boundaries[-1].get('step_id')!r} "
+        f"(seq {boundaries[-1]['seq']}) with checkpoint {finished.get('checkpoint_ref')!r}, "
+        f"named the limit {finished.get('limit')!r} and started no further step (running "
+        f"total {reached})"
+        + ("" if finished.get("limit") == kind else f"; the limit tightened was {kind!r}"),
+    )
 
 
 # --- W-08, W-09 across all runs ---------------------------------------------------------------

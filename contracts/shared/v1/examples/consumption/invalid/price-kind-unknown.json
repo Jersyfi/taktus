@@ -1,0 +1,5 @@
+{
+  "tokens_by_model": {
+    "example-large@2026-08": { "input": 12, "reasoning": 40 }
+  }
+}

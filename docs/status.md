@@ -49,7 +49,9 @@ left of the milestone's own list of items is below, and none of it is part of th
    for: the worker's estimate is a configured constant that under-states input tokens by up to
    4.3×, over-states output by up to 70×, and was exceeded on money once; across eight runs of
    the *same* brief the cost varied by 2.4× and the duration by 2.7×; `wait-for-pipeline` was
-   64 % of the run's wall clock; and an `llm` step passes admission with no estimate at all.
+   64 % of the run's wall clock; and an `llm` step passes admission with no estimate at all. The
+   output figures may be undercounted: the coding worker counted a message's tokens once, on its
+   first line (DEC-0038, corrected since).
 
    Two things that criterion does **not** say, and this run did not prove: the coding worker
    ran unisolated by endpoint, so `frame.allowed_hosts` was declared and not enforced
@@ -64,9 +66,21 @@ left of the milestone's own list of items is below, and none of it is part of th
 | a repository token issued for the identity Taktus acts as | every read and write of the reference connector; the first run used the developer's own login, which is not what the owner's run should use | provided 2026-09-22 as a fine-grained token for this repository, confirmed 2026-09-23 (NEED-0002, issue #19 closed); valid 90 days, renewed under NEED-0006 |
 
 `tools/first_run.sh 11` is the one command that runs P-02 and then P-03 for issue #11 and
-opens the pull request. It cannot be run a second time — P-02 refuses an issue whose criteria
-it has already written, correctly, and the script stops with it (issue #30) — which is why the
-seven repeats were started by hand.
+opens the pull request. On the first run it could not be run a second time, which is why the
+seven repeats were started by hand; since the pull request that took up the first run's
+findings it runs one bundle alone, resumes a stopped run, treats P-02's refusal of an issue
+whose criteria exist as done, and stops before anything starts when a branch of an earlier
+attempt exists (issue #30).
+
+**The first run's findings, taken up.** Every finding of `docs/runs/first-run.md` that was an
+issue is closed by that pull request, each with what it cost the run: #28, a new executable
+arriving plain — not met, nothing; #29, the flaky memory test — attempt 3, $0.833 and 166 s of
+a correct change refused; #30 — seven attempts started by hand and seven branches deleted by
+hand; #31, the resume that could not resume — the whole process run again after the pipeline
+turned green; #34, a generated section asked of a model — part of DEC-0025's four refused
+descriptions, $3.48 of coding-step money; #36, a removal verdict that said too little — a
+misleading row every week. The four budget findings are the subject of the ADR-0005 amendment
+below.
 
 **Done in `0.1.0`**, checked against the tree: the contracts for the worker and the connector
 as executable schemas with conformance suites that a third party can run (`contracts/worker`,
@@ -79,7 +93,9 @@ scheduler and a shutdown at the step boundary; the execution port with the `proc
 coding worker, the latter passing the suite in both authentication modes against a stand-in for
 its agent; the reference repository connector in both directions, proven against the real
 service; the loopback connector and the removal test as a process (`S-01`), run once by hand;
-the model port with one adapter over the chat-completions dialect; OpenTelemetry spans with the
+the model contract as a schema with a conformance suite (`contracts/model/v1`, M-01 to M-04):
+what an adapter can compute before a call, the price table, and the model port with one adapter
+over the chat-completions dialect; OpenTelemetry spans with the
 trace identifier on every ledger entry; the architecture tests and seven `import-linter`
 contracts; the command line `taktusctl`; self-hosting in two containers with `make up`, proven
 from nothing; the decision register with four anchor modes, notices and their gates; every ADR
@@ -90,7 +106,6 @@ bounded by *Where this promise ends*, with a gate.
 | Item | State |
 |---|---|
 | `mlbench` worker | does not exist; its real work is `0.4.0` |
-| the model contract as a schema with a conformance suite | `contracts/model/v1` is a README that says the schema is not yet written; the port and one adapter exist |
 | the events contract | `contracts/events/v1` is a placeholder |
 | the cluster execution adapter | does not exist; the port and two adapters do. `deploy/k8s/README.md` §7 specifies it, including what it must refuse |
 | the container registry build and the Helm chart | `deploy/k8s/README.md` is now the **specification** for both, written against a platform read in full on 2026-09-23 (#26); nothing under `deploy/k8s/` renders yet, and images are still built locally by `make up` and by the tests |
@@ -101,9 +116,37 @@ bounded by *Where this promise ends*, with a gate.
 | governance and anchors in the product | the anchors exist for this repository as documents; nothing in the product evaluates an anchor at a step boundary yet |
 
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
-each with the pull request that recorded it. **Open:** DEC-0021 (issue #27) — must a pull request
-Taktus opens carry a status update like any other? Provisionally yes. DEC-0028, DEC-0029 and
-DEC-0030, raised by the pull request that brought in the vision layer; below.
+each with the pull request that recorded it. **Open:** DEC-0028, DEC-0029 and DEC-0030, raised
+by the pull request that brought in the vision layer. DEC-0034 and DEC-0037, raised by the
+pull request that took up the first run's findings, are answered: a worker with no calibration
+history reserves twice its estimate, and where a run produces a generated text is the session's
+to decide.
+
+**A budget is a budget, built** (ADR-0005, third amendment; DEC-0035). Every step is estimated
+before it is admitted, or refused: a worker by its estimate, an `llm` step by the input its model
+counts and the output limit it sets, a connector call by its operation's declared demand, a rule
+by nothing. The estimate, scaled by its adapter's measured error — seeded from the first run for
+the coding worker, and twice the estimate for a worker nothing has measured yet (DEC-0034) — is
+reserved against the budget. A worker receives its reservation as its limits, and halts at its
+next boundary before crossing
+them (check W-14, in both reference workers, with a fault each). Tokens are recorded per model
+and per price kind, a versioned price table prices them, and `taktusctl cost <run>` recomputes a
+run's money from the ledger. Every model adapter declares what it can compute before a call;
+when a budget is set the run records what it can promise, and where a provider bills per time
+window it says that a currency budget cannot be enforced. The evidence is
+`docs/research/2026-09-30-what-providers-allow.md`.
+
+**Taktus watches its platform** (ADR-0031). The *Observe* stage is built: free CPU, memory and
+storage, growth per run extrapolated to a date, `taktusctl capacity` and a report by the
+scheduler, admission against free capacity, every job's memory limit enforced or the job
+refused. *Propose* (`0.5.0`) and *Manage* (`0.7.0`) are specified in
+`docs/architecture/platform.md`.
+
+**`make gates` is green locally in one command again** (DEC-0036). On 2026-09-29 it ended with
+seven errors after 26 minutes on the owner's machine: two `docker build` runs hung silently for
+600 and 900 s, reported seven times. A test image is now built only when its content changed,
+and a hung build names where it stopped. Measured on the owner's machine: a healthy run costs
+the same, about 3½ minutes; a hang costs 120 s instead of 600 or 900.
 
 **The vision layer and the use cases.** Since the pull request that brought in `docs/vision/`,
 the repository says why Taktus exists — fourteen principles, each with its reason and what it
@@ -152,23 +195,16 @@ its schedule for the first time on 2026-09-28, green, in 25 seconds — started 
 
 ## 2. The next pull requests
 
-1. **The vision layer, step 1 of the migration.** `docs/vision/`, checked against the ADRs and
-   corrected where the drafts disagreed with the repository; the use case format and thirteen use
-   cases; `make gate-vision` and `make gate-usecases`; the rule that a use case is never changed in
-   the pull request that implements it, and the rule that a decision request names what was
-   attempted; ADR-0029; the status file without the lines every pull request rewrote (DEC-0027);
-   every pull request description in four sections a reader can act on without the diff (ADR-0017
-   §7).
-2. **Step 2 of the migration**: the use cases of `process`, `run` and `governance`, starting from
+1. **Step 2 of the migration**: the use cases of `process`, `run` and `governance`, starting from
    what is already written in `UC-4-result-defects.md` and `UC-4-exactness-statement.md`, and
    with UC-4.5 and UC-8.5 reconciled with ADR-0021, ADR-0005 and ADR-0010.
-3. **#38**, which Taktus opened for issue #11 on 2026-09-23: `make doctor` reports `git`. Rebased
+2. **#38**, which Taktus opened for issue #11 on 2026-09-23: `make doctor` reports `git`. Rebased
    on `main` on 2026-09-30, its conflicts resolved, its description rewritten so that it can be
    acted on without the diff; it merges without conflict before or after this one.
-4. **The deployment itself**: the chart, the registry build and the cluster execution adapter,
-   against `deploy/k8s/README.md`.
-5. **`0.2.0` starts with the budget** (ADR-0005, second amendment) **and the scheduler starting
-   runs from a bundle's trigger**, so that the removal test runs weekly without a workflow.
+3. **The deployment itself**: the chart, the registry build and the cluster execution adapter,
+   against `deploy/k8s/README.md` — its database its own (DEC-0032), its volume 20 Gi (DEC-0033).
+4. **`0.2.0` continues with the scheduler starting runs from a bundle's trigger**, so that the
+   removal test runs weekly without a workflow; the budget it was to start with is built.
 
 ## 3. Needed from the owner
 
@@ -190,7 +226,7 @@ and carried in three places, none of which two pull requests can edit at once (D
 | What | On what | Since |
 |---|---|---|
 | installing the deployment, once its pull request has written it | NEED-0007: a kubeconfig for a deployment identity, so that the install needs no shell on the machine | the platform was inspected on 2026-09-23 and its interface is reachable from outside, which makes the narrow credential both possible and the better arrangement; needed by 2026-10-20 |
-| the instance's ingress, its certificate and the webhook | NEED-0008: a public name for the instance | the same inspection; needed by 2026-10-20. Without it the chart renders with the ingress switched off and the instance keeps polling instead of reacting to events |
+| the instance's ingress, its certificate and the webhook | NEED-0008: a public name for the instance — a subdomain of the project's own domain, `int.taktus.eu` proposed, with the record to create | the same inspection; needed by 2026-10-20. Without it the chart renders with the ingress switched off and the instance keeps polling instead of reacting to events |
 | a removal-test verdict of *changed* through an alternative adapter | a second adapter for a capability a process uses; nothing today has one | #14. The *broke* verdict on a real process is no longer missing: the run of 2026-09-23 produced it for `connector.channel.repo`, naming eight steps across P-02 and P-03 |
 
 The first live end-to-end run is no longer blocked and has happened. It was blocked from #8,
@@ -213,19 +249,20 @@ rather than enforced, anything marked provisional.
 | Promise | Where it is made | State |
 |---|---|---|
 | the removal test is a conformance check, W-12 and C-10 | `contracts/worker/v1`, `contracts/connector/v1` | reported *pending* by both suites (DEC-0005); the test runs as the process S-01 instead, and no adapter has reached maturity *verified* because nothing records the conformance half |
-| the removal test *exercises* the processes that use an integration | `blueprints/self-operation/`, S-01 | it **resolves** them statically. Every real process of this repository writes outward, so none was rehearsed on 2026-09-23 (`not run: step(s) would leave the system`). The rehearsal half has never run against a real process, and on this repository cannot |
-| a removal verdict says what it was taken under | `blueprints/self-operation/` | it does not: `worker.endpoint` reported "no registered process uses this integration" because the instance happened to be configured with the reference worker, and neither the ledger entry nor the maturity record says which adapter stood behind the name (issue #36) |
-| a budget is a budget: the estimate reserved at admission, a currency budget enforced in tokens, a named safety margin | ADR-0005, second amendment | designed, not implemented; `0.2.0`. Today admission control checks the estimate against the limit and money is reported at the end of an assignment. Measured on 2026-09-23: an `llm` step is admitted with **no estimate at all**; the worker's estimate is a configured constant, wrong by 1.8×–4.3× on input tokens and 30×–70× on output, and exceeded once on money; and money is not a function of the tokens reported, so a currency budget cannot be converted back into tokens from what is recorded (`docs/runs/first-run.md` §2) |
+| the removal test *exercises* the processes that use an integration | `blueprints/self-operation/`, S-01, ADR-0030 | it rehearses them: outward operations answer from the recording of their last real call. A process is rehearsed only once it has been called for real on that instance, so the weekly job, on fresh state, still resolves P-02 and P-03 statically; a worker step that may reach hosts — P-03's — is never rehearsed |
+| a budget is a budget | ADR-0005, third amendment | built, with three limits stated there: the overrun of the one inner step during which a total crossed the line is spent; money a worker reports only when an assignment ends cannot halt it, and it is held by its tokens. Not yet run live: the next live run is the first measured against it |
+| a budget says what the provider permits | `contracts/model/v1`, `docs/research/2026-09-30-what-providers-allow.md` | this tenant's endpoint holds its output limit: the research says so ([A4]) and M-03 passed against it on 2026-10-01; `tools/first_run.sh` derives the declaration with M-03 on every run, and the deployment sets it (`deploy/k8s/README.md`). The adapter's default for an endpoint nobody has checked stays `soft`; the research is dated and expires |
+| Taktus watches its platform | ADR-0031 | *Observe* built; *Propose* `0.5.0`, *Manage* `0.7.0`. On macOS memory is neither observed nor limited, and the process adapter refuses a job there unless an unenforced limit is accepted; the cluster's own quota is not seen until a cluster platform adapter exists |
+| an automatically started P-03 opens a pull request whose checks pass | DEC-0037 | decided: the worker runs the generator after its change and the run appends what it printed; built with the trigger of `0.2.0`, until when the manual command supplies the section |
 | a process that would give an instance credentials for its own infrastructure is refused at planning time | ADR-0025 | applied by the person who configures an instance; refusal in code is `0.2.0` |
 | an anchor halts the run at a step boundary and raises a decision request in the product | ADR-0008, `docs/architecture/governance.md` | the register exists for this repository; the product's governance component holds the "has it left the system" predicate of the correction anchor and nothing else (`src/taktus/components/governance`); anchors at step boundaries are `0.2.0` |
 | the identity component | `docs/architecture/control-plane.md` §2 | a provisional identity per tenant, marked on every line it touches (DEC-0013); `0.2.0` removes the variable |
 | several instances with load spread across them, a restart without data loss | ADR-0013 A | proven for one instance; the election of a scheduler is proven with two; runners on several instances are `0.2.0` |
 | the coding worker's boundaries lie between tool calls; a stop inside a tool call waits up to the ceiling; money is known only at the end | `workers/claudecode/README.md` | documented limits of the agent, not enforced by Taktus; admission control on a currency limit works against the estimate only |
 | `frame.allowed_hosts` names the hosts a unit may reach | DEC-0008, `contracts/worker/v1` | enforced by the `container` adapter through a per-job egress proxy. With the `process` and `endpoint` kinds it is declared and not enforced, and `tools/first_run.sh` uses `endpoint` — so the first live run's worker reached whatever the machine could (DEC-0022) |
-| the weekly removal test runs weekly | `blueprints/self-operation/README.md` | ran by hand on 2026-09-21 and 2026-09-23, and on its schedule for the first time on 2026-09-28, against the example process and the reference worker (so its `worker.*` row says nothing, issue #36); the scheduler of `0.2.0` does not start it yet |
+| the weekly removal test runs weekly | `blueprints/self-operation/README.md` | ran by hand on 2026-09-21 and 2026-09-23, and on its schedule for the first time on 2026-09-28, against the example process and the reference worker; every verdict now names the adapter it was taken under, and an integration no process uses reads `untested` (#36); the scheduler of `0.2.0` does not start it yet |
 | exactness is a result, not a switch: the exactness statement | UC-4.13, UC-6.9 | specified; `0.5.0` |
 | result defects are detected and remediated under the correction anchor | ADR-0021 to ADR-0023 | the terms and the anchor exist; detection and repair are `0.5.0` |
-| the model contract has a schema and a conformance suite | `contracts/model/v1/README.md` | not written; the port is held to nothing but its tests |
 | `contracts/events/v1`, `blueprints/it-operations` | their README files | placeholders |
 | `deploy/k8s` renders a chart | `deploy/k8s/README.md` | **a specification, not a chart.** The file is the plan the next pull request builds: the values keys, two namespaces with a restricted admission policy, default-deny network policies both ways, no service-account token in a job, a limit and a deadline on every job, and the egress proxy that makes a host list mean something. Nothing under `deploy/k8s/` renders yet |
 | the cluster execution adapter | ADR-0002's execution table, `deploy/k8s/README.md` | does not exist; the port and two adapters do. The plan says what it must refuse: a job it cannot give limits to, and a frame whose hosts it cannot enforce |

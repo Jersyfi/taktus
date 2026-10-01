@@ -10,10 +10,17 @@ step at a time, in the plan's order.
 
 What happens around every step is the contract of ADR-0005 and is the same for every method:
 
-1. estimate — a worker step asks the worker; a rule or wait step demands nothing;
-2. admit — the estimate is checked against what remains of the budget (`domain.service.
-   admission`); a step that does not fit is *rejected* before anything starts, and the run halts
-   with cause `limit`;
+1. estimate — every step, whatever its method: a worker step asks the worker; an `llm` step
+   counts its prompt through the model adapter and bounds its output by the limit it sets; a
+   connector call reserves what its operation declares one call consumes, a wait on one as
+   many calls as it can make; a rule or a wait on the clock demands nothing, and that is exact.
+   A step that cannot be estimated is refused, never admitted (ADR-0005), and the run halts with
+   cause `no_estimate`;
+2. admit — the estimate, scaled by the measured error of the adapter that gave it
+   (`domain.service.budget`), is reserved against what remains of the line the run is held to —
+   the budget less its margin (`domain.service.admission`); a step that does not fit is
+   *rejected* before anything starts, and the run halts with cause `limit`. A worker receives its
+   reservation as its `limits` and halts at its next boundary before crossing it (W-14);
 3. run — through the worker port, the rule table, the connector port, or the clock;
 4. persist — the step run with its checkpoint, artifacts and raw consumption is written before
    the next step is looked at; every state change and the ledger entry that describes it are
@@ -36,6 +43,12 @@ original record. An outward effect the connector reports becomes an `egress.writ
 failure ends the step failed with the connector's cause; the engine retries nothing on its
 own — a resume is a person's act, and for an operation the connector cannot recognise a repeat
 of (`idempotency: none`) the reason says that resuming repeats the call (ADR-0024 §3).
+
+A run can be a *rehearsal* (ADR-0030): an outward connector operation is not called, and the
+step answers with the recorded response of the most recent real call of the same operation
+through the same adapter (`application/query/recordings.py`); it finishes with outcome
+`rehearsed`, writes no egress entry, and every ledger entry of the run carries
+`rehearsal: true`. Reads, rules, llm and worker steps run as they do in any run.
 """
 
 from __future__ import annotations
@@ -47,6 +60,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from taktus.components.run.application.query.recordings import RecordedResponses
 from taktus.components.run.domain.model import (
     INTERRUPTIBLE,
     RESUMABLE,
@@ -79,8 +93,15 @@ from taktus.components.run.domain.model import (
     resolve,
     select,
 )
+from taktus.components.run.domain.service import budget as budgeting
 from taktus.components.run.domain.service import provenance, rules
 from taktus.components.run.domain.service.admission import admit, remaining
+from taktus.components.run.domain.service.capacity import (
+    CapacityDemand,
+    CapacityRules,
+    admit_capacity,
+)
+from taktus.components.run.domain.service.rehearsal import REHEARSED
 from taktus.components.run.ports import ConnectorPool, ModelPool, WorkerPool
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
@@ -94,9 +115,10 @@ from taktus.ports.connector import (
     idempotency_key,
 )
 from taktus.ports.ledger import Fact, Ledger
-from taktus.ports.model import ModelError, Prompt
+from taktus.ports.model import Calculability, ModelError, PriceTable, Prompt, price
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
+from taktus.ports.platform import Platform
 from taktus.ports.queue import RUN_EXECUTE, Job, Queue
 from taktus.ports.telemetry import Span, Telemetry
 from taktus.ports.worker import (
@@ -124,11 +146,15 @@ from taktus.shared.v1 import (
     InputKind,
     LedgerEntry,
     LedgerRefs,
+    Method,
     Plan,
+    PriceKinds,
     ProvenanceInput,
     Step,
     StepId,
+    add_tokens_by_model,
 )
+from taktus.shared.v1.consumption import MODEL_NAME_PATTERN
 
 SOURCE_REF_LENGTH = 200
 """How much of an operation and its input a provenance source reference keeps (ADR-0021 §4
@@ -146,6 +172,11 @@ class StartRun:
     stop_after: int | None = None
     inputs: Mapping[str, Any] = field(default_factory=dict)
     """What `$input` references in the work resolve to."""
+    margin: float | None = None
+    """The share of every limit held back from the first step on (ADR-0005); None takes the
+    engine's configured margin."""
+    rehearsal: bool = False
+    """A rehearsal: no outward connector operation acts (ADR-0030)."""
 
     @property
     def identity(self) -> str:
@@ -179,12 +210,44 @@ class Trace:
     inputs: tuple[ProvenanceInput, ...] = ()
     adapter_version: str | None = None
     egress: EffectReport | None = None
+    rehearsed: bool = False
+    """The step answered from a recording instead of acting outward (ADR-0030)."""
 
 
 @dataclass(frozen=True)
 class EngineOptions:
     step_ceiling_seconds: int = 300
     """How long a running worker step may take to finish after a stop was requested."""
+    prices: PriceTable | None = None
+    """The price table money is computed at. None: no model is priced, and a budget in a
+    currency says so when it is set."""
+    margin: float = 0.0
+    """The named safety margin a run is held with unless its command names one
+    (`TAKTUS_BUDGET_MARGIN`)."""
+    seeds: tuple[budgeting.Seed, ...] = budgeting.SEED
+    """What calibration starts from for an adapter nothing has measured yet."""
+    uncalibrated_margin: float = budgeting.UNCALIBRATED_MARGIN
+    """What a worker with no calibration history reserves beyond its estimate (DEC-0034)."""
+    capacity: CapacityRules = field(default_factory=CapacityRules)
+    """What admission against the platform holds a job to (docs/architecture/platform.md)."""
+    unit_memory_bytes: int | None = None
+    """The memory limit of the execution unit a worker step starts on this platform; None when
+    a worker step starts none here — a worker reached by endpoint runs elsewhere."""
+
+
+@dataclass(frozen=True)
+class _Demand:
+    """What a step is estimated to use, or why it cannot be estimated, and the adapter the
+    estimate came from."""
+
+    quantities: ConsumptionQuantities | None
+    why_not: str | None = None
+    adapter: str | None = None
+    capabilities: tuple[str, ...] = ()
+
+
+NOTHING = ConsumptionQuantities()
+"""The demand of a rule or a wait on the clock: nothing, and exactly so."""
 
 
 class RunEngine:
@@ -204,6 +267,8 @@ class RunEngine:
         options: EngineOptions | None = None,
         connectors: ConnectorPool | None = None,
         models: ModelPool | None = None,
+        platform: Platform | None = None,
+        recordings: RecordedResponses | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -213,6 +278,8 @@ class RunEngine:
         self._workers = workers
         self._connectors = connectors
         self._models = models
+        self._platform = platform
+        self._recordings = recordings or RecordedResponses(runs, work, objects)
         self._clock = clock
         self._ids = ids
         self._telemetry = telemetry
@@ -220,6 +287,8 @@ class RunEngine:
         self._options = options or EngineOptions()
         self._stop_requested: set[str] = set()
         self._inflight: dict[str, tuple[Worker, str]] = {}
+        self._observed: dict[str, list[budgeting.Observation]] = {}
+        self._limit_halts: set[str] = set()
 
     # --- entry points --------------------------------------------------------------------------
 
@@ -246,8 +315,9 @@ class RunEngine:
             if run is None:
                 raise UnknownRun(command.run_id)
             span.set_attribute("process.version", run.process_version)
-            if command.budget is not None:
+            if command.budget is not None and command.budget != run.budget:
                 run = run.model_copy(update={"budget": command.budget})
+                await self._state_budget(run, command.actor)
             if run.state in RESUMABLE:
                 run = await self._commit(
                     run.to(RunState.RUNNING), "run.resumed", actor=command.actor
@@ -270,9 +340,11 @@ class RunEngine:
             identity=command.identity,
             autonomy_level=command.plan.autonomy_level,
             budget=command.budget,
+            margin=self._options.margin if command.margin is None else command.margin,
             steps=command.plan.steps,
             work=command.work,
             inputs=dict(command.inputs),
+            rehearsal=command.rehearsal,
             created_at=now,
             updated_at=now,
         )
@@ -280,7 +352,55 @@ class RunEngine:
         job = None
         if enqueue:
             job = Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
-        return await self._commit(run, "run.created", actor=command.actor, enqueue=job)
+        run = await self._commit(run, "run.created", actor=command.actor, enqueue=job)
+        await self._state_budget(run, command.actor)
+        return run
+
+    async def _state_budget(self, run: Run, actor: str | None) -> None:
+        """Say what the budget can promise when it is set, not afterwards (principle 8): the
+        budget, the margin, the line the run is held to, how each limited kind is held and
+        why, and the price table money is computed at — one document, its digest in the
+        ledger as `budget.set`, so that money stays recomputable from the ledger."""
+        models: list[tuple[str, Calculability, bool]] = []
+        worker_steps: list[str] = []
+        for step in run.steps:
+            work = parse_work(step, run.work.get(step.id), run.inputs)
+            if isinstance(work, WorkerWork):
+                worker_steps.append(step.id)
+            if not isinstance(work, LlmWork) or self._models is None:
+                continue
+            resolved = await self._models.resolve(work.purpose)
+            if resolved is None or any(m[0] == resolved.adapter for m in models):
+                continue
+            prices = self._options.prices
+            priced = prices is not None and (resolved.version or "") in prices.prices
+            models.append((resolved.adapter, resolved.model.calculability(), priced))
+        by_assignment = (
+            [f"the worker step(s) {', '.join(worker_steps)}"]
+            if worker_steps and run.budget.currency is not None
+            else []
+        )
+        promises = budgeting.promise(run.budget, models, by_assignment)
+        table = self._options.prices
+        table_digest = None
+        if table is not None:
+            table_digest = await self._objects.put(_canonical(table.document()))
+        statement = {
+            "budget": run.budget.document(),
+            "margin": run.margin,
+            "held": budgeting.held(run.budget, run.margin).document(),
+            "promises": [p.document() for p in promises],
+            "models": [
+                {"adapter": adapter, "declaration": c.document(), "priced": priced}
+                for adapter, c, priced in models
+            ],
+            "price_table": None
+            if table is None
+            else {"version": table.version, "digest": table_digest},
+        }
+        digest = await self._objects.put(_canonical(statement))
+        async with self._work.transaction(run.tenant):
+            await self._record(run, "budget.set", actor=actor, digest=digest)
 
     async def _launch(self, run: Run) -> Run:
         run = await self._commit(run.to(RunState.ADMITTED))
@@ -338,18 +458,32 @@ class RunEngine:
                         )
 
     async def _execute(self, run: Run, stop_after: int | None, span: Span) -> Run:
+        try:
+            self._observed[run.id] = await self._observations(run.tenant)
+            return await self._steps(run, stop_after, span)
+        finally:
+            self._observed.pop(run.id, None)
+            self._limit_halts.discard(run.id)
+
+    async def _steps(self, run: Run, stop_after: int | None, span: Span) -> Run:
+        refused = await self._platform_refuses(None)
+        if refused is not None:
+            return await self._end(run, RunState.HALTED, Cause.LIMIT, refused, span)
         completed_now = 0
         while (step_run := run.next_step_run()) is not None:
             step = run.step(step_run.step_id)
             run, step_run = await self._execute_step(run, step, step_run)
             if step_run.state is StepState.REJECTED:
-                return await self._end(run, RunState.HALTED, Cause.LIMIT, step_run.reason, span)
+                cause = Cause.NO_ESTIMATE if step_run.estimate is None else Cause.LIMIT
+                return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             if step_run.state is StepState.FAILED:
                 return await self._end(
                     run, RunState.ESCALATED, Cause.FAILURE, step_run.reason, span
                 )
             if step_run.state is StepState.STOPPED:
-                return await self._end(run, RunState.HALTED, Cause.STOP, step_run.reason, span)
+                cause = Cause.LIMIT if run.id in self._limit_halts else Cause.STOP
+                self._limit_halts.discard(run.id)
+                return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             completed_now += 1
             # The boundary: a stop requested meanwhile takes effect here.
             if run.id in self._stop_requested or (
@@ -391,10 +525,19 @@ class RunEngine:
         attempt = step_run.attempt
         if step_run.state is StepState.FAILED and not step_run.retryable:
             attempt += 1
-        step_run = step_run.to(
-            StepState.ADMITTED, estimate=None, reason=None, retryable=None, attempt=attempt
+        try:
+            demand = await self._demand(run, step, work)
+        except RuleFailed as failure:
+            return await self._failed_before(run, step_run, span, str(failure), None, None)
+        except _StepFailed as failure:
+            return await self._failed_before(
+                run, step_run, span, failure.reason, failure.adapter, failure.retryable
+            )
+        run, step_run, admitted = await self._admit(
+            run, step, step_run, demand, span, retryable=None, attempt=attempt
         )
-        run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
+        if not admitted:
+            return run, step_run
         step_run = step_run.to(StepState.RUNNING, started_at=self._clock.now())
         run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
         trace = Trace()
@@ -465,7 +608,7 @@ class RunEngine:
             run.with_step_run(step_run),
             "step.finished",
             step=step_run,
-            outcome="succeeded",
+            outcome=REHEARSED if trace.rehearsed else "succeeded",
             trace=trace,
         )
         _measured(span, step_run)
@@ -508,6 +651,277 @@ class RunEngine:
         if isinstance(work, LlmWork):
             return await self._llm_step(run, step_run, work, span)
         raise UnsupportedWork(step_run.step_id, f"no evaluator for {type(work).__name__}")
+
+    # --- estimate and admission -----------------------------------------------------------------
+
+    def _line(self, run: Run) -> Limits:
+        """The line the run is held to: its budget less its margin."""
+        return budgeting.held(run.budget, run.margin)
+
+    async def _demand(self, run: Run, step: Step, work: Work) -> _Demand:
+        """What a local step is estimated to use before it runs — or why it cannot be. A step
+        whose adapter is not configured fails here, as it would when called, and its reason
+        says which; a step whose adapter cannot estimate is refused by the caller."""
+        if isinstance(work, WaitWork) and work.until is not None:
+            resolved = await self._connector(step.id, work.until.capability)
+            operation = resolved.declaration.operation(work.until.operation)
+            if operation is None:
+                raise _StepFailed(
+                    reason=str(NoConnector(step.id, work.until.operation)),
+                    retryable=True,
+                    consumption=None,
+                    adapter=resolved.adapter,
+                    outcome="no connector",
+                )
+            if operation.demand is None:
+                return _Demand(None, _undeclared(operation.name), resolved.adapter)
+            calls = int(work.until.timeout_seconds // work.until.poll_seconds) + 1
+            return _Demand(_times(operation.demand.document(), calls), adapter=resolved.adapter)
+        if isinstance(work, ConnectorRule):
+            resolved = await self._connector(step.id, work.capability)
+            operation = resolved.declaration.operation(work.operation)
+            if operation is None:
+                raise _StepFailed(
+                    reason=str(NoConnector(step.id, work.operation)),
+                    retryable=True,
+                    consumption=None,
+                    adapter=resolved.adapter,
+                    outcome="no connector",
+                )
+            if operation.demand is None:
+                return _Demand(None, _undeclared(operation.name), resolved.adapter)
+            return _Demand(_times(operation.demand.document(), 1), adapter=resolved.adapter)
+        if isinstance(work, LlmWork):
+            return await self._llm_demand(run, step, work)
+        return _Demand(NOTHING)
+
+    async def _llm_demand(self, run: Run, step: Step, work: LlmWork) -> _Demand:
+        """Input counted before the call, output bounded by the limit the step sets; money at
+        the price table, with every input token priced as the dearest input kind, because
+        whether it will be read from a cache is not knowable before the call."""
+        resolved = None if self._models is None else await self._models.resolve(work.purpose)
+        if resolved is None:
+            raise _StepFailed(
+                reason=f"no model is configured for the purpose {work.purpose!r} "
+                "(TAKTUS_MODEL_ENDPOINT, TAKTUS_MODEL_NAME)",
+                retryable=True,
+                consumption=None,
+                adapter=None,
+                outcome="no model",
+            )
+        (values,), _ = await self._resolved(run, [work.values])
+        rendered = rules.template(
+            TemplateRule(rule="template", text=work.prompt, values=work.values), values
+        )
+        prompt = Prompt(system=work.system, user=rendered, max_output_tokens=work.max_output_tokens)
+        declaration = resolved.model.calculability()
+        counted = await resolved.model.count(prompt)
+        if counted is None:
+            return _Demand(
+                None,
+                f"{resolved.adapter} cannot count a prompt's input before the call "
+                f"(input_count {declaration.input_count}), so the step has no estimate",
+                resolved.adapter,
+            )
+        demand: dict[str, Any] = {"tokens_in": counted, "tokens_out": work.max_output_tokens}
+        model = resolved.version or ""
+        if re.fullmatch(MODEL_NAME_PATTERN, model):
+            demand["tokens_by_model"] = {
+                model: PriceKinds(input=counted, output=work.max_output_tokens)
+            }
+        table = self._options.prices
+        if run.budget.currency is not None:
+            if table is None or model not in table.prices:
+                return _Demand(
+                    None,
+                    f"the budget limits money and the price table has no price for {model!r}: "
+                    "the step's cost cannot be estimated",
+                    resolved.adapter,
+                )
+            prices = table.prices[model]
+            dearest = max(prices.get("input", 0.0), prices.get("cache_write", 0.0))
+            bound = price(
+                {model: PriceKinds(input=counted, output=work.max_output_tokens)},
+                table.model_copy(update={"prices": {model: {**prices, "input": dearest}}}),
+            )
+            if not bound.complete:
+                return _Demand(
+                    None,
+                    f"the price table prices {model!r} without "
+                    + ", ".join(bound.unpriced)
+                    + ": the step's cost cannot be estimated",
+                    resolved.adapter,
+                )
+            demand["currency"] = {table.currency: bound.amount}
+        return _Demand(ConsumptionQuantities.model_validate(demand), adapter=resolved.adapter)
+
+    async def _admit(
+        self,
+        run: Run,
+        step: Step,
+        step_run: StepRun,
+        demand: _Demand,
+        span: Span,
+        **changes: Any,
+    ) -> tuple[Run, StepRun, bool]:
+        """Reserve the step's demand against what remains of the line the run is held to, or
+        refuse it: for want of an estimate, or because the reservation does not fit. What is
+        reserved is the estimate scaled by the measured error of its adapter; the ledger
+        carries the estimate on `step.admitted` and, where the two differ, the reservation on
+        `step.reserved`."""
+        adapter = demand.adapter or step_run.adapter
+        if demand.quantities is None:
+            span.record_failure("no estimate")
+            step_run = step_run.to(
+                StepState.REJECTED,
+                adapter=adapter,
+                estimate=None,
+                reservation=None,
+                reason="refused, not admitted: " + (demand.why_not or "no estimate"),
+                **changes,
+            )
+            run = await self._commit(
+                run.with_step_run(step_run), "step.rejected", step=step_run, outcome="no_estimate"
+            )
+            return run, step_run, False
+        scale, _ = (
+            ({}, "")
+            if adapter is None
+            else budgeting.scale_for(
+                adapter,
+                step.method,
+                demand.capabilities,
+                self._observed.get(run.id, []),
+                self._options.seeds,
+                self._options.uncalibrated_margin,
+            )
+        )
+        reservation = budgeting.reserve(demand.quantities, scale)
+        line = self._line(run)
+        verdict = admit(reservation, remaining(line, _without(run, step_run.step_id)), line)
+        refused = (
+            await self._platform_refuses(self._options.unit_memory_bytes)
+            if step.method is Method.WORKER and verdict.fits
+            else None
+        )
+        if refused is not None:
+            span.record_failure("rejected by the platform")
+            step_run = step_run.to(
+                StepState.REJECTED,
+                adapter=adapter,
+                estimate=demand.quantities,
+                reservation=reservation,
+                reason=refused,
+                **changes,
+            )
+            run = await self._commit(
+                run.with_step_run(step_run),
+                "step.rejected",
+                step=step_run,
+                outcome="rejected_by_capacity",
+            )
+            return run, step_run, False
+        if not verdict.fits:
+            span.record_failure("rejected by admission control")
+            step_run = step_run.to(
+                StepState.REJECTED,
+                adapter=adapter,
+                estimate=demand.quantities,
+                reservation=reservation,
+                reason="does not fit the remaining budget: " + "; ".join(verdict.findings),
+                **changes,
+            )
+            run = await self._commit(
+                run.with_step_run(step_run),
+                "step.rejected",
+                step=step_run,
+                outcome="rejected_by_admission",
+            )
+            return run, step_run, False
+        step_run = step_run.to(
+            StepState.ADMITTED,
+            adapter=adapter,
+            estimate=demand.quantities,
+            reservation=reservation,
+            reason=None,
+            **changes,
+        )
+        run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
+        if reservation != demand.quantities:
+            run = await self._commit(run, "step.reserved", step=step_run, outcome="calibrated")
+        return run, step_run, True
+
+    async def _platform_refuses(self, memory_bytes: int | None) -> str | None:
+        """Why the platform cannot hold what is about to start, or None: memory for the unit a
+        worker step starts here, and storage above its refusal share for anything at all. What
+        the platform could not observe refuses nothing (docs/architecture/platform.md)."""
+        if self._platform is None:
+            return None
+        verdict = admit_capacity(
+            await self._platform.observe(),
+            CapacityDemand(memory_bytes=memory_bytes),
+            self._options.capacity,
+        )
+        if verdict.fits:
+            return None
+        return "the platform cannot hold it: " + "; ".join(verdict.findings)
+
+    async def _failed_before(
+        self,
+        run: Run,
+        step_run: StepRun,
+        span: Span,
+        reason: str,
+        adapter: str | None,
+        retryable: bool | None,
+    ) -> tuple[Run, StepRun]:
+        """A step that failed while it was being estimated — its adapter is not configured,
+        a reference in its prompt does not resolve — fails at its boundary like one that
+        failed while running; nothing was admitted and nothing started."""
+        span.record_failure("failed before admission")
+        step_run = step_run.to(
+            StepState.FAILED,
+            adapter=adapter,
+            reason=reason,
+            retryable=retryable,
+            finished_at=self._clock.now(),
+        )
+        run = await self._commit(
+            run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+        )
+        return run, step_run
+
+    async def _observations(self, tenant: Tenant) -> list[budgeting.Observation]:
+        """Every pair of estimate and actual in the tenant's ledger, oldest first: a step's
+        `step.admitted` and the `step.finished` of the same step after it. The calibration
+        is a statistic over these, and so reproducible from the ledger (ADR-0005 §4)."""
+        estimates: dict[tuple[str, str], Consumption] = {}
+        observed: list[budgeting.Observation] = []
+        async with self._work.transaction(tenant):
+            entries = await self._ledger.entries(tenant)
+        for entry in entries:
+            run_id, step_id = entry.refs.run_id, entry.refs.step_id
+            if run_id is None or step_id is None or entry.rehearsal:
+                continue  # a rehearsal replays recorded answers: it measures no adapter
+            if entry.kind == "step.admitted" and entry.consumption is not None:
+                estimates[(run_id, step_id)] = entry.consumption
+            elif entry.kind == "step.finished" and entry.outcome == "stopped":
+                # A stopped step used part of what it was estimated for: its partial actual
+                # against its whole estimate would read as an overestimate. It measures nothing.
+                estimates.pop((run_id, step_id), None)
+            elif entry.kind == "step.finished" and entry.consumption is not None:
+                estimate = estimates.pop((run_id, step_id), None)
+                if estimate is None or entry.adapter is None or entry.method is None:
+                    continue
+                observed.append(
+                    budgeting.Observation(
+                        adapter=entry.adapter,
+                        method=entry.method,
+                        estimate=estimate,
+                        actual=entry.consumption,
+                    )
+                )
+        return observed
 
     # --- llm steps ------------------------------------------------------------------------------
 
@@ -553,7 +967,13 @@ class RunEngine:
                 adapter=resolved.adapter,
                 outcome="model unavailable",
             ) from error
-        consumption = Consumption(tokens_in=completion.tokens_in, tokens_out=completion.tokens_out)
+        consumption = Consumption(
+            tokens_in=completion.tokens_in,
+            tokens_out=completion.tokens_out,
+            tokens_by_model=None
+            if completion.by_kind is None or not re.fullmatch(MODEL_NAME_PATTERN, completion.model)
+            else {completion.model: completion.by_kind},
+        )
         if completion.finish == "length":
             raise _StepFailed(
                 reason=f"the model stopped at the output limit of {work.max_output_tokens} "
@@ -616,15 +1036,74 @@ class RunEngine:
                 outcome="no connector",
             )
         (input,), read = await self._resolved(run, [work.input])
+        if work.expect and operation.outward:
+            raise UnsupportedWork(
+                step_run.step_id, "only a reading carries an expectation; a write acts once"
+            )
         span.set_attribute("adapter", resolved.adapter)
+        if run.rehearsal and operation.outward:
+            return await self._rehearsed(run, resolved, operation, read)
         result = await self._call(run, step_run, resolved, operation, input, work.credentials, span)
         document = result.document()
+        unmet = [why for e in work.expect if (why := rules.unmet(e, document["output"]))]
+        if unmet:
+            # The reading fails its own step, so that a resume reads again: the state outside
+            # may be what was expected by then (issue #31).
+            raise _StepFailed(
+                reason=f"{operation.name} did not show what the step expects: "
+                + "; ".join(unmet)
+                + ". A resume reads it again",
+                retryable=True,
+                consumption=result.consumption,
+                adapter=resolved.adapter,
+                outcome="reading not as expected",
+            )
         inputs = list(read)
         if not operation.outward:
             inputs.append(self._source(operation, input, document["output"]))
         egress = result.effect if operation.outward else None
         trace = Trace(inputs=tuple(inputs), adapter_version=resolved.version, egress=egress)
         return document, trace, result.consumption, resolved.adapter
+
+    # --- rehearsal (ADR-0030) ------------------------------------------------------------------
+
+    async def _rehearsed(
+        self,
+        run: Run,
+        resolved: ResolvedConnector,
+        operation: Operation,
+        read: tuple[ProvenanceInput, ...],
+    ) -> tuple[Any, Trace, Consumption | None, str]:
+        """An outward operation in a rehearsal: nothing is sent. The step answers with the
+        recorded response of the most recent real call of the operation through the adapter,
+        reads it as that run's result, and consumes nothing. Without a recording the step
+        fails: the process cannot be rehearsed past it."""
+        found = await self._recordings.response(run.tenant, resolved.adapter, operation.name)
+        if found is None:
+            raise _StepFailed(
+                reason=f"rehearsal: no recorded response for {operation.name} through "
+                f"{resolved.adapter} — it has never been called for real on this instance",
+                retryable=False,
+                consumption=None,
+                adapter=resolved.adapter,
+                outcome="no recording",
+            )
+        recording, document = found
+        recorded = ProvenanceInput(
+            kind=InputKind.RESULT,
+            run_id=recording.run_id,
+            step_id=recording.step_id,
+            digest=recording.digest,
+            observed_at=self._clock.now(),
+        )
+        replayed = {
+            **document,
+            "rehearsed_from": {"run_id": recording.run_id, "step_id": recording.step_id},
+        }
+        trace = Trace(inputs=(*read, recorded), adapter_version=resolved.version, rehearsed=True)
+        return replayed, trace, None, resolved.adapter
+
+    # --- end of rehearsal ----------------------------------------------------------------------
 
     async def _call(
         self,
@@ -822,7 +1301,7 @@ class RunEngine:
         adapter, worker = resolved.adapter, resolved.worker
         span.set_attribute("adapter", adapter)
         resuming = step_run.checkpoint if step_run.state is StepState.STOPPED else None
-        left = remaining(run.budget, run.consumed())
+        left = remaining(self._line(run), run.consumed())
         (inputs,), read = await self._resolved(run, [work.task.inputs])
         trace = Trace(inputs=read, adapter_version=resolved.version)
         assignment = Assignment(
@@ -861,24 +1340,28 @@ class RunEngine:
         demand = ConsumptionQuantities.model_validate(
             {**estimate.quantities(), "resource_class": estimate.resource_class}
         )
-        admission = admit(demand, left, run.budget)
-        if not admission.fits:
-            span.record_failure("rejected by admission control")
-            step_run = step_run.to(
-                StepState.REJECTED,
-                adapter=adapter,
-                estimate=demand,
-                reason="does not fit the remaining budget: " + "; ".join(admission.findings),
-            )
-            run = await self._commit(
-                run.with_step_run(step_run),
-                "step.rejected",
-                step=step_run,
-                outcome="rejected_by_admission",
-            )
+        run, step_run, admitted = await self._admit(
+            run,
+            step,
+            step_run,
+            _Demand(demand, adapter=adapter, capabilities=tuple(step.required_capabilities)),
+            span,
+        )
+        if not admitted:
             return run, step_run
-        step_run = step_run.to(StepState.ADMITTED, adapter=adapter, estimate=demand, reason=None)
-        run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
+        # The worker's ceiling is what was reserved for it with its share of the margin, never
+        # more than what is left of the whole budget: it halts at its next boundary before its
+        # running total would cross it (W-14).
+        reservation = step_run.reservation or demand
+        assignment = assignment.model_copy(
+            update={
+                "limits": budgeting.ceiling(
+                    budgeting.grow(reservation, run.margin),
+                    remaining(run.budget, _without(run, step_run.step_id)),
+                    run.budget,
+                )
+            }
+        )
 
         # 3: run.
         call["assignment.id"] = assignment.assignment_id
@@ -1008,6 +1491,8 @@ class RunEngine:
         now = self._clock.now()
         consumption = _consumption(used)
         if finished.outcome is Outcome.STOPPED:
+            if finished.limit is not None:
+                self._limit_halts.add(run.id)
             ref = finished.checkpoint_ref or checkpoint_ref
             checkpoint = (
                 None
@@ -1024,7 +1509,13 @@ class RunEngine:
                 artifacts=tuple(artifacts),
                 consumption=consumption,
                 checkpoint=checkpoint,
-                reason=finished.reason or "stopped at the worker's step boundary",
+                reason=finished.reason
+                or (
+                    "stopped at the worker's step boundary"
+                    if finished.limit is None
+                    else f"the worker halted at its boundary before crossing its {finished.limit} "
+                    "ceiling (W-14)"
+                ),
                 finished_at=now,
             )
             outcome = "stopped"
@@ -1200,6 +1691,7 @@ class RunEngine:
                 consumption=consumption,
                 outcome=outcome,
                 content_digest=digest,
+                rehearsal=True if run.rehearsal else None,  # ADR-0030
             ),
         )
 
@@ -1220,6 +1712,39 @@ def _digest(content: bytes) -> str:
     return "sha256:" + hashlib.sha256(content).hexdigest()
 
 
+def _canonical(document: Any) -> bytes:
+    return json.dumps(document, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+
+def _undeclared(operation: str) -> str:
+    return (
+        f"the operation {operation} declares no demand, so a call to it has no estimate; its "
+        "connector must declare what one call consumes (contracts/connector/v1, Demand)"
+    )
+
+
+def _times(demand: Mapping[str, Any], calls: int) -> ConsumptionQuantities:
+    """A declared demand for `calls` calls."""
+    quantities: dict[str, Any] = {}
+    for name, value in demand.items():
+        if name == "currency":
+            quantities[name] = {code: amount * calls for code, amount in value.items()}
+        else:
+            quantities[name] = value * calls
+    if "compute_seconds" in quantities:
+        quantities["resource_class"] = "connector"
+    return ConsumptionQuantities.model_validate(quantities)
+
+
+def _without(run: Run, step_id: StepId) -> ConsumptionQuantities:
+    """What the run has used and reserved, the given step's own earlier use included but not
+    its reservation: the step is being admitted again, and its old reservation is replaced."""
+    for step_run in run.step_runs:
+        if step_run.step_id == step_id and step_run.reservation is not None:
+            return run.with_step_run(step_run.model_copy(update={"reservation": None})).consumed()
+    return run.consumed()
+
+
 def _measured(span: Span, step_run: StepRun) -> None:
     """What the step used, as span attributes: quantities and their class, never content."""
     span.set_attribute("step.state", step_run.state)
@@ -1227,6 +1752,8 @@ def _measured(span: Span, step_run: StepRun) -> None:
     if consumption is None:
         return
     for name, value in consumption.quantities().items():
+        if name == "tokens_by_model":
+            continue  # model names are configuration, and the totals are already attributes
         if name == "currency" and isinstance(value, dict):
             for code, amount in value.items():
                 span.set_attribute(f"consumption.currency.{code}", float(amount))
@@ -1238,7 +1765,9 @@ def _measured(span: Span, step_run: StepRun) -> None:
 
 def _accumulate(used: dict[str, Any], event: ConsumptionQuantities) -> None:
     for name, value in event.quantities().items():
-        if name == "currency" and isinstance(value, dict):
+        if name == "tokens_by_model":
+            used[name] = add_tokens_by_model(used.get(name), value)
+        elif name == "currency" and isinstance(value, dict):
             totals: dict[str, float] = used.setdefault("currency", {})
             for code, amount in value.items():
                 totals[code] = totals.get(code, 0.0) + amount

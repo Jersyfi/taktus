@@ -7,11 +7,16 @@ from taktus.shared.v1.autonomy_level import AutonomyLevel
 from taktus.shared.v1.capability import Capability, CapabilityPattern
 from taktus.shared.v1.command import Command, Intent, ReplyTo
 from taktus.shared.v1.consumption import (
+    PRICE_KINDS,
     QUANTITIES,
     Consumption,
     ConsumptionQuantities,
     CurrencyAmounts,
+    ModelName,
+    PriceKinds,
     ResourceClass,
+    TokensByModel,
+    add_tokens_by_model,
 )
 from taktus.shared.v1.decision_request import (
     AnswerInterpreted,
@@ -42,6 +47,7 @@ __all__ = [
     "EXACT_ADMISSIBLE",
     "NON_PRODUCING",
     "PINNED",
+    "PRICE_KINDS",
     "PRODUCING",
     "QUANTITIES",
     "VARIABLE",
@@ -74,9 +80,11 @@ __all__ = [
     "LedgerEntry",
     "LedgerRefs",
     "Method",
+    "ModelName",
     "Plan",
     "PlanResult",
     "PlanStatus",
+    "PriceKinds",
     "Provenance",
     "ProvenanceInput",
     "RaisedBy",
@@ -85,5 +93,7 @@ __all__ = [
     "ResourceClass",
     "Step",
     "StepId",
+    "TokensByModel",
     "Value",
+    "add_tokens_by_model",
 ]

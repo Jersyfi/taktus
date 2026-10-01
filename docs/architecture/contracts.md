@@ -104,13 +104,22 @@ is why it is the basis and why no vendor's own extensions are used.
 | **Say why it stopped** — the end of the answer, or the output limit | an answer cut off at the limit does not leave the step |
 | **Take a bearer credential at the call, or none** | a local endpoint needs none; a vendor's key is a parameter (`CREDENTIALS.md`) |
 
-The contract as a schema and a conformance suite (`contracts/model/v1`) is not yet written;
-the core's side exists as the model port (`src/taktus/ports/model.py`) and its one adapter
-(`adapters/driven/models/openai_compatible/`), configured by `TAKTUS_MODEL_ENDPOINT`,
-`TAKTUS_MODEL_NAME` and `TAKTUS_MODEL_PURPOSES` — one model, for the purposes it is named for
-or for all — and recorded in the ledger as `model.endpoint`. A process names a *purpose*
-(`reasoning`, `triage`), never a product (ADR-0003). `tests/adapters/models` proves the adapter
-against a fake of the endpoint; the run's `llm` step is `components/run` (`examples/README.md`).
+| **Declare what it can compute before a call** — how it counts input, whether its output limit is hard, which price kinds it reports, how its provider bills | a budget is only as strong as the provider permits; the run derives from the declaration what it can promise and says so when the budget is set (ADR-0005, third amendment) |
+| **Report the tokens by price kind** where the provider does — uncached input, cache read, cache write, output | money is computed from the record at a versioned price table (ADR-0010) |
+
+The contract is a schema with a conformance suite (`contracts/model/v1`): the declaration
+(`Calculability`), the usage of one call, the price table, and the checks M-01 to M-04 —
+`uv run taktusctl conformance run --contract model/v1`. The core's side is the model port
+(`src/taktus/ports/model.py`) and its one adapter (`adapters/driven/models/openai_compatible/`),
+configured by `TAKTUS_MODEL_ENDPOINT`, `TAKTUS_MODEL_NAME` and `TAKTUS_MODEL_PURPOSES` — one model,
+for the purposes it is named for or for all — and by `TAKTUS_MODEL_BILLING`,
+`TAKTUS_MODEL_OUTPUT_CAP` and `TAKTUS_MODEL_PROVIDER_LIMIT`, what its provider permits; it is
+recorded in the ledger as `model.endpoint`. Over the dialect it counts input as an upper bound
+(the contract's §3). A process names a *purpose* (`reasoning`, `triage`), never a product
+(ADR-0003). `tests/adapters/models` proves the adapter against a fake of the endpoint, and
+`tests/conformance/test_model_v1.py` the suite against the same fake, honest and faulty; the
+run's `llm` step is `components/run` (`examples/README.md`). The evidence of what providers
+permit is `docs/research/2026-09-30-what-providers-allow.md`.
 
 ### 2.4 The execution port
 
@@ -124,7 +133,7 @@ so that a resumed assignment finds them in a new unit.
 | `TAKTUS_EXECUTION` | Isolation | Adapter | For |
 |---|---|---|---|
 | `endpoint` | whoever runs the worker | `adapters/driven/workers/http/` | a worker that is already running, at `TAKTUS_WORKER`; the default |
-| `process` | none | `adapters/driven/execution/process.py` | local development, a single user. **Refused from autonomy level 3 upwards, and when the level is unknown** — the rule is `ports/execution.py:refusal()`, and `tests/governance` holds the adapter to it |
+| `process` | none | `adapters/driven/execution/process.py` | local development, a single user. **Refused from autonomy level 3 upwards, and when the level is unknown** — the rule is `ports/execution.py:refusal()`, and `tests/governance` holds the adapter to it. The unit's memory limit is enforced on Linux (`RLIMIT_DATA`, per process) and refused elsewhere unless `TAKTUS_EXECUTION_MEMORY_UNENFORCED=true` accepts it unenforced (`docs/architecture/platform.md` §5) |
 | `container` | process, filesystem, network | `adapters/driven/execution/container/` | operation. One container per job with limits, credentials in memory only, and a network that reaches `frame.allowed_hosts` and nothing else |
 | cluster | pod with quota and network policy | next pull request | the same shape with a pod instead of two containers; the port does not change |
 
@@ -147,12 +156,17 @@ the unit's environment and refuses a credential injected as a file: without a fi
 its own, a job has nowhere to keep one. The `container` adapter starts the unit's container
 behind a launcher it places there, writes each value into a memory-backed directory after
 the container has started, and the launcher exports the environment kind and removes the
-files before it becomes the unit: no value is on a volume, in an image layer, in the
-container's recorded configuration, on a command line, or in a log.
+files before it starts the unit: no value is on a volume, in an image layer, in the
+container's recorded configuration, on a command line, or in a log. The launcher stays in front
+of the unit as its parent, forwards signals to it, and after the unit died reads the kernel's
+own count of out-of-memory kills in the unit's cgroup. The engine's flag for such a kill comes
+from a separate event that may arrive late or never, so the adapter classifies a memory kill
+from either record (issue #29).
 
 **The container adapter's wall**, per job: a container from the unit's image with no
 capability, no privilege escalation, a process limit, a memory limit without swap and a CPU
-limit — the engine kills on memory, the adapter on the wall clock; a network of its own,
+limit — the engine kills on memory, the adapter on the wall clock; an engine that reports it
+cannot limit memory or swap is refused before anything is created; a network of its own,
 internal, whose only other member is the job's *egress container*, which forwards the unit's
 port inward so the control plane can reach it and is an HTTP proxy outward that admits
 exactly `frame.allowed_hosts` and answers 403 to every other host, an empty list reaching
@@ -190,18 +204,25 @@ Without it, "interchangeable" is an assertion.
 
 The suite lives in `src/taktus/conformance/` and imports nothing from the control plane; it talks
 to a worker over HTTP and SSE, and to a connector over MCP, as a foreign control plane would. It
-runs W-01 to W-11 and W-13 against a live worker and C-01 to C-09 against a live connector, and reports
+runs W-01 to W-11, W-13 and W-14 against a live worker and C-01 to C-09 against a live connector, and reports
 W-12 and C-10, the removal test, as *pending*: a suite that talks to one adapter cannot remove
 it from processes. Its report states which half of *verified* it proves.
 
 **The removal test is a process, not a suite check.** `blueprints/self-operation/processes/
 S-01-removal-test.yaml` runs weekly, once per configured integration: it withholds the
-integration, exercises the registered processes that use it — run twice, with and without,
-where running cannot leave the system; resolved statically otherwise — restores it, and records
-one of three verdicts in the ledger as `removal.tested` and in the adapter's maturity record
-(`components/catalog`, table `adapter_maturity`). *Broke*: a step lost its only adapter and no
-person takes it over. *Changed*: another adapter or a person serves the step; quality and cost
-changed. *Exception*: the integration cannot be removed by design — the database, ADR-0002.
+integration, exercises the registered processes that use it, restores it, and records one of
+four verdicts in the ledger as `removal.tested` and in the adapter's maturity record
+(`components/catalog`, table `adapter_maturity`). A process is exercised by **rehearsing** it
+twice, with and without the integration (ADR-0030): a rehearsal run sends no outward connector
+call, answers each with the recorded response of the operation's last real call through the
+same adapter, and marks every ledger entry `rehearsal: true`. A process whose outward
+operation was never called for real, or whose worker may reach hosts, is resolved statically
+instead, and the finding says why. *Broke*: a step lost its only adapter and no person takes it
+over. *Changed*: another adapter or a person serves the step; quality and cost changed.
+*Untested*: no registered process uses the integration, so nothing was exercised; it does not
+count towards *verified*. *Exception*: the integration cannot be removed by design — the
+database, ADR-0002. Every result names the configuration it was taken under: the adapter that
+served the identifier, what it declared and its version.
 The maturity record derives *verified* from both halves and names which is missing; nothing
 records the conformance half yet, so no adapter is *verified* through it today. The blueprint's
 README carries the same test as instructions a person follows by hand, and the record of the
@@ -216,7 +237,7 @@ every fault either reference adapter can inject the suite fails on exactly that 
 
 Before the suite runs against an adapter, `make gate-contracts` checks the contract itself: every
 schema is valid and carries the `$id` its path prescribes, every example validates, and every check
-W-01..W-13 and C-01..C-10 has a fixture (`tools/validate_contracts.py`).
+W-01..W-14 and C-01..C-10 has a fixture (`tools/validate_contracts.py`).
 
 Every schema is identified by `https://taktus.eu/contracts/<family>/v1/<Concept>.json` — its path
 under `contracts/` behind the project's domain. A released v1 schema is immutable; changes become
@@ -235,11 +256,12 @@ example, not a requirement. The core runs with all of them removed — it simply
 | Worker | `mlbench` | training, evaluation, embeddings, classical ML. The second proof case: hours of runtime, a GPU held, a model artifact returned. |
 | Worker | `claudecode` | the first real coding worker. Exists (`workers/claudecode/`), passes the suite in both authentication modes, faults included, against a stand-in for its agent; a live run needs a credential the operator supplies |
 | Worker | `codex` | the second real coding worker; validates the contract against a second vendor |
-| Connector | `github` | repository: issues, pull requests, pipelines, comments, branches, labels — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector against the fake and, with a credential, against the real service (`tests/adapters/connectors/test_repository_live.py`). Reached by the daemon's webhook intake and by the run's connector steps. A branch it writes
+| Connector | `github` | repository: issues, pull requests, pipelines, comments, branches, labels, and one file read at a ref — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector against the fake and, with a credential, against the real service (`tests/adapters/connectors/test_repository_live.py`). Reached by the daemon's webhook intake and by the run's connector steps. A branch it writes
 keeps the mode each file has in the base — an executable a change touches stays executable —
-read from the base tree before the new tree is written (DEC-0020); a file the base does not
-have is written as a plain file, because nothing in the operation's input or in the worker's
-changeset can say otherwise |
+read from the base tree before the new tree is written (DEC-0020). A file entry may carry
+`executable`, and the coding worker's changeset sets it on every file its index records as
+executable, so a script a change adds arrives executable too; a file the base does not have
+and that carries no flag is written as a plain file (issue #28) |
 | Connector | `chat` | both a command channel and a delivery channel |
 | Connector | `http` | the generic fallback for anything with a documented API |
 | Model | `openai_compatible` | covers Ollama, vLLM and most vendors. Exists (`src/taktus/adapters/driven/models/openai_compatible/`), proven against a fake of the endpoint; the one model `llm` steps ask |

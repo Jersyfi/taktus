@@ -1,0 +1,8 @@
+{
+  "contract": "model/v1",
+  "input_count": "none",
+  "output_cap": "none",
+  "usage_kinds": ["input", "output"],
+  "billing": "per_window",
+  "provider_limit": "hard"
+}

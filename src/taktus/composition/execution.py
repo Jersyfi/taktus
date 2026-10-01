@@ -44,7 +44,13 @@ def model_pool(settings: ModelSettings, *, timeout: float = 120.0) -> StaticMode
     if settings.endpoint is None:
         return StaticModelPool()
     model = OpenAiCompatibleModel(
-        settings.endpoint, settings.name, credential=settings.credential, timeout=timeout
+        settings.endpoint,
+        settings.name,
+        credential=settings.credential,
+        timeout=timeout,
+        billing=settings.billing,  # type: ignore[arg-type]  # validated by load_model
+        output_cap=settings.output_cap,  # type: ignore[arg-type]
+        provider_limit=settings.provider_limit,  # type: ignore[arg-type]
     )
     return StaticModelPool([(MODEL_ADAPTER, settings.purposes, model, settings.name)])
 
@@ -90,11 +96,22 @@ def unit_of(settings: ExecutionSettings) -> ExecutionUnit:
     )
 
 
+def memory_demand(settings: ExecutionSettings) -> int | None:
+    """The memory a worker step's unit takes on this platform — its limit, which every
+    launched unit carries — or None for a worker reached by endpoint, which runs elsewhere.
+    What admission against the platform asks for (`run/domain/service/capacity.py`)."""
+    if settings.kind is ExecutionKind.ENDPOINT:
+        return None
+    return unit_of(settings).limits.memory_bytes
+
+
 def execution_of(
     settings: ExecutionSettings, configuration: Configuration, *, state_dir: Path
 ) -> Execution:
     if settings.kind is ExecutionKind.PROCESS:
-        return ProcessExecution(configuration, state_dir=state_dir)
+        return ProcessExecution(
+            configuration, state_dir=state_dir, memory_unenforced=settings.memory_unenforced
+        )
     return ContainerExecution(
         configuration,
         socket=settings.engine_socket,

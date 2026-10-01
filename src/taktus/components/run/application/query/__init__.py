@@ -5,5 +5,6 @@ from taktus.components.run.application.query.provenance import (
     ProvenanceOfRun,
     ProvenanceQuery,
 )
+from taktus.components.run.application.query.recordings import RecordedResponses
 
-__all__ = ["ChainOf", "ProvenanceOfRun", "ProvenanceQuery"]
+__all__ = ["ChainOf", "ProvenanceOfRun", "ProvenanceQuery", "RecordedResponses"]

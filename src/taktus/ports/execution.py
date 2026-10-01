@@ -47,8 +47,11 @@ class Isolation(StrEnum):
 
 
 class ResourceLimits(Value):
-    """What one job may use of the machine. The adapter kills a job that exceeds them; the
-    `process` adapter can enforce the wall clock only and says so."""
+    """What one job may use of the machine. Every unit carries all three, and an adapter
+    enforces each or refuses the job: a limit nothing enforces reads as a guarantee and is
+    none. The `container` adapter enforces all three, memory without swap; the `process`
+    adapter enforces the wall clock, and memory on Linux only — elsewhere it refuses the job
+    unless the operator accepted an unenforced limit (docs/architecture/platform.md §5)."""
 
     cpus: float = Field(gt=0)
     memory_bytes: int = Field(gt=0)

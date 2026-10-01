@@ -105,7 +105,7 @@ async def test_a_run_completes_and_the_ledger_verifies(
         verify = run.step_run("verify-answer")
         assert verify.checkpoint is not None and verify.checkpoint.result_digest is not None
         entries = await entries_of(services, run.id)
-        assert [e.kind for e in entries][:2] == ["run.created", "run.started"]
+        assert [e.kind for e in entries][:3] == ["run.created", "budget.set", "run.started"]
         assert [e.kind for e in entries][-1] == "run.finished"
         assert sum(1 for e in entries if e.kind == "step.finished") == 4
         started = next(
@@ -172,7 +172,7 @@ async def test_a_worker_step_stopped_mid_way_resumes_from_its_checkpoint_without
         run = await services.engine.resume(
             ResumeRun(run_id=run.id, actor="idn_test", tenant=TENANT)
         )
-        assert run.state is RunState.FINISHED
+        assert run.state is RunState.FINISHED, (run.cause, run.reason)
         resumed = run.step_run("compute")
         ids = [a.id for a in resumed.artifacts]
         assert ids == ["output-1", "output-2", "output-3", "output-4"]
@@ -209,7 +209,7 @@ async def test_a_step_is_rejected_by_admission_control_before_it_starts(
                 ),
             )
         )
-        assert run.state is RunState.FINISHED
+        assert run.state is RunState.FINISHED, (run.cause, run.reason)
         assert run.step_run("overreach").state is StepState.SUCCEEDED
         assert await verifies(services)
 
@@ -309,3 +309,23 @@ def test_nothing_executes_without_an_identity(
     assert "TAKTUS_PROVISIONAL_IDENTITY=default=<identity>" in completed.stderr
     assert "--identity" in completed.stderr
     assert not (tmp_path / "state" / "ledger.json").exists()
+
+
+async def test_what_a_run_cost_is_read_back_from_the_ledger(
+    worker_endpoint: str, tmp_path: Path
+) -> None:
+    from taktus.adapters.driving.cli.cost_command import render
+    from taktus.components.accounting.application.service import CostOfRun
+
+    async with LocalWiring().services(
+        state_dir=tmp_path / "state", worker_endpoint=worker_endpoint
+    ) as services:
+        run = await start(services, bundle())
+        assert services.cost is not None
+        cost = await services.cost.execute(CostOfRun(run.id, TENANT))
+    assert cost.meter.steps["worker"] == 1 and cost.meter.compute_seconds["cpu.small"] > 0
+    assert cost.priced is None and cost.unpriced == (), (
+        "no tokens: nothing to price, nothing hidden"
+    )
+    shown = render(cost)
+    assert shown.startswith(f"run      {run.id}") and "compute  " in shown

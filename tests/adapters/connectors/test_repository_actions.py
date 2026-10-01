@@ -449,6 +449,120 @@ async def test_a_changed_file_keeps_the_mode_it_had(service: Service) -> None:
     assert modes["docs/note.md"] == "100644", "a new file is a plain file"
 
 
+@pytest.mark.usefixtures("credentials")
+async def test_a_new_file_marked_executable_arrives_executable(service: Service) -> None:
+    """A file the base does not have arrives executable when its entry says so (issue #28).
+
+    Without the flag the connector has nothing to go by for a new path and writes a plain
+    file: a script a change adds would fail with `Permission denied` the first time anything
+    ran it — DEC-0020's failure, one case further out. The flag wins over the base, both
+    ways; a file without it keeps the base's mode as before.
+    """
+    base = _base_with_executable(service, "tools/script.sh")
+    error, result = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("new-modes", "run_01:new-modes:1-0123456789"),
+        {
+            "name": "taktus/new-modes",
+            "base": base,
+            "message": "add a script",
+            "files": [
+                {"path": "tools/new.sh", "content": "#!/bin/sh\n", "executable": True},
+                {"path": "tools/script.sh", "content": "plain now\n", "executable": False},
+                {"path": "docs/new.md", "content": "# New\n"},
+            ],
+        },
+    )
+    assert not error, result
+    modes = _tree_modes(service, str(result["output"]["sha"]))
+    assert modes["tools/new.sh"] == "100755", "a new executable is executable"
+    assert modes["tools/script.sh"] == "100644", "the flag wins over the base"
+    assert modes["docs/new.md"] == "100644", "a new file without the flag is a plain file"
+
+    error, refused = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("new-modes", "run_01:new-modes:2-0123456789"),
+        {
+            "name": "taktus/bad-flag",
+            "base": "main",
+            "files": [{"path": "a.sh", "content": "", "executable": "yes"}],
+        },
+    )
+    assert error
+    assert refused["cause"] == "invalid"
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_a_file_is_read_at_a_ref_and_names_the_commit_it_was_read_at(
+    service: Service,
+) -> None:
+    """`repository.files.read` (issue #34): what a branch carries, byte for byte, with the
+    commit the branch pointed at — so that the provenance of a step that read it says which
+    version it read. A read is a read: no record, no replay."""
+    connector = Connector(config(service))
+    key = "run_01:read-file:1-0123456789"
+    error, branch = await call(
+        connector,
+        "repository.branches.create",
+        context("b", "run_01:files:1-0123456789"),
+        {
+            "name": "taktus/files",
+            "base": "main",
+            "files": [
+                {"path": "docs/note.md", "content": "# Note\n\nsecond line\n"},
+                {"path": "bin/blob", "content": "AAEC/w==", "encoding": "base64"},
+            ],
+        },
+    )
+    assert not error, branch
+    error, text = await call(
+        connector,
+        "repository.files.read",
+        context("read-file", key),
+        {"path": "docs/note.md", "ref": "taktus/files"},
+    )
+    assert not error, text
+    assert text["effect"] == {"kind": "read"}
+    assert text["output"]["content"] == "# Note\n\nsecond line\n"
+    assert text["output"]["encoding"] == "utf-8"
+    assert text["output"]["commit"] == branch["output"]["sha"]
+    assert text["output"]["ref"] == "taktus/files"
+    assert text["output"]["size"] == len(b"# Note\n\nsecond line\n")
+    assert text["consumption"]["quota_units"] == 2  # the ref, then the file
+
+    error, binary = await call(
+        connector,
+        "repository.files.read",
+        context("read-file", key),
+        {"path": "bin/blob", "ref": branch["output"]["sha"]},
+    )
+    assert not error, binary
+    assert binary["output"] == {
+        "path": "bin/blob",
+        "ref": branch["output"]["sha"],
+        "commit": branch["output"]["sha"],
+        "sha": binary["output"]["sha"],
+        "size": 4,
+        "content": "AAEC/w==",
+        "encoding": "base64",
+    }
+    assert binary["consumption"]["quota_units"] == 1, "a commit needs no resolving"
+
+    for input, cause in [
+        ({"path": "docs/missing.md", "ref": "taktus/files"}, "not_found"),
+        ({"path": "docs/note.md", "ref": "taktus/nowhere"}, "not_found"),
+        ({"path": "docs", "ref": "taktus/files"}, "invalid"),
+        ({"path": "../outside", "ref": "main"}, "invalid"),
+        ({"path": "docs/note.md"}, "invalid"),
+    ]:
+        error, refused = await call(connector, "repository.files.read", context("r", key), input)
+        assert error, input
+        assert refused["cause"] == cause, (input, refused)
+        assert refused["effect"] == "none"
+
+
 def _base_with_executable(service: Service, path: str) -> str:
     """A branch of the fake service whose tree carries `path` as an executable file, built
     through the service's own object interface, so that the connector has a real base to

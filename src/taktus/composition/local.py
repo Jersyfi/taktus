@@ -37,6 +37,7 @@ from taktus.adapters.driven.memory import (
     MemoryRepository,
 )
 from taktus.adapters.driven.models.pool import StaticModelPool
+from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresPersistence,
@@ -48,7 +49,8 @@ from taktus.adapters.driven.postgres import (
 )
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
-from taktus.adapters.driving.cli.wiring import NotOperable, Services
+from taktus.adapters.driving.cli.wiring import CapacityServices, NotOperable, Services
+from taktus.components.accounting.application.service import CostOfRunHandler
 from taktus.components.catalog.application.service import RecordRemovalResultHandler
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
@@ -57,23 +59,34 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.domain.model import ProcessVersion
-from taktus.components.run.application.query import ProvenanceQuery
-from taktus.components.run.application.service import RunEngine
+from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
+from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
-from taktus.composition.execution import connector_pool, model_pool, open_worker, telemetry_of
+from taktus.composition.capacity import capacity_report, rules_of
+from taktus.composition.execution import (
+    connector_pool,
+    memory_demand,
+    model_pool,
+    open_worker,
+    telemetry_of,
+)
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.settings import (
+    load_budget,
+    load_capacity,
     load_connectors,
     load_execution,
     load_model,
     load_provisional_identity,
     load_telemetry,
+    load_tenants,
 )
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
     LedgerStore,
     ProvenanceStore,
     Repository,
+    StateSize,
     Stored,
     UnitOfWork,
 )
@@ -95,6 +108,9 @@ class Stores:
     provenance_store: ProvenanceStore
     storage: str
     queue: Queue | None = None
+    size: StateSize | None = None
+    """The database, which reports its own size; None when the state is files under the state
+    directory, which the platform measures."""
 
 
 class LocalWiring:
@@ -110,6 +126,9 @@ class LocalWiring:
             telemetry = telemetry_of(load_telemetry(self._configuration))
             connectors = load_connectors(self._configuration)
             model = load_model(self._configuration)
+            budget = load_budget(self._configuration)
+            capacity = load_capacity(self._configuration)
+            prices = budget.table()
             operators = load_provisional_identity(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
@@ -121,6 +140,8 @@ class LocalWiring:
         ):
             runs = stores.of(Run)
             ledger = ChainedLedger(stores.ledger_store, clock)
+            objects = MemoryObjectStore(state_dir / "objects")
+            recordings = RecordedResponses(runs, stores.work, objects)
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
@@ -136,7 +157,7 @@ class LocalWiring:
                 return RunEngine(
                     runs=runs,
                     work=stores.work,
-                    objects=MemoryObjectStore(state_dir / "objects"),
+                    objects=objects,
                     ledger=ledger,
                     provenance=stores.provenance_store,
                     workers=workers,
@@ -146,6 +167,15 @@ class LocalWiring:
                     queue=stores.queue,
                     connectors=connectors,
                     models=models,
+                    options=EngineOptions(
+                        prices=prices,
+                        margin=budget.margin,
+                        uncalibrated_margin=budget.uncalibrated_margin,
+                        capacity=rules_of(capacity),
+                        unit_memory_bytes=memory_demand(execution),
+                    ),
+                    platform=HostPlatform(clock, state_dir=state_dir),
+                    recordings=recordings,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -162,6 +192,7 @@ class LocalWiring:
                     record=RecordRemovalResultHandler(
                         stores.of(AdapterMaturity), stores.work, ledger, clock
                     ),
+                    recordings=recordings,
                     clock=clock,
                     ids=ids,
                 )
@@ -180,11 +211,38 @@ class LocalWiring:
                 ids=ids,
                 storage=stores.storage,
                 queued=stores.queue is not None,
+                cost=CostOfRunHandler(
+                    ledger, MemoryObjectStore(state_dir / "objects"), stores.work
+                ),
                 # PROVISIONAL (DEC-0013): the configured operator identity, until the identity
                 # component exists. None when nothing is configured.
                 identities=ProvisionalOperatorIdentity(operators) if operators else None,
             )
             telemetry.shutdown()
+
+    @asynccontextmanager
+    async def capacity(self, *, state_dir: Path) -> AsyncIterator[CapacityServices]:
+        try:
+            settings = load_capacity(self._configuration)
+            tenants = load_tenants(self._configuration)
+            execution = load_execution(self._configuration)
+        except ConfigurationError as error:
+            raise NotOperable(str(error)) from error
+        clock = SystemClock()
+        async with self._stores(state_dir) as stores:
+            yield CapacityServices(
+                report=capacity_report(
+                    settings,
+                    clock=clock,
+                    state_dir=state_dir,
+                    ledger_store=stores.ledger_store,
+                    ledger=ChainedLedger(stores.ledger_store, clock),
+                    work=stores.work,
+                    database=stores.size,
+                ),
+                tenants=tenants,
+                job_memory_bytes=memory_demand(execution),
+            )
 
     @asynccontextmanager
     async def _stores(self, state_dir: Path) -> AsyncIterator[Stores]:
@@ -232,6 +290,7 @@ class LocalWiring:
                 provenance_store=PostgresProvenanceStore(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
                 queue=PostgresQueue(postgres),
+                size=postgres,
             )
         finally:
             await postgres.close()

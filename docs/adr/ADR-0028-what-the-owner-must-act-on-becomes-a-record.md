@@ -1,6 +1,6 @@
 # ADR-0028 — What the owner must act on becomes a record: needs requests and the status report
 
-**Status:** accepted · extends ADR-0017 with a fifth record kind and a status report the owner
+**Status:** accepted · amended 2026-09-30 (DEC-0021): which changes change the state · extends ADR-0017 with a fifth record kind and a status report the owner
 does not have to ask for · amended 2026-09-29 by DEC-0026 and DEC-0027: the status file
 stores neither the generated list nor a line every pull request rewrites (§3)
 
@@ -132,6 +132,16 @@ rewrites — a stored date, or a running list of what was decided since the last
 section is missing, empty, out of order or keeps a placeholder; when the milestone named in
 section 1 is not a milestone of the roadmap.
 
+*Amended 2026-09-30 (DEC-0021).* The owner answered which changes change the state of the
+project: **a pull request that touches a milestone item, a need, a decision or a contract
+updates the file; one that fixes a defect does not.** The gate therefore counts a change to
+`docs/roadmap.md`, to a record under `docs/decisions/` or an ADR under `docs/adr/`, or to a
+file under `contracts/` — and not the record of a documentation defect, and not a change to
+code, tools, workers, blueprints or the deployment on its own. Until then every change under
+`src/`, `workers/`, `blueprints/`, `deploy/`, `migrations/` and `tools/` counted too, and the
+first pull request Taktus opened had to write a status line about a tool it had taught to name
+`git` (DEC-0021 §4).
+
 *Amended 2026-09-29 (DEC-0027).* Until then the file carried an `As of` date that the gate held
 to the newest record of the register, and a paragraph listing what had been decided since the
 last version. Every pull request rewrote both, so any two conflicted on them even after the
@@ -196,3 +206,8 @@ descriptions and in the issue tracker, not in the file: an owner who reads only 
 where the list is, not the list. The file carries no date of its own: a reader of the file
 alone learns how current it is from the date of its last commit, which the host shows beside it,
 not from the text.
+
+Since DEC-0021 the gate sees the four kinds of file that change the state, and not a milestone
+item completed in code alone: a pull request that finishes an item without touching the
+roadmap, a record, an ADR or a contract passes it, and its description is where a reviewer
+checks whether the status should have moved.

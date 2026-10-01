@@ -20,10 +20,13 @@ Every function takes the service, the operation's input and the idempotency key,
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 from taktus.adapters.driven.connectors.github.api import Api, TargetError, digest_of
 
@@ -36,9 +39,12 @@ MAX_PAGES = 20  # how many pages of comments a repeat is looked for in
 MAX_RUNS = 50  # how many pipeline runs of one head are read
 SHA = re.compile(r"^[0-9a-f]{40}$")
 FILE_MODE = "100644"
+EXECUTABLE_MODE = "100755"
 # A file keeps the mode it has in the base: an executable that a change touches stays
 # executable, and a symbolic link stays a link (DEC-0020). Anything else the base carries —
 # a submodule — cannot be written back as a blob, so such a path gets the plain file mode.
+# A file whose input says `executable` gets that mode instead, whether the base has it or not
+# (issue #28): `true` is 100755, `false` is 100644.
 BLOB_MODES = frozenset({"100644", "100755", "120000"})
 
 
@@ -222,6 +228,59 @@ async def _all_comments(api: Api, number: int) -> list[Json]:
     return comments
 
 
+async def read_file(api: Api, input: Json, key: str) -> Outcome:
+    """One file at a ref. The ref — a branch name or a commit — is resolved to a commit first,
+    and the file is read at that commit, so that what was read and where it was read agree
+    even when the branch moves between the two requests; the output names the commit. The
+    content is text when it decodes as UTF-8 and base64 otherwise, the shape a changeset uses.
+    A path that names a directory, a link or a submodule is `invalid`: this reads files."""
+    path = _tree_path(input.get("path"))
+    ref = _str(input, "ref")
+    commit = ref if SHA.match(ref) else await _ref(api, ref)
+    if commit is None:
+        raise TargetError("not_found", "none", False, f"ref {ref!r} is not a branch or a commit")
+    found = await api.get(api.repo(f"contents/{quote(path)}"), {"ref": commit})
+    if not isinstance(found, dict) or found.get("type") != "file":
+        raise invalid(f"{path!r} at {ref!r} is not a file")
+    raw = await _content_of(api, found)
+    output: Json = {
+        "path": path,
+        "ref": ref,
+        "commit": commit,
+        "sha": str(found.get("sha", "")),
+        "size": len(raw),
+    }
+    try:
+        output |= {"content": raw.decode("utf-8"), "encoding": "utf-8"}
+    except UnicodeDecodeError:
+        output |= {"content": base64.b64encode(raw).decode(), "encoding": "base64"}
+    return Outcome(output, read_effect())
+
+
+async def _content_of(api: Api, found: Json) -> bytes:
+    """The bytes of a file the contents interface answered with. A file above that
+    interface's size limit comes without content (`encoding: none`) and is read as a blob."""
+    content, encoding = found.get("content"), found.get("encoding")
+    if encoding != "base64" or not isinstance(content, str):
+        blob = await api.get(api.repo(f"git/blobs/{found.get('sha', '')}"))
+        content, encoding = blob.get("content"), blob.get("encoding")
+    if encoding != "base64" or not isinstance(content, str):
+        raise TargetError("unavailable", "none", True, "the service sent no content")
+    try:
+        return base64.b64decode(content)
+    except (ValueError, binascii.Error) as error:
+        raise TargetError(
+            "unavailable", "none", True, "the service sent content that is not base64"
+        ) from error
+
+
+def _tree_path(path: Any) -> str:
+    """A path inside the repository's tree: relative, non-empty, never leaving it."""
+    if not isinstance(path, str) or not path or path.startswith("/") or ".." in path.split("/"):
+        raise invalid("a file path is relative, non-empty and never leaves the tree")
+    return path
+
+
 # --- writes: marked ---------------------------------------------------------------------------
 
 
@@ -348,7 +407,8 @@ async def create_branch(api: Api, input: Json, key: str) -> Outcome:
         raise TargetError("not_found", "none", False, f"base branch {base!r} does not exist")
     base_commit = await api.get(api.repo(f"git/commits/{base_sha}"))
     tree_sha = str(base_commit.get("tree", {}).get("sha", ""))
-    modes = await _modes_in(api, tree_sha, [str(file["path"]) for file in files])
+    unflagged = [str(file["path"]) for file in files if "executable" not in file]
+    modes = await _modes_in(api, tree_sha, unflagged)
     entries: list[Json] = []
     for file in files:
         blob = await api.post(
@@ -356,12 +416,7 @@ async def create_branch(api: Api, input: Json, key: str) -> Outcome:
         )
         path = str(file["path"])
         entries.append(
-            {
-                "path": path,
-                "mode": modes.get(path, FILE_MODE),
-                "type": "blob",
-                "sha": str(blob["sha"]),
-            }
+            {"path": path, "mode": _mode_of(file, modes), "type": "blob", "sha": str(blob["sha"])}
         )
     entries.extend(
         {"path": path, "mode": FILE_MODE, "type": "blob", "sha": None} for path in deleted
@@ -377,6 +432,17 @@ async def create_branch(api: Api, input: Json, key: str) -> Outcome:
     await api.post(api.repo("git/refs"), {"ref": f"refs/heads/{name}", "sha": sha})
     output = _branch_output(api, name, sha, base, str(commit.get("html_url", "")))
     return Outcome(output, write_effect(_branch_records(output), digest, replayed=False))
+
+
+def _mode_of(file: Json, modes: dict[str, str]) -> str:
+    """The mode a file is written with: what its input says, else what the base has, else a
+    plain file."""
+    flag = file.get("executable")
+    if flag is True:
+        return EXECUTABLE_MODE
+    if flag is False:
+        return FILE_MODE
+    return modes.get(str(file["path"]), FILE_MODE)
 
 
 async def _modes_in(api: Api, tree_sha: str, paths: list[str]) -> dict[str, str]:
@@ -451,16 +517,19 @@ def _files(input: Json) -> list[Json]:
     for entry in raw:
         if not isinstance(entry, dict):
             raise invalid("files must be a list of {path, content}")
-        path = entry.get("path")
+        path = _tree_path(entry.get("path"))
         content = entry.get("content")
         encoding = entry.get("encoding", "utf-8")
-        if not isinstance(path, str) or not path or path.startswith("/") or ".." in path.split("/"):
-            raise invalid("a file path is relative, non-empty and never leaves the tree")
         if not isinstance(content, str):
             raise invalid(f"the content of {path!r} must be a string")
         if encoding not in ("utf-8", "base64"):
             raise invalid(f"the encoding of {path!r} must be utf-8 or base64")
-        files.append({"path": path, "content": content, "encoding": encoding})
+        file: Json = {"path": path, "content": content, "encoding": encoding}
+        if "executable" in entry:
+            if not isinstance(entry["executable"], bool):
+                raise invalid(f"executable of {path!r} must be true or false")
+            file["executable"] = entry["executable"]
+        files.append(file)
     return files
 
 
@@ -552,4 +621,5 @@ OPERATIONS: dict[str, Operation] = {
     "repository.comments.create": create_comment,
     "repository.branches.create": create_branch,
     "repository.labels.set": set_labels,
+    "repository.files.read": read_file,
 }

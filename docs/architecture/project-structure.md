@@ -54,31 +54,35 @@ taktus/
 │   │       │   └── event/
 │   │       ├── application/
 │   │       │   ├── service/         # one use case per module
-│   │       │   └── query/           # read side (CQRS): run/application/query/provenance.py walks and verifies the chain
+│   │       │   └── query/           # read side (CQRS): run/application/query/provenance.py walks and verifies the chain; recordings.py finds the recorded response a rehearsal answers an outward call with (ADR-0030)
 │   │       └── ports/               # ports this component alone needs (run/ports/workers.py, connectors.py, models.py)
-│   │   … run/domain/service/provenance.py builds and verifies the provenance chain (ADR-0021)
+│   │   … run/domain/service/provenance.py builds and verifies the provenance chain (ADR-0021); run/domain/service/rehearsal.py chooses the recording — the last real call, never a rehearsal (ADR-0030)
 │   │   … governance/domain/service/egress.py decides whether a result has left the system (ADR-0022)
-│   │   … catalog/domain/model/maturity.py is an adapter's maturity with its last removal result; catalog/domain/service/removal.py the rules that decide broke, changed or exception; catalog/application/service/record_removal.py writes the result and the ledger entry `removal.tested`
+│   │   … governance/domain/service/capacity.py turns platform observations and growth per run into findings with a figure and a date; application/service/report_capacity.py records a crossing (docs/architecture/platform.md)
+│   │   … run/domain/service/capacity.py admits a job against the platform: memory for the unit plus a reserve, storage above its refusal share
+│   │   … catalog/domain/model/maturity.py is an adapter's maturity with its last removal result; catalog/domain/service/removal.py the rules that decide broke, changed, untested or exception, and when a process can be rehearsed; catalog/application/service/record_removal.py writes the result and the ledger entry `removal.tested`
+│   │   … run/domain/service/budget.py the budget's rules: the line less the margin, calibration and its seed, the reservation, the worker's ceiling, what a budget can promise; accounting/ meters a run from the ledger and prices it at the table its budget statement names (`taktusctl cost`)
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
 │   │     accounting/ knowledge/ value/ ledger/
 │   │
 │   ├── ports/                       # cross-cutting ports
 │   │   ├── worker.py                # CONTRACT 1 — execution units: the contract's shapes and the protocol
 │   │   ├── connector.py             # CONTRACT 2 — tools and channels: intake, and actions with a call context, a declared effect and a classified failure
-│   │   ├── model.py                 # CONTRACT 3 — models: a prompt in, a completion with its tokens and the answering model out; resolved by purpose
+│   │   ├── model.py                 # CONTRACT 3 — models: a prompt in, a completion with its tokens by price kind and the answering model out; the declaration of what it can compute before a call; the price table; resolved by purpose
 │   │   ├── execution.py             # how a unit comes to exist for a job: process | container | cluster; the fail-closed refusal of no isolation from level 3
-│   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore, ProvenanceStore, UnitOfWork — every call names its tenant
+│   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore (with `summary`: a kind counted without reading the chain), ProvenanceStore, UnitOfWork — every call names its tenant; StateSize: the state's size on disk
 │   │   ├── ledger.py                # facts in, chained entries out, verify — one chain per tenant
 │   │   ├── identity.py              # who acts: a sender on a channel placed in a tenant as an identity; served PROVISIONALLY by adapters/driven/identity (DEC-0013)
 │   │   ├── configuration.py         # what an instance is told about itself, by key; Secret; ConfigurationError
 │   │   ├── queue.py                 # jobs a runner claims once, as a lease it renews (ADR-0002)
 │   │   ├── leadership.py            # one instance leads a singular role; a dead leader is replaced
+│   │   ├── platform.py              # what the machine or container has left — CPU, memory, storage — each observed or unobserved with the reason
 │   │   ├── objectstore.py  clock.py  telemetry.py
 │   │   ├── eventbus.py  secret.py
 │   │
 │   ├── adapters/
 │   │   ├── driving/
-│   │   │   ├── cli/                 # taktusctl: conformance run, run, submit
+│   │   │   ├── cli/                 # taktusctl: conformance run, run, submit, capacity
 │   │   │   └── rest/                # the HTTP surface: health, readiness, webhook intake, the read API — under a prefix; RFC 9457 problems
 │   │   └── driven/
 │   │       ├── memory/              # DEVELOPMENT AND TEST ONLY: in-memory stores, queue and leadership, optional file snapshot
@@ -87,7 +91,8 @@ taktus/
 │   │       ├── clock/               # the system clock, identifiers, randomness — the only place
 │   │       ├── telemetry/           # otel: real spans, exported where TAKTUS_OTLP_* says; noop for tests
 │   │       ├── workers/http/        # the worker port over HTTP and SSE; workers/pool.py maps capabilities; workers/launched.py puts the port over the execution port
-│   │       ├── execution/           # process.py: a unit as a child process; container/: a unit per job in a container with limits, credentials in memory, an egress proxy
+│   │       ├── execution/           # process.py: a unit as a child process, its memory limit enforced on Linux and refused elsewhere; container/: a unit per job in a container with limits, no swap, credentials in memory, an egress proxy
+│   │       ├── platform/            # host.py: the platform port for this machine or container — control group, /proc, the state directory's filesystem; standard library only
 │   │       ├── objectstore/ secret/ ledger/
 │   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/mcp/      # the connector port as an MCP client: intake and actions; connectors/pool.py maps capabilities
@@ -99,7 +104,7 @@ taktus/
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
-│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs, the removal verdict observed
+│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 │   ├── script/                      # the reference worker: shell commands, no AI
@@ -128,7 +133,7 @@ taktus/
 │   ├── integration/                 # the whole slice against the reference worker — by endpoint, as a process started per job, as a container started per job; the restart test; two runners, two schedulers, a real SIGTERM, the daemon under a prefix; the control plane image built and inspected
 │   └── security/ resilience/
 │
-├── docs/{architecture,adr,usecases,roadmap.md}
+├── docs/{architecture,adr,usecases,vision,decisions,runs,research,roadmap.md}   # research: dated, sourced evidence a decision rests on
 ├── tools/                           # gates, checkdocs, preflight, generators
 ├── pyproject.toml  Makefile  .importlinter  .env.example   # .env.example lists TAKTUS_* names, never values
 └── CLAUDE.md  README.md  LICENSE  NOTICE  CONTRIBUTING.md  CREDENTIALS.md
@@ -198,6 +203,7 @@ connector is a driven adapter and the suite its client, and neither imports the 
 | Secrets | never a bare `str` — `ports/configuration.py`'s `Secret` masks on `repr` and `str`; `reveal()` is the one way to the value, and the database URL is read as one. **A secret is read from a file, not from the environment:** `TAKTUS_<KEY>_FILE` holds the path, the file holds the value; the inline variable is accepted for a value that carries no secret (the development database) and refused together with the file. The daemon logs its effective configuration at start with every secret masked and its source named, and `tests/composition` proves that no secret value reaches a line |
 | Configuration | every setting is a `TAKTUS_*` variable, read through the configuration port and validated once at start (`composition/settings.py`); a wrong one is refused with one sentence naming the variable, never a stack trace. `.env.example` lists every variable, names only. A credential an assignment references is read at the moment a unit is started, under `credential.<name>` — `TAKTUS_CREDENTIAL_<NAME>_FILE` |
 | Execution | `TAKTUS_EXECUTION` chooses how a `worker` step's unit comes to exist: by endpoint, as a process, as a container (`docs/architecture/contracts.md` §2.4). The `process` adapter is refused from autonomy level 3 upwards and when the level is unknown; the rule lives in `ports/execution.py` and `tests/governance` holds the adapter to it |
+| Capacity | every threshold of the capacity report and of admission against the platform is a `TAKTUS_CAPACITY_*` setting with a default, never a constant in a function; a quantity a platform adapter cannot observe is `Unobserved` with the reason, never a guess; every execution unit carries a memory limit its adapter enforces, or the job is refused (`docs/architecture/platform.md`) |
 | Telemetry | spans for the run, every step, every worker call and every connector call, nested; consumption and method as attributes; no person and no secret in an attribute (`tests/adapters/telemetry`); exported where `TAKTUS_OTLP_*` says, real either way |
 | Every step | carries method, reason, rejected alternatives, fallback; an exactness class if it produces a result (ADR-0018) |
 | Provenance | one record per completed step run (ADR-0021), built by `run/domain/service/provenance.py` and written by the engine in the transaction of the `step.finished` entry; the `ProvenanceStore` port is append-only like the `LedgerStore`, and the database refuses update and delete. A record references — identifiers, tokens, digests — and never copies. The worker's own version reaches the record through `Capabilities.version` and the pool's `ResolvedWorker` |

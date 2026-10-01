@@ -8,7 +8,7 @@
     "seq": { "type": "integer", "minimum": 1 },
     "ts": { "type": "string", "format": "date-time" },
     "kind": {
-      "description": "What happened, as a lowercase dotted token: run.started, step.finished, decision.confirmed, assignment.rejected. Three kinds record that a result left the system (ADR-0022): egress.write (a connector wrote outward), egress.delivery (a channel delivered), egress.read (an external system read through Taktus); each references what went out in refs.artifact_ids or content_digest. removal.tested records the verdict of a removal test — broke, changed, exception, as outcome — for the integration named in adapter, with the result's digest in content_digest and the removal test's run in refs.run_id.",
+      "description": "What happened, as a lowercase dotted token: run.started, step.finished, decision.confirmed, assignment.rejected. Three kinds record that a result left the system (ADR-0022): egress.write (a connector wrote outward), egress.delivery (a channel delivered), egress.read (an external system read through Taktus); each references what went out in refs.artifact_ids or content_digest. removal.tested records the verdict of a removal test — broke, changed, untested, exception, as outcome — for the integration named in adapter, with the result's digest in content_digest and the removal test's run in refs.run_id. capacity.memory and capacity.storage.<place> (database, state_directory) record that a platform resource crossed into a state a person must act on (outcome act) or came back (outcome ok), naming the adapter that observed and, for storage, the bytes the state occupied in consumption.storage_bytes; refs.tenant is the chain's tenant.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
     },
@@ -70,6 +70,10 @@
     "content_digest": {
       "description": "Digest of the referenced content, so that the reference is verifiable without the content.",
       "$ref": "Artifact.json#/$defs/digest"
+    },
+    "rehearsal": {
+      "description": "Present, and true, on every entry of a rehearsal run: a run in which no outward connector operation acted, each answering instead with the recorded response of an earlier real call (ADR-0030). A rehearsed outward step finishes with outcome rehearsed. An entry marked so is never evidence that anything happened outside, and a rehearsal writes no egress entry. Absent on every other entry.",
+      "const": true
     }
   },
   "required": ["seq", "ts", "kind", "prev_hash", "hash", "refs"],

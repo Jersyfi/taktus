@@ -1,0 +1,10 @@
+{
+  "version": "local-1",
+  "valid_from": "2026-09-01T00:00:00Z",
+  "currency": "eur",
+  "unit_tokens": 1000,
+  "source": "own hardware: no price per token; its cost is compute time",
+  "prices": {
+    "example-local": { "input": 0, "output": 0 }
+  }
+}

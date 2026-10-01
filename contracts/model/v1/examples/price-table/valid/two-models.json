@@ -1,0 +1,11 @@
+{
+  "version": "2026-09-30.1",
+  "valid_from": "2026-09-30T00:00:00Z",
+  "currency": "usd",
+  "unit_tokens": 1000000,
+  "source": "the provider's published price page, read 2026-09-30",
+  "prices": {
+    "example-large@2026-08": { "input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75 },
+    "example-small@2026-06": { "input": 0.8, "output": 4.0 }
+  }
+}

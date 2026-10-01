@@ -4,7 +4,8 @@ The connector contract v1 ([`contracts/connector/v1`](../../../../../../contract
 implemented against GitHub's REST API and webhooks. This directory, this file and the
 configuration that points at it are the only places in the repository that name the product.
 Everywhere else — processes, blueprints, documents — it is `repository.issues`,
-`repository.pullrequests`, `repository.pipelines` and `repository.comments`.
+`repository.pullrequests`, `repository.pipelines`, `repository.comments`,
+`repository.branches`, `repository.labels` and `repository.files`.
 
 It is proof and example, not a requirement: the control plane runs with it removed.
 
@@ -33,7 +34,8 @@ The resource `taktus://connector/v1/capabilities` ([`declaration.py`](declaratio
 | `repository.pipelines.trigger` | write | **none** | not at all: a workflow dispatch answers 204 with no run identifier |
 | `repository.comments.list` | read | — | |
 | `repository.comments.create` | write | marked | the key in a comment of that issue, all pages |
-| `repository.branches.create` | write | marked | the branch by its name, which the service keeps unique; the key as a trailer `Taktus-Idempotency-Key:` in the message of the commit at its head. The branch carries one commit on top of its base with the given files (or none: an empty commit, so that a bare branch is findable too), made through the object interface — blobs, a tree, a commit, the reference. A branch of that name whose head carries another key, or none, is somebody else's: `conflict`. **A file keeps the mode it has in the base**: an executable stays executable and a link stays a link, read from the base tree before the new tree is written (DEC-0020). A file that is not in the base is written as a plain file; the operation's input has no way to say otherwise |
+| `repository.branches.create` | write | marked | the branch by its name, which the service keeps unique; the key as a trailer `Taktus-Idempotency-Key:` in the message of the commit at its head. The branch carries one commit on top of its base with the given files (or none: an empty commit, so that a bare branch is findable too), made through the object interface — blobs, a tree, a commit, the reference. A branch of that name whose head carries another key, or none, is somebody else's: `conflict`. **A file keeps the mode it has in the base**: an executable stays executable and a link stays a link, read from the base tree before the new tree is written (DEC-0020). **A file entry may say `executable: true`** — the coding worker's changeset does for a file its index records as `100755` — and is then written with mode `100755`, whether the base has the path or not; `executable: false` writes it plain. Without the flag, a file the base does not have is a plain file (issue #28) |
+| `repository.files.read` | read | — | one file at a ref — a branch name or a 40-character commit — with its content (text when it decodes as UTF-8, base64 otherwise) and **the commit it was read at**: a branch is resolved to its commit first and the file read at that commit, so that the two agree when the branch moves in between. A directory, a link or a submodule is `invalid`; a file above the contents interface's size limit is read as a blob. One request for a commit, two for a branch |
 | `repository.labels.set` | write | marked | the label itself, on the issue: the operation reads the issue's labels before adding any, and a repeat that finds every requested label present adds nothing and reports `replayed`. **Weaker than a key in a body, and stated so:** the lookup is by label, not by key, so a repeat with a *new* key that sets a label already present is reported replayed as well — it acts on nothing either way |
 
 The mark is an HTML comment at the end of the body, `<!-- taktus-idempotency-key … -->`,

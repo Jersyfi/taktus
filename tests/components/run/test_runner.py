@@ -168,7 +168,7 @@ async def test_a_submitted_run_is_planned_with_its_job_until_a_runner_claims_it(
     world = World()
     run = await world.submit(rule("a", 1))
     assert run.state is RunState.PLANNED
-    assert await world.kinds(run.id) == ["run.created"]
+    assert await world.kinds(run.id) == ["run.created", "budget.set"]
     jobs = await world.claimable()
     assert [j.kind for j in jobs] == [RUN_EXECUTE]
     assert jobs[0].payload == {"run_id": run.id}
@@ -181,6 +181,7 @@ async def test_a_submitted_run_is_planned_with_its_job_until_a_runner_claims_it(
     assert (await world.stored(run.id)).state is RunState.FINISHED
     assert await world.kinds(run.id) == [
         "run.created",
+        "budget.set",
         "run.started",
         "step.admitted",
         "step.started",

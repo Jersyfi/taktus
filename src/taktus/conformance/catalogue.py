@@ -2,8 +2,9 @@
 requires, and where the README states the rule.
 
 One catalogue per contract. A check identifier is unique across contracts — `W-` for the worker
-contract, `C-` for the connector contract — so that a result can name its catalogue by its
-identifier alone. The report and the findings work on identifiers and look the rest up here.
+contract, `C-` for the connector contract, `M-` for the model contract — so that a result can
+name its catalogue by its identifier alone. The report and the findings work on identifiers and
+look the rest up here.
 """
 
 from __future__ import annotations
@@ -70,9 +71,10 @@ class Catalogue:
 def catalogue_of(check: str) -> Catalogue:
     """The catalogue a check identifier belongs to."""
     from taktus.conformance.connector.rules import CATALOGUE as connector
+    from taktus.conformance.model.rules import CATALOGUE as model
     from taktus.conformance.rules import CATALOGUE as worker
 
-    for catalogue in (worker, connector):
+    for catalogue in (worker, connector, model):
         if check in catalogue:
             return catalogue
     raise KeyError(check)

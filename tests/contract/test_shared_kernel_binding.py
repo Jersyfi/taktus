@@ -258,3 +258,35 @@ def test_every_worker_object_definition_is_bound() -> None:
         if body.get("type") == "object" and "oneOf" not in body and not hasattr(worker, name)
     ]
     assert unbound == ["Transcript"], "Transcript is a fixture shape, not a wire object"
+
+
+# --- the model contract ---------------------------------------------------------------------
+
+MODEL = ROOT / "contracts" / "model" / "v1"
+MODEL_SCHEMA = json.loads((MODEL / "Model.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("definition", ["Calculability", "PriceTable"])
+def test_model_definitions_have_the_same_shape(definition: str) -> None:
+    import taktus.ports.model as model
+
+    body = MODEL_SCHEMA["$defs"][definition]
+    assert_same_shape(
+        body, getattr(model, definition), MODEL_SCHEMA["$defs"], MODEL, where=definition
+    )
+
+
+@pytest.mark.parametrize(
+    ("concept", "binding"), [("calculability", "Calculability"), ("price-table", "PriceTable")]
+)
+def test_every_model_example_binds_as_the_schema_says(concept: str, binding: str) -> None:
+    import taktus.ports.model as model
+
+    cls = getattr(model, binding)
+    for path in sorted((MODEL / "examples" / concept / "valid").glob("*.json")):
+        data = load(path)
+        instance = cls.model_validate(data)
+        assert instance.document() == data, path.name
+    for path in sorted((MODEL / "examples" / concept / "invalid").glob("*.json")):
+        with pytest.raises(ValidationError):
+            cls.model_validate(load(path))

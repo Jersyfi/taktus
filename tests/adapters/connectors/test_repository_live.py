@@ -93,12 +93,26 @@ async def test_a_step_retried_after_a_restart_acts_once_on_the_real_service(
         "name": branch,
         "base": "main",
         "message": f"live check {suffix}",
-        "files": [{"path": f"conformance/live-{suffix}.md", "content": "Created by a test.\n"}],
+        "files": [
+            {"path": f"conformance/live-{suffix}.md", "content": "Created by a test.\n"},
+            {"path": f"conformance/live-{suffix}.sh", "content": "#!/bin/sh\n", "executable": True},
+        ],
     }
     first = await call(fresh(), "repository.branches.create", context("branch", key), branch_input)
     again = await call(fresh(), "repository.branches.create", context("branch", key), branch_input)
     assert first["effect"]["replayed"] is False and again["effect"]["replayed"] is True
     assert again["output"]["sha"] == first["output"]["sha"]
+
+    # The file the branch carries, read back at the branch: the same bytes, at its commit.
+    read = await call(
+        fresh(),
+        "repository.files.read",
+        context("read", f"run_live:read-{suffix}:1"),
+        {"path": f"conformance/live-{suffix}.md", "ref": branch},
+    )
+    assert read["effect"] == {"kind": "read"}
+    assert read["output"]["content"] == "Created by a test.\n"
+    assert read["output"]["commit"] == first["output"]["sha"]
 
     # A pull request, twice: one pull request, the second answer replayed. Then the service is
     # asked directly how many pull requests that head has.
@@ -126,6 +140,14 @@ async def test_a_step_retried_after_a_restart_acts_once_on_the_real_service(
             )
         ).json()
     assert [p["number"] for p in pulls] == [number]
+    async with httpx.AsyncClient(base_url=TARGET, headers=headers, timeout=30.0) as client:
+        head = first["output"]["sha"]
+        commit = (await client.get(f"/repos/{repository}/git/commits/{head}")).json()
+        listed = await client.get(
+            f"/repos/{repository}/git/trees/{commit['tree']['sha']}", params={"recursive": "1"}
+        )
+    modes = {entry["path"]: entry["mode"] for entry in listed.json()["tree"]}
+    assert modes[f"conformance/live-{suffix}.sh"] == "100755", "a new executable (issue #28)"
 
     # A comment and a label, twice each.
     key = f"run_live:comment-{suffix}:1"
@@ -156,5 +178,5 @@ async def test_a_step_retried_after_a_restart_acts_once_on_the_real_service(
     assert status["output"]["state"] in ("none", "pending", "success", "failure")
     assert status["output"]["sha"] == first["output"]["sha"]
 
-    for document in (first, again, opened, replayed, first_comment, labelled, status):
+    for document in (first, again, read, opened, replayed, first_comment, labelled, status):
         assert token not in str(document)

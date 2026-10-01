@@ -22,6 +22,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (IntakeEvent, samples.intake_event),
     (Plan, samples.plan),
     (Run, samples.run),
+    (Run, samples.rehearsal_run),
     (AdapterMaturity, samples.adapter_maturity),
 ]
 

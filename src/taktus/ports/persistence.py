@@ -25,9 +25,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from contextlib import AbstractAsyncContextManager
+from datetime import datetime
 from typing import Any, Protocol, Self
 
-from taktus.shared.v1 import LedgerEntry, Provenance
+from pydantic import Field
+
+from taktus.shared.v1 import LedgerEntry, Provenance, Value
 
 type Tenant = str
 """The identifier of a tenant. Until the identity component exists there is one, `default`."""
@@ -125,6 +128,34 @@ class LedgerStore(Protocol):
 
     async def entries(self, tenant: Tenant) -> Sequence[LedgerEntry]:
         """Every entry of the tenant's chain, in sequence order."""
+        ...
+
+    async def summary(self, tenant: Tenant, kind: str, *, since: datetime) -> KindSummary:
+        """How many entries of one kind the tenant's chain holds, how many of them were
+        recorded at or after `since`, when the first was recorded, and the newest of them —
+        without reading the chain: what a report over a growing ledger may ask every hour."""
+        ...
+
+
+class KindSummary(Value):
+    """The entries of one kind in one chain, counted (`LedgerStore.summary`)."""
+
+    total: int = Field(ge=0)
+    since: int = Field(ge=0)
+    """Of them, recorded at or after the moment asked about."""
+    first: datetime | None = None
+    """When the earliest of them was recorded; None when there is none."""
+    latest: LedgerEntry | None = None
+    """The newest of them; None when there is none."""
+
+
+class StateSize(Protocol):
+    """How much room the persisted state takes, where the implementation keeps it: the
+    database's size on disk, or the snapshot files of the development store. Instance-wide —
+    it names no tenant and needs no unit of work, because it reads no tenant's data."""
+
+    async def state_bytes(self) -> int | None:
+        """Bytes, or None when the implementation keeps nothing on disk."""
         ...
 
 

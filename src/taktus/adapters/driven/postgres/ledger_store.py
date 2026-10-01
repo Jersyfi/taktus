@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from taktus.adapters.driven.postgres import _schema as s
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
-from taktus.ports.persistence import DuplicateSequence, Tenant
+from taktus.ports.persistence import DuplicateSequence, KindSummary, Tenant
 from taktus.shared.v1 import LedgerEntry
 
 
@@ -44,6 +44,7 @@ class PostgresLedgerStore:
             consumption=document.get("consumption"),
             outcome=document.get("outcome"),
             content_digest=document.get("content_digest"),
+            rehearsal=document.get("rehearsal"),
         )
         try:
             await connection.execute(statement)
@@ -76,6 +77,32 @@ class PostgresLedgerStore:
         )
         return [_entry(row) for row in rows]
 
+    async def summary(self, tenant: Tenant, kind: str, *, since: datetime) -> KindSummary:
+        """Two statements, neither of which reads the chain into this process: the counts and
+        the first time in one aggregate, the newest entry by the primary key's order."""
+        connection = self._persistence.connection(tenant)
+        of_kind = (s.ledger_entry.c.tenant == tenant) & (s.ledger_entry.c.kind == kind)
+        total, recent, first = (
+            await connection.execute(
+                select(
+                    func.count(),
+                    func.count().filter(s.ledger_entry.c.ts >= since),
+                    func.min(s.ledger_entry.c.ts),
+                ).where(of_kind)
+            )
+        ).one()
+        row = (
+            await connection.execute(
+                select(s.ledger_entry).where(of_kind).order_by(s.ledger_entry.c.seq.desc()).limit(1)
+            )
+        ).first()
+        return KindSummary(
+            total=int(total),
+            since=int(recent),
+            first=first,
+            latest=None if row is None else _entry(row),
+        )
+
 
 def _entry(row: Row[Any]) -> LedgerEntry:
     ts: datetime = row.ts
@@ -87,7 +114,15 @@ def _entry(row: Row[Any]) -> LedgerEntry:
         "hash": row.hash,
         "refs": row.refs,
     }
-    for name in ("method", "model", "adapter", "consumption", "outcome", "content_digest"):
+    for name in (
+        "method",
+        "model",
+        "adapter",
+        "consumption",
+        "outcome",
+        "content_digest",
+        "rehearsal",
+    ):
         value = getattr(row, name)
         if value is not None:
             document[name] = value

@@ -4,12 +4,31 @@ For local development and a single user (ADR-0002). What it does: starts the uni
 line with a free port and the unit's state directory in its environment, injects the
 credentials the job names as environment variables, gives the job a workspace that is removed
 when the job ends, waits until the unit answers health, and kills the unit when the wall clock
-runs out or the job is over. What it does not do, and cannot: limit memory or CPU, keep the
-unit off the network — the unit shares this machine's filesystem and network, and the reach
-that `allowed_hosts` names is the worker's own honesty (W-13), not a wall. That is why the port
-refuses this adapter from autonomy level 3 upwards, and why a credential injected as a file is
-refused here: without a filesystem of its own, a job has no place for one that outlives
-nothing.
+runs out or the job is over. What it does not do, and cannot: keep the unit off the network —
+the unit shares this machine's filesystem and network, and the reach that `allowed_hosts`
+names is the worker's own honesty (W-13), not a wall. That is why the port refuses this
+adapter from autonomy level 3 upwards, and why a credential injected as a file is refused
+here: without a filesystem of its own, a job has no place for one that outlives nothing.
+
+**Memory: what holds on which system.** Every job carries a memory limit
+(`ResourceLimits.memory_bytes`), and a limit nothing enforces is worse than none, because it
+reads as a guarantee. So:
+
+- **Linux** — enforced. The unit is started through a launcher that sets `RLIMIT_DATA` to the
+  limit and then becomes the unit (`exec`), so the limit holds for the unit and for everything
+  it starts. `RLIMIT_DATA` rather than `RLIMIT_AS`: since Linux 4.7 it counts every private
+  writable mapping — the heap and anonymous memory alike — and leaves out address space a
+  runtime only reserves, which language runtimes that reserve gigabytes up front (and never
+  touch) would otherwise be refused for. A unit that reaches the limit is refused the
+  allocation; it fails with its own exit code, which says nothing about why, so the exit is
+  not reported as a memory kill. It is a limit per process, not per job: a unit that starts
+  several processes gets the limit for each. The CPU share is not limited.
+- **Every other system (macOS among them)** — not enforced: the kernel does not apply a data
+  limit to memory a process maps. The job is **refused** (deploy/k8s/README.md: a job it
+  cannot give limits to is refused), unless the operator has accepted an unenforced limit
+  explicitly — `memory_unenforced`, which the composition root sets from
+  `TAKTUS_EXECUTION_MEMORY_UNENFORCED` — and then every launch logs that the limit is not
+  enforced.
 
 The unit's stdout and stderr go to a log file under the state directory, so that a unit that
 fails to start can be read about; credential values never appear on a command line.
@@ -23,10 +42,13 @@ import shlex
 import shutil
 import signal
 import socket
+import sys
 import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+import structlog
 
 from taktus.adapters.driven.execution._common import resolve_credentials, wait_until_healthy
 from taktus.ports.configuration import Configuration
@@ -44,6 +66,17 @@ from taktus.ports.execution import (
 UNIT_WORKSPACE_VARIABLE = "TAKTUS_UNIT_WORKSPACE"
 INHERITED = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "USER", "SHELL")
 STOP_GRACE_SECONDS = 5.0
+MEMORY_UNENFORCED_KEY = "execution.memory.unenforced"
+# Sets the data limit on itself and becomes the unit: the limit survives exec. Run by this
+# process's own interpreter, so it needs nothing installed.
+LIMIT_LAUNCHER = (
+    "import os, resource, sys; "
+    "limit = int(sys.argv[1]); "
+    "resource.setrlimit(resource.RLIMIT_DATA, (limit, limit)); "
+    "os.execvp(sys.argv[2], sys.argv[2:])"
+)
+
+logger = structlog.get_logger("taktus.execution.process")
 
 
 class ProcessJob:
@@ -79,9 +112,23 @@ class ProcessExecution:
 
     isolation = Isolation.NONE
 
-    def __init__(self, configuration: Configuration, *, state_dir: Path) -> None:
+    def __init__(
+        self,
+        configuration: Configuration,
+        *,
+        state_dir: Path,
+        memory_unenforced: bool = False,
+        system: str = sys.platform,
+    ) -> None:
         self._configuration = configuration
         self._state_dir = state_dir
+        self._memory_unenforced = memory_unenforced
+        self._system = system
+
+    @property
+    def enforces_memory(self) -> bool:
+        """Whether this system lets the adapter enforce a unit's memory limit."""
+        return self._system.startswith("linux")
 
     @asynccontextmanager
     async def launch(self, request: JobRequest) -> AsyncIterator[ProcessJob]:
@@ -94,6 +141,22 @@ class ProcessExecution:
                     "adapter cannot do: a file credential needs an isolated filesystem — use "
                     "the container adapter"
                 )
+        limit = request.unit.limits.memory_bytes
+        if not self.enforces_memory:
+            if not self._memory_unenforced:
+                raise ExecutionRefused(
+                    f"the unit's memory limit of {limit // (1024 * 1024)} MiB cannot be "
+                    f"enforced by the process adapter on this system ({self._system}): only "
+                    "Linux limits a child's memory. Use the container adapter, or accept an "
+                    "unenforced limit explicitly with "
+                    f"{self._configuration.name(MEMORY_UNENFORCED_KEY)}=true"
+                )
+            logger.warning(
+                "memory limit not enforced",
+                job=request.job_id,
+                memory_bytes=limit,
+                system=self._system,
+            )
         credentials = resolve_credentials(self._configuration, request.credentials)
         unit_state = self._state_dir / "units" / request.unit.name
         unit_state.mkdir(parents=True, exist_ok=True)
@@ -114,7 +177,7 @@ class ProcessExecution:
         with log.open("wb") as handle:
             try:
                 process = await asyncio.create_subprocess_exec(
-                    *shlex.split(request.unit.program),
+                    *self._command(request),
                     cwd=workspace,
                     env=environment,
                     stdin=asyncio.subprocess.DEVNULL,
@@ -144,6 +207,13 @@ class ProcessExecution:
             timer.cancel()
             await self._end(process, job, JobExit(killed="stop", reason="the job is over"))
             shutil.rmtree(workspace, ignore_errors=True)
+
+    def _command(self, request: JobRequest) -> list[str]:
+        argv = shlex.split(request.unit.program)
+        if not self.enforces_memory:
+            return argv
+        limit = str(request.unit.limits.memory_bytes)
+        return [sys.executable, "-c", LIMIT_LAUNCHER, limit, *argv]
 
     @staticmethod
     async def _kill_after(job: ProcessJob, process: asyncio.subprocess.Process, wall: int) -> None:

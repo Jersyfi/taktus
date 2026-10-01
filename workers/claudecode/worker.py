@@ -13,6 +13,10 @@ not do by itself, this worker does around it (README.md in this directory says h
   the same workspace and announces no artifact twice;
 - **consumption per step**: the tokens the agent reports for the message that made the call;
   the money it reports only at the end, attributed to the last step;
+- **the limits as a ceiling**: at every boundary the running total is held against the
+  limits; once a limit of tokens or quota is reached, the agent is ended there and the
+  assignment ends `stopped` with the checkpoint and the limit named. Money is known only at
+  the end and cannot halt a running assignment;
 - **authentication**: by API key or by a subscription token, chosen at start (`--auth`) and
   supplied under the credential name the assignment carries; a session that expires mid-run
   halts at the last boundary with the cause, and is neither retried nor abandoned;
@@ -110,6 +114,7 @@ FAULTS: dict[str, str] = {
     "W-10": "an estimate above the limits is accepted; the assignment fails after its first step",
     "W-11": "a resumed assignment produces the artifacts from before its checkpoint again",
     "W-13": "a host outside allowed_hosts is reached and reported without refused: true",
+    "W-14": "the limits are ignored once running: the agent goes on after the total reached them",
 }
 
 
@@ -384,6 +389,13 @@ class Worker:
                     return "this worker consumes quota, and the limits carry no quota limit"
                 if estimate["quota_units"] > quota["units"]:
                     return f"estimated {estimate['quota_units']} turns exceed {quota['units']}"
+            for direction in ("in", "out"):
+                ceiling = (limits.get("tokens") or {}).get(direction)
+                if ceiling is not None and estimate[f"tokens_{direction}"] > ceiling:
+                    return (
+                        f"estimated {estimate[f'tokens_{direction}']} tokens {direction} exceed "
+                        f"the limit of {ceiling}"
+                    )
         frame = body["frame"]
         if estimate["steps"] > frame["max_steps"]:
             return f"{estimate['steps']} steps estimated, frame allows {frame['max_steps']}"
@@ -438,6 +450,7 @@ class Worker:
         reason: str | None = None,
         checkpoint_ref: str | None = None,
         summary: str | None = None,
+        limit: str | None = None,
     ) -> None:
         with assignment.lock:
             event: Json = {"type": "assignment.finished", "outcome": outcome}
@@ -445,6 +458,8 @@ class Worker:
                 event["reason"] = reason
             if checkpoint_ref is not None:
                 event["checkpoint_ref"] = checkpoint_ref
+            if limit is not None:
+                event["limit"] = limit
             if summary is not None:
                 event["summary"] = summary
             assignment.status = "finished"
@@ -484,6 +499,12 @@ class _Run:
         self.last_checkpoint: str | None = self.body.get("context", {}).get("checkpoint_ref")
         self.deferred: list[Json] = []
         self.usage_seen: set[str] = set()
+        # Tokens of messages whose usage arrived before a call to attribute them to: they go
+        # to the next step, so that none is lost.
+        self.unattributed = (0, 0)
+        # What this assignment has consumed so far, per quantity the limits can bound.
+        self.used: dict[str, float] = {"tokens_in": 0.0, "tokens_out": 0.0, "quota_units": 0.0}
+        self.halted: tuple[str, str] | None = None  # the limit kind and why
         self.current: Step | None = None
         self.last_step_id: str | None = None
         self.last_text = ""
@@ -611,6 +632,9 @@ class _Run:
                 "failed",
                 reason=f"the task needs {refused!r}, which the frame does not allow",
             )
+            return False
+        if self.fault != "W-14" and (halt := self._over_ceiling()) is not None:
+            self._finish_stopped(halt[1], limit=halt[0])
             return False
         return True
 
@@ -775,6 +799,11 @@ class _Run:
     def _on_assistant(self, event: Json, process: subprocess.Popen[str]) -> str | None:
         message = event.get("message") or {}
         tokens_in, tokens_out = self._usage_of(message)
+        # A message is streamed in several lines; its usage is counted with the first, which
+        # may carry text only. Until a call claims them, the tokens wait.
+        tokens_in += self.unattributed[0]
+        tokens_out += self.unattributed[1]
+        self.unattributed = (tokens_in, tokens_out)
         for block in message.get("content") or []:
             if block.get("type") == "text" and isinstance(block.get("text"), str):
                 self.last_text = block["text"]
@@ -795,6 +824,7 @@ class _Run:
                 began=time.monotonic(),
             )
             tokens_in, tokens_out = 0, 0  # the message's tokens go to its first call
+            self.unattributed = (0, 0)
             summary = f"{tool}: {_summary_of(tool, arguments)}"
             with self.a.lock:
                 self.worker._emit(
@@ -877,6 +907,33 @@ class _Run:
             log(f"assignment {self.a.id}: stop requested; the boundary is here")
             _end(process)
             return "stopped"
+        if self.fault != "W-14" and (halt := self._over_ceiling()) is not None:
+            log(f"assignment {self.a.id}: a limit is reached; the boundary is here")
+            self.halted = halt
+            _end(process)
+            return "limit"
+        return None
+
+    def _over_ceiling(self) -> tuple[str, str] | None:
+        """The limits are the worker's hard ceiling (W-14). This worker cannot know what the
+        agent's next call will use, so it holds the running total itself against each limit
+        at every boundary: reached, and nothing more starts. What it can hold per turn is
+        tokens and quota; money arrives only with the agent's final result. The limit kind
+        and the reason, or None."""
+        limits = self.body["limits"]
+        bounds: list[tuple[str, str, float]] = [
+            ("tokens", f"tokens_{d}", float(limits["tokens"][d]))
+            for d in ("in", "out")
+            if d in (limits.get("tokens") or {})
+        ]
+        if "quota" in limits and self.worker.auth == "session":
+            bounds.append(("quota", "quota_units", float(limits["quota"]["units"])))
+        for kind, quantity, ceiling in bounds:
+            if self.used[quantity] >= ceiling:
+                return kind, (
+                    f"the running total of {self.used[quantity]:g} {quantity} has reached the "
+                    f"limit of {ceiling:g}; halted at the boundary of {self.last_step_id}"
+                )
         return None
 
     def _close_step(self, step: Step, how: str) -> None:
@@ -894,6 +951,8 @@ class _Run:
         }
         if self.worker.auth == "session":
             consumption["quota_units"] = 1
+        for quantity in self.used:
+            self.used[quantity] += float(consumption.get(quantity, 0))
         with a.lock:
             if self.fault == "W-04":
                 self.deferred.append(consumption)
@@ -919,11 +978,16 @@ class _Run:
         """Every file the assignment changed since the baseline, with its full content, as one
         JSON document: what a connector needs to put the change on a branch without a
         repository of its own (`repository.branches.create`). Text as text, anything else as
-        base64; a deleted file by path. Renames count as a deletion and an addition."""
+        base64; a deleted file by path. Renames count as a deletion and an addition.
+
+        A file the index records as executable (mode 100755) carries `executable: true`, so
+        that a script the change adds arrives executable on the branch; any other file carries
+        no flag, and the connector keeps the mode the base has (DEC-0020, issue #28)."""
         base = self._git(["git", "rev-parse", BASELINE_TAG], check=False).stdout.strip()
         listed = self._git(
             ["git", "diff", "--name-status", "--no-renames", f"{BASELINE_TAG}..HEAD"], check=False
         ).stdout
+        executable = self._executable_paths()
         files: list[Json] = []
         deleted: list[str] = []
         for line in listed.splitlines():
@@ -935,12 +999,28 @@ class _Run:
                 continue
             raw = (self.workspace / path).read_bytes()
             try:
-                files.append({"path": path, "content": raw.decode("utf-8"), "encoding": "utf-8"})
+                entry: Json = {"path": path, "content": raw.decode("utf-8"), "encoding": "utf-8"}
             except UnicodeDecodeError:
-                files.append(
-                    {"path": path, "content": base64.b64encode(raw).decode(), "encoding": "base64"}
-                )
+                entry = {
+                    "path": path,
+                    "content": base64.b64encode(raw).decode(),
+                    "encoding": "base64",
+                }
+            if path in executable:
+                entry["executable"] = True
+            files.append(entry)
         return json.dumps({"base": base, "files": files, "deleted": deleted}, ensure_ascii=False)
+
+    def _executable_paths(self) -> set[str]:
+        """The paths the index records with mode 100755. Every change is committed at its
+        boundary, so the index is the tree of the last commit."""
+        staged = self._git(["git", "ls-files", "--stage"], check=False).stdout
+        found: set[str] = set()
+        for line in staged.splitlines():
+            meta, _, path = line.partition("\t")
+            if path and meta.split(" ", 1)[0] == "100755":
+                found.add(path)
+        return found
 
     def _commit_change(self, step: Step) -> str | None:
         """What the agent changed in this step, committed and announced as a patch."""
@@ -993,6 +1073,9 @@ class _Run:
         if ended_by == "stopped":
             self._finish_stopped("stop requested; the assignment ended at the boundary")
             return
+        if ended_by == "limit" and self.halted is not None:
+            self._finish_stopped(self.halted[1], limit=self.halted[0])
+            return
         if ended_by == "window":
             self._finish_stopped(
                 "the agent's subscription window is exhausted; blocked, not failed"
@@ -1014,11 +1097,13 @@ class _Run:
             return
         self.worker._finish(a, "failed", reason=cause[:400])
 
-    def _finish_stopped(self, why: str) -> None:
+    def _finish_stopped(self, why: str, *, limit: str | None = None) -> None:
         if self.last_checkpoint is None:
             self.worker._finish(self.a, "failed", reason=f"{why}; no boundary was reached")
             return
-        self.worker._finish(self.a, "stopped", checkpoint_ref=self.last_checkpoint, reason=why)
+        self.worker._finish(
+            self.a, "stopped", checkpoint_ref=self.last_checkpoint, reason=why, limit=limit
+        )
 
     def _finish_succeeded(self, result: Json, text: str) -> None:
         a = self.a
@@ -1029,10 +1114,12 @@ class _Run:
             tool="report",
             capability="code.read",
             kind="report",
-            tokens_in=0,
-            tokens_out=0,
+            # The closing message calls no tool; its tokens are this step's.
+            tokens_in=self.unattributed[0],
+            tokens_out=self.unattributed[1],
             began=time.monotonic(),
         )
+        self.unattributed = (0, 0)
         with a.lock:
             self.worker._emit(
                 a,

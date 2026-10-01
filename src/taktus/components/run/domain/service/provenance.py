@@ -16,6 +16,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 
 from taktus.components.run.domain.model.run import Run, StepRun
+from taktus.components.run.domain.service.rehearsal import REHEARSED
 from taktus.shared.v1 import (
     InputKind,
     LedgerEntry,
@@ -205,7 +206,11 @@ def _against_ledger(provenance: Provenance, entry: LedgerEntry | None) -> list[s
     if entry is None:
         return [f"{where}: names ledger entry {provenance.ledger_seq}, which does not exist"]
     findings: list[str] = []
-    if entry.kind != FINISHED or entry.outcome != SUCCEEDED:
+    # A rehearsal's outward step completes from a recording, and its entry says so (ADR-0030).
+    completed = entry.outcome == SUCCEEDED or (
+        entry.outcome == REHEARSED and entry.rehearsal is True
+    )
+    if entry.kind != FINISHED or not completed:
         findings.append(
             f"{where}: ledger entry {entry.seq} is {entry.kind} {entry.outcome or ''}, "
             f"not {FINISHED} {SUCCEEDED}"

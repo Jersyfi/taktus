@@ -17,14 +17,14 @@ bounding. The section states the boundary; it does not point at it.
 |---|---|---|
 | [0001](ADR-0001-language.md) | Python as the single server-side language | accepted |
 | [0002](ADR-0002-dependencies.md) | Dependencies and the execution environment | accepted |
-| [0003](ADR-0003-adapter-obligation.md) | The adapter obligation, enforced in CI | accepted |
+| [0003](ADR-0003-adapter-obligation.md) | The adapter obligation, enforced in CI | accepted, extended by 0030 (a fourth verdict) |
 | [0004](ADR-0004-method-selection.md) | Method selection: which kind of AI per step | accepted |
-| [0005](ADR-0005-step-atomicity.md) | Step atomicity and admission control | accepted, amended (DEC-0012) |
+| [0005](ADR-0005-step-atomicity.md) | Step atomicity and admission control | accepted, amended (DEC-0012), amended 2026-09-30 (DEC-0035) |
 | [0006](ADR-0006-ledger.md) | The ledger as a content-free hash chain | accepted |
 | [0007](ADR-0007-worker-contract.md) | Worker contract over HTTP and SSE | accepted |
 | [0008](ADR-0008-decision-request.md) | Decision requests and strategic anchors | accepted, extended by 0022 |
 | [0009](ADR-0009-adapter-monorepo.md) | Adapters in the main repository until 1.0.0 | accepted |
-| [0010](ADR-0010-accounting.md) | The Takt as a unit of orchestrated work | **proposed** |
+| [0010](ADR-0010-accounting.md) | The Takt as a unit of orchestrated work | **proposed**, amended 2026-09-30 |
 | [0011](ADR-0011-process-bundles.md) | Process bundles, optionally mirrored to Git | accepted |
 | [0012](ADR-0012-licensing.md) | Licensing and repository visibility | **open — owner decides** |
 | [0013](ADR-0013-business-critical.md) | Taktus is business-critical: what follows | accepted |
@@ -41,6 +41,8 @@ bounding. The section states the boundary; it does not point at it.
 | [0024](ADR-0024-connector-contract.md) | Connector contract on MCP: two directions, a declared effect, an honest repeat | accepted |
 | [0025](ADR-0025-where-an-instance-may-run.md) | Where an instance may run | accepted |
 | [0026](ADR-0026-autonomy-carries-its-reason.md) | Autonomy carries its reason | accepted |
-| [0027](ADR-0027-taktus-reaches-itself-through-the-connector-port.md) | Taktus reaches itself through the connector port | accepted |
-| [0028](ADR-0028-what-the-owner-must-act-on-becomes-a-record.md) | What the owner must act on becomes a record: needs requests and the status report | accepted |
+| [0027](ADR-0027-taktus-reaches-itself-through-the-connector-port.md) | Taktus reaches itself through the connector port | accepted, extended by 0030 |
+| [0028](ADR-0028-what-the-owner-must-act-on-becomes-a-record.md) | What the owner must act on becomes a record: needs requests and the status report | accepted, amended 2026-09-30 (DEC-0021) |
 | [0029](ADR-0029-views-are-a-component-enablement-is-not.md) | Views are a component; enablement is not | accepted |
+| [0030](ADR-0030-a-rehearsal-acts-on-nothing-outside.md) | A rehearsal acts on nothing outside; a removal verdict says what it was taken under | accepted |
+| [0031](ADR-0031-taktus-watches-the-platform-it-runs-on.md) | Taktus watches the platform it runs on | accepted |

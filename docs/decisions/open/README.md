@@ -7,5 +7,5 @@ has a matching issue labelled `needs-owner`. Both are assigned to the owner. A f
 directory in the same commit that writes its record into [../](../README.md).
 
 While a file with `**Category:** BLOCKING` is here, the pull request that raised it stays a draft.
-An open need keeps no pull request a draft; it stays listed in [../../status.md](../../status.md)
-until it is provided.
+An open need keeps no pull request a draft; `make status` lists it, and every pull request
+description carries the list, until it is provided (DEC-0026).

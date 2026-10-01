@@ -18,6 +18,7 @@ from .test_first_slice import TENANT, bundle, entries_of, start, verifies
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "script" / "worker.py"
+LINUX = sys.platform.startswith("linux")
 
 
 def wiring(**more: str) -> LocalWiring:
@@ -27,6 +28,9 @@ def wiring(**more: str) -> LocalWiring:
                 "TAKTUS_EXECUTION": "process",
                 "TAKTUS_EXECUTION_UNIT": f"{sys.executable} {WORKER} --step-seconds 0.1",
                 "TAKTUS_EXECUTION_WALL_SECONDS": "60",
+                # Only Linux enforces the unit's memory limit; elsewhere the adapter refuses
+                # the job unless the operator accepts the limit unenforced, as here.
+                "TAKTUS_EXECUTION_MEMORY_UNENFORCED": "false" if LINUX else "true",
                 **more,
             }
         )

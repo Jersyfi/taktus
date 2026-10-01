@@ -59,9 +59,9 @@ roles:                   # one deployment per role (ADR-0002)
   automation: { replicas:, resources: {...} }
 
 database:
-  deploy:                # true: a StatefulSet in this namespace; false: an existing server
+  deploy: true           # a PostgreSQL of its own, deployed with the instance (DEC-0032); false: an existing server
   storageClass:
-  size:
+  size: 20Gi             # DEC-0033: cannot be enlarged on the target's storage class; watched from the first run
   urlSecret:             # name of the Secret holding the connection URL
   urlKey:                # the key inside it; mounted as a file, read through TAKTUS_DATABASE_URL_FILE
 
@@ -89,12 +89,37 @@ ingress:
 
 telemetry:
   otlp: { endpoint:, protocol:, headersSecret:, headersKey: }   # all empty: spans stay local
+
+model: { endpoint:, name:, purposes:, billing: per_token, outputCap: hard }
+                         # outputCap: this tenant's endpoint holds the limit (research [A4]; M-03 passed
+                         # against it on 2026-10-01); for another endpoint, run M-03 and set what it shows
+
+capacity: { databaseVolumeMb:, storageExpandable:, storageWarnPercent:, actWithinDays: }
 ```
 
 **Every secret is mounted as a file and read through `TAKTUS_<KEY>_FILE`** — never handed to a
 container as an environment variable, because variables leak into process listings and child
 processes (`CREDENTIALS.md`). The chart's job is to mount them and set the `_FILE` variables;
 it never carries a value, and a values file in the repository never carries one either.
+
+**The database is the instance's own** (DEC-0032): the chart deploys a PostgreSQL with the
+instance, and no other system uses that server, because a shared database means the system meant
+to report a failure fails with it. It sits in the instance's own namespace, the control plane's — confirmed by the owner on
+2026-10-01.
+
+**Storage is sized once and watched from the first day.** The database's volume defaults to
+20 Gi (`database.size`, DEC-0033). On the target's storage class a volume cannot be enlarged
+after it was created, and the ledger only grows. The chart therefore sets
+`TAKTUS_CAPACITY_DATABASE_VOLUME_MB` from `database.size` and
+`TAKTUS_CAPACITY_STORAGE_EXPANDABLE` from the storage class's `allowVolumeExpansion` — false on
+the target — so that the instance holds the database's own size, which it measures, against a
+volume it cannot see. From the first run the scheduler reports every hour: the growth per run
+(the database's size over the runs it holds, an upper bound), runs per day, the date the volume
+is full and the date it falls below 10 % free. Thirty days before that date the finding turns to
+*act*, is logged as a warning and recorded in the ledger as `capacity.storage.database`
+(ADR-0031, `docs/architecture/platform.md`). The migration to a larger volume is the operator's,
+and it needs those thirty days. Every job's pod carries `resources.limits.memory` equal to its
+unit's limit, because the node has no swap: a job without one is refused, not started.
 
 **Migrations** run as a `Job` with a `helm.sh/hook: pre-upgrade,pre-install` and the control
 plane's own image, `make migrate`. The instance does not migrate itself on start.
@@ -237,12 +262,13 @@ create:
   its token and the cluster's CA. Where the API server is reachable from outside, this replaces
   shell access entirely, which is the better arrangement: the deployment needs no account on the
   machine.
-- **A public name for the ingress**, and the TLS arrangement behind it.
+- **A public name for the ingress**, and the TLS arrangement behind it: a subdomain of the
+  project's own domain, proposed in NEED-0008.
 - **The webhook signing secret**, once the ingress name exists: it is set at the hosting
   service and in the instance in one move, and the connector refuses every delivery it cannot
   verify.
-- **The database decision**: deployed with Taktus, or an existing server. ADR-0020 says one
-  database per instance either way.
+- **The database decision** — answered (DEC-0032): a PostgreSQL of its own, deployed with the
+  instance; its volume 20 Gi (DEC-0033).
 
 ## 9. What this plan does not cover
 

@@ -9,6 +9,20 @@ The credential is a `Secret` read through the configuration port at construction
 only into the request header; it is never logged, never part of an error. An endpoint that
 refuses, does not answer, or answers outside the dialect is a `ModelError` naming the endpoint
 and the fault.
+
+**What it can say before a call.** The dialect has no endpoint that counts tokens. The adapter
+therefore declares its count an **upper bound** and computes it: a tokenizer that works on
+bytes emits at most one token per byte of text, so the UTF-8 length of every message plus a
+fixed overhead per message is never below what the provider bills for text. It over-reserves,
+and it is safe; `contracts/model/v1` check M-02 holds a live endpoint to it. Whether the output
+limit is hard, and how the provider bills, the dialect does not say either: the operator
+declares both for the configured endpoint (`TAKTUS_MODEL_OUTPUT_CAP`, `TAKTUS_MODEL_BILLING`),
+and the defaults are the cautious ones — a soft cap, billing per token. The evidence for what
+providers permit is `docs/research/2026-09-30-what-providers-allow.md`.
+
+**After it.** `usage.prompt_tokens` is every input token; where the endpoint reports how many
+were read from a cache (`prompt_tokens_details.cached_tokens`) or written to one
+(`prompt_tokens_details.cache_write_tokens`), the completion splits them by price kind.
 """
 
 from __future__ import annotations
@@ -18,9 +32,34 @@ from typing import Any
 import httpx
 
 from taktus.ports.configuration import Secret
-from taktus.ports.model import Completion, Model, ModelError, Prompt
+from taktus.ports.model import (
+    Billing,
+    Calculability,
+    Completion,
+    Model,
+    ModelError,
+    OutputCap,
+    Prompt,
+    ProviderLimit,
+)
+from taktus.shared.v1 import PriceKinds
 
 FINISH = {"stop": "stop", "end_turn": "stop", "length": "length", "max_tokens": "length"}
+
+MESSAGE_OVERHEAD = 16
+"""Tokens a chat template adds around one message — role markers, separators — at most. Every
+template in the research of 2026-09-30 stays below it; a template that does not would show as
+a failed M-02 against its endpoint."""
+REQUEST_OVERHEAD = 16
+"""Tokens a chat template adds once per request — a beginning marker, the assistant's cue."""
+EVIDENCE = "docs/research/2026-09-30-what-providers-allow.md"
+
+
+def upper_bound(prompt: Prompt) -> int:
+    """At most as many input tokens as the provider bills for this prompt's text: one per byte
+    of every message, plus the template's overhead."""
+    messages = [text for text in (prompt.system, prompt.user) if text]
+    return REQUEST_OVERHEAD + sum(len(text.encode("utf-8")) + MESSAGE_OVERHEAD for text in messages)
 
 
 class OpenAiCompatibleModel(Model):
@@ -31,11 +70,28 @@ class OpenAiCompatibleModel(Model):
         *,
         credential: Secret | None = None,
         timeout: float = 120.0,
+        billing: Billing = "per_token",
+        output_cap: OutputCap = "soft",
+        provider_limit: ProviderLimit = "unknown",
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
         self._model = model
         self._credential = credential
         self._timeout = timeout
+        self._calculability = Calculability(
+            input_count="upper_bound",
+            output_cap=output_cap,
+            usage_kinds=("input", "output"),
+            billing=billing,
+            provider_limit=provider_limit,
+            evidence=EVIDENCE,
+        )
+
+    def calculability(self) -> Calculability:
+        return self._calculability
+
+    async def count(self, prompt: Prompt) -> int | None:
+        return upper_bound(prompt)
 
     @property
     def endpoint(self) -> str:
@@ -84,13 +140,30 @@ class OpenAiCompatibleModel(Model):
             ) from error
         if not isinstance(text, str):
             raise ModelError(f"the model endpoint {self._endpoint} answered without text")
+        tokens_in = int(usage.get("prompt_tokens") or 0)
+        tokens_out = int(usage.get("completion_tokens") or 0)
         return Completion(
             text=text,
             model=str(document.get("model") or self._model),
-            tokens_in=int(usage.get("prompt_tokens") or 0),
-            tokens_out=int(usage.get("completion_tokens") or 0),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            by_kind=_by_kind(usage, tokens_in, tokens_out),
             finish=FINISH.get(str(choice.get("finish_reason") or ""), "other"),  # type: ignore[arg-type]
         )
+
+
+def _by_kind(usage: dict[str, Any], tokens_in: int, tokens_out: int) -> PriceKinds:
+    """The totals split by price kind, as far as the endpoint reports the split: cached input
+    read and written where it says so, the rest uncached."""
+    details = usage.get("prompt_tokens_details") or {}
+    read = int(details.get("cached_tokens") or 0) if isinstance(details, dict) else 0
+    written = int(details.get("cache_write_tokens") or 0) if isinstance(details, dict) else 0
+    kinds: dict[str, int] = {"input": max(0, tokens_in - read - written), "output": tokens_out}
+    if read:
+        kinds["cache_read"] = read
+    if written:
+        kinds["cache_write"] = written
+    return PriceKinds.model_validate(kinds)
 
 
 def _message(response: httpx.Response) -> str:

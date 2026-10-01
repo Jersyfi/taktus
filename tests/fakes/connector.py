@@ -58,6 +58,7 @@ class FakeConnector:
                         "name": READ,
                         "capability": "fake.records",
                         "effect": "read",
+                        "demand": {"quota_units": 1},
                         "summary": "read",
                     },
                     {
@@ -65,6 +66,7 @@ class FakeConnector:
                         "capability": "fake.records",
                         "effect": "write",
                         "idempotency": "marked",
+                        "demand": {"quota_units": 2},
                         "summary": "create",
                     },
                     {
@@ -72,6 +74,7 @@ class FakeConnector:
                         "capability": "fake.records",
                         "effect": "write",
                         "idempotency": "none",
+                        "demand": {"quota_units": 1},
                         "summary": "fire",
                     },
                 ],

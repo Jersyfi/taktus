@@ -42,7 +42,7 @@ def test_taktusctl_conformance_run(start_worker: StartWorker, tmp_path: Path) ->
         check=False,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "12 passed, 0 failed, 0 inconclusive, 1 pending" in completed.stdout
+    assert "13 passed, 0 failed, 0 inconclusive, 1 pending" in completed.stdout
     assert "verified: no" in completed.stdout
     report = json.loads(report_path.read_text())
     assert report["summary"]["exit_code"] == 0
@@ -54,7 +54,7 @@ def test_taktusctl_refuses_an_unknown_contract() -> None:
     taktusctl = shutil.which("taktusctl")
     assert taktusctl is not None
     completed = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
-        [taktusctl, "conformance", "run", "--contract", "model/v1", "--endpoint", "http://x"],
+        [taktusctl, "conformance", "run", "--contract", "events/v1", "--endpoint", "http://x"],
         capture_output=True,
         text=True,
         check=False,

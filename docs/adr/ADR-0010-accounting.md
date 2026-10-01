@@ -1,6 +1,6 @@
 # ADR-0010 — The Takt as a unit of orchestrated work
 
-**Status:** **proposed** — measured from `0.2.0`; how long data is collected before anything is
+**Status:** **proposed**, amended 2026-09-30 (one breakdown, two tables) — measured from `0.2.0`; how long data is collected before anything is
 charged is decided later, based on real runs from both reference use cases
 
 ## Context
@@ -51,6 +51,29 @@ estimate.
 - Open for the owner: the free threshold, peak versus average, tiers versus linear, and how
   measurement works in an air-gapped installation.
 
+## Amendment — one breakdown, two tables (2026-09-30)
+
+"Recomputable from the ledger" needs the ledger to hold what a figure is computed from. The
+first live run showed it did not: money was reported per assignment and was not a function of
+the tokens recorded, because caching and the mix of models inside a worker decide the bill
+(`docs/runs/first-run.md` §2). What follows is built.
+
+- **One breakdown.** Every consumption carries its language-model tokens per model and per
+  price kind — uncached input, output, input read from a cache, input written to one
+  (`contracts/shared/v1/Consumption.json`, `tokens_by_model`) — beside compute seconds per
+  resource class, quota units and the steps per method. The accounting component meters a run
+  from its `step.finished` entries into that one breakdown (`components/accounting`).
+- **Two tables over it.** Money is the breakdown at a price table: versioned, never changed once
+  used, and named by the run's budget statement through the digest of its document
+  (`contracts/model/v1`, `PriceTable`; ADR-0005, third amendment). The Takt will be the same
+  breakdown at a weighting table, once its weights are decided — which remains the owner's
+  (M4.3). Neither figure is computed from the other.
+- **Nothing unpriced counts as free.** A model or a kind a table does not price, and tokens
+  recorded without the model that used them, are named beside the amount.
+
+`taktusctl cost <run>` prints the breakdown and the money at the run's own table, or at another
+table to compare.
+
 ## Where this promise ends
 
 The Takt is proposed, not accepted: nothing is charged, the weights are a first draft, and the
@@ -59,3 +82,7 @@ holds for what the ledger measures — tokens, compute seconds, resource class, 
 storage — and not for what a provider does not report; where money is reported per assignment
 the Takt is still exact, because it derives from tokens and compute (ADR-0005). A budget in
 Takte is enforced only once the Takt is measured (`0.2.0`).
+
+The breakdown holds what workers and models report. A worker that reports tokens without the
+model that used them leaves them unpriced, and says so; a worker that reports money only when
+an assignment ends reports it beside the computed figure, and the two may differ.

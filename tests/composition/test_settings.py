@@ -116,6 +116,12 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
         ("TAKTUS_WORKER", "worker:9000", "not an http(s) URL"),
         ("TAKTUS_EXECUTION", "pod", "not one of endpoint, process, container"),
         ("TAKTUS_EXECUTION_MEMORY_MB", "8", "at least 16"),
+        ("TAKTUS_EXECUTION_MEMORY_UNENFORCED", "perhaps", "not true or false"),
+        ("TAKTUS_CAPACITY_STORAGE_WARN_PERCENT", "100", "between 0.1 and 99.0"),
+        ("TAKTUS_CAPACITY_STORAGE_REFUSE_PERCENT", "12", "a person is told before work is refused"),
+        ("TAKTUS_CAPACITY_STORAGE_EXPANDABLE", "sometimes", "not true or false"),
+        ("TAKTUS_CAPACITY_INTERVAL_SECONDS", "5", "at least 60"),
+        ("TAKTUS_CAPACITY_DATABASE_VOLUME_MB", "twenty", "not a whole number"),
         ("TAKTUS_CONNECTORS", "channel.repo", "capability=url"),
         ("TAKTUS_CONNECTORS", "Repo=http://x", "not a capability"),
         ("TAKTUS_CONNECTORS", "channel.repo=ftp://x", "not an http(s) URL"),
@@ -169,7 +175,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 36, "every setting is in the startup log"
+    assert len(effective) == 53, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -207,3 +213,62 @@ class _Capture:
         self._lines.append(message)
 
     debug = info = warning = error = critical = msg
+
+
+def test_the_budget_settings_are_validated_and_the_price_table_read(tmp_path: Path) -> None:
+    from taktus.composition.settings import load_budget
+
+    table = tmp_path / "prices.json"
+    table.write_text(
+        '{"version": "t-1", "valid_from": "2026-09-30T00:00:00Z", "currency": "usd", '
+        '"unit_tokens": 1000000, "source": "a test", "prices": {"m@1": {"input": 1.0}}}',
+        encoding="utf-8",
+    )
+    budget = load_budget(EnvironmentConfiguration({"TAKTUS_PRICE_TABLE": str(table)}))
+    assert budget.margin == 0.0 and budget.uncalibrated_margin == 1.0, "DEC-0034"
+    loaded = budget.table()
+    assert loaded is not None and loaded.version == "t-1"
+    with pytest.raises(ConfigurationError, match="TAKTUS_BUDGET_MARGIN"):
+        load_budget(EnvironmentConfiguration({"TAKTUS_BUDGET_MARGIN": "0.95"}))
+    table.write_text("{}", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="is not a price table"):
+        load_budget(EnvironmentConfiguration({"TAKTUS_PRICE_TABLE": str(table)})).table()
+    with pytest.raises(ConfigurationError, match="TAKTUS_MODEL_BILLING"):
+        settings(TAKTUS_MODEL_BILLING="per_mood")
+
+
+def test_the_capacity_thresholds_are_named_settings_with_defaults() -> None:
+    capacity = settings().capacity
+    assert (capacity.storage_warn_percent, capacity.storage_refuse_percent) == (10.0, 2.0)
+    assert (capacity.act_within_days, capacity.window_days) == (30, 14)
+    assert (capacity.memory_warn_percent, capacity.cpu_warn_percent) == (10.0, 10.0)
+    assert capacity.memory_reserve_mb == 256 and capacity.interval_seconds == 3600
+    assert capacity.database_volume_mb is None, "not visible from the instance: told, or unknown"
+    assert capacity.storage_expandable is None, "nobody has said"
+    assert settings().execution.memory_unenforced is False, "an unenforced limit is refused"
+
+
+def test_every_capacity_setting_is_read_from_its_variable() -> None:
+    loaded = settings(
+        TAKTUS_CAPACITY_STORAGE_WARN_PERCENT="15",
+        TAKTUS_CAPACITY_STORAGE_REFUSE_PERCENT="3.5",
+        TAKTUS_CAPACITY_ACT_WITHIN_DAYS="45",
+        TAKTUS_CAPACITY_MEMORY_WARN_PERCENT="20",
+        TAKTUS_CAPACITY_CPU_WARN_PERCENT="5",
+        TAKTUS_CAPACITY_MEMORY_RESERVE_MB="512",
+        TAKTUS_CAPACITY_WINDOW_DAYS="7",
+        TAKTUS_CAPACITY_DATABASE_VOLUME_MB="20480",
+        TAKTUS_CAPACITY_STORAGE_EXPANDABLE="false",
+        TAKTUS_CAPACITY_INTERVAL_SECONDS="600",
+        TAKTUS_EXECUTION_MEMORY_UNENFORCED="true",
+    )
+    capacity = loaded.capacity
+    assert (capacity.storage_warn_percent, capacity.storage_refuse_percent) == (15.0, 3.5)
+    assert (capacity.act_within_days, capacity.window_days) == (45, 7)
+    assert (capacity.memory_warn_percent, capacity.cpu_warn_percent) == (20.0, 5.0)
+    assert capacity.memory_reserve_mb == 512 and capacity.interval_seconds == 600
+    assert capacity.database_volume_mb == 20480 and capacity.storage_expandable is False
+    assert loaded.execution.memory_unenforced is True
+    effective = dict(loaded.effective())
+    assert effective["TAKTUS_CAPACITY_STORAGE_EXPANDABLE"] == "false"
+    assert effective["TAKTUS_EXECUTION_MEMORY_UNENFORCED"] == "true"

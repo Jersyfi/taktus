@@ -62,7 +62,10 @@ paths:
         honoured, the worker does not start: the state is `finished` with outcome `rejected`,
         and the stream carries exactly one event, `assignment.finished` with the same outcome
         and a reason. Rejection is a state of the assignment, not an HTTP error, so that the
-        ledger sees it through the same stream as everything else.
+        ledger sees it through the same stream as everything else. Once started, the limits
+        are the worker's hard ceiling: a step whose expected demand would carry the running
+        total across a limit does not start, and the assignment ends `stopped` at the boundary
+        it is at, with its checkpoint and the `limit` that halted it.
       requestBody:
         required: true
         content:

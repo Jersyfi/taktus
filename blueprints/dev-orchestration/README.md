@@ -44,8 +44,11 @@ its task), name the branch, put the worker's changeset on it through the connect
 outward: one commit that carries the idempotency key), wait for the pipeline (`wait`, polling
 the pipeline's state), read the verdict, verify it is `success` (`rule`, `exact` — the pipeline's
 verdict, never the worker's opinion), compose the title and the body, open the pull request
-(`rule`, outward), label it (`rule`, outward). Nothing writes to the base branch: a person
-merges.
+(`rule`, outward), label it (`rule`, outward). The body is the worker's summary between what
+the template fixes: `Closes #N` and Taktus's own statement before it, and after it the section
+the repository generates for the end of every description, copied verbatim from the run's
+input `closing_section` — a copy is a rule, not a model's output (issue #34). Nothing writes to
+the base branch: a person merges.
 
 Every step carries its method, the reason, the alternatives rejected, a fallback where the
 method can vary, and its exactness class; `tests/exactness` holds the `exact` steps to rules.
@@ -73,7 +76,13 @@ rather than assumed.
 
 `tools/first_run.sh <issue>` runs P-02 and then P-03 against this repository with the reference
 connector, the coding worker and a configured model, from one command; `docs/runs/` holds
-the record of what happened the first time. The credentials it needs are parameters
+the record of what happened the first time. Run again — the normal case once an attempt found
+a defect — it takes `--only P-03` to run one bundle with the same processes, and `--only P-03
+--resume <run id>` to continue a stopped run. A P-02 that refuses the issue because its
+criteria are already there is reported as already done, and P-03 runs. A branch
+`taktus/issue-<n>` left by an earlier attempt stops the script before anything starts, with
+the two ways on: resume the run that made it, or delete the branch and start again; the script
+never deletes it (issue #30). The credentials it needs are parameters
 (`CREDENTIALS.md`): the repository token, the coding agent's key or session token, and the
 model endpoint's key if it needs one. The bundles' autonomy levels are the blueprint's; at level
 3 and above the `process` execution adapter is refused (ADR-0002), so the coding worker runs by
@@ -87,9 +96,15 @@ enforced.
 
 - **Inputs.** A bundle declares what a run is given (`inputs:` — name, description, example),
   and `taktusctl run --input name=value` supplies it. P-02 needs the issue number; P-03 needs
-  it too, plus the clone URL, the one host the worker may reach, and the name of the coding
-  worker's credential. The triggers in `blueprint.yaml` will supply these from the event that
-  starts a run, once event reactions exist (`0.2.0`).
+  it too, plus the clone URL, the one host the worker may reach, the name of the coding
+  worker's credential, and `closing_section`: the section the repository generates for the end
+  of every pull request description, verbatim with its heading, or empty. The run cannot
+  generate it — a template composes, it does not run the repository's generator — so whoever
+  starts the run does, from the base branch; `tools/first_run.sh` runs
+  `tools/check_status.py --print` on `main` for this repository. The triggers in
+  `blueprint.yaml` will supply the other inputs from the event that starts a run, once event
+  reactions exist (`0.2.0`). An automatic start will take the section from the worker, which runs the
+  generator after its change (DEC-0037, decided); until then this input carries it.
 - **The pipeline on a branch.** P-03 reads the pipeline's verdict before it opens the pull
   request, so the pipeline must run for a pushed branch; this repository's
   `.github/workflows/ci.yml` runs on pushes to `taktus/**` for that reason.

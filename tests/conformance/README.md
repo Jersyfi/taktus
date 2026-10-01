@@ -7,8 +7,9 @@ as a foreign one would be reached; the suite never imports it.
 | File | Proves |
 |---|---|
 | `test_worker_v1_fixtures.py` | every transcript fixture of the worker contract is known good or known bad by the stream rules |
-| `test_worker_v1_reference.py` | the reference worker passes W-01 to W-11 in both profiles; W-12 stays pending |
+| `test_worker_v1_reference.py` | the reference worker passes W-01 to W-11, W-13 and W-14 in both profiles; W-12 stays pending; started to underestimate, it halts at a limit equal to its estimate; a worker that never exceeds its estimate leaves W-14 inconclusive |
 | `test_worker_v1_faults.py` | for every fault the reference worker can inject, the suite fails on exactly that check |
+| `test_worker_v1_coding.py` | the coding worker against the fake agent passes the same checks in both authentication modes and fails exactly the check of each fault; a token limit halts it at a boundary and the resume continues; an expired session and an exhausted window halt it too |
 | `test_connector_v1_rules.py` | the connector rules on known-good and known-bad documents |
 | `test_connector_v1_reference.py` | the reference connector passes C-01 to C-09 against the fake service; C-10 stays pending; the fake holds one record per key afterwards |
 | `test_connector_v1_faults.py` | for every fault the reference connector can inject, the suite fails on exactly that check |

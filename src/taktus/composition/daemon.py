@@ -37,6 +37,7 @@ from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
 from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.models.pool import StaticModelPool
+from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresLeadership,
     PostgresLedgerStore,
@@ -59,12 +60,16 @@ from taktus.components.command.application.service import (
     ReceiveIntakeHandler,
 )
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.governance.application.service import (
+    ReportCapacity,
+    ReportCapacityHandler,
+)
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.domain.model import ProcessVersion
-from taktus.components.run.application.query import ProvenanceQuery
+from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import (
     EngineOptions,
     RunEngine,
@@ -73,7 +78,14 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
-from taktus.composition.execution import connector_pool, model_pool, open_worker, telemetry_of
+from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
+from taktus.composition.execution import (
+    connector_pool,
+    memory_demand,
+    model_pool,
+    open_worker,
+    telemetry_of,
+)
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.settings import Role, Settings, load
@@ -108,6 +120,8 @@ class Wired:
     leadership: Leadership
     clock: SystemClock
     ids: SystemIdentifiers
+    capacity: ReportCapacityHandler
+    """The capacity report the scheduler runs every `TAKTUS_CAPACITY_INTERVAL_SECONDS`."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -168,7 +182,8 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
             else None
         )
         runs = PostgresRepository(persistence, Run)
-        ledger = ChainedLedger(PostgresLedgerStore(persistence), clock)
+        ledger_store = PostgresLedgerStore(persistence)
+        ledger = ChainedLedger(ledger_store, clock)
         provenance_store = PostgresProvenanceStore(persistence)
         queue = PostgresQueue(persistence, lease_seconds=settings.lease_seconds)
         async with open_worker(settings.execution, configuration, state_dir=settings.state_dir) as (
@@ -178,11 +193,14 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
+            objects = MemoryObjectStore(settings.state_dir / "objects")
+            recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
                 StaticWorkerPool([(adapter, worker)]),
                 connector_pool(settings.connectors, also=[(LOOPBACK, loopback)]),
                 model_pool(settings.model),
             )
+            prices = settings.budget.table()
 
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
@@ -190,7 +208,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                 return RunEngine(
                     runs=runs,
                     work=persistence,
-                    objects=MemoryObjectStore(settings.state_dir / "objects"),
+                    objects=objects,
                     ledger=ledger,
                     provenance=provenance_store,
                     workers=workers,
@@ -198,9 +216,18 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                     ids=ids,
                     telemetry=telemetry,
                     queue=queue,
-                    options=EngineOptions(step_ceiling_seconds=settings.shutdown_ceiling_seconds),
+                    options=EngineOptions(
+                        step_ceiling_seconds=settings.shutdown_ceiling_seconds,
+                        prices=prices,
+                        margin=settings.budget.margin,
+                        uncalibrated_margin=settings.budget.uncalibrated_margin,
+                        capacity=rules_of(settings.capacity),
+                        unit_memory_bytes=memory_demand(settings.execution),
+                    ),
+                    platform=HostPlatform(clock, state_dir=settings.state_dir),
                     connectors=connectors,
                     models=models,
+                    recordings=recordings,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -221,6 +248,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                     record=RecordRemovalResultHandler(
                         PostgresRepository(persistence, AdapterMaturity), persistence, ledger, clock
                     ),
+                    recordings=recordings,
                     clock=clock,
                     ids=ids,
                 )
@@ -261,6 +289,15 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                 leadership=PostgresLeadership(persistence.engine),
                 clock=clock,
                 ids=ids,
+                capacity=capacity_report(
+                    settings.capacity,
+                    clock=clock,
+                    state_dir=settings.state_dir,
+                    ledger_store=ledger_store,
+                    ledger=ledger,
+                    work=persistence,
+                    database=persistence,
+                ),
             )
             if Role.RUNNER in settings.roles:
                 wired.runner = Runner(
@@ -381,6 +418,20 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         def on_lead(leading: bool) -> None:
             wired.leading = leading
 
+        # While it leads, the scheduler looks at the platform every interval: one report for
+        # the instance, however many schedulers stand by (docs/architecture/platform.md).
+        tick = capacity_tick(
+            wired.capacity,
+            ReportCapacity(
+                tenants=settings.tenants, job_memory_bytes=memory_demand(settings.execution)
+            ),
+            wired.clock,
+            interval_seconds=settings.capacity.interval_seconds,
+        )
+
+        async def scheduled() -> None:
+            await tick()
+
         tasks.append(
             asyncio.create_task(
                 roles.run_scheduler(
@@ -388,6 +439,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
                     wired.clock,
                     stop,
                     poll_seconds=settings.poll_seconds,
+                    tick=scheduled,
                     on_lead=on_lead,
                 ),
                 name="scheduler",

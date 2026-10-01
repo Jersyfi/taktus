@@ -5,9 +5,9 @@
 #
 # Runs S-01 Removal test of the self-operation blueprint once per integration this instance is
 # configured with (blueprints/self-operation/processes/S-01-removal-test.yaml): each run
-# withholds one integration, exercises the registered processes that use it, restores it and
-# records the verdict — broke, changed, exception — in the ledger as `removal.tested` and in
-# the adapter's maturity. The scheduler will start these runs weekly from the bundle's trigger
+# withholds one integration, rehearses the registered processes that use it (no outward call
+# is sent, ADR-0030), restores it and records the verdict — broke, changed, untested,
+# exception — in the ledger as `removal.tested` and in the adapter's maturity. The scheduler will start these runs weekly from the bundle's trigger
 # once it acts on triggers (0.2.0); until then this script is what the weekly job calls
 # (.github/workflows/removal-test.yml), and what a person runs by hand.
 #

@@ -15,19 +15,22 @@ Checks, in order:
 2. every `openapi.yaml` is OpenAPI 3.1 and every `$ref` in it resolves;
 3. every example under `examples/<target>/valid/` validates against its target;
 4. every example under `examples/<target>/invalid/` fails by schema, and every conformance check
-   — W-01..W-13 of the worker contract, C-01..C-10 of the connector contract — has at least one
-   fixture named after it;
+   — W-01..W-14 of the worker contract, C-01..C-10 of the connector contract, M-01..M-04 of the
+   model contract — has at least one fixture named after it;
 5. every target has at least two valid examples.
 
 The target of an examples directory is its name in kebab-case: for the shared kernel the schema
 file (`exactness-class` -> `ExactnessClass.json`), for a contract the definition
 (`assignment-state` -> `Worker.json#/$defs/AssignmentState`).
 
-One target is different. A `transcript` fixture is a whole stream, and what makes it invalid is
-a stream rule — the order or completeness of its events — which no schema can express. This
-tool checks that such a fixture is schema-valid, which it must be to exercise a stream rule at
-all, and leaves the rule to the conformance suite: `tests/conformance` applies the same rules to
-these fixtures and to a live worker (`src/taktus/conformance/rules.py`). This file imports
+Two targets are different. A `transcript` fixture is a whole stream, and what makes it invalid is
+a stream rule — the order or completeness of its events — which no schema can express. An
+`exchange` fixture of the model contract is one call, and what makes it invalid is a rule
+between its parts — a count below the bill, output past a hard cap — which no schema expresses
+either. This tool checks that such a fixture is schema-valid, which it must be to exercise its
+rule at all, and leaves the rule to the conformance suite: `tests/conformance` applies the same
+rules to these fixtures and to a live adapter (`src/taktus/conformance/rules.py`,
+`src/taktus/conformance/model/rules.py`). This file imports
 nothing from the suite, so that it stays runnable on its own.
 """
 
@@ -51,8 +54,16 @@ from referencing.jsonschema import DRAFT202012
 ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS = ROOT / "contracts"
 NAMESPACE = "https://taktus.eu/contracts/"  # ADR-0019: the $id of a schema is its path under here
-CHECKS = [f"W-{n:02d}" for n in range(1, 14)] + [f"C-{n:02d}" for n in range(1, 11)]
+CHECKS = (
+    [f"W-{n:02d}" for n in range(1, 15)]
+    + [f"C-{n:02d}" for n in range(1, 11)]
+    + [f"M-{n:02d}" for n in range(1, 5)]
+)
+CHECK_RANGES = ("W-01..W-14", "C-01..C-10", "M-01..M-04")
 MIN_VALID_EXAMPLES = 2
+RULE_TARGETS = frozenset({"transcript", "exchange"})
+"""Targets whose must-fail fixtures break a rule no schema can express — the order of a stream,
+a count against a bill — and must therefore be schema-valid (the suite judges the rule)."""
 
 type Json = dict[str, Any]
 type SchemaRegistry = Registry[bool | Mapping[str, Any]]
@@ -271,14 +282,14 @@ def check_examples(schemas: dict[Path, Json], registry: SchemaRegistry, report: 
                 instance = load_json(path)
                 why = first_error(validator, instance)
                 name = path.relative_to(ROOT)
-                match = re.match(r"([WC]-\d{2})-", path.name)
+                match = re.match(r"([WCM]-\d{2})-", path.name)
                 if match:
                     covered.add(match.group(1))
-                if target == "transcript":
+                if target in RULE_TARGETS:
                     if why is None:
-                        report.ok(f"{name} is schema-valid; its stream rule is tests/conformance's")
+                        report.ok(f"{name} is schema-valid; its rule is tests/conformance's")
                     else:
-                        report.fail(str(name), f"a transcript fixture must be schema-valid: {why}")
+                        report.fail(str(name), f"a {target} fixture must be schema-valid: {why}")
                 elif why is None:
                     report.fail(str(name), "must fail but validates")
                 else:
@@ -287,7 +298,7 @@ def check_examples(schemas: dict[Path, Json], registry: SchemaRegistry, report: 
     if missing:
         report.fail("conformance coverage", "no must-fail example for " + ", ".join(missing))
     else:
-        report.ok("every check W-01..W-13 and C-01..C-10 has a must-fail example")
+        report.ok("every check " + ", ".join(CHECK_RANGES) + " has a must-fail example")
 
 
 # --- main ----------------------------------------------------------------------------------------

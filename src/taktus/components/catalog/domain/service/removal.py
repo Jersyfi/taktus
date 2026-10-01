@@ -7,10 +7,15 @@ ended. No rule calls anything. That is what makes the verdict reproducible from 
 the bundle, and what makes the test admissible as `exact` (ADR-0014): the verdict is a check
 over values, never a judgement.
 
-The three verdicts (`Verdict`): *broke* — a step loses its only adapter and nobody takes it
+The four verdicts (`Verdict`): *broke* — a step loses its only adapter and nobody takes it
 over; *changed* — another adapter serves the step, or a person does, and the process still
-reaches its point at a different quality or cost; *exception* — the integration cannot be
-removed by design, and the reason is recorded instead of a failure.
+reaches its point at a different quality or cost; *untested* — no registered process uses the
+integration, so nothing was exercised and nothing learned; *exception* — the integration
+cannot be removed by design, and the reason is recorded instead of a failure.
+
+A process is exercised by rehearsing it (ADR-0030): its outward connector operations answer
+with recorded responses of earlier real calls, so running it twice leaves nothing outside.
+`safe_to_run` says when that is impossible.
 """
 
 from __future__ import annotations
@@ -161,22 +166,43 @@ def exercised(
     )
 
 
+UNUSED = "no registered process uses this integration"
+
+
 def overall(processes: Sequence[ProcessFinding]) -> Verdict:
-    """The integration's verdict: broke if any process broke; changed otherwise — also when no
-    process uses the integration, because removing an unused integration changes nothing."""
+    """The integration's verdict: broke if any process broke; untested when no process uses
+    the integration — nothing was exercised, and "removing it changes nothing" is not a
+    finding; changed otherwise."""
+    if not processes:
+        return Verdict.UNTESTED
     if any(process.verdict is Verdict.BROKE for process in processes):
         return Verdict.BROKE
     return Verdict.CHANGED
 
 
-def safe_to_run(outward_steps: Sequence[StepId], missing_inputs: Sequence[str]) -> str | None:
-    """Why a process must not be exercised by running it, or None when it may be: a step whose
-    effect would leave the system, or an input the bundle gives no example for."""
-    if outward_steps:
-        return "not run: step(s) " + ", ".join(outward_steps) + " would leave the system"
+def safe_to_run(
+    hosts: Sequence[StepId],
+    unrecorded: Sequence[str],
+    missing_inputs: Sequence[str],
+) -> str | None:
+    """Why a process cannot be rehearsed, or None when it can: a worker step whose frame
+    allows hosts (a rehearsal cannot answer for what a worker sends), an outward connector
+    operation with no recorded response, or an input the bundle gives no example for."""
+    reasons: list[str] = []
+    if hosts:
+        reasons.append(
+            "step(s) "
+            + ", ".join(hosts)
+            + " would leave the system — a worker whose frame allows hosts is not rehearsed"
+        )
+    for operation in dict.fromkeys(unrecorded):
+        reasons.append(
+            f"no recorded response for {operation} — it has never been called for real on "
+            "this instance"
+        )
     if missing_inputs:
-        return "not run: no example for input(s) " + ", ".join(missing_inputs)
-    return None
+        reasons.append("no example for input(s) " + ", ".join(missing_inputs))
+    return "not run: " + "; ".join(reasons) if reasons else None
 
 
 def _delta(baseline: RunSummary, withheld: RunSummary) -> str:

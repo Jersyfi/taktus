@@ -3,11 +3,11 @@
 
 The connector under `src/taktus/adapters/driven/connectors/github/` speaks the REST dialect of
 that service. This fake answers the subset the connector uses — issues, pull requests, comments,
-labels, pipeline runs, and the object interface for branches: references, commits, blobs,
-trees — in the same shapes, with the same status codes for the same faults, and keeps
-everything in memory. It exists so that the connector can be exercised in CI without a network,
-an account or a secret: the conformance gate starts it as a process, the adapter tests start it
-in a thread.
+labels, pipeline runs, the contents of a file at a ref, and the object interface for branches:
+references, commits, blobs, trees — in the same shapes, with the same status codes for the same
+faults, and keeps everything in memory. It exists so that the connector can be exercised in CI
+without a network, an account or a secret: the conformance gate starts it as a process, the
+adapter tests start it in a thread.
 
 What it enforces, because the connector's checks depend on it:
 
@@ -33,6 +33,7 @@ runnable as `python3 tests/fakes/repository_service.py --port 9200`.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -43,7 +44,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 type Json = dict[str, Any]
 
@@ -166,6 +167,37 @@ class Store:
         }
         repo.pulls[number] = pull
         return pull
+
+    def contents(self, repo: Repository, path: str, ref: str | None) -> tuple[int, Any]:
+        """What the contents interface answers for one path at a ref — a branch or a commit,
+        `main` when none is given: a file with its content in base64, a directory as the list
+        of its entries, or 404. Trees here are flat, one entry per full path."""
+        sha = repo.refs.get(ref or "main", ref or "")
+        commit = repo.objects.get(sha)
+        if commit is None or commit["kind"] != "commit":
+            return 404, {"message": "No commit found for the ref"}
+        entries = repo.objects[commit["tree"]["sha"]]["tree"]
+        for entry in entries:
+            if entry["path"] == path and entry.get("type") == "blob":
+                blob = repo.objects[entry["sha"]]
+                raw = (
+                    base64.b64decode(blob["content"])
+                    if blob.get("encoding") == "base64"
+                    else str(blob["content"]).encode("utf-8")
+                )
+                return 200, {
+                    "type": "file",
+                    "name": path.rsplit("/", 1)[-1],
+                    "path": path,
+                    "sha": entry["sha"],
+                    "size": len(raw),
+                    "encoding": "base64",
+                    "content": base64.encodebytes(raw).decode(),
+                }
+        inside = [e for e in entries if str(e["path"]).startswith(path.rstrip("/") + "/")]
+        if inside:
+            return 200, [{"type": "file", "path": e["path"], "sha": e["sha"]} for e in inside]
+        return 404, {"message": "Not Found"}
 
     def state(self) -> Json:
         return {
@@ -355,6 +387,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, {"message": "Branch not found"})
                 return
             self._send(200, {"name": m.group(3), "commit": {"sha": sha}})
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/contents/(.+)", path):
+            repo = store.repository(m.group(1), m.group(2))
+            status, answer = store.contents(repo, unquote(m.group(3)), query.get("ref"))
+            self._send(status, answer)
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/(commits|trees|blobs)/([0-9a-f]+)", path):
             repo = store.repository(m.group(1), m.group(2))

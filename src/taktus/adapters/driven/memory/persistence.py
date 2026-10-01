@@ -11,6 +11,7 @@ touched to `<directory>/<kind>.json`, keyed by tenant, and the store reads it ba
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -110,6 +111,22 @@ class MemoryPersistence:
                 self._snapshot_dir / f"{PROVENANCE}.json",
                 {t: [r.document() for r in records] for t, records in self._provenance.items()},
             )
+
+    # --- how much room it takes ------------------------------------------------------------
+
+    async def state_bytes(self) -> int | None:
+        """The snapshot files' size; None without a snapshot directory, where nothing is on
+        disk (the `StateSize` port)."""
+        directory = self._snapshot_dir
+        if directory is None:
+            return None
+
+        def _size() -> int:
+            if not directory.is_dir():
+                return 0
+            return sum(p.stat().st_size for p in directory.glob("*.json") if p.is_file())
+
+        return await asyncio.to_thread(_size)
 
     # --- what the stores see -------------------------------------------------------------------
 

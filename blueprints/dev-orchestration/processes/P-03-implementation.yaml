@@ -8,11 +8,14 @@
 #
 #     uv run taktusctl run --process blueprints/dev-orchestration/processes/P-03-implementation.yaml \
 #         --input issue=11 --input repository_url=https://host/owner/name.git \
-#         --input repository_host=host --input coding_credential=CODING_AGENT_API_KEY
+#         --input repository_host=host --input coding_credential=CODING_AGENT_API_KEY \
+#         --input "closing_section=$(<the repository's generator>)"
 #
 # Inputs: `issue`, the issue's number; `repository_url`, where the worker clones from;
 # `repository_host`, the one host the worker may reach (the clone's); `coding_credential`, the
-# name of the credential the coding worker's authentication needs (its README). The connector
+# name of the credential the coding worker's authentication needs (its README);
+# `closing_section`, the section the repository generates for the end of every pull request
+# description, verbatim with its heading, or empty when it generates none. The connector
 # configured for `repository.*` and the worker configured for `code.*` are what the
 # capabilities resolve to; no product is named here.
 
@@ -48,6 +51,16 @@ inputs:
   coding_credential:
     description: the name of the credential the coding worker's authentication needs
     example: CODING_AGENT_API_KEY
+  # A copy of what the repository generates is a rule, never a model's output (issue #34).
+  # The run cannot generate it: the block is derived from files of the repository by the
+  # repository's own code, and a template composes, it does not compute. So whoever starts the
+  # run generates it from the base branch and hands it in, the way a person pastes the output
+  # of the repository's command into a description they open by hand.
+  closing_section:
+    description: >
+      the section the repository generates for the end of every pull request description,
+      verbatim with its heading, from the base branch; empty when the repository generates none
+    example: "## Generated\n\nNothing is open."
 
 # The worker's estimate is admitted against the currency and the quota; its tokens are counted
 # per step, its money at the end (ADR-0005, amendment). Connector calls count in requests.
@@ -156,8 +169,9 @@ steps:
           section "Acceptance criteria" — so that every criterion holds
         acceptance:
           - every item of the section "Acceptance criteria" in the issue or its discussion holds
-          # PROVISIONAL until DEC-0021 is answered: whether a pull request Taktus opens must
-          # carry what every change of that repository must carry. Option A is in force.
+          # DEC-0021, answered: a pull request Taktus opens carries what every change of that
+          # repository must carry, like any other; which changes need a status update is the
+          # repository's own rule, and this criterion names no rule.
           - >
             the repository's own rules for a change are met: whatever its contribution
             documentation requires of every change, which the repository states and the
@@ -170,17 +184,20 @@ steps:
           - >
             the change is small and touches what the issue names, and what the rules above
             require of any change
-          # PROVISIONAL until DEC-0021 is answered, the same question one step further: the
-          # description of a pull request Taktus opens is the summary this assignment ends
+          # The description of a pull request Taktus opens is the summary this assignment ends
           # with, so the shape the repository asks of a description is asked of the summary.
+          # The section the repository generates is not asked of it: the run appends that
+          # section itself, by a template, after the summary (issue #34). An automatic start
+          # will take it from the worker, which runs the generator after its change (DEC-0037).
           - >
             the summary this assignment ends with is the body of the pull request that will
             carry the change: what it delivers, and what a reviewer must know. Where the
             repository prescribes a shape for a pull request description — a template, or a
             section one of its checks reads — the summary is written in that shape, with the
-            same headings at the same level, every required section present and truthful, and
-            the section the repository puts last, last. A section whose content the repository
-            generates is copied from the repository, not written afresh
+            same headings at the same level and every required section present and truthful.
+            One section is left out: the one whose content the repository generates, which the
+            repository puts last. The run appends it after the summary, from the repository's
+            own generator, so the summary neither writes nor copies it
         inputs:
           issue: { $input: issue }
           title: { $from: read-issue, $select: output.title }
@@ -248,7 +265,10 @@ steps:
 
   - id: read-pipeline
     method: rule
-    reason: the pipeline's verdict, read once more so that the check below has a result to hold
+    reason: >
+      the pipeline's verdict, read once more so that the check below has a result to hold; the
+      reading expects success and fails its own step otherwise, so that a resume after the
+      pipeline was re-run reads it again instead of judging the old reading (issue #31)
     rejected: []
     exactness: sourced
     depends_on: [wait-for-pipeline]
@@ -259,6 +279,8 @@ steps:
         ref: { $from: branch-name }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: state, equals: success }
 
   - id: verify
     method: rule
@@ -293,16 +315,24 @@ steps:
 
   - id: pull-request-body
     method: rule
-    reason: the body links the issue and carries the worker's own summary of what it did
+    reason: >
+      the body links the issue, carries the worker's own summary of what it did, and ends with
+      the section the repository generates, copied verbatim from the run's input
     rejected:
       - method: llm
         why: a fixed composition needs no model; the summary is the worker's
+      - method: worker
+        why: >
+          a copy of a generated block is a rule; in the first live run, four of the five
+          refused descriptions failed on deterministic parts asked of the coding worker
+          (DEC-0025)
     exactness: sourced
     depends_on: [verify]
     work:
       rule: template
       # What Taktus says about itself comes first, not last: a repository whose checks read the
-      # description read its *last* section, and that section belongs to the summary (DEC-0025).
+      # description read its *last* section, and that section is the one the repository
+      # generates, appended here after the summary (DEC-0025, issue #34).
       text: |
         Closes #${issue}.
 
@@ -319,9 +349,12 @@ steps:
         ## What this delivers
 
         ${summary}
+
+        ${closing}
       values:
         issue: { $input: issue }
         summary: { $from: implement, $artifact: summary }
+        closing: { $input: closing_section }
 
   - id: open-pr
     method: rule

@@ -5,7 +5,7 @@ and reports back over a stream of events — and wants to know whether it satisf
 You do not need to know anything else about Taktus to follow it.
 
 The *conformance suite* is a program that talks to your worker exactly as Taktus would, and
-reports, for each of thirteen numbered checks, whether your worker did what the contract requires.
+reports, for each of fourteen numbered checks, whether your worker did what the contract requires.
 The contract itself is in [README.md](README.md) in this directory; the checks are its section 7.
 
 ---
@@ -64,16 +64,18 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 
 ## 3. What the suite does to your worker
 
-It reads your capabilities, asks for an estimate, and then posts up to five assignments. Each has
+It reads your capabilities, asks for an estimate, and then posts up to seven assignments. Each has
 a purpose, and the report names it:
 
 | Assignment | What it is | What it proves |
 |---|---|---|
 | `main` | your default work, in a frame that allows every capability you declare | the stream is well-formed and resumable, consumption comes per step, boundaries exist, tool arguments are hashed, artifacts are consistent |
 | `narrowed` | the same work, with one tool you used in `main` taken out of the frame | you refuse that tool instead of using it silently |
+| `narrowed-hosts` | the same work, with one host you reached in `main` taken out of the frame | you refuse that host instead of reaching it silently |
 | `stopped` | the same work, with a stop requested while a step runs | the stop takes effect at the next boundary, with a checkpoint |
 | `resumed` | the same work, resumed from that checkpoint | you produce no artifact a second time |
 | `over-limit` | the same work, with a limit set below your own estimate | you reject before starting instead of failing later |
+| `tight` | the same work, with one limit set equal to your estimate — for a quantity `main` used more of than you estimated | you start, because the estimate fits; and when the running total reaches the limit, you halt at the boundary instead of starting another step |
 
 Every assignment references one credential by name. The suite never sends a value; Taktus never
 would either. The value reaches your worker through its environment, put there by whoever started
@@ -84,7 +86,7 @@ the other; the suite never runs two at once.
 
 ---
 
-## 4. The thirteen checks in plain words
+## 4. The fourteen checks in plain words
 
 | Check | In plain words | If it fails, fix this |
 |---|---|---|
@@ -101,6 +103,7 @@ the other; the suite never runs two at once.
 | **W-11** | An assignment resumed from a checkpoint produces nothing it produced before that checkpoint. Every artifact you announce is listed under `GET /artifacts` with the same digest, and its bytes hash to that digest. | Remember, per checkpoint, which artifacts exist. Serve every artifact's bytes at its `uri`. |
 | **W-12** | Removing your worker from a running Taktus changes quality or cost but breaks no process. | Nothing yet: this check is not run by the suite. See section 7. |
 | **W-13** | A host the frame does not allow is refused visibly, not reached silently. `allowed_hosts` is the whole list of what you may reach; absent or empty means nothing. | Whenever a step reaches a host, emit `tool.called` with that `host`. When the host is not in `allowed_hosts`, set `refused: true` and a `reason`, and do not reach it. Never treat an absent list as "anything goes". |
+| **W-14** | The limits are your hard ceiling while you run, not only before you start. Once what you have reported so far reaches a limit, you start no further step: you end `stopped` at the boundary you are at, with its `checkpoint_ref`, and name the limit. | Keep a running total of what you report, per quantity the limits bound. Before each step, add that step's expected demand; if the sum would exceed a limit, do not start it — emit `assignment.finished` with outcome `stopped`, the last boundary's `checkpoint_ref` and `limit` set to the kind (`currency`, `quota`, `compute` or `tokens`). |
 
 The report attributes a malformed event to the check that owns that event type: a bad
 `arguments_digest` is a W-09 failure, a bad `consumption.reported` a W-04 failure, and so on. Base
@@ -138,6 +141,7 @@ what would make it conclusive. The common cases:
 | W-08 | the suite had no value to look for | set the same random value under the credential's name in your worker's environment and in the environment of the suite before starting both: `export TAKTUS_CONFORMANCE_CREDENTIAL=$(openssl rand -hex 16)` |
 | W-10 | your estimate is zero for every quantity, so no limit can lie below it | estimate something; a shell script still takes seconds of `cpu` |
 | W-11 | the stopped run produced no artifact before its checkpoint, so a repeat could not be observed | produce an artifact in an early step, or supply a task that does |
+| W-14 | `main` used no more of any quantity than you estimated, so no limit your estimate fits can be crossed; or the `tight` run finished its work before a step remained to be withheld | nothing is wrong with an estimate that holds. To see the halt, start your worker so that it underestimates — the reference worker has `--estimate-factor 0.5` — or give it a task that uses more than it expects |
 
 A check that failed can leave later checks inconclusive: without a boundary there is nothing a
 stop can land on, without a stopped run there is nothing to resume. Fix the failure first.
@@ -146,8 +150,9 @@ stop can land on, without a stopped run there is nothing to resume. Fix the fail
 
 ## 7. What a pass means
 
-A worker whose report shows twelve `passed` and one `pending` satisfies the contract as far as a
-suite talking to one endpoint can tell.
+A worker whose report shows thirteen `passed` and one `pending` satisfies the contract as far as a
+suite talking to one endpoint can tell. A W-14 that stays *inconclusive* because your worker's
+estimate always held is no failure; it means the halt was not observed.
 
 It is not yet *verified*. Taktus grades adapters in three levels — `experimental`, `verified`,
 `reference` — and *verified* needs two things: this suite passed, and the *removal test* passed.

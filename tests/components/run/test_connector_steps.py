@@ -412,3 +412,38 @@ async def test_a_wait_that_runs_out_fails_the_step() -> None:
     assert run.state is RunState.ESCALATED
     assert "waited 30s" in (run.step_run("ci").reason or "")
     assert run.step_run("ci").retryable is True
+
+
+# --- a reading that did not show what was expected is read again on resume (issue #31) --------
+
+
+async def test_a_reading_that_is_not_as_expected_fails_its_step_and_a_resume_reads_again() -> None:
+    step, work = call("pipeline", READ, {"id": "pipeline-1"})
+    work = {**work, "expect": [{"select": "state", "equals": "success"}]}
+    h = ConnectorHarness((step, work))
+    h.connector.read_sequence = [
+        {"id": "pipeline-1", "state": "failure"},  # a flaky job, re-run by a person
+        {"id": "pipeline-1", "state": "success"},
+    ]
+    run = await h.start()
+    assert run.state is RunState.ESCALATED
+    failed = run.step_run("pipeline")
+    assert failed.state is StepState.FAILED and failed.retryable is True
+    assert "state: expected 'success', found 'failure'" in (failed.reason or "")
+    assert "A resume reads it again" in (failed.reason or "")
+    assert await h.records(run.id) == [], "a reading that failed its step is no result"
+    resumed = await h.resume(run)
+    assert resumed.state is RunState.FINISHED, "the resume read the state as it is now"
+    assert [c[0] for c in h.connector.calls] == [READ, READ]
+    (record,) = await h.records(run.id)
+    assert record.step_id == "pipeline"
+
+
+async def test_an_expectation_on_a_write_is_refused() -> None:
+    from taktus.components.run.domain.model import UnsupportedWork
+
+    step, work = call("write", WRITE, {"title": "x"})
+    h = ConnectorHarness((step, {**work, "expect": [{"select": "id", "matches": "rec"}]}))
+    with pytest.raises(UnsupportedWork, match="only a reading carries an expectation"):
+        await h.start()
+    assert h.connector.calls == []

@@ -10,12 +10,14 @@ does, and a test hands in a mapping.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
+from taktus.ports.model import PriceTable
 
 
 class Role(StrEnum):
@@ -69,6 +71,10 @@ class ExecutionSettings:
     egress_image: str
     """`TAKTUS_EXECUTION_EGRESS_IMAGE` (container): the image the per-job egress container runs
     from; any image with `python3` on the path."""
+    memory_unenforced: bool = False
+    """`TAKTUS_EXECUTION_MEMORY_UNENFORCED` (process): accept that the memory limit is not
+    enforced where the system cannot enforce it (every system but Linux). Off, the process
+    adapter refuses such a job. The operator's explicit choice, shown in the startup log."""
 
     def effective(self) -> list[tuple[str, str]]:
         return [
@@ -84,6 +90,7 @@ class ExecutionSettings:
             ("TAKTUS_EXECUTION_NETWORK", self.network or ""),
             ("TAKTUS_EXECUTION_ENGINE_SOCKET", self.engine_socket),
             ("TAKTUS_EXECUTION_EGRESS_IMAGE", self.egress_image),
+            ("TAKTUS_EXECUTION_MEMORY_UNENFORCED", str(self.memory_unenforced).lower()),
         ]
 
 
@@ -152,6 +159,17 @@ class ModelSettings:
     """`credential.model_api_key`: the bearer credential, from
     `TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE`; absent for an endpoint that needs none."""
     credential_source: str | None
+    billing: str = "per_token"
+    """`TAKTUS_MODEL_BILLING`: how the endpoint's provider bills — `per_token`, `per_window`
+    (a share of a subscription's time window) or `per_hardware_time` (own hardware). It decides
+    which budget can be enforced, and the run says so when its budget is set."""
+    output_cap: str = "soft"
+    """`TAKTUS_MODEL_OUTPUT_CAP`: whether the provider holds the output limit a call sets,
+    reasoning included — `hard`, `soft` or `none`. `soft` unless the provider's terms say
+    otherwise (docs/research/2026-09-30-what-providers-allow.md)."""
+    provider_limit: str = "unknown"
+    """`TAKTUS_MODEL_PROVIDER_LIMIT`: what the provider enforces itself over a month — `hard`,
+    `alert`, `none`, `unknown`. Information only; Taktus never relies on it."""
 
     def effective(self) -> list[tuple[str, str]]:
         credential = "" if self.credential is None else f"*** (from {self.credential_source})"
@@ -159,8 +177,74 @@ class ModelSettings:
             ("TAKTUS_MODEL_ENDPOINT", self.endpoint or ""),
             ("TAKTUS_MODEL_NAME", self.name),
             ("TAKTUS_MODEL_PURPOSES", ",".join(self.purposes)),
+            ("TAKTUS_MODEL_BILLING", self.billing),
+            ("TAKTUS_MODEL_OUTPUT_CAP", self.output_cap),
+            ("TAKTUS_MODEL_PROVIDER_LIMIT", self.provider_limit),
             ("TAKTUS_CREDENTIAL_MODEL_API_KEY", credential),
         ]
+
+
+@dataclass(frozen=True)
+class BudgetSettings:
+    """What a budget is held with: the price table money is computed at, and the named safety
+    margin subtracted from every budget before the first step is admitted (ADR-0005)."""
+
+    price_table: Path | None
+    """`TAKTUS_PRICE_TABLE`: a file in the shape of `contracts/model/v1/Model.json#/$defs/
+    PriceTable`. Absent: no model has a price, a currency budget cannot be converted, and the
+    run says so when its budget is set."""
+    margin: float
+    """`TAKTUS_BUDGET_MARGIN`: the share of every limit held back from the first step on, 0 to
+    0.9; nothing by default (DEC-0034: the margin belongs to a worker's estimate, not to the
+    budget)."""
+    uncalibrated_margin: float = 1.0
+    """`TAKTUS_BUDGET_UNCALIBRATED_MARGIN`: what a worker with no calibration history reserves
+    beyond its estimate — 1.0, twice the estimate, by default (DEC-0034)."""
+
+    def table(self) -> PriceTable | None:
+        """The price table the file holds, validated; None when none is configured."""
+        if self.price_table is None:
+            return None
+        try:
+            document = json.loads(self.price_table.read_text(encoding="utf-8"))
+            return PriceTable.model_validate(document)
+        except (OSError, ValueError) as error:
+            raise ConfigurationError(
+                "TAKTUS_PRICE_TABLE",
+                f"{self.price_table} is not a price table (contracts/model/v1/Model.json#/$defs/"
+                f"PriceTable): {str(error)[:200]}",
+            ) from error
+
+    def effective(self) -> list[tuple[str, str]]:
+        return [
+            ("TAKTUS_PRICE_TABLE", "" if self.price_table is None else str(self.price_table)),
+            ("TAKTUS_BUDGET_MARGIN", f"{self.margin:g}"),
+            ("TAKTUS_BUDGET_UNCALIBRATED_MARGIN", f"{self.uncalibrated_margin:g}"),
+        ]
+
+
+DEFAULT_MARGIN = 0.0
+"""No share of the budget is held back by default: the safety margin is a worker's (DEC-0034)."""
+DEFAULT_UNCALIBRATED_MARGIN = 1.0
+"""100 % beyond the estimate for a worker nothing has measured yet (DEC-0034)."""
+
+
+def load_budget(configuration: Configuration) -> BudgetSettings:
+    reader = _Reader(configuration)
+    table = reader.text("price.table", "") or None
+    margin = reader.number("budget.margin", DEFAULT_MARGIN, low=0.0)
+    if margin > 0.9:
+        raise ConfigurationError(
+            configuration.name("budget.margin"),
+            f"{margin:g} holds back more than nine tenths of every budget; the most is 0.9",
+        )
+    return BudgetSettings(
+        price_table=None if table is None else Path(table).expanduser(),
+        margin=margin,
+        uncalibrated_margin=reader.number(
+            "budget.uncalibrated.margin", DEFAULT_UNCALIBRATED_MARGIN, low=0.0
+        ),
+    )
 
 
 MODEL_CREDENTIAL = "credential.model_api_key"
@@ -189,6 +273,13 @@ def load_model(configuration: Configuration) -> ModelSettings:
         purposes=reader.names("model.purposes", ("*",)),
         credential=configuration.secret(MODEL_CREDENTIAL),
         credential_source=configuration.source(MODEL_CREDENTIAL),
+        billing=reader.choice(
+            "model.billing", "per_token", ("per_token", "per_window", "per_hardware_time")
+        ),
+        output_cap=reader.choice("model.output.cap", "soft", ("hard", "soft", "none")),
+        provider_limit=reader.choice(
+            "model.provider.limit", "unknown", ("hard", "alert", "none", "unknown")
+        ),
     )
 
 
@@ -234,7 +325,91 @@ def load_execution(configuration: Configuration) -> ExecutionSettings:
         network=reader.text("execution.network", "") or None,
         engine_socket=reader.text("execution.engine.socket", "/var/run/docker.sock"),
         egress_image=reader.text("execution.egress.image", "python:3.13-slim"),
+        memory_unenforced=reader.flag("execution.memory.unenforced", False),
     )
+
+
+@dataclass(frozen=True)
+class CapacitySettings:
+    """What the capacity report and admission against the platform are told
+    (docs/architecture/platform.md). Every threshold is a named setting with a default."""
+
+    storage_warn_percent: float
+    """`TAKTUS_CAPACITY_STORAGE_WARN_PERCENT` (10): below this share of a volume free, a
+    person must act."""
+    storage_refuse_percent: float
+    """`TAKTUS_CAPACITY_STORAGE_REFUSE_PERCENT` (2): below this share free, a run is refused."""
+    act_within_days: int
+    """`TAKTUS_CAPACITY_ACT_WITHIN_DAYS` (30): a person is told this many days before the
+    storage threshold is crossed at the observed growth."""
+    memory_warn_percent: float
+    """`TAKTUS_CAPACITY_MEMORY_WARN_PERCENT` (10)."""
+    cpu_warn_percent: float
+    """`TAKTUS_CAPACITY_CPU_WARN_PERCENT` (10)."""
+    memory_reserve_mb: int
+    """`TAKTUS_CAPACITY_MEMORY_RESERVE_MB` (256): what stays free beside a job at admission."""
+    window_days: int
+    """`TAKTUS_CAPACITY_WINDOW_DAYS` (14): runs per day are counted over this many days."""
+    database_volume_mb: int | None
+    """`TAKTUS_CAPACITY_DATABASE_VOLUME_MB`: the size of the volume the database lives on,
+    which is not visible from the instance. Unset, the database's free space is reported as
+    not observed."""
+    storage_expandable: bool | None
+    """`TAKTUS_CAPACITY_STORAGE_EXPANDABLE`: whether the state's volumes can be grown in place.
+    Unset, the report says it does not know."""
+    interval_seconds: int
+    """`TAKTUS_CAPACITY_INTERVAL_SECONDS` (3600): how often the daemon's scheduler reports."""
+
+    def effective(self) -> list[tuple[str, str]]:
+        return [
+            ("TAKTUS_CAPACITY_STORAGE_WARN_PERCENT", f"{self.storage_warn_percent:g}"),
+            ("TAKTUS_CAPACITY_STORAGE_REFUSE_PERCENT", f"{self.storage_refuse_percent:g}"),
+            ("TAKTUS_CAPACITY_ACT_WITHIN_DAYS", str(self.act_within_days)),
+            ("TAKTUS_CAPACITY_MEMORY_WARN_PERCENT", f"{self.memory_warn_percent:g}"),
+            ("TAKTUS_CAPACITY_CPU_WARN_PERCENT", f"{self.cpu_warn_percent:g}"),
+            ("TAKTUS_CAPACITY_MEMORY_RESERVE_MB", str(self.memory_reserve_mb)),
+            ("TAKTUS_CAPACITY_WINDOW_DAYS", str(self.window_days)),
+            (
+                "TAKTUS_CAPACITY_DATABASE_VOLUME_MB",
+                "" if self.database_volume_mb is None else str(self.database_volume_mb),
+            ),
+            (
+                "TAKTUS_CAPACITY_STORAGE_EXPANDABLE",
+                "" if self.storage_expandable is None else str(self.storage_expandable).lower(),
+            ),
+            ("TAKTUS_CAPACITY_INTERVAL_SECONDS", str(self.interval_seconds)),
+        ]
+
+
+def load_capacity(configuration: Configuration) -> CapacitySettings:
+    """The capacity settings alone: `taktusctl capacity` reads them too."""
+    reader = _Reader(configuration)
+    warn = reader.number("capacity.storage.warn.percent", 10.0, low=0.1, high=99.0)
+    refuse = reader.number("capacity.storage.refuse.percent", 2.0, low=0.0, high=99.0)
+    if refuse >= warn:
+        raise ConfigurationError(
+            configuration.name("capacity.storage.refuse.percent"),
+            f"{refuse:g} is not below {configuration.name('capacity.storage.warn.percent')} "
+            f"({warn:g}): a person is told before work is refused, never after",
+        )
+    volume = reader.integer("capacity.database.volume.mb", 0, low=0) or None
+    return CapacitySettings(
+        storage_warn_percent=warn,
+        storage_refuse_percent=refuse,
+        act_within_days=reader.integer("capacity.act.within.days", 30, low=1),
+        memory_warn_percent=reader.number("capacity.memory.warn.percent", 10.0, low=0.1, high=99.0),
+        cpu_warn_percent=reader.number("capacity.cpu.warn.percent", 10.0, low=0.1, high=99.0),
+        memory_reserve_mb=reader.integer("capacity.memory.reserve.mb", 256, low=0),
+        window_days=reader.integer("capacity.window.days", 14, low=1),
+        database_volume_mb=volume,
+        storage_expandable=reader.optional_flag("capacity.storage.expandable"),
+        interval_seconds=reader.integer("capacity.interval.seconds", 3600, low=60),
+    )
+
+
+def load_tenants(configuration: Configuration) -> tuple[str, ...]:
+    """`TAKTUS_TENANTS`: the tenants an instance serves; `taktusctl capacity` reads it too."""
+    return _Reader(configuration).names("tenants", (DEFAULT_TENANT,))
 
 
 @dataclass(frozen=True)
@@ -256,7 +431,10 @@ class Settings:
     telemetry: TelemetrySettings
     """Where spans are exported, if anywhere."""
     model: ModelSettings
+    budget: BudgetSettings
     """The model `llm` steps ask, if one is configured."""
+    capacity: CapacitySettings
+    """What the capacity report is told: thresholds, the database's volume, the interval."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
     provisional_identity: Mapping[str, str]
@@ -296,6 +474,8 @@ class Settings:
             *self.execution.effective(),
             *self.telemetry.effective(),
             *self.model.effective(),
+            *self.budget.effective(),
+            *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
             (
                 "TAKTUS_PROVISIONAL_IDENTITY",
@@ -341,10 +521,12 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         execution=load_execution(configuration),
         telemetry=load_telemetry(configuration),
         model=load_model(configuration),
+        budget=load_budget(configuration),
+        capacity=load_capacity(configuration),
         connectors=reader.connectors(),
         provisional_identity=load_provisional_identity(configuration),
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
-        tenants=reader.names("tenants", (DEFAULT_TENANT,)),
+        tenants=load_tenants(configuration),
         instance=reader.text("instance", default_instance),
         shutdown_ceiling_seconds=reader.integer("shutdown.ceiling.seconds", 300, low=1),
         lease_seconds=reader.integer("lease.seconds", 60, low=5),
@@ -402,7 +584,7 @@ class _Reader:
             raise ConfigurationError(name, f"{value!r} is not a whole number") from None
         return self._within(name, number, low, high)
 
-    def number(self, key: str, default: float, *, low: float) -> float:
+    def number(self, key: str, default: float, *, low: float, high: float | None = None) -> float:
         name, value = self._raw(key)
         if value is None:
             return default
@@ -410,7 +592,12 @@ class _Reader:
             number = float(value)
         except ValueError:
             raise ConfigurationError(name, f"{value!r} is not a number") from None
-        return self._within(name, number, low, None)
+        return self._within(name, number, low, high)
+
+    def optional_flag(self, key: str) -> bool | None:
+        """True, false, or None when the variable is not set: a fact nobody has stated."""
+        _, value = self._raw(key)
+        return None if value is None else self.flag(key, False)
 
     def _within[N: (int, float)](self, name: str, number: N, low: N, high: N | None) -> N:
         if number < low or (high is not None and number > high):

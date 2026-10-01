@@ -81,6 +81,14 @@ class PostgresPersistence:
             finally:
                 self._current.reset(token)
 
+    async def state_bytes(self) -> int | None:
+        """The database's size on disk, as the server reports it (the `StateSize` port). It
+        leaves out what the server keeps beside the database — the write-ahead log among it —
+        so the volume under it holds more than this figure."""
+        async with self._engine.connect() as connection:
+            size = await connection.scalar(select(func.pg_database_size(func.current_database())))
+        return None if size is None else int(size)
+
     def connection(self, tenant: Tenant) -> AsyncConnection:
         """The open transaction's connection, for the stores."""
         open_ = self._current.get()

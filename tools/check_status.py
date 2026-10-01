@@ -28,12 +28,15 @@ Checks:
    in a committed file conflicts between any two pull requests that touch the register, and
    is a stale copy the moment either merges (DEC-0026);
 5. against a base (`--base`, default `origin/main`, then `main`): a change to the state of the
-   project — under src/, workers/, blueprints/, contracts/, deploy/, migrations/, tools/,
-   docs/adr/, docs/decisions/ or docs/roadmap.md — comes with a change to docs/status.md;
-6. with --pr-body: the last section of the pull request description, `## Needed from the
-   owner`, carries what the register generates, so that the owner sees it without opening a
-   file. The description is the one place the generated list is carried: it is written from
-   the branch it describes and never merged with another.
+   project comes with a change to docs/status.md. The state changes when a pull request touches
+   a milestone item, a need, a decision or a contract — docs/roadmap.md, a record under
+   docs/decisions/ or an ADR, a file under contracts/ — and not when it fixes a defect: the
+   record of a documentation defect alone does not count (the owner's answer to DEC-0021);
+6. with --pr-body, unless --author names a dependency bot (NTC-0013): the last section of the
+   pull request description, `## Needed from the owner`, carries what the register generates,
+   so that the owner sees it without opening a file. The description is the one place the
+   generated list is carried: it is written from the branch it describes and never merged with
+   another.
 
 `--print` prints the list (`make status`). Nothing writes it into a file.
 
@@ -77,11 +80,29 @@ COLUMNS = "| Record | What | Needed by | Kind | Issue |\n|---|---|---|---|---|"
 
 # What changes the state of the project: a change here without a change to the status file is
 # a status that no longer says where the project is.
-STATE = re.compile(
-    r"^(src|workers|blueprints|contracts|deploy|migrations|tools|docs/adr|docs/decisions)/"
-    r"|^docs/roadmap\.md$"
-)
+STATE = re.compile(r"^(contracts|docs/adr|docs/decisions)/|^docs/roadmap\.md$")
+"""What changes the state of the project, as the owner answered DEC-0021: a milestone item (the
+roadmap), a need or a decision (the register, the ADRs), a contract. Code, tools, workers,
+blueprints and the deployment change it only through one of these."""
+DEFECT = re.compile(r"^\*\*Category:\*\* DEFECT\s*$", re.MULTILINE)
+
+
+def counts(path: str) -> bool:
+    """Whether a changed file changes the state of the project: it is one of the four, and not
+    the record of a documentation defect — fixing a defect changes no state (DEC-0021)."""
+    if STATE.match(path) is None:
+        return False
+    if path.startswith("docs/decisions/") and path.endswith(".md"):
+        try:
+            return DEFECT.search((ROOT / path).read_text(encoding="utf-8")) is None
+        except OSError:
+            return True  # deleted or moved: the register changed
+    return True
+
+
 STATUS_PATH = "docs/status.md"
+DEPENDENCY_BOTS = frozenset({"dependabot[bot]"})
+"""The same authors `tools/check_decisions.py` names, for the same reason (NTC-0013)."""
 
 TITLE = re.compile(r"^# (DEC|NEED)-(\d{4}) — (.+)$")
 FIELD = re.compile(r"^\*\*([A-Za-z ]+):\*\*\s*(.*)$")
@@ -325,7 +346,7 @@ def check_freshness(base: str | None, report: Report) -> None:
         report.fail("base", f"{base or 'origin/main or main'} not found; cannot tell what changed")
         return
     changed = changed_files(resolved)
-    state = sorted(path for path in changed if STATE.match(path))
+    state = sorted(path for path in changed if counts(path))
     if not state:
         report.ok(f"nothing that changes the state of the project changed against {resolved}")
     elif STATUS_PATH in changed:
@@ -382,6 +403,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base", help="commit or branch to compare with (default origin/main)")
     parser.add_argument("--pr-body", type=Path, help="file holding the pull request description")
     parser.add_argument(
+        "--author", help="github.event.pull_request.user.login: who wrote the description"
+    )
+    parser.add_argument(
         "--print",
         dest="show",
         action="store_true",
@@ -404,7 +428,10 @@ def main(argv: list[str] | None = None) -> int:
         check_milestone(found, report)
         check_pointer(found, report)
     check_freshness(args.base, report)
-    if args.pr_body is not None:
+    if args.pr_body is not None and args.author in DEPENDENCY_BOTS:
+        print("pull request")
+        report.ok(f"written by {args.author}, a dependency bot: no owner section asked (NTC-0013)")
+    elif args.pr_body is not None:
         check_pull_request(args.pr_body.read_text(encoding="utf-8"), expected, report)
     print()
     duration = f"{time.monotonic() - started:.2f}s"

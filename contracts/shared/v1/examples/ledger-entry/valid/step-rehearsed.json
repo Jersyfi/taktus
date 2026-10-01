@@ -1,0 +1,21 @@
+{
+  "seq": 41,
+  "ts": "2026-09-30T08:12:03Z",
+  "kind": "step.finished",
+  "prev_hash": "sha256:690396b0e760bb1a655c81fe146dd04fdd7ed9686a1916cf90e4c223914ae917",
+  "hash": "sha256:f1dc013d21562b219fc4e08fa44b30b952dd8dd01a3575fc02e33ca17fe90619",
+  "refs": {
+    "tenant": "acme",
+    "process_version": "p03-implementation@1",
+    "run_id": "run_20931",
+    "step_id": "open-pr",
+    "artifact_ids": [
+      "result"
+    ]
+  },
+  "method": "rule",
+  "adapter": "connector.repo",
+  "outcome": "rehearsed",
+  "content_digest": "sha256:9b1f3c0e4d2a6b8c7e5f1a3d9c0b2e4f6a8c1d3e5f7a9b0c2d4e6f8a1b3c5d7e",
+  "rehearsal": true
+}

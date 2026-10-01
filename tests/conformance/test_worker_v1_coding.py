@@ -29,6 +29,7 @@ async def one_assignment(
     assignment_id: str = "asg_coding01",
     checkpoint_ref: str | None = None,
     credential: str | None = None,
+    limits: Json | None = None,
 ) -> list[Json]:
     """Post one assignment in a frame that allows everything the worker offers, and read its
     stream to the end: the events, for assertions the report does not carry."""
@@ -49,7 +50,7 @@ async def one_assignment(
                     "allowed_hosts": [HOST],
                     "max_steps": 40,
                 },
-                "limits": {"currency": {"usd": 5.0}, "quota": {"units": 50}},
+                "limits": limits or {"currency": {"usd": 5.0}, "quota": {"units": 50}},
                 "credentials": [
                     {"name": credential or worker.credential_name, "injected_as": "env"}
                 ],
@@ -75,6 +76,7 @@ async def test_the_coding_worker_passes_in_both_authentication_modes(
     assert set(statuses.values()) == {Status.PASSED}
     runs = {r.purpose: r for r in report.runs}
     assert runs["stopped"].outcome == "stopped" and runs["resumed"].outcome == "succeeded"
+    assert runs["tight"].outcome == "stopped", "the fake agent overruns; the limit halts it"
     assert worker.credential_value not in report.to_json()
     assert worker.credential_value not in worker.log.read_text()
     events = await one_assignment(worker)
@@ -150,3 +152,46 @@ async def test_an_assignment_that_does_not_name_the_credential_is_rejected_befor
     assert events[-1]["outcome"] == "rejected"
     assert "CODING_AGENT_API_KEY" in events[-1]["reason"]
     assert len(events) == 1
+
+
+async def test_a_token_limit_halts_at_the_boundary_and_the_resume_continues(
+    start_coding_worker: StartWorker,
+) -> None:
+    """The reservation is the worker's hard ceiling. The fake agent's calls use about 6 000 to
+    32 000 input tokens each; under a limit equal to the estimate, 60 000, the worker ends the
+    agent at the first boundary where the running total has reached it — the call that
+    crossed it is the one step the limit yields by — and finishes `stopped` with the
+    checkpoint and `limit`. The resumed assignment, with a limit of its own, continues from
+    there and repeats nothing."""
+    worker = start_coding_worker(auth="api-key")
+    limits: Json = {"currency": {"usd": 5.0}, "tokens": {"in": 60000}}
+    events = await one_assignment(worker, limits=limits)
+    finished = events[-1]
+    assert finished["outcome"] == "stopped" and finished["limit"] == "tokens", finished
+    boundaries = [e for e in events if e["type"] == "step.boundary"]
+    assert boundaries[-1]["checkpoint_ref"] == finished["checkpoint_ref"]
+    assert boundaries[-1]["seq"] == finished["seq"] - 1, "no step started after the boundary"
+    reported = [e for e in events if e["type"] == "consumption.reported"]
+    used = sum(e.get("tokens_in", 0) for e in reported)
+    assert used >= 60000
+    assert used - reported[-1]["tokens_in"] < 60000, "the limit was reached with the last step"
+    resumed = await one_assignment(
+        worker, assignment_id="asg_resume02", checkpoint_ref=finished["checkpoint_ref"]
+    )
+    assert resumed[-1]["outcome"] == "succeeded"
+    before = {e["artifact_id"] for e in events if e["type"] == "artifact.produced"}
+    after = {e["artifact_id"] for e in resumed if e["type"] == "artifact.produced"}
+    assert before and not before & after
+
+
+async def test_an_agent_within_its_estimate_leaves_w14_inconclusive(
+    start_coding_worker: StartWorker,
+) -> None:
+    """With the fake agent's usage scaled down it never exceeds the worker's estimate, and no
+    limit the estimate fits can be crossed: the suite says so instead of claiming a pass."""
+    worker = start_coding_worker(agent_env={"FAKE_AGENT_USAGE_FACTOR": "0.01"})
+    report = await worker.run_suite()
+    w14 = next(c for c in report.checks if c.id == "W-14")
+    assert w14.status is Status.INCONCLUSIVE, report.render()
+    assert "never exceeded the estimate" in w14.observed
+    assert report.failed == []

@@ -28,6 +28,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Identity,
@@ -202,9 +203,11 @@ run = Table(
     Column("identity", Text, nullable=False),
     Column("autonomy_level", Integer, nullable=False),
     Column("budget", JSONB, nullable=False),
+    Column("margin", Float, nullable=False, server_default="0"),
     Column("steps", JSONB, nullable=False),
     Column("work", JSONB, nullable=False),
     Column("inputs", JSONB, nullable=False),
+    Column("rehearsal", Boolean, nullable=False),  # ADR-0030
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),
@@ -228,6 +231,7 @@ step_run = Table(
     Column("adapter", Text),
     Column("assignment_id", Text),
     Column("estimate", JSONB),
+    Column("reservation", JSONB),
     Column("consumption", JSONB),
     Column("reason", Text),
     _at("started_at", nullable=True),
@@ -299,6 +303,7 @@ ledger_entry = Table(
     Column("consumption", JSONB),
     Column("outcome", Text),
     Column("content_digest", Text),
+    Column("rehearsal", Boolean),  # true on every entry of a rehearsal run (ADR-0030)
     PrimaryKeyConstraint("tenant", "seq"),
     Index("ledger_entry_run", "tenant", text("(refs ->> 'run_id')")),
 )

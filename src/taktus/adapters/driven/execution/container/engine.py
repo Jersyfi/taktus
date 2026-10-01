@@ -48,6 +48,12 @@ class Engine:
     async def close(self) -> None:
         await self._http.aclose()
 
+    # --- the engine itself ----------------------------------------------------------------
+
+    async def info(self) -> Json:
+        """What the engine says about itself — among it whether it can limit memory and swap."""
+        return self._json(await self._request("GET", "/info"))
+
     # --- images -------------------------------------------------------------------------------
 
     async def image(self, reference: str) -> Json | None:
