@@ -5,7 +5,8 @@ kind, and §*Amendment* says for which · amended 2026-09-21: a budget is a budg
 that brings a currency limit as close to the line as a provider allows (§*Second amendment*) ·
 amended 2026-09-30 (DEC-0035): which promise yields when one step overruns, every step
 estimated, money from the record, and a budget only as strong as the provider allows
-(§*Third amendment*); implemented in the same pull request
+(§*Third amendment*); implemented in the same pull request · amended 2026-10-01 (DEC-0043): the
+worker's margin has a floor of 10 % and its history resets with its model version (point 6)
 
 ## Context
 A limit enforced by aborting destroys work and money at the same time: the tokens are spent and the
@@ -201,7 +202,12 @@ with no calibration history reserves its estimate plus 100 % — twice its estim
 by a factor of two to four. A worker with history reserves its estimate scaled by its measured
 error, and at least its estimate plus a margin that narrows with every observation — 1/(n+1)
 of the 100 % after n — so that one run does not take the whole margin away: caution towards the
-unknown, loosening through data. The
+unknown, loosening through data. Observations never narrow the margin below 10 % — an
+operator who configures the uncalibrated margin itself lower has set that limit — and a worker's
+history
+resets when its model version changes — the one its estimate names, else the one it last
+reported — because a calibration for one model says nothing about the next (DEC-0043, the
+owner's answer, 2026-10-01). The
 budget-wide holdback of point 3 of the second amendment stays a named setting
 (`TAKTUS_BUDGET_MARGIN`) and holds back nothing by default; where an operator sets it, a worker
 may use its share of it before it must halt.

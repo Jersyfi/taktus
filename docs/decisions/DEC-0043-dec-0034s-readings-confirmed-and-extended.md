@@ -3,7 +3,8 @@
 **Category:** NON-BLOCKING
 **Raised in:** the report of #51, 2026-10-01, which asked the owner in a sentence to confirm two readings — a request written as a note, the fifth instance of the pattern; recorded in [#52](https://github.com/Jersyfi/taktus/pull/52)
 **Issue:** none; the owner decided before a request was written, and this record is the question with his answer
-**Needed by:** 2026-10-02
+**Needed by:** 2026-10-01
+**Written after the answer:** the owner answered in the audit's brief of 2026-10-01; the record was written from it; left out of the acceptance rate (DEC-0042).
 
 ## 1. What this is about
 
@@ -58,7 +59,7 @@ Nothing.
 
 ## Outcome
 
-**Decided:** 2026-10-02
+**Decided:** 2026-10-01
 **Answer:** Option A, as the owner gave it. Confirmed: the margin narrows to 1/(n+1) of the
 initial 100 % after n observations, and a larger measured error still wins. Confirmed: stopped
 steps do not count as history. Added: the margin never falls below 10 %. Added: a worker's
@@ -68,4 +69,8 @@ confirmation had been written as a sentence in a report — the fifth instance o
 written as a note — and is recorded here properly.
 **Recorded in:** [#52](https://github.com/Jersyfi/taktus/pull/52):
 `src/taktus/components/run/domain/service/budget.py` (the floor, the reset), ADR-0005 third
-amendment point 6, `anchors.taktus.md`.
+amendment point 6, `anchors.taktus.md`. As built, observations never narrow the margin below
+10 %; an operator who sets `TAKTUS_BUDGET_UNCALIBRATED_MARGIN` itself below 10 % has set a
+smaller limit and it holds, because that setting is itself a limit (M3.10). The model version is
+the one the step's estimate names, else the one the worker last reported; an observation that
+names no model is no evidence of a change.

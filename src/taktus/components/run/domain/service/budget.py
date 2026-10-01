@@ -178,8 +178,41 @@ UNCALIBRATED_MARGIN = 1.0
 """What a worker nothing has measured yet reserves beyond its estimate: 100 %, twice the estimate
 (DEC-0034). The only worker measured so far underestimated by a factor of two to four. Caution
 towards the unknown, loosening through data: after n observations the margin is 1/(n+1) of this
-— half after one, a tenth after nine, a twentieth over the full window — and a worker whose
-measured error is larger reserves that instead."""
+— half after one, a third after two — down to `MARGIN_FLOOR`, and a worker whose measured error
+is larger reserves that instead."""
+
+MARGIN_FLOOR = 0.10
+"""The least a worker reserves beyond its estimate, however many observations it has: 10 %
+(DEC-0043). Ten observations without an overrun are evidence about those ten steps, not a
+promise about the eleventh. The floor bounds how far observations narrow the margin; an
+operator who sets the uncalibrated margin itself below it (`TAKTUS_BUDGET_UNCALIBRATED_MARGIN`)
+has set a smaller limit, and that one holds."""
+
+
+def models_of(quantities: ConsumptionQuantities) -> frozenset[str]:
+    """The models a consumption names, by version; empty where it names none."""
+    return frozenset(quantities.tokens_by_model or ())
+
+
+def same_model(history: Sequence[Observation], models: frozenset[str]) -> list[Observation]:
+    """The observations made with the model version `models` names, or — where `models` is
+    empty — with the one the latest observation names: a worker's history resets when its model
+    version changes (DEC-0043). An observation that names no model is no evidence of a change
+    and is kept."""
+    current = models
+    if not current:
+        current = next(
+            (found for o in reversed(history) if (found := models_of(o.actual))), frozenset()
+        )
+    if not current:
+        return list(history)
+    kept: list[Observation] = []
+    for observation in reversed(history):
+        named = models_of(observation.actual)
+        if named and named != current:
+            break
+        kept.append(observation)
+    return kept[::-1]
 
 
 def scale_for(
@@ -189,15 +222,25 @@ def scale_for(
     observed: Sequence[Observation],
     seeds: Sequence[Seed] = SEED,
     uncalibrated_margin: float = UNCALIBRATED_MARGIN,
+    models: frozenset[str] = frozenset(),
+    margin_floor: float = MARGIN_FLOOR,
 ) -> tuple[dict[str, float], str]:
     """The factors for one adapter and method, and where they come from: the adapter's own
     observations when it has any, else a seed whose capabilities the step requires. A worker
     reserves at least its estimate plus the uncalibrated margin divided by one more than the
-    observations it has, and its measured error where that is larger (DEC-0034). Any other
-    method's estimate is a bound — a counted prompt, a declared demand — and takes no margin."""
+    observations it has, never less than the floor, and its measured error where that is larger
+    (DEC-0034, DEC-0043). A worker's observations count only for the model version it works
+    with now — the one its estimate names in `models`, else the one it last reported — and one
+    whose model changed is uncalibrated again, without a seed. Any other method's estimate is a
+    bound — a counted prompt, a declared demand — and takes no margin."""
     own = [o for o in observed if o.adapter == adapter and o.method is method]
     required = frozenset(capabilities)
     history, source = own, f"{len(own[-WINDOW:])} observation(s) of {adapter}"
+    if method is Method.WORKER and own:
+        history = same_model(own, models)
+        source = f"{len(history[-WINDOW:])} observation(s) of {adapter} with its current model"
+        if not history:
+            source = f"no observation of {adapter} with its current model yet"
     if not own:
         seed = next((x for x in seeds if x.method is method and x.capabilities <= required), None)
         history = [] if seed is None else list(seed.observations)
@@ -205,15 +248,18 @@ def scale_for(
     if method is not Method.WORKER:
         return (factors(history), source) if history else ({}, "a bound, taken as given")
     # A worker's margin narrows with every observation: all of it with none, half with one, a
-    # third with two — and never below what it has measured (DEC-0034).
+    # third with two — never below the floor, and never below what it has measured (DEC-0034,
+    # DEC-0043).
     count = len(history[-WINDOW:])
-    margin = uncalibrated_margin / (1 + count)
+    margin = max(uncalibrated_margin / (1 + count), min(margin_floor, uncalibrated_margin))
     scale = factors(history)
     for name in [*SCALED, "currency.*"]:
         scale[name] = max(scale.get(name, 1.0), 1.0 + margin)
     for name in [key for key in scale if key.startswith("currency.") and key != "currency.*"]:
         scale[name] = max(scale[name], 1.0 + margin)
-    return scale, f"{source}: the measured error, or the estimate plus {margin:.0%} (DEC-0034)"
+    return scale, (
+        f"{source}: the measured error, or the estimate plus {margin:.0%} (DEC-0034, DEC-0043)"
+    )
 
 
 # --- the ceiling a worker is given ------------------------------------------------------------

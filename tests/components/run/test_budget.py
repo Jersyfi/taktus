@@ -10,7 +10,7 @@ from taktus.components.run.domain.service import budget as b
 from taktus.ports.model import Calculability
 from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit, TokenLimit
 from taktus.shared.v1 import ConsumptionQuantities as Q
-from taktus.shared.v1 import Method
+from taktus.shared.v1 import Method, PriceKinds
 
 
 def observation(estimate: Q, actual: Q, adapter: str = "worker.a") -> b.Observation:
@@ -114,6 +114,36 @@ def test_an_uncalibrated_worker_reserves_twice_its_estimate_and_history_narrows_
     assert [r.compute_seconds for r in narrowed] == [6.0, 5.0, 4.4], "half, a quarter, a tenth"
     worse = b.scale_for("worker.new", Method.WORKER, (), seen(9, 8.0))[0]
     assert b.reserve(estimate, worse).compute_seconds == 8.0, "a larger measured error wins"
+    floor = b.scale_for("worker.new", Method.WORKER, (), seen(19, 4.0))[0]
+    assert b.reserve(estimate, floor).compute_seconds == 4.4, "never below 10 % (DEC-0043)"
+    none = b.scale_for("worker.new", Method.WORKER, (), seen(19, 4.0), uncalibrated_margin=0.0)[0]
+    assert b.reserve(estimate, none).compute_seconds == 4.0, "an operator's zero is a limit too"
+
+
+def test_a_workers_history_resets_when_its_model_version_changes() -> None:
+    """DEC-0043: a calibration for one model says nothing about the next."""
+
+    def made_with(model: str, used: int) -> b.Observation:
+        kinds = PriceKinds(input=used, output=10)
+        return observation(
+            Q(tokens_in=1000),
+            Q(tokens_in=used, tokens_by_model={model: kinds}),
+            adapter="worker.coding",
+        )
+
+    old = [made_with("model-a-1", 1000) for _ in range(9)]
+    estimate = Q(tokens_in=1000)
+    calibrated, _ = b.scale_for("worker.coding", Method.WORKER, (), old)
+    assert b.reserve(estimate, calibrated).tokens_in == 1100, "nine observations: the floor"
+    one_new = [*old, made_with("model-a-2", 1000)]
+    reset, source = b.scale_for("worker.coding", Method.WORKER, (), one_new)
+    assert b.reserve(estimate, reset).tokens_in == 1500, "one observation of the new version"
+    assert "current model" in source
+    named = b.scale_for("worker.coding", Method.WORKER, (), old, models=frozenset({"model-b-1"}))
+    assert b.reserve(estimate, named[0]).tokens_in == 2000, "an estimate naming a new model"
+    unnamed = [*old, observation(Q(tokens_in=1000), Q(tokens_in=1000), adapter="worker.coding")]
+    kept = b.scale_for("worker.coding", Method.WORKER, (), unnamed)[0]
+    assert b.reserve(estimate, kept).tokens_in == 1100, "naming no model is no change"
 
 
 def test_the_ceiling_is_the_reservation_and_never_more_than_is_left() -> None:
