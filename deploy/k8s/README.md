@@ -90,6 +90,10 @@ ingress:
 telemetry:
   otlp: { endpoint:, protocol:, headersSecret:, headersKey: }   # all empty: spans stay local
 
+model: { endpoint:, name:, purposes:, billing: per_token, outputCap: hard }
+                         # outputCap: this tenant's endpoint holds the limit (research [A4]; M-03 passed
+                         # against it on 2026-10-01); for another endpoint, run M-03 and set what it shows
+
 capacity: { databaseVolumeMb:, storageExpandable:, storageWarnPercent:, actWithinDays: }
 ```
 

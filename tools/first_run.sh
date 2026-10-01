@@ -46,7 +46,10 @@
 #       (workers/claudecode/README.md); the one that is set decides --auth
 #   TAKTUS_MODEL_ENDPOINT, TAKTUS_MODEL_NAME
 #       the chat-completions endpoint the model adapter asks and the model it asks for;
-#       TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE when the endpoint needs a key
+#       TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE when the endpoint needs a key.
+#       TAKTUS_MODEL_OUTPUT_CAP, when not set, is derived: the model contract's check M-03 is run
+#       against the endpoint — two calls of a few tokens — and the limit is declared `hard` when
+#       the endpoint holds it, `soft` otherwise (contracts/model/v1 §3). Nobody declares it by hand.
 #   TAKTUS_PROVISIONAL_IDENTITY
 #       default `default=idn_owner` (DEC-0013)
 #
@@ -158,6 +161,25 @@ fi
 if [ "$run_p02" = yes ]; then
     [ -n "${TAKTUS_MODEL_ENDPOINT:-}" ] || fail "TAKTUS_MODEL_ENDPOINT is not set: the model P-02 asks for the acceptance criteria"
     [ -n "${TAKTUS_MODEL_NAME:-}" ] || fail "TAKTUS_MODEL_NAME is not set"
+fi
+if [ "$run_p02" = yes ] && [ -z "${TAKTUS_MODEL_OUTPUT_CAP:-}" ]; then
+    # Whether the endpoint holds the output limit a call sets is a fact about the provider; it is
+    # checked, not assumed (M-03). The key reaches the check through a variable of this process only.
+    declaration="$(mktemp)"
+    printf '%s' '{"contract":"model/v1","input_count":"upper_bound","output_cap":"hard","usage_kinds":["input","output"],"billing":"per_token"}' >"$declaration"
+    key=""
+    if [ -n "${TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE:-}" ]; then key="$(cat "$TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE")"; fi
+    if TAKTUS_FIRST_RUN_MODEL_KEY="$key" uv run taktusctl conformance run --contract model/v1 \
+        --endpoint "$TAKTUS_MODEL_ENDPOINT" --model "$TAKTUS_MODEL_NAME" \
+        --declaration "$declaration" --credential TAKTUS_FIRST_RUN_MODEL_KEY --timeout 60 >/dev/null 2>&1; then
+        export TAKTUS_MODEL_OUTPUT_CAP=hard
+        echo "model: the endpoint holds the output limit a call sets (M-03): declared hard" >&2
+    else
+        export TAKTUS_MODEL_OUTPUT_CAP=soft
+        echo "model: the endpoint did not show it holds the output limit (M-03): declared soft" >&2
+    fi
+    rm -f "$declaration"
+    unset key
 fi
 command -v git >/dev/null 2>&1 || fail "git is not on the path; the coding worker needs it"
 
