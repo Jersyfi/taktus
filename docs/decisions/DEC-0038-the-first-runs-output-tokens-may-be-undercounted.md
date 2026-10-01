@@ -1,7 +1,7 @@
 # DEC-0038 — The first run's output token figures may be undercounted
 
 **Category:** DEFECT
-**Raised in:** PR_LINK, where the coding worker's token accounting was found and corrected
+**Raised in:** [#51](https://github.com/Jersyfi/taktus/pull/51), where the coding worker's token accounting was found and corrected
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -57,4 +57,4 @@ times too high, measured by an accounting that counted a message's tokens once, 
 **What it now says:** the record marks the output figures as possibly undercounted and points
 here; the worker's accounting is corrected.
 **What changed in substance:** the coding worker's token accounting.
-**Recorded in:** PR_LINK
+**Recorded in:** [#51](https://github.com/Jersyfi/taktus/pull/51)

@@ -126,7 +126,7 @@ owner confirms it.
 says where the project stands against its milestones, its needs, its decisions and its
 contracts, and a fix that moves none of them has nothing true to add to it — which is what
 §4 found for the first pull request Taktus opened.
-**Recorded in:** PR_LINK. `tools/check_status.py` counts the four kinds of file and skips the
+**Recorded in:** [#51](https://github.com/Jersyfi/taktus/pull/51). `tools/check_status.py` counts the four kinds of file and skips the
 record of a documentation defect; ADR-0028 and `CLAUDE.md` §8 say the same. P-03's acceptance
 criterion that the repository's own rules for a change are met stays, because it names no rule.
 The mode this request proposed for the question — a new mode-3 entry — was not answered, and

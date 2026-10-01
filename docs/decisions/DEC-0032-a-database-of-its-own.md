@@ -1,7 +1,7 @@
 # DEC-0032 — The Taktus instance's database: its own, or shared
 
 **Category:** NON-BLOCKING
-**Raised in:** [#26](https://github.com/Jersyfi/taktus/pull/26), whose deployment plan lists "the database decision" among what is needed from the owner (`deploy/k8s/README.md` §8); answered in conversation and recorded in PR_LINK
+**Raised in:** [#26](https://github.com/Jersyfi/taktus/pull/26), whose deployment plan lists "the database decision" among what is needed from the owner (`deploy/k8s/README.md` §8); answered in conversation and recorded in [#51](https://github.com/Jersyfi/taktus/pull/51)
 **Issue:** none; the owner answered before a request was written, and this record is the request with its answer
 **Needed by:** 2026-10-20
 
@@ -70,4 +70,4 @@ means the control plane's namespace or a namespace for the database alone is the
 the reading to confirm; the pull request that carries this record is where the owner confirms
 it, and the chart is written against the confirmed reading.
 **Reasoning given:** a shared database means the system meant to report a failure fails with it.
-**Recorded in:** PR_LINK; `deploy/k8s/README.md` §2 and §8 say the same.
+**Recorded in:** [#51](https://github.com/Jersyfi/taktus/pull/51); `deploy/k8s/README.md` §2 and §8 say the same.

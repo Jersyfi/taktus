@@ -1,7 +1,7 @@
 # DEC-0035 — ADR-0005 promised two things that collide when one step overruns
 
 **Category:** DEFECT
-**Raised in:** PR_LINK, which builds the budget of ADR-0005 against the numbers of the first live run
+**Raised in:** [#51](https://github.com/Jersyfi/taktus/pull/51), which builds the budget of ADR-0005 against the numbers of the first live run
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -78,4 +78,4 @@ can promise when it is set.
 estimate; the worker's `limits` are its reservation grown by the margin, and a worker halts at a
 boundary before crossing them; consumption carries tokens by model and price kind; the run
 records its budget statement as `budget.set`.
-**Recorded in:** PR_LINK
+**Recorded in:** [#51](https://github.com/Jersyfi/taktus/pull/51)

@@ -1,7 +1,7 @@
 # DEC-0037 — Where a triggered implementation gets its closing section
 
 **Category:** NON-BLOCKING
-**Raised in:** PR_LINK, which moves the closing section out of the model's hands (issue #34)
+**Raised in:** [#51](https://github.com/Jersyfi/taktus/pull/51), which moves the closing section out of the model's hands (issue #34)
 **Issue:** [#49](https://github.com/Jersyfi/taktus/issues/49)
 **Needed by:** 2026-11-15
 **Provisional answer:** Option C for now: the command that starts the process by hand, `tools/first_run.sh`, generates the section and hands it to the run as an input. Marked in the bundle's `closing_section` input and in `blueprints/dev-orchestration/README.md`.

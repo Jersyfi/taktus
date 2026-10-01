@@ -1,7 +1,7 @@
 # DEC-0034 — The default safety margin of a budget
 
 **Category:** NON-BLOCKING
-**Raised in:** PR_LINK, which builds the budget of ADR-0005
+**Raised in:** [#51](https://github.com/Jersyfi/taktus/pull/51), which builds the budget of ADR-0005
 **Issue:** [#48](https://github.com/Jersyfi/taktus/issues/48)
 **Needed by:** 2026-10-28
 **Provisional answer:** Option A, ten per cent. The work continues on it; it is marked where it is set, `DEFAULT_MARGIN` in `src/taktus/composition/settings.py`, and in `.env.example`.

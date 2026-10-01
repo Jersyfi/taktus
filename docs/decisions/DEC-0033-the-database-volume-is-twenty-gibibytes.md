@@ -1,7 +1,7 @@
 # DEC-0033 — The size of the database's volume
 
 **Category:** NON-BLOCKING
-**Raised in:** [#26](https://github.com/Jersyfi/taktus/pull/26), whose deployment plan names `database.size` without a value (`deploy/k8s/README.md` §2); answered in conversation and recorded in PR_LINK
+**Raised in:** [#26](https://github.com/Jersyfi/taktus/pull/26), whose deployment plan names `database.size` without a value (`deploy/k8s/README.md` §2); answered in conversation and recorded in [#51](https://github.com/Jersyfi/taktus/pull/51)
 **Issue:** none; the owner answered before a request was written, and this record is the request with its answer
 **Needed by:** 2026-10-20
 
@@ -64,7 +64,7 @@ and the ledger only grows, so the choice is effectively irreversible; and the gr
 measured from the first day.
 **Reasoning given:** none beyond the two facts recorded with the answer — the volume cannot be
 enlarged later, and the ledger only grows.
-**Recorded in:** PR_LINK. `deploy/k8s/README.md` §2 sets `database.size: 20Gi` and derives
+**Recorded in:** [#51](https://github.com/Jersyfi/taktus/pull/51). `deploy/k8s/README.md` §2 sets `database.size: 20Gi` and derives
 `TAKTUS_CAPACITY_DATABASE_VOLUME_MB` and `TAKTUS_CAPACITY_STORAGE_EXPANDABLE: false` from it;
 the capacity report of ADR-0031 measures the growth per run from the first run and names the
 date a person must act by.

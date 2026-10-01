@@ -1,7 +1,7 @@
 # DEC-0036 — `make gates` was not green in one command on the owner's machine
 
 **Category:** DEFECT
-**Raised in:** PR_LINK, which diagnoses the seven errors and removes their cause
+**Raised in:** [#51](https://github.com/Jersyfi/taktus/pull/51), which diagnoses the seven errors and removes their cause
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -76,4 +76,4 @@ with a long timeout, so a builder that hung cost ten or fifteen minutes and said
 its content changed, and a build that hangs fails naming where.
 **What changed in substance:** the tests' image fixtures and `make images`; no gate was weakened
 and no timeout raised.
-**Recorded in:** PR_LINK
+**Recorded in:** [#51](https://github.com/Jersyfi/taktus/pull/51)
