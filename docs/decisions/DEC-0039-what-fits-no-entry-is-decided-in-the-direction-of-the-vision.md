@@ -1,7 +1,7 @@
 # DEC-0039 — What fits no entry: a question, or a decision in the direction of the vision
 
 **Category:** NON-BLOCKING
-**Raised in:** the owner's brief of 2026-10-01, which decided it; recorded in PR_LINK
+**Raised in:** the owner's brief of 2026-10-01, which decided it; recorded in [#52](https://github.com/Jersyfi/taktus/pull/52)
 **Issue:** none; the owner decided before a request was written, and this record is the question with his answer
 **Needed by:** 2026-10-01
 
@@ -90,7 +90,7 @@ what it is for and raises false alarms on the rest would teach the reader to ign
 questions by design in a young project, and a project that develops itself cannot spend its time
 asking. A rate near 100 % means too much is asked; many overridden notices mean too much is
 decided alone — the balance becomes visible in both directions.
-**Recorded in:** PR_LINK. `anchors.taktus.md` (*Neither list*, M2.6, the test of a question),
+**Recorded in:** [#52](https://github.com/Jersyfi/taktus/pull/52). `anchors.taktus.md` (*Neither list*, M2.6, the test of a question),
 `anchors.md` §1 and §4–§5, `CLAUDE.md` §8 and §9, ADR-0017 §1a and §9, `tools/check_decisions.py`
 (the derivability test from this number on, the `unlisted` section, `**Overridden by:**`) and
 `tools/check_status.py` (the acceptance line of `make status`).
