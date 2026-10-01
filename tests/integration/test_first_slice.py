@@ -172,7 +172,7 @@ async def test_a_worker_step_stopped_mid_way_resumes_from_its_checkpoint_without
         run = await services.engine.resume(
             ResumeRun(run_id=run.id, actor="idn_test", tenant=TENANT)
         )
-        assert run.state is RunState.FINISHED
+        assert run.state is RunState.FINISHED, (run.cause, run.reason)
         resumed = run.step_run("compute")
         ids = [a.id for a in resumed.artifacts]
         assert ids == ["output-1", "output-2", "output-3", "output-4"]

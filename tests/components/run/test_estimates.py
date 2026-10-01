@@ -221,3 +221,21 @@ async def test_a_worker_that_halts_at_its_ceiling_halts_the_run_on_the_limit() -
     do = run.step_run("do")
     assert do.state is StepState.STOPPED and do.checkpoint is not None, "resumable"
     assert "compute ceiling" in (do.reason or "")
+
+
+async def test_a_stopped_step_is_no_calibration_history() -> None:
+    """A stopped attempt used part of its estimate; read as history it would flatter the worker
+    and take away the margin it is owed while nothing has measured it (DEC-0034)."""
+    budget = Limits(compute=ComputeLimit(seconds=100, resource_class="cpu.small"))
+    stops = FakeWorker(
+        halt_on_limit="compute", script=(InnerStep("one", 0.5), InnerStep("two", 0.5))
+    )
+    h = Harness(worker("do"), workers=[stops])
+    h.engine._options = EngineOptions()  # the default: an uncalibrated worker reserves twice
+    first = await h.start(budget)
+    assert first.step_run("do").state is StepState.STOPPED
+    second = await h.start(budget)
+    reservation = second.step_run("do").reservation
+    assert reservation is not None and reservation.compute_seconds == 4.0, (
+        "the estimate of 2 s, twice: the stopped attempt counted as no history"
+    )

@@ -905,6 +905,10 @@ class RunEngine:
                 continue  # a rehearsal replays recorded answers: it measures no adapter
             if entry.kind == "step.admitted" and entry.consumption is not None:
                 estimates[(run_id, step_id)] = entry.consumption
+            elif entry.kind == "step.finished" and entry.outcome == "stopped":
+                # A stopped step used part of what it was estimated for: its partial actual
+                # against its whole estimate would read as an overestimate. It measures nothing.
+                estimates.pop((run_id, step_id), None)
             elif entry.kind == "step.finished" and entry.consumption is not None:
                 estimate = estimates.pop((run_id, step_id), None)
                 if estimate is None or entry.adapter is None or entry.method is None:
