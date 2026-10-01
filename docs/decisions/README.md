@@ -58,6 +58,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0010](NTC-0010-a-reading-that-is-not-as-expected-is-read-again.md) | A reading not as expected is read again | M2.4 | `behaviour-change` | a connector read may carry `expect` and fails its own step otherwise, so a resume reads again; P-03's pipeline read expects success (#31) |
 | [0011](NTC-0011-first-run-findings-in-the-connector-the-worker-and-the-script.md) | The connector, the worker and first_run.sh | M2.4 | `behaviour-change` | executable flag (#28), `repository.files.read` and P-03's `closing_section` (#34), `first_run.sh` runs twice (#30), token accounting and W-14 in both workers |
 | [0012](NTC-0012-a-memory-limit-is-enforced-or-the-job-refused.md) | A memory limit is enforced or refused | M2.4 | `behaviour-change` | the process adapter enforces memory on Linux and refuses elsewhere unless accepted; the container adapter refuses an engine that cannot limit memory or swap |
+| [0013](NTC-0013-the-description-check-runs-on-an-edit-and-is-scoped-to-its-authors.md) | The description check runs on an edit, and is scoped to its authors | M2.4 | `behaviour-change` | a `description` workflow that runs when a description is edited; a dependency bot's own description is not held to the shape, every code gate still runs |
 
 ## Decisions
 
