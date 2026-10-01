@@ -104,9 +104,8 @@ it never carries a value, and a values file in the repository never carries one 
 
 **The database is the instance's own** (DEC-0032): the chart deploys a PostgreSQL with the
 instance, and no other system uses that server, because a shared database means the system meant
-to report a failure fails with it. Whether it sits in the control plane's namespace or in one of
-its own is the one point of the owner's answer still to confirm; this plan assumes the control
-plane's.
+to report a failure fails with it. It sits in the instance's own namespace, the control plane's — confirmed by the owner on
+2026-10-01.
 
 **Storage is sized once and watched from the first day.** The database's volume defaults to
 20 Gi (`database.size`, DEC-0033). On the target's storage class a volume cannot be enlarged

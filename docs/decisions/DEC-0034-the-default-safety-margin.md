@@ -4,7 +4,6 @@
 **Raised in:** [#51](https://github.com/Jersyfi/taktus/pull/51), which builds the budget of ADR-0005
 **Issue:** [#48](https://github.com/Jersyfi/taktus/issues/48)
 **Needed by:** 2026-10-28
-**Provisional answer:** Option A, ten per cent. The work continues on it; it is marked where it is set, `DEFAULT_MARGIN` in `src/taktus/composition/settings.py`, and in `.env.example`.
 
 ## 1. What this is about
 
@@ -92,3 +91,24 @@ changing it later changes one setting and no recorded run.
 "DEC-0034: Option A.", "DEC-0034: Option B." or "DEC-0034: Option C." in the issue. Another
 share is a fine answer too; a free-text answer is read back as an interpretation and confirmed
 before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-01
+**Answer:** None of the three options as written. The owner: the default safety margin for a
+worker **without** calibration history is 100 %, not 10 %; a worker with history uses its
+calibration, which narrows the margin with every run. Read as: (1) the margin belongs to a
+worker step's estimate, not to the budget as a whole — a worker nothing has measured yet, and no
+seed covers, reserves its estimate plus 100 %, twice its estimate; (2) a worker with history
+reserves its estimate scaled by its measured error; (3) model and connector steps, whose
+estimates are a counted prompt and a declared demand, are bounds and take no margin; (4) the
+budget-wide holdback the question asked about stays a named setting and holds back nothing by
+default. This reading is the record; the pull request that carries it is where the owner
+confirms it.
+**Reasoning given:** the only worker measured so far underestimated by a factor of two to four.
+Caution towards the unknown, loosening through data.
+**Recorded in:** [#51](https://github.com/Jersyfi/taktus/pull/51).
+`TAKTUS_BUDGET_UNCALIBRATED_MARGIN` (1.0) and `TAKTUS_BUDGET_MARGIN` (0) in
+`src/taktus/composition/settings.py`; `UNCALIBRATED_MARGIN` in
+`src/taktus/components/run/domain/service/budget.py`; ADR-0005, third amendment, point 6;
+`tests/components/run/test_budget.py::test_an_uncalibrated_worker_reserves_twice_its_estimate_and_history_narrows_it`.

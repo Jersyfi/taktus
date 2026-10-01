@@ -4,7 +4,6 @@
 **Raised in:** [#51](https://github.com/Jersyfi/taktus/pull/51), which moves the closing section out of the model's hands (issue #34)
 **Issue:** [#49](https://github.com/Jersyfi/taktus/issues/49)
 **Needed by:** 2026-11-15
-**Provisional answer:** Option C for now: the command that starts the process by hand, `tools/first_run.sh`, generates the section and hands it to the run as an input. Marked in the bundle's `closing_section` input and in `blueprints/dev-orchestration/README.md`.
 
 ## 1. What this is about
 
@@ -94,3 +93,21 @@ request whose checks pass.
 
 "DEC-0037: Option A.", "DEC-0037: Option B." or "DEC-0037: Option C." in the issue. A free-text
 answer is read back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-01
+**Answer:** Option A, decided by the session. The owner's answer was about the mode: if the
+question concerns only where a generated text is produced, the session decides it, mode 1. It
+does: the three options differ in which step and which method produce the same fixed text, and
+none changes what the text is, who reads it, or any limit, level or public statement. Option B,
+which would have reversed part of DEC-0026, is not taken. So the worker, after its change, runs
+the command the bundle names in its workspace — the branch the checks will read — and publishes
+the output as an artifact the run appends as fixed text. Until an automatic start of P-03 exists
+(`0.2.0`), the manual command keeps supplying the section as an input.
+**Reasoning given:** the owner's: where a generated text is produced inside a run is the
+session's to decide. The session's for Option A: it is the only source that is the branch the
+checks compare against, and it stores nothing.
+**Recorded in:** [#51](https://github.com/Jersyfi/taktus/pull/51); `anchors.taktus.md` gains entry
+M1.11 from the owner's answer; the worker contract's optional command after the work is built
+with the trigger of `0.2.0`.

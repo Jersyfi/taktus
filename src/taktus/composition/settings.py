@@ -194,8 +194,12 @@ class BudgetSettings:
     PriceTable`. Absent: no model has a price, a currency budget cannot be converted, and the
     run says so when its budget is set."""
     margin: float
-    """`TAKTUS_BUDGET_MARGIN`: the share of every limit held back, 0 to 0.9; provisional 0.10
-    until DEC-0034 is answered."""
+    """`TAKTUS_BUDGET_MARGIN`: the share of every limit held back from the first step on, 0 to
+    0.9; nothing by default (DEC-0034: the margin belongs to a worker's estimate, not to the
+    budget)."""
+    uncalibrated_margin: float = 1.0
+    """`TAKTUS_BUDGET_UNCALIBRATED_MARGIN`: what a worker with no calibration history reserves
+    beyond its estimate — 1.0, twice the estimate, by default (DEC-0034)."""
 
     def table(self) -> PriceTable | None:
         """The price table the file holds, validated; None when none is configured."""
@@ -215,11 +219,14 @@ class BudgetSettings:
         return [
             ("TAKTUS_PRICE_TABLE", "" if self.price_table is None else str(self.price_table)),
             ("TAKTUS_BUDGET_MARGIN", f"{self.margin:g}"),
+            ("TAKTUS_BUDGET_UNCALIBRATED_MARGIN", f"{self.uncalibrated_margin:g}"),
         ]
 
 
-DEFAULT_MARGIN = 0.10
-"""The safety margin until the owner decides its default (M3.10): DEC-0034, provisional."""
+DEFAULT_MARGIN = 0.0
+"""No share of the budget is held back by default: the safety margin is a worker's (DEC-0034)."""
+DEFAULT_UNCALIBRATED_MARGIN = 1.0
+"""100 % beyond the estimate for a worker nothing has measured yet (DEC-0034)."""
 
 
 def load_budget(configuration: Configuration) -> BudgetSettings:
@@ -232,7 +239,11 @@ def load_budget(configuration: Configuration) -> BudgetSettings:
             f"{margin:g} holds back more than nine tenths of every budget; the most is 0.9",
         )
     return BudgetSettings(
-        price_table=None if table is None else Path(table).expanduser(), margin=margin
+        price_table=None if table is None else Path(table).expanduser(),
+        margin=margin,
+        uncalibrated_margin=reader.number(
+            "budget.uncalibrated.margin", DEFAULT_UNCALIBRATED_MARGIN, low=0.0
+        ),
     )
 
 

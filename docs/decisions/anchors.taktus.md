@@ -30,6 +30,7 @@ that is intended: the same anchor resolves differently per tenant (anchors.md §
 | M1.8 | **Version assignment once a feature is accepted.** The default keeps this with the owner (M3.3). Accepting the feature is still M3.2. | `docs/roadmap.md` |
 | M1.9 | **A change to the substance of an accepted ADR, as long as the vision holds.** The default keeps this with the owner (M3.4). Here it is the session's while the change keeps every guiding principle (CLAUDE.md §5), keeps the four requirements of ADR-0013, and touches no entry of mode 3 or 4 of this page. A change that would touch one of those is that entry's decision. The record is the amendment itself, in the ADR, with its date and reason. | the ADR |
 | M1.10 | **How a use case is described**: its wording, examples and links, its state, the tests it names, and the digest of each ADR it was checked against once it has been checked again. Not what it requires — that is M3.15. Given by the owner on 2026-09-29. | the use case file under `docs/usecases/` |
+| M1.11 | **Where a generated text is produced inside a run** — which step and which method produce a text whose content is fixed by a generator, as long as the text itself, its reader, limits, levels and public statements do not change. Given by the owner on 2026-10-01, answering DEC-0037. | the bundle and the pull request description |
 
 ## Mode 2 — the session decides and records a notice
 
@@ -111,6 +112,9 @@ are M1.1 to M1.6. The restructuring is recorded as NTC-0001.
 
 M2.4 was added on 2026-09-21 from the owner's answer to DEC-0014, the first question raised
 under *Neither list*; the same answer gave every notice its kind.
+
+M1.11 was added on 2026-10-01 from the owner's answer to DEC-0037: where a generated text is
+produced inside a run is the session's.
 
 M1.10, M3.15 and M4.5 were added on 2026-09-29 from the owner's brief that brought the vision
 layer and the use case format into the repository: the vision is the owner's, what a use case

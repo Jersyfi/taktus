@@ -123,10 +123,11 @@ follow:
   `llm` step by the input its model counts and the output limit it sets, a connector call by its
   operation's declared demand, a rule by nothing — and a step that cannot be estimated is
   refused, not admitted. The estimate, scaled by its adapter's measured error, is *reserved*
-  against what remains of the line the run is held to: its budget less a named safety margin.
-  A worker receives its reservation, grown by the margin, as its `limits`, and halts at its next
+  against what remains of the line the run is held to — its budget, less a holdback where an
+  operator sets one. A worker nothing has measured yet reserves twice its estimate (DEC-0034).
+  A worker receives its reservation as its `limits`, and halts at its next
   boundary before crossing them (W-14). The overrun of the one inner step during which a total
-  crossed the line is the residual; the margin exists to absorb it (ADR-0005, third amendment;
+  crossed the line is the residual; the reservation exists to absorb it (ADR-0005, third amendment;
   DEC-0035). For money reported only when an assignment ends — the coding worker's — the worker
   cannot halt on it and is held by the tokens it reports per step. When a budget is set, the run
   records what it can promise per kind — exactly per step, as an estimate, only as a share of a

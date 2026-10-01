@@ -81,7 +81,30 @@ def test_own_observations_replace_the_seed_and_other_capabilities_get_none() -> 
     scale, source = b.scale_for("worker.endpoint", Method.WORKER, capabilities, own)
     assert scale == {"tokens_in": 1.5} and "worker.endpoint" in source
     scale, source = b.scale_for("worker.script", Method.WORKER, ("shell.script",), [])
-    assert scale == {} and "as given" in source
+    assert scale["compute_seconds"] == 2.0 and "DEC-0034" in source, "uncalibrated: twice"
+    scale, source = b.scale_for("connector.repo", Method.RULE, (), [])
+    assert scale == {} and "bound" in source, "a declared demand is taken as given"
+
+
+def test_an_uncalibrated_worker_reserves_twice_its_estimate_and_history_narrows_it() -> None:
+    """DEC-0034: caution towards the unknown, loosening through data."""
+    estimate = Q(
+        tokens_in=1000, currency={"eur": 0.5}, compute_seconds=4, resource_class="cpu.small"
+    )
+    scale, _ = b.scale_for("worker.new", Method.WORKER, ("shell.script",), [])
+    reservation = b.reserve(estimate, scale)
+    assert reservation.tokens_in == 2000 and reservation.compute_seconds == 8
+    assert reservation.currency == {"eur": 1.0}
+    c = "cpu.small"
+    history = [
+        observation(
+            Q(compute_seconds=4, resource_class=c),
+            Q(compute_seconds=5, resource_class=c),
+            adapter="worker.new",
+        )
+    ]
+    scale, source = b.scale_for("worker.new", Method.WORKER, ("shell.script",), history)
+    assert b.reserve(estimate, scale).compute_seconds == 5.0 and "observation" in source
 
 
 def test_the_ceiling_is_the_reservation_and_never_more_than_is_left() -> None:

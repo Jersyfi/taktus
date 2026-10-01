@@ -220,6 +220,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                         step_ceiling_seconds=settings.shutdown_ceiling_seconds,
                         prices=prices,
                         margin=settings.budget.margin,
+                        uncalibrated_margin=settings.budget.uncalibrated_margin,
                         capacity=rules_of(settings.capacity),
                         unit_memory_bytes=memory_demand(settings.execution),
                     ),

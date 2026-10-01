@@ -117,16 +117,18 @@ bounded by *Where this promise ends*, with a gate.
 
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
 each with the pull request that recorded it. **Open:** DEC-0028, DEC-0029 and DEC-0030, raised
-by the pull request that brought in the vision layer; DEC-0034, the default safety margin of a
-budget, provisionally ten per cent; DEC-0037, where an automatically started P-03 takes the
-generated closing section of its pull request from, provisionally an input.
+by the pull request that brought in the vision layer. DEC-0034 and DEC-0037, raised by the
+pull request that took up the first run's findings, are answered: a worker with no calibration
+history reserves twice its estimate, and where a run produces a generated text is the session's
+to decide.
 
 **A budget is a budget, built** (ADR-0005, third amendment; DEC-0035). Every step is estimated
 before it is admitted, or refused: a worker by its estimate, an `llm` step by the input its model
 counts and the output limit it sets, a connector call by its operation's declared demand, a rule
 by nothing. The estimate, scaled by its adapter's measured error — seeded from the first run for
-the coding worker — is reserved against the budget less a named margin. A worker receives its
-reservation, grown by the margin, as its limits, and halts at its next boundary before crossing
+the coding worker, and twice the estimate for a worker nothing has measured yet (DEC-0034) — is
+reserved against the budget. A worker receives its reservation as its limits, and halts at its
+next boundary before crossing
 them (check W-14, in both reference workers, with a fault each). Tokens are recorded per model
 and per price kind, a versioned price table prices them, and `taktusctl cost <run>` recomputes a
 run's money from the ledger. Every model adapter declares what it can compute before a call;
@@ -248,10 +250,10 @@ rather than enforced, anything marked provisional.
 |---|---|---|
 | the removal test is a conformance check, W-12 and C-10 | `contracts/worker/v1`, `contracts/connector/v1` | reported *pending* by both suites (DEC-0005); the test runs as the process S-01 instead, and no adapter has reached maturity *verified* because nothing records the conformance half |
 | the removal test *exercises* the processes that use an integration | `blueprints/self-operation/`, S-01, ADR-0030 | it rehearses them: outward operations answer from the recording of their last real call. A process is rehearsed only once it has been called for real on that instance, so the weekly job, on fresh state, still resolves P-02 and P-03 statically; a worker step that may reach hosts — P-03's — is never rehearsed |
-| a budget is a budget | ADR-0005, third amendment | built, with three limits stated there: the overrun of the one inner step during which a total crossed the line is spent; money a worker reports only when an assignment ends cannot halt it, and it is held by its tokens; the default margin is provisional (DEC-0034). Not yet run live: the next live run is the first measured against it |
+| a budget is a budget | ADR-0005, third amendment | built, with three limits stated there: the overrun of the one inner step during which a total crossed the line is spent; money a worker reports only when an assignment ends cannot halt it, and it is held by its tokens. Not yet run live: the next live run is the first measured against it |
 | a budget says what the provider permits | `contracts/model/v1`, `docs/research/2026-09-30-what-providers-allow.md` | this tenant's endpoint holds its output limit: the research says so ([A4]) and M-03 passed against it on 2026-10-01; `tools/first_run.sh` derives the declaration with M-03 on every run, and the deployment sets it (`deploy/k8s/README.md`). The adapter's default for an endpoint nobody has checked stays `soft`; the research is dated and expires |
 | Taktus watches its platform | ADR-0031 | *Observe* built; *Propose* `0.5.0`, *Manage* `0.7.0`. On macOS memory is neither observed nor limited, and the process adapter refuses a job there unless an unenforced limit is accepted; the cluster's own quota is not seen until a cluster platform adapter exists |
-| an automatically started P-03 opens a pull request whose checks pass | DEC-0037 | open: the generated closing section comes from an input that only the manual command supplies |
+| an automatically started P-03 opens a pull request whose checks pass | DEC-0037 | decided: the worker runs the generator after its change and the run appends what it printed; built with the trigger of `0.2.0`, until when the manual command supplies the section |
 | a process that would give an instance credentials for its own infrastructure is refused at planning time | ADR-0025 | applied by the person who configures an instance; refusal in code is `0.2.0` |
 | an anchor halts the run at a step boundary and raises a decision request in the product | ADR-0008, `docs/architecture/governance.md` | the register exists for this repository; the product's governance component holds the "has it left the system" predicate of the correction anchor and nothing else (`src/taktus/components/governance`); anchors at step boundaries are `0.2.0` |
 | the identity component | `docs/architecture/control-plane.md` §2 | a provisional identity per tenant, marked on every line it touches (DEC-0013); `0.2.0` removes the variable |

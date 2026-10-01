@@ -25,7 +25,7 @@ from taktus.adapters.driven.memory import (
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
-from taktus.components.run.application.service import ResumeRun, RunEngine, StartRun
+from taktus.components.run.application.service import EngineOptions, ResumeRun, RunEngine, StartRun
 from taktus.components.run.domain.model import (
     Cause,
     NoWorker,
@@ -115,6 +115,9 @@ class Harness:
             clock=self.clock,
             ids=self.ids,
             telemetry=NoTelemetry(),
+            # The engine's mechanics are tested at the estimate the fake gives; what an
+            # uncalibrated worker reserves beyond it (DEC-0034) is test_estimates.py's.
+            options=EngineOptions(uncalibrated_margin=0.0),
         )
         self.steps = tuple(step for step, _ in definitions)
         self.work = {step.id: work for step, work in definitions}

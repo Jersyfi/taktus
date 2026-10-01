@@ -226,6 +226,8 @@ class EngineOptions:
     (`TAKTUS_BUDGET_MARGIN`)."""
     seeds: tuple[budgeting.Seed, ...] = budgeting.SEED
     """What calibration starts from for an adapter nothing has measured yet."""
+    uncalibrated_margin: float = budgeting.UNCALIBRATED_MARGIN
+    """What a worker with no calibration history reserves beyond its estimate (DEC-0034)."""
     capacity: CapacityRules = field(default_factory=CapacityRules)
     """What admission against the platform holds a job to (docs/architecture/platform.md)."""
     unit_memory_bytes: int | None = None
@@ -791,6 +793,7 @@ class RunEngine:
                 demand.capabilities,
                 self._observed.get(run.id, []),
                 self._options.seeds,
+                self._options.uncalibrated_margin,
             )
         )
         reservation = budgeting.reserve(demand.quantities, scale)

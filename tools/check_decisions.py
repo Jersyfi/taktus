@@ -30,9 +30,9 @@ Checks:
    needs request a row names has a file; every `<NAME>_FILE` variable the code names is
    described in CREDENTIALS.md — so that a pull request cannot build something whose real use
    depends on a credential nobody was asked for;
-5. with --pr-body (and --author, the description's author): the "Decisions required" section of a pull request description is either
-   "None" or a list of DEC lines, every named decision has an open file with the same category,
-   and every BLOCKING open file is named;
+5. with --pr-body (and --author, the description's author): the "Decisions required" section of a
+   pull request description is either "None" or a list of DEC lines, every named decision has an
+   open file with the same category, and every BLOCKING open file is named;
 5a. with --pr-body: the description carries, in this order, "What this is about", "What was
    done", "Why this way" and "What to check", none empty and none a placeholder — so that a
    reviewer who has not read the diff can act on it (ADR-0017 §7). The gate sees that the four

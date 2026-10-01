@@ -32,10 +32,11 @@ Checks:
    a milestone item, a need, a decision or a contract — docs/roadmap.md, a record under
    docs/decisions/ or an ADR, a file under contracts/ — and not when it fixes a defect: the
    record of a documentation defect alone does not count (the owner's answer to DEC-0021);
-6. with --pr-body, unless --author names a dependency bot (NTC-0013): the last section of the pull request description, `## Needed from the
-   owner`, carries what the register generates, so that the owner sees it without opening a
-   file. The description is the one place the generated list is carried: it is written from
-   the branch it describes and never merged with another.
+6. with --pr-body, unless --author names a dependency bot (NTC-0013): the last section of the
+   pull request description, `## Needed from the owner`, carries what the register generates,
+   so that the owner sees it without opening a file. The description is the one place the
+   generated list is carried: it is written from the branch it describes and never merged with
+   another.
 
 `--print` prints the list (`make status`). Nothing writes it into a file.
 

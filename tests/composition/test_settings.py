@@ -175,7 +175,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 52, "every setting is in the startup log"
+    assert len(effective) == 53, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -225,7 +225,7 @@ def test_the_budget_settings_are_validated_and_the_price_table_read(tmp_path: Pa
         encoding="utf-8",
     )
     budget = load_budget(EnvironmentConfiguration({"TAKTUS_PRICE_TABLE": str(table)}))
-    assert budget.margin == 0.10, "the provisional margin of DEC-0034"
+    assert budget.margin == 0.0 and budget.uncalibrated_margin == 1.0, "DEC-0034"
     loaded = budget.table()
     assert loaded is not None and loaded.version == "t-1"
     with pytest.raises(ConfigurationError, match="TAKTUS_BUDGET_MARGIN"):

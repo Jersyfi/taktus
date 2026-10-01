@@ -116,7 +116,7 @@ def reserve(estimate: ConsumptionQuantities, scale: Mapping[str, float]) -> Cons
         scaled[name] = math.ceil(value * factor) if isinstance(value, int) else value * factor
     if estimate.currency:
         scaled["currency"] = {
-            code: amount * scale.get(f"currency.{code}", 1.0)
+            code: amount * scale.get(f"currency.{code}", scale.get("currency.*", 1.0))
             for code, amount in estimate.currency.items()
         }
     if estimate.resource_class is not None:
@@ -174,16 +174,25 @@ SEED: tuple[Seed, ...] = (_first_run(),)
 measured run, recorded with its source."""
 
 
+UNCALIBRATED_MARGIN = 1.0
+"""What a worker nothing has measured yet reserves beyond its estimate: 100 %, twice the estimate
+(DEC-0034). The only worker measured so far underestimated by a factor of two to four; caution
+towards the unknown, loosening through data — once the worker has history, its calibration
+replaces this and narrows with every run."""
+
+
 def scale_for(
     adapter: str,
     method: Method,
     capabilities: Iterable[str],
     observed: Sequence[Observation],
     seeds: Sequence[Seed] = SEED,
+    uncalibrated_margin: float = UNCALIBRATED_MARGIN,
 ) -> tuple[dict[str, float], str]:
     """The factors for one adapter and method, and where they come from: the adapter's own
-    observations when it has any, else a seed whose capabilities the step requires, else
-    none — the estimate as given."""
+    observations when it has any, else a seed whose capabilities the step requires. A worker with
+    neither reserves its estimate plus the uncalibrated margin (DEC-0034). Any other method's
+    estimate is a bound — a counted prompt, a declared demand — and is taken as given."""
     own = [o for o in observed if o.adapter == adapter and o.method is method]
     if own:
         return factors(own), f"{len(own[-WINDOW:])} observation(s) of {adapter}"
@@ -191,7 +200,12 @@ def scale_for(
     for seed in seeds:
         if seed.method is method and seed.capabilities <= required:
             return factors(seed.observations), f"the seed from {seed.source}"
-    return {}, "no observation yet: the estimate as given"
+    if method is Method.WORKER:
+        factor = 1.0 + uncalibrated_margin
+        scale = {name: factor for name in SCALED}
+        scale["currency.*"] = factor
+        return scale, f"no observation yet: the estimate plus {uncalibrated_margin:.0%} (DEC-0034)"
+    return {}, "a bound, taken as given"
 
 
 # --- the ceiling a worker is given ------------------------------------------------------------

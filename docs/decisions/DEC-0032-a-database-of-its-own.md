@@ -64,10 +64,9 @@ The chart's database section, which the deployment pull request writes.
 
 **Decided:** 2026-09-30
 **Answer:** Option A. The owner, in conversation: a PostgreSQL of its own for the Taktus instance,
-in its own namespace. Read as: the chart deploys the database with the instance
-(`database.deploy: true`), and no other system uses that server. Whether "its own namespace"
-means the control plane's namespace or a namespace for the database alone is the one point of
-the reading to confirm; the pull request that carries this record is where the owner confirms
-it, and the chart is written against the confirmed reading.
+in its own namespace — confirmed on 2026-10-01 as the same namespace as the instance, not a
+namespace for the database alone; the ambiguity came from the brief's wording. The chart deploys
+the database with the instance (`database.deploy: true`), in the control plane's namespace, and
+no other system uses that server.
 **Reasoning given:** a shared database means the system meant to report a failure fails with it.
 **Recorded in:** [#51](https://github.com/Jersyfi/taktus/pull/51); `deploy/k8s/README.md` §2 and §8 say the same.

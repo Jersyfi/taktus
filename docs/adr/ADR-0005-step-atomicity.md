@@ -152,8 +152,9 @@ than its step was estimated at. The resolution goes through the worker contract'
 the worker stops only at a boundary, with a checkpoint, and a resume continues from it.
 "No limit is ever breached" yields by at most the overrun of the one inner step during which
 the running total crossed the line: a step whose demand was not knowable before it started
-cannot be stopped inside itself without losing it. The margin exists to absorb exactly that
-overrun, which is why the worker may use its share of it. Work lost is lost for good; a
+cannot be stopped inside itself without losing it. The reservation exists to absorb exactly
+that overrun — twice the estimate for a worker nothing has measured yet, its measured error for
+one with history (point 6). Work lost is lost for good; a
 bounded overrun is recorded, calibrated against and reported. The first promise is therefore
 the one kept whole.
 
@@ -194,8 +195,14 @@ share of a subscription's time window, or not at all — and records that statem
 that a currency budget cannot be enforced, only a share of the window. The evidence for what
 providers permit is `docs/research/2026-09-30-what-providers-allow.md`.
 
-**6. A named safety margin** (point 3 of the second amendment) is `TAKTUS_BUDGET_MARGIN`,
-provisionally 0.10 until its default is decided (DEC-0034).
+**6. The safety margin belongs to a worker's estimate** (DEC-0034, the owner's answer). A worker
+with no calibration history reserves its estimate plus 100 % — twice its estimate
+(`TAKTUS_BUDGET_UNCALIBRATED_MARGIN`, 1.0) — because the only worker measured so far underestimated
+by a factor of two to four. A worker with history reserves its estimate scaled by its measured
+error, which narrows with every run: caution towards the unknown, loosening through data. The
+budget-wide holdback of point 3 of the second amendment stays a named setting
+(`TAKTUS_BUDGET_MARGIN`) and holds back nothing by default; where an operator sets it, a worker
+may use its share of it before it must halt.
 
 ## Where this promise ends
 

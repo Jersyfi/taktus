@@ -170,6 +170,7 @@ class LocalWiring:
                     options=EngineOptions(
                         prices=prices,
                         margin=budget.margin,
+                        uncalibrated_margin=budget.uncalibrated_margin,
                         capacity=rules_of(capacity),
                         unit_memory_bytes=memory_demand(execution),
                     ),

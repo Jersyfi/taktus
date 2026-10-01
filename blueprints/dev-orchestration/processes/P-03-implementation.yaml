@@ -187,8 +187,8 @@ steps:
           # The description of a pull request Taktus opens is the summary this assignment ends
           # with, so the shape the repository asks of a description is asked of the summary.
           # The section the repository generates is not asked of it: the run appends that
-          # section itself, by a template, after the summary (issue #34). Where an automatic
-          # start takes that section from is DEC-0037, open.
+          # section itself, by a template, after the summary (issue #34). An automatic start
+          # will take it from the worker, which runs the generator after its change (DEC-0037).
           - >
             the summary this assignment ends with is the body of the pull request that will
             carry the change: what it delivers, and what a reviewer must know. Where the
