@@ -112,7 +112,7 @@ bounded by *Where this promise ends*, with a gate.
 | the identity component | a provisional identity per tenant stands in (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013) |
 | time triggers | the scheduler leads and ticks; nothing is scheduled; the weekly removal test is a CI workflow instead |
 | event reactions | the automation role starts and waits; the outbox exists and nothing writes it; an intake event is completed into a command by hand |
-| a live run of the coding worker against its real agent in CI | the gate runs the stand-in; a live run needs a credential CI does not have |
+| a live run of the coding worker against its real agent in CI | the gate runs the stand-in; a live run needs a key CI does not have, raised as NEED-0012 on 2026-10-01 |
 | governance and anchors in the product | the anchors exist for this repository as documents; nothing in the product evaluates an anchor at a step boundary yet |
 
 **How the owner is asked** changed on 2026-10-01 (DEC-0039): a situation that fits no entry of
@@ -121,9 +121,25 @@ question is raised only where the vision gives no direction, and only after the 
 ADRs, the anchors and the register were checked. `make status` shows how often the owner took
 the recommended option and how often a notice was overridden.
 
+**On 2026-10-01 the audit of the register came back**, and the owner's answers DEC-0040 to
+DEC-0043 were recorded first and then encoded. A decision under that rule states how it follows
+its source, and between two options both consistent with the sources it takes the stricter in
+substance and the one with less ceremony. Bringing a use case up to the owner's own definition
+is the session's, with a notice (M2.7). After every twenty such notices the override rate goes
+to the owner as a request, and the gate fails the register when it is due. The acceptance rate
+now counts only what was asked before it was answered: **1 of 6 recommendations taken**, where
+the naive count had shown 5 of 6. The audit found an owner action written as a note five times;
+what can be checked exactly now is: every need named resolves to one that will be or was
+provided, every `TODO(owner)` to an open record, and every credential variable has the one form.
+Four needs were raised that had been deferred or never written — backups (NEED-0009), the
+webhook secret (NEED-0010), the live connector test in CI (NEED-0011), the coding agent in CI
+(NEED-0012) — and the licence is tracked as the owner's own question, DEC-0044, due before
+`1.0.0`.
+
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
 each with the pull request that recorded it. **Open:** DEC-0028, DEC-0029 and DEC-0030, raised
-by the pull request that brought in the vision layer. DEC-0034 and DEC-0037, raised by the
+by the pull request that brought in the vision layer — DEC-0030 narrowed on 2026-10-01 to the
+conditions the use cases add beyond the definition — and DEC-0044, the licence. DEC-0034 and DEC-0037, raised by the
 pull request that took up the first run's findings, are answered: a worker with no calibration
 history reserves twice its estimate, and where a run produces a generated text is the session's
 to decide.
@@ -170,8 +186,9 @@ answers, for the first time, how much of the vision stands:
   repeatability and cost control, P9 efficiency over verbosity, P14 people at the centre. The
   others — P1, P3, P4, P6, P10, P11, P12, P13 — have a use case in *building*.
 - The requirements of the thirteen are the owner's decision, asked as DEC-0030 and in force
-  provisionally. Four of them fall short of what the definition asks, and DEC-0030 names the
-  amendment for each. `make usecases` prints the list with states; `make gate-vision` prints which use
+  provisionally. Four of them fell short of what the definition asks; they were brought up to it
+  on 2026-10-01 under M2.7 (NTC-0014 to NTC-0017), and DEC-0030 now asks only about what the
+  session added beyond the definition. `make usecases` prints the list with states; `make gate-vision` prints which use
   case serves which principle.
 - **Not yet in the format**: UC-4.6, UC-4.11 to UC-4.13, UC-6.8, UC-6.9 and UC-7.2, still in the
   files they were first written in, and every other use case of the definition — version 2, epics
@@ -209,6 +226,7 @@ its schedule for the first time on 2026-09-28, green, in 25 seconds — started 
    acted on without the diff; it merges without conflict before or after this one.
 3. **The deployment itself**: the chart, the registry build and the cluster execution adapter,
    against `deploy/k8s/README.md` — its database its own (DEC-0032), its volume 20 Gi (DEC-0033).
+   Then **the backup and its restore**, exercised once, when NEED-0009 is provided.
 4. **`0.2.0` continues with the scheduler starting runs from a bundle's trigger**, so that the
    removal test runs weekly without a workflow; the budget it was to start with is built.
 
@@ -232,6 +250,8 @@ and carried in three places, none of which two pull requests can edit at once (D
 | What | On what | Since |
 |---|---|---|
 | installing the deployment, once its pull request has written it | NEED-0007: a kubeconfig for a deployment identity, so that the install needs no shell on the machine | the platform was inspected on 2026-09-23 and its interface is reachable from outside, which makes the narrow credential both possible and the better arrangement; needed by 2026-10-20 |
+| the instance holding real work | NEED-0009: a backup destination off the node; the database's volume is bound to one node, and a disk failure would lose the ledger (ADR-0013 C) | foreseeable since #40, raised 2026-10-01; needed by 2026-10-27 |
+| intake through the webhook | NEED-0010: the webhook signing secret, generated now and set once the public name exists | foreseeable since #40, raised 2026-10-01; needed by 2026-10-20 |
 | the instance's ingress, its certificate and the webhook | NEED-0008: a public name for the instance — a subdomain of the project's own domain, `int.taktus.eu` proposed, with the record to create | the same inspection; needed by 2026-10-20. Without it the chart renders with the ingress switched off and the instance keeps polling instead of reacting to events |
 | a removal-test verdict of *changed* through an alternative adapter | a second adapter for a capability a process uses; nothing today has one | #14. The *broke* verdict on a real process is no longer missing: the run of 2026-09-23 produced it for `connector.channel.repo`, naming eight steps across P-02 and P-03 |
 
@@ -255,10 +275,10 @@ rather than enforced, anything marked provisional.
 | Promise | Where it is made | State |
 |---|---|---|
 | the removal test is a conformance check, W-12 and C-10 | `contracts/worker/v1`, `contracts/connector/v1` | reported *pending* by both suites (DEC-0005); the test runs as the process S-01 instead, and no adapter has reached maturity *verified* because nothing records the conformance half |
-| the removal test *exercises* the processes that use an integration | `blueprints/self-operation/`, S-01, ADR-0030 | it rehearses them: outward operations answer from the recording of their last real call. A process is rehearsed only once it has been called for real on that instance, so the weekly job, on fresh state, still resolves P-02 and P-03 statically; a worker step that may reach hosts — P-03's — is never rehearsed |
-| a budget is a budget | ADR-0005, third amendment | built, with three limits stated there: the overrun of the one inner step during which a total crossed the line is spent; money a worker reports only when an assignment ends cannot halt it, and it is held by its tokens. Not yet run live: the next live run is the first measured against it |
+| the removal test *exercises* the processes that use an integration | `blueprints/self-operation/`, S-01, ADR-0030 | it rehearses them: outward operations answer from the recording of their last real call. A process is rehearsed only once it has been called for real on that instance, so the weekly job, on fresh state, still resolves P-02 and P-03 statically; a worker step that may reach hosts — P-03's — is never rehearsed; the rehearsal has never run against a real recording (`docs/runs/README.md`) |
+| a budget is a budget | ADR-0005, third amendment | built, with three limits stated there: the overrun of the one inner step during which a total crossed the line is spent; money a worker reports only when an assignment ends cannot halt it, and it is held by its tokens. The margin has a floor of 10 % and resets with the model version (DEC-0043). Never run live: what the next live run must measure — estimate against actual, a halt on a real reservation — is in `docs/runs/README.md` |
 | a budget says what the provider permits | `contracts/model/v1`, `docs/research/2026-09-30-what-providers-allow.md` | this tenant's endpoint holds its output limit: the research says so ([A4]) and M-03 passed against it on 2026-10-01; `tools/first_run.sh` derives the declaration with M-03 on every run, and the deployment sets it (`deploy/k8s/README.md`). The adapter's default for an endpoint nobody has checked stays `soft`; the research is dated and expires |
-| Taktus watches its platform | ADR-0031 | *Observe* built; *Propose* `0.5.0`, *Manage* `0.7.0`. On macOS memory is neither observed nor limited, and the process adapter refuses a job there unless an unenforced limit is accepted; the cluster's own quota is not seen until a cluster platform adapter exists |
+| Taktus watches its platform | ADR-0031 | *Observe* built; *Propose* `0.5.0`, *Manage* `0.7.0`. On macOS memory is neither observed nor limited, and the process adapter refuses a job there unless an unenforced limit is accepted; the cluster's own quota is not seen until a cluster platform adapter exists; admission against free capacity has never run on the platform it is for — the next live run's list is `docs/runs/README.md` |
 | an automatically started P-03 opens a pull request whose checks pass | DEC-0037 | decided: the worker runs the generator after its change and the run appends what it printed; built with the trigger of `0.2.0`, until when the manual command supplies the section |
 | a process that would give an instance credentials for its own infrastructure is refused at planning time | ADR-0025 | applied by the person who configures an instance; refusal in code is `0.2.0` |
 | an anchor halts the run at a step boundary and raises a decision request in the product | ADR-0008, `docs/architecture/governance.md` | the register exists for this repository; the product's governance component holds the "has it left the system" predicate of the correction anchor and nothing else (`src/taktus/components/governance`); anchors at step boundaries are `0.2.0` |
@@ -272,10 +292,12 @@ rather than enforced, anything marked provisional.
 | `contracts/events/v1`, `blueprints/it-operations` | their README files | placeholders |
 | `deploy/k8s` renders a chart | `deploy/k8s/README.md` | **a specification, not a chart.** The file is the plan the next pull request builds: the values keys, two namespaces with a restricted admission policy, default-deny network policies both ways, no service-account token in a job, a limit and a deadline on every job, and the egress proxy that makes a host list mean something. Nothing under `deploy/k8s/` renders yet |
 | the cluster execution adapter | ADR-0002's execution table, `deploy/k8s/README.md` | does not exist; the port and two adapters do. The plan says what it must refuse: a job it cannot give limits to, and a frame whose hosts it cannot enforce |
-| a live run of the coding worker in CI | `docs/roadmap.md` | the gate runs the stand-in; unchanged until CI has a credential, which is a decision not yet raised. The worker has now run live eight times outside CI (`docs/runs/first-run.md`) |
+| a live run of the coding worker in CI | `docs/roadmap.md` | the gate runs the stand-in; unchanged until CI has a key of its own, raised as NEED-0012 on 2026-10-01; the live test is written when it exists (DEC-0046). The worker has now run live eight times outside CI (`docs/runs/first-run.md`) |
 | the components `accounting`, `decision`, `identity`, `knowledge`, `value` | `docs/architecture/project-structure.md` | packages with an `__init__.py` and nothing else; `reporting` (ADR-0029) has no package yet |
 | principle 14 is enforced in the data model, not in a policy | `CLAUDE.md` §5, `docs/architecture/governance.md` §6, ADR-0015 | nothing enforces it yet, because nothing measures anything about a person yet; UC-13.5 and UC-6.4 require the test that will |
 | the legal-anchor catalogue holds | `docs/architecture/governance.md` §2, `docs/decisions/anchors.md` M4.4 | not legally reviewed for any jurisdiction; who reviews it is DEC-0029 |
 | every principle is served by a use case, and a use case's state says how much of it stands | `docs/vision/README.md`, `docs/usecases/README.md` | the gates check that each principle is served and that a `verified` use case's tests pass; they cannot check that a use case *covers* its principle, or that a `building` use case's tests prove the part it says they prove |
 | a pull request description can be acted on without the diff | ADR-0017 §7 | the gate checks that the four sections are there, filled and in order; not that they are readable without the diff |
-| every credential's file variable follows `TAKTUS_CREDENTIAL_<NAME>_FILE` | `CREDENTIALS.md`, DEC-0018 | true in the tree, enforced by reading. The coverage gate fails a variable the register does not describe; it does not check the *shape* of the name, so a seventh variable could break the pattern again without a red gate |
+| Taktus is repairable without Taktus: a restore, documented and exercised | ADR-0013 C | not for a deployed instance: there is no backup yet. Its destination is NEED-0009; the backup and its restore, exercised once, are their own pull request |
+| the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where a token is set; CI has none. NEED-0011 raised, and CI's step for it is wired and skipped until the token exists |
+| a licence | ADR-0012 | open: all rights reserved, no outside contribution accepted. The owner's own question, DEC-0044, due before `1.0.0` and before the first outside contribution |
