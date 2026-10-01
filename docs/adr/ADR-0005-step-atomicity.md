@@ -199,7 +199,9 @@ providers permit is `docs/research/2026-09-30-what-providers-allow.md`.
 with no calibration history reserves its estimate plus 100 % — twice its estimate
 (`TAKTUS_BUDGET_UNCALIBRATED_MARGIN`, 1.0) — because the only worker measured so far underestimated
 by a factor of two to four. A worker with history reserves its estimate scaled by its measured
-error, which narrows with every run: caution towards the unknown, loosening through data. The
+error, and at least its estimate plus a margin that narrows with every observation — 1/(n+1)
+of the 100 % after n — so that one run does not take the whole margin away: caution towards the
+unknown, loosening through data. The
 budget-wide holdback of point 3 of the second amendment stays a named setting
 (`TAKTUS_BUDGET_MARGIN`) and holds back nothing by default; where an operator sets it, a worker
 may use its share of it before it must halt.

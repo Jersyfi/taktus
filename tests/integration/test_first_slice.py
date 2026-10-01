@@ -209,7 +209,7 @@ async def test_a_step_is_rejected_by_admission_control_before_it_starts(
                 ),
             )
         )
-        assert run.state is RunState.FINISHED
+        assert run.state is RunState.FINISHED, (run.cause, run.reason)
         assert run.step_run("overreach").state is StepState.SUCCEEDED
         assert await verifies(services)
 

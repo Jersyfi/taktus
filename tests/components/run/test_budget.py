@@ -71,15 +71,15 @@ def test_the_first_run_seed_reserves_what_the_coding_worker_actually_used() -> N
     assert "first-run" in source
     reservation = b.reserve(Q(tokens_in=60_000, tokens_out=6_000, currency={"usd": 1.0}), scale)
     assert reservation.tokens_in == 257_289, "the largest input of the eight attempts"
-    assert reservation.tokens_out == 6_000, "the output was overestimated; it stays as given"
-    assert reservation.currency == {"usd": pytest.approx(1.078)}, "attempt 4 would have fitted"
+    assert reservation.tokens_out == 6_667, "overestimated: only the margin of eight observations"
+    assert reservation.currency == {"usd": pytest.approx(10 / 9)}, "attempt 4 would have fitted"
 
 
 def test_own_observations_replace_the_seed_and_other_capabilities_get_none() -> None:
     own = [observation(Q(tokens_in=100), Q(tokens_in=150), adapter="worker.endpoint")]
     capabilities = ("code.read", "code.edit", "code.test", "shell.sandboxed")
     scale, source = b.scale_for("worker.endpoint", Method.WORKER, capabilities, own)
-    assert scale == {"tokens_in": 1.5} and "worker.endpoint" in source
+    assert scale["tokens_in"] == 1.5 and "worker.endpoint" in source
     scale, source = b.scale_for("worker.script", Method.WORKER, ("shell.script",), [])
     assert scale["compute_seconds"] == 2.0 and "DEC-0034" in source, "uncalibrated: twice"
     scale, source = b.scale_for("connector.repo", Method.RULE, (), [])
@@ -96,15 +96,24 @@ def test_an_uncalibrated_worker_reserves_twice_its_estimate_and_history_narrows_
     assert reservation.tokens_in == 2000 and reservation.compute_seconds == 8
     assert reservation.currency == {"eur": 1.0}
     c = "cpu.small"
-    history = [
-        observation(
-            Q(compute_seconds=4, resource_class=c),
-            Q(compute_seconds=5, resource_class=c),
-            adapter="worker.new",
-        )
+
+    def seen(times: int, used: float) -> list[b.Observation]:
+        return [
+            observation(
+                Q(compute_seconds=4, resource_class=c),
+                Q(compute_seconds=used, resource_class=c),
+                adapter="worker.new",
+            )
+            for _ in range(times)
+        ]
+
+    narrowed = [
+        b.reserve(estimate, b.scale_for("worker.new", Method.WORKER, (), seen(n, 4.0))[0])
+        for n in (1, 3, 9)
     ]
-    scale, source = b.scale_for("worker.new", Method.WORKER, ("shell.script",), history)
-    assert b.reserve(estimate, scale).compute_seconds == 5.0 and "observation" in source
+    assert [r.compute_seconds for r in narrowed] == [6.0, 5.0, 4.4], "half, a quarter, a tenth"
+    worse = b.scale_for("worker.new", Method.WORKER, (), seen(9, 8.0))[0]
+    assert b.reserve(estimate, worse).compute_seconds == 8.0, "a larger measured error wins"
 
 
 def test_the_ceiling_is_the_reservation_and_never_more_than_is_left() -> None:

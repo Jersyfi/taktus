@@ -176,9 +176,10 @@ measured run, recorded with its source."""
 
 UNCALIBRATED_MARGIN = 1.0
 """What a worker nothing has measured yet reserves beyond its estimate: 100 %, twice the estimate
-(DEC-0034). The only worker measured so far underestimated by a factor of two to four; caution
-towards the unknown, loosening through data — once the worker has history, its calibration
-replaces this and narrows with every run."""
+(DEC-0034). The only worker measured so far underestimated by a factor of two to four. Caution
+towards the unknown, loosening through data: after n observations the margin is 1/(n+1) of this
+— half after one, a tenth after nine, a twentieth over the full window — and a worker whose
+measured error is larger reserves that instead."""
 
 
 def scale_for(
@@ -190,22 +191,29 @@ def scale_for(
     uncalibrated_margin: float = UNCALIBRATED_MARGIN,
 ) -> tuple[dict[str, float], str]:
     """The factors for one adapter and method, and where they come from: the adapter's own
-    observations when it has any, else a seed whose capabilities the step requires. A worker with
-    neither reserves its estimate plus the uncalibrated margin (DEC-0034). Any other method's
-    estimate is a bound — a counted prompt, a declared demand — and is taken as given."""
+    observations when it has any, else a seed whose capabilities the step requires. A worker
+    reserves at least its estimate plus the uncalibrated margin divided by one more than the
+    observations it has, and its measured error where that is larger (DEC-0034). Any other
+    method's estimate is a bound — a counted prompt, a declared demand — and takes no margin."""
     own = [o for o in observed if o.adapter == adapter and o.method is method]
-    if own:
-        return factors(own), f"{len(own[-WINDOW:])} observation(s) of {adapter}"
     required = frozenset(capabilities)
-    for seed in seeds:
-        if seed.method is method and seed.capabilities <= required:
-            return factors(seed.observations), f"the seed from {seed.source}"
-    if method is Method.WORKER:
-        factor = 1.0 + uncalibrated_margin
-        scale = {name: factor for name in SCALED}
-        scale["currency.*"] = factor
-        return scale, f"no observation yet: the estimate plus {uncalibrated_margin:.0%} (DEC-0034)"
-    return {}, "a bound, taken as given"
+    history, source = own, f"{len(own[-WINDOW:])} observation(s) of {adapter}"
+    if not own:
+        seed = next((x for x in seeds if x.method is method and x.capabilities <= required), None)
+        history = [] if seed is None else list(seed.observations)
+        source = "no observation yet" if seed is None else f"the seed from {seed.source}"
+    if method is not Method.WORKER:
+        return (factors(history), source) if history else ({}, "a bound, taken as given")
+    # A worker's margin narrows with every observation: all of it with none, half with one, a
+    # third with two — and never below what it has measured (DEC-0034).
+    count = len(history[-WINDOW:])
+    margin = uncalibrated_margin / (1 + count)
+    scale = factors(history)
+    for name in [*SCALED, "currency.*"]:
+        scale[name] = max(scale.get(name, 1.0), 1.0 + margin)
+    for name in [key for key in scale if key.startswith("currency.") and key != "currency.*"]:
+        scale[name] = max(scale[name], 1.0 + margin)
+    return scale, f"{source}: the measured error, or the estimate plus {margin:.0%} (DEC-0034)"
 
 
 # --- the ceiling a worker is given ------------------------------------------------------------

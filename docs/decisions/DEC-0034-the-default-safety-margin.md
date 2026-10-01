@@ -100,7 +100,9 @@ worker **without** calibration history is 100 %, not 10 %; a worker with history
 calibration, which narrows the margin with every run. Read as: (1) the margin belongs to a
 worker step's estimate, not to the budget as a whole — a worker nothing has measured yet, and no
 seed covers, reserves its estimate plus 100 %, twice its estimate; (2) a worker with history
-reserves its estimate scaled by its measured error; (3) model and connector steps, whose
+reserves its estimate scaled by its measured error, and at least its estimate plus a margin that
+narrows with every observation — 1/(n+1) of the 100 % after n of them, so a single run does not
+take the whole margin away; (3) model and connector steps, whose
 estimates are a counted prompt and a declared demand, are bounds and take no margin; (4) the
 budget-wide holdback the question asked about stays a named setting and holds back nothing by
 default. This reading is the record; the pull request that carries it is where the owner
