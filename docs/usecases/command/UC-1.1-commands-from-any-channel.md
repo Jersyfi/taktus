@@ -27,6 +27,8 @@ A new channel is added without changing the core.
 
 - The same instruction arriving through two different channels produces two commands that are
   equal in every field except the channel and the identity of the message.
+- Every command carries the identity of its sender, its context and the address a reply goes
+  to.
 - A reply or a question about a command is delivered through the channel the command arrived on,
   to the thread or conversation it arrived in.
 - A channel is added by adding a connector that implements the intake half of the connector
@@ -35,14 +37,15 @@ A new channel is added without changing the core.
 - A channel is referred to by its capability, never by a product name (ADR-0003).
 
 **Proven so far:** an event arriving through a channel becomes a command that carries its
-channel and the address a reply goes to, by the named test. The equality of two commands from two
+channel and the address a reply goes to, by the named test. That every command carries its
+sender's identity and its context is not checked as a condition of its own. The equality of two commands from two
 channels is not tested; a reply delivered to that address, and a chat channel, are not built.
 
 ## 3. Where the boundary lies
 
 **Not planning.** Working a plan out with the person is UC-1.2; this use case ends when the
-input is a command. **Not identity.** Who the sender is, and whether they may give this command,
-is the identity component's. **Not every channel.** Which channels ship when is the roadmap's;
+input is a command. **Not authorisation.** Whether the sender may give the command is the
+identity component's; that the command carries who sent it is this use case's. **Not every channel.** Which channels ship when is the roadmap's;
 this use case requires that any channel can be added, not that all exist. **Not delivery
 guarantees** of the channel itself.
 
