@@ -99,7 +99,8 @@ over the chat-completions dialect; OpenTelemetry spans with the
 trace identifier on every ledger entry; the architecture tests and seven `import-linter`
 contracts; the command line `taktusctl`; self-hosting in two containers with `make up`, proven
 from nothing; the decision register with four anchor modes, notices and their gates; every ADR
-bounded by *Where this promise ends*, with a gate.
+bounded by *Where this promise ends*, with a gate. `make doctor` reports `git` as a required tool, and
+`make gate-docs` checks for it before it runs (issue #11, the change Taktus itself opened as #38).
 
 **Not done in `0.1.0`**, from the milestone's own list:
 
