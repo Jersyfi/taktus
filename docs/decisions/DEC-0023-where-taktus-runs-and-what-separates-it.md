@@ -3,6 +3,7 @@
 **Category:** NON-BLOCKING
 **Raised in:** [#40](https://github.com/Jersyfi/taktus/pull/40), which records the target and writes the deployment plan
 **Issue:** none; the owner gave the answer with the commission, and the record carries it
+**Written after the answer:** the owner decided the target in his commission of 2026-09-23; the record was written from it; left out of the acceptance rate (DEC-0042).
 
 ## 1. What this is about
 

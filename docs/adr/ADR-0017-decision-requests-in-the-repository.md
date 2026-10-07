@@ -7,7 +7,11 @@ has a record type, the notice (§2a) · amended 2026-09-21 by DEC-0014: every no
 kind, and a behaviour change inside an agreed scope is a notice (§2a) · extended by ADR-0028: a fifth record kind, the needs
 request `NEED-NNNN`, for what only the owner can provide, and the status report
 `docs/status.md` · amended 2026-09-29: every pull request description states what the change is
-about, what was done, why that way and what to check (§7)
+about, what was done, why that way and what to check (§7) · amended 2026-10-01 (DEC-0039): what
+fits no entry is decided in the direction of the vision (§1a), the derivability test, the
+register as precedent and the acceptance rate (§9) · amended 2026-10-01 (DEC-0040 to DEC-0042):
+a decision states how it follows its source, restoring a use case is mode 2 (§1a), the override
+rate is reviewed and counts only what was asked before it was answered (§9)
 
 ## Context
 ADR-0008 defines the decision request: the planned question about direction, with a fixed shape,
@@ -45,6 +49,34 @@ session's; the owner's answers of 2026-09-21 fell almost entirely between them. 
 may sit in a different mode per tenant — a change to an accepted ADR is the owner's in a
 managed product and the session's in this project while the vision holds — and the entries of
 a page are identified (`M3.7`) so that a request can cite one and a tenant can move one.
+
+### 1a. What fits no entry is decided in the direction of the vision
+
+*Amended 2026-10-01 (DEC-0039).* Until then a situation that fit no entry of the anchor page
+became a `NON-BLOCKING` decision request that proposed its mode. In a young project almost every
+situation is new, so that rule generated questions by design: a non-blocking question costs the
+session nothing and the owner reading time.
+
+Now a situation that fits no entry is **decided by the session in the direction the vision and
+the existing anchors point**, and recorded as a notice of kind `unlisted` (entry M2.6) that names
+those sources and, in its section 5, the entry it proposes for the anchor page. A question is
+raised only where the vision gives no direction. Entries of mode 3 and mode 4 are untouched.
+The owner overrides a notice that went the wrong way with a decision; the notice then names it
+in `**Overridden by:**`.
+
+*Amended 2026-10-01 (DEC-0040, DEC-0041).* **A decision follows its source.** The session decides
+according to the source it cites, and the notice states, in `**How it follows:**`, how the
+decision follows from it; naming a source is not following it. Where two options are both
+consistent with the sources: strict in substance, sparing in ceremony. The gate checks that the
+statement is there; whether it holds is for review. **Bringing a use case up to the owner's own
+definition** — an amendment that only restores what `docs/vision/` and the owner's project
+definition already require — is decided by the session and recorded as a notice of kind
+`restoration` (entry M2.7); a new requirement stays mode 3.
+
+**The derivability test.** Before raising any decision request, the session checks the vision,
+the ADRs, both anchor pages and the register. The request names the sources checked and why
+none of them answers it, in `**Sources checked:**` in its section 2; a request without it is
+returned, and the gate of §8 fails it (from DEC-0039 on).
 
 ### 2. Defects are corrected, not escalated
 When the repository's own documents are ambiguous, contradict each other, or turn out to be wrong,
@@ -127,7 +159,7 @@ Header, one line per field:
 | 2 | Why you are being asked | the entry of `anchors.taktus.md`, mode 3 or 4, that makes this the owner's call |
 | 3 | What you must decide | exactly one answerable question |
 | 4 | What you need to know to decide | every term explained; the background needed to judge; what the decision commits the project to |
-| 5 | Options | two or three, each with concrete meaning, consequence, effort and reversibility; one marked recommended, with the reason |
+| 5 | Options | two or three, each with concrete meaning, consequence, effort and reversibility; one marked recommended, with the reason — except in mode 4, where the question is the owner's own: the request names its entry in `**Mode entry:**` and marks no option recommended (anchors.md §1; DEC-0045, 2026-10-01) |
 | 6 | What is blocked | what waits, a date by which an answer is needed, and what happens without one |
 | 7 | How to answer | the literal sentence the owner can write back |
 
@@ -213,6 +245,22 @@ project. It is the source from which Taktus will later propose turning a recurri
 rule (ADR-0015 §4). That is why reclassified questions are recorded too: the pattern "this was
 raised and did not need to be" is a precedent as much as an answer is.
 
+*Amended 2026-10-01 (DEC-0039).* **A question an earlier decision answers is not a question.**
+The session applies the precedent and cites it, and raises nothing. **The balance is measured
+continuously:** `make status` shows, for every answered request, whether the owner chose the
+recommended option, and for every notice, whether a later decision overrode it. A rate of
+accepted recommendations near 100 % means too much is asked; many overridden notices mean too
+much is decided alone.
+
+*Amended 2026-10-01 (DEC-0042, the audit).* **The rate is reviewed, not only shown.** After every
+twenty `unlisted` notices a request carrying the override rate is raised to the owner; the gate
+fails the register when the count is reached and the request — a record carrying
+`**Override review:**` — is missing. **The rate counts only what was asked before it was
+answered.** A record written after the owner had answered carries `**Written after the
+answer:**` and is left out of the rate, because its recommendation was written knowing the
+answer: the naive count showed 5 of 6 recommendations taken where the audit of 2026-10-01 found 1
+of 6.
+
 ## Alternatives
 - **A checklist in CLAUDE.md, no tooling.** #1 was written under CLAUDE.md §8 and still failed. A
   rule that nothing checks is a hope.
@@ -249,3 +297,13 @@ notice's demonstration that a gate had no value, are checked for presence and fo
 gate, not for truth. A notice's kind is checked against the entry it cites, not against what
 the notice describes: a behaviour change filed under `restructuring` passes the gate and fails
 the reviewer. The draft rule holds on GitHub; a repository hosted elsewhere needs its equivalent.
+
+The reversed default holds where the vision gives a direction; whether it does is the session's
+judgement, which the owner reviews through the notices and the rate of overrides, not before.
+The derivability test checks that a request names the four places it checked, not that the
+check was thorough. The acceptance rate counts an answer as the recommended option only where
+the record says "Option X" and the recommendation is marked; an answer of the owner's own is
+counted as such. A gate that would fail a description holding an owner action without a linked
+NEED or DEC was considered and not built: measured against every pull request description to
+2026-10-01, it found one of the owner actions written as notes and raised two false alarms
+(DEC-0039).

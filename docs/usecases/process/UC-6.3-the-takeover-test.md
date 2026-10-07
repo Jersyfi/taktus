@@ -31,9 +31,9 @@ carries.
   version, and a version whose instructions describe a step it does not have, or omit one it has,
   does not register.
 - For every step the instructions name the system to act in, what to do there, the expertise it
-  needs, each credential by its parameter and where an authorised person finds it, and how to tell
-  that the step is done. A test reads the instructions of every example and blueprint bundle and
-  finds all five for every step, and no reference to a Taktus identifier a person could not look
+  needs, the skills the step uses by version, each credential by its parameter and where an
+  authorised person finds it, and how to tell that the step is done. A test reads the
+  instructions of every example and blueprint bundle and finds all six for every step, and no reference to a Taktus identifier a person could not look
   up.
 - The test is carried out: a person runs the process by hand from the instructions alone, and the
   record of that trial — the role that ran it, when, and what was missing — is kept with the
