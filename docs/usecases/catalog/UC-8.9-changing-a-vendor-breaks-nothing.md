@@ -33,8 +33,8 @@ that defines a process can leave Taktus in an open format.
 - Replacing the provider behind a purpose is a configuration change followed by a validation run of
   every process that uses the purpose. The replacement reaches runs for real only after the
   validation run has reported, per process, whether the quality held.
-- Everything that defines a process — the definition, its prompts, its configuration, its
-  instructions — can be taken out of Taktus as files in an open format and read without Taktus.
+- Everything that defines a process — definition, prompts, skills, configuration, instructions —
+  can be exported as one package per process, in an open format, and read without Taktus.
 - No process, bundle or blueprint names a provider; each names a capability (ADR-0003).
 
 **Proven so far:** the verdict rules, the exception, and a removal recorded in the ledger, by the

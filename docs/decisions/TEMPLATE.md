@@ -24,7 +24,12 @@ to follow.>
 ## 2. Why you are being asked
 
 <The entry of docs/decisions/anchors.taktus.md, mode 3 or 4, that makes this the owner's call,
-quoted with its identifier, and one sentence on why this question falls under it.>
+quoted with its identifier, and one sentence on why this question falls under it. Or, for a
+situation that fits no entry, why the vision gives no direction (DEC-0039).>
+
+**Sources checked:** <docs/vision/, the ADRs, both anchor pages and the register — each named,
+with why it does not answer this. A question an earlier decision answers is not raised: the
+precedent is applied and cited instead (DEC-0039).>
 
 ## 3. What you must decide
 

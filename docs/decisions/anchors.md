@@ -39,7 +39,7 @@ had no value. "It was in the way" is not evidence.
 
 **Every notice carries a kind.** The kind says what sort of thing was decided, in one word that
 means the same in every tenant, so that a register can be read by kind whatever a tenant's
-entries are numbered. Five kinds exist:
+entries are numbered. Seven kinds exist:
 
 | Kind | What was decided |
 |---|---|
@@ -48,6 +48,8 @@ entries are numbered. Five kinds exist:
 | `gate-weakened` | a gate was weakened or removed |
 | `behaviour-change` | what the software does changed, inside an agreed scope, breaking no contract |
 | `need` | a need was raised: something only the owner can provide; the record is the needs request itself, `NEED-NNNN`, not a notice (ADR-0028) |
+| `unlisted` | a situation that fits no entry was decided according to the source the vision and the existing anchors provide; the notice states how it follows that source and names the entry it proposes (§4) |
+| `restoration` | a requirement was brought up to what the owner's vision and definition already require; the notice states how it restores them (§4) |
 
 Every mode-2 entry names its kind; a notice carries the kind of the entry it cites, and the
 gate (ADR-0017 §8) fails on a mismatch. The kind is not the entry: the entry is a tenant's
@@ -139,13 +141,38 @@ the default for the other.
 
 ## 4. Neither list
 
-A question that fits no entry is itself worth recording. It is not decided alone and it is not
-escalated as if it were the owner's. It is raised as a `NON-BLOCKING` decision request
-(ADR-0017 §3), the work continues on a provisional answer, and the request proposes which mode
-the question belongs in. The owner's answer then extends this page or the tenant's own. The lists
-grow by use.
+A situation that fits no entry is decided by the operator **in the direction the tenant's vision
+and its existing anchors point**, and recorded as a notice of kind `unlisted` that names the
+sources pointing that way and the entry it proposes. A question is raised only where the vision
+gives no direction: then it is a `NON-BLOCKING` decision request (ADR-0017 §3) that proposes its
+mode, and the work continues on a provisional answer. Entries of mode 3 and mode 4 are never
+decided this way. The owner may override a notice with a decision; the owner's answers and the
+notices together extend this page or the tenant's own. The lists grow by use.
 
----
+**How a decision follows its source** — a configurable default. The operator decides according
+to the source it cites, and the notice states, in `**How it follows:**`, how the decision follows
+from that source, not merely that one was named. Where two options are both consistent with the
+sources, the default is **strict in substance, sparing in ceremony**. The reason is the product's
+principles, not one owner's history: a system on the business-critical path takes the reading
+of what it must hold that fails safe (principle 12, *production-ready*), and adds no record,
+step or notification beyond what that reading needs (principle 9, *efficiency over
+verbosity*). A tenant may change this default on its own page; the Taktus project derived the
+same direction from its owner's decisions (`anchors.taktus.md`, DEC-0040).
+
+**Bringing a requirement up to the owner's own definition** — a configurable default. An
+amendment of what a use case requires that only restores what the tenant's vision and its own
+definition already require is decided by the operator and recorded as a notice of kind
+`restoration`; a new requirement stays with the owner. A tenant may keep every such amendment
+with its owner instead.
+
+**The override rate is reviewed** — a configurable default. After every twenty `unlisted`
+notices, a decision request carrying the rate at which the owner overrode them is raised to the
+owner. A tenant may set another count on its own page.
+
+**Before any decision request**, the operator checks the vision, the architecture decisions,
+the anchor pages and the register, and the request names the sources it checked and why none of
+them answers it. A question an earlier decision answers is not a question: the precedent is
+applied and cited.
 
 ## 5. How to test a question against this page
 
@@ -155,6 +182,8 @@ grow by use.
 3. If there is none, find the entry in mode 2. If there is one, decide, write the notice, and
    move on.
 4. If there is none, find the entry in mode 1. If there is one, decide and move on.
-5. If there is none anywhere, §4 applies.
+5. If there is none anywhere, §4 applies: decide in the direction the vision points and write an
+   `unlisted` notice; raise a request only where the vision gives no direction, and only after
+   checking that no source and no precedent answers it.
 6. If the question is "which of two readings of a document is right", stop: that is a
    documentation defect (M1.4), not a decision. Correct the document.

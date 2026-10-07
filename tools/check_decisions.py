@@ -10,7 +10,10 @@ Runs as `make gate-decisions`. Standard library only, so `uv run tools/check_dec
 Checks:
 
 1. every open request under docs/decisions/open/ has the header, the seven sections in order,
-   no empty section, no placeholder, at least two options with exactly one recommended;
+   no empty section, no placeholder, at least two options with exactly one recommended — none,
+   where `**Mode entry:**` names a mode-4 entry, the owner's own question (DEC-0045); from
+   DEC-0039 on, its section 2 names `**Sources checked:**` — the vision, the ADRs, the anchor
+   pages, the register — and why none of them answers it (the derivability test);
 2. every record under docs/decisions/ has the same shape plus an Outcome with a date and an
    answer (or, for a DEFECT, what it now says; for a NOTE, why it is a note);
 3. a number is used once, and never both under open/ and as a record;
@@ -19,17 +22,33 @@ Checks:
    anchors.taktus.md that exists, the kind that entry names there, a date, the pull request —
    the four sections in order, no placeholder, and is listed in the index; a notice of kind
    gate-weakened (a gate weakened or removed, entry M2.3) additionally carries the section
-   "Why the gate had no value", which names the gate;
+   "Why the gate had no value", which names the gate; a notice of kind unlisted (a situation that
+   fit no entry, decided in the direction of the vision, entry M2.6) carries the section "The
+   entry it proposes", which names one; a notice of kind unlisted or restoration (a use case
+   brought up to the owner's own definition, entry M2.7) states `**How it follows:**` from its
+   source (DEC-0040) — the gate sees that the statement is there, review sees whether it holds;
+   a notice a later decision overrode says so in `**Overridden by:** DEC-NNNN`;
+4d. after every twenty unlisted notices, a decision request or record carrying
+   `**Override review:**` exists — the request that puts the override rate to the owner
+   (DEC-0042);
 4b. every needs request (NEED-NNNN, something only the owner can provide, ADR-0028) has its
    header — a kind from the vocabulary, the pull request, an issue, a date, the pull request in
    which it became foreseeable — the seven sections in order, no empty section, no placeholder,
    and section 5 says what it must never be; a provided need has an Outcome with the date it
-   was provided, how it was confirmed and where it was recorded, and is listed in the index;
+   was provided, how it was confirmed and where it was recorded, and is listed in the index; a
+   need closed because another took its place says so in `**Superseded by:**`;
 4c. every credential the software reads is covered: every row of CREDENTIALS.md names the needs
    request under which the owner provides the parameter, or `none` with the reason; every
    needs request a row names has a file; every `<NAME>_FILE` variable the code names is
    described in CREDENTIALS.md — so that a pull request cannot build something whose real use
-   depends on a credential nobody was asked for;
+   depends on a credential nobody was asked for; and every such variable has the one form
+   (CREDENTIALS.md, DEC-0018): `TAKTUS_CREDENTIAL_<NAME>_FILE` for a credential,
+   `TAKTUS_<KEY>_FILE` for a configuration key the register names, or a variable of an image
+   Taktus does not build, listed in `FOREIGN_VARIABLES` with its reason;
+4e. across the repository: every `NEED-NNNN` names a need that has a file; outside the register,
+   a need named is open or provided, never superseded — a reference to a superseded need points
+   at something nobody will provide; and every `TODO(owner)` names an open need or decision
+   request, so that an action left to the owner is a record with an issue, not a comment;
 5. with --pr-body (and --author, the description's author): the "Decisions required" section of a
    pull request description is either "None" or a list of DEC lines, every named decision has an
    open file with the same category, and every BLOCKING open file is named;
@@ -44,6 +63,11 @@ Checks:
 Checks 5 and 5a are not asked of a description a dependency bot wrote (`DEPENDENCY_BOTS`,
 NTC-0013): it carries its own explanation of what it changes. Every other check still runs.
 
+`**Needed by:**` is a date, or — for a question with no date of its own, such as a mode-4 question
+due before a milestone — `before` and what it must precede. `**Written after the answer:**` on a
+record says that the request was written after the owner had answered; `make status` leaves it out
+of the acceptance rate (DEC-0042).
+
 A register with nothing in it reports green and says so. The last line is the duration.
 """
 
@@ -51,6 +75,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -90,6 +115,8 @@ OUTCOME_FIELDS: dict[str, list[str]] = {
     "NOTE": ["Recorded", "Why this is a note", "Recorded in"],
 }
 DATE_FIELDS = {"Needed by", "Decided", "Corrected", "Recorded", "Provided"}
+BEFORE = re.compile(r"^before \S")
+"""`**Needed by:**` of a question with no date of its own: `before` what it must precede."""
 
 FILENAME = re.compile(r"^DEC-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 TITLE = re.compile(r"^# DEC-(\d{4}) — (.+)$")
@@ -105,6 +132,32 @@ NOTICE_SECTIONS = [
 ]
 GATE_SECTION = "5. Why the gate had no value"
 GATE_KIND = "gate-weakened"
+UNLISTED_SECTION = "5. The entry it proposes"
+UNLISTED_KIND = "unlisted"
+"""A situation that fit no entry, decided in the direction of the vision (DEC-0039): the notice
+proposes the entry that would have covered it."""
+FIFTH_SECTION = {GATE_KIND: GATE_SECTION, UNLISTED_KIND: UNLISTED_SECTION}
+RESTORATION_KIND = "restoration"
+"""A use case brought up to what the vision and the owner's definition already require (DEC-0041,
+entry M2.7)."""
+FOLLOWS = "How it follows"
+FOLLOWS_KINDS = {UNLISTED_KIND, RESTORATION_KIND}
+"""The kinds whose notice decides by a source, and so states how the decision follows from it
+(DEC-0040). The gate sees that the statement is there; whether it holds is for review."""
+REVIEW_FIELD = "Override review"
+REVIEW_EVERY = 20
+"""After every twenty unlisted notices a request puts the override rate to the owner (DEC-0042)."""
+SOURCES = re.compile(r"\*\*Sources checked:\*\*(.+)", re.DOTALL)
+SOURCE_PLACES = {
+    "the vision": re.compile(r"docs/vision|\bvision\b", re.IGNORECASE),
+    "the ADRs": re.compile(r"\bADR-\d{4}|\bADRs?\b"),
+    "the anchor pages": re.compile(r"anchors(\.taktus)?\.md|\banchor"),
+    "the register": re.compile(r"\bregister\b|\bDEC-\d{4}|\bNTC-\d{4}"),
+}
+DERIVABILITY_FROM = 39
+"""The first request number the derivability test applies to (DEC-0039): the requests raised
+before it are the owner's to read as they are."""
+OVERRIDDEN = re.compile(r"^DEC-\d{4}\b")
 NOTICE_FILENAME = re.compile(r"^NTC-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 NOTICE_TITLE = re.compile(r"^# NTC-(\d{4}) — (.+)$")
 MODE_ENTRY = re.compile(r"^M2\.\d+$")
@@ -129,6 +182,12 @@ NEED_FILENAME = re.compile(r"^NEED-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 NEED_TITLE = re.compile(r"^# NEED-(\d{4}) — (.+)$")
 NEED_REF = re.compile(r"\bNEED-(\d{4})\b")
 NEVER = re.compile(r"\bnever\b", re.IGNORECASE)
+SUPERSEDED = re.compile(r"\bsuperseded\b", re.IGNORECASE)
+SUPERSEDED_FIELD = "Superseded by"
+TODO_OWNER = re.compile(r"TODO\(owner\)")
+REFERENCE_SUFFIXES = {".md", ".py", ".sh", ".yml", ".yaml", ".json", ".toml", ".txt", ".example"}
+REFERENCE_EXEMPT = ("tools/check_decisions.py", "tests/tools/")
+"""Where an identifier is an example, not a reference: the gate itself and its tests."""
 
 # Credential coverage (ADR-0028 §2): the register of parameters, its column naming the need,
 # and the directories whose code names a credential file variable.
@@ -138,12 +197,22 @@ CREDENTIAL_VARIABLE = re.compile(r"\b[A-Z][A-Z0-9_]+_FILE\b")
 CREDENTIAL_PREFIX = re.compile(r"^TAKTUS_CREDENTIAL_([A-Z0-9_]+)_FILE$")
 CODE_DIRECTORIES = ("src", "workers", "tools", "deploy", "blueprints")
 CODE_SUFFIXES = {".py", ".sh", ".yml", ".yaml"}
+CODE_FILES = (".env.example",)
+CONFIGURATION_KEY = re.compile(r"configuration key `([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)`")
+FOREIGN_VARIABLES = {
+    "POSTGRES_PASSWORD_FILE": "the database image's own variable for its superuser password, "
+    "which `deploy/docker/compose.yml` hands it; the image is not Taktus's, so the name is not",
+}
+"""`<NAME>_FILE` variables named by an image Taktus does not build. Their form is that image's;
+every other one is Taktus's and has Taktus's form."""
 
 FIELD = re.compile(r"^\*\*([A-Za-z ]+):\*\*\s*(.*)$")
 PLACEHOLDER = re.compile(r"<[^>\n]+>|\b(?:TODO|TBD|FIXME|XXX)\b|…")
 OPTION = re.compile(r"^### Option [A-Z] — ")
 RECOMMENDED = re.compile(r"^### Option [A-Z] — .*\(recommended\)\s*$")
 DEC_REF = re.compile(r"\bDEC-(\d{4})\b")
+OWNERS_OWN = re.compile(r"^M4\.\d+$")
+"""A mode-4 entry: the owner's own question, asked with data and no recommendation (DEC-0045)."""
 # What every pull request description states without assuming the reader has read the diff
 # (ADR-0017 §7): what it is about, what was done, why that way, what the reviewer should check.
 DESCRIPTION = ["What this is about", "What was done", "Why this way", "What to check"]
@@ -259,7 +328,8 @@ def check_fields(doc: Document, required: list[str], problems: list[str]) -> Non
         if not doc.fields.get(name):
             problems.append(f"header field `**{name}:**` is missing or empty")
     for name, value in doc.fields.items():
-        if name in DATE_FIELDS and value and not valid_date(value):
+        undated = name == "Needed by" and BEFORE.match(value)
+        if name in DATE_FIELDS and value and not valid_date(value) and not undated:
             problems.append(f"`**{name}:**` is not a date of the form YYYY-MM-DD: {value!r}")
         if PLACEHOLDER.search(strip_code(value)):
             problems.append(f"`**{name}:**` keeps a placeholder: {value!r}")
@@ -290,6 +360,15 @@ def check_options(doc: Document, problems: list[str]) -> None:
     body = doc.sections.get(SECTIONS[4], "")
     options = [line for line in body.splitlines() if OPTION.match(line)]
     recommended = [line for line in options if RECOMMENDED.match(line)]
+    if OWNERS_OWN.match(doc.fields.get("Mode entry", "")):
+        if len(options) < 2:
+            problems.append(f"`## {SECTIONS[4]}` has {len(options)} option heading(s), needs two")
+        if recommended:
+            problems.append(
+                f"`## {SECTIONS[4]}` recommends an option in a mode-4 request; the question is "
+                "the owner's own, and the session supplies data, not a recommendation (DEC-0045)"
+            )
+        return
     if len(options) < 2:
         problems.append(
             f"`## {SECTIONS[4]}` has {len(options)} option heading(s), needs two or three"
@@ -327,8 +406,26 @@ def check_open(doc: Document, problems: list[str]) -> None:
         problems.append("`**Issue:**` names no issue (#N)")
     check_sections(doc, problems)
     check_options(doc, problems)
+    check_derivability(doc, problems)
     if OUTCOME in doc.sections:
         problems.append("an open request has no `## Outcome`; move the file to docs/decisions/")
+
+
+def check_derivability(doc: Document, problems: list[str]) -> None:
+    """The derivability test (DEC-0039): a request names, in its section 2, the sources it
+    checked — the vision, the ADRs, the anchor pages, the register — and why none answers it."""
+    if int(doc.number) < DERIVABILITY_FROM:
+        return
+    found = SOURCES.search(doc.sections.get(SECTIONS[1], ""))
+    if found is None:
+        problems.append(
+            "section 2 names no `**Sources checked:**`: the vision, the ADRs, the anchor pages "
+            "and the register, and why none of them answers the question (DEC-0039)"
+        )
+        return
+    missing = [place for place, pattern in SOURCE_PLACES.items() if not pattern.search(found[1])]
+    if missing:
+        problems.append("`**Sources checked:**` does not name " + ", ".join(missing))
 
 
 def check_record(doc: Document, problems: list[str]) -> None:
@@ -375,6 +472,9 @@ def anchor_entries() -> dict[str, str | None]:
 
 def check_notice(doc: Document, problems: list[str], entries: dict[str, str | None]) -> None:
     check_fields(doc, ["Mode entry", "Kind", "Decided", "Raised in"], problems)
+    overridden = doc.fields.get("Overridden by")
+    if overridden is not None and OVERRIDDEN.match(overridden) is None:
+        problems.append(f"`**Overridden by:**` names no decision (DEC-NNNN): {overridden!r}")
     entry = doc.fields.get("Mode entry", "")
     kind = doc.fields.get("Kind", "")
     if entry and not MODE_ENTRY.match(entry):
@@ -390,7 +490,7 @@ def check_notice(doc: Document, problems: list[str], entries: dict[str, str | No
     elif kind and entry in entries and entries[entry] is None:
         problems.append(f"{ANCHORS.name} names no kind for {entry}; every mode-2 entry has one")
     present = list(doc.sections)
-    expected = NOTICE_SECTIONS + ([GATE_SECTION] if kind == GATE_KIND else [])
+    expected = NOTICE_SECTIONS + ([FIFTH_SECTION[kind]] if kind in FIFTH_SECTION else [])
     if present != expected:
         missing = [name for name in expected if name not in present]
         unexpected = [name for name in present if name not in expected]
@@ -418,6 +518,16 @@ def check_notice(doc: Document, problems: list[str], entries: dict[str, str | No
             )
     if kind and kind != GATE_KIND and GATE_SECTION in doc.sections:
         problems.append(f"`## {GATE_SECTION}` belongs to the kind {GATE_KIND} only")
+    if kind in FOLLOWS_KINDS and len(doc.fields.get(FOLLOWS, "")) < 40:
+        problems.append(
+            f"a notice of kind {kind} decides by a source and states `**{FOLLOWS}:**` — how the "
+            "decision follows from it, not only which source was named (DEC-0040)"
+        )
+    if kind == UNLISTED_KIND and (body := doc.sections.get(UNLISTED_SECTION)):
+        if re.search(r"\bM[1-4]\.\d+\b", body) is None:
+            problems.append(
+                f"`## {UNLISTED_SECTION}` names no entry (`M<mode>.<n>`) for the anchor page"
+            )
 
 
 def check_notices(report: Report) -> list[Document]:
@@ -498,6 +608,18 @@ def check_need(doc: Document, problems: list[str], *, provided: bool) -> None:
         problems.append("`## Outcome` is missing: a provided need carries the date and the check")
         return
     fields = outcome_fields(outcome)
+    replaced_by = fields.get(SUPERSEDED_FIELD)
+    if replaced_by is None and SUPERSEDED.search(outcome):
+        problems.append(
+            f"`## Outcome` says the need was superseded and has no `**{SUPERSEDED_FIELD}:**` "
+            "naming what took its place"
+        )
+    elif replaced_by is not None and not (
+        NEED_REF.search(replaced_by) or DEC_REF.search(replaced_by)
+    ):
+        problems.append(
+            f"`**{SUPERSEDED_FIELD}:**` names no NEED-NNNN or DEC-NNNN: {replaced_by!r}"
+        )
     for name in NEED_OUTCOME_FIELDS:
         value = fields.get(name, "")
         if not value:
@@ -506,6 +628,11 @@ def check_need(doc: Document, problems: list[str], *, provided: bool) -> None:
             problems.append(f"`**{name}:**` is not a date of the form YYYY-MM-DD: {value!r}")
     if PLACEHOLDER.search(strip_code(outcome)):
         problems.append("`## Outcome` keeps a placeholder")
+
+
+def superseded(doc: Document) -> bool:
+    """A need closed because another took its place: nobody will provide it."""
+    return SUPERSEDED_FIELD in outcome_fields(doc.sections.get(OUTCOME, ""))
 
 
 def load_needs(directory: Path, report: Report, *, provided: bool) -> list[Document]:
@@ -581,7 +708,33 @@ def code_credential_variables() -> dict[str, str]:
             text = path.read_text(encoding="utf-8", errors="replace")
             for name in CREDENTIAL_VARIABLE.findall(text):
                 found.setdefault(name, str(path.relative_to(ROOT)))
+    for name in CODE_FILES:
+        if (path := ROOT / name).is_file():
+            for variable in CREDENTIAL_VARIABLE.findall(path.read_text(encoding="utf-8")):
+                found.setdefault(variable, name)
     return found
+
+
+def variable_form(name: str, keys: set[str]) -> str | None:
+    """Why a `<NAME>_FILE` variable does not have the one form (CREDENTIALS.md, DEC-0018); None
+    when it has it."""
+    if name.startswith("TAKTUS_CREDENTIAL"):
+        if CREDENTIAL_PREFIX.match(name) and not name.startswith("TAKTUS_CREDENTIAL__"):
+            return None
+        return "a credential's variable is `TAKTUS_CREDENTIAL_<NAME>_FILE`"
+    if name.startswith("TAKTUS_"):
+        if name in {f"TAKTUS_{key.upper().replace('.', '_')}_FILE" for key in keys}:
+            return None
+        return (
+            "a secret's variable is `TAKTUS_<KEY>_FILE` for a configuration key this register "
+            "names, and no row names the key this variable would stand for"
+        )
+    if name in FOREIGN_VARIABLES:
+        return None
+    return (
+        "not Taktus's form (`TAKTUS_CREDENTIAL_<NAME>_FILE`, `TAKTUS_<KEY>_FILE`) and not an "
+        "image's own variable listed in FOREIGN_VARIABLES"
+    )
 
 
 def check_credentials(report: Report, needs: list[Document]) -> None:
@@ -616,18 +769,110 @@ def check_credentials(report: Report, needs: list[Document]) -> None:
                 f"{parameter}: `{NEEDS_COLUMN}` names no NEED-NNNN and gives no reason "
                 "(`none — <why nobody provides it>`)",
             )
+    keys = set(CONFIGURATION_KEY.findall(text))
     for name, where in sorted(code_credential_variables().items()):
         covered = name in text
         if not covered and (match := CREDENTIAL_PREFIX.match(name)):
             covered = match.group(1) in text
-        if covered:
-            report.ok(f"{name} ({where}) is described")
+        if (why := variable_form(name, keys)) is not None:
+            report.fail(rel, f"{name}, read by {where}: {why}")
+        elif covered:
+            report.ok(f"{name} ({where}) is described and has the one form")
         else:
             report.fail(
                 rel,
                 f"{name} is read by {where} and not described here; add its parameter row, "
                 "naming the needs request under which the owner provides it",
             )
+
+
+def check_override_review(
+    report: Report, notices: list[Document], decisions: list[Document]
+) -> None:
+    """After every twenty unlisted notices, a request puts the override rate to the owner."""
+    print("override review")
+    unlisted = sum(1 for doc in notices if doc.fields.get("Kind") == UNLISTED_KIND)
+    due = unlisted // REVIEW_EVERY
+    reviews = [doc for doc in decisions if doc.fields.get(REVIEW_FIELD)]
+    if len(reviews) >= due:
+        report.ok(
+            f"{unlisted} unlisted notice(s); {len(reviews)} override review(s), {due} due — the "
+            f"next after {(due + 1) * REVIEW_EVERY}"
+        )
+    else:
+        report.fail(
+            "register",
+            f"{unlisted} unlisted notices and {len(reviews)} override review(s): a decision "
+            f"request carrying `**{REVIEW_FIELD}:**` and the rate at which the owner overrode "
+            f"them is due after every {REVIEW_EVERY} (DEC-0042)",
+        )
+
+
+def repository_files() -> list[Path]:
+    """The tracked text files a reference can sit in; the working tree when git is absent."""
+    try:
+        # A fixed executable and arguments assembled here, not from input: nothing untrusted.
+        listed = subprocess.run(
+            ["git", "ls-files"],  # noqa: S607
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+        paths = [ROOT / name for name in listed]
+    except (OSError, subprocess.CalledProcessError):
+        paths = [path for path in ROOT.rglob("*") if ".git" not in path.parts]
+    return [
+        path
+        for path in paths
+        if path.is_file()
+        and (path.suffix in REFERENCE_SUFFIXES or path.name == "Makefile")
+        and not str(path.relative_to(ROOT)).startswith(REFERENCE_EXEMPT)
+    ]
+
+
+def check_references(
+    report: Report,
+    open_needs: list[Document],
+    provided: list[Document],
+    open_docs: list[Document],
+    files: list[Path] | None = None,
+) -> None:
+    """Every needs request named resolves to a record that will be, or was, provided; every
+    action left to the owner in a `TODO(owner)` is an open record (ADR-0028)."""
+    print("references")
+    needs = {doc.number: doc for doc in [*open_needs, *provided]}
+    open_records = {f"NEED-{doc.number}" for doc in open_needs} | {
+        f"DEC-{doc.number}" for doc in open_docs
+    }
+    checked = 0
+    for path in files if files is not None else repository_files():
+        rel = str(path.relative_to(ROOT))
+        in_register = rel.startswith("docs/decisions/")
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        for number, line in enumerate(lines, start=1):
+            for ref in NEED_REF.findall(line):
+                checked += 1
+                need = needs.get(ref)
+                if need is None:
+                    report.fail(f"{rel}:{number}", f"NEED-{ref} has no file")
+                elif superseded(need) and not in_register:
+                    report.fail(
+                        f"{rel}:{number}",
+                        f"NEED-{ref} was superseded and will not be provided; name the need that "
+                        "took its place",
+                    )
+            # A marker quoted in a code span is the rule being described, not an action.
+            if TODO_OWNER.search(re.sub(r"`[^`\n]*`", "", line)):
+                checked += 1
+                named = {f"{p}-{n}" for p, n in re.findall(r"\b(NEED|DEC)-(\d{4})\b", line)}
+                if not named & open_records:
+                    report.fail(
+                        f"{rel}:{number}",
+                        "`TODO(owner)` names no open needs request or decision request; an "
+                        "action left to the owner is a record with an issue (ADR-0028)",
+                    )
+    report.ok(f"{checked} reference(s) to a need or an owner action across the repository")
 
 
 def load(directory: Path, report: Report, checker: Check) -> list[Document]:
@@ -840,10 +1085,12 @@ def main(argv: list[str] | None = None) -> int:
 
     started = time.monotonic()
     report = Report()
-    open_docs, _records = check_register(report)
-    check_notices(report)
+    open_docs, records = check_register(report)
+    notices = check_notices(report)
+    check_override_review(report, notices, [*open_docs, *records])
     open_needs, provided_needs = check_needs(report)
     check_credentials(report, [*open_needs, *provided_needs])
+    check_references(report, open_needs, provided_needs, open_docs)
     if args.pr_body is not None and written_by_a_dependency_bot(args.author):
         print("description")
         report.ok(
