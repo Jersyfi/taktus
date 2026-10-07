@@ -77,6 +77,9 @@ gate-vision: need-uv ## The vision layer holds together — the fourteen princip
 gate-usecases: env ## Every use case has a state, a verification condition and a principle; built names tests, verified ones are green; no ADR moved under one unchecked; no requirement changed where it is implemented
 	$(UV) run python tools/check_usecases.py $(if $(BASE),--base $(BASE))
 
+backlog: need-uv ## Print the backlog in the order a session takes it, every unready issue with its reasons; NEXT=1 the next one, ANSWERS=1 the owner's answers to record first (DEC-0051)
+	$(UV) run tools/backlog.py $(if $(NEXT),--next) $(if $(ANSWERS),--answers)
+
 usecases: env ## Print every use case with its component, state and version
 	@$(UV) run python tools/check_usecases.py --print
 

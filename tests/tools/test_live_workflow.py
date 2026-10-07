@@ -30,7 +30,7 @@ SECRET = re.compile(r"secrets\.([A-Z0-9_]+)")
 
 
 def load(path: Path) -> dict[str, Any]:
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data: dict[Any, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
     # YAML 1.1 reads the key `on` as the boolean true.
     if True in data:
         data["on"] = data.pop(True)
@@ -44,12 +44,18 @@ def environment(job: dict[str, Any]) -> str | None:
 
 def test_live_tests_run_on_a_schedule_or_by_dispatch_only() -> None:
     triggers = load(LIVE)["on"]
-    assert set(triggers) == TRIGGERS, f"live.yml runs on {sorted(triggers)}; DEC-0048 allows {sorted(TRIGGERS)}"
+    assert set(triggers) == TRIGGERS, (
+        f"live.yml runs on {sorted(triggers)}; DEC-0048 allows {sorted(TRIGGERS)}"
+    )
 
 
-def test_every_live_job_is_guarded_to_main_and_this_repository_and_runs_in_the_environment() -> None:
+def test_every_live_job_is_guarded_to_main_and_this_repository_and_runs_in_the_environment() -> (
+    None
+):
     for name, job in load(LIVE)["jobs"].items():
-        assert environment(job) == ENVIRONMENT, f"job {name} runs outside the environment {ENVIRONMENT!r}"
+        assert environment(job) == ENVIRONMENT, (
+            f"job {name} runs outside the environment {ENVIRONMENT!r}"
+        )
         condition = str(job.get("if", ""))
         for part in GUARD:
             assert part in condition, f"job {name} is not guarded by {part}"
@@ -71,4 +77,6 @@ def test_no_other_workflow_reaches_the_live_secrets(path: Path) -> None:
     named = LIVE_SECRETS & set(SECRET.findall(text))
     assert not named, f"{path.name} names the live secrets {sorted(named)}; only live.yml may"
     for name, job in load(path).get("jobs", {}).items():
-        assert environment(job) != ENVIRONMENT, f"{path.name}: job {name} names the environment {ENVIRONMENT!r}"
+        assert environment(job) != ENVIRONMENT, (
+            f"{path.name}: job {name} names the environment {ENVIRONMENT!r}"
+        )

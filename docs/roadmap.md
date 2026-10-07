@@ -27,6 +27,13 @@ one contributor. Building the later versions on that alone means building them b
 The second tenant starts at autonomy level 1–2 (advise and propose only) for the first weeks, and
 rises only on evidence.
 
+**Until Taktus runs its own development processes, a session runs them by hand.** The backlog is
+the repository's issues, in milestones named as below; a task is ready by the standard of
+`docs/process/README.md`; a session takes the next one by the standing brief,
+`docs/process/next-task.md`, doing by hand what P-01 Roadmap control, P-02 Refinement and P-03
+Implementation will do. **When Taktus runs P-01, P-02 and P-03 on its own instance, the standing
+brief is retired.** The issues, the ready standard and the order do not change (DEC-0051).
+
 ---
 
 ## Milestones
@@ -123,7 +130,11 @@ registry build and the Helm chart, the identity component (a provisional identit
 for it), time triggers (the scheduler leads and ticks; nothing is scheduled), event reactions
 (the automation role starts and waits; the outbox exists, nothing writes it; an intake event is
 completed into a command by hand), and a live run of the coding worker against its real agent
-in CI (it needs a credential; the gate runs the stand-in).
+in CI (it needs a credential; the gate runs the stand-in). In the backlog, the identity
+component, time triggers, event reactions with the events contract, and governance and anchors
+are tasks of `0.2.0`, where the list of that milestone already places their substance, and
+`mlbench` is a task of `0.4.0`; the cluster execution adapter, the chart and the image build, and
+the live run in CI stay in `0.1.0`.
 
 ### `0.2.0` — governance, limits, availability
 Autonomy levels 1–3 per process **and per action class** · anchors, configurable per tenant ·
@@ -132,15 +143,22 @@ the estimate reserved at admission, a currency budget converted into tokens and 
 a named safety margin, estimate quality measured per worker, the residual in every report
 (ADR-0005, second amendment) · **blocked-time accounts** · **Takt measurement, not yet
 charged** · multi-instance operation with restart at step boundaries · the scheduler starting
-runs from a bundle's trigger, so that the removal test runs weekly without a script · chat
-connector
+runs from a bundle's trigger, so that the removal test runs weekly without a script · event
+reactions, with the worker generating the closing section of a pull request it opens (DEC-0037,
+DEC-0050) · chat connector · **the owner-facing channel**: one event rendered for the repository,
+the owner's channel and the web app, and the owner's answer filed where it belongs · **the
+product finding**: what an instance meets that the product lacks becomes an issue here, carrying
+the run, the block and the waiting time · the use-case migration, steps 2 to 4
+(`docs/usecases/MIGRATION.md`), before the use cases it adds are built
 
 **Complete when** Taktus maintains its own repository for **14 days** with no intervention in
 execution, and every block is analysable by cause and duration.
 
 ### `0.3.0` — visibility
 Web app: dashboard, process diagram, run history, ledger, consumption, bottleneck overview · process
-bundle format · pair editing with rollback · sessions with project knowledge
+bundle format · pair editing with rollback · sessions with project knowledge · documentation
+beyond the repository: administration and end-user guides generated from it and kept consistent
+with it, never a second source of truth
 
 **Complete when** a process can be created, viewed, changed and rolled back entirely from the web app
 and chat, and you can see your own share of the waiting time.

@@ -1,0 +1,78 @@
+name: Task
+description: Work for the backlog. Ready when the three sections of a use case, a component, a milestone and a priority are there, and nothing it names under "Blocked by" is open (DEC-0051, docs/process/README.md).
+title: ""
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The backlog is this repository's issues (docs/process/README.md). A session takes the top
+        ready, unclaimed task and turns it into one pull request (docs/process/next-task.md).
+        A task is **ready** when the three sections below say what must be achieved, how it is
+        verified and where the boundary lies — the same three a use case carries — and it has a
+        component, a milestone, one priority label and nothing open under "Blocked by".
+        Whoever triages sets the milestone and the priority and adds the label `ready` once the
+        content meets the standard; `make backlog` checks every ready label against it, and
+        whether a blocker is still open, each time the backlog is read.
+  - type: textarea
+    id: achieved
+    attributes:
+      label: What must be achieved
+      description: The outcome, not the route. What is different when this is done.
+    validations:
+      required: true
+  - type: textarea
+    id: verified
+    attributes:
+      label: How it is verified
+      description: The condition that must hold, stated so that it cannot be met by interpretation — the observable thing, the test, the threshold, what a failure looks like.
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Where the boundary lies
+      description: What is explicitly not part of it, and what a reader might expect here and will not find.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Where the work lives — a component of docs/architecture/project-structure.md, or the place outside the core.
+      options:
+        - command
+        - process
+        - run
+        - ledger
+        - governance
+        - catalog
+        - accounting
+        - decision
+        - identity
+        - knowledge
+        - value
+        - reporting
+        - adapters
+        - workers
+        - contracts
+        - blueprints
+        - deploy
+        - repository (documentation, gates, CI, tools)
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: Where the task comes from — a roadmap item, a use case, a decision record, a run record — as a link or a path.
+    validations:
+      required: true
+  - type: input
+    id: blocked
+    attributes:
+      label: Blocked by
+      description: Every open NEED-NNNN, DEC-NNNN or issue (#N) it waits for, or "nothing". A task blocked by an open one is not ready.
+      placeholder: nothing
+    validations:
+      required: true

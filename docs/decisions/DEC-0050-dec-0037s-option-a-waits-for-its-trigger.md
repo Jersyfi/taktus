@@ -63,5 +63,5 @@ Nothing.
 **Decided:** 2026-10-07
 **Answer:** Option A, as the owner gave it: the deferral stands. It stays listed for `0.2.0`.
 **Reasoning given:** there is no trigger yet for the generator to serve.
-**Recorded in:** [#59](https://github.com/Jersyfi/taktus/pull/59): the backlog issue BACKLOG_DEC37, milestone `0.2.0`, blocked by the issue
-for event reactions.
+**Recorded in:** [#59](https://github.com/Jersyfi/taktus/pull/59): the backlog issue [#77](https://github.com/Jersyfi/taktus/issues/77), milestone `0.2.0`,
+blocked by the issue for event reactions, [#76](https://github.com/Jersyfi/taktus/issues/76).

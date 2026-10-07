@@ -82,4 +82,4 @@ protects what a use case requires — not the files that implement or test it. A
 configures its own margin is ordinary work.
 **Recorded in:** [#59](https://github.com/Jersyfi/taktus/pull/59): DEC-0043's outcome carries the corrected reason; CLAUDE.md §9 states what
 the use-case rule protects; `anchors.taktus.md` M3.10 names the statement; the statement itself is
-the backlog issue BACKLOG_MARGIN, milestone `0.2.0`.
+the backlog issue [#72](https://github.com/Jersyfi/taktus/issues/72), milestone `0.2.0`.
