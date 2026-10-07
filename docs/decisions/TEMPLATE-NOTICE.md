@@ -13,9 +13,11 @@ record says what was decided and on what evidence. It is not a note in a pull re
 note disappears with the pull request; a notice stays in the register.
 The kind is the vocabulary every tenant shares (anchors.md §1); the entry is this tenant's
 permission. The gate fails when the kind is not the one the cited entry names.
-Section 5 exists only for the kind gate-weakened (entry M2.3 here), a weakened or removed
-gate, and is then mandatory: the gate fails such a notice without it, and a notice of any
-other kind with it.
+Section 5 exists only for two kinds, and is then mandatory: for gate-weakened (entry M2.3 here),
+a weakened or removed gate, it is "Why the gate had no value"; for unlisted (entry M2.6), a
+situation that fit no entry and was decided in the direction of the vision, it is "The entry it
+proposes", naming an entry (M<mode>.<n>) for the anchor page (DEC-0039). A notice the owner later
+overrides with a decision gains the header line **Overridden by:** DEC-NNNN.
 Mechanism: docs/adr/ADR-0017 §2a.
 -->
 

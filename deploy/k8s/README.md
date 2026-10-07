@@ -258,15 +258,16 @@ rather than passing quietly.
 Each of these is a needs request in `docs/decisions/`, because none of it is a session's to
 create:
 
-- **A kubeconfig for the deployment identity** — a service account with the Role of section 1,
+- **A kubeconfig for the deployment identity** (NEED-0007) — a service account with the Role of section 1,
   its token and the cluster's CA. Where the API server is reachable from outside, this replaces
   shell access entirely, which is the better arrangement: the deployment needs no account on the
   machine.
 - **A public name for the ingress**, and the TLS arrangement behind it: a subdomain of the
   project's own domain, proposed in NEED-0008.
-- **The webhook signing secret**, once the ingress name exists: it is set at the hosting
-  service and in the instance in one move, and the connector refuses every delivery it cannot
-  verify.
+- **The webhook signing secret** (NEED-0010): generated now, set at the hosting service and in
+  the instance in one move once the ingress name exists; the connector refuses every delivery it
+  cannot verify.
+- **A backup destination off the node** (NEED-0009); see §9.
 - **The database decision** — answered (DEC-0032): a PostgreSQL of its own, deployed with the
   instance; its volume 20 Gi (DEC-0033).
 
@@ -279,5 +280,6 @@ create:
 - **Autoscaling and load.** The scaling claims of ADR-0002 are proven for two daemons on one
   database, not for a cluster under load.
 - **Backups.** A database deployed by this chart has no backup in it. That is its own pull
-  request and its own needs request, and ADR-0013 C — a manual restore path, documented and
-  exercised — is not satisfied by a volume snapshot nobody has restored.
+  request, and its destination off the node is NEED-0009; ADR-0013 C — a manual restore path,
+  documented and exercised — is not satisfied by a volume snapshot nobody has restored. Until
+  NEED-0009 is provided and the restore has been exercised, the instance holds no real work.

@@ -35,9 +35,11 @@ need: it references documents and data, it does not copy them.
   identifiers, tokens and digests (ADR-0006).
 - The chain can be exported and verified outside Taktus, by anyone with the export and the
   documented hash rule, without Taktus running.
+- The log can be exported as a telemetry signal, entry by entry, with nothing the ledger itself
+  would not carry.
 
-**Proven so far:** the first four conditions, by the named tests. The export, and a
-verification outside Taktus, do not exist.
+**Proven so far:** the first four conditions, by the named tests. The export, a verification
+outside Taktus, and the export as a telemetry signal do not exist.
 
 ## 3. Where the boundary lies
 
@@ -46,7 +48,9 @@ verification outside Taktus, do not exist.
 lives where it lives, under that system's rights. **Not a log of people.** Entries name roles and
 the identities that acted; no figure about a named person is derived from them (principle 14).
 **Not an operational log.** Log lines and traces for running the system are telemetry, not this
-record, though every ledger entry carries the trace identifier that links them.
+record, though every ledger entry carries the trace identifier that links them. Exporting this
+record as a telemetry signal is in this use case (section 2); the export does not make the
+telemetry the record.
 
 ## 4. What it rests on
 

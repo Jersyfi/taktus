@@ -162,7 +162,7 @@ policy there and never could be: the plan puts a per-job egress proxy in a pod o
 a default-deny policy that permits the job exactly one destination — the proxy. Where that
 cannot be built, the adapter refuses to start a job whose frame names hosts rather than
 starting it with an unenforced list.
-**What replaces this need:** NEED-0007 (a kubeconfig for the deployment identity) and NEED-0008
+**Superseded by:** NEED-0007 (a kubeconfig for the deployment identity) and NEED-0008
 (a public name for the instance), both raised in the same pull request with the steps. The
 webhook signing secret is raised once the name exists, as this record's section 6 said it would
 be.

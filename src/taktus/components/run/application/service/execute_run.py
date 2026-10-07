@@ -794,6 +794,7 @@ class RunEngine:
                 self._observed.get(run.id, []),
                 self._options.seeds,
                 self._options.uncalibrated_margin,
+                budgeting.models_of(demand.quantities),
             )
         )
         reservation = budgeting.reserve(demand.quantities, scale)

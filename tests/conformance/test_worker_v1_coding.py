@@ -3,8 +3,9 @@
 The worker is run against the fake agent (`workers/claudecode/fake_agent.py`), which speaks the
 real agent's stream and does what its calls say, so that the worker's mechanics — boundaries,
 consumption per step, refusal, stop and resume, authentication — are proven without a
-subscription and deterministically. The real agent is exercised by the live test at the end,
-which runs only when `TAKTUS_CODING_AGENT_LIVE` names the credential file to use.
+subscription and deterministically. The real agent is not exercised here: a live test against
+it is written when CI has a key of its own for the agent (NEED-0012, DEC-0046). Until then a
+live run with `tools/first_run.sh` is the only check against the real agent.
 """
 
 from __future__ import annotations

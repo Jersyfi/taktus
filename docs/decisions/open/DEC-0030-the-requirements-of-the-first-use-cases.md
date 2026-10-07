@@ -4,7 +4,8 @@
 **Raised in:** [#46](https://github.com/Jersyfi/taktus/pull/46)
 **Issue:** [#45](https://github.com/Jersyfi/taktus/issues/45)
 **Needed by:** 2026-10-20
-**Provisional answer:** Option A. The thirteen use cases are in force as written together with the four amendments of section 4, which bind any session that builds one of them before the answer; the files are amended once the answer is recorded. Marked here and in the status file.
+**Provisional answer:** Option A. The thirteen use cases are in force with the conditions they add beyond version 2 of the definition, which bind any session that builds one of them before the answer. Marked here and in the status file.
+**Narrowed:** 2026-10-01, by the owner's answer to DEC-0041: bringing a use case up to his own definition is mode 2. The four amendments this request carried were made under entry M2.7 and recorded as NTC-0014 to NTC-0017; what remains is the thirteen added conditions.
 
 ## 1. What this is about
 
@@ -20,21 +21,23 @@ enough that it cannot be met by interpretation. Writing those conditions meant a
 That substance is new, and what a requirement says is yours to decide.
 
 The thirteen were first written against an older version of the definition, of 2026-09-01. The
-current one is version 2. Compared with version 2, four of them fall short: version 2 asks
-something they do not. Section 4 names each gap and the amendment that closes it.
+current one is version 2. Four of them fell short of it; those four have since been brought up to
+version 2 without asking you, because you decided on 2026-10-01 that restoring what your own
+definition requires is the session's (DEC-0041, NTC-0014 to NTC-0017). This request is now only
+about what the session added beyond the definition.
 
 ## 2. Why you are being asked
 
 Entry M3.15 of `docs/decisions/anchors.taktus.md`, added in this pull request from your own
 brief: *"What a use case requires: its outcome, its verification condition and its boundary —
 adding one, changing one, retiring one."* It is mode 3: the session prepares, you decide. Thirteen
-requirements were added at once, so the decision is asked once, with every point where they differ
-from version 2 named below.
+requirements were added at once, so the decision is asked once, with every condition that goes
+beyond version 2 named below. Bringing a use case up to version 2 is no longer in this entry: it
+is M2.7, since DEC-0041.
 
 ## 3. What you must decide
 
-Whether the thirteen requirements stand, with or without the four amendments that bring them level
-with version 2.
+Whether the conditions the thirteen requirements add beyond version 2 of the definition stand.
 
 ## 4. What you need to know to decide
 
@@ -56,49 +59,32 @@ with version 2.
 | UC-11.1 data residency | P3, P11 | a rule can be narrowed per process and data class, never widened; a binding that breaks it does not register |
 | UC-13.5 a person's contribution made visible | P14 | a group so small that it identifies one person is not shown |
 
-**Where four fall short of version 2** — version 2 asks it, the file does not:
-
-| Use case | What version 2 asks | The amendment |
-|---|---|---|
-| UC-1.1 | every normalised command carries the sender's identity, its context and its reply address (definition UC-1.1, UC-1.7) | section 2 gains: *every command carries the identity of its sender, its context and the address a reply goes to*; section 3's "not identity" is narrowed to *whether the sender may give the command*. The order in which channels are connected — ticket system, repository, team chat, command line, web — is the roadmap's (M1.7), not the use case's |
-| UC-6.1 | the log records which worker acted, is fed from the workers' event stream, and is exportable as a telemetry signal (definition UC-6.1) | section 2 gains: *the log can be exported as a telemetry signal, entry by entry, with nothing the ledger itself would not carry*; section 3's "not an operational log" keeps the distinction but no longer excludes the export |
-| UC-6.3 | the takeover documentation names the skills a process uses (definition UC-6.3, UC-14.2) | the list of what the instructions name per step gains *the skills the step uses, by version* |
-| UC-8.9 | every process can be exported as one coherent package, skills included (definition UC-8.9) | section 2's export condition becomes: *everything that defines a process — definition, prompts, skills, configuration, instructions — can be exported as one package per process, in an open format, and read without Taktus* |
+**The four amendments are made.** UC-1.1, UC-6.1, UC-6.3 and UC-8.9 asked less than version 2;
+each now asks what version 2 asks, recorded as NTC-0014 to NTC-0017. If you disagree with one,
+you overrule that notice with a decision; it is not part of this question.
 
 Four of the thirteen are partly built — UC-1.1, UC-4.5, UC-6.1, UC-8.9 — and name the tests that
-prove the built part; nine are specified only. None is verified yet. None of the four amendments
-touches a built part. Changing a requirement later is possible, but never in the pull request that
+prove the built part; nine are specified only. None is verified yet. Changing a requirement later is possible, but never in the pull request that
 implements it.
 
 ## 5. Options
 
-### Option A — the thirteen stand, with the four amendments (recommended)
+### Option A — the thirteen added conditions stand (recommended)
 
-- **Meaning:** the requirements are the standard the next pull requests are held to, amended in
-  four places to what version 2 asks. A session applies the amendments in a pull request with
-  nothing else in it.
-- **Consequence:** the seeds and the definition agree; the second step of the migration builds on
-  them.
-- **Effort:** an hour of a session's time.
+- **Meaning:** the requirements, with what they add beyond version 2, are the standard the next
+  pull requests are held to.
+- **Consequence:** the second step of the migration builds on them.
+- **Effort:** none now.
 - **Reversibility:** cheap until a use case is built; after that, a change is a request per use
   case, which is the intended cost.
-- **Why recommended:** each amendment only restores what the definition already required, and
-  each added condition in the first table either comes from an accepted architecture decision or
-  makes a principle checkable that was only asserted before; none moves a limit or an autonomy
+- **Why recommended:** each added condition either comes from an accepted architecture decision
+  or makes a principle checkable that was only asserted before; none moves a limit or an autonomy
   level.
 
-### Option B — the thirteen stand as written
+### Option B — they stand, except the ones you name
 
-- **Meaning:** no amendment; the four gaps stay.
-- **Consequence:** four requirements ask less than the definition; each gap comes back as its own
-  request when someone builds against the definition.
-- **Effort:** none now.
-- **Reversibility:** cheap until built.
-
-### Option C — they stand, except the ones you name
-
-- **Meaning:** you name use cases and what should change in each, beyond or instead of the four
-  amendments; a session changes them in a pull request of their own.
+- **Meaning:** you name use cases and the added condition you want changed or removed in each; a
+  session changes them in a pull request of their own.
 - **Consequence:** those use cases wait until the change is merged; the others are in force.
 - **Effort:** an hour of your reading, a session's afternoon.
 - **Reversibility:** cheap.
@@ -106,11 +92,11 @@ implements it.
 ## 6. What is blocked
 
 Nothing: the provisional answer is in force. If no answer arrives by 2026-10-20, the second step
-of the migration starts on Option A, and changing a requirement afterwards costs a request per use
-case instead of one edit now.
+of the migration starts on Option A, and changing an added condition afterwards costs a request
+per use case instead of one edit now.
 
 ## 7. How to answer
 
-"DEC-0030: Option A." — or "DEC-0030: Option B." — or "DEC-0030: Option C" followed by each use
-case and the change you want in it — in issue [#45](https://github.com/Jersyfi/taktus/issues/45).
+"DEC-0030: Option A." — or "DEC-0030: Option B" followed by each use case and the change you
+want in it — in issue [#45](https://github.com/Jersyfi/taktus/issues/45).
 A free-text answer is read back as an interpretation and confirmed before it is acted on.

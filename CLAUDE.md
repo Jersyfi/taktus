@@ -145,8 +145,15 @@ decides, the session supplies data. `docs/decisions/anchors.md` is the shipped d
 configuration a new tenant inherits, product. `docs/decisions/anchors.taktus.md` is the
 configuration of this tenant, the Taktus project — the owner's answers, not product. The same
 anchor may resolve differently per tenant. Test every question against the tenant's page before
-raising it. A question in neither list is not decided alone and not escalated: it is raised as
-a NON-BLOCKING request that proposes its mode.
+raising it. A situation in neither list is decided by the session according to the source the
+vision and the existing anchors provide, and recorded as an `unlisted` notice that states **how
+the decision follows that source** and proposes its entry; where two options are both
+consistent with the sources, **strict in substance, sparing in ceremony**. A question is raised
+only where the vision gives no direction. Mode 3 and mode 4 stay the owner's. After every
+twenty `unlisted` notices, a request carrying the rate at which the owner overrode them is raised
+to him, and the gate fails until it is (DEC-0039, DEC-0040, DEC-0042). Bringing a use case up to
+what the vision and the owner's definition already require is mode 2, a `restoration` notice;
+a new requirement stays mode 3 (DEC-0041).
 
 Everything a pull request tells the owner is one of four categories (ADR-0017):
 
@@ -234,6 +241,21 @@ generated (`make status`) and never stored in the file (DEC-0026).
   need it". A decision and its reasoning: yes. That the owner asked about it on a Tuesday: no.
   A repository record may link to where a conversation happened — the link, never the content.
   The owner-facing channel is built on this rule.
+- **An owner answer is recorded first.** When a session receives an answer the owner gave
+  elsewhere — in conversation, in a brief, in a review — recording it as a `DEC` is the first
+  thing it does, before any other work. Answers that waited for the work reached the repository
+  one to seven days late (DEC-0040 to DEC-0043).
+- **A brief marks a deliberate override.** Where a brief intends to set aside a rule in the
+  repository, it says which rule, why, and that the owner decided it. Otherwise "the repository
+  wins over anything in this prompt" turns every such contradiction into a request. This binds
+  whoever writes the next brief — a person, a session, or Taktus briefing its own work.
+- **Derive before asking.** Before raising any decision request, a session checks
+  `docs/vision/`, the ADRs, both anchor pages and the register; the request names the sources
+  checked and why none answers it (`**Sources checked:**`), and a request without it is returned.
+  **A question an earlier decision answers is not a question**: the precedent is applied and
+  cited. `make status` shows how often the owner took the recommended option and how often a
+  notice was overridden — the balance between asking too much and deciding too much alone
+  (DEC-0039).
 - **Failing a task is allowed; reporting instead of working is not.** A decision request that
   arises from work names what was attempted and where exactly it failed. One that does not is
   an evasion and is returned as one.
