@@ -1,0 +1,56 @@
+name: live
+
+# Live tests: the tests that need a credential and act on a real service (DEC-0048). They never
+# run on a pull request — the repository is public, a credential in a pull request's pipeline is
+# reachable from every workflow that names it, and a key that costs money would spend on every
+# push. They run on a schedule and by dispatch, on `main` only, never in a fork. Their secrets sit
+# in the environment `live`, which admits `main` alone and which no other workflow names;
+# `tests/tools/test_live_workflow.py` holds every workflow to that.
+#
+# Every run is capped and leaves its evidence. A job that spends money reads its cap from the
+# environment's variable `LIVE_SPEND_CAP_USD` and refuses to start without it; a job whose
+# service charges nothing is bounded by its time limit. What a run consumed is kept as an
+# artifact, as the removal test keeps its own.
+on:
+  schedule:
+    - cron: "0 7 * * 1"   # Mondays 07:00 UTC, an hour after the removal test
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The repository connector against the real hosting service, in a scratch repository that exists
+  # for this test alone (NEED-0011). The hosting service charges nothing for these calls; the job's
+  # time limit bounds the run, and the test log, which lists every call's test, is its evidence.
+  connector:
+    if: github.repository == 'Jersyfi/taktus' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: live
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - name: live connector test
+        if: ${{ vars.TAKTUS_LIVE_REPOSITORY != '' }}
+        env:
+          TAKTUS_LIVE_REPOSITORY: ${{ vars.TAKTUS_LIVE_REPOSITORY }}
+          REPOSITORY_TOKEN: ${{ secrets.LIVE_REPOSITORY_TOKEN }}
+        # `shell: bash` runs with pipefail, so that a failing test fails the step through `tee`.
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/live"
+          uv run pytest tests/adapters/connectors/test_repository_live.py -rA \
+            | tee "$RUNNER_TEMP/live/connector.log"
+      - name: not provided yet
+        if: ${{ vars.TAKTUS_LIVE_REPOSITORY == '' }}
+        run: echo "::notice::the scratch repository is not configured in the environment 'live' (NEED-0011); nothing ran"
+      - name: keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-connector-${{ github.run_id }}
+          path: ${{ runner.temp }}/live
+          if-no-files-found: ignore
+          retention-days: 90

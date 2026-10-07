@@ -54,3 +54,6 @@ needs request names**, to derive what would otherwise be asked: a check, a measu
 rehearsal call. The notice states the amount. Bounded: a spend of more than one euro for one
 derivation, a spend that recurs without a run that needs it, or a spend outside the purpose the
 credential was provided for is not this entry; it is a limit, M3.10, and asked.
+
+**Accepted** by the owner on 2026-10-07 with a different bound (DEC-0049): M2.8 caps the spend at
+USD 1 per task, not one euro per derivation.

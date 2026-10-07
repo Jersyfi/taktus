@@ -1,7 +1,7 @@
 # DEC-0050 — DEC-0037's Option A waits for its trigger
 
 **Category:** NON-BLOCKING
-**Raised in:** the description of [#52](https://github.com/Jersyfi/taktus/pull/52), which stated that DEC-0037's chosen option is not built and comes with `0.2.0`; recorded in PRNUM
+**Raised in:** the description of [#52](https://github.com/Jersyfi/taktus/pull/52), which stated that DEC-0037's chosen option is not built and comes with `0.2.0`; recorded in [#59](https://github.com/Jersyfi/taktus/pull/59)
 **Issue:** none; the owner answered in the brief of 2026-10-07 before a request was written, and this record is the question with the answer
 **Needed by:** 2026-10-07
 **Written after the answer:** the owner answered in the brief of 2026-10-07; the record was written from it; left out of the acceptance rate (DEC-0042).
@@ -63,5 +63,5 @@ Nothing.
 **Decided:** 2026-10-07
 **Answer:** Option A, as the owner gave it: the deferral stands. It stays listed for `0.2.0`.
 **Reasoning given:** there is no trigger yet for the generator to serve.
-**Recorded in:** PRNUM: the backlog issue BACKLOG_DEC37, milestone `0.2.0`, blocked by the issue
+**Recorded in:** [#59](https://github.com/Jersyfi/taktus/pull/59): the backlog issue BACKLOG_DEC37, milestone `0.2.0`, blocked by the issue
 for event reactions.

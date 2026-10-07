@@ -39,7 +39,7 @@ had no value. "It was in the way" is not evidence.
 
 **Every notice carries a kind.** The kind says what sort of thing was decided, in one word that
 means the same in every tenant, so that a register can be read by kind whatever a tenant's
-entries are numbered. Seven kinds exist:
+entries are numbered. Eight kinds exist:
 
 | Kind | What was decided |
 |---|---|
@@ -50,6 +50,7 @@ entries are numbered. Seven kinds exist:
 | `need` | a need was raised: something only the owner can provide; the record is the needs request itself, `NEED-NNNN`, not a notice (ADR-0028) |
 | `unlisted` | a situation that fits no entry was decided according to the source the vision and the existing anchors provide; the notice states how it follows that source and names the entry it proposes (§4) |
 | `restoration` | a requirement was brought up to what the owner's vision and definition already require; the notice states how it restores them (§4) |
+| `spend` | the operator spent on a credential the owner provided, to derive or verify a fact instead of asking; the notice states the amount, and a tenant that permits it sets the cap |
 
 Every mode-2 entry names its kind; a notice carries the kind of the entry it cites, and the
 gate (ADR-0017 §8) fails on a mismatch. The kind is not the entry: the entry is a tenant's

@@ -1,7 +1,7 @@
 # DEC-0049 — A session may spend up to one dollar per task to derive
 
 **Category:** NON-BLOCKING
-**Raised in:** NTC-0018, recorded in [#52](https://github.com/Jersyfi/taktus/pull/52), which proposed the entry M2.8; recorded in PRNUM
+**Raised in:** NTC-0018, recorded in [#52](https://github.com/Jersyfi/taktus/pull/52), which proposed the entry M2.8; recorded in [#59](https://github.com/Jersyfi/taktus/pull/59)
 **Issue:** none; the owner answered in the brief of 2026-10-07 before a request was written, and this record is the question with the answer
 **Needed by:** 2026-10-07
 **Written after the answer:** the owner answered in the brief of 2026-10-07; the record was written from it; left out of the acceptance rate (DEC-0042).
@@ -67,6 +67,6 @@ Nothing.
 the owner's credential to derive or verify a fact instead of asking, up to USD 1 per task,
 recorded as a notice. Beyond that it is a request.
 **Reasoning given:** a limit is a limit, for a session as for a run.
-**Recorded in:** PRNUM: `anchors.taktus.md` gains M2.8, kind `spend`; `anchors.md` gains the kind
+**Recorded in:** [#59](https://github.com/Jersyfi/taktus/pull/59): `anchors.taktus.md` gains M2.8, kind `spend`; `anchors.md` gains the kind
 `spend` in its vocabulary; NTC-0018 names the entry it led to. The cap is per task, not per
 derivation as NTC-0018 proposed, and in US dollars, not euros.

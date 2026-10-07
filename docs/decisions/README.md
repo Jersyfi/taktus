@@ -63,7 +63,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0015](NTC-0015-uc-6-1-the-log-is-exportable-as-a-telemetry-signal.md) | UC-6.1: the log is exportable as a telemetry signal | M2.7 | `restoration` | brought up to definition UC-6.1; the record stays distinct from telemetry |
 | [0016](NTC-0016-uc-6-3-the-instructions-name-the-skills-by-version.md) | UC-6.3: the instructions name the skills by version | M2.7 | `restoration` | brought up to definition UC-6.3/UC-14.2; six items per step |
 | [0017](NTC-0017-uc-8-9-a-process-leaves-as-one-package-skills-included.md) | UC-8.9: a process leaves as one package, skills included | M2.7 | `restoration` | brought up to definition UC-8.9 |
-| [0018](NTC-0018-a-session-spends-on-the-owners-key-to-derive-instead-of-asking.md) | A session spends on the owner's key to derive instead of asking | M2.6 | `unlisted` | two calls, under one cent, to measure the output limit (M-03); proposes M2.8 `spend` |
+| [0018](NTC-0018-a-session-spends-on-the-owners-key-to-derive-instead-of-asking.md) | A session spends on the owner's key to derive instead of asking | M2.6 | `unlisted` | two calls, under one cent, to measure the output limit (M-03); proposed M2.8 `spend`, accepted with a cap of USD 1 per task (DEC-0049) |
 
 ## Decisions
 
@@ -116,3 +116,4 @@ The open needs are printed by `make status` (DEC-0026).
 | [0049](DEC-0049-a-session-may-spend-up-to-one-dollar-per-task-to-derive.md) | A session may spend up to one dollar per task to derive | NON-BLOCKING | answered: NTC-0018's M2.8 accepted, kind `spend`, capped at USD 1 per task; beyond that a request |
 | [0050](DEC-0050-dec-0037s-option-a-waits-for-its-trigger.md) | DEC-0037's Option A waits for its trigger | NON-BLOCKING | answered: the deferral stands; built with the automatic start of `0.2.0` |
 | [0051](DEC-0051-the-backlog-is-issues-and-a-standing-brief-replaces-hand-written-ones.md) | The backlog is issues, and a standing brief replaces hand-written ones | NON-BLOCKING | answered: issues in milestones, a ready standard in the template, claim by label, a fixed order, `docs/process/next-task.md`; retired when Taktus runs P-01 to P-03 itself |
+| [0052](DEC-0052-adr-0017-listed-four-notice-kinds-of-eight.md) | ADR-0017 listed four notice kinds of eight | DEFECT | corrected: the vocabulary is `anchors.md` §1, kept there and nowhere else |

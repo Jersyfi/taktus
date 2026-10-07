@@ -153,7 +153,10 @@ only where the vision gives no direction. Mode 3 and mode 4 stay the owner's. Af
 twenty `unlisted` notices, a request carrying the rate at which the owner overrode them is raised
 to him, and the gate fails until it is (DEC-0039, DEC-0040, DEC-0042). Bringing a use case up to
 what the vision and the owner's definition already require is mode 2, a `restoration` notice;
-a new requirement stays mode 3 (DEC-0041).
+a new requirement stays mode 3 (DEC-0041). A session may spend on a credential the owner
+provided, to derive or verify a fact instead of asking, up to **USD 1 per task**, recorded as a
+`spend` notice; beyond that it is a request — a limit is a limit, for a session as for a run
+(M2.8, DEC-0049).
 
 Everything a pull request tells the owner is one of four categories (ADR-0017):
 
@@ -188,6 +191,9 @@ generated (`make status`) and never stored in the file (DEC-0026).
 
 ## 9. Working rules
 
+- **"Continue with the next task" means [`docs/process/next-task.md`](docs/process/next-task.md).**
+  The backlog is the repository's issues; a session takes the top ready, unclaimed one, and
+  never invents work outside it (DEC-0051).
 - **One pull request per change.** Conventional Commits. Pull requests are squash-merged; the pull
   request title becomes the commit on `main` and follows Conventional Commits.
 - **No secret value** ever enters this repository, a file, a log or a message. Configuration
@@ -196,7 +202,9 @@ generated (`make status`) and never stored in the file (DEC-0026).
   purpose, the permissions it needs, how it rotates, and the key it is supplied through —
   never a value, and never a deployment's own name for it. A secret value is read from a file
   the variable points at (`TAKTUS_<KEY>_FILE`), never from the environment, and every log
-  line masks it. **The repository is public.**
+  line masks it. **The repository is public.** A test that needs a credential never runs on a
+  pull request: it runs on a schedule or by dispatch, on `main`, never for a fork, under a spend
+  cap, with its secrets in an environment only its workflow names (DEC-0048).
 - **No third-party contributions** while the licence is unsettled (ADR-0012).
 - **Generated code is never edited by hand.** Generation lives in `make generate`.
 - **Architectural changes arrive as an ADR** before the code does. **Every ADR that makes a
@@ -233,7 +241,9 @@ generated (`make status`) and never stored in the file (DEC-0026).
   while building that a requirement does not hold opens a decision request naming the precise
   point where it fails, the use cases involved, and a worked proposal; the implementation
   waits. `make gate-usecases` fails a pull request that touches both a use case's requirement
-  sections and its implementation. What a use case requires is mode 3; how it is described,
+  sections and its implementation. The rule protects what a use case *requires* — its sections
+  1 to 3 — not the files that implement or test it: a test that configures its own value is
+  ordinary work (DEC-0047). What a use case requires is mode 3; how it is described,
   its state and its test references are mode 1; `docs/vision/` is mode 4
   (`docs/decisions/anchors.taktus.md`).
 - **What future work needs belongs in the repository. What concerned only one person stays in
@@ -244,7 +254,8 @@ generated (`make status`) and never stored in the file (DEC-0026).
 - **An owner answer is recorded first.** When a session receives an answer the owner gave
   elsewhere — in conversation, in a brief, in a review — recording it as a `DEC` is the first
   thing it does, before any other work. Answers that waited for the work reached the repository
-  one to seven days late (DEC-0040 to DEC-0043).
+  one to seven days late (DEC-0040 to DEC-0043). The owner answers in the issue of the request,
+  with the sentence it offers; the next session records every such answer first (DEC-0051).
 - **A brief marks a deliberate override.** Where a brief intends to set aside a rule in the
   repository, it says which rule, why, and that the owner decided it. Otherwise "the repository
   wins over anything in this prompt" turns every such contradiction into a request. This binds

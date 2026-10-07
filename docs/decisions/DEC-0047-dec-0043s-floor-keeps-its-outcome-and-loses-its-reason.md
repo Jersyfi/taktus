@@ -1,7 +1,7 @@
 # DEC-0047 — DEC-0043's floor keeps its outcome and loses its reason
 
 **Category:** NON-BLOCKING
-**Raised in:** the description of [#52](https://github.com/Jersyfi/taktus/pull/52), which stated two readings of DEC-0043 as built; recorded in PRNUM
+**Raised in:** the description of [#52](https://github.com/Jersyfi/taktus/pull/52), which stated two readings of DEC-0043 as built; recorded in [#59](https://github.com/Jersyfi/taktus/pull/59)
 **Issue:** none; the owner answered in the brief of 2026-10-07 before a request was written, and this record is the question with the answer
 **Needed by:** 2026-10-07
 **Written after the answer:** the owner answered in the brief of 2026-10-07; the record was written from it; left out of the acceptance rate (DEC-0042).
@@ -80,6 +80,6 @@ on it. The reading of the model reset is confirmed as written.
 on a misreading. The rule that a use case is never changed in the pull request that implements it
 protects what a use case requires — not the files that implement or test it. A test that
 configures its own margin is ordinary work.
-**Recorded in:** PRNUM: DEC-0043's outcome carries the corrected reason; CLAUDE.md §9 states what
+**Recorded in:** [#59](https://github.com/Jersyfi/taktus/pull/59): DEC-0043's outcome carries the corrected reason; CLAUDE.md §9 states what
 the use-case rule protects; `anchors.taktus.md` M3.10 names the statement; the statement itself is
 the backlog issue BACKLOG_MARGIN, milestone `0.2.0`.

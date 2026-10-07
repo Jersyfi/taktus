@@ -125,14 +125,3 @@ jobs:
         env:
           TAKTUS_REQUIRE_DATABASE: "1"
         run: make test
-
-      # The repository connector against the real hosting service, in a scratch repository, once
-      # the owner has provided its token and name (NEED-0011). Its own step, so that the token is
-      # in the environment of this one test and of no other; skipped, and shown as skipped, until
-      # the variable exists.
-      - name: live connector test
-        if: ${{ vars.TAKTUS_LIVE_REPOSITORY != '' }}
-        env:
-          TAKTUS_LIVE_REPOSITORY: ${{ vars.TAKTUS_LIVE_REPOSITORY }}
-          REPOSITORY_TOKEN: ${{ secrets.LIVE_REPOSITORY_TOKEN }}
-        run: uv run pytest tests/adapters/connectors/test_repository_live.py

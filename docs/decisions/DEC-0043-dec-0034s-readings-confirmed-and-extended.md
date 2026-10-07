@@ -70,7 +70,11 @@ written as a note — and is recorded here properly.
 **Recorded in:** [#52](https://github.com/Jersyfi/taktus/pull/52):
 `src/taktus/components/run/domain/service/budget.py` (the floor, the reset), ADR-0005 third
 amendment point 6, `anchors.taktus.md`. As built, observations never narrow the margin below
-10 %; an operator who sets `TAKTUS_BUDGET_UNCALIBRATED_MARGIN` itself below 10 % has set a
-smaller limit and it holds, because that setting is itself a limit (M3.10). The model version is
+10 %; an operator who explicitly sets `TAKTUS_BUDGET_UNCALIBRATED_MARGIN` below 10 % keeps that
+value, because a limit is the operator's decision (M3.10), and Taktus says so where it is set and
+in every report that relies on it (DEC-0047). The reason #52 also gave — that otherwise the
+engine's tests would need editing — is withdrawn: the rule that a use case is never changed in the
+pull request that implements it protects what a use case requires, not the files that implement
+or test it. The model version is
 the one the step's estimate names, else the one the worker last reported; an observation that
 names no model is no evidence of a change.

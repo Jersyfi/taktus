@@ -1,7 +1,7 @@
 # DEC-0051 — The backlog is issues, and a standing brief replaces hand-written ones
 
 **Category:** NON-BLOCKING
-**Raised in:** the brief of 2026-10-07, after the audit of 2026-10-01 measured what hand-written briefs cost; recorded in PRNUM
+**Raised in:** the brief of 2026-10-07, after the audit of 2026-10-01 measured what hand-written briefs cost; recorded in [#59](https://github.com/Jersyfi/taktus/pull/59)
 **Issue:** none; the owner decided in the brief before a request was written, and this record is the question with the answer
 **Needed by:** 2026-10-07
 **Written after the answer:** the owner answered in the brief of 2026-10-07; the record was written from it; left out of the acceptance rate (DEC-0042).
@@ -89,6 +89,6 @@ once by hand, as P-01 would. When Taktus runs P-01, P-02 and P-03 on its own ins
 standing brief is retired; the issues, the ready standard and the order do not change.
 **Reasoning given:** briefs caused requests, and answers reached the repository one to seven days
 late. Principle 1: no parallel register — the repository connector already reads issues.
-**Recorded in:** PRNUM: `docs/process/next-task.md`, `.github/ISSUE_TEMPLATE/task.yml`,
+**Recorded in:** [#59](https://github.com/Jersyfi/taktus/pull/59): `docs/process/next-task.md`, `.github/ISSUE_TEMPLATE/task.yml`,
 `tools/backlog.py` (`make backlog`), CLAUDE.md §9, `docs/roadmap.md` (the retirement), and the
 backlog as issues in the milestones `0.1.0` to `1.0.0`.
