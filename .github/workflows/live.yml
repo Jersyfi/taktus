@@ -21,10 +21,15 @@ permissions:
 
 jobs:
   # The repository connector against the real hosting service, in a scratch repository that exists
-  # for this test alone and on which Taktus's own app is installed (NEED-0013, DEC-0058). Until the
-  # connector acts as the app, the job reads a token from the environment and runs nothing without
-  # the scratch repository's name. The hosting service charges nothing for these calls; the job's
-  # time limit bounds the run, and the test log, which lists every call's test, is its evidence.
+  # for this test alone and on which Taktus's own app is installed (NEED-0013, DEC-0058). The
+  # connector acts as the app (ADR-0033): it mints an installation token that lives an hour from
+  # the app's private key, in this run, and stores it nowhere. The identifier and the key are
+  # secrets of the environment, so that neither is printed in this public log; the key is written
+  # to a file outside the evidence directory, readable by the runner's user alone, for the length
+  # of the step. Nothing runs without the scratch repository's name; with the name and without the
+  # app, the step fails, because half a configuration is a fault and not a skip (NEED-0016). The
+  # hosting service charges nothing for these calls; the job's time limit bounds the run, and the
+  # test log, which lists every call's test, is its evidence.
   connector:
     if: github.repository == 'Jersyfi/taktus' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -38,16 +43,30 @@ jobs:
         if: ${{ vars.TAKTUS_LIVE_REPOSITORY != '' }}
         env:
           TAKTUS_LIVE_REPOSITORY: ${{ vars.TAKTUS_LIVE_REPOSITORY }}
-          REPOSITORY_TOKEN: ${{ secrets.LIVE_REPOSITORY_TOKEN }}
+          TAKTUS_REPOSITORY_APP_ID: ${{ secrets.LIVE_APP_ID }}
+          LIVE_APP_PRIVATE_KEY: ${{ secrets.LIVE_APP_PRIVATE_KEY }}
         # `shell: bash` runs with pipefail, so that a failing test fails the step through `tee`.
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/live"
+          if [ -z "$TAKTUS_REPOSITORY_APP_ID" ] || [ -z "$LIVE_APP_PRIVATE_KEY" ]; then
+            echo "::error::the app's identifier or key is not set in the environment 'live' (NEED-0016)"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/live" "$RUNNER_TEMP/app"
+          chmod 700 "$RUNNER_TEMP/app"
+          key="$RUNNER_TEMP/app/key.pem"
+          trap 'rm -f "$key"' EXIT
+          (umask 077 && printf '%s\n' "$LIVE_APP_PRIVATE_KEY" >"$key")
+          unset LIVE_APP_PRIVATE_KEY
+          export TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE="$key"
           uv run pytest tests/adapters/connectors/test_repository_live.py -rA \
             | tee "$RUNNER_TEMP/live/connector.log"
+          # A test that skipped proved nothing: the run fails unless it passed.
+          grep -Eq '^PASSED ' "$RUNNER_TEMP/live/connector.log" \
+            || { echo "::error::the live connector test did not run"; exit 1; }
       - name: not provided yet
         if: ${{ vars.TAKTUS_LIVE_REPOSITORY == '' }}
-        run: echo "::notice::the scratch repository is not configured in the environment 'live' (NEED-0013); nothing ran"
+        run: echo "::notice::the scratch repository is not configured in the environment 'live' (NEED-0016); nothing ran"
       - name: keep the evidence
         if: always()
         uses: actions/upload-artifact@v4
