@@ -74,6 +74,13 @@ types, held to `Connector.json` by `tests/contract`. A `rule` step whose work is
 `rule: connector` is bound this way (`components/run/domain/model/work.py`,
 `examples/README.md`); a `wait` step can wait on an external state read the same way.
 
+What a read returns is the connector's to declare, not the contract's. The reference repository
+connector reads an issue with its labels and milestone, lists the open issues to the last page,
+and lists a directory at a ref (issue #70). P-03 Implementation feeds those readings to the run
+component's built-in rule `ready`, the backlog's ready standard
+(`components/run/domain/service/ready.py`, DEC-0051). The rule judges the readings; the
+connector judges nothing.
+
 **What idempotency requires of a connector, seen from the run.** The run derives the
 idempotency key of every call from the run, the step and the step's *attempt*:
 `taktus:<run id>:<step id>:<attempt>`. It is never stored, so that a resumed attempt after a restart
