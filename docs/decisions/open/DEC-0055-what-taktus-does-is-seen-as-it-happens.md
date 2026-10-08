@@ -1,7 +1,7 @@
 # DEC-0055 — Seeing Taktus at work, live
 
 **Category:** NON-BLOCKING
-**Raised in:** PR_LINK, from the owner's idea of 2026-10-08 that whatever Taktus does should be seen, live, rather than read
+**Raised in:** [#102](https://github.com/Jersyfi/taktus/pull/102), from the owner's idea of 2026-10-08 that whatever Taktus does should be seen, live, rather than read
 **Issue:** [#101](https://github.com/Jersyfi/taktus/issues/101)
 **Needed by:** 2026-10-31
 **Provisional answer:** Option A. The requirement is in force as written in `docs/usecases/reporting/UC-6.10-what-taktus-does-is-seen-as-it-happens.md`, and binds any session that builds a view before the answer. Nothing is built for it before the web app of `0.3.0`. Marked in the use case and in the status file.
