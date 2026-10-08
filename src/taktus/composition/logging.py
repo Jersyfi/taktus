@@ -4,7 +4,9 @@ the trace identifier on every line written inside a span.
 `structlog` renders every event; a `Secret` reaches the renderer as an object and is written
 through its `repr`, which masks it, so a secret cannot appear in a line by being logged as a
 value. The startup log lists the effective configuration through `Settings.effective()`, which
-masks every secret itself and names its source instead. `tests/composition` proves both ends.
+masks every secret itself and names its source instead, and a warning follows for a setting an
+operator chose below what Taktus would choose itself — the uncalibrated margin below its floor
+(DEC-0047). `tests/composition` proves both ends.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from typing import Any
 import structlog
 
 from taktus.adapters.driven.telemetry.otel import current_trace_id
+from taktus.components.run.domain.service.budget import MARGIN_FLOOR
 from taktus.composition.settings import Settings
 
 LEVELS = {"debug": logging.DEBUG, "info": logging.INFO, "warning": logging.WARNING}
@@ -62,3 +65,11 @@ def configure(level: str) -> None:
 def log_effective_configuration(settings: Settings) -> None:
     logger = structlog.get_logger("taktusd")
     logger.info("configuration", **{variable: value for variable, value in settings.effective()})
+    below_floor = settings.budget.below_floor()
+    if below_floor is not None:
+        logger.warning(
+            "uncalibrated margin below the floor",
+            TAKTUS_BUDGET_UNCALIBRATED_MARGIN=f"{settings.budget.uncalibrated_margin:g}",
+            floor=f"{MARGIN_FLOOR:g}",
+            reason=below_floor,
+        )
