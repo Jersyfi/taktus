@@ -30,8 +30,15 @@ SOURCES = (
 
 
 def request(tmp_path: Path, number: int, sources: str | None) -> list[str]:
-    """An open request in the shape of DEC-0030, renumbered; the problems the gate finds."""
-    text = next((REGISTER / "open").glob("DEC-0030-*.md")).read_text(encoding="utf-8")
+    """An open request in the shape of DEC-0030, renumbered; the problems the gate finds.
+
+    Built from DEC-0030's record, which never moves again, with its outcome taken off and a
+    provisional answer put back — so that the test does not depend on what is open today."""
+    text = next(REGISTER.glob("DEC-0030-*.md")).read_text(encoding="utf-8")
+    text = text.split("\n## Outcome", 1)[0] + "\n"
+    text = text.replace(
+        "**Needed by:**", "**Provisional answer:** Option A, marked here.\n**Needed by:**", 1
+    )
     text = text.replace("DEC-0030", f"DEC-{number:04d}")
     if sources is not None:
         text = text.replace(
@@ -171,7 +178,10 @@ def test_the_override_rate_goes_to_the_owner_after_every_twenty_unlisted_notices
 
 
 def licence(tmp_path: Path, recommended: bool, needed_by: str) -> list[str]:
-    text = next((REGISTER / "open").glob("DEC-0044-*.md")).read_text(encoding="utf-8")
+    # Open or answered, the file is read as the request it was: the test must not break the day
+    # the owner decides the licence.
+    found = next(REGISTER.rglob("DEC-0044-*.md"))
+    text = found.read_text(encoding="utf-8").split("\n## Outcome", 1)[0] + "\n"
     if recommended:
         text = text.replace("for the contracts\n", "for the contracts (recommended)\n", 1)
     text = text.replace(
