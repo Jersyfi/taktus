@@ -9,7 +9,8 @@ Once some runs are done and runner A holds a run whose worker step has persisted
 boundary, A is killed: SIGKILL, no shutdown, no chance to halt or release anything. Then:
 
 - every run finishes;
-- the load was spread: both runners held claims;
+- the load was spread: both runners held claims, and neither ever held more jobs than its
+  concurrency (NTC-0027);
 - a claim moved from one runner to the other only for a job A held when it died, only to B,
   and only after A's last renewal of the lease had expired;
 - every run A held when it died was taken over by B at its last boundary: recovered
@@ -55,6 +56,7 @@ from .test_restart import bundle as restart_bundle
 TENANT = f"failover_{os.urandom(4).hex()}"
 """A tenant of its own: a job another test left in a shared tenant is not this test's to run."""
 RUNS = 20
+CONCURRENCY = 2
 LEASE_SECONDS = 5
 """The shortest lease the daemon accepts; a runner renews it every third of that."""
 
@@ -84,8 +86,17 @@ class Claims:
     run_of: dict[str, str] = field(default_factory=dict)
     attempts: dict[str, int] = field(default_factory=dict)
     """How often each job was claimed, as the table counted it."""
+    most: dict[str, int] = field(default_factory=dict)
+    """The most jobs each runner held at once, in any one reading of the table."""
 
     def observe(self, rows: Iterable[Any], runs: set[str]) -> None:
+        rows = list(rows)
+        held: dict[str, int] = {}
+        for row in rows:
+            if str(row.payload.get("run_id", "")) in runs and row.claimed_by is not None:
+                held[row.claimed_by] = held.get(row.claimed_by, 0) + 1
+        for claimant, count in held.items():
+            self.most[claimant] = max(self.most.get(claimant, 0), count)
         for row in rows:
             run_id = str(row.payload.get("run_id", ""))
             if run_id not in runs or row.claimed_by is None or row.claimed_at is None:
@@ -193,7 +204,7 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
         # Two runs per runner. The reference worker accepts four assignments at once and
         # answers 503 beyond, which fails the step. After the kill, the killed runner's
         # assignments keep running in the worker beside the survivor's two: four again.
-        "TAKTUS_RUNNER_CONCURRENCY": "2",
+        "TAKTUS_RUNNER_CONCURRENCY": str(CONCURRENCY),
         "TAKTUS_SHUTDOWN_CEILING_SECONDS": "20",
         "TAKTUS_LOG_LEVEL": "debug",
     }
@@ -285,6 +296,9 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
     # The runs were shared, and each claim had one holder at a time: a job changed holder
     # only when A had died holding it, only to B, and only after A's lease had run out.
     assert claims.holders() == {"a", "b"}, "both runners held claims"
+    assert all(n <= CONCURRENCY for n in claims.most.values()), (
+        f"a runner held more jobs than its concurrency: {claims.most} (NTC-0027)"
+    )
     for job, history in claims.by_job.items():
         holders = [c.claimant for c in history]
         if job in died:
