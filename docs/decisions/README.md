@@ -73,6 +73,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0016](NTC-0016-uc-6-3-the-instructions-name-the-skills-by-version.md) | UC-6.3: the instructions name the skills by version | M2.7 | `restoration` | brought up to definition UC-6.3/UC-14.2; six items per step |
 | [0017](NTC-0017-uc-8-9-a-process-leaves-as-one-package-skills-included.md) | UC-8.9: a process leaves as one package, skills included | M2.7 | `restoration` | brought up to definition UC-8.9 |
 | [0018](NTC-0018-a-session-spends-on-the-owners-key-to-derive-instead-of-asking.md) | A session spends on the owner's key to derive instead of asking | M2.6 | `unlisted` | two calls, under one cent, to measure the output limit (M-03); proposed M2.8 `spend`, accepted with a cap of USD 1 per task (DEC-0049) |
+| [0023](NTC-0023-the-repository-connector-acts-as-the-app-when-configured.md) | The repository connector acts as the app when configured | M2.4 | `behaviour-change` | with the app's identifier and key file the connector mints an hour's token per use for its one repository and acts under the app's name; half a configuration is refused; `first_run.sh` and the workflow `live` act as the app (ADR-0033) |
 
 ## Decisions
 
