@@ -62,3 +62,6 @@ packages = ["taktus"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Every skip says why in the summary, so that a test that needs a cluster or Docker and did not
+# run is visible in every log, CI's included, instead of passing quietly.
+addopts = "-rs"

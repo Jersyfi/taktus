@@ -59,8 +59,11 @@ adapters that *start* a unit. A worker that is already running, reached by endpo
 the table above and is outside the rule: the control plane did not start it, cannot see what is
 around it, and enforces neither its limits nor its `frame.allowed_hosts`. Its isolation is
 whoever started it, and a process at level 3 or above run that way is the operator's
-responsibility, not a guarantee of this ADR (DEC-0022). The `kubernetes` adapter does
-not exist yet, so the third row of the execution table is a plan until it does. The scaling
+responsibility, not a guarantee of this ADR (DEC-0022). The `kubernetes` adapter isolates a
+pod's network only where the cluster enforces network policies; where the operator says it does
+not, the adapter treats the pod as unisolated in its reach and refuses it from level 3. Its
+tests run against a fake of the cluster's API, and against a real cluster only where one is
+configured (NEED-0015). The scaling
 claims — `runner` scales out freely, `scheduler` is elected — are proven for two daemons on one
 database (`tests/integration`), not for a cluster under load; the roadmap's 1.0.0 section names
 the measurement.
