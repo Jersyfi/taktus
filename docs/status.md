@@ -140,9 +140,10 @@ webhook secret (NEED-0010), the live connector test in CI (NEED-0011), the codin
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
 each with the pull request that recorded it. **Open:** DEC-0028, DEC-0029 and DEC-0030, raised
 by the pull request that brought in the vision layer — DEC-0030 narrowed on 2026-10-01 to the
-conditions the use cases add beyond the definition — DEC-0044, the licence, and DEC-0053, the
+conditions the use cases add beyond the definition — DEC-0044, the licence, DEC-0053, the
 budget of the next live run, raised on 2026-10-07 because it exceeds what a session may spend
-alone. DEC-0034 and DEC-0037, raised by the
+alone. DEC-0055, raised on 2026-10-08 from the owner's idea, was answered the same day: what
+Taktus does is seen as it happens, as UC-6.10 requires for `0.3.0`. DEC-0034 and DEC-0037, raised by the
 pull request that took up the first run's findings, are answered: a worker with no calibration
 history reserves twice its estimate, and where a run produces a generated text is the session's
 to decide.
@@ -193,10 +194,11 @@ answers, for the first time, how much of the vision stands:
 
 - **Every one of the fourteen principles is served by at least one use case**; `make gate-vision`
   fails when one is not.
-- **Thirteen use cases exist in the new format. None is verified and none is built.** Four are
+- **Fourteen use cases exist in the new format. None is verified and none is built.** Four are
   *building* — part of what they require is built and named tests prove that part: UC-1.1
   commands from any channel, UC-4.5 halt or escalate at the boundary, UC-6.1 the complete activity
-  log, UC-8.9 changing a vendor breaks nothing. Nine are *specified* and nothing of them is built.
+  log, UC-8.9 changing a vendor breaks nothing. Ten are *specified* and nothing of them is
+  built; the tenth, UC-6.10, was added on 2026-10-08 and accepted by the owner (DEC-0055).
 - **Principles served only by specified use cases**, so that nothing of them stands yet beyond the
   text: P2 AI at the core, P5 coupled or decoupled control, P7 transparency fitted to the role, P8
   repeatability and cost control, P9 efficiency over verbosity, P14 people at the centre. The
