@@ -3,7 +3,7 @@
 **Mode entry:** M2.6
 **Kind:** unlisted
 **Decided:** 2026-10-09
-**Raised in:** PULL_REQUEST
+**Raised in:** [#127](https://github.com/Jersyfi/taktus/pull/127)
 **How it follows:** DEC-0051 says an issue's milestone follows the roadmap, and principle 8 asks that what is checked be repeatable; a statement "the issue follows the roadmap" can only be checked repeatably when the roadmap says which issues carry an item, so every item names them. Principle 1 forbids a parallel register, so the link is written into the roadmap's existing lists, not kept in a second file. Between a link a rule reads and a match a model guesses, the stricter in substance is the link; adding numbers to lines that already exist is the option with less ceremony.
 
 ## 1. What was decided

@@ -1,7 +1,7 @@
 # DEC-0080 — The method of P-01's reconciliation
 
 **Category:** NON-BLOCKING
-**Raised in:** PULL_REQUEST, while implementing issue #71: the blueprint names a language model for the step a rule can now do
+**Raised in:** [#127](https://github.com/Jersyfi/taktus/pull/127), while implementing issue #71: the blueprint names a language model for the step a rule can now do
 **Issue:** [#126](https://github.com/Jersyfi/taktus/issues/126)
 **Needed by:** 2026-10-23
 **Provisional answer:** Option A. P-01 Roadmap control runs with its reconciliation as a rule over the issue numbers the roadmap's items name, classed `exact`; `docs/roadmap.md` names the issues of its items. Marked in the bundle's header and in the step's rejected alternative, and in `blueprint.yaml`.
