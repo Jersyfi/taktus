@@ -46,9 +46,14 @@ check at level 2 or 3; a corporation runs whole chains at level 4; both with the
   (ADR-0008, UC-15.5) and the correction of a result that has left the system (ADR-0022). A test
   runs a level-4 process into each and finds it halted at the step boundary with a decision request.
 - No level is reserved for a size or kind of organisation: a tenant of one person can set level 4.
+- A process at level 3 or above uses only adapters — workers, connectors, models — whose maturity
+  is *verified* or above: the conformance suite and the removal test both passed. A step of such a
+  process that only an adapter below *verified* could serve is not run on it, and the finding
+  names the step and the adapter.
 
 **Proven so far:** a process with a bare level does not register, by the named test. Levels per
-action and per risk class, the approval with a quality history, and level 4 itself are not built.
+action and per risk class, the approval with a quality history, the maturity threshold from level 3,
+and level 4 itself are not built.
 
 ## 3. Where the boundary lies
 
@@ -62,7 +67,8 @@ tenant's configuration. **Not the anchors themselves.** Which acts are anchored 
 
 The autonomy statement (ADR-0026, `contracts/shared/v1/Autonomy.json`), built and checked at
 registration; anchors (ADR-0008) and the correction anchor (ADR-0022); the emergency stop and its
-rule (UC-7.2, ADR-0023); `docs/architecture/governance.md` §1. Levels 1 to 3 per process and per
+rule (UC-7.2, ADR-0023); `docs/architecture/governance.md` §1; maturity and its threshold from level 3
+(`docs/architecture/contracts.md` §3, definition chapter 5.3; NTC-0051). Levels 1 to 3 per process and per
 action class are on the roadmap's `0.2.0`, level 4 on `0.6.0`, which is this use case's version.
 Definition `UC-7.1`.
 
