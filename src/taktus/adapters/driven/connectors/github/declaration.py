@@ -43,7 +43,16 @@ OPERATIONS: list[Json] = [
         "demand": {"quota_units": 1},
         "capability": "repository.issues",
         "effect": "read",
-        "summary": "Read one issue by number.",
+        "summary": "Read one issue by number, with its labels by name and its milestone by title.",
+    },
+    {
+        "name": "repository.issues.list",
+        "demand": {"quota_units": 20},
+        "capability": "repository.issues",
+        "effect": "read",
+        "summary": "List the issues in one state — open unless `state` says closed or all — "
+        "without pull requests, each as `repository.issues.read` reads it. At most twenty "
+        "pages of 100; `complete` says whether every page was read.",
     },
     {
         "name": "repository.issues.create",
@@ -140,6 +149,14 @@ OPERATIONS: list[Json] = [
         "summary": "Read one file of the repository at a ref — a branch, a tag or a commit; "
         "the default branch when none is given. Text as text, anything else as base64, with "
         "the commit the ref resolved to.",
+    },
+    {
+        "name": "repository.files.list",
+        "demand": {"quota_units": 2},
+        "capability": "repository.files",
+        "effect": "read",
+        "summary": "List the entries of one directory of the repository at a ref — a branch "
+        "or a commit — each with its name, path and type, with the commit the ref resolved to.",
     },
 ]
 

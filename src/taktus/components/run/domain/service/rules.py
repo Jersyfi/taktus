@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from string import Template
 from typing import Any
 
@@ -14,10 +15,12 @@ from taktus.components.run.domain.model.work import (
     Condition,
     ConstantRule,
     Expectation,
+    ReadyRule,
     TemplateRule,
     VerifyArtifactRule,
     select,
 )
+from taktus.components.run.domain.service import ready as standard
 from taktus.shared.v1 import Artifact
 
 
@@ -53,6 +56,44 @@ def check(rule: CheckRule, values: list[Any]) -> list[Any]:
         if (why := _violated(condition, value)) is not None:
             raise RuleFailed(f"condition {position + 1} does not hold: {why}")
     return values
+
+
+def ready(rule: ReadyRule, issue: Any, open_records: Any, open_issues: Any) -> dict[str, Any]:
+    """The ready standard over one issue's reading (`domain.service.ready`), once the rule's
+    expectation holds; every reason it does not hold is the failure."""
+    if not isinstance(issue, Mapping) or not isinstance(issue.get("number"), int):
+        raise RuleFailed("the issue is not a reading with a number")
+    records = standard.open_records(_names(open_records, "name"))
+    issues = {int(n) for n in _names(open_issues, "number")}
+    reasons = standard.admission(issue, records, issues)
+    missing = standard.missing_sections(str(issue.get("body") or ""))
+    result = {
+        "number": issue["number"],
+        "ready": not reasons,
+        "reasons": reasons,
+        "missing": missing,
+    }
+    if rule.expect == "ready" and reasons:
+        raise RuleFailed(f"issue #{issue['number']} is not ready: " + "; ".join(reasons))
+    if rule.expect == "sections_missing":
+        refused = [r for r in reasons if r.startswith(("not open", "a pull request"))]
+        if refused:
+            raise RuleFailed(f"issue #{issue['number']}: " + "; ".join(refused))
+        if not missing:
+            raise RuleFailed(
+                f"issue #{issue['number']} carries every section already: "
+                + ", ".join(f"'{name}'" for name in standard.SECTIONS)
+            )
+    return result
+
+
+def _names(items: Any, key: str) -> list[Any]:
+    """The values of a listing: each item itself, or its `key` where it is an object."""
+    if items is None:
+        return []
+    if not isinstance(items, list | tuple):
+        raise RuleFailed(f"expected a list, found {_short(items)}")
+    return [item.get(key) if isinstance(item, Mapping) else item for item in items]
 
 
 def unmet(expectation: Expectation, output: Any) -> str | None:
