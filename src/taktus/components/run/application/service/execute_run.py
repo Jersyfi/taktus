@@ -200,6 +200,19 @@ class ResumeRun:
     tenant: Tenant
     budget: Limits | None = None  # a changed limit; None keeps the run's
     stop_after: int | None = None
+    on_claim: bool = False
+    """Resumed because a runner claimed the run's job. A runner can die after the run's last
+    state was committed and before it completed the job; the next runner then claims a job
+    whose run has already ended. Such a run — finished, escalated, or halted for any cause but
+    a stop — is returned as it is, nothing executes, and the runner completes the job: what
+    waits for a person stays with the person (issue #73)."""
+
+
+def _ended(run: Run) -> bool:
+    """Whether a run has ended in a way a runner's claim does not continue."""
+    if run.state in (RunState.FINISHED, RunState.ESCALATED):
+        return True
+    return run.state is RunState.HALTED and run.cause is not Cause.STOP
 
 
 @dataclass(frozen=True)
@@ -316,6 +329,8 @@ class RunEngine:
             if run is None:
                 raise UnknownRun(command.run_id)
             span.set_attribute("process.version", run.process_version)
+            if command.on_claim and _ended(run):
+                return run
             if command.budget is not None and command.budget != run.budget:
                 run = run.model_copy(update={"budget": command.budget})
                 await self._state_budget(run, command.actor)

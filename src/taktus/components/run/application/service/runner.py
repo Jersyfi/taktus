@@ -7,7 +7,8 @@ died. While a run executes, a heartbeat renews the claim's lease; a runner that 
 renewing, the lease expires, and another runner claims the job and recovers the run at its
 last boundary (ADR-0013 A). A runner whose lease was lost while it was still executing — the
 database was unreachable for longer than the lease — stops the run at its next boundary and
-gives the job up: two runners never execute one run.
+gives the job up. Until that boundary the step it is inside still runs and commits, beside the
+runner that took the job over: the claim is not a fence yet (DEC-0066, #107).
 
 What happens when a run ends decides the job:
 
@@ -17,6 +18,10 @@ What happens when a run ends decides the job:
   or this one after its restart, resumes the run at the boundary it stopped at;
 - the engine raised — the job is *released* and counted as an attempt; after the queue's limit
   of attempts the job stays for a person.
+
+The same holds for a run that had already ended when its job was claimed: a runner that died
+after the run's last state was committed and before it completed the job leaves exactly that.
+The engine executes nothing for it (`ResumeRun.on_claim`), and the job is completed.
 
 `stop()` is the shutdown of ADR-0005 in operation: no new claim; every running run is asked to
 stop at its next step boundary, and the running worker step may finish up to the ceiling; then
@@ -167,6 +172,7 @@ class Runner:
                         run_id=executing.run_id,
                         actor=self.options.actor,
                         tenant=executing.tenant,
+                        on_claim=True,
                     )
                 )
             except Exception as error:  # every failure of one run is one outcome, not a crash

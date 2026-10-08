@@ -1,6 +1,7 @@
 """The runner against the memory queue: a submitted run is claimed once and executed, two
 runners never execute the same run, a shutdown releases the run at its boundary for the next
-runner, a lost lease stops the run, and a job that keeps failing is left for a person.
+runner, a lost lease stops the run, a job that keeps failing is left for a person, and a job
+whose run ended before its runner completed the job is completed without executing anything.
 
 The clock is the real one here: the runner's loop and the heartbeat sleep through it, and the
 `wait` steps give a run a duration to be interrupted in. Intervals are short.
@@ -27,6 +28,7 @@ from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.application.service import (
+    ResumeRun,
     RunEngine,
     Runner,
     RunnerOptions,
@@ -271,3 +273,36 @@ async def test_a_job_whose_run_cannot_be_executed_is_released_and_finally_left_a
     assert all("UnknownRun" in (o.error or "") for o in runner.outcomes)
     assert len(runner.outcomes) == 2, "after the last attempt the job is not claimed again"
     assert await world.claimable() == []
+
+
+async def test_a_job_whose_run_ended_before_its_runner_completed_it_is_completed_untouched() -> (
+    None
+):
+    """A runner can die after a run's last state was committed and before it completed the
+    job. The next runner claims a job whose run has ended: it executes nothing and completes
+    the job — a finished run is not attempted again, and an escalated or limit-halted run
+    stays with the person it waits for."""
+    world = World()
+    finished = await world.submit(rule("a", 1))
+    # The run executed to its end by someone whose completion of the job never arrived.
+    await world.engine.resume(ResumeRun(run_id=finished.id, actor="gone", tenant=TENANT))
+    escalated = await world.submit(rule("a", 2))
+    halted = await world.submit(rule("a", 3))
+    async with world.persistence.transaction(TENANT):
+        for run, state, cause in (
+            (escalated, RunState.ESCALATED, Cause.FAILURE),
+            (halted, RunState.HALTED, Cause.LIMIT),
+        ):
+            running = run.to(RunState.ADMITTED).to(RunState.RUNNING)
+            await world.runs.put(TENANT, running.to(state, cause, reason="before the runner died"))
+    before = {r.id: await world.kinds(r.id) for r in (finished, escalated, halted)}
+    runner = world.runner("r1")
+    await until(lambda: len(runner.outcomes) == 3)
+    await world.stop(runner)
+    assert [o.disposition for o in runner.outcomes] == ["completed"] * 3
+    assert all(o.error is None for o in runner.outcomes)
+    for run in (finished, escalated, halted):
+        assert await world.kinds(run.id) == before[run.id], "nothing executed"
+    assert (await world.stored(escalated.id)).state is RunState.ESCALATED
+    assert (await world.stored(halted.id)).state is RunState.HALTED
+    assert await world.claimable() == [], "every job completed"
