@@ -25,8 +25,8 @@ only a person running `tools/first_run.sh` with their own key can find the next 
 The live test this key is for does not exist yet (DEC-0046). It is written in the pull request
 that follows this need, as a job of the workflow `live` (`.github/workflows/live.yml`). That
 workflow never runs on a pull request (DEC-0048): the repository is public, and a key that costs
-money would spend on every push and be reachable from every workflow that names it. It runs every
-Monday and whenever someone starts it by hand, on `main` only.
+money would spend on every push and be reachable from every workflow that names it. It runs on the
+first of every month and whenever someone starts it by hand, on `main` only (DEC-0058).
 
 ## 3. By when
 
@@ -89,3 +89,19 @@ no usage yet and shows the spend limit you set. In *Settings â†’ Environments â†
 `CODING_AGENT_API_KEY` and the variable `LIVE_SPEND_CAP_USD` are listed, and the branch rule reads
 `main` and nothing else. After the first run, the workspace shows that run's usage and nothing
 else.
+
+## Outcome
+
+**Provided:** 2026-10-08
+**Confirmed by:** the environment `live` exists and admits the branch `main` alone; it lists the
+secret `CODING_AGENT_API_KEY` and the variable `LIVE_SPEND_CAP_USD` = `0.50`. The key was uploaded
+by the session straight from its file, without being printed. The first run of the live test,
+once its job is written (#68), confirms that the key is accepted.
+**How it was provided:** the owner decided two things differently from this record (DEC-0058,
+confirmation). **The key is the one already in the owner's credential directory**, not one of its
+own: section 5's "never NEED-0001's key" is set aside by the owner's decision. What that costs: a
+fault in a live test spends from the key real work uses, and revoking it would stop real work
+too; the cap of USD 0.50 per run and the provider workspace's budget of USD 50 bound the spend.
+**The cap per run is USD 0.50**, accepted by the owner. The environment, the secret and the
+variable were created by the session.
+**Recorded in:** [#97](https://github.com/Jersyfi/taktus/pull/97)

@@ -143,3 +143,24 @@ KUBECONFIG="$(sed -n 's/^TAKTUS_CREDENTIAL_DEPLOY_KUBECONFIG_FILE=//p' .env)" \
 
 prints `no`. A `yes` to the second means the account is wider than the plan and the role needs
 correcting before anything is installed with it.
+
+## Outcome
+
+**Provided:** 2026-10-08
+**Confirmed by:** section 7, run on 2026-10-08 from the owner's workstation with the kubeconfig
+file itself, since no `.env` exists in the checkout. The account answers as itself, a service
+account of the control plane's namespace. It may create deployments, ingresses and roles in the
+control plane's namespace and jobs and roles in the execution namespace (`yes`); it may not read
+pods of another namespace, read secrets of the cluster's system namespace, create namespaces,
+list nodes or create cluster roles (`no`). Nothing from the file was printed.
+**How it was provided:** as the owner decided (DEC-0057). The session prepared the two namespaces,
+the account, its long-lived token and the two namespaced roles as one manifest, outside this
+repository; the owner applied it on the machine, because the session's own permission check
+refused writing to the cluster over a root shell. The session then wrote the kubeconfig from the
+token and the cluster's certificate authority straight into a file readable by the owner alone,
+without the token passing through any output. The execution namespace enforces the restricted
+Pod Security profile; the control plane's namespace enforces the baseline profile and warns on
+anything below restricted, so that the database's image can start until the chart tightens it.
+The names, the address and the file's place are in the owner's private note beside the
+credential files.
+**Recorded in:** [#97](https://github.com/Jersyfi/taktus/pull/97)

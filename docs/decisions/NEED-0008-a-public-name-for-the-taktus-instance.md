@@ -121,3 +121,20 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://<the name>/
 
 answers at all — `404` is a perfectly good answer before Taktus is installed, and means the
 name reaches the platform's ingress. After the install the same command answers from Taktus.
+
+## Outcome
+
+**Provided:** 2026-10-08
+**Confirmed by:** the name resolves to the machine over IPv4 and IPv6; the ingress answers on it
+over IPv4; a certificate for it was issued first by the platform's staging issuer and then by its
+production issuer, validated over HTTP, and is held as a secret in the control plane's namespace,
+renewed by the platform's certificate manager. The staging certificate was removed again.
+**How it was provided:** the owner chose a short name of the project's domain and created its
+records, after deciding against the proposal of section 4 (DEC-0057, DEC-0058). The name, the
+issuer and the certificate's secret are in the owner's private note, not here. Two findings: the
+platform validates certificates over HTTP, so no access to the domain's name service is needed;
+and the cluster serves IPv4 only, so the name's IPv6 record points at an address where nothing
+answers — the certificate is issued because the issuing service falls back to IPv4, and a client
+that tries IPv6 first falls back too. Making the cluster serve IPv6 is a change of the platform,
+not of Taktus. The chart uses the existing certificate secret rather than requesting its own.
+**Recorded in:** [#97](https://github.com/Jersyfi/taktus/pull/97)

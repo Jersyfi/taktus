@@ -75,3 +75,16 @@ verified.
 Without revealing anything: in the hosting service's webhook settings, the recent deliveries
 list the test event with a success response. A delivery answered with a refusal means the two
 sides hold different values; set both again from the file.
+
+## Outcome
+
+**Provided:** 2026-10-08
+**Confirmed by:** the file is 64 hexadecimal characters, readable by the owner alone; the secret
+in the control plane's namespace holds the same value, compared by digest without either being
+printed.
+**How it was provided:** by the session, as the owner delegated (DEC-0058): generated on the
+owner's workstation straight into the file and the cluster secret, so that no person saw it. It
+becomes the webhook secret of Taktus's own app on the repository service (NEED-0013), set when the
+webhook is switched on at the install; section 3's webhook on the repository is replaced by the
+app's.
+**Recorded in:** [#97](https://github.com/Jersyfi/taktus/pull/97)

@@ -90,3 +90,14 @@ job `connector` passed its step `live connector test`, and the artifact `live-co
 lists the tests of `test_repository_live.py` as passed, not skipped. In the scratch repository,
 the closed pull requests list the ones the test opened. In *Settings → Environments → live*, the
 branch rule reads `main` and nothing else.
+
+## Outcome
+
+**Provided:** 2026-10-08
+**How:** **superseded, not provided.** The owner accepted the proposal and judged weekly runs
+excessive; the session, deciding how Taktus connects to the repository service, chose an app of
+its own (DEC-0058). The scratch repository becomes one more installation of that app, so no
+personal token is needed for it, and the live tests run monthly. NEED-0013 asks for the app.
+**Superseded by:** NEED-0013
+**Confirmed by:** nothing to confirm: no token was created.
+**Recorded in:** [#97](https://github.com/Jersyfi/taktus/pull/97)

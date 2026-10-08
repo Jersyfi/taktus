@@ -133,17 +133,19 @@ the naive count had shown 5 of 6. The audit found an owner action written as a n
 what can be checked exactly now is: every need named resolves to one that will be or was
 provided, every `TODO(owner)` to an open record, and every credential variable has the one form.
 Four needs were raised that had been deferred or never written — backups (NEED-0009), the
-webhook secret (NEED-0010), the live connector test in CI (NEED-0011), the coding agent in CI
+webhook secret (NEED-0010), the live connector test in CI (since superseded by Taktus's own app, NEED-0013), the coding agent in CI
 (NEED-0012) — and the licence is tracked as the owner's own question, DEC-0044, due before
 `1.0.0`.
 
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
 each with the pull request that recorded it. **Open:** DEC-0028, DEC-0029 and DEC-0030, raised
 by the pull request that brought in the vision layer — DEC-0030 narrowed on 2026-10-01 to the
-conditions the use cases add beyond the definition — DEC-0044, the licence, DEC-0053, the
-budget of the next live run, raised on 2026-10-07 because it exceeds what a session may spend
-alone. DEC-0055, raised on 2026-10-08 from the owner's idea, was answered the same day: what
-Taktus does is seen as it happens, as UC-6.10 requires for `0.3.0`. DEC-0034 and DEC-0037, raised by the
+conditions the use cases add beyond the definition — and DEC-0044, the licence. DEC-0053, the
+budget of the next live run, was answered on 2026-10-08: USD 3 in total. DEC-0055, raised on
+2026-10-08 from the owner's idea, was answered the same day: what Taktus does is seen as it
+happens, as UC-6.10 requires for `0.3.0`. The same day the owner decided that the deployed
+instance is production — Taktus manages itself there and steers the operation — and answered
+how the deployment's needs are provided (DEC-0057, DEC-0058). DEC-0034 and DEC-0037, raised by the
 pull request that took up the first run's findings, are answered: a worker with no calibration
 history reserves twice its estimate, and where a run produces a generated text is the session's
 to decide.
@@ -155,7 +157,7 @@ relying on it (#72); the reason #52 gave — that tests would otherwise need edi
 misreading of the use-case rule, which protects what a use case requires and not the files that
 test it. The model-reset reading stands. Live tests that need a credential run only on a
 schedule or by dispatch, on `main`, never for a fork, under a spend cap, with their secrets in
-the environment `live` (`.github/workflows/live.yml`); NEED-0011 and NEED-0012 were rewritten
+the environment `live` (`.github/workflows/live.yml`); both live-test needs were rewritten
 before they were provided. A session may spend up to USD 1 per task on the owner's credentials
 to derive a fact instead of asking (M2.8). DEC-0037's Option A waits for event reactions. And
 the work now comes from the backlog — the repository's issues — through a standing brief,
@@ -269,10 +271,6 @@ and carried in three places, none of which two pull requests can edit at once (D
 
 | What | On what | Since |
 |---|---|---|
-| installing the deployment, once its pull request has written it | NEED-0007: a kubeconfig for a deployment identity, so that the install needs no shell on the machine | the platform was inspected on 2026-09-23 and its interface is reachable from outside, which makes the narrow credential both possible and the better arrangement; needed by 2026-10-20 |
-| the instance holding real work | NEED-0009: a backup destination off the node; the database's volume is bound to one node, and a disk failure would lose the ledger (ADR-0013 C) | foreseeable since #40, raised 2026-10-01; needed by 2026-10-27 |
-| intake through the webhook | NEED-0010: the webhook signing secret, generated now and set once the public name exists | foreseeable since #40, raised 2026-10-01; needed by 2026-10-20 |
-| the instance's ingress, its certificate and the webhook | NEED-0008: a public name for the instance — a subdomain of the project's own domain, `int.taktus.eu` proposed, with the record to create | the same inspection; needed by 2026-10-20. Without it the chart renders with the ingress switched off and the instance keeps polling instead of reacting to events |
 | a removal-test verdict of *changed* through an alternative adapter | a second adapter for a capability a process uses; nothing today has one | #14. The *broke* verdict on a real process is no longer missing: the run of 2026-09-23 produced it for `connector.channel.repo`, naming eight steps across P-02 and P-03 |
 
 The first live end-to-end run is no longer blocked and has happened. It was blocked from #8,
@@ -282,7 +280,12 @@ of which two were between the request and the answer. That is the cost the timin
 ADR-0028 exists to prevent, measured.
 
 **Writing** the deployment is not blocked: the plan is `deploy/k8s/README.md`, built against a
-platform that was read in full on 2026-09-23. Only installing it is.
+platform that was read in full on 2026-09-23. Nothing the owner provides blocks installing it
+any more: since 2026-10-08 the deployment's access to the cluster, the public name with its
+certificate, the webhook secret, the backup store and Taktus's own app on the repository
+service exist (NEED-0007 to NEED-0010, NEED-0013); the connector moves to the app in #99. The
+instance holds real work once its backup and restore exist (#67), and is treated as production
+(DEC-0057).
 
 Nothing else is blocked. Everything not listed here can be built by a session without the
 owner.
@@ -318,6 +321,6 @@ rather than enforced, anything marked provisional.
 | the legal-anchor catalogue holds | `docs/architecture/governance.md` §2, `docs/decisions/anchors.md` M4.4 | not legally reviewed for any jurisdiction; who reviews it is DEC-0029 |
 | every principle is served by a use case, and a use case's state says how much of it stands | `docs/vision/README.md`, `docs/usecases/README.md` | the gates check that each principle is served and that a `verified` use case's tests pass; they cannot check that a use case *covers* its principle, or that a `building` use case's tests prove the part it says they prove |
 | a pull request description can be acted on without the diff | ADR-0017 §7 | the gate checks that the four sections are there, filled and in order; not that they are readable without the diff |
-| Taktus is repairable without Taktus: a restore, documented and exercised | ADR-0013 C | not for a deployed instance: there is no backup yet. Its destination is NEED-0009; the backup and its restore, exercised once, are their own pull request |
-| the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where a token is set. Since DEC-0048 it runs in the workflow `live` — weekly and by dispatch, on `main`, never on a pull request — which says in a notice that nothing ran until NEED-0011 is provided |
+| Taktus is repairable without Taktus: a restore, documented and exercised | ADR-0013 C | not for a deployed instance: there is no backup yet. Its destination exists (NEED-0009); Taktus keeps backups for a configurable time, 30 days by default, encrypted only if chosen (DEC-0058); the backup and its restore, exercised once, are #67 |
+| the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where a token is set. Since DEC-0048 it runs in the workflow `live` — monthly and by dispatch, on `main`, never on a pull request — which says in a notice that nothing ran until Taktus's own app is installed on a scratch repository (NEED-0013) |
 | a licence | ADR-0012 | open: all rights reserved, no outside contribution accepted. The owner's own question, DEC-0044, due before `1.0.0` and before the first outside contribution |
