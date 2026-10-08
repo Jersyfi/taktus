@@ -11,16 +11,19 @@ from typing import Any
 
 from taktus.components.run.domain.model.errors import RuleFailed
 from taktus.components.run.domain.model.work import (
+    BacklogRule,
     CheckRule,
     Condition,
     ConstantRule,
     Expectation,
     ReadyRule,
+    RoadmapRule,
     TemplateRule,
     VerifyArtifactRule,
     select,
 )
 from taktus.components.run.domain.service import ready as standard
+from taktus.components.run.domain.service import roadmap as plan
 from taktus.shared.v1 import Artifact
 
 
@@ -85,6 +88,80 @@ def ready(rule: ReadyRule, issue: Any, open_records: Any, open_issues: Any) -> d
                 + ", ".join(f"'{name}'" for name in standard.SECTIONS)
             )
     return result
+
+
+def backlog(rule: BacklogRule, issues: Any, open_records: Any) -> dict[str, Any]:
+    """The backlog in its order (`domain.service.ready.backlog`), the issues labelled `ready`
+    whose content fails the standard, and both as text."""
+    readings = _readings(issues)
+    records = standard.open_records(_names(open_records, "name"))
+    every = {int(issue["number"]) for issue in readings}
+    groups = standard.backlog(readings, records, every)
+    entries = [e for group in groups.values() for e in group]
+    failing = sorted(
+        (e for e in entries if standard.READY in e["labels"] and e["content"]),
+        key=lambda e: int(e["number"]),
+    )
+    disagreements = [
+        {"kind": "ready-fails-standard", "number": e["number"], "reasons": e["content"]}
+        for e in failing
+    ]
+    lines: list[str] = []
+    for heading, group in (
+        ("Ready, in the order a session takes them", "ready"),
+        ("Claimed", "claimed"),
+        ("Not ready", "not_ready"),
+    ):
+        lines.append(f"**{heading}**")
+        lines += [_entry_line(e, with_reasons=group == "not_ready") for e in groups[group]]
+        if not groups[group]:
+            lines.append("none")
+        lines.append("")
+    text = "\n".join(lines).rstrip()
+    failures = "\n".join(
+        f"- #{d['number']} is labelled `ready` and fails the standard: " + "; ".join(d["reasons"])
+        for d in disagreements
+    )
+    return {
+        **groups,
+        "disagreements": disagreements,
+        "text": text,
+        "disagreements_text": failures or "none",
+    }
+
+
+def roadmap(rule: RoadmapRule, text: Any, issues: Any) -> dict[str, Any]:
+    """The roadmap held against the open issues (`domain.service.roadmap`)."""
+    if not isinstance(text, str):
+        raise RuleFailed(f"the roadmap is not a text: {_short(text)}")
+    found = plan.milestones(text)
+    if not found:
+        raise RuleFailed("the text names no milestone (### `X.Y.Z`): it is not a roadmap")
+    disagreements = plan.reconcile(text, _readings(issues))
+    lines = "\n".join(f"- {plan.describe(d)}" for d in disagreements)
+    return {
+        "milestones": [m["milestone"] for m in found],
+        "disagreements": disagreements,
+        "disagreements_text": lines or "none",
+    }
+
+
+def _readings(items: Any) -> list[Mapping[str, Any]]:
+    """Issue readings, each an object with a whole number."""
+    if not isinstance(items, list | tuple):
+        raise RuleFailed(f"expected a list of issues, found {_short(items)}")
+    for item in items:
+        if not isinstance(item, Mapping) or not isinstance(item.get("number"), int):
+            raise RuleFailed(f"an issue is not a reading with a number: {_short(item)}")
+    return list(items)
+
+
+def _entry_line(entry: Mapping[str, Any], *, with_reasons: bool) -> str:
+    milestone, level = entry["milestone"] or "-", entry["priority"] or "-"
+    line = f"- #{entry['number']} · {milestone} · {level} · {entry['title']}"
+    if with_reasons and entry["reasons"]:
+        line += " — " + "; ".join(entry["reasons"])
+    return line
 
 
 def _names(items: Any, key: str) -> list[Any]:

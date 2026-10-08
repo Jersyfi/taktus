@@ -19,7 +19,7 @@ from pydantic import ValidationError
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import InvalidProcess, ProcessVersion
 from taktus.components.process.domain.service import validation
-from taktus.components.run.domain.model import ReadyRule, parse_work
+from taktus.components.run.domain.model import BacklogRule, ReadyRule, RoadmapRule, parse_work
 from taktus.shared.v1 import (
     EXACT_ADMISSIBLE,
     PRODUCING,
@@ -149,3 +149,18 @@ def test_the_ready_standard_is_read_by_an_exact_rule(
     work = parse_work(step, version.work.get(step.id), examples)
     assert isinstance(work, ReadyRule)
     assert work.expect == expect
+
+
+@pytest.mark.parametrize(("step_id", "kind"), [("order", BacklogRule), ("reconcile", RoadmapRule)])
+def test_p01s_order_and_reconciliation_are_exact_rules(step_id: str, kind: type) -> None:
+    """Issue #71: P-01's order and its reconciliation of the roadmap with the issues are each
+    a `rule` step classed `exact`, so that neither verdict can come from a model, and no step
+    of P-01 asks one (DEC-0080 carries the method provisionally)."""
+    path = ROOT / "blueprints" / "dev-orchestration" / "processes" / "P-01-roadmap-control.yaml"
+    with path.open(encoding="utf-8") as handle:
+        version = parse_bundle(yaml.safe_load(handle))
+    step = version.step(step_id)
+    assert step.method is Method.RULE and step.exactness is ExactnessClass.EXACT
+    examples = {name: declared.example for name, declared in version.inputs.items()}
+    assert isinstance(parse_work(step, version.work.get(step.id), examples), kind)
+    assert all(s.method is Method.RULE for s in version.steps)
