@@ -22,7 +22,10 @@ RUN uv sync --frozen --no-dev
 
 FROM python:3.13-slim-bookworm AS runtime
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 TAKTUS_STATE_DIR=/var/lib/taktus
-RUN groupadd --system taktus && useradd --system --gid taktus --home-dir /app taktus \
+# The user is pinned by number, 999: the chart runs the image as that number under runAsNonRoot
+# (deploy/k8s/chart/values.yaml, securityContext), and it must own what the image owns.
+RUN groupadd --system --gid 999 taktus \
+    && useradd --system --uid 999 --gid taktus --home-dir /app taktus \
     && mkdir -p /var/lib/taktus && chown taktus:taktus /var/lib/taktus
 WORKDIR /app
 COPY --from=build --chown=taktus:taktus /app /app

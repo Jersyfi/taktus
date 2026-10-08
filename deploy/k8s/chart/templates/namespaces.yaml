@@ -1,0 +1,26 @@
+{{- /*
+The two namespaces, only where the installing identity may create them (`namespaces.create`).
+By default they exist before the install and carry these labels from whoever created them
+(README §4): a namespace is a cluster-wide object, and the deployment identity has none.
+*/ -}}
+{{- if .Values.namespaces.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "taktus.executionNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+{{- end }}

@@ -1,9 +1,19 @@
 # Deploying Taktus on Kubernetes
 
-**This is the specification for the pull request that builds it, not the thing itself.** Nothing
-under `deploy/k8s/` renders yet. The plan below says what that pull request must produce, and
-why each part is there; it was written on 2026-09-23 against a cluster that was inspected
-read-only, and against the target decision DEC-0023.
+**The chart is built; the cluster execution adapter and the install are not.** This file was
+written on 2026-09-23 as the specification, against a cluster that was inspected read-only and
+against the target decision DEC-0023. Since #64 the chart under `chart/` renders what sections 1
+to 6 require, and a release tag builds the images (section 3). Section 10 says what is built and
+what still waits.
+
+```bash
+make helm                                            # the pinned helm, into .tools/bin
+.tools/bin/helm lint deploy/k8s/chart --strict -f deploy/k8s/values.example.yaml
+.tools/bin/helm template taktus deploy/k8s/chart --namespace <control plane namespace> -f <your values>
+```
+
+`values.example.yaml` is an example of the operator's values, used by the tests; every name in it
+is an example. The operator's own values file lives in their private place.
 
 **No deployment's own names are in this file.** No address, no hostname, no namespace name a
 particular cluster uses, no figure measured on one machine. The repository holds the
@@ -20,7 +30,7 @@ Two namespaces, and the boundary between them is the point.
 
 | Namespace | What runs there | Who may write in it |
 |---|---|---|
-| **the control plane's** | `taktusd` in its roles (`api`, `runner`, `scheduler`, `automation`), the database if it is deployed with Taktus, the ingress object | the deployment identity (CI or a person with `helm`) |
+| **the control plane's** | `taktusd` in its roles (`api`, `runner`, `scheduler`, `automation`), the database if it is deployed with Taktus, the ingress object | the deployment identity (a person with `helm`; CI never deploys) |
 | **the execution namespace** | one Job per execution unit with what it lives with — its Secret, its Services, its egress proxy — and nothing permanent | Taktus's own service account, and only for those objects and the jobs' logs |
 
 Nothing else. A third namespace holds whatever else the cluster runs; Taktus neither
@@ -28,9 +38,12 @@ administers the cluster nor reaches into it (ADR-0025 §1, DEC-0023).
 
 **Two identities, kept apart, and this is the part that is easy to get wrong.**
 
-- **The deployment identity** installs Taktus: it may create and change deployments,
-  services, secrets, config maps and volume claims *in the control plane's namespace*. It
-  belongs to CI or to the person running `helm`. It is **never** given to Taktus.
+- **The deployment identity** installs Taktus. In the two namespaces, and nowhere else, it may
+  create, change and delete secrets, config maps, services, service accounts, volume claims,
+  deployments, stateful sets, jobs, roles, role bindings, network policies and ingresses, and
+  read pods, their logs and events. It may not create a namespace or any object of the cluster
+  as a whole (NEED-0007). It belongs to the person running `helm`. It is **never** given to
+  Taktus. The chart renders no kind outside that list, and a test holds it to that.
 - **Taktus's own service account** runs the control plane. In the execution namespace it may:
 
   | Resource | Verbs | What for (§7) |
@@ -51,74 +64,39 @@ administers the cluster nor reaches into it (ADR-0025 §1, DEC-0023).
   Creating a Secret includes creating one of the type that asks the cluster for a token of a
   service account in that namespace. Therefore no service account in the execution namespace
   holds any Role, the one jobs run as included: a token for it opens nothing.
+  Taktus's token is mounted into the runner's pods alone, the role that creates jobs;
+  every other pod runs without one.
 
 The reason for the split is ADR-0025: an instance must not administer the infrastructure it
 runs on. A service account that could change its own deployment would be administering it.
 
 ## 2. The chart
 
-One chart, `deploy/k8s/chart/`, that renders both namespaces. The values keys below are the
-interface; their *values* are the operator's.
+One chart, `deploy/k8s/chart/`. Its interface is `chart/values.yaml`: every key with its default
+and a comment that says what it is for. The keys are the repository's; their *values* are the
+operator's. The parts that carry a decision:
 
-```
-image:
-  repository:            # where the control plane image is pulled from
-  tag:                   # the released version, never `latest`
-  pullPolicy:            # IfNotPresent
-  pullSecret:            # name of an existing pull secret; empty when the image is public
-
-roles:                   # one deployment per role (ADR-0002)
-  api:        { replicas:, resources: { requests: {cpu:, memory:}, limits: {memory:} } }
-  runner:     { replicas:, resources: {...} }
-  scheduler:  { replicas: 1, resources: {...} }   # elected; more than one is allowed and idle
-  automation: { replicas:, resources: {...} }
-
-database:
-  deploy: true           # a PostgreSQL of its own, deployed with the instance (DEC-0032); false: an existing server
-  storageClass:
-  size: 20Gi             # DEC-0033: cannot be enlarged on the target's storage class; watched from the first run
-  urlSecret:             # name of the Secret holding the connection URL
-  urlKey:                # the key inside it; mounted as a file, read through TAKTUS_DATABASE_URL_FILE
-
-execution:
-  namespace:             # the execution namespace's name
-  serviceAccount:        # the account jobs run as — not Taktus's own, and holding no Role
-  image:                 # the execution unit's image (the worker), by reference
-  defaults: { cpu:, memory:, wallSeconds:, startTimeoutSeconds: }
-  stateClaim:            # a volume claim in the execution namespace for the unit's state,
-                         # which outlives jobs; empty: the state dies with each job
-  egress:
-    proxyImage:          # the per-job egress proxy (section 6): any image with python3
-    enforce:             # true; false refuses a job whose frame names hosts, and every job
-                         # at autonomy level 3 or above (section 7)
-
-credentials:             # one entry per parameter of CREDENTIALS.md the instance needs
-  - parameter:           # e.g. credential.model_api_key
-    secret:              # the Secret's name in this cluster
-    key:                 # the key inside it
-    mountPath:           # where it is mounted; the variable TAKTUS_<KEY>_FILE points here
-
-ingress:
-  enabled:
-  className:
-  host:                  # the public name; the webhook arrives at <host><pathPrefix>/intake/<channel>
-  pathPrefix:            # TAKTUS_PATH_PREFIX when Taktus is served under a sub-path
-  tls: { secretName:, issuer:, issuerKind: }   # a certificate issuer, or an existing secret
-
-telemetry:
-  otlp: { endpoint:, protocol:, headersSecret:, headersKey: }   # all empty: spans stay local
-
-model: { endpoint:, name:, purposes:, billing: per_token, outputCap: hard }
-                         # outputCap: this tenant's endpoint holds the limit (research [A4]; M-03 passed
-                         # against it on 2026-10-01); for another endpoint, run M-03 and set what it shows
-
-capacity: { databaseVolumeMb:, storageExpandable:, storageWarnPercent:, actWithinDays: }
-```
+| Keys | What they decide |
+|---|---|
+| `namespaces.create` | `false` by default: both namespaces exist before the install, created by whoever may create namespaces, with the labels of section 4. The control plane renders into the release's namespace (`helm --namespace`), the execution units' objects into `execution.namespace`. `true` renders both Namespace objects with those labels, for a cluster where the installing identity may (DEC-0060) |
+| `image.repository`, `image.tag`, `image.pullSecret` | the control plane image; the tag is a version, and `latest` or an empty tag fails the render |
+| `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002); the scheduler is elected, more than one is allowed and idle |
+| `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
+| `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall |
+| `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults, the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges |
+| `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE` |
+| `ingress.*` | off unless `host` is given; `tls.secretName` names an existing certificate Secret, and then nothing is requested; only without it does `tls.issuer` ask the platform's certificate manager, by an annotation on the ingress |
+| `networkPolicy.*` | the name service, the API server's addresses, the ingress controller's namespace, and further egress rules for the hosts the control plane needs (section 5) |
+| `telemetry.otlp.*`, `model.*`, `capacity.*` | as their `TAKTUS_*` variables; `model.outputCap: hard` because this tenant's endpoint holds the limit (research [A4]; M-03 passed against it on 2026-10-01) — for another endpoint, run M-03 and set what it shows |
+| `env` | further non-secret `TAKTUS_*` settings — tenants, connectors, the provisional identity; a `_FILE` variable here fails the render, because a secret goes through `credentials` |
 
 **Every secret is mounted as a file and read through `TAKTUS_<KEY>_FILE`** — never handed to a
 container as an environment variable, because variables leak into process listings and child
 processes (`CREDENTIALS.md`). The chart's job is to mount them and set the `_FILE` variables;
-it never carries a value, and a values file in the repository never carries one either.
+it never carries a value, and a values file in the repository never carries one either. **The
+chart creates no Secret**: every Secret it names exists before the install — the database's
+password and URL, the webhook secret, the backup store's credential, the repository app's key,
+the certificate. The operator creates them, and the deployment identity may (section 1).
 
 **The database is the instance's own** (DEC-0032): the chart deploys a PostgreSQL with the
 instance, and no other system uses that server, because a shared database means the system meant
@@ -139,8 +117,18 @@ is full and the date it falls below 10 % free. Thirty days before that date the 
 and it needs those thirty days. Every job's pod carries `resources.limits.memory` equal to its
 unit's limit, because the node has no swap: a job without one is refused, not started.
 
-**Migrations** run as a `Job` with a `helm.sh/hook: pre-upgrade,pre-install` and the control
-plane's own image, `make migrate`. The instance does not migrate itself on start.
+**Migrations** run as a `Job` with the control plane's own image and the command `make migrate`
+runs (`alembic -c migrations/alembic.ini upgrade head`). The instance does not migrate itself on
+start. Every upgrade migrates before the new version starts (`pre-upgrade`). The first install
+migrates before anything starts when the database exists already (`database.deploy: false`,
+`pre-install`). When the chart deploys the database, the first install migrates right after
+creating it (`post-install`), because a hook that runs before the install has no database to
+migrate (DEC-0060). Until it is done the roles refuse to start against an empty schema and are
+restarted.
+
+**Every pod runs under the restricted profile**, the database included: not as root, no
+privilege escalation, every capability dropped, the runtime's default seccomp profile and a
+read-only root filesystem. The control plane's namespace can therefore enforce `restricted` too.
 
 ## 3. The image, and how it gets there
 
@@ -149,6 +137,12 @@ each worker that ships with the project (`workers/`), because the control plane 
 no worker code (DEC-0011). Multi-stage build from `deploy/docker/Dockerfile`, which already
 exists and is what `make up` uses.
 
+- `.github/workflows/images.yml` runs on a tag `v<version>` and on nothing else. It builds
+  `taktus`, `taktus-worker-script` and `taktus-worker-coding`, tags each with the version and
+  pushes them to the registry the repository variable `IMAGE_REGISTRY` names. Without the
+  variable it builds nothing, pushes nothing and says so. It has no deploy step, and a test
+  holds it to all three. The variable, and a push credential where the registry is not the
+  repository service's own, are NEED-0014.
 - The registry is named only by the values key `image.repository`. Which registry, and whether
   the package is public, is the operator's.
 - **Push-based, not pulled.** There is no GitOps controller in the target cluster, so the
@@ -160,7 +154,9 @@ exists and is what `make up` uses.
 
 ## 4. The execution namespace and its admission policy
 
-The namespace carries the Pod Security labels:
+The namespace carries the Pod Security labels. **They are set where the namespace is created**,
+outside the chart, because the deployment identity may not create or change a namespace; the
+chart sets them only when it renders the namespaces itself (`namespaces.create: true`):
 
 ```
 pod-security.kubernetes.io/enforce: restricted
@@ -217,6 +213,19 @@ need, and to the OTLP collector when one is configured.
 
 Both policies are in the chart, and both are rendered whether or not the cluster enforces
 them — see the next section for what happens when it does not.
+
+The chart renders these exceptions by those labels. The proxy may leave the cluster to the
+ports in `execution.egress.ports` (443 by default), to any
+address outside `execution.egress.exceptCidrs` — the private, shared and link-local ranges, so
+neither the cluster's own networks nor the metadata address — and to the name service.
+
+Some reaching-out the chart cannot know: the API server's addresses
+(`networkPolicy.apiServer.cidrs`), the ingress controller's namespace
+(`networkPolicy.ingressController.namespace`), and the hosts the control plane's connectors,
+model and collector need (`networkPolicy.controlPlaneEgress`, as egress rules). A certificate
+manager that proves a name over HTTP starts a challenge pod in the namespace of the certificate;
+`networkPolicy.ingressController.alsoTo` names it by its labels, so that renewal is not refused
+by the default-deny.
 
 ## 6. Egress: a host list is not a network policy
 
@@ -313,20 +322,22 @@ everything is deleted, and that no call leaves the Role.
 ## 8. What the deployment still needs from the operator
 
 Each of these is a needs request in `docs/decisions/`, because none of it is a session's to
-create:
+create. All but the last were provided on 2026-10-08; their outcomes are in the register, and
+the names they gave are in the owner's private note.
 
-- **A kubeconfig for the deployment identity** (NEED-0007) — a service account with the Role of section 1,
-  its token and the cluster's CA. Where the API server is reachable from outside, this replaces
-  shell access entirely, which is the better arrangement: the deployment needs no account on the
-  machine.
-- **A public name for the ingress**, and the TLS arrangement behind it: a subdomain of the
-  project's own domain, proposed in NEED-0008.
-- **The webhook signing secret** (NEED-0010): generated now, set at the hosting service and in
-  the instance in one move once the ingress name exists; the connector refuses every delivery it
-  cannot verify.
+- **A kubeconfig for the deployment identity** (NEED-0007): a namespaced account with the rights
+  of section 1, its token and the cluster's certificate authority. The two namespaces were
+  created with it, outside the chart, with their Pod Security labels.
+- **A public name for the ingress** (NEED-0008), with its certificate as a Secret in the control
+  plane's namespace, renewed by the platform's certificate manager: `ingress.host` and
+  `ingress.tls.secretName`.
+- **The webhook signing secret** (NEED-0010), a Secret in the control plane's namespace, named in
+  `credentials`.
 - **A backup destination off the node** (NEED-0009); see §9.
 - **The database decision** — answered (DEC-0032): a PostgreSQL of its own, deployed with the
   instance; its volume 20 Gi (DEC-0033).
+- **The registry the images are pushed to** (NEED-0014): the repository variable the image
+  workflow reads, and a push credential where the registry is not the repository service's own.
 
 ## 9. What this plan does not cover
 
@@ -340,3 +351,23 @@ create:
   request, and its destination off the node is NEED-0009; ADR-0013 C — a manual restore path,
   documented and exercised — is not satisfied by a volume snapshot nobody has restored. Until
   NEED-0009 is provided and the restore has been exercised, the instance holds no real work.
+
+## 10. What is built, and what still waits
+
+**Built** (#64): the chart, rendering sections 1, 2, 4 and 5 — both namespaces' objects, one
+deployment per role, the database with its volume, the migrations, the two service accounts with
+the Role, the default-deny policies both ways with their exceptions, the ingress; every secret a
+mounted file. `helm lint` and `helm template` run in CI against `values.example.yaml`, and
+`tests/governance/test_chart.py` reads the rendered manifests back. The image workflow of
+section 3.
+
+**Waits:**
+
+- **the cluster execution adapter on a real cluster** (section 7). It is built (#65) and the
+  chart wires it: `execution.kind: cluster` sets `TAKTUS_EXECUTION=cluster` with the namespace,
+  the jobs' account, `execution.egress.enforce` and `execution.stateClaim`. The default stays
+  `endpoint` until the install has run it on the target. The Role is the one of section 1
+  (DEC-0061).
+- **the install** on the target, with its ingress and webhook intake (#66), and the registry the
+  images go to (NEED-0014).
+- **backups** (section 9, #67).

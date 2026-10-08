@@ -1,0 +1,8 @@
+# The Taktus chart: the control plane in its namespace, the execution namespace beside it
+# (deploy/k8s/README.md). It renders no cluster-wide object and no secret value.
+apiVersion: v2
+name: taktus
+description: Taktus, an operating layer for a business — the control plane and its execution namespace
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

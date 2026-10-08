@@ -1,0 +1,29 @@
+# An example of the operator's values, for `helm lint` and `helm template` in CI and for reading.
+# Every name in it is an example, not the name any cluster uses; the operator's own values file
+# lives in their private place, never in this repository. No hostname, no address, no secret
+# value: the Secrets named here exist before the install and hold the values.
+#
+#   helm template taktus deploy/k8s/chart --namespace taktus -f deploy/k8s/values.example.yaml
+
+image:
+  repository: taktus
+  tag: "0.1.0"
+
+execution:
+  namespace: taktus-execution
+  image: "taktus-worker-coding:0.1.0"
+
+database:
+  passwordSecret: taktus-database
+  passwordKey: password
+  urlSecret: taktus-database
+  urlKey: url
+
+credentials:
+  - parameter: credential.model_api_key
+    secret: taktus-model
+    key: api-key
+
+networkPolicy:
+  ingressController:
+    namespace: ingress

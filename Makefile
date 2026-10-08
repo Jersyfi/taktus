@@ -48,7 +48,13 @@ gate-arch: env ## Adapter obligation, component boundaries, no product names in 
 gate-conformance: env ## Contract conformance suite, both contracts: starts the reference worker and connector, runs the suite and the meta-tests, stops them
 	$(UV) run tools/gate.py conformance tests/conformance
 
-gate-governance: env ## Anchors hold, limits never breach, least privilege
+# The chart's tests (tests/governance/test_chart.py) render it with helm. `make helm` installs the
+# pinned version into .tools/bin, which the tests use first; without helm they skip and say so,
+# and CI, which runs this target, sets TAKTUS_REQUIRE_HELM so that they cannot.
+helm: ## Install the pinned helm into .tools/bin, for the chart's tests (deploy/k8s/chart)
+	tools/install_helm.sh
+
+gate-governance: env ## Anchors hold, limits never breach, least privilege; the chart, rendered with helm (`make helm`), and the image workflow
 	$(UV) run tools/gate.py governance tests/governance
 
 gate-exactness: env ## `exact` steps never take their final value from a variable method
@@ -131,4 +137,4 @@ status: need-uv ## Print what is needed from the owner, from the register: the l
 
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases test ## Everything CI runs
 
-.PHONY: help doctor env install status usecases test images gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates
+.PHONY: help doctor env install status usecases test images helm gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates

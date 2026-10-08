@@ -1,0 +1,68 @@
+{{- /*
+What every role is told that is not a secret. A secret never appears here: it is a mounted file
+whose path is set in the deployment (control-plane.yaml).
+*/ -}}
+{{- $execution := .Values.execution -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "taktus.fullname" . }}-config
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+data:
+  TAKTUS_HTTP_HOST: "0.0.0.0"
+  TAKTUS_HTTP_PORT: "8080"
+  TAKTUS_PATH_PREFIX: {{ .Values.ingress.pathPrefix | default "/" | quote }}
+  TAKTUS_MIGRATE_ON_START: "false"
+  TAKTUS_STATE_DIR: /var/lib/taktus
+  TAKTUS_SHUTDOWN_CEILING_SECONDS: {{ .Values.shutdownCeilingSeconds | quote }}
+  TAKTUS_LOG_LEVEL: {{ .Values.logLevel | quote }}
+  TAKTUS_EXECUTION: {{ $execution.kind | quote }}
+  {{- with $execution.endpoint }}
+  TAKTUS_WORKER: {{ . | quote }}
+  {{- end }}
+  {{- with $execution.image }}
+  TAKTUS_EXECUTION_UNIT: {{ include "taktus.imageRef" (dict "what" "execution.image" "ref" .) | quote }}
+  {{- end }}
+  TAKTUS_EXECUTION_UNIT_PORT: {{ $execution.unitPort | quote }}
+  TAKTUS_EXECUTION_CPUS: {{ $execution.defaults.cpus | quote }}
+  TAKTUS_EXECUTION_MEMORY_MB: {{ $execution.defaults.memoryMb | quote }}
+  TAKTUS_EXECUTION_WALL_SECONDS: {{ $execution.defaults.wallSeconds | quote }}
+  TAKTUS_EXECUTION_START_TIMEOUT_SECONDS: {{ $execution.defaults.startTimeoutSeconds | quote }}
+  TAKTUS_EXECUTION_EGRESS_IMAGE: {{ include "taktus.imageRef" (dict "what" "execution.egress.proxyImage" "ref" $execution.egress.proxyImage) | quote }}
+  # Read by the cluster execution adapter (TAKTUS_EXECUTION=cluster): where its jobs go, the
+  # account they run as, whether a frame's host list must be enforced, and the claim the units'
+  # state lives on (README §6, §7).
+  TAKTUS_EXECUTION_NAMESPACE: {{ include "taktus.executionNamespace" . | quote }}
+  TAKTUS_EXECUTION_SERVICE_ACCOUNT: {{ $execution.serviceAccount | quote }}
+  TAKTUS_EXECUTION_EGRESS_ENFORCE: {{ $execution.egress.enforce | quote }}
+  {{- with $execution.stateClaim }}
+  TAKTUS_EXECUTION_STATE_CLAIM: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.telemetry.otlp.endpoint }}
+  TAKTUS_OTLP_ENDPOINT: {{ . | quote }}
+  TAKTUS_OTLP_PROTOCOL: {{ $.Values.telemetry.otlp.protocol | quote }}
+  {{- end }}
+  {{- with .Values.model.endpoint }}
+  TAKTUS_MODEL_ENDPOINT: {{ . | quote }}
+  TAKTUS_MODEL_NAME: {{ required "model.name is required with model.endpoint" $.Values.model.name | quote }}
+  {{- with $.Values.model.purposes }}
+  TAKTUS_MODEL_PURPOSES: {{ . | quote }}
+  {{- end }}
+  TAKTUS_MODEL_BILLING: {{ $.Values.model.billing | quote }}
+  TAKTUS_MODEL_OUTPUT_CAP: {{ $.Values.model.outputCap | quote }}
+  {{- end }}
+  TAKTUS_CAPACITY_DATABASE_VOLUME_MB: {{ include "taktus.databaseVolumeMb" . | quote }}
+  TAKTUS_CAPACITY_STORAGE_EXPANDABLE: {{ .Values.capacity.storageExpandable | quote }}
+  TAKTUS_CAPACITY_STORAGE_WARN_PERCENT: {{ .Values.capacity.storageWarnPercent | quote }}
+  TAKTUS_CAPACITY_ACT_WITHIN_DAYS: {{ .Values.capacity.actWithinDays | quote }}
+  {{- range $name, $value := .Values.env }}
+  {{- if not (hasPrefix "TAKTUS_" $name) }}
+  {{- fail (printf "env.%s: only TAKTUS_* settings belong here" $name) }}
+  {{- end }}
+  {{- if hasSuffix "_FILE" $name }}
+  {{- fail (printf "env.%s: a secret's file is set through credentials, which mounts it" $name) }}
+  {{- end }}
+  {{ $name }}: {{ $value | quote }}
+  {{- end }}
