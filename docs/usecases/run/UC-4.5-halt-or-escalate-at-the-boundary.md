@@ -7,7 +7,7 @@ serves: [P10, P12]
 state: building
 version: 0.2.0
 tests: [tests/components/run/test_engine.py::test_no_worker_for_the_capabilities_fails_the_step_and_escalates, tests/components/run/test_engine.py::test_a_failing_assignment_escalates_with_what_it_used, tests/components/run/test_engine.py::test_a_worker_that_cannot_be_reached_fails_the_step_with_that_cause, tests/components/run/test_engine.py::test_the_worker_s_own_rejection_halts_the_run_the_same_way, tests/components/run/test_engine.py::test_a_failed_check_escalates_and_produces_nothing, tests/components/run/test_engine.py::test_only_a_halted_or_escalated_run_resumes, tests/components/run/test_provenance.py::test_a_failed_or_rejected_step_leaves_no_record]
-adrs: {ADR-0005: a3957391cbc7, ADR-0021: 202e0442e7ec, ADR-0023: 949c6f4e13af}
+adrs: {ADR-0005: c28377b9027e, ADR-0021: 202e0442e7ec, ADR-0023: 949c6f4e13af}
 supersedes: null
 ---
 
@@ -62,3 +62,17 @@ situation package needs the decision and notification paths of that milestone; t
 escalation at the boundary are `0.1.0` and built. The definition called the escalation with its
 package `UC-4.6` and the intervention `UC-7.2`; the repository numbered it `UC-4.5`
 (`NUMBERING.md`).
+
+**What ADR-0021 supersedes in the definition's text.** The definition knew one way of going wrong:
+a business-critical finding or problem brings in a person with a complete situation package. Since
+ADR-0021 there are two, and the requirement is kept for both by different use cases:
+
+- a **failure** — a step did not complete — halts or escalates under this use case;
+- a **result defect** — a run completed and its result is wrong — never shows as a failure. It is
+  found by a check on the result (UC-4.10), escalated or stopped by the rule of ADR-0023 (UC-7.2),
+  and carried to a person as an incident with the same five-part situation package (UC-6.8).
+
+The definition's single escalation path for every finding is superseded by that split; its
+requirement — a business-critical finding always brings in a person, with everything needed to act
+— holds on both paths. That is why section 3 says *not a result defect* and section 1 still says
+*finding*.

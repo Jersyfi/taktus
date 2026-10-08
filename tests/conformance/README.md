@@ -11,8 +11,8 @@ as a foreign one would be reached; the suite never imports it.
 | `test_worker_v1_faults.py` | for every fault the reference worker can inject, the suite fails on exactly that check |
 | `test_worker_v1_coding.py` | the coding worker against the fake agent passes the same checks in both authentication modes and fails exactly the check of each fault; a token limit halts it at a boundary and the resume continues; an expired session and an exhausted window halt it too |
 | `test_connector_v1_rules.py` | the connector rules on known-good and known-bad documents |
-| `test_connector_v1_reference.py` | the reference connector passes C-01 to C-09 against the fake service; C-10 stays pending; the fake holds one record per key afterwards |
-| `test_connector_v1_faults.py` | for every fault the reference connector can inject, the suite fails on exactly that check |
+| `test_connector_v1_reference.py` | the reference connector passes C-01 to C-09 against the fake service, with a token and as Taktus's own app (ADR-0033); C-10 stays pending; the fake holds one record per key afterwards; as the app, no token the fake issued and no statement the connector signed appears in the report or the log — the suite's C-04 cannot know them |
+| `test_connector_v1_faults.py` | for every fault the reference connector can inject, the suite fails on exactly that check; the app serving a call without a credential fails C-03 |
 | `test_taktusctl.py` | `taktusctl conformance run` end to end, for both contracts |
 
 Credential values are random per test and reach the adapters through their environment only;

@@ -49,4 +49,4 @@ it does not enforce that the rule checks the right thing — a rule that compare
 itself passes the gate. Exactness prevents a wrong value from being *produced*; it does not
 prevent a correct value from *becoming* wrong when its source changes (ADR-0021). What an
 exactness class covers and what it does not is stated per process in its exactness statement
-(`docs/usecases/UC-4-exactness-statement.md`, `0.5.0`).
+(`docs/usecases/process/UC-6.9-the-exactness-statement.md`, `0.5.0`).

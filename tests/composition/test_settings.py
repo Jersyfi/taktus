@@ -175,7 +175,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 53, "every setting is in the startup log"
+    assert len(effective) == 57, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -237,6 +237,37 @@ def test_the_budget_settings_are_validated_and_the_price_table_read(tmp_path: Pa
         settings(TAKTUS_MODEL_BILLING="per_mood")
 
 
+@pytest.mark.parametrize(
+    ("uncalibrated_margin", "below"), [("0", True), ("0.05", True), ("0.1", False)]
+)
+def test_a_margin_below_the_floor_is_a_warning_at_startup(
+    uncalibrated_margin: str, below: bool
+) -> None:
+    """The value holds (DEC-0047), and the startup log says so: a warning naming the value and
+    the floor. At or above the floor, nothing is said."""
+    loaded = settings(TAKTUS_BUDGET_UNCALIBRATED_MARGIN=uncalibrated_margin)
+    assert loaded.budget.uncalibrated_margin == float(uncalibrated_margin), "the value holds"
+    lines: list[str] = []
+    structlog.configure(
+        processors=daemon_logging.processors(),
+        wrapper_class=structlog.make_filtering_bound_logger(0),
+        logger_factory=lambda *_: _Capture(lines),
+        cache_logger_on_first_use=False,
+    )
+    try:
+        daemon_logging.log_effective_configuration(loaded)
+    finally:
+        structlog.reset_defaults()
+    warnings = [json.loads(line) for line in lines if json.loads(line)["level"] == "warning"]
+    if not below:
+        assert warnings == []
+        return
+    (warning,) = warnings
+    assert warning["TAKTUS_BUDGET_UNCALIBRATED_MARGIN"] == f"{float(uncalibrated_margin):g}"
+    assert warning["floor"] == "0.1"
+    assert "below the floor" in warning["event"]
+
+
 def test_the_capacity_thresholds_are_named_settings_with_defaults() -> None:
     capacity = settings().capacity
     assert (capacity.storage_warn_percent, capacity.storage_refuse_percent) == (10.0, 2.0)
@@ -272,3 +303,24 @@ def test_every_capacity_setting_is_read_from_its_variable() -> None:
     effective = dict(loaded.effective())
     assert effective["TAKTUS_CAPACITY_STORAGE_EXPANDABLE"] == "false"
     assert effective["TAKTUS_EXECUTION_MEMORY_UNENFORCED"] == "true"
+
+
+def test_the_cluster_kind_needs_its_namespace_and_reads_its_settings() -> None:
+    with pytest.raises(ConfigurationError, match="TAKTUS_EXECUTION_NAMESPACE"):
+        settings(TAKTUS_EXECUTION="cluster", TAKTUS_EXECUTION_UNIT="worker:1")
+    execution = settings(
+        TAKTUS_EXECUTION="cluster",
+        TAKTUS_EXECUTION_UNIT="worker:1",
+        TAKTUS_EXECUTION_NAMESPACE="jobs",
+        TAKTUS_EXECUTION_STATE_CLAIM="unit-state",
+    ).execution
+    assert execution.kind is ExecutionKind.CLUSTER and execution.namespace == "jobs"
+    assert execution.egress_enforced is True, "network policies are enforced unless told not"
+    assert execution.state_claim == "unit-state" and execution.service_account is None
+    off = settings(
+        TAKTUS_EXECUTION="cluster",
+        TAKTUS_EXECUTION_UNIT="worker:1",
+        TAKTUS_EXECUTION_NAMESPACE="jobs",
+        TAKTUS_EXECUTION_EGRESS_ENFORCE="false",
+    ).execution
+    assert off.egress_enforced is False

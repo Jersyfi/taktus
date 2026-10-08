@@ -15,6 +15,13 @@ What it enforces, because the connector's checks depend on it:
   was started with (`FAKE_REPOSITORY_TOKENS`, `value:scope,...`; scope `read` or `write`).
   No or unknown value: 401. A `read` scope on a write: 403. This is what lets the tests show
   that the connector acts with the requesting identity's credential and no other.
+- **An app of its own** (ADR-0033), when started with one (`FAKE_REPOSITORY_APP`,
+  `<app id>:<path of the app's public key>`). `GET /repos/{owner}/{repo}/installation` and
+  `POST /app/installations/{id}/access_tokens` accept only a statement signed with the app's
+  private key (RS256, issuer the app id, valid ten minutes at most) and answer as the service
+  does: the installation, and a token that lives `token_seconds` (an hour unless changed). The
+  token acts with write scope until it expires or is revoked, as a bot whose login ends in
+  `[bot]`. Every repository is installed until `POST /_fake/app` says otherwise.
 - **Pull request uniqueness.** A second open pull request for the same head branch is refused
   with 422, as the real service does.
 - **Paging.** Comment and issue lists page with `per_page`/`page` and a `Link: <…>; rel="next"`
@@ -31,8 +38,13 @@ What it enforces, because the connector's checks depend on it:
 Test-only endpoints under `/_fake/`: `GET /_fake/state` counts what exists, `POST /_fake/reset`
 empties the store, `POST /_fake/outage` with `{"on": true}` makes every other request answer 503
 until switched off, `POST /_fake/hang` with `{"seconds": 2}` makes every other request wait
-that long before answering, so that a client's timeout can be provoked. Standard library only;
-runnable as `python3 tests/fakes/repository_service.py --port 9200`.
+that long before answering, so that a client's timeout can be provoked. `POST /_fake/app` with
+any of `{"installed": false, "suspended": true, "token_seconds": 120}` changes the app's
+installation — removing it revokes every token it issued — and `GET /_fake/app` lists every
+token and signed statement the fake has seen, so that a test can look for them where they must
+not be. Standard library only, except that the app's signature is checked with the project's
+JWT library, imported when an app is configured; runnable as
+`python3 tests/fakes/repository_service.py --port 9200`.
 """
 
 from __future__ import annotations
@@ -42,6 +54,7 @@ import base64
 import json
 import os
 import re
+import secrets
 import sys
 import threading
 import time
@@ -54,6 +67,9 @@ from urllib.parse import parse_qs, unquote, urlparse
 type Json = dict[str, Any]
 
 TOKENS_VARIABLE = "FAKE_REPOSITORY_TOKENS"
+APP_VARIABLE = "FAKE_REPOSITORY_APP"
+APP_LOGIN = "taktus-fake[bot]"
+APP_INSTALLATION = 7
 
 
 def now() -> str:
@@ -82,9 +98,25 @@ class Repository:
 
 
 @dataclass
+class App:
+    """The app the fake knows: its identifier, its public key, and its one installation."""
+
+    app_id: str
+    public_key: str
+    installed: bool = True
+    suspended: bool = False
+    token_seconds: int = 3600
+    issued: list[str] = field(default_factory=list)
+    statements: list[str] = field(default_factory=list)
+    requested: list[Json] = field(default_factory=list)  # the bodies of every exchange
+
+
+@dataclass
 class Store:
     base_url: str
     tokens: dict[str, str]  # value -> scope
+    app: App | None = None
+    expiry: dict[str, float] = field(default_factory=dict)  # an app token's value -> its end
     repositories: dict[str, Repository] = field(default_factory=dict)
     outage: bool = False
     hang_seconds: float = 0.0
@@ -148,7 +180,7 @@ class Store:
             "title": title,
             "body": body,
             "state": "open",
-            "user": {"login": login, "id": 1000 + len(repo.issues), "type": "User"},
+            "user": {"login": login, "id": 1000 + len(repo.issues), "type": kind_of(login)},
             "labels": [],
             "html_url": f"{self.base_url}/{repo.full_name}/issues/{number}",
             "created_at": now(),
@@ -260,12 +292,89 @@ class Handler(BaseHTTPRequestHandler):
         parsed = json.loads(raw)
         return parsed if isinstance(parsed, dict) else {}
 
-    def _scope(self) -> str | None:
+    def _bearer(self) -> str | None:
         header = self.headers.get("Authorization") or ""
         match = re.fullmatch(r"(?:Bearer|token) (\S+)", header)
-        if match is None:
+        return None if match is None else match.group(1)
+
+    def _scope(self) -> str | None:
+        value = self._bearer()
+        if value is None:
             return None
-        return self.store.tokens.get(match.group(1))
+        end = self.store.expiry.get(value)
+        if end is not None and time.time() >= end:
+            return None
+        return self.store.tokens.get(value)
+
+    def _login(self) -> str:
+        return APP_LOGIN if self._bearer() in self.store.expiry else "fake-user"
+
+    # --- the app ---------------------------------------------------------------------------------
+
+    def _app_route(self, method: str, path: str, body: Json) -> bool:
+        """Answer the two requests an app signs, if this is one of them."""
+        installation = re.fullmatch(r"/repos/([^/]+)/([^/]+)/installation", path)
+        exchange = re.fullmatch(r"/app/installations/(\d+)/access_tokens", path)
+        if not ((method == "GET" and installation) or (method == "POST" and exchange)):
+            return False
+        if self.store.outage:
+            self._send(503, {"message": "Service unavailable"})
+            return True
+        app = self.store.app
+        if app is None or not self._signed_by(app):
+            self._send(401, {"message": "A JSON web token could not be decoded"})
+            return True
+        with self.store.lock:
+            if installation:
+                if not app.installed:
+                    self._send(404, {"message": "Not Found"})
+                    return True
+                self._send(200, {"id": APP_INSTALLATION, "app_id": app.app_id})
+                return True
+            assert exchange is not None
+            if not app.installed or int(exchange.group(1)) != APP_INSTALLATION:
+                self._send(404, {"message": "Not Found"})
+                return True
+            if app.suspended:
+                self._send(403, {"message": "This installation has been suspended"})
+                return True
+            app.requested.append(body)
+            token = "ghs_fake" + secrets.token_hex(16)
+            end = time.time() + app.token_seconds
+            app.issued.append(token)
+            self.store.tokens[token] = "write"
+            self.store.expiry[token] = end
+            expires_at = datetime.fromtimestamp(end, UTC).isoformat(timespec="seconds")
+            self._send(
+                201,
+                {
+                    "token": token,
+                    "expires_at": expires_at.replace("+00:00", "Z"),
+                    "permissions": {"contents": "write", "issues": "write", "metadata": "read"},
+                    "repository_selection": "selected",
+                },
+            )
+            return True
+
+    def _signed_by(self, app: App) -> bool:
+        import jwt  # the one import outside the standard library, and only for the app
+
+        statement = self._bearer()
+        if statement is None:
+            return False
+        app.statements.append(statement)
+        try:
+            claims = jwt.decode(
+                statement,
+                app.public_key,
+                algorithms=["RS256"],
+                issuer=app.app_id,
+                leeway=60,
+                options={"require": ["exp", "iat", "iss"]},
+            )
+        except jwt.PyJWTError:
+            return False
+        return int(claims["exp"]) - int(claims["iat"]) <= 660
 
     def _guard(self, *, write: bool) -> bool:
         if self.store.hang_seconds:
@@ -290,6 +399,21 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/_fake/state":
             self._send(200, self.store.state())
             return
+        if url.path == "/_fake/app":
+            app = self.store.app
+            self._send(
+                200,
+                {}
+                if app is None
+                else {
+                    "issued": app.issued,
+                    "statements": app.statements,
+                    "requested": app.requested,
+                },
+            )
+            return
+        if self._app_route("GET", url.path, {}):
+            return
         if not self._guard(write=False):
             return
         with self.store.lock:
@@ -303,7 +427,29 @@ class Handler(BaseHTTPRequestHandler):
                 self.store.repositories.clear()
                 self.store.ci_conclusion = "success"
                 self.store.ci_pending = False
+            if self.store.app is not None:
+                self.store.app.installed, self.store.app.suspended = True, False
+                self.store.app.token_seconds = 3600
             self._send(200, {"ok": True})
+            return
+        if url.path == "/_fake/app":
+            app = self.store.app
+            if app is None:
+                self._send(404, {"message": "no app configured"})
+                return
+            with self.store.lock:
+                if "installed" in body:
+                    app.installed = bool(body["installed"])
+                    if not app.installed:
+                        for token in app.issued:
+                            self.store.tokens.pop(token, None)
+                if "suspended" in body:
+                    app.suspended = bool(body["suspended"])
+                if "token_seconds" in body:
+                    app.token_seconds = int(body["token_seconds"])
+            self._send(200, {"installed": app.installed, "suspended": app.suspended})
+            return
+        if self._app_route("POST", url.path, body):
             return
         if url.path == "/_fake/outage":
             self.store.outage = bool(body.get("on"))
@@ -458,7 +604,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _post(self, path: str, body: Json) -> None:
         store = self.store
-        login = "fake-user"
+        login = self._login()
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/issues/(\d+)/comments", path):
             repo = store.repository(m.group(1), m.group(2))
             number = int(m.group(3))
@@ -471,7 +617,7 @@ class Handler(BaseHTTPRequestHandler):
             comment = {
                 "id": repo.next_comment,
                 "body": body["body"],
-                "user": {"login": login, "id": 1, "type": "User"},
+                "user": {"login": login, "id": 1, "type": kind_of(login)},
                 "html_url": (
                     f"{store.base_url}/{repo.full_name}/issues/{number}"
                     f"#issuecomment-{repo.next_comment}"
@@ -642,6 +788,19 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"message": "Not Found"})
 
 
+def kind_of(login: str) -> str:
+    return "Bot" if login.endswith("[bot]") else "User"
+
+
+def app_from_environment() -> App | None:
+    raw = os.environ.get(APP_VARIABLE, "")
+    if not raw:
+        return None
+    app_id, _, key_path = raw.partition(":")
+    with open(key_path, encoding="utf-8") as handle:
+        return App(app_id, handle.read())
+
+
 def tokens_from_environment() -> dict[str, str]:
     raw = os.environ.get(TOKENS_VARIABLE, "")
     tokens: dict[str, str] = {}
@@ -651,8 +810,10 @@ def tokens_from_environment() -> dict[str, str]:
     return tokens
 
 
-def make_server(host: str, port: int, tokens: dict[str, str]) -> ThreadingHTTPServer:
-    store = Store(base_url=f"http://{host}:{port}", tokens=tokens)
+def make_server(
+    host: str, port: int, tokens: dict[str, str], app: App | None = None
+) -> ThreadingHTTPServer:
+    store = Store(base_url=f"http://{host}:{port}", tokens=tokens, app=app)
 
     class Bound(Handler):
         pass
@@ -669,9 +830,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=9200)
     args = parser.parse_args(argv)
     tokens = tokens_from_environment()
-    if not tokens:
+    app = app_from_environment()
+    if not tokens and app is None:
         sys.stderr.write(f"{TOKENS_VARIABLE} is empty: no request will authenticate\n")
-    server = make_server(args.host, args.port, tokens)
+    server = make_server(args.host, args.port, tokens, app)
     sys.stderr.write(f"{now()} fake-repository listening on {server.server_address}\n")
     try:
         server.serve_forever()

@@ -6,7 +6,8 @@ free port, its log captured to a file (for W-08 and C-04) and random credential 
 environment (for the same checks) — the values are generated here, handed to the suite in
 memory, and never written anywhere by the honest adapters. The connector talks to the fake
 repository service (`tests/fakes/repository_service.py`), started as a process of its own with
-the same random token.
+the same random token — or, in the app mode (ADR-0033), with the public half of a key generated
+here, whose private half the connector reads from a file and signs with.
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ from pathlib import Path
 
 import httpx
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from taktus.conformance import (
     ConnectorSuiteOptions,
@@ -52,6 +55,7 @@ TASK: dict[str, object] = {
 }
 ACTIONS_CREDENTIAL = "REPOSITORY_TOKEN"
 INTAKE_CREDENTIAL = "REPOSITORY_WEBHOOK_SECRET"
+APP_KEY_CREDENTIAL = "REPOSITORY_APP_KEY"
 
 
 @dataclass
@@ -226,6 +230,22 @@ def start_coding_worker(tmp_path: Path) -> Iterator[StartWorker]:
     stop_all(started)
 
 
+def key_pair() -> tuple[str, str]:
+    """An RSA key pair for the app, as PEM: the private half, the public half."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    public = (
+        key.public_key()
+        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        .decode()
+    )
+    return private, public
+
+
 def stop_all(processes: list[subprocess.Popen[bytes]]) -> None:
     for process in processes:
         process.terminate()
@@ -269,24 +289,47 @@ def start_connector(tmp_path: Path) -> Iterator[StartConnector]:
     the suite, which signs with it."""
     started: list[subprocess.Popen[bytes]] = []
 
-    def start(*, fault: str | None = None) -> RunningConnector:
+    def start(*, fault: str | None = None, app: bool = False) -> RunningConnector:
         token = "tok-" + secrets.token_hex(12)
         secret = "whs-" + secrets.token_hex(12)
+        name = f"{fault or 'honest'}{'-app' if app else ''}"
+        service_env = {**os.environ, "FAKE_REPOSITORY_TOKENS": f"{token}:write"}
+        connector_env = {**os.environ, ACTIONS_CREDENTIAL: token, INTAKE_CREDENTIAL: secret}
+        values = {ACTIONS_CREDENTIAL: token, INTAKE_CREDENTIAL: secret}
+        if app:
+            # The app's key pair: the fake verifies with the public half, the connector signs
+            # with the private half from a file. No token is in the connector's environment.
+            private, public = key_pair()
+            key_file = tmp_path / f"app-key-{name}.pem"
+            key_file.write_text(private, encoding="utf-8")
+            key_file.chmod(0o600)
+            public_file = tmp_path / f"app-public-{name}.pem"
+            public_file.write_text(public, encoding="utf-8")
+            app_id = str(100000 + secrets.randbelow(900000))
+            service_env = {**os.environ, "FAKE_REPOSITORY_APP": f"{app_id}:{public_file}"}
+            connector_env = {
+                **os.environ,
+                INTAKE_CREDENTIAL: secret,
+                "TAKTUS_REPOSITORY_APP_ID": app_id,
+                "TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE": str(key_file),
+            }
+            connector_env.pop(ACTIONS_CREDENTIAL, None)
+            values = {APP_KEY_CREDENTIAL: private, INTAKE_CREDENTIAL: secret}
         service_port = free_port()
-        service_log = tmp_path / f"service-{fault or 'honest'}.log"
+        service_log = tmp_path / f"service-{name}.log"
         with service_log.open("wb") as handle:
             service = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
                 [sys.executable, str(FAKE_SERVICE), "--port", str(service_port)],
                 stdout=handle,
                 stderr=subprocess.STDOUT,
-                env={**os.environ, "FAKE_REPOSITORY_TOKENS": f"{token}:write"},
+                env=service_env,
             )
         started.append(service)
         service_url = f"http://127.0.0.1:{service_port}"
         wait_ready(service, f"{service_url}/_fake/state", service_log, "fake service")
 
         port = free_port()
-        log = tmp_path / f"connector-{fault or 'honest'}.log"
+        log = tmp_path / f"connector-{name}.log"
         args = [
             sys.executable,
             "-m",
@@ -305,18 +348,12 @@ def start_connector(tmp_path: Path) -> Iterator[StartConnector]:
                 args,
                 stdout=handle,
                 stderr=subprocess.STDOUT,
-                env={**os.environ, ACTIONS_CREDENTIAL: token, INTAKE_CREDENTIAL: secret},
+                env=connector_env,
             )
         started.append(process)
         endpoint = f"http://127.0.0.1:{port}"
         wait_ready(process, f"{endpoint}/health", log, "connector")
-        return RunningConnector(
-            f"{endpoint}/mcp",
-            log,
-            service_url,
-            {ACTIONS_CREDENTIAL: token, INTAKE_CREDENTIAL: secret},
-            process,
-        )
+        return RunningConnector(f"{endpoint}/mcp", log, service_url, values, process)
 
     yield start
     stop_all(started)

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from taktus.components.run.domain.service import budget as budgeting
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.model import PriceTable
 
@@ -45,6 +46,10 @@ class ExecutionKind(StrEnum):
     CONTAINER = "container"
     """A unit started per job in a container with limits, a memory-backed credential store
     and a network that reaches the allowed hosts and nothing else."""
+    CLUSTER = "cluster"
+    """A unit started per job as a Job in a cluster's execution namespace, with limits,
+    credentials from a Secret that lives as long as the job, and an egress proxy of its own
+    (deploy/k8s/README.md §7). The control plane runs in the same cluster."""
 
 
 @dataclass(frozen=True)
@@ -75,6 +80,18 @@ class ExecutionSettings:
     """`TAKTUS_EXECUTION_MEMORY_UNENFORCED` (process): accept that the memory limit is not
     enforced where the system cannot enforce it (every system but Linux). Off, the process
     adapter refuses such a job. The operator's explicit choice, shown in the startup log."""
+    namespace: str | None = None
+    """`TAKTUS_EXECUTION_NAMESPACE` (cluster): the execution namespace. Required for `cluster`."""
+    egress_enforced: bool = True
+    """`TAKTUS_EXECUTION_EGRESS_ENFORCE` (cluster): the operator's statement that the cluster
+    enforces network policies. False refuses every job whose frame names hosts, and every job
+    at autonomy level 3 or above (deploy/k8s/README.md §6)."""
+    service_account: str | None = None
+    """`TAKTUS_EXECUTION_SERVICE_ACCOUNT` (cluster): the account a job runs as — never Taktus's
+    own. Unset, the namespace's default; no token is mounted either way."""
+    state_claim: str | None = None
+    """`TAKTUS_EXECUTION_STATE_CLAIM` (cluster): an existing volume claim in the execution
+    namespace for the unit's state. Unset, the state dies with each job."""
 
     def effective(self) -> list[tuple[str, str]]:
         return [
@@ -91,6 +108,10 @@ class ExecutionSettings:
             ("TAKTUS_EXECUTION_ENGINE_SOCKET", self.engine_socket),
             ("TAKTUS_EXECUTION_EGRESS_IMAGE", self.egress_image),
             ("TAKTUS_EXECUTION_MEMORY_UNENFORCED", str(self.memory_unenforced).lower()),
+            ("TAKTUS_EXECUTION_NAMESPACE", self.namespace or ""),
+            ("TAKTUS_EXECUTION_EGRESS_ENFORCE", str(self.egress_enforced).lower()),
+            ("TAKTUS_EXECUTION_SERVICE_ACCOUNT", self.service_account or ""),
+            ("TAKTUS_EXECUTION_STATE_CLAIM", self.state_claim or ""),
         ]
 
 
@@ -199,7 +220,13 @@ class BudgetSettings:
     budget)."""
     uncalibrated_margin: float = 1.0
     """`TAKTUS_BUDGET_UNCALIBRATED_MARGIN`: what a worker with no calibration history reserves
-    beyond its estimate — 1.0, twice the estimate, by default (DEC-0034)."""
+    beyond its estimate — 1.0, twice the estimate, by default (DEC-0034). A value below the
+    floor of 0.1 holds, and is said (`below_floor`, DEC-0047)."""
+
+    def below_floor(self) -> str | None:
+        """The warning the startup log carries when the uncalibrated margin is set below the
+        floor; None at or above it (DEC-0047)."""
+        return budgeting.below_floor(self.uncalibrated_margin)
 
     def table(self) -> PriceTable | None:
         """The price table the file holds, validated; None when none is configured."""
@@ -312,6 +339,13 @@ def load_execution(configuration: Configuration) -> ExecutionSettings:
             f"is not set; {configuration.name('execution')}={kind.value} starts a unit per job "
             f"and needs {what} here",
         )
+    namespace = reader.text("execution.namespace", "") or None
+    if kind is ExecutionKind.CLUSTER and namespace is None:
+        raise ConfigurationError(
+            configuration.name("execution.namespace"),
+            f"is not set; {configuration.name('execution')}=cluster starts a Job per job in the "
+            "execution namespace and needs its name here",
+        )
     return ExecutionSettings(
         kind=kind,
         endpoint=reader.url("worker", "http://127.0.0.1:9000"),
@@ -326,6 +360,10 @@ def load_execution(configuration: Configuration) -> ExecutionSettings:
         engine_socket=reader.text("execution.engine.socket", "/var/run/docker.sock"),
         egress_image=reader.text("execution.egress.image", "python:3.13-slim"),
         memory_unenforced=reader.flag("execution.memory.unenforced", False),
+        namespace=namespace,
+        egress_enforced=reader.flag("execution.egress.enforce", True),
+        service_account=reader.text("execution.service.account", "") or None,
+        state_claim=reader.text("execution.state.claim", "") or None,
     )
 
 

@@ -40,9 +40,16 @@
 # Every credential is named the one way the repository names credentials, `credential.<name>`
 # through TAKTUS_CREDENTIAL_<NAME>_FILE (DEC-0018):
 #
-#   TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE
-#       the file that holds the requesting identity's repository token: contents and pull
-#       requests write, issues write (P-02 comments, P-03 claims an issue with a label)
+#   TAKTUS_REPOSITORY_APP_ID  and  TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE
+#       Taktus's own app on the repository service (ADR-0033, the default): its identifier, and
+#       the file that holds its private key. The connector mints an installation token that
+#       lives an hour from the key, for each use, and acts under the app's name. When both are
+#       set the app is used; one without the other is refused.
+#   or TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE
+#       for a tenant without an app: the file that holds the requesting identity's repository
+#       token — contents and pull requests write, issues write (P-02 comments, P-03 claims an
+#       issue with a label). The connector then acts as the person or account the token
+#       belongs to.
 #   TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE  or  TAKTUS_CREDENTIAL_CODING_AGENT_SESSION_FILE
 #       the file that holds the coding agent's key, or its subscription token
 #       (workers/claudecode/README.md); the one that is set decides --auth
@@ -146,8 +153,16 @@ if [ -f .env ]; then
     set +a
 fi
 
-[ -n "${TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE:-}" ] || fail "TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE is not set: the file that holds the repository token"
-[ -r "$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE" ] || fail "TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE=$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE cannot be read"
+if [ -n "${TAKTUS_REPOSITORY_APP_ID:-}" ] || [ -n "${TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE:-}" ]; then
+    repository_mode=app
+    [ -n "${TAKTUS_REPOSITORY_APP_ID:-}" ] || fail "TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE is set and TAKTUS_REPOSITORY_APP_ID is not: the app mode needs both (ADR-0033)"
+    [ -n "${TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE:-}" ] || fail "TAKTUS_REPOSITORY_APP_ID is set and TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE is not: the app mode needs both (ADR-0033)"
+    [ -r "$TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE" ] || fail "TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE=$TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE cannot be read"
+else
+    repository_mode=token
+    [ -n "${TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE:-}" ] || fail "neither the app (TAKTUS_REPOSITORY_APP_ID, TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE) nor TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE is set: the connector needs one identity"
+    [ -r "$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE" ] || fail "TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE=$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE cannot be read"
+fi
 if [ -n "${TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE:-}" ]; then
     auth=api-key
     coding_credential=CODING_AGENT_API_KEY
@@ -262,11 +277,26 @@ stop() {
 }
 trap stop EXIT INT TERM
 
-# The connector, with the requesting identity's token in its environment and nowhere else.
-REPOSITORY_TOKEN="$(cat "$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE")" \
-    uv run python -m taktus.adapters.driven.connectors.github \
-        --port "$connector_port" --repository "$repository" >"$logs/connector.log" 2>&1 &
+# The connector. As the app, it reads the two app variables this script inherited and mints its
+# own tokens; with a token, the requesting identity's token is in its environment and nowhere
+# else. Either way the value is set in a subshell, never on a command line.
+(
+    if [ "$repository_mode" = token ]; then
+        unset TAKTUS_REPOSITORY_APP_ID TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE
+        REPOSITORY_TOKEN="$(cat "$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE")"
+        export REPOSITORY_TOKEN
+    else
+        export TAKTUS_REPOSITORY_APP_ID TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE
+    fi
+    exec uv run python -m taktus.adapters.driven.connectors.github \
+        --port "$connector_port" --repository "$repository"
+) >"$logs/connector.log" 2>&1 &
 pids="$pids $!"
+if [ "$repository_mode" = app ]; then
+    echo "first_run: the connector acts as Taktus's own app"
+else
+    echo "first_run: the connector acts with the repository token"
+fi
 
 # The coding worker by endpoint, with its credential in its environment (its README) — set
 # in a subshell, never on a command line a process listing would show.

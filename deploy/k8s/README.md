@@ -21,7 +21,7 @@ Two namespaces, and the boundary between them is the point.
 | Namespace | What runs there | Who may write in it |
 |---|---|---|
 | **the control plane's** | `taktusd` in its roles (`api`, `runner`, `scheduler`, `automation`), the database if it is deployed with Taktus, the ingress object | the deployment identity (CI or a person with `helm`) |
-| **the execution namespace** | one Job per execution unit, and nothing permanent | Taktus's own service account, and only to create jobs and read their logs |
+| **the execution namespace** | one Job per execution unit with what it lives with — its Secret, its Services, its egress proxy — and nothing permanent | Taktus's own service account, and only for those objects and the jobs' logs |
 
 Nothing else. A third namespace holds whatever else the cluster runs; Taktus neither
 administers the cluster nor reaches into it (ADR-0025 §1, DEC-0023).
@@ -31,11 +31,26 @@ administers the cluster nor reaches into it (ADR-0025 §1, DEC-0023).
 - **The deployment identity** installs Taktus: it may create and change deployments,
   services, secrets, config maps and volume claims *in the control plane's namespace*. It
   belongs to CI or to the person running `helm`. It is **never** given to Taktus.
-- **Taktus's own service account** runs the control plane. In the execution namespace it may
-  `create`, `get`, `list`, `watch` and `delete` `batch/jobs`, and `get` and `list` `pods` and
-  `pods/log`. Nothing else, anywhere: no shell, no node access, no secrets it did not mount,
-  no read of another namespace, and no permission over the cluster's own objects. It is a
-  namespaced Role and a RoleBinding, never a ClusterRole.
+- **Taktus's own service account** runs the control plane. In the execution namespace it may:
+
+  | Resource | Verbs | What for (§7) |
+  |---|---|---|
+  | `batch/jobs` | `create`, `get`, `list`, `watch`, `delete` | the unit's Job, and the egress proxy's, which is a Job too |
+  | `pods`, `pods/log` | `get`, `list` | whether a job's pod is ready and how it ended; the unit's log lines |
+  | `secrets` | `create`, `delete` | the credentials a job names, for the job's lifetime |
+  | `services` | `create`, `delete` | the address the control plane reaches the unit at, and the one the unit reaches its proxy at |
+
+  Nothing else, anywhere: no shell (`pods/exec`), no port forwarding, no node access, no read of
+  a Secret — it can write a job's credentials into the namespace and can never read one back —
+  no read of another namespace, and no permission over the cluster's own objects. It cannot
+  create a pod directly; the proxy runs as a Job for that reason. It is a namespaced Role and a
+  RoleBinding, never a ClusterRole. `src/taktus/adapters/driven/execution/kubernetes/api.py`
+  holds the same list as `PERMITTED`, and the client refuses every other call before sending
+  it (DEC-0061).
+
+  Creating a Secret includes creating one of the type that asks the cluster for a token of a
+  service account in that namespace. Therefore no service account in the execution namespace
+  holds any Role, the one jobs run as included: a token for it opens nothing.
 
 The reason for the split is ADR-0025: an instance must not administer the infrastructure it
 runs on. A service account that could change its own deployment would be administering it.
@@ -67,12 +82,15 @@ database:
 
 execution:
   namespace:             # the execution namespace's name
-  serviceAccount:        # the account jobs run as — not Taktus's own
+  serviceAccount:        # the account jobs run as — not Taktus's own, and holding no Role
   image:                 # the execution unit's image (the worker), by reference
   defaults: { cpu:, memory:, wallSeconds:, startTimeoutSeconds: }
+  stateClaim:            # a volume claim in the execution namespace for the unit's state,
+                         # which outlives jobs; empty: the state dies with each job
   egress:
-    proxyImage:          # the per-job egress proxy (section 6)
-    enforce:             # true; false refuses to start a job whose frame names hosts
+    proxyImage:          # the per-job egress proxy (section 6): any image with python3
+    enforce:             # true; false refuses a job whose frame names hosts, and every job
+                         # at autonomy level 3 or above (section 7)
 
 credentials:             # one entry per parameter of CREDENTIALS.md the instance needs
   - parameter:           # e.g. credential.model_api_key
@@ -184,6 +202,15 @@ needs:
   cluster's DNS — with a proxy the job does not resolve names itself — not to the API server,
   not to the node, not to the link-local metadata address, not to the control plane's database.
 
+The adapter labels what it creates so that the policies can select it: every object carries
+`taktus/job: <the job's tag>` and `taktus/role`, which is `unit` for the unit's pod and `egress`
+for the proxy's. So the exceptions are: ingress to `taktus/role: unit` on the contract port
+from the control plane's namespace; egress from `taktus/role: unit` to `taktus/role: egress` on
+port 3128; ingress to `taktus/role: egress` on port 3128 from `taktus/role: unit`; and egress
+from `taktus/role: egress` to the cluster's DNS and to addresses outside the cluster, because
+the proxy resolves the names the frame lists and connects to them. A policy cannot pair one
+job's unit with its own proxy; the proxy's token does that (section 6).
+
 In the control plane's namespace, the same default-deny, with egress to its database, to the
 execution namespace's API-server-mediated job creation, to the hosts its connectors and models
 need, and to the OTLP collector when one is configured.
@@ -218,6 +245,14 @@ What that gives, plainly:
 job could ignore `HTTPS_PROXY` and dial out directly. Policy and proxy are two halves of one
 mechanism; neither is the mechanism.
 
+**What the policy cannot do: pair a unit with its own proxy.** The exceptions of section 5
+select by role, so every unit may reach every proxy, and a unit could use another job's host
+list. The proxy therefore asks for a token: a random value created for the job, held in the
+job's Secret, and handed to both. The unit finds it in its proxy address
+(`http://taktus:<token>@<address>:3128`), which every common client turns into a
+`Proxy-Authorization` header by itself; the proxy answers 407 to a request without it. The
+token is in no recorded configuration and lives as long as the job.
+
 **If a cluster cannot enforce a NetworkPolicy at all**, the mechanism has no second half and
 the host list means nothing more than a line in a bundle. Then the adapter **refuses to start a
 job whose frame names allowed hosts**, and says so with the reason — it does not start the job
@@ -231,27 +266,49 @@ because this repository is public (`CREDENTIALS.md`).
 
 ## 7. The cluster execution adapter
 
-`src/taktus/adapters/driven/execution/kubernetes.py`, a third implementation of the execution
-port beside `process` and `container`, with `Isolation.CLUSTER`. It:
+`src/taktus/adapters/driven/execution/kubernetes/`, a third implementation of the execution
+port beside `process` and `container`, with `Isolation.CLUSTER`, selected by
+`TAKTUS_EXECUTION=cluster` with `TAKTUS_EXECUTION_NAMESPACE`. It speaks to the cluster's API
+with `httpx` alone, through the calls of the Role of section 1 and no other. It:
 
-1. creates one `Job` per execution unit, in the execution namespace, from the frame: the image,
-   the resource limits, the deadline, the credentials as mounted files from Secrets it creates
-   for the job's lifetime, and the environment the contract names (`TAKTUS_UNIT_PORT`,
-   `TAKTUS_UNIT_STATE_DIR`);
-2. creates the egress proxy pod and its Service with the frame's host list, and waits for both
-   to be ready within `startTimeoutSeconds`;
-3. reaches the unit at its Service address and speaks the worker contract to it, exactly as the
-   other two adapters do — the port's interface does not change;
-4. reads the job's logs for the unit's own log lines, and deletes the job, its Secrets and the
-   proxy when the assignment ends, whatever the outcome;
-5. refuses, with the port's `Refusal`, a job it cannot give limits to, a frame whose hosts it
-   cannot enforce, and — as the port already does — an isolation that does not suffice for the
-   run's autonomy level.
+1. creates one `Job` per execution unit, in the execution namespace, from the frame: the image;
+   requests equal to limits for CPU and memory; `activeDeadlineSeconds` of the wall clock plus
+   the start timeout, as the cluster's backstop; `backoffLimit: 0`; `ttlSecondsAfterFinished`;
+   a pod that satisfies `restricted` (section 4) and mounts no service-account token; the
+   environment the contract names (`TAKTUS_UNIT_PORT`, `TAKTUS_UNIT_STATE_DIR`); and the
+   credentials from a Secret it creates for the job — a `file` credential mounted from a key at
+   its exact path, an `env` credential as a variable from a key, because the worker contract
+   asks for it there, as the container adapter does. The pod's recorded configuration names the
+   Secret's keys and never a value;
+2. when the frame names hosts, creates the egress proxy as a second Job and a Service, with the
+   frame's host list and the job's token (section 6), and waits for it to be ready within
+   `startTimeoutSeconds`. Without hosts there is no proxy, and the job reaches nothing;
+3. reaches the unit at its Service's address and speaks the worker contract to it, exactly as
+   the other two adapters do — the port's interface does not change. The unit must answer
+   health within `startTimeoutSeconds`; when it does not, the error says what the cluster says
+   about the pod (an image that cannot be pulled, a pod that cannot be scheduled);
+4. ends a job that exceeds the wall clock by deleting it, keeps the unit's log lines under the
+   control plane's state directory, and deletes the job, its Secret, its Services and the proxy
+   when the assignment ends, whatever the outcome. Every one of them is owned by the unit's Job,
+   so that the cluster removes them too when the control plane died before it could: the
+   deadline ends the Job, its time to live deletes it, and what it owns goes with it;
+5. refuses, with the port's `ExecutionRefused` and before creating anything, a job it cannot
+   give limits to, a frame that names hosts while `execution.egress.enforce` is false, and an
+   isolation that does not suffice for the run's autonomy level. With network policies not
+   enforced, a pod's network is open: the cluster then isolates the process and the filesystem,
+   not the reach, and every job at level 3 or above — or at a level not known — is refused,
+   as ADR-0002 refuses an unisolated unit.
 
-It is held to the same tests as the container adapter, including the one that checks from
-inside the job that no credential is on a filesystem, in a recorded configuration or in a log.
-A cluster is needed to run them; they skip with the reason where there is none, and CI says so
-rather than passing quietly.
+The unit's state lives on the volume claim `execution.stateClaim` names, which the chart
+renders; without one it is an empty directory that dies with the job, and the adapter's
+startup log says so.
+
+It is held to the container adapter's tests (`tests/adapters/execution/test_kubernetes_cluster.py`),
+including the one that checks from inside the job that no credential is on a filesystem, in a
+recorded configuration or in a log. A cluster is needed to run them, and none is configured in
+CI (NEED-0015); they skip with the reason, which every test summary prints. A fake of the
+cluster's API (`test_kubernetes.py`) always runs: what a frame becomes, what is refused, that
+everything is deleted, and that no call leaves the Role.
 
 ## 8. What the deployment still needs from the operator
 
