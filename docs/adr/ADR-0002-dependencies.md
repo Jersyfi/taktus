@@ -65,5 +65,6 @@ not, the adapter treats the pod as unisolated in its reach and refuses it from l
 tests run against a fake of the cluster's API, and against a real cluster only where one is
 configured (NEED-0015). The scaling
 claims — `runner` scales out freely, `scheduler` is elected — are proven for two daemons on one
-database (`tests/integration`), not for a cluster under load; the roadmap's 1.0.0 section names
+database (`tests/integration`), including a runner killed mid-step whose runs the other resumes,
+not for a cluster under load; the roadmap's 1.0.0 section names
 the measurement.

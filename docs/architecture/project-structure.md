@@ -250,7 +250,12 @@ role it would tie the core to a model stack and the removal test would be lost.
   and renews the claim's lease from a heartbeat. Several runners share one database and never
   claim the same run; a runner that dies leaves its run for at most one lease. A run ends the
   job — completed when finished, halted by admission control or escalated; released when this
-  runner was told to shut down, so that the next runner resumes it at the boundary.
+  runner was told to shut down, so that the next runner resumes it at the boundary. A job
+  whose run had already ended when it was claimed — its runner died between the two writes —
+  is completed and nothing executes (NTC-0026). Proven with two runner processes, one killed
+  mid-step (`tests/integration/test_runner_failover.py`). The claim is not a fence: a runner
+  cut off for longer than the lease loses it, and the step it is inside still commits
+  (DEC-0066, #107).
 - **`scheduler`** leads through the leadership port — a session-level advisory lock — and ticks
   while it leads; a second instance keeps trying and takes over when the leader's lead is
   gone, including when the leader was killed. The tick does nothing yet: time triggers arrive

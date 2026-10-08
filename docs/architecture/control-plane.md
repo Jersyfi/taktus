@@ -162,8 +162,13 @@ run asserts that no instance is executing it. In the daemon that assertion is th
 claim: a submitted run is a job on the queue (`ports/queue.py`), a runner claims it with
 `SELECT … FOR UPDATE SKIP LOCKED` and holds the claim as a lease it renews while the run
 executes; a runner that dies stops renewing, the lease expires, and the next runner claims the
-job and recovers the run — two runners never execute one run
-(`components/run/application/service/runner.py`, `tests/integration/test_daemon_scaling.py`).
+job and recovers the run at its last boundary (`components/run/application/service/runner.py`,
+`tests/integration/test_daemon_scaling.py`; `tests/integration/test_runner_failover.py` kills
+one of two runner processes mid-step). A runner that dies after its run ended and before it
+completed the job leaves a job whose run is over; the next runner completes it and executes
+nothing (NTC-0026). The claim is not a fence. A runner that is alive but cannot renew for
+longer than the lease loses the job, and the step it is inside still commits when it ends;
+for that step two runners write to one run (DEC-0066, #107).
 A shutdown on SIGTERM asks every running run to stop at its next boundary, waits up to the
 ceiling, releases the claims and exits; the next runner resumes at that boundary
 (`tests/integration/test_daemon_shutdown.py`). From the command line, `uv run taktusctl run
