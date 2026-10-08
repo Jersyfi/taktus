@@ -21,8 +21,9 @@ boundary, A is killed: SIGKILL, no shutdown, no chance to halt or release anythi
 - the ledger chain verifies, and the provenance chain of every run verifies against its run
   and its ledger entries.
 
-The scheduler's election with two instances is proven in `test_daemon_scaling.py`, and is
-not repeated here.
+The test runs in a tenant of its own, which both runners serve and nothing else uses. The
+scheduler's election with two instances is proven in `test_daemon_scaling.py`, and is not
+repeated here.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.postgres import _schema as s
@@ -51,7 +52,8 @@ from .test_daemon_shutdown import daemon, wait_ready
 from .test_restart import COMMANDS, Database
 from .test_restart import bundle as restart_bundle
 
-TENANT = "default"
+TENANT = f"failover_{os.urandom(4).hex()}"
+"""A tenant of its own: a job another test left in a shared tenant is not this test's to run."""
 RUNS = 20
 LEASE_SECONDS = 5
 """The shortest lease the daemon accepts; a runner renews it every third of that."""
@@ -118,6 +120,17 @@ def held_by(rows: Iterable[Any], claimant: str, runs: set[str]) -> dict[str, Any
     return held
 
 
+async def create_tenant(database: Database) -> None:
+    async with database.persistence.engine.begin() as connection:
+        await connection.execute(
+            text("SELECT set_config('taktus.tenant', :t, true)"), {"t": database.tenant}
+        )
+        await connection.execute(
+            text("INSERT INTO tenant (id, name, created_at) VALUES (:t, :t, now())"),
+            {"t": database.tenant},
+        )
+
+
 async def job_rows(database: Database) -> list[Any]:
     async with database.persistence.transaction(TENANT):
         connection = database.persistence.connection(TENANT)
@@ -138,13 +151,16 @@ async def all_finished(database: Database, run_ids: list[str]) -> bool:
 async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runners_run(
     worker_endpoint: str, postgres_url: str, tmp_path: Path
 ) -> None:
-    configured = settings(postgres_url, tmp_path, TAKTUS_WORKER=worker_endpoint)
+    database = Database(postgres_url, TENANT)
+    await create_tenant(database)
+    tenancy = {"TAKTUS_TENANTS": TENANT, "TAKTUS_PROVISIONAL_IDENTITY": f"{TENANT}=idn_test"}
+    configured = settings(postgres_url, tmp_path, TAKTUS_WORKER=worker_endpoint, **tenancy)
     async with wire(configured, EnvironmentConfiguration({})) as wired:
-        runs = [await submit(wired, bundle(n)) for n in range(RUNS)]
+        runs = [await submit(wired, bundle(n), TENANT) for n in range(RUNS)]
     run_ids = [r.id for r in runs]
     ours = set(run_ids)
-    database = Database(postgres_url)
     environment = {
+        **tenancy,
         "TAKTUS_DATABASE_URL": postgres_url,
         "TAKTUS_ROLES": "runner",
         "TAKTUS_WORKER": worker_endpoint,
