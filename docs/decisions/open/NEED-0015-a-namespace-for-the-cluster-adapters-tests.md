@@ -1,10 +1,10 @@
 # NEED-0015 — A namespace for the cluster adapter's tests
 
 **Kind:** access
-**Raised in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR)
+**Raised in:** [#119](https://github.com/Jersyfi/taktus/pull/119)
 **Issue:** [#117](https://github.com/Jersyfi/taktus/issues/117)
 **Needed by:** 2026-10-20
-**Foreseeable since:** [#PR](https://github.com/Jersyfi/taktus/pull/PR), which builds the cluster execution adapter (#65); raised the same day
+**Foreseeable since:** [#119](https://github.com/Jersyfi/taktus/pull/119), which builds the cluster execution adapter (#65); raised the same day
 
 ## 1. What is needed
 

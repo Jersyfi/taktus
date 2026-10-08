@@ -1,7 +1,7 @@
 # DEC-0061 — The execution Role did not cover its own plan
 
 **Category:** DEFECT
-**Raised in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR), while building the cluster execution adapter (#65)
+**Raised in:** [#119](https://github.com/Jersyfi/taktus/pull/119), while building the cluster execution adapter (#65)
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -70,4 +70,4 @@ pods and logs read-only; Secrets and Services create and delete; never a read of
 Role for any account in the namespace. `CREDENTIALS.md` and NEED-0007 say the same.
 **What changed in substance:** nothing that was required; the Role the chart will render is the
 one section 7 already needed.
-**Recorded in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR)
+**Recorded in:** [#119](https://github.com/Jersyfi/taktus/pull/119)
