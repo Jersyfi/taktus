@@ -5,6 +5,7 @@
 **Raised in:** [#52](https://github.com/Jersyfi/taktus/pull/52), from the audit of the register, which found ADR-0012 open with no request, no issue and no date
 **Issue:** [#56](https://github.com/Jersyfi/taktus/issues/56)
 **Needed by:** before 1.0.0, and before the first contribution from outside is accepted
+**Timing confirmed:** 2026-10-08, the owner: the licence — how Taktus will later be sold — is decided for `1.0.0`, not now. Nothing waits on it before then.
 **Provisional answer:** none is chosen for you: this is your own question (mode 4). Until you answer, ADR-0012's reservation holds — the repository is public, all rights are reserved, and no contribution from outside is accepted.
 
 ## 1. What this is about
