@@ -19,9 +19,11 @@ import yaml
 WORKFLOWS = Path(__file__).resolve().parents[2] / ".github" / "workflows"
 LIVE = WORKFLOWS / "live.yml"
 ENVIRONMENT = "live"
-LIVE_SECRETS = {"LIVE_REPOSITORY_TOKEN", "CODING_AGENT_API_KEY"}
-"""The secrets of the live tests (NEED-0012; the connector's scratch repository is reached through
-Taktus's own app, NEED-0013)."""
+LIVE_SECRETS = {"LIVE_APP_ID", "LIVE_APP_PRIVATE_KEY", "CODING_AGENT_API_KEY"}
+"""The secrets of the live tests: the coding agent's key (NEED-0012), and the identifier and the
+private key of Taktus's own app, through which the connector reaches its scratch repository
+(NEED-0013, NEED-0016, ADR-0033). The identifier is not secret; it is held as one so that it is
+masked in the public log."""
 SPENDING_SECRETS = {"CODING_AGENT_API_KEY"}
 """Secrets whose use costs money: a job that reads one carries the cap."""
 CAP = "vars.LIVE_SPEND_CAP_USD"
@@ -120,3 +122,23 @@ def test_no_other_workflow_reaches_the_live_secrets(path: Path) -> None:
         assert environment(job) != ENVIRONMENT, (
             f"{path.name}: job {name} names the environment {ENVIRONMENT!r}"
         )
+
+
+def test_the_apps_key_is_written_nowhere_the_evidence_is_kept() -> None:
+    """The connector job writes the app's key to a file for the length of its step. That file
+    lies outside every path the job uploads as evidence, and the step removes it."""
+    job = load(LIVE)["jobs"]["connector"]
+    uploaded = [
+        str(step["with"]["path"]).replace("${{ runner.temp }}", "$RUNNER_TEMP")
+        for step in job["steps"]
+        if str(step.get("uses", "")).startswith("actions/upload-artifact")
+    ]
+    runs = "\n".join(str(step.get("run", "")) for step in job["steps"])
+    assert "secrets.LIVE_APP_PRIVATE_KEY" in yaml.safe_dump(job)
+    key = re.search(r'key="([^"]+)"', runs)
+    assert key, "the connector job names the file it writes the key to"
+    for path in uploaded:
+        assert not key.group(1).startswith(path.rstrip("/") + "/"), (
+            f"the key file {key.group(1)} lies inside the evidence {path}"
+        )
+    assert 'rm -f "$key"' in runs, "the key file is removed when the step ends"

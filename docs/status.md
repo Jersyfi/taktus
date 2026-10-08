@@ -92,7 +92,7 @@ scheduler and a shutdown at the step boundary; the execution port with the `proc
 `container` adapters; two workers in their own images — the reference `script` worker and the
 coding worker, the latter passing the suite in both authentication modes against a stand-in for
 its agent; the reference repository connector in both directions, proven against the real
-service; the loopback connector and the removal test as a process (`S-01`), run once by hand;
+service, and acting as Taktus's own app when configured (ADR-0033); the loopback connector and the removal test as a process (`S-01`), run once by hand;
 the model contract as a schema with a conformance suite (`contracts/model/v1`, M-01 to M-04):
 what an adapter can compute before a call, the price table, and the model port with one adapter
 over the chat-completions dialect; OpenTelemetry spans with the
@@ -286,8 +286,9 @@ ADR-0028 exists to prevent, measured.
 platform that was read in full on 2026-09-23. Nothing the owner provides blocks installing it
 any more: since 2026-10-08 the deployment's access to the cluster, the public name with its
 certificate, the webhook secret, the backup store and Taktus's own app on the repository
-service exist (NEED-0007 to NEED-0010, NEED-0013); the connector moves to the app in #99. The
-instance holds real work once its backup and restore exist (#67), and is treated as production
+service exist (NEED-0007 to NEED-0010, NEED-0013); the connector acts as the app since #108
+(ADR-0033), and placing the app in the live environment and retiring the personal token is
+NEED-0016. The instance holds real work once its backup and restore exist (#67), and is treated as production
 (DEC-0057).
 
 Nothing else is blocked. Everything not listed here can be built by a session without the
@@ -325,5 +326,6 @@ rather than enforced, anything marked provisional.
 | every principle is served by a use case, and a use case's state says how much of it stands | `docs/vision/README.md`, `docs/usecases/README.md` | the gates check that each principle is served and that a `verified` use case's tests pass; they cannot check that a use case *covers* its principle, or that a `building` use case's tests prove the part it says they prove |
 | a pull request description can be acted on without the diff | ADR-0017 §7 | the gate checks that the four sections are there, filled and in order; not that they are readable without the diff |
 | Taktus is repairable without Taktus: a restore, documented and exercised | ADR-0013 C | not for a deployed instance: there is no backup yet. Its destination exists (NEED-0009); Taktus keeps backups for a configurable time, 30 days by default, encrypted only if chosen (DEC-0058); the backup and its restore, exercised once, are #67 |
-| the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where a token is set. Since DEC-0048 it runs in the workflow `live` — monthly and by dispatch, on `main`, never on a pull request — which says in a notice that nothing ran until Taktus's own app is installed on a scratch repository (NEED-0013) |
+| the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where an identity is set. Since DEC-0048 it runs in the workflow `live` — monthly and by dispatch, on `main`, never on a pull request — as Taktus's own app, minting its token in the run (ADR-0033), and as the app it also holds the pull request it opens to the app's name. It has not run as the app yet: the environment needs the app's identifier and key (NEED-0016); until then the job says in a notice that nothing ran |
+| what Taktus writes on the repository service appears under its own app's name | ADR-0033, DEC-0058, issue #50 | built: the connector acts as the app when configured, shown against the fake service and in the conformance suite. Not yet shown on the installed instance — a pull request opened there by P-03 — which waits for the install (#66); where that check lives is DEC-0063. Runs on the owner's workstation still use the personal token until NEED-0016 |
 | a licence | ADR-0012 | open: all rights reserved, no outside contribution accepted. The owner's own question, DEC-0044, settled by the release of `1.0.0` and taken up only when that release is prepared, as the owner confirmed on 2026-10-08; before the first outside contribution too |

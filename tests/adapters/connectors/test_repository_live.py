@@ -2,18 +2,28 @@
 
 A fake proves the mechanics; only the real service proves that its API keeps what the connector
 relies on — one open pull request per head branch, the mark in a body, the trailer in a commit
-message, a reference that exists once. This test runs when two variables are set and skips
-otherwise:
+message, a reference that exists once. This test runs when the repository and one identity are
+set, and skips otherwise:
 
     TAKTUS_LIVE_REPOSITORY=owner/name   the repository to act in; the test creates a branch, a
                                         pull request, a comment and a label there, and removes
                                         the branch and closes the pull request afterwards
+
+and either Taktus's own app installed on that repository (ADR-0033) — the connector then mints
+its installation token from the key, and the pull request must show the app as its author:
+
+    TAKTUS_REPOSITORY_APP_ID=…                     the app's identifier
+    TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE=…    the file that holds the app's private key
+
+or a token, for a tenant without an app:
+
     REPOSITORY_TOKEN=…                  the requesting identity's token, with contents and
                                         pull request write permissions on that repository
 
-The value is read by the connector under that name, as the contract says, and never appears
-in a result, an error or the log (`test_no_credential_value_reaches_a_result_an_error_or_the_log`
-covers that against the fake; here it is asserted once more on what came back). It is never
+The app wins when both are set. A value is read by the connector, as the contract says, and
+never appears in a result, an error or the log (`test_no_credential_value_reaches_a_result_an_
+error_or_the_log` and `test_no_key_token_or_statement_reaches_a_result_an_error_or_the_log`
+cover that against the fake; here it is asserted once more on what came back). It is never
 written anywhere by this test.
 
 Every step below is executed twice: once on a connector, once on a second connector that has
@@ -25,23 +35,35 @@ from __future__ import annotations
 
 import os
 import secrets
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 import pytest
 
+from taktus.adapters.driven.connectors.github.app import AppConfig, AppTokens
 from taktus.adapters.driven.connectors.github.server import Config, Connector
 
 type Json = dict[str, Any]
 
 CREDENTIAL = "REPOSITORY_TOKEN"
 TARGET = "https://api.github.com"
+APP = AppConfig.from_environment()
 
 pytestmark = pytest.mark.skipif(
-    not (os.environ.get("TAKTUS_LIVE_REPOSITORY") and os.environ.get(CREDENTIAL)),
-    reason="set TAKTUS_LIVE_REPOSITORY=owner/name and REPOSITORY_TOKEN to run against the service",
+    not (os.environ.get("TAKTUS_LIVE_REPOSITORY") and (APP or os.environ.get(CREDENTIAL))),
+    reason="set TAKTUS_LIVE_REPOSITORY=owner/name and the app's two variables, or "
+    "REPOSITORY_TOKEN, to run against the service",
 )
+
+
+async def service_token(repository: str) -> str:
+    """The token this test reads the service with directly: the app's, minted like the
+    connector's, or the one in the environment."""
+    if APP is None:
+        return os.environ[CREDENTIAL]
+    token, _ = await AppTokens(APP, TARGET, repository, timeout=30.0).token()
+    return token
 
 
 def context(step: str, key: str) -> Json:
@@ -64,19 +86,21 @@ async def call(connector: Connector, operation: str, ctx: Json, input: Json) -> 
 
 
 @pytest.fixture
-def live() -> Iterator[tuple[str, str]]:
+async def live() -> AsyncIterator[tuple[str, str]]:
     """The repository and a unique suffix; the branch and pull request are removed afterwards
     whatever happened in between."""
     repository = os.environ["TAKTUS_LIVE_REPOSITORY"]
     suffix = secrets.token_hex(4)
     yield repository, suffix
-    token = os.environ[CREDENTIAL]
+    token = await service_token(repository)
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
-    with httpx.Client(base_url=TARGET, headers=headers, timeout=30.0) as client:
+    async with httpx.AsyncClient(base_url=TARGET, headers=headers, timeout=30.0) as client:
         head = f"{repository.split('/')[0]}:taktus/live-{suffix}"
-        for pull in client.get(f"/repos/{repository}/pulls", params={"head": head}).json():
-            client.patch(f"/repos/{repository}/pulls/{pull['number']}", json={"state": "closed"})
-        client.delete(f"/repos/{repository}/git/refs/heads/taktus/live-{suffix}")
+        for pull in (await client.get(f"/repos/{repository}/pulls", params={"head": head})).json():
+            await client.patch(
+                f"/repos/{repository}/pulls/{pull['number']}", json={"state": "closed"}
+            )
+        await client.delete(f"/repos/{repository}/git/refs/heads/taktus/live-{suffix}")
 
 
 async def test_a_step_retried_after_a_restart_acts_once_on_the_real_service(
@@ -84,8 +108,10 @@ async def test_a_step_retried_after_a_restart_acts_once_on_the_real_service(
 ) -> None:
     repository, suffix = live
     branch = f"taktus/live-{suffix}"
-    fresh = lambda: Connector(Config(target=TARGET, repository=repository, timeout=60.0))  # noqa: E731
-    token = os.environ[CREDENTIAL]
+    fresh = lambda: Connector(  # noqa: E731
+        Config(target=TARGET, repository=repository, timeout=60.0, app=APP)
+    )
+    token = await service_token(repository)
 
     # A branch with one commit, twice: one branch, the second answer replayed.
     key = f"run_live:branch-{suffix}:1"
@@ -131,6 +157,9 @@ async def test_a_step_retried_after_a_restart_acts_once_on_the_real_service(
     assert replayed["output"]["number"] == opened["output"]["number"]
     assert replayed["effect"]["records"] == opened["effect"]["records"]
     number = int(opened["output"]["number"])
+    if APP is not None:
+        # Acting as the app, the pull request is the app's, not a person's (issue #50).
+        assert opened["output"]["author"]["kind"] == "automation", opened["output"]["author"]
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     async with httpx.AsyncClient(base_url=TARGET, headers=headers, timeout=30.0) as client:
         pulls = (
