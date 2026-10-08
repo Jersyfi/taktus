@@ -6,6 +6,9 @@ take effect at once: they are the queue's own bookkeeping, and a runner that cla
 fails before its transaction ends must not have claimed. The exclusivity the port promises —
 two claimants never receive one job — holds inside one process, which is the only place this
 adapter runs.
+
+The fence (`fence`, #107) holds the job for the open transaction, the way the row lock does in
+the database: until the transaction ends, a claim skips the job.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from pydantic import Field
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
 from taktus.ports.clock import Clock
 from taktus.ports.persistence import PersistenceError, Tenant
-from taktus.ports.queue import Job
+from taktus.ports.queue import Claim, Job
 from taktus.shared.v1 import Value
 
 KIND = "job"
@@ -51,6 +54,9 @@ class MemoryQueue:
         self._clock = clock
         self._lease = lease_seconds
         self._max_attempts = max_attempts
+        self._fenced: dict[tuple[Tenant, str], int] = {}
+        """Jobs held by open transactions that wrote under their claim, with how many hold
+        each; a claim skips them."""
         persistence.load(KIND, JobRow)
 
     async def enqueue(self, tenant: Tenant, job: Job) -> None:
@@ -74,7 +80,7 @@ class MemoryQueue:
         for row in sorted(table.values(), key=lambda r: (r.created_at, r.id)):
             if len(claimed) >= batch:
                 break
-            if row.attempts >= self._max_attempts:
+            if row.attempts >= self._max_attempts or (tenant, row.id) in self._fenced:
                 continue
             held = row.claimed_at is not None and (now - row.claimed_at).total_seconds() < (
                 self._lease
@@ -97,6 +103,22 @@ class MemoryQueue:
         if (self._clock.now() - row.claimed_at).total_seconds() >= self._lease:
             return False  # expired: someone else may hold it by now
         table[job_id] = row.model_copy(update={"claimed_at": self._clock.now()})
+        return True
+
+    async def fence(self, tenant: Tenant, claim: Claim) -> bool:
+        transaction = self._persistence.current(tenant)
+        row = self._persistence.table(KIND, tenant).get(claim.job_id)
+        if row is None or row.claimed_by != claim.claimant or row.attempts != claim.attempt:
+            return False
+        key = (tenant, claim.job_id)
+        self._fenced[key] = self._fenced.get(key, 0) + 1
+
+        def unfence() -> None:
+            left = self._fenced.pop(key) - 1
+            if left:
+                self._fenced[key] = left
+
+        transaction.ended.append(unfence)
         return True
 
     async def release(self, tenant: Tenant, job_id: str, claimant: str) -> None:

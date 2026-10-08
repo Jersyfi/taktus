@@ -41,10 +41,13 @@ Requirement A is proven for one instance and for two daemons on one database, an
 the platform underneath: an instance whose only database is gone does not run without
 interruption, whatever Taktus does. With two runner processes, one killed mid-step, its runs
 are resumed by the other at their last boundary (`tests/integration/test_runner_failover.py`).
-A runner that is alive but cut off from the database for longer than its lease is not covered:
-it loses its claim, and the step it is inside still commits beside the runner that took over
-(DEC-0066, #107). How many runs one instance carries is not measured; that is a `1.0.0`
-condition. Requirement B holds for the processes that carry
+A runner that is alive but cut off from the database for longer than its lease loses its claim,
+and no write of it reaches the run after another runner has claimed the job: the claim is a
+fence, checked in the transaction of every write (`tests/integration/test_runner_fence.py`,
+NTC-0044). The fence covers the run's own records — the run, its ledger entries, its provenance.
+What the cut-off runner's step did outward before its write was refused is not undone: a
+connector's idempotency (ADR-0024) and a worker's checkpoint bound that, not the fence. How many
+runs one instance carries is not measured; that is a `1.0.0` condition. Requirement B holds for the processes that carry
 instructions — each blueprint's README says which do — and passes the takeover test only when a
 person has actually run the process by hand; today that is the removal test
 (`blueprints/self-operation/README.md`, *By hand*). Requirement C is documented and not yet
@@ -54,3 +57,7 @@ Taktus project follows about itself and is not enforced in code.
 *Amended 2026-10-08 (#73, DEC-0066): the section said requirement A was proven for one instance
 and named no limit for several. Runners on two instances are now proven against a runner that
 dies; a runner that is cut off and lives is the limit, and the work to close it is #107.*
+
+*Amended 2026-10-09 (#107, NTC-0044): a runner cut off for longer than its lease no longer
+commits beside the runner that took over; the claim is a fence. The limit that remains is what
+the cut-off runner's step did outward before its write was refused.*

@@ -12,7 +12,7 @@ touched to `<directory>/<kind>.json`, keyed by tenant, and the store reads it ba
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -41,6 +41,8 @@ class Transaction:
     appended: list[LedgerEntry] = field(default_factory=list)
     recorded: list[Provenance] = field(default_factory=list)
     spoilt: bool = False
+    ended: list[Callable[[], None]] = field(default_factory=list)
+    """What to undo when the transaction ends, committed or not: the locks it took."""
 
 
 class MemoryPersistence:
@@ -73,6 +75,8 @@ class MemoryPersistence:
             await self._commit(transaction)
         finally:
             self._current.reset(token)
+            for end in transaction.ended:
+                end()
 
     def current(self, tenant: Tenant) -> Transaction:
         transaction = self._current.get()
