@@ -1,7 +1,7 @@
 # DEC-0066 — The claim on a run was said to be a fence
 
 **Category:** DEFECT
-**Raised in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR), while implementing #73
+**Raised in:** [#123](https://github.com/Jersyfi/taktus/pull/123), while implementing #73
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -60,4 +60,4 @@ runner were either working or dead. A runner can be alive and cut off.
 **What it now says:** a live runner cut off for longer than the lease loses its claim; the step
 it is inside still commits; the claim is not a fence yet (#107).
 **What changed in substance:** nothing in the software; three descriptions, and the task #107.
-**Recorded in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR)
+**Recorded in:** [#123](https://github.com/Jersyfi/taktus/pull/123)
