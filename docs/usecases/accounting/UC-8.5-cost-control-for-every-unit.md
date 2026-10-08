@@ -7,7 +7,7 @@ serves: [P7, P8, P14]
 state: building
 version: 0.2.0
 tests: [tests/components/accounting/test_cost.py::test_a_run_costs_what_its_tokens_cost_at_the_table_it_was_held_to, tests/components/run/test_engine.py::test_admission_counts_what_earlier_steps_used, tests/components/run/test_budget.py::test_the_margin_absorbs_an_overrun_and_nothing_beyond_it, tests/components/run/test_budget.py::test_money_reported_per_assignment_is_held_as_an_estimate, tests/components/run/test_estimates.py::test_the_budget_says_what_it_can_promise_when_it_is_set]
-adrs: {ADR-0005: a3957391cbc7, ADR-0010: 6b161e3f6831, ADR-0015: 420aac4db0cc}
+adrs: {ADR-0005: c28377b9027e, ADR-0010: 6b161e3f6831, ADR-0015: 420aac4db0cc}
 supersedes: null
 ---
 

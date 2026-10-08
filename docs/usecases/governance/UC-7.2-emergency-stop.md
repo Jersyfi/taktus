@@ -7,7 +7,7 @@ serves: [P10, P12]
 state: building
 version: 0.5.0
 tests: [tests/components/run/test_engine.py::test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing, tests/components/run/test_engine.py::test_a_stop_requested_between_steps_takes_effect_at_the_next_boundary]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: a3957391cbc7, ADR-0008: e6a4e033abd4, ADR-0023: 949c6f4e13af}
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: c28377b9027e, ADR-0008: e6a4e033abd4, ADR-0023: 949c6f4e13af}
 supersedes: null
 ---
 
