@@ -5,10 +5,15 @@ slots, for each tenant in turn — and executes each in a task of its own throug
 `resume`, which starts a submitted run, continues a halted one, or recovers one whose runner
 died. While a run executes, a heartbeat renews the claim's lease; a runner that dies stops
 renewing, the lease expires, and another runner claims the job and recovers the run at its
-last boundary (ADR-0013 A). A runner whose lease was lost while it was still executing — the
-database was unreachable for longer than the lease — stops the run at its next boundary and
-gives the job up. Until that boundary the step it is inside still runs and commits, beside the
-runner that took the job over: the claim is not a fence yet (DEC-0066, #107).
+last boundary (ADR-0013 A).
+
+A runner can also lose its claim while it is alive: it could not reach the database, or was
+paused, for longer than the lease, and another runner claimed the job. Every write of the run
+is made under the claim and checks it in its own transaction (`ResumeRun.claim`, #107). The
+first write after the takeover — the end of the step the runner was inside, or its next
+boundary — is refused, nothing of it lands, and the runner gives the run up without touching
+the job. A heartbeat that finds the claim gone asks the run to stop at its boundary as well, so
+that a worker step ends before it has to be refused. Two runners never both commit to one run.
 
 What happens when a run ends decides the job:
 
@@ -36,10 +41,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from taktus.components.run.application.service.execute_run import ResumeRun, RunEngine
-from taktus.components.run.domain.model import Cause, Run, RunState
+from taktus.components.run.domain.model import Cause, ClaimLost, Run, RunState
 from taktus.ports.clock import Clock
 from taktus.ports.persistence import Tenant, UnitOfWork
-from taktus.ports.queue import RUN_EXECUTE, Job, Queue
+from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue
 
 
 @dataclass(frozen=True)
@@ -173,8 +178,19 @@ class Runner:
                         actor=self.options.actor,
                         tenant=executing.tenant,
                         on_claim=True,
+                        claim=Claim(
+                            job_id=executing.job.id,
+                            claimant=self.options.claimant,
+                            attempt=executing.job.attempts,
+                        ),
                     )
                 )
+            except ClaimLost as lost:
+                # Another runner holds the job and executes the run: nothing here touches either.
+                executing.lost = True
+                outcome.error = str(lost)
+                outcome.disposition = "lost"
+                return outcome
             except Exception as error:  # every failure of one run is one outcome, not a crash
                 outcome.error = f"{type(error).__name__}: {error}"
                 await self._release(executing)
@@ -197,7 +213,9 @@ class Runner:
             return outcome
         finally:
             heartbeat.cancel()
-            self._executing.pop(executing.job.id, None)
+            if self._executing.get(executing.job.id) is executing:
+                # A later claim of the same job by this runner is another entry; it stays.
+                del self._executing[executing.job.id]
             self._outcomes.append(outcome)
 
     async def _heartbeat(self, executing: _Executing) -> None:

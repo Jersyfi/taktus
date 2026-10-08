@@ -38,3 +38,9 @@ class NoConnector(RunError):
 
 class UnknownRun(RunError):
     pass
+
+
+class ClaimLost(RunError):
+    """A write of a run executed under a runner's claim was refused: another runner has
+    claimed the run's job since. Nothing of the write landed, and the runner does nothing
+    more for the run (#107)."""

@@ -81,6 +81,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0029](NTC-0029-seven-use-cases-moved-from-their-first-files.md) | Seven use cases moved from their first files | M2.1 | `restructuring` | UC-4.6, UC-4.11 to UC-4.13, UC-6.8, UC-6.9 and UC-7.2 in the use case format, in their components' folders; the two first files removed and every link moved |
 | [0030](NTC-0030-uc-6-8-an-escalated-result-defect-carries-the-situation-package.md) | UC-6.8: an escalated result defect carries the situation package | M2.7 | `restoration` | brought up to definition UC-4.6: the five parts of the situation package for a wrong result the stop rule escalates or stops |
 | [0040](NTC-0040-p-02-and-p-03-read-the-ready-standard.md) | P-02 and P-03 read the ready standard | M2.4 | `behaviour-change` | P-03 admits by the backlog's ready standard and claims with `in-progress`; P-02 writes only the missing sections as a comment and adds no label; one module for the standard, shared with `make backlog`; two connector reads added |
+| [0044](NTC-0044-a-write-under-a-lost-claim-is-refused.md) | A write under a lost claim is refused | M2.4 | `behaviour-change` | every write of a run under a runner's claim checks the claim in its own transaction and holds the job until it ends; a runner whose job another runner claimed writes nothing more and gives the run up (#107, DEC-0066) |
 
 ## Decisions
 
