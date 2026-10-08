@@ -15,8 +15,9 @@ Whoever installs Taktus, a person running the install command or the repository'
 uses that file and nothing else.
 
 It is *not* the identity Taktus runs as. That is a second, much narrower account which the
-chart creates and nobody has to provide: it may create jobs in one namespace and read their
-logs, and nothing else. Keeping the two apart is the point (ADR-0025: an instance never
+chart creates and nobody has to provide: in one namespace it may create jobs with the Secret
+and the Services each lives with, delete them, and read their pods and logs, and nothing else
+(`deploy/k8s/README.md` §1, as corrected in DEC-0061). Keeping the two apart is the point (ADR-0025: an instance never
 administers the infrastructure it runs on, and an account that can change Taktus's own
 deployment would be administering it).
 
@@ -112,7 +113,7 @@ by you on the machine, once; nothing in it is a value this repository ever sees.
   not work. If the deployment needs a permission the table does not have, that is a change to
   the plan and to this record first, and to the role second.
 - **Never the identity Taktus runs as.** That account is created by the chart and reaches one
-  namespace's jobs and their logs.
+  namespace's jobs, the Secrets and Services they live with, and their logs (DEC-0061).
 
 Where it goes instead: the file of section 4, readable by you alone, and its path in `.env`.
 

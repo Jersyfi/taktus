@@ -135,7 +135,7 @@ so that a resumed assignment finds them in a new unit.
 | `endpoint` | whoever runs the worker | `adapters/driven/workers/http/` | a worker that is already running, at `TAKTUS_WORKER`; the default |
 | `process` | none | `adapters/driven/execution/process.py` | local development, a single user. **Refused from autonomy level 3 upwards, and when the level is unknown** — the rule is `ports/execution.py:refusal()`, and `tests/governance` holds the adapter to it. The unit's memory limit is enforced on Linux (`RLIMIT_DATA`, per process) and refused elsewhere unless `TAKTUS_EXECUTION_MEMORY_UNENFORCED=true` accepts it unenforced (`docs/architecture/platform.md` §5) |
 | `container` | process, filesystem, network | `adapters/driven/execution/container/` | operation. One container per job with limits, credentials in memory only, and a network that reaches `frame.allowed_hosts` and nothing else |
-| cluster | pod with quota and network policy | next pull request | the same shape with a pod instead of two containers; the port does not change |
+| `cluster` | process, filesystem; network where the cluster enforces network policies | `adapters/driven/execution/kubernetes/` | a cluster the control plane runs in. One Job per job in the execution namespace with limits and a deadline, a `restricted` pod with no service-account token, credentials from a Secret that lives as long as the job, and an egress proxy of its own; refuses hosts, and every job from level 3 upwards, where network policies are not enforced (`deploy/k8s/README.md` §7) |
 
 The worker port over the execution port is `adapters/driven/workers/launched.py`: one unit
 per assignment, started with the credentials, the hosts and the autonomy level the assignment
@@ -176,6 +176,18 @@ engine's HTTP API over its socket — Docker or Podman — so that the control p
 no client. `tests/adapters/execution/test_container.py` proves every one of these from inside
 a job, and `tests/integration/test_launched_container.py` runs a process through it, stops it
 at a boundary and resumes it in a new container.
+
+**The cluster adapter's wall** is the same shape in a cluster's terms, specified in
+`deploy/k8s/README.md` §4 to §7: a Job instead of a container, a Pod Security level instead of
+engine flags, a namespace's default-deny network policy instead of an internal network, and an
+egress proxy that is a second Job instead of a second container. The proxy asks for a token
+only the job's own unit holds, because a namespace's policy cannot pair a unit with its proxy.
+Credentials come from a Secret created for the job: a file credential is mounted at its path,
+an env credential is a variable from the Secret. The adapter speaks the cluster's API with
+`httpx` and makes only the calls of the Role Taktus's service account holds.
+`tests/adapters/execution/test_kubernetes.py` holds it to all of it against a fake of the API;
+`test_kubernetes_cluster.py` runs the container adapter's checks from inside a job on a real
+cluster, and skips with the reason where none is configured (NEED-0015).
 
 ---
 
@@ -256,7 +268,7 @@ example, not a requirement. The core runs with all of them removed — it simply
 | Worker | `mlbench` | training, evaluation, embeddings, classical ML. The second proof case: hours of runtime, a GPU held, a model artifact returned. |
 | Worker | `claudecode` | the first real coding worker. Exists (`workers/claudecode/`), passes the suite in both authentication modes, faults included, against a stand-in for its agent; a live run needs a credential the operator supplies |
 | Worker | `codex` | the second real coding worker; validates the contract against a second vendor |
-| Connector | `github` | repository: issues, pull requests, pipelines, comments, branches, labels, and one file read at a ref — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector against the fake and, with a credential, against the real service (`tests/adapters/connectors/test_repository_live.py`). Reached by the daemon's webhook intake and by the run's connector steps. A branch it writes
+| Connector | `github` | repository: issues, pull requests, pipelines, comments, branches, labels, and one file read at a ref — actions and webhook intake. Exists (`src/taktus/adapters/driven/connectors/github/`), passes the suite against a fake of its service; the example of idempotency: a pull request opened for a step is opened once, proven across a restart of the connector against the fake and, with a credential, against the real service (`tests/adapters/connectors/test_repository_live.py`). Acts as Taktus's own app when configured with the app's identifier and key — the requesting identity behind the name it declares for actions, minting an installation token that lives an hour for its one repository, never stored — and with a token otherwise (ADR-0033); the suite passes in both modes. Reached by the daemon's webhook intake and by the run's connector steps. A branch it writes
 keeps the mode each file has in the base — an executable a change touches stays executable —
 read from the base tree before the new tree is written (DEC-0020). A file entry may carry
 `executable`, and the coding worker's changeset sets it on every file its index records as

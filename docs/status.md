@@ -92,7 +92,7 @@ scheduler and a shutdown at the step boundary; the execution port with the `proc
 `container` adapters; two workers in their own images — the reference `script` worker and the
 coding worker, the latter passing the suite in both authentication modes against a stand-in for
 its agent; the reference repository connector in both directions, proven against the real
-service; the loopback connector and the removal test as a process (`S-01`), run once by hand;
+service, and acting as Taktus's own app when configured (ADR-0033); the loopback connector and the removal test as a process (`S-01`), run once by hand;
 the model contract as a schema with a conformance suite (`contracts/model/v1`, M-01 to M-04):
 what an adapter can compute before a call, the price table, and the model port with one adapter
 over the chat-completions dialect; OpenTelemetry spans with the
@@ -108,7 +108,7 @@ bounded by *Where this promise ends*, with a gate. `make doctor` reports `git` a
 |---|---|
 | `mlbench` worker | does not exist; its real work is `0.4.0` |
 | the events contract | `contracts/events/v1` is a placeholder |
-| the cluster execution adapter | does not exist; the port and two adapters do. `deploy/k8s/README.md` §7 specifies it, including what it must refuse |
+| the cluster execution adapter | built (#65): `TAKTUS_EXECUTION=cluster`, held to `deploy/k8s/README.md` §4 to §7 against a fake of the cluster's API. It has not run on a real cluster: those tests skip until NEED-0015 gives them a namespace of their own. Its Role is wider than §1 first said — Secrets and Services too (DEC-0061) — and the chart renders that Role |
 | the container registry build and the Helm chart | `deploy/k8s/README.md` is now the **specification** for both, written against a platform read in full on 2026-09-23 (#26); nothing under `deploy/k8s/` renders yet, and images are still built locally by `make up` and by the tests |
 | the identity component | a provisional identity per tenant stands in (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013) |
 | time triggers | the scheduler leads and ticks; nothing is scheduled; the weekly removal test is a CI workflow instead |
@@ -294,8 +294,9 @@ ADR-0028 exists to prevent, measured.
 platform that was read in full on 2026-09-23. Nothing the owner provides blocks installing it
 any more: since 2026-10-08 the deployment's access to the cluster, the public name with its
 certificate, the webhook secret, the backup store and Taktus's own app on the repository
-service exist (NEED-0007 to NEED-0010, NEED-0013); the connector moves to the app in #99. The
-instance holds real work once its backup and restore exist (#67), and is treated as production
+service exist (NEED-0007 to NEED-0010, NEED-0013); the connector acts as the app since #108
+(ADR-0033), and placing the app in the live environment and retiring the personal token is
+NEED-0016. The instance holds real work once its backup and restore exist (#67), and is treated as production
 (DEC-0057).
 
 Nothing else is blocked. Everything not listed here can be built by a session without the
@@ -319,13 +320,13 @@ rather than enforced, anything marked provisional.
 | the identity component | `docs/architecture/control-plane.md` §2 | a provisional identity per tenant, marked on every line it touches (DEC-0013); `0.2.0` removes the variable |
 | several instances with load spread across them, a restart without data loss | ADR-0013 A | proven for one instance; the election of a scheduler is proven with two; runners on several instances are `0.2.0` |
 | the coding worker's boundaries lie between tool calls; a stop inside a tool call waits up to the ceiling; money is known only at the end | `workers/claudecode/README.md` | documented limits of the agent, not enforced by Taktus; admission control on a currency limit works against the estimate only |
-| `frame.allowed_hosts` names the hosts a unit may reach | DEC-0008, `contracts/worker/v1` | enforced by the `container` adapter through a per-job egress proxy. With the `process` and `endpoint` kinds it is declared and not enforced, and `tools/first_run.sh` uses `endpoint` — so the first live run's worker reached whatever the machine could (DEC-0022) |
+| `frame.allowed_hosts` names the hosts a unit may reach | DEC-0008, `contracts/worker/v1` | enforced by the `container` adapter through a per-job egress proxy, and by the `cluster` adapter through a per-job proxy Job where the cluster enforces network policies. With the `process` and `endpoint` kinds it is declared and not enforced, and `tools/first_run.sh` uses `endpoint` — so the first live run's worker reached whatever the machine could (DEC-0022) |
 | the weekly removal test runs weekly | `blueprints/self-operation/README.md` | ran by hand on 2026-09-21 and 2026-09-23, and on its schedule for the first time on 2026-09-28, against the example process and the reference worker; every verdict now names the adapter it was taken under, and an integration no process uses reads `untested` (#36); the scheduler of `0.2.0` does not start it yet |
 | exactness is a result, not a switch: the exactness statement | UC-4.13, UC-6.9 | specified; `0.5.0` |
 | result defects are detected and remediated under the correction anchor | ADR-0021 to ADR-0023 | the terms and the anchor exist; detection and repair are `0.5.0` |
 | `contracts/events/v1`, `blueprints/it-operations` | their README files | placeholders |
 | `deploy/k8s` renders a chart | `deploy/k8s/README.md` | **a specification, not a chart.** The file is the plan the next pull request builds: the values keys, two namespaces with a restricted admission policy, default-deny network policies both ways, no service-account token in a job, a limit and a deadline on every job, and the egress proxy that makes a host list mean something. Nothing under `deploy/k8s/` renders yet |
-| the cluster execution adapter | ADR-0002's execution table, `deploy/k8s/README.md` | does not exist; the port and two adapters do. The plan says what it must refuse: a job it cannot give limits to, and a frame whose hosts it cannot enforce |
+| the cluster execution adapter | ADR-0002's execution table, `deploy/k8s/README.md` | built, and proven against a fake of the cluster's API only: the real-cluster tests skip until NEED-0015 is provided. It isolates a pod's network only where the cluster enforces network policies, and refuses hosts and every job from level 3 where the operator says it does not |
 | a live run of the coding worker in CI | `docs/roadmap.md` | the gate runs the stand-in. The live test exists (#68) and runs in the workflow `live`, monthly and by dispatch on `main`, under the cap of USD 0.50 per run (NEED-0012), held as tokens because the worker learns the money only at the end (NTC-0028); not yet dispatched. The worker has run live eight times outside CI (`docs/runs/first-run.md`) |
 | the components `accounting`, `decision`, `identity`, `knowledge`, `value` | `docs/architecture/project-structure.md` | packages with an `__init__.py` and nothing else; `reporting` (ADR-0029) has no package yet |
 | principle 14 is enforced in the data model, not in a policy | `CLAUDE.md` §5, `docs/architecture/governance.md` §6, ADR-0015 | nothing enforces it yet, because nothing measures anything about a person yet; UC-13.5 and UC-6.4 require the test that will |
@@ -333,5 +334,6 @@ rather than enforced, anything marked provisional.
 | every principle is served by a use case, and a use case's state says how much of it stands | `docs/vision/README.md`, `docs/usecases/README.md` | the gates check that each principle is served and that a `verified` use case's tests pass; they cannot check that a use case *covers* its principle, or that a `building` use case's tests prove the part it says they prove |
 | a pull request description can be acted on without the diff | ADR-0017 §7 | the gate checks that the four sections are there, filled and in order; not that they are readable without the diff |
 | Taktus is repairable without Taktus: a restore, documented and exercised | ADR-0013 C | not for a deployed instance: there is no backup yet. Its destination exists (NEED-0009); Taktus keeps backups for a configurable time, 30 days by default, encrypted only if chosen (DEC-0058); the backup and its restore, exercised once, are #67 |
-| the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where a token is set. Since DEC-0048 it runs in the workflow `live` — monthly and by dispatch, on `main`, never on a pull request — which says in a notice that nothing ran until Taktus's own app is installed on a scratch repository (NEED-0013) |
+| the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where an identity is set. Since DEC-0048 it runs in the workflow `live` — monthly and by dispatch, on `main`, never on a pull request — as Taktus's own app, minting its token in the run (ADR-0033), and as the app it also holds the pull request it opens to the app's name. It has not run as the app yet: the environment needs the app's identifier and key (NEED-0016); until then the job says in a notice that nothing ran |
+| what Taktus writes on the repository service appears under its own app's name | ADR-0033, DEC-0058, issue #50 | built: the connector acts as the app when configured, shown against the fake service and in the conformance suite. Not yet shown on the installed instance — a pull request opened there by P-03 — which waits for the install (#66); where that check lives is DEC-0063. Runs on the owner's workstation still use the personal token until NEED-0016 |
 | a licence | ADR-0012 | open: all rights reserved, no outside contribution accepted. The owner's own question, DEC-0044, settled by the release of `1.0.0` and taken up only when that release is prepared, as the owner confirmed on 2026-10-08; before the first outside contribution too |

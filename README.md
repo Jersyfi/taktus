@@ -128,7 +128,7 @@ you see the domain, not the framework.
 | Observability | OpenTelemetry from day one: spans for run, step, worker and connector calls, exported where `TAKTUS_OTLP_*` names an endpoint; the trace identifier is on every ledger entry and log line |
 | Web | SvelteKit, embedded into the image |
 | Deployment | one image for the control plane, roles via `TAKTUS_ROLES`; one image per worker, none of them in the control plane image; Docker Compose for self-hosting (`make up`), Kubernetes for scale |
-| Execution | `TAKTUS_EXECUTION`: a worker by endpoint, a unit started per job as a process (development only; refused from autonomy level 3), or as a container with limits, credentials in memory and a network allowlist — over the engine's API, Docker or Podman |
+| Execution | `TAKTUS_EXECUTION`: a worker by endpoint, a unit started per job as a process (development only; refused from autonomy level 3), as a container with limits, credentials in memory and a network allowlist — over the engine's API, Docker or Podman — or as a Job in a Kubernetes cluster with limits, a `restricted` pod, credentials from a Secret for the job's lifetime and an egress proxy of its own — over the cluster's API with `httpx`, no client library (`deploy/k8s/README.md` §7) |
 
 ---
 

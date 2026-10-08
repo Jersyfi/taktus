@@ -1,8 +1,9 @@
 """The one worker the control plane is configured with, opened the way `TAKTUS_EXECUTION` says;
 and the telemetry, opened the way `TAKTUS_OTLP_*` says.
 
-Three kinds (ADR-0002): a worker that is already running, reached by endpoint; a unit started
-per job as a process of this machine; a unit started per job in a container. The daemon and
+Four kinds (ADR-0002): a worker that is already running, reached by endpoint; a unit started
+per job as a process of this machine; a unit started per job in a container; a unit started per
+job as a Job in the cluster the control plane runs in. The daemon and
 `taktusctl` share this so that neither has a wiring of its own. The adapter identifier the
 ledger records is `worker.<kind>` — never a product name (ADR-0003).
 """
@@ -15,7 +16,11 @@ from pathlib import Path
 
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
-from taktus.adapters.driven.execution import ContainerExecution, ProcessExecution
+from taktus.adapters.driven.execution import (
+    ContainerExecution,
+    KubernetesExecution,
+    ProcessExecution,
+)
 from taktus.adapters.driven.models import OpenAiCompatibleModel, StaticModelPool
 from taktus.adapters.driven.telemetry import OpenTelemetryTelemetry, exporter_for
 from taktus.adapters.driven.workers.http import HttpWorker
@@ -98,9 +103,10 @@ def unit_of(settings: ExecutionSettings) -> ExecutionUnit:
 
 def memory_demand(settings: ExecutionSettings) -> int | None:
     """The memory a worker step's unit takes on this platform — its limit, which every
-    launched unit carries — or None for a worker reached by endpoint, which runs elsewhere.
+    launched unit carries — or None for a worker reached by endpoint and for a Job in the
+    cluster, which run outside what this platform observes.
     What admission against the platform asks for (`run/domain/service/capacity.py`)."""
-    if settings.kind is ExecutionKind.ENDPOINT:
+    if settings.kind in (ExecutionKind.ENDPOINT, ExecutionKind.CLUSTER):
         return None
     return unit_of(settings).limits.memory_bytes
 
@@ -111,6 +117,18 @@ def execution_of(
     if settings.kind is ExecutionKind.PROCESS:
         return ProcessExecution(
             configuration, state_dir=state_dir, memory_unenforced=settings.memory_unenforced
+        )
+    if settings.kind is ExecutionKind.CLUSTER:
+        if settings.namespace is None:  # unreachable: load_execution refuses cluster without it
+            raise ValueError("the cluster kind names its execution namespace")
+        return KubernetesExecution(
+            configuration,
+            namespace=settings.namespace,
+            state_dir=state_dir,
+            egress_image=settings.egress_image,
+            enforce_egress=settings.egress_enforced,
+            service_account=settings.service_account,
+            state_claim=settings.state_claim,
         )
     return ContainerExecution(
         configuration,

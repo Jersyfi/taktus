@@ -46,3 +46,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0029](ADR-0029-views-are-a-component-enablement-is-not.md) | Views are a component; enablement is not | accepted |
 | [0030](ADR-0030-a-rehearsal-acts-on-nothing-outside.md) | A rehearsal acts on nothing outside; a removal verdict says what it was taken under | accepted |
 | [0031](ADR-0031-taktus-watches-the-platform-it-runs-on.md) | Taktus watches the platform it runs on | accepted |
+| [0033](ADR-0033-taktus-authenticates-to-a-repository-service-as-an-app-of-its-own.md) | Taktus authenticates to a repository service as an app of its own | accepted |

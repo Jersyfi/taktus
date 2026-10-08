@@ -91,7 +91,7 @@ taktus/
 │   │       ├── clock/               # the system clock, identifiers, randomness — the only place
 │   │       ├── telemetry/           # otel: real spans, exported where TAKTUS_OTLP_* says; noop for tests
 │   │       ├── workers/http/        # the worker port over HTTP and SSE; workers/pool.py maps capabilities; workers/launched.py puts the port over the execution port
-│   │       ├── execution/           # process.py: a unit as a child process, its memory limit enforced on Linux and refused elsewhere; container/: a unit per job in a container with limits, no swap, credentials in memory, an egress proxy
+│   │       ├── execution/           # process.py: a unit as a child process, its memory limit enforced on Linux and refused elsewhere; container/: a unit per job in a container with limits, no swap, credentials in memory, an egress proxy; kubernetes/: a unit per job as a Job in the execution namespace, credentials from a Secret for the job's lifetime, an egress proxy Job — api.py speaks the cluster's API with httpx, only the calls of the Role (M1.3), and nothing else imports it
 │   │       ├── platform/            # host.py: the platform port for this machine or container — control group, /proc, the state directory's filesystem; standard library only
 │   │       ├── objectstore/ secret/ ledger/
 │   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
@@ -185,6 +185,9 @@ connector is a driven adapter and the suite its client, and neither imports the 
 - the core reading the clock, minting an identifier or drawing randomness by itself — only
   through `ports/clock.py`; `adapters/driven/clock/` is the one place that does
 - the core importing anything but the standard library, pydantic and itself
+- a cluster client anywhere but the cluster execution adapter: its own client
+  (`execution/kubernetes/api.py`) imported from outside `execution/kubernetes/`, or a cluster
+  client library imported anywhere
 
 ---
 

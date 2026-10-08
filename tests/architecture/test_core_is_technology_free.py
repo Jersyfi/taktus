@@ -241,3 +241,24 @@ def test_the_control_plane_image_carries_no_worker_code() -> None:
             assert source not in (".", "./"), (
                 f"deploy/docker/Dockerfile:{number}: copies the whole checkout, workers included"
             )
+
+
+CLUSTER_ADAPTER = SRC / "adapters" / "driven" / "execution" / "kubernetes"
+CLUSTER_CLIENT = "taktus.adapters.driven.execution.kubernetes.api"
+CLUSTER_LIBRARIES = frozenset({"kubernetes", "kubernetes_asyncio", "lightkube", "kr8s", "pykube"})
+
+
+@pytest.mark.parametrize("path", sorted(SRC.rglob("*.py")), ids=rel)
+def test_no_cluster_client_outside_the_cluster_adapter(path: Path) -> None:
+    """The cluster's API is reached by the cluster execution adapter alone: its own client
+    (`kubernetes/api.py`, over httpx) is imported nowhere else, and no cluster client library
+    anywhere. The composition root wires the adapter, never the client; tests may."""
+    if CLUSTER_ADAPTER in path.parents:
+        return
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    found = [
+        name
+        for name in imported_modules(tree)
+        if name == CLUSTER_CLIENT or name.split(".")[0] in CLUSTER_LIBRARIES
+    ]
+    assert found == [], f"{rel(path)} imports {found}"
