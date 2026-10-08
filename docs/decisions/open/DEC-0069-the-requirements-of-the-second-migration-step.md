@@ -38,8 +38,11 @@ direction of several conditions (each is named in section 4) but not the conditi
 ADRs — ADR-0004, ADR-0005, ADR-0008, ADR-0010, ADR-0014, ADR-0021 to ADR-0024 and ADR-0026 are the
 source of many conditions, and an architecture decision says how something is built, not that a
 use case must require it; both anchor pages — M3.15 makes what a requirement adds yours, M2.7 covers
-only restoring; the register — DEC-0030 is the same question for the first thirteen and is still
-open, so it is a precedent for the form of this request, not for its answer; DEC-0041 decides that
+only restoring; the register — DEC-0030, the same question for the first thirteen, was answered on
+2026-10-08 with Option A, on the reason that each added condition came from an accepted ADR or made
+a principle checkable and none moved a limit or an autonomy level. It decided the thirteen, not
+these seventeen, and what a requirement adds stays yours under M3.15; the precedent is therefore
+cited in the recommendation below, not applied in your place. DEC-0041 decides that
 restoring is the session's, which is how the restorations here were made (NTC-0030); DEC-0055
 accepted UC-6.10, which UC-4.2 draws on, and answers nothing here.
 
@@ -112,7 +115,8 @@ Changing a requirement later is possible, but never in the change that implement
 - **Why recommended:** each added condition either comes from an architecture decision you already
   accepted, from the repository's own text that the decisions rest on, or makes a principle
   checkable that was only asserted; none moves a limit or an autonomy level, and where two readings
-  were possible the stricter was taken.
+  were possible the stricter was taken. It is the reason you accepted for the first thirteen
+  (DEC-0030).
 
 ### Option B — they stand, except the ones you name
 
