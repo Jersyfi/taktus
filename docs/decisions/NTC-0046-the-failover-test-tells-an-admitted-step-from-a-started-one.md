@@ -3,7 +3,7 @@
 **Mode entry:** M2.2
 **Kind:** test-strategy
 **Decided:** 2026-10-09
-**Raised in:** [the pull request of branch `claude/failover-flake`](https://github.com/Jersyfi/taktus/pulls?q=head%3Aclaude%2Ffailover-flake)
+**Raised in:** [#124](https://github.com/Jersyfi/taktus/pull/124)
 
 ## 1. What was decided
 
