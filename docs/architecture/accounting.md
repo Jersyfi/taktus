@@ -91,7 +91,8 @@ What is built of this page (ADR-0010, amendment of 2026-09-30):
 - **Money.** The breakdown at a versioned price table (`contracts/model/v1`, `PriceTable`), the
   one the run's budget statement names by digest: `taktusctl cost <run>` prints it, or prices
   the same tokens at another table with `--prices`. A model or a kind without a price is named,
-  never counted as free.
+  never counted as free. A run held with an uncalibrated margin an operator set below the floor
+  says so beside its money, as its budget statement does (DEC-0047).
 - **The Takt** will be the same breakdown at a weighting table. The weights are not fixed; they
   are the owner's (M4.3), and section 6 says when.
 

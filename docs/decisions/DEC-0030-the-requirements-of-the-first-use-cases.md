@@ -4,7 +4,6 @@
 **Raised in:** [#46](https://github.com/Jersyfi/taktus/pull/46)
 **Issue:** [#45](https://github.com/Jersyfi/taktus/issues/45)
 **Needed by:** 2026-10-20
-**Provisional answer:** Option A. The thirteen use cases are in force with the conditions they add beyond version 2 of the definition, which bind any session that builds one of them before the answer. Marked here and in the status file.
 **Narrowed:** 2026-10-01, by the owner's answer to DEC-0041: bringing a use case up to his own definition is mode 2. The four amendments this request carried were made under entry M2.7 and recorded as NTC-0014 to NTC-0017; what remains is the thirteen added conditions.
 
 ## 1. What this is about
@@ -100,3 +99,10 @@ per use case instead of one edit now.
 "DEC-0030: Option A." — or "DEC-0030: Option B" followed by each use case and the change you
 want in it — in issue [#45](https://github.com/Jersyfi/taktus/issues/45).
 A free-text answer is read back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-08
+**Answer:** Option A. The thirteen use cases stand with the conditions they add beyond version 2 of the definition; they are the standard the next pull requests are held to.
+**Reasoning given:** none beyond accepting the recommendation, whose reason was that each added condition comes from an accepted architecture decision or makes a principle checkable, and none moves a limit or an autonomy level.
+**Recorded in:** [#106](https://github.com/Jersyfi/taktus/pull/106)

@@ -9,13 +9,15 @@ from datetime import UTC, datetime
 
 import pytest
 
+from taktus.adapters.driving.cli.cost_command import render
 from taktus.components.accounting.application.service import CostOfRun, CostOfRunHandler
 from taktus.components.accounting.domain.service import meter
 from taktus.components.run.domain.model import RunState
 from taktus.ports.model import PriceTable
 from taktus.ports.worker import Limits, QuotaLimit
 
-from ..run.test_estimates import ISSUE, TABLE, priced
+from ..run.test_engine import Harness, worker
+from ..run.test_estimates import ISSUE, TABLE, margined, priced
 from ..run.test_llm_steps import WORK, ModelHarness, llm
 
 
@@ -65,3 +67,27 @@ async def test_a_run_held_without_a_table_says_its_money_is_unknown() -> None:
 def test_the_meter_counts_what_was_used_never_what_was_reserved() -> None:
     assert meter([]).tokens == {} and meter([]).quota_units == 0.0
     assert TABLE.version == "test-1"
+
+
+@pytest.mark.parametrize(
+    ("uncalibrated_margin", "below"), [(0.0, True), (0.05, True), (0.1, False)]
+)
+async def test_the_cost_of_a_run_held_below_the_floor_says_so_beside_its_money(
+    uncalibrated_margin: float, below: bool
+) -> None:
+    """`taktusctl cost` relies on the budget statement, so it says what the statement says: the
+    run was held with an uncalibrated margin an operator set below the floor (DEC-0047)."""
+    h = margined(Harness(worker("do")), uncalibrated_margin)
+    run = await h.start()
+    cost = await CostOfRunHandler(h.ledger, h.objects, h.persistence).execute(
+        CostOfRun(run.id, "t")
+    )
+    shown = render(cost)
+    if below:
+        assert cost.below_floor is not None
+        assert f"set to {uncalibrated_margin:g}, below the floor of 0.1" in cost.below_floor
+        assert f"margin   {cost.below_floor}" in shown.splitlines()
+        assert cost.document()["below_floor"] == cost.below_floor, "and in --json"
+    else:
+        assert cost.below_floor is None
+        assert "margin" not in shown
