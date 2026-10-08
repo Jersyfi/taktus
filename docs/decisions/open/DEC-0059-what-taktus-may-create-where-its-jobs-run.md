@@ -1,7 +1,7 @@
 # DEC-0059 — What Taktus may create where its jobs run
 
 **Category:** NON-BLOCKING
-**Raised in:** [#106](https://github.com/Jersyfi/taktus/pull/106), which builds the chart (issue #64)
+**Raised in:** [#118](https://github.com/Jersyfi/taktus/pull/118), which builds the chart (issue #64)
 **Issue:** [#113](https://github.com/Jersyfi/taktus/issues/113)
 **Needed by:** 2026-10-20
 **Provisional answer:** Option C. The chart grants exactly what issue #64 verifies: jobs, and reading their pods and logs. The cluster execution adapter (#65) is built against that; on the cluster it refuses a job that needs a credential or an allowed host, with the reason. Marked in `deploy/k8s/README.md` §1 and §10.

@@ -1,10 +1,10 @@
 # NEED-0014 — The registry the images are pushed to
 
 **Kind:** action
-**Raised in:** [#106](https://github.com/Jersyfi/taktus/pull/106)
+**Raised in:** [#118](https://github.com/Jersyfi/taktus/pull/118)
 **Issue:** [#114](https://github.com/Jersyfi/taktus/issues/114)
 **Needed by:** 2026-10-20
-**Foreseeable since:** [#106](https://github.com/Jersyfi/taktus/pull/106), which adds the workflow that builds the images on a release tag and pushes them to the registry a repository setting names
+**Foreseeable since:** [#118](https://github.com/Jersyfi/taktus/pull/118), which adds the workflow that builds the images on a release tag and pushes them to the registry a repository setting names
 
 ## 1. What is needed
 

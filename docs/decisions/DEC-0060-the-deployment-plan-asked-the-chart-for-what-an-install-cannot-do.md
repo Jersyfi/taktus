@@ -1,7 +1,7 @@
 # DEC-0060 — The deployment plan asked the chart for what an install cannot do
 
 **Category:** DEFECT
-**Raised in:** [#106](https://github.com/Jersyfi/taktus/pull/106), while building the chart (issue #64)
+**Raised in:** [#118](https://github.com/Jersyfi/taktus/pull/118), while building the chart (issue #64)
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -63,4 +63,4 @@ whoever created them; the chart renders them only on request. The migrations run
 upgrade, and on the first install after the database the chart creates (`deploy/k8s/README.md`
 §2, §4).
 **What changed in substance:** nothing that runs; the chart is built to the corrected plan.
-**Recorded in:** [#106](https://github.com/Jersyfi/taktus/pull/106)
+**Recorded in:** [#118](https://github.com/Jersyfi/taktus/pull/118)
