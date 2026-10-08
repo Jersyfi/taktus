@@ -59,32 +59,35 @@ def bundle() -> dict[str, Any]:
 class Database:
     """What the test reads directly from the database, as the application would."""
 
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, tenant: str = TENANT) -> None:
+        self.tenant = tenant
         self.persistence = PostgresPersistence(url, pool_size=1)
         self.runs = PostgresRepository(self.persistence, Run)
         self.ledger = PostgresLedgerStore(self.persistence)
         self.provenance = PostgresProvenanceStore(self.persistence)
 
     async def records(self, run_id: str) -> list[Provenance]:
-        async with self.persistence.transaction(TENANT):
-            return list(await self.provenance.of_run(TENANT, run_id))
+        async with self.persistence.transaction(self.tenant):
+            return list(await self.provenance.of_run(self.tenant, run_id))
 
     async def run(self, run_id: str) -> Run | None:
-        async with self.persistence.transaction(TENANT):
-            return await self.runs.get(TENANT, run_id)
+        async with self.persistence.transaction(self.tenant):
+            return await self.runs.get(self.tenant, run_id)
 
     async def latest_run(self) -> Run | None:
-        async with self.persistence.transaction(TENANT):
-            runs = [r for r in await self.runs.list(TENANT) if r.process_version == "restart@1"]
+        async with self.persistence.transaction(self.tenant):
+            runs = [
+                r for r in await self.runs.list(self.tenant) if r.process_version == "restart@1"
+            ]
         return max(runs, key=lambda r: r.created_at, default=None)
 
     async def entries(self, run_id: str) -> list[LedgerEntry]:
-        async with self.persistence.transaction(TENANT):
-            return [e for e in await self.ledger.entries(TENANT) if e.refs.run_id == run_id]
+        async with self.persistence.transaction(self.tenant):
+            return [e for e in await self.ledger.entries(self.tenant) if e.refs.run_id == run_id]
 
     async def verifies(self) -> bool:
-        async with self.persistence.transaction(TENANT):
-            verification = await ChainedLedger(self.ledger, _NoClock()).verify(TENANT)
+        async with self.persistence.transaction(self.tenant):
+            verification = await ChainedLedger(self.ledger, _NoClock()).verify(self.tenant)
         assert verification.intact, verification.findings
         return True
 

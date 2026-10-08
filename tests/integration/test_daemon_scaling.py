@@ -131,13 +131,13 @@ def rule_only_bundle(n: int) -> dict[str, Any]:
     return document
 
 
-async def submit(wired: Wired, document: dict[str, Any]) -> Run:
-    version = await wired.register_version.execute(RegisterProcessVersion(document, tenant=TENANT))
+async def submit(wired: Wired, document: dict[str, Any], tenant: str = TENANT) -> Run:
+    version = await wired.register_version.execute(RegisterProcessVersion(document, tenant=tenant))
     command = Command(
         id=wired.ids.new("cmd"),
         channel="channel.cli",
         identity="idn_test",
-        org_path=(TENANT,),
+        org_path=(tenant,),
         intent=Intent(raw="run"),
         reply_to=ReplyTo(channel="channel.cli", address="test"),
         received_at=wired.clock.now(),
@@ -145,7 +145,7 @@ async def submit(wired: Wired, document: dict[str, Any]) -> Run:
     plan = await wired.commission.execute(
         CommissionPlan(
             command=command,
-            tenant=TENANT,
+            tenant=tenant,
             goal="g",
             autonomy_level=version.autonomy_level,
             steps=version.ordered(),
@@ -158,7 +158,7 @@ async def submit(wired: Wired, document: dict[str, Any]) -> Run:
             budget=Limits.model_validate(dict(version.limits or {})),
             process_version=version.ref,
             actor="idn_test",
-            tenant=TENANT,
+            tenant=tenant,
         )
     )
 
