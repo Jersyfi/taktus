@@ -3,7 +3,7 @@
 **Mode entry:** M2.7
 **Kind:** restoration
 **Decided:** 2026-10-09
-**Raised in:** PRLINK
+**Raised in:** [#132](https://github.com/Jersyfi/taktus/pull/132)
 **How it follows:** the owner's project definition, version 2, UC-1.1: "the normalisation itself is part of the Taktus core (chapter 5.4)"; chapter 5.4: the channel normalisation is thin and part of the control plane, no foreign gateway product forms the core, and channel libraries may be used inside a connector. The amendment writes that as a condition of UC-1.1 and adds nothing beyond it.
 
 ## 1. What was decided

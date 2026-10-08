@@ -1,7 +1,7 @@
 # DEC-0082 — The requirements of the third migration step
 
 **Category:** NON-BLOCKING
-**Raised in:** PRLINK
+**Raised in:** [#132](https://github.com/Jersyfi/taktus/pull/132)
 **Issue:** [#131](https://github.com/Jersyfi/taktus/issues/131)
 **Needed by:** 2026-10-23
 **Provisional answer:** Option A. The twenty-seven use cases of the third migration step are in force with the conditions they add beyond version 2 of the definition, and bind any session that builds one of them before the answer. Marked here, in `docs/usecases/MIGRATION.md`, and in the status file.

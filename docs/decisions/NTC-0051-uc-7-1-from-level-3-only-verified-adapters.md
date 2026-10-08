@@ -3,7 +3,7 @@
 **Mode entry:** M2.7
 **Kind:** restoration
 **Decided:** 2026-10-09
-**Raised in:** PRLINK
+**Raised in:** [#132](https://github.com/Jersyfi/taktus/pull/132)
 **How it follows:** the owner's project definition, version 2, chapter 5.3: connectors and worker adapters carry a maturity — experimental, verified, reference — and production processes from autonomy level 3 (UC-7.1) may only use adapters from *verified*. The definition's open question 5 asked whether the threshold should be level 3 or level 4, and `docs/vision/history.md` records the answer: kept at *verified* from level 3. The amendment writes that rule into the use case of autonomy levels and adds nothing beyond it.
 
 ## 1. What was decided
