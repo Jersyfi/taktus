@@ -21,6 +21,7 @@ dependencies = [
   "jsonschema",
   "pgvector",
   "pyyaml",
+  "pyjwt[crypto]",
 ]
 
 [project.optional-dependencies]

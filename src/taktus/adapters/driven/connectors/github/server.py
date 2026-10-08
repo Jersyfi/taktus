@@ -3,8 +3,15 @@ operation, the intake tool, and `GET /health`.
 
 Every tool does the same four things: find the requesting identity's credential by the name the
 context carries — and refuse when there is none, because the connector has no credential of its
-own — run the operation against the service, wrap what came back in the contract's Result or
-Error envelope, and log one line that names the operation and the outcome and never a value.
+own to fall back on — run the operation against the service, wrap what came back in the
+contract's Result or Error envelope, and log one line that names the operation and the outcome
+and never a value.
+
+When the identity is Taktus's own app (ADR-0033), the name the declaration lists for actions is
+the app's: a call that references it is served with an installation token the connector mints
+from the app's key (`app.py`). A call that references no credential, or another name whose value
+is absent, is refused exactly as in the token mode — the app is bound to one name, not a
+fallback.
 
 The faults of `faults.py` are applied here, around that behaviour, and nowhere else.
 """
@@ -27,6 +34,7 @@ from starlette.responses import JSONResponse
 
 from taktus.adapters.driven.connectors.github import declaration, intake, operations
 from taktus.adapters.driven.connectors.github.api import Api, TargetError
+from taktus.adapters.driven.connectors.github.app import AppConfig, AppTokens
 from taktus.adapters.driven.connectors.github.faults import validate
 
 type Json = dict[str, Any]
@@ -44,6 +52,7 @@ class Config:
     path: str = "/mcp"
     timeout: float = 30.0  # seconds to wait for the service's answer
     fault: str | None = None  # one of faults.FAULTS, for the meta-test only
+    app: AppConfig | None = None  # Taktus's own app serves the actions credential (ADR-0033)
 
 
 def now() -> str:
@@ -90,6 +99,29 @@ class Connector:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.faults = validate(config.fault)
+        self.app = (
+            AppTokens(config.app, config.target, config.repository, timeout=config.timeout)
+            if config.app is not None
+            else None
+        )
+
+    def _names_the_app(self, context: Json) -> bool:
+        return self.app is not None and any(
+            isinstance(reference, dict) and reference.get("name") == declaration.ACTIONS_CREDENTIAL
+            for reference in context.get("credentials") or []
+        )
+
+    async def _credential(self, context: Json) -> tuple[str | None, int]:
+        """The value the call acts with, and the requests it took to get it. Raises TargetError
+        when the app could not mint a token."""
+        if self.app is not None and self._names_the_app(context):
+            return await self.app.token()
+        token = credential_value(context)
+        if token is None and "C-03" in self.faults:
+            if self.app is not None:
+                return await self.app.token()
+            token = os.environ.get(declaration.ACTIONS_CREDENTIAL)
+        return token, 0
 
     def declaration(self) -> Json:
         capabilities = declaration.capabilities()
@@ -108,9 +140,12 @@ class Connector:
             return envelope(error.envelope(0), is_error=True)
         if "C-05" in self.faults:
             key = "fault-" + secrets.token_hex(12)
-        token = credential_value(context)
-        if token is None and "C-03" in self.faults:
-            token = os.environ.get(declaration.ACTIONS_CREDENTIAL)
+        try:
+            token, minted = await self._credential(context)
+        except TargetError as refusal:
+            spent = self.app.spent if self.app is not None else 0
+            log(f"{name} step={step}: {refusal.cause} while minting the app's token")
+            return envelope(refusal.envelope(spent), is_error=True)
         if token is None:
             error = TargetError(
                 "unauthenticated",
@@ -122,9 +157,24 @@ class Connector:
             log(f"{name} step={step}: unauthenticated")
             return envelope(error.envelope(0), is_error=True)
         api = Api(self.config.target, self.config.repository, token, timeout=self.config.timeout)
+        api.requests = minted
         try:
             outcome = await operations.OPERATIONS[name](api, input, key)
-        except TargetError as error:
+        except TargetError as raised:
+            error = raised
+            if error.status == 401 and self.app is not None and self._names_the_app(context):
+                # The held token was refused: the installation was removed or suspended, or the
+                # token revoked. It is dropped; the next call mints anew and says which.
+                self.app.forget()
+                error = TargetError(
+                    "unauthenticated",
+                    "none",
+                    False,
+                    "the app's installation token was not accepted: the installation may have "
+                    "been removed or suspended, or the token revoked; the next call mints a new "
+                    "one and says which",
+                    401,
+                )
             log(f"{name} step={step}: {error.cause} after {api.requests} request(s)")
             if "C-06" in self.faults:
                 return CallToolResult(

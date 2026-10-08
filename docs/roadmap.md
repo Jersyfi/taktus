@@ -129,8 +129,9 @@ and one adapter exist), governance and anchors, the cluster execution adapter, t
 registry build and the Helm chart, the identity component (a provisional identity stands in
 for it), time triggers (the scheduler leads and ticks; nothing is scheduled), event reactions
 (the automation role starts and waits; the outbox exists, nothing writes it; an intake event is
-completed into a command by hand), and a live run of the coding worker against its real agent
-in CI (it needs a credential; the gate runs the stand-in). In the backlog, the identity
+completed into a command by hand), and a passing live run of the coding worker against its real
+agent in CI (the gate runs the stand-in; the live test is written and runs in the workflow
+`live` on `main`, and has not yet run there, #68). In the backlog, the identity
 component, time triggers, event reactions with the events contract, and governance and anchors
 are tasks of `0.2.0`, where the list of that milestone already places their substance, and
 `mlbench` is a task of `0.4.0`; the cluster execution adapter, the chart and the image build, and

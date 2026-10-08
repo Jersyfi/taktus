@@ -46,7 +46,8 @@ run derives is `taktus:<run id>:<step id>:<attempt>`. The test that tries to ope
 twice for the same step across a restart is `tests/adapters/connectors/test_repository_actions.py`
 against the fake service, and `test_repository_live.py` against the real one — a branch, a pull
 request, a comment and a label, each twice across two connectors, with one record each; it runs
-when `TAKTUS_LIVE_REPOSITORY` and `REPOSITORY_TOKEN` are set and skips otherwise.
+when `TAKTUS_LIVE_REPOSITORY` and an identity — the app's two variables, or `REPOSITORY_TOKEN` —
+are set, and skips otherwise.
 
 **What it does when the target offers nothing to recognise a repeat by.**
 `repository.pipelines.trigger` is the honest case of the contract's §4: a workflow dispatch
@@ -66,12 +67,42 @@ describes both as parameters:
 
 | Name | Purpose | How it reaches the connector |
 |---|---|---|
-| `REPOSITORY_TOKEN` | actions: the **requesting identity's** token, with that identity's scopes | referenced in the call's context; read from the environment or a file at the moment of the call, never stored |
-| `REPOSITORY_WEBHOOK_SECRET` | intake: the secret the webhook signs with | read from the environment at the moment of the intake call |
+| `REPOSITORY_TOKEN` | actions: the **requesting identity's** token, with that identity's scopes — Taktus's own app's installation token when the app is configured | as the app: minted by the connector from the app's key ([`app.py`](app.py)); otherwise referenced in the call's context and read from the environment or a file at the moment of the call. Never stored |
+| `REPOSITORY_WEBHOOK_SECRET` | intake: the secret the webhook signs with — the app's webhook secret when the app delivers the events | read from the environment at the moment of the intake call |
 
-The connector has no token of its own. A call that references no credential, or one that is not
-available, ends `unauthenticated` without a request. A token the service refuses for a write ends
-`forbidden`. Whoever cannot do something on the service cannot do it through Taktus either.
+The connector has no token of its own to fall back on. A call that references no credential, or
+one that is not available, ends `unauthenticated` without a request. A token the service refuses
+for a write ends `forbidden`. Whoever cannot do something on the service cannot do it through
+Taktus either.
+
+### As Taktus's own app (the default) or with a token
+
+An **app** is an identity of its own on the service, not a person, installed on chosen
+repositories with chosen permissions (ADR-0033, DEC-0058). The connector acts as the app when
+both of these are set, and refuses to start when one is set without the other:
+
+| Variable | What it holds |
+|---|---|
+| `TAKTUS_REPOSITORY_APP_ID` | the app's identifier, configuration key `repository.app_id`; not a secret, and not logged |
+| `TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE` | the path of the file that holds the app's private key, credential `repository_app_key` |
+
+The app is then the identity behind the name `REPOSITORY_TOKEN`, and behind that name alone. For
+a call that references it, the connector signs a statement with the key (a JWT, RS256, valid nine
+minutes), asks the service for the app's installation on the repository and exchanges the
+statement for an installation token **for this one repository**. The token lives an hour. It is
+held in memory, used for every call while more than five minutes are left, and replaced before
+that; it is never written anywhere. The key is read from its file at each minting, so a key
+replaced in the file takes effect at the next one. The two minting requests count as the
+consumption of the call that needed them.
+
+A refusal while minting ends the call `unauthenticated`, with no effect, not retryable, and says
+why: the key was not accepted, the app is not installed on the repository (or its installation
+was removed), or the installation is suspended. A held token the service refuses is dropped; the
+call ends `unauthenticated`, and the next call mints anew and gives the reason. What the app writes
+appears under the app's name, as an automation.
+
+Without the two variables the connector acts with the value the runtime puts under the
+referenced name — a personal token, for a tenant that has no app.
 
 ## Errors
 

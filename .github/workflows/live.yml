@@ -8,8 +8,8 @@ name: live
 # `tests/tools/test_live_workflow.py` holds every workflow to that.
 #
 # Every run is capped and leaves its evidence. A job that spends money reads its cap from the
-# environment's variable `LIVE_SPEND_CAP_USD` and refuses to start without it; a job whose
-# service charges nothing is bounded by its time limit. What a run consumed is kept as an
+# environment's variable `LIVE_SPEND_CAP_USD` and refuses to start without it, in its first
+# step; a job whose service charges nothing is bounded by its time limit. What a run consumed is kept as an
 # artifact, as the removal test keeps its own.
 on:
   schedule:
@@ -21,10 +21,15 @@ permissions:
 
 jobs:
   # The repository connector against the real hosting service, in a scratch repository that exists
-  # for this test alone and on which Taktus's own app is installed (NEED-0013, DEC-0058). Until the
-  # connector acts as the app, the job reads a token from the environment and runs nothing without
-  # the scratch repository's name. The hosting service charges nothing for these calls; the job's
-  # time limit bounds the run, and the test log, which lists every call's test, is its evidence.
+  # for this test alone and on which Taktus's own app is installed (NEED-0013, DEC-0058). The
+  # connector acts as the app (ADR-0033): it mints an installation token that lives an hour from
+  # the app's private key, in this run, and stores it nowhere. The identifier and the key are
+  # secrets of the environment, so that neither is printed in this public log; the key is written
+  # to a file outside the evidence directory, readable by the runner's user alone, for the length
+  # of the step. Nothing runs without the scratch repository's name; with the name and without the
+  # app, the step fails, because half a configuration is a fault and not a skip (NEED-0016). The
+  # hosting service charges nothing for these calls; the job's time limit bounds the run, and the
+  # test log, which lists every call's test, is its evidence.
   connector:
     if: github.repository == 'Jersyfi/taktus' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -38,21 +43,93 @@ jobs:
         if: ${{ vars.TAKTUS_LIVE_REPOSITORY != '' }}
         env:
           TAKTUS_LIVE_REPOSITORY: ${{ vars.TAKTUS_LIVE_REPOSITORY }}
-          REPOSITORY_TOKEN: ${{ secrets.LIVE_REPOSITORY_TOKEN }}
+          TAKTUS_REPOSITORY_APP_ID: ${{ secrets.LIVE_APP_ID }}
+          LIVE_APP_PRIVATE_KEY: ${{ secrets.LIVE_APP_PRIVATE_KEY }}
         # `shell: bash` runs with pipefail, so that a failing test fails the step through `tee`.
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/live"
+          if [ -z "$TAKTUS_REPOSITORY_APP_ID" ] || [ -z "$LIVE_APP_PRIVATE_KEY" ]; then
+            echo "::error::the app's identifier or key is not set in the environment 'live' (NEED-0016)"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/live" "$RUNNER_TEMP/app"
+          chmod 700 "$RUNNER_TEMP/app"
+          key="$RUNNER_TEMP/app/key.pem"
+          trap 'rm -f "$key"' EXIT
+          (umask 077 && printf '%s\n' "$LIVE_APP_PRIVATE_KEY" >"$key")
+          unset LIVE_APP_PRIVATE_KEY
+          export TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE="$key"
           uv run pytest tests/adapters/connectors/test_repository_live.py -rA \
             | tee "$RUNNER_TEMP/live/connector.log"
+          # A test that skipped proved nothing: the run fails unless it passed.
+          grep -Eq '^PASSED ' "$RUNNER_TEMP/live/connector.log" \
+            || { echo "::error::the live connector test did not run"; exit 1; }
       - name: not provided yet
         if: ${{ vars.TAKTUS_LIVE_REPOSITORY == '' }}
-        run: echo "::notice::the scratch repository is not configured in the environment 'live' (NEED-0013); nothing ran"
+        run: echo "::notice::the scratch repository is not configured in the environment 'live' (NEED-0016); nothing ran"
       - name: keep the evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: live-connector-${{ github.run_id }}
+          path: ${{ runner.temp }}/live
+          if-no-files-found: ignore
+          retention-days: 90
+
+  # The coding worker against its real agent, on one small assignment: one file in an empty
+  # workspace (#68, NEED-0012). The job spends money on the agent's key, so it does not start
+  # without the cap per run. The test converts the cap into the run's budget in tokens, because
+  # the worker learns the money only when the assignment ends; the worker halts at a boundary
+  # before the cap's line (NTC-0028). The run's ledger, its output, the conversion and the
+  # worker's log are the evidence. The agent's own configuration stays out of it.
+  coding:
+    if: github.repository == 'Jersyfi/taktus' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: live
+    timeout-minutes: 20
+    steps:
+      - name: refuse without the cap
+        if: ${{ vars.LIVE_SPEND_CAP_USD == '' }}
+        run: |
+          echo "::error::the environment 'live' sets no LIVE_SPEND_CAP_USD; a job that spends money does not start without its cap (NEED-0012)"
+          exit 1
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      # The current release, on purpose: the test is there to notice when the agent changes.
+      - name: the agent's command line
+        run: npm install --global @anthropic-ai/claude-code
+      - name: the key, into a file only this job reads
+        env:
+          KEY: ${{ secrets.CODING_AGENT_API_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/credentials"
+          printf '%s' "$KEY" > "$RUNNER_TEMP/credentials/coding-agent-api-key"
+          echo "TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE=$RUNNER_TEMP/credentials/coding-agent-api-key" >> "$GITHUB_ENV"
+      - name: live coding worker test
+        env:
+          LIVE_SPEND_CAP_USD: ${{ vars.LIVE_SPEND_CAP_USD }}
+          TAKTUS_REQUIRE_LIVE: "1"
+          TAKTUS_LIVE_EVIDENCE: ${{ runner.temp }}/live/coding
+        # `shell: bash` runs with pipefail, so that a failing test fails the step through `tee`.
+        shell: bash
+        run: |
+          mkdir -p "$TAKTUS_LIVE_EVIDENCE"
+          uv run pytest -rA \
+            "tests/workers/test_coding_worker_live.py::test_the_coding_worker_against_its_real_agent_under_the_cap" \
+            | tee "$RUNNER_TEMP/live/pytest.log"
+      - name: the tokens against the estimate, on the run's page
+        if: always()
+        run: cat "$RUNNER_TEMP/live/coding/summary.md" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - name: remove the key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/credentials"
+      - name: keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-coding-${{ github.run_id }}
           path: ${{ runner.temp }}/live
           if-no-files-found: ignore
           retention-days: 90

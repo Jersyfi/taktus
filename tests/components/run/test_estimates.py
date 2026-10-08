@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
+import pytest
 from fakes import FakeConnector, FakeModel, FakeWorker, InnerStep
 
 from taktus.adapters.driven.models import StaticModelPool
@@ -45,6 +46,23 @@ def priced(h: ModelHarness, table: PriceTable | None = TABLE) -> ModelHarness:
         telemetry=h.engine._telemetry,
         models=StaticModelPool([("model.fake", ["reasoning"], h.model, "fake-model@1")]),
         options=EngineOptions(prices=table),
+    )
+    return h
+
+
+def margined(h: Harness, uncalibrated_margin: float) -> Harness:
+    """The harness's engine, with the uncalibrated margin an operator set."""
+    h.engine = RunEngine(
+        runs=h.runs,
+        work=h.persistence,
+        objects=h.objects,
+        ledger=h.ledger,
+        provenance=h.provenance,
+        workers=h.engine._workers,
+        clock=h.clock,
+        ids=h.ids,
+        telemetry=h.engine._telemetry,
+        options=EngineOptions(uncalibrated_margin=uncalibrated_margin),
     )
     return h
 
@@ -206,6 +224,25 @@ async def test_the_budget_says_what_it_can_promise_when_it_is_set() -> None:
     assert "cannot be enforced" in promise["reason"]
     assert said["price_table"]["version"] == "test-1"  # type: ignore[index]
     assert said["held"] == {"currency": {"usd": 5.0}}
+
+
+@pytest.mark.parametrize(
+    ("uncalibrated_margin", "below"), [(0.0, True), (0.05, True), (0.1, False), (1.0, False)]
+)
+async def test_a_run_under_a_margin_below_the_floor_records_it_when_its_budget_is_set(
+    uncalibrated_margin: float, below: bool
+) -> None:
+    """The floor governs automatic narrowing; an operator's lower value holds and is said in
+    every report that relies on it (DEC-0047)."""
+    h = margined(Harness(worker("do")), uncalibrated_margin)
+    run = await h.start()
+    said = await statement(h, run)
+    recorded = said["uncalibrated_margin"]
+    assert recorded["value"] == uncalibrated_margin and recorded["floor"] == 0.1  # type: ignore[index]
+    if below:
+        assert f"set to {uncalibrated_margin:g}, below the floor of 0.1" in recorded["below_floor"]  # type: ignore[index]
+    else:
+        assert recorded["below_floor"] is None  # type: ignore[index]
 
 
 # --- a worker halts before its ceiling -------------------------------------------------------
