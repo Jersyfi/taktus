@@ -63,11 +63,50 @@ def test_every_live_job_is_guarded_to_main_and_this_repository_and_runs_in_the_e
         assert job.get("timeout-minutes"), f"job {name} has no time limit"
 
 
+def test_live_tests_run_monthly() -> None:
+    """DEC-0058: monthly and by dispatch; weekly was more than the interfaces need."""
+    for entry in load(LIVE)["on"]["schedule"]:
+        _minute, _hour, day, month, weekday = str(entry["cron"]).split()
+        assert day.isdigit() and month == "*" and weekday == "*", (
+            f"live.yml runs on {entry['cron']!r}, not once a month (DEC-0058)"
+        )
+
+
+def spends(job: dict[str, Any]) -> bool:
+    return bool(SPENDING_SECRETS & set(SECRET.findall(yaml.safe_dump(job))))
+
+
 def test_a_job_that_spends_money_carries_the_cap() -> None:
     for name, job in load(LIVE)["jobs"].items():
-        text = yaml.safe_dump(job)
-        if SPENDING_SECRETS & set(SECRET.findall(text)):
-            assert CAP in text, f"job {name} reads a secret that costs money and no {CAP}"
+        if spends(job):
+            assert CAP in yaml.safe_dump(job), (
+                f"job {name} reads a secret that costs money and no {CAP}"
+            )
+
+
+def test_a_job_that_spends_money_refuses_to_start_without_the_cap() -> None:
+    """Its first step fails when the cap is not set, before anything is checked out, installed
+    or handed a secret (NEED-0012 §4, step 6)."""
+    for name, job in load(LIVE)["jobs"].items():
+        if not spends(job):
+            continue
+        first = job["steps"][0]
+        assert f"{CAP} == ''" in str(first.get("if", "")), (
+            f"job {name}: its first step does not run exactly when {CAP} is unset"
+        )
+        assert "exit 1" in str(first.get("run", "")), f"job {name}: its first step does not fail"
+
+
+def test_the_coding_worker_runs_live_and_keeps_its_evidence() -> None:
+    """The live test of the coding worker (#68) runs in the job `coding`, required — a missing
+    credential fails it rather than skipping — and the job keeps what the run left whatever
+    happened."""
+    job = load(LIVE)["jobs"]["coding"]
+    text = yaml.safe_dump(job)
+    assert "tests/workers/test_coding_worker_live.py" in text
+    assert "TAKTUS_REQUIRE_LIVE" in text
+    kept = [s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact")]
+    assert kept and kept[0].get("if") == "always()", "the evidence is kept whatever happened"
 
 
 @pytest.mark.parametrize("path", sorted(WORKFLOWS.glob("*.yml")), ids=lambda p: p.name)
