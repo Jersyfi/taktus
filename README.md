@@ -105,6 +105,7 @@ you see the domain, not the framework.
 | [docs/status.md](docs/status.md) | Where the project stands and what is needed from the owner, kept current by every pull request |
 | [docs/decisions/](docs/decisions/README.md) | The project's decision register: which questions reach the owner, what was answered, and what only the owner can provide |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones `0.1.0` to `1.0.0` |
+| [docs/process/](docs/process/README.md) | How work is organised: the backlog is the repository's issues, what makes a task ready, in which order it is taken, and the standing brief a session follows |
 | [docs/usecases/](docs/usecases/) | The worked use cases |
 
 ---

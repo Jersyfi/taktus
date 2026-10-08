@@ -102,8 +102,8 @@ decided, the evidence it rests on, what was considered, and which mode-2 entry o
 `docs/decisions/TEMPLATE-NOTICE.md` is the template.
 
 Every notice carries a **kind** in its header, and the register index shows it. The kinds are
-a vocabulary the shipped default defines (`anchors.md` §1): `restructuring`, `test-strategy`,
-`gate-weakened`, `behaviour-change`. Every mode-2 entry names its kind; a notice carries the
+a vocabulary the shipped default defines (`anchors.md` §1), and the list is kept there and
+nowhere else. Every mode-2 entry names its kind; a notice carries the
 kind of the entry it cites, and the gate of §8 fails on a mismatch. The kind exists beside the
 entry because an entry is one tenant's permission — it may be moved, split or renumbered —
 while the kind means the same in every tenant: a register is read by kind, and a weakened gate

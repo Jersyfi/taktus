@@ -1,0 +1,3 @@
+# Every issue is a task, a decision request or a needs request, each with its form: a blank issue
+# would enter the backlog without the ready standard (DEC-0051).
+blank_issues_enabled: false

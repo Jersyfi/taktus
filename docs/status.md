@@ -113,7 +113,7 @@ bounded by *Where this promise ends*, with a gate. `make doctor` reports `git` a
 | the identity component | a provisional identity per tenant stands in (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013) |
 | time triggers | the scheduler leads and ticks; nothing is scheduled; the weekly removal test is a CI workflow instead |
 | event reactions | the automation role starts and waits; the outbox exists and nothing writes it; an intake event is completed into a command by hand |
-| a live run of the coding worker against its real agent in CI | the gate runs the stand-in; a live run needs a key CI does not have, raised as NEED-0012 on 2026-10-01 |
+| a live run of the coding worker against its real agent in CI | the gate runs the stand-in; a live run needs a key of its own, raised as NEED-0012 on 2026-10-01 and rewritten on 2026-10-07: it runs weekly and by dispatch on `main`, under a cap per run, never on a pull request (DEC-0048) |
 | governance and anchors in the product | the anchors exist for this repository as documents; nothing in the product evaluates an anchor at a step boundary yet |
 
 **How the owner is asked** changed on 2026-10-01 (DEC-0039): a situation that fits no entry of
@@ -140,10 +140,25 @@ webhook secret (NEED-0010), the live connector test in CI (NEED-0011), the codin
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
 each with the pull request that recorded it. **Open:** DEC-0028, DEC-0029 and DEC-0030, raised
 by the pull request that brought in the vision layer — DEC-0030 narrowed on 2026-10-01 to the
-conditions the use cases add beyond the definition — and DEC-0044, the licence. DEC-0034 and DEC-0037, raised by the
+conditions the use cases add beyond the definition — DEC-0044, the licence, and DEC-0053, the
+budget of the next live run, raised on 2026-10-07 because it exceeds what a session may spend
+alone. DEC-0034 and DEC-0037, raised by the
 pull request that took up the first run's findings, are answered: a worker with no calibration
 history reserves twice its estimate, and where a run produces a generated text is the session's
 to decide.
+
+**On 2026-10-07 the owner answered five readings and replaced hand-written briefs.** Recorded
+first, as DEC-0047 to DEC-0051. An operator's explicit margin below the 10 % floor holds,
+because a limit is the operator's, and Taktus is to say so where it is set and in every report
+relying on it (#72); the reason #52 gave — that tests would otherwise need editing — was a
+misreading of the use-case rule, which protects what a use case requires and not the files that
+test it. The model-reset reading stands. Live tests that need a credential run only on a
+schedule or by dispatch, on `main`, never for a fork, under a spend cap, with their secrets in
+the environment `live` (`.github/workflows/live.yml`); NEED-0011 and NEED-0012 were rewritten
+before they were provided. A session may spend up to USD 1 per task on the owner's credentials
+to derive a fact instead of asking (M2.8). DEC-0037's Option A waits for event reactions. And
+the work now comes from the backlog — the repository's issues — through a standing brief,
+`docs/process/next-task.md`, until Taktus runs P-01, P-02 and P-03 on its own instance.
 
 **A budget is a budget, built** (ADR-0005, third amendment; DEC-0035). Every step is estimated
 before it is admitted, or refused: a worker by its estimate, an `llm` step by the input its model
@@ -219,17 +234,19 @@ its schedule for the first time on 2026-09-28, green, in 25 seconds — started 
 
 ## 2. The next pull requests
 
-1. **Step 2 of the migration**: the use cases of `process`, `run` and `governance`, starting from
-   what is already written in `UC-4-result-defects.md` and `UC-4-exactness-statement.md`, and
-   with UC-4.5 and UC-8.5 reconciled with ADR-0021, ADR-0005 and ADR-0010.
-2. **#38**, which Taktus opened for issue #11 on 2026-09-23: `make doctor` reports `git`. Rebased
-   on `main` on 2026-09-30, its conflicts resolved, its description rewritten so that it can be
-   acted on without the diff; it merges without conflict before or after this one.
-3. **The deployment itself**: the chart, the registry build and the cluster execution adapter,
-   against `deploy/k8s/README.md` — its database its own (DEC-0032), its volume 20 Gi (DEC-0033).
-   Then **the backup and its restore**, exercised once, when NEED-0009 is provided.
-4. **`0.2.0` continues with the scheduler starting runs from a bundle's trigger**, so that the
-   removal test runs weekly without a workflow; the budget it was to start with is built.
+**The order of work is the backlog's** (DEC-0051): the repository's open issues, in milestones
+named as in the roadmap, taken earliest milestone first, then by priority, then by number.
+`make backlog` prints it, with every task that is not ready and why; `make backlog NEXT=1` names
+the next one. A session told only "continue with the next task" follows
+`docs/process/next-task.md`. The list is not kept here, for the reason section 3 gives.
+
+The backlog was built by hand on 2026-10-07, as P-01 would build it: the remainder of `0.1.0`
+and `0.2.0`, the use-case migration's steps 2 to 4, the deployment, the owner-facing channel,
+documentation beyond the repository, the product finding, DEC-0037's Option A, the live run
+that proves budget, rehearsal and capacity, and every open item of this file with a milestone.
+At that moment the first tasks are the chart and the image build, and the cluster execution
+adapter (`0.1.0`), because installing the deployment waits for them and for three needs due
+2026-10-20.
 
 ## 3. Needed from the owner
 
@@ -277,10 +294,10 @@ rather than enforced, anything marked provisional.
 |---|---|---|
 | the removal test is a conformance check, W-12 and C-10 | `contracts/worker/v1`, `contracts/connector/v1` | reported *pending* by both suites (DEC-0005); the test runs as the process S-01 instead, and no adapter has reached maturity *verified* because nothing records the conformance half |
 | the removal test *exercises* the processes that use an integration | `blueprints/self-operation/`, S-01, ADR-0030 | it rehearses them: outward operations answer from the recording of their last real call. A process is rehearsed only once it has been called for real on that instance, so the weekly job, on fresh state, still resolves P-02 and P-03 statically; a worker step that may reach hosts — P-03's — is never rehearsed; the rehearsal has never run against a real recording (`docs/runs/README.md`) |
-| a budget is a budget | ADR-0005, third amendment | built, with three limits stated there: the overrun of the one inner step during which a total crossed the line is spent; money a worker reports only when an assignment ends cannot halt it, and it is held by its tokens. The margin has a floor of 10 % and resets with the model version (DEC-0043). Never run live: what the next live run must measure — estimate against actual, a halt on a real reservation — is in `docs/runs/README.md` |
+| a budget is a budget | ADR-0005, third amendment | built, with three limits stated there: the overrun of the one inner step during which a total crossed the line is spent; money a worker reports only when an assignment ends cannot halt it, and it is held by its tokens. The margin has a floor of 10 % and resets with the model version (DEC-0043); an operator's explicit value below the floor holds, and saying so where it is set and in the reports is #72 (DEC-0047). Never run live: what the next live run must measure — estimate against actual, a halt on a real reservation — is in `docs/runs/README.md` |
 | a budget says what the provider permits | `contracts/model/v1`, `docs/research/2026-09-30-what-providers-allow.md` | this tenant's endpoint holds its output limit: the research says so ([A4]) and M-03 passed against it on 2026-10-01; `tools/first_run.sh` derives the declaration with M-03 on every run, and the deployment sets it (`deploy/k8s/README.md`). The adapter's default for an endpoint nobody has checked stays `soft`; the research is dated and expires |
 | Taktus watches its platform | ADR-0031 | *Observe* built; *Propose* `0.5.0`, *Manage* `0.7.0`. On macOS memory is neither observed nor limited, and the process adapter refuses a job there unless an unenforced limit is accepted; the cluster's own quota is not seen until a cluster platform adapter exists; admission against free capacity has never run on the platform it is for — the next live run's list is `docs/runs/README.md` |
-| an automatically started P-03 opens a pull request whose checks pass | DEC-0037 | decided: the worker runs the generator after its change and the run appends what it printed; built with the trigger of `0.2.0`, until when the manual command supplies the section |
+| an automatically started P-03 opens a pull request whose checks pass | DEC-0037 | decided: the worker runs the generator after its change and the run appends what it printed; built with event reactions in `0.2.0` (DEC-0050, #77), until when the manual command supplies the section |
 | a process that would give an instance credentials for its own infrastructure is refused at planning time | ADR-0025 | applied by the person who configures an instance; refusal in code is `0.2.0` |
 | an anchor halts the run at a step boundary and raises a decision request in the product | ADR-0008, `docs/architecture/governance.md` | the register exists for this repository; the product's governance component holds the "has it left the system" predicate of the correction anchor and nothing else (`src/taktus/components/governance`); anchors at step boundaries are `0.2.0` |
 | the identity component | `docs/architecture/control-plane.md` §2 | a provisional identity per tenant, marked on every line it touches (DEC-0013); `0.2.0` removes the variable |
@@ -293,12 +310,12 @@ rather than enforced, anything marked provisional.
 | `contracts/events/v1`, `blueprints/it-operations` | their README files | placeholders |
 | `deploy/k8s` renders a chart | `deploy/k8s/README.md` | **a specification, not a chart.** The file is the plan the next pull request builds: the values keys, two namespaces with a restricted admission policy, default-deny network policies both ways, no service-account token in a job, a limit and a deadline on every job, and the egress proxy that makes a host list mean something. Nothing under `deploy/k8s/` renders yet |
 | the cluster execution adapter | ADR-0002's execution table, `deploy/k8s/README.md` | does not exist; the port and two adapters do. The plan says what it must refuse: a job it cannot give limits to, and a frame whose hosts it cannot enforce |
-| a live run of the coding worker in CI | `docs/roadmap.md` | the gate runs the stand-in; unchanged until CI has a key of its own, raised as NEED-0012 on 2026-10-01; the live test is written when it exists (DEC-0046). The worker has now run live eight times outside CI (`docs/runs/first-run.md`) |
+| a live run of the coding worker in CI | `docs/roadmap.md` | the gate runs the stand-in; unchanged until the environment `live` has a key of its own, raised as NEED-0012 on 2026-10-01; the live test is written when it exists (DEC-0046), as a scheduled, capped job on `main` (DEC-0048). The worker has now run live eight times outside CI (`docs/runs/first-run.md`) |
 | the components `accounting`, `decision`, `identity`, `knowledge`, `value` | `docs/architecture/project-structure.md` | packages with an `__init__.py` and nothing else; `reporting` (ADR-0029) has no package yet |
 | principle 14 is enforced in the data model, not in a policy | `CLAUDE.md` §5, `docs/architecture/governance.md` §6, ADR-0015 | nothing enforces it yet, because nothing measures anything about a person yet; UC-13.5 and UC-6.4 require the test that will |
 | the legal-anchor catalogue holds | `docs/architecture/governance.md` §2, `docs/decisions/anchors.md` M4.4 | not legally reviewed for any jurisdiction; who reviews it is DEC-0029 |
 | every principle is served by a use case, and a use case's state says how much of it stands | `docs/vision/README.md`, `docs/usecases/README.md` | the gates check that each principle is served and that a `verified` use case's tests pass; they cannot check that a use case *covers* its principle, or that a `building` use case's tests prove the part it says they prove |
 | a pull request description can be acted on without the diff | ADR-0017 §7 | the gate checks that the four sections are there, filled and in order; not that they are readable without the diff |
 | Taktus is repairable without Taktus: a restore, documented and exercised | ADR-0013 C | not for a deployed instance: there is no backup yet. Its destination is NEED-0009; the backup and its restore, exercised once, are their own pull request |
-| the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where a token is set; CI has none. NEED-0011 raised, and CI's step for it is wired and skipped until the token exists |
+| the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where a token is set. Since DEC-0048 it runs in the workflow `live` — weekly and by dispatch, on `main`, never on a pull request — which says in a notice that nothing ran until NEED-0011 is provided |
 | a licence | ADR-0012 | open: all rights reserved, no outside contribution accepted. The owner's own question, DEC-0044, due before `1.0.0` and before the first outside contribution |
