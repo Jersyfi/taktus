@@ -188,8 +188,10 @@ UC-4.12, UC-6.8; ADR-0021 to ADR-0023)
 come with numbers.
 
 ### `0.6.0` — level 4
-Autonomy level 4 · skill lifecycle · the catalogue · role-based agents · recurring decisions become
-rules on proposal
+Autonomy level 4 · skill lifecycle, with a floor for the number of passed evaluations before a
+skill is approved automatically, its value set from the evaluation data of `0.5.0` and higher for
+`exact` steps (DEC-0028) · the catalogue · role-based agents · recurring decisions become rules on
+proposal
 
 **Complete when** a release happens end to end without intervention.
 

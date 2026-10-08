@@ -138,9 +138,12 @@ webhook secret (NEED-0010), the live connector test in CI (since superseded by T
 `1.0.0`.
 
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
-each with the pull request that recorded it. **Open:** DEC-0028, DEC-0029 and DEC-0030, raised
-by the pull request that brought in the vision layer — DEC-0030 narrowed on 2026-10-01 to the
-conditions the use cases add beyond the definition — and DEC-0044, the licence. DEC-0053, the
+each with the pull request that recorded it. **Open:** DEC-0044, the licence, which must be settled
+by the release of `1.0.0` and is taken up only when that release is prepared. DEC-0028, DEC-0029
+and DEC-0030, raised by the pull request that brought in the vision layer, were answered on
+2026-10-08, each with the recommended option: a floor for automatic skill approval set from data,
+qualified reviewers for the legal-anchor catalogue before a finance or personnel blueprint, and
+the thirteen use cases' added conditions stand. DEC-0053, the
 budget of the next live run, was answered on 2026-10-08: USD 3 in total. DEC-0055, raised on
 2026-10-08 from the owner's idea, was answered the same day: what Taktus does is seen as it
 happens, as UC-6.10 requires for `0.3.0`. The same day the owner decided that the deployed
@@ -205,9 +208,9 @@ answers, for the first time, how much of the vision stands:
   text: P2 AI at the core, P5 coupled or decoupled control, P7 transparency fitted to the role, P8
   repeatability and cost control, P9 efficiency over verbosity, P14 people at the centre. The
   others — P1, P3, P4, P6, P10, P11, P12, P13 — have a use case in *building*.
-- The requirements of the thirteen are the owner's decision, asked as DEC-0030 and in force
-  provisionally. Four of them fell short of what the definition asks; they were brought up to it
-  on 2026-10-01 under M2.7 (NTC-0014 to NTC-0017), and DEC-0030 now asks only about what the
+- The requirements of the thirteen are the owner's decision, asked as DEC-0030 and answered on
+  2026-10-08: they stand. Four of them fell short of what the definition asks; they were brought up to it
+  on 2026-10-01 under M2.7 (NTC-0014 to NTC-0017), and DEC-0030 asked only about what the
   session added beyond the definition. `make usecases` prints the list with states; `make gate-vision` prints which use
   case serves which principle.
 - **Not yet in the format**: UC-4.6, UC-4.11 to UC-4.13, UC-6.8, UC-6.9 and UC-7.2, still in the
@@ -318,9 +321,9 @@ rather than enforced, anything marked provisional.
 | a live run of the coding worker in CI | `docs/roadmap.md` | the gate runs the stand-in; unchanged until the environment `live` has a key of its own, raised as NEED-0012 on 2026-10-01; the live test is written when it exists (DEC-0046), as a scheduled, capped job on `main` (DEC-0048). The worker has now run live eight times outside CI (`docs/runs/first-run.md`) |
 | the components `accounting`, `decision`, `identity`, `knowledge`, `value` | `docs/architecture/project-structure.md` | packages with an `__init__.py` and nothing else; `reporting` (ADR-0029) has no package yet |
 | principle 14 is enforced in the data model, not in a policy | `CLAUDE.md` §5, `docs/architecture/governance.md` §6, ADR-0015 | nothing enforces it yet, because nothing measures anything about a person yet; UC-13.5 and UC-6.4 require the test that will |
-| the legal-anchor catalogue holds | `docs/architecture/governance.md` §2, `docs/decisions/anchors.md` M4.4 | not legally reviewed for any jurisdiction; who reviews it is DEC-0029 |
+| the legal-anchor catalogue holds | `docs/architecture/governance.md` §2, `docs/decisions/anchors.md` M4.4 | not legally reviewed for any jurisdiction; qualified reviewers of the jurisdiction review it before the first finance or personnel blueprint is used, and at every change (DEC-0029) |
 | every principle is served by a use case, and a use case's state says how much of it stands | `docs/vision/README.md`, `docs/usecases/README.md` | the gates check that each principle is served and that a `verified` use case's tests pass; they cannot check that a use case *covers* its principle, or that a `building` use case's tests prove the part it says they prove |
 | a pull request description can be acted on without the diff | ADR-0017 §7 | the gate checks that the four sections are there, filled and in order; not that they are readable without the diff |
 | Taktus is repairable without Taktus: a restore, documented and exercised | ADR-0013 C | not for a deployed instance: there is no backup yet. Its destination exists (NEED-0009); Taktus keeps backups for a configurable time, 30 days by default, encrypted only if chosen (DEC-0058); the backup and its restore, exercised once, are #67 |
 | the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where a token is set. Since DEC-0048 it runs in the workflow `live` — monthly and by dispatch, on `main`, never on a pull request — which says in a notice that nothing ran until Taktus's own app is installed on a scratch repository (NEED-0013) |
-| a licence | ADR-0012 | open: all rights reserved, no outside contribution accepted. The owner's own question, DEC-0044, due before `1.0.0` and before the first outside contribution |
+| a licence | ADR-0012 | open: all rights reserved, no outside contribution accepted. The owner's own question, DEC-0044, settled by the release of `1.0.0` and taken up only when that release is prepared, as the owner confirmed on 2026-10-08; before the first outside contribution too |
