@@ -1,0 +1,90 @@
+name: images
+
+# The release images: on a version tag, the control plane image and one image per worker that
+# ships with the project (workers/*/Dockerfile; DEC-0011), pushed to the registry the repository
+# variable IMAGE_REGISTRY names, tagged with the version. Without the variable nothing is built
+# and nothing is pushed; the run says so.
+#
+# CI never deploys. Putting a version into operation is `helm upgrade --install`, run by a person
+# or by another instance (ADR-0013 D, deploy/k8s/README.md §3).
+#
+# Repository settings the owner keeps (NEED-0014), none of them in this file:
+#   vars.IMAGE_REGISTRY         the registry and namespace, e.g. <registry>/<owner>; unset: nothing runs
+#   vars.IMAGE_PLATFORMS        the platforms to build for; linux/amd64 when unset
+#   vars.IMAGE_REGISTRY_USER    who pushes; the workflow's actor when unset
+#   secrets.IMAGE_REGISTRY_TOKEN  the push credential; the workflow's own token when unset, which
+#                               reaches the repository service's own registry only
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  registry:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - id: check
+        env:
+          REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ -z "$REGISTRY" ]; then
+            echo "::notice::IMAGE_REGISTRY is not set: no image is built and nothing is pushed"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version="${TAG#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::$TAG is not a version tag (vMAJOR.MINOR.PATCH)"
+            exit 1
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: registry
+    if: needs.registry.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: taktus
+            dockerfile: deploy/docker/Dockerfile
+          - name: taktus-worker-script
+            dockerfile: workers/script/Dockerfile
+          - name: taktus-worker-coding
+            dockerfile: workers/claudecode/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - id: login
+        env:
+          REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+        run: echo "host=${REGISTRY%%/*}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.login.outputs.host }}
+          username: ${{ vars.IMAGE_REGISTRY_USER || github.actor }}
+          password: ${{ secrets.IMAGE_REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ vars.IMAGE_PLATFORMS || 'linux/amd64' }}
+          push: true
+          tags: ${{ vars.IMAGE_REGISTRY }}/${{ matrix.name }}:${{ needs.registry.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.registry.outputs.version }}

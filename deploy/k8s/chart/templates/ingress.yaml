@@ -1,0 +1,52 @@
+{{- /*
+The way in, switched off unless a host is given. The certificate is an existing Secret when
+`ingress.tls.secretName` names one, and then nothing is requested from a certificate manager.
+Only without a named Secret does an issuer, when given, ask the platform's certificate manager
+for one, through an annotation on this object; the chart renders no certificate object itself.
+*/ -}}
+{{- $ingress := .Values.ingress -}}
+{{- if and $ingress.enabled $ingress.host }}
+{{- $prefix := $ingress.pathPrefix | default "/" -}}
+{{- $secretName := $ingress.tls.secretName -}}
+{{- $requested := and (not $secretName) $ingress.tls.issuer -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "taktus.fullname" . }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+  {{- if or $ingress.annotations $requested }}
+  annotations:
+    {{- with $ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if $requested }}
+    {{- if eq $ingress.tls.issuerKind "Issuer" }}
+    cert-manager.io/issuer: {{ $ingress.tls.issuer | quote }}
+    {{- else }}
+    cert-manager.io/cluster-issuer: {{ $ingress.tls.issuer | quote }}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+spec:
+  {{- with $ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if or $secretName $requested }}
+  tls:
+    - hosts: [{{ $ingress.host | quote }}]
+      secretName: {{ $secretName | default (printf "%s-tls" (include "taktus.fullname" .)) }}
+  {{- end }}
+  rules:
+    - host: {{ $ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ $prefix }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "taktus.fullname" . }}-api
+                port:
+                  name: http
+{{- end }}

@@ -82,7 +82,7 @@ descriptions, $3.48 of coding-step money; #36, a removal verdict that said too l
 misleading row every week. The four budget findings are the subject of the ADR-0005 amendment
 below.
 
-**Done in `0.1.0`**, checked against the tree: the contracts for the worker and the connector
+**Done in `0.1.0`**, checked against the tree: the Helm chart (`deploy/k8s/chart`), rendered and held to least privilege by a test, and the workflow that builds the release images on a tag (#64); the contracts for the worker and the connector
 as executable schemas with conformance suites that a third party can run (`contracts/worker`,
 `contracts/connector`, `src/taktus/conformance`); the process bundle contract and the shared
 kernel (`contracts/process`, `contracts/shared`); command, plan, process version, run, ledger
@@ -109,7 +109,6 @@ bounded by *Where this promise ends*, with a gate. `make doctor` reports `git` a
 | `mlbench` worker | does not exist; its real work is `0.4.0` |
 | the events contract | `contracts/events/v1` is a placeholder |
 | the cluster execution adapter | does not exist; the port and two adapters do. `deploy/k8s/README.md` §7 specifies it, including what it must refuse |
-| the container registry build and the Helm chart | `deploy/k8s/README.md` is now the **specification** for both, written against a platform read in full on 2026-09-23 (#26); nothing under `deploy/k8s/` renders yet, and images are still built locally by `make up` and by the tests |
 | the identity component | a provisional identity per tenant stands in (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013) |
 | time triggers | the scheduler leads and ticks; nothing is scheduled; the weekly removal test is a CI workflow instead |
 | event reactions | the automation role starts and waits; the outbox exists and nothing writes it; an intake event is completed into a command by hand |
@@ -313,7 +312,7 @@ rather than enforced, anything marked provisional.
 | exactness is a result, not a switch: the exactness statement | UC-4.13, UC-6.9 | specified; `0.5.0` |
 | result defects are detected and remediated under the correction anchor | ADR-0021 to ADR-0023 | the terms and the anchor exist; detection and repair are `0.5.0` |
 | `contracts/events/v1`, `blueprints/it-operations` | their README files | placeholders |
-| `deploy/k8s` renders a chart | `deploy/k8s/README.md` | **a specification, not a chart.** The file is the plan the next pull request builds: the values keys, two namespaces with a restricted admission policy, default-deny network policies both ways, no service-account token in a job, a limit and a deadline on every job, and the egress proxy that makes a host list mean something. Nothing under `deploy/k8s/` renders yet |
+| `deploy/k8s` renders a chart | `deploy/k8s/README.md` | **rendered, never installed.** The chart renders one deployment per role, the database on 20 Gi, the migrations, Taktus's Role in the execution namespace and a jobs' account without a token, default-deny both ways in both namespaces with their exceptions, and the ingress; every secret is a mounted file. `tests/governance/test_chart.py` reads the rendered manifests back in CI. Not yet: the install (#66); the namespaces' admission labels are set outside the chart (DEC-0060); the Role is narrower than the cluster adapter needs, which is DEC-0059; the release images go nowhere until the registry is set (NEED-0014) |
 | the cluster execution adapter | ADR-0002's execution table, `deploy/k8s/README.md` | does not exist; the port and two adapters do. The plan says what it must refuse: a job it cannot give limits to, and a frame whose hosts it cannot enforce |
 | a live run of the coding worker in CI | `docs/roadmap.md` | the gate runs the stand-in; unchanged until the environment `live` has a key of its own, raised as NEED-0012 on 2026-10-01; the live test is written when it exists (DEC-0046), as a scheduled, capped job on `main` (DEC-0048). The worker has now run live eight times outside CI (`docs/runs/first-run.md`) |
 | the components `accounting`, `decision`, `identity`, `knowledge`, `value` | `docs/architecture/project-structure.md` | packages with an `__init__.py` and nothing else; `reporting` (ADR-0029) has no package yet |

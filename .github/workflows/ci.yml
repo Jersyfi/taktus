@@ -94,7 +94,14 @@ jobs:
       - name: conformance
         run: make gate-conformance
 
+      # The chart is linted and rendered with the pinned helm, and its manifests are read back by
+      # the governance tests (tests/governance/test_chart.py); here they may not skip.
+      - name: helm
+        run: make helm
+
       - name: governance
+        env:
+          TAKTUS_REQUIRE_HELM: "1"
         run: make gate-governance
 
       - name: exactness

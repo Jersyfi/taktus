@@ -1,0 +1,126 @@
+{{- /*
+The instance's own PostgreSQL (DEC-0032), in the control plane's namespace, on a volume of
+`database.size` (DEC-0033). It runs under the restricted profile like every other pod here. Its
+password is a file from a Secret created before the install; the chart never generates or
+carries one. An uninstall leaves the volume: the ledger is never deleted without asking.
+*/ -}}
+{{- if .Values.database.deploy }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "taktus.fullname" . }}-database
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  clusterIP: None
+  selector:
+    {{- include "taktus.selector" (dict "root" . "component" "database") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "taktus.fullname" . }}-database
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  serviceName: {{ include "taktus.fullname" . }}-database
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" . "component" "database") | nindent 6 }}
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  template:
+    metadata:
+      labels:
+        {{- include "taktus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: database
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        # The postgres user of the image's Alpine variant.
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: {{ include "taktus.image" (dict "what" "database.image" "image" .Values.database.image) }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.database.name | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.database.user | quote }}
+            - name: POSTGRES_PASSWORD_FILE
+              value: /run/secrets/taktus/database-password/{{ required "database.passwordKey is required with database.deploy" .Values.database.passwordKey }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.database.user | quote }}, "-d", {{ .Values.database.name | quote }}]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.database.user | quote }}, "-d", {{ .Values.database.name | quote }}]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.database.resources | nindent 12 }}
+          securityContext:
+            {{- include "taktus.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+            - name: database-password
+              mountPath: /run/secrets/taktus/database-password
+              readOnly: true
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: database-password
+          secret:
+            secretName: {{ required "database.passwordSecret is required with database.deploy: the Secret holding the server's password" .Values.database.passwordSecret }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.database.passwordKey }}
+                path: {{ .Values.database.passwordKey }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "taktus.selector" (dict "root" . "component" "database") | nindent 10 }}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.database.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.database.size }}
+{{- end }}

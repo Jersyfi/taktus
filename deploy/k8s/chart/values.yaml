@@ -1,0 +1,178 @@
+# The chart's interface (deploy/k8s/README.md §2). The keys are the repository's; the values are
+# the operator's, kept in their own private place. This file carries defaults only: no secret
+# value, no hostname, no address, and no name a particular cluster uses. A secret is named by
+# the Secret that holds it and the key inside it, and reaches a container as a mounted file
+# whose path is in TAKTUS_<KEY>_FILE — never as an environment variable (CREDENTIALS.md).
+
+# The control plane renders into the release's namespace (`helm --namespace`); the execution
+# namespace is `execution.namespace`. Both exist before the install: the deployment identity may
+# not create a namespace, and the Pod Security labels are set where the namespaces are created
+# (README §4). `create: true` renders both Namespace objects, with those labels, for a cluster
+# where the installing identity may create namespaces.
+namespaces:
+  create: false
+
+image:
+  repository: ""           # where the control plane image is pulled from
+  tag: ""                  # the released version, never `latest`; the install fails without one
+  pullPolicy: IfNotPresent
+  pullSecret: ""           # name of an existing pull secret; empty when the image is public
+
+# The user the control plane's image runs as (deploy/docker/Dockerfile pins it).
+securityContext:
+  runAsUser: 999
+  runAsGroup: 999
+
+# One deployment per role (ADR-0002). The scheduler is elected; more than one is allowed and idle.
+roles:
+  api:
+    replicas: 1
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 512Mi }
+  runner:
+    replicas: 1
+    resources:
+      requests: { cpu: 200m, memory: 384Mi }
+      limits: { memory: 768Mi }
+  scheduler:
+    replicas: 1
+    resources:
+      requests: { cpu: 50m, memory: 192Mi }
+      limits: { memory: 384Mi }
+  automation:
+    replicas: 1
+    resources:
+      requests: { cpu: 50m, memory: 192Mi }
+      limits: { memory: 384Mi }
+
+# SIGTERM, then this long for a running step to reach its boundary (ADR-0005). The pod's grace
+# period is this plus thirty seconds.
+shutdownCeilingSeconds: 300
+logLevel: info
+
+# Non-secret settings of the daemon not named elsewhere in this file, as TAKTUS_* variables:
+# TAKTUS_TENANTS, TAKTUS_CONNECTORS, TAKTUS_PROVISIONAL_IDENTITY and the like. A secret never goes
+# here; it goes into `credentials`.
+env: {}
+
+# Where artifact bytes are written (TAKTUS_STATE_DIR): one volume, shared by every role. The
+# volume binds to one node on a node-local storage class, as the database's does (README §9).
+state:
+  storageClass: ""
+  size: 5Gi
+
+database:
+  deploy: true             # a PostgreSQL of its own, deployed with the instance (DEC-0032); false: an existing server
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  storageClass: ""
+  size: 20Gi               # DEC-0033: cannot be enlarged on the target's storage class; watched from the first run
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+  name: taktus             # the database and its owner, created on first start
+  user: taktus
+  passwordSecret: ""       # the Secret holding the server's password (deploy: true), created before the install
+  passwordKey: ""
+  urlSecret: ""            # the Secret holding the connection URL; mounted, read through TAKTUS_DATABASE_URL_FILE
+  urlKey: ""
+
+# The migrations: a Job with the control plane's own image, run by the install and by every
+# upgrade before the new version starts. With `database.deploy: true` the first install runs it
+# after the database is created, because before that there is nothing to migrate (DEC-0060).
+migrations:
+  backoffLimit: 6
+  activeDeadlineSeconds: 900
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+execution:
+  namespace: ""            # the execution namespace's name; it exists before the install
+  serviceAccount: taktus-unit   # the account jobs run as — not Taktus's own; carries no token
+  kind: endpoint           # TAKTUS_EXECUTION; the cluster adapter brings its own kind
+  endpoint: ""             # TAKTUS_WORKER, for kind `endpoint`
+  image: ""                # the execution unit's image (the worker), by reference: TAKTUS_EXECUTION_UNIT
+  unitPort: 9000
+  defaults:
+    cpus: 1
+    memoryMb: 1024
+    wallSeconds: 3600
+    startTimeoutSeconds: 120
+  egress:
+    proxyImage: "python:3.13-slim"  # the per-job egress proxy (README §6): any image with python3
+    proxyPort: 3128
+    enforce: true          # false refuses nothing and records that the frame was not enforced (README §6)
+    # Where the proxy may connect: these ports, to any address outside these ranges. The ranges
+    # keep it off the cluster's own networks and the link-local metadata address.
+    ports: [443]
+    exceptCidrs:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 100.64.0.0/10
+      - 169.254.0.0/16
+      - fc00::/7
+      - fe80::/10
+
+# One entry per parameter of CREDENTIALS.md the instance needs. The Secret exists before the
+# install; the chart mounts its key as a file and sets TAKTUS_<PARAMETER>_FILE to it.
+#   - parameter: credential.model_api_key   # → TAKTUS_CREDENTIAL_MODEL_API_KEY_FILE
+#     secret:                               # the Secret's name in this cluster
+#     key:                                  # the key inside it
+#     mountPath:                            # optional; /run/secrets/taktus/<parameter> by default
+credentials: []
+
+ingress:
+  enabled: true            # rendered only when `host` is given as well
+  className: ""
+  host: ""                 # the public name; the webhook arrives at <host><pathPrefix>/intake/<channel>
+  pathPrefix: /            # TAKTUS_PATH_PREFIX when Taktus is served under a sub-path
+  annotations: {}
+  tls:
+    secretName: ""         # an existing certificate Secret; when it is named, no certificate is requested
+    issuer: ""             # otherwise: a certificate issuer the platform's certificate manager answers to
+    issuerKind: ClusterIssuer
+
+networkPolicy:
+  # The cluster's name service, which the control plane, the migrations and the egress proxy use.
+  dns:
+    namespace: kube-system
+    podLabels: { k8s-app: kube-dns }
+  # The cluster's API server, which the runner reaches to create jobs: its addresses and port.
+  apiServer:
+    cidrs: []
+    port: 6443
+  # The namespace of the ingress controller, which alone may reach the api role; and further pods
+  # of the control plane's namespace it must reach — a certificate manager's HTTP challenge pod,
+  # by its labels. Empty: nothing outside the namespace reaches it.
+  ingressController:
+    namespace: ""
+    alsoTo: []
+  # Further egress rules for the control plane: the hosts its connectors, its model and its
+  # telemetry collector need, as NetworkPolicy egress rules (`to`, `ports`).
+  controlPlaneEgress: []
+
+telemetry:
+  otlp:
+    endpoint: ""           # all empty: spans stay local
+    protocol: grpc
+    headersSecret: ""
+    headersKey: ""
+
+model:
+  endpoint: ""
+  name: ""
+  purposes: ""
+  billing: per_token
+  # This tenant's endpoint holds the limit (research [A4]; M-03 passed against it on 2026-10-01);
+  # for another endpoint, run M-03 and set what it shows.
+  outputCap: hard
+
+capacity:
+  databaseVolumeMb: 0      # 0: derived from database.size
+  storageExpandable: false # the target's storage class cannot grow a volume (DEC-0033)
+  storageWarnPercent: 10
+  actWithinDays: 30

@@ -1,0 +1,75 @@
+{{- /*
+The migrations, as a hook Job with the control plane's own image: what `make migrate` runs. The
+instance never migrates itself on start (TAKTUS_MIGRATE_ON_START is false); a role started
+against a schema it was not built for refuses to start and is restarted until the Job is done.
+
+Every upgrade migrates before the new version starts (pre-upgrade). The first install migrates
+before anything starts when the database already exists (`database.deploy: false`); when the
+chart deploys the database, the first install migrates right after creating it, because before
+that there is nothing to migrate into (DEC-0060). The Job is not deleted when it fails, so that
+its log can be read; the next install or upgrade replaces it.
+*/ -}}
+{{- $files := include "taktus.secretFiles" . | fromJsonArray -}}
+{{- $url := index $files 0 -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "taktus.fullname" . }}-migrate
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: {{ if .Values.database.deploy }}post-install,pre-upgrade{{ else }}pre-install,pre-upgrade{{ end }}
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "taktus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: {{ include "taktus.image" (dict "what" "image" "image" .Values.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["alembic", "-c", "migrations/alembic.ini", "upgrade", "head"]
+          env:
+            - name: {{ $url.variable }}
+              value: {{ printf "%s/%s" $url.dir $url.key | quote }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          securityContext:
+            {{- include "taktus.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: {{ $url.volume }}
+              mountPath: {{ $url.dir }}
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: {{ $url.volume }}
+          secret:
+            secretName: {{ $url.secret }}
+            defaultMode: 0440
+            items:
+              - key: {{ $url.key }}
+                path: {{ $url.key }}

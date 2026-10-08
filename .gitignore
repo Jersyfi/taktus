@@ -19,6 +19,7 @@ node_modules/
 kubeconfig*
 
 # tooling
+.tools/
 .venv/
 __pycache__/
 .mypy_cache/

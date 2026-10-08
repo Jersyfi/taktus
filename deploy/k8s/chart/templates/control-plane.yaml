@@ -1,0 +1,147 @@
+{{- /*
+One deployment per role (ADR-0002), all from the control plane's one image, selected by
+TAKTUS_ROLES. Every secret is a file mounted read-only from an existing Secret; its path is in
+the TAKTUS_<KEY>_FILE variable, and no secret is ever an environment variable (CREDENTIALS.md).
+The runner alone mounts Taktus's service-account token: it is the role that creates jobs.
+*/ -}}
+{{- $root := . -}}
+{{- $files := include "taktus.secretFiles" . | fromJsonArray -}}
+{{- $image := include "taktus.image" (dict "what" "image" "image" .Values.image) -}}
+{{- range $role := list "api" "runner" "scheduler" "automation" }}
+{{- $spec := index $root.Values.roles $role }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "taktus.fullname" $root }}-{{ $role }}
+  namespace: {{ include "taktus.controlPlaneNamespace" $root }}
+  labels:
+    {{- include "taktus.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+    taktus-role: {{ $role }}
+spec:
+  replicas: {{ $spec.replicas }}
+  selector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" $root "component" "control-plane") | nindent 6 }}
+      taktus-role: {{ $role }}
+  template:
+    metadata:
+      labels:
+        {{- include "taktus.labels" $root | nindent 8 }}
+        app.kubernetes.io/component: control-plane
+        taktus-role: {{ $role }}
+      annotations:
+        checksum/config: {{ include (print $root.Template.BasePath "/configmap.yaml") $root | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "taktus.serviceAccount" $root }}
+      automountServiceAccountToken: {{ eq $role "runner" }}
+      terminationGracePeriodSeconds: {{ add $root.Values.shutdownCeilingSeconds 30 }}
+      {{- with $root.Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ $root.Values.securityContext.runAsUser }}
+        runAsGroup: {{ $root.Values.securityContext.runAsGroup }}
+        fsGroup: {{ $root.Values.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: taktusd
+          image: {{ $image }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          command: ["taktusd"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "taktus.fullname" $root }}-config
+          env:
+            - name: TAKTUS_ROLES
+              value: {{ $role }}
+            {{- range $files }}
+            - name: {{ .variable }}
+              value: {{ printf "%s/%s" .dir .key | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: {{ trimSuffix "/" ($root.Values.ingress.pathPrefix | default "/") }}/ready
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: {{ trimSuffix "/" ($root.Values.ingress.pathPrefix | default "/") }}/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml $spec.resources | nindent 12 }}
+          securityContext:
+            {{- include "taktus.containerSecurity" $root | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/taktus
+            - name: tmp
+              mountPath: /tmp
+            {{- range $files }}
+            - name: {{ .volume }}
+              mountPath: {{ .dir }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: {{ include "taktus.fullname" $root }}-state
+        - name: tmp
+          emptyDir: {}
+        {{- range $files }}
+        - name: {{ .volume }}
+          secret:
+            secretName: {{ .secret }}
+            defaultMode: 0440
+            items:
+              - key: {{ .key }}
+                path: {{ .key }}
+        {{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "taktus.fullname" . }}-api
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+spec:
+  selector:
+    {{- include "taktus.selector" (dict "root" . "component" "control-plane") | nindent 4 }}
+    taktus-role: api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "taktus.fullname" . }}-state
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+  annotations:
+    # Artifact bytes are the instance's data: an uninstall leaves the volume (CLAUDE.md §9).
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.state.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.state.size }}

@@ -1,0 +1,255 @@
+{{- /*
+Default-deny, both ways, in both namespaces, and then exactly the exceptions (README §5). Both
+sets are rendered whether or not the cluster enforces them.
+
+The execution namespace: a unit is reached from the control plane only, on its contract port,
+and reaches the egress proxy only. The proxy alone leaves the cluster, by name through its
+CONNECT check (README §6), to the given ports and never to the cluster's own address ranges.
+The cluster execution adapter labels its pods with the component names used below.
+
+The control plane's namespace: the roles reach the name service, their database, the execution
+units and, where given, the API server and the hosts the operator lists; the api role is reached
+from the ingress controller's namespace alone.
+*/ -}}
+{{- $root := . -}}
+{{- $cp := include "taktus.controlPlaneNamespace" . -}}
+{{- $ex := include "taktus.executionNamespace" . -}}
+{{- $np := .Values.networkPolicy -}}
+{{- $execution := .Values.execution -}}
+{{- define "taktus.dnsPeer" -}}
+- to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: {{ .dns.namespace }}
+      podSelector:
+        matchLabels:
+          {{- toYaml .dns.podLabels | nindent 10 }}
+  ports:
+    - { protocol: UDP, port: 53 }
+    - { protocol: TCP, port: 53 }
+{{- end -}}
+{{- range $namespace := list $cp $ex }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taktus.fullname" $root }}-default-deny
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "taktus.labels" $root | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taktus.fullname" . }}-control-plane
+  namespace: {{ $cp }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" . "component" "control-plane") | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    {{- include "taktus.dnsPeer" $np | nindent 4 }}
+    {{- if .Values.database.deploy }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "taktus.selector" (dict "root" . "component" "database") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 5432 }
+    {{- end }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $ex }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: execution-unit
+      ports:
+        - { protocol: TCP, port: {{ $execution.unitPort }} }
+    {{- with $np.apiServer.cidrs }}
+    - to:
+        {{- range . }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports:
+        - { protocol: TCP, port: {{ $np.apiServer.port }} }
+    {{- end }}
+    {{- with $np.controlPlaneEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- if $np.ingressController.namespace }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taktus.fullname" . }}-api-ingress
+  namespace: {{ $cp }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" . "component" "control-plane") | nindent 6 }}
+      taktus-role: api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.ingressController.namespace }}
+      ports:
+        - { protocol: TCP, port: 8080 }
+{{- range $index, $labels := $np.ingressController.alsoTo }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taktus.fullname" $root }}-ingress-{{ $index }}
+  namespace: {{ $cp }}
+  labels:
+    {{- include "taktus.labels" $root | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $labels | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.ingressController.namespace }}
+{{- end }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taktus.fullname" . }}-migrate
+  namespace: {{ $cp }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: migrate
+  policyTypes: [Egress]
+  egress:
+    {{- include "taktus.dnsPeer" $np | nindent 4 }}
+    {{- if .Values.database.deploy }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "taktus.selector" (dict "root" . "component" "database") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 5432 }
+    {{- else }}
+    {{- with $np.controlPlaneEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- end }}
+{{- if .Values.database.deploy }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taktus.fullname" . }}-database
+  namespace: {{ $cp }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" . "component" "database") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "taktus.selector" (dict "root" . "component" "control-plane") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: migrate
+      ports:
+        - { protocol: TCP, port: 5432 }
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taktus.fullname" . }}-execution-unit
+  namespace: {{ $ex }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: execution-unit
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $cp }}
+          podSelector:
+            matchLabels:
+              {{- include "taktus.selector" (dict "root" . "component" "control-plane") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: {{ $execution.unitPort }} }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: egress-proxy
+      ports:
+        - { protocol: TCP, port: {{ $execution.egress.proxyPort }} }
+---
+{{- $v4 := list -}}
+{{- $v6 := list -}}
+{{- range $execution.egress.exceptCidrs -}}
+{{- if contains ":" . -}}{{- $v6 = append $v6 . -}}{{- else -}}{{- $v4 = append $v4 . -}}{{- end -}}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "taktus.fullname" . }}-egress-proxy
+  namespace: {{ $ex }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: egress-proxy
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: execution-unit
+      ports:
+        - { protocol: TCP, port: {{ $execution.egress.proxyPort }} }
+  egress:
+    {{- include "taktus.dnsPeer" $np | nindent 4 }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with $v4 }}
+            except: {{ toJson . }}
+            {{- end }}
+        - ipBlock:
+            cidr: ::/0
+            {{- with $v6 }}
+            except: {{ toJson . }}
+            {{- end }}
+      ports:
+        {{- range $execution.egress.ports }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
