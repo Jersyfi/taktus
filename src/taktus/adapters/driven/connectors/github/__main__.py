@@ -7,6 +7,10 @@ base URL of the service's API; point it at the fake under `tests/fakes/repositor
 to run without a network. Credentials are never arguments: the connector reads the value of a
 credential at the moment of a call, from the environment or a file, under the name the call
 references (`README.md`).
+
+The connector acts as Taktus's own app on the service when the environment names the app:
+`TAKTUS_REPOSITORY_APP_ID` and `TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE`, both or neither
+(ADR-0033). Without them it acts with the token the runtime puts under the referenced name.
 """
 
 from __future__ import annotations
@@ -14,6 +18,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from taktus.adapters.driven.connectors.github import declaration
+from taktus.adapters.driven.connectors.github.app import AppConfig
 from taktus.adapters.driven.connectors.github.faults import FAULTS, check_of
 from taktus.adapters.driven.connectors.github.server import Config, build_server, log
 
@@ -38,6 +44,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not args.repository:
         parser.error("--repository is required")
+    try:
+        app = AppConfig.from_environment()
+    except ValueError as error:
+        parser.error(str(error))
     config = Config(
         target=args.target,
         repository=args.repository,
@@ -45,9 +55,13 @@ def main(argv: list[str] | None = None) -> int:
         port=args.port,
         path=args.path,
         fault=args.fault,
+        app=app,
     )
     if config.fault:
         log(f"FAULT {config.fault}: {FAULTS[config.fault]}")
+    if app is not None:
+        # The app's identifier is not logged: logs of the live workflow are public.
+        log(f"acting as the app for {declaration.ACTIONS_CREDENTIAL}, tokens minted per use")
     log(f"serving {config.repository} at http://{config.host}:{config.port}{config.path}")
     build_server(config).run(
         "streamable-http",

@@ -6,7 +6,9 @@ that brings a currency limit as close to the line as a provider allows (§*Secon
 amended 2026-09-30 (DEC-0035): which promise yields when one step overruns, every step
 estimated, money from the record, and a budget only as strong as the provider allows
 (§*Third amendment*); implemented in the same pull request · amended 2026-10-01 (DEC-0043): the
-worker's margin has a floor of 10 % and its history resets with its model version (point 6)
+worker's margin has a floor of 10 % and its history resets with its model version (point 6) ·
+amended 2026-10-08 (DEC-0047, NTC-0025): an operator's margin below the floor is said where it is
+set and in every report that relies on it (point 6)
 
 ## Context
 A limit enforced by aborting destroys work and money at the same time: the tokens are spent and the
@@ -203,8 +205,11 @@ by a factor of two to four. A worker with history reserves its estimate scaled b
 error, and at least its estimate plus a margin that narrows with every observation — 1/(n+1)
 of the 100 % after n — so that one run does not take the whole margin away: caution towards the
 unknown, loosening through data. Observations never narrow the margin below 10 % — an
-operator who configures the uncalibrated margin itself lower has set that limit — and a worker's
-history
+operator who configures the uncalibrated margin itself lower has set that limit, and it holds
+(DEC-0047). Such a value is never silent: the startup log carries a warning naming the value and
+the floor, every run started under it records in its `budget.set` statement that the margin was
+set below the floor, and `taktusctl cost` prints that beside the run's money (NTC-0025). A
+worker's history
 resets when its model version changes — the one its estimate names, else the one it last
 reported — because a calibration for one model says nothing about the next (DEC-0043, the
 owner's answer, 2026-10-01). The

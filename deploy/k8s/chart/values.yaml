@@ -91,11 +91,18 @@ migrations:
 
 execution:
   namespace: ""            # the execution namespace's name; it exists before the install
-  serviceAccount: taktus-unit   # the account jobs run as — not Taktus's own; carries no token
-  kind: endpoint           # TAKTUS_EXECUTION; the cluster adapter brings its own kind
+  serviceAccount: taktus-unit   # the account jobs run as — not Taktus's own; no Role, no token
+  kind: endpoint           # TAKTUS_EXECUTION: `cluster` runs every unit as a Job in `namespace`
+                           # (README §7); `endpoint` reaches a worker already running at `endpoint`
   endpoint: ""             # TAKTUS_WORKER, for kind `endpoint`
   image: ""                # the execution unit's image (the worker), by reference: TAKTUS_EXECUTION_UNIT
   unitPort: 9000
+  # A volume claim in the execution namespace for the units' state, which outlives jobs
+  # (TAKTUS_EXECUTION_STATE_CLAIM). The chart renders it, and an uninstall keeps it. Empty: the
+  # state dies with each job.
+  stateClaim: ""
+  stateSize: 5Gi
+  stateStorageClass: ""
   defaults:
     cpus: 1
     memoryMb: 1024

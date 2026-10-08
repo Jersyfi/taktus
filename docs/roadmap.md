@@ -129,8 +129,9 @@ and one adapter exist), governance and anchors, the cluster execution adapter, t
 registry build and the Helm chart, the identity component (a provisional identity stands in
 for it), time triggers (the scheduler leads and ticks; nothing is scheduled), event reactions
 (the automation role starts and waits; the outbox exists, nothing writes it; an intake event is
-completed into a command by hand), and a live run of the coding worker against its real agent
-in CI (it needs a credential; the gate runs the stand-in). In the backlog, the identity
+completed into a command by hand), and a passing live run of the coding worker against its real
+agent in CI (the gate runs the stand-in; the live test is written and runs in the workflow
+`live` on `main`, and has not yet run there, #68). In the backlog, the identity
 component, time triggers, event reactions with the events contract, and governance and anchors
 are tasks of `0.2.0`, where the list of that milestone already places their substance, and
 `mlbench` is a task of `0.4.0`; the cluster execution adapter, the chart and the image build, and
@@ -188,8 +189,10 @@ UC-4.12, UC-6.8; ADR-0021 to ADR-0023)
 come with numbers.
 
 ### `0.6.0` — level 4
-Autonomy level 4 · skill lifecycle · the catalogue · role-based agents · recurring decisions become
-rules on proposal
+Autonomy level 4 · skill lifecycle, with a floor for the number of passed evaluations before a
+skill is approved automatically, its value set from the evaluation data of `0.5.0` and higher for
+`exact` steps (DEC-0028) · the catalogue · role-based agents · recurring decisions become rules on
+proposal
 
 **Complete when** a release happens end to end without intervention.
 

@@ -31,11 +31,15 @@ data:
   TAKTUS_EXECUTION_WALL_SECONDS: {{ $execution.defaults.wallSeconds | quote }}
   TAKTUS_EXECUTION_START_TIMEOUT_SECONDS: {{ $execution.defaults.startTimeoutSeconds | quote }}
   TAKTUS_EXECUTION_EGRESS_IMAGE: {{ include "taktus.imageRef" (dict "what" "execution.egress.proxyImage" "ref" $execution.egress.proxyImage) | quote }}
-  # Read by the cluster execution adapter: where its jobs go, the account they run as, and
-  # whether a frame's host list must be enforced (README §6, §7).
+  # Read by the cluster execution adapter (TAKTUS_EXECUTION=cluster): where its jobs go, the
+  # account they run as, whether a frame's host list must be enforced, and the claim the units'
+  # state lives on (README §6, §7).
   TAKTUS_EXECUTION_NAMESPACE: {{ include "taktus.executionNamespace" . | quote }}
   TAKTUS_EXECUTION_SERVICE_ACCOUNT: {{ $execution.serviceAccount | quote }}
   TAKTUS_EXECUTION_EGRESS_ENFORCE: {{ $execution.egress.enforce | quote }}
+  {{- with $execution.stateClaim }}
+  TAKTUS_EXECUTION_STATE_CLAIM: {{ . | quote }}
+  {{- end }}
   {{- with .Values.telemetry.otlp.endpoint }}
   TAKTUS_OTLP_ENDPOINT: {{ . | quote }}
   TAKTUS_OTLP_PROTOCOL: {{ $.Values.telemetry.otlp.protocol | quote }}

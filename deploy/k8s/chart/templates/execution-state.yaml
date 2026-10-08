@@ -1,0 +1,24 @@
+{{- /*
+The units' state, which outlives a job (README §7): one claim in the execution namespace, named
+by `execution.stateClaim` and mounted by the cluster adapter into every unit. An uninstall keeps
+it: what a unit checkpointed is not deleted without asking (CLAUDE.md §9).
+*/ -}}
+{{- with .Values.execution.stateClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ . }}
+  namespace: {{ include "taktus.executionNamespace" $ }}
+  labels:
+    {{- include "taktus.labels" $ | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with $.Values.execution.stateStorageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $.Values.execution.stateSize }}
+{{- end }}

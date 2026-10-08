@@ -4,7 +4,6 @@
 **Raised in:** [#46](https://github.com/Jersyfi/taktus/pull/46)
 **Issue:** [#43](https://github.com/Jersyfi/taktus/issues/43)
 **Needed by:** 2026-12-31
-**Provisional answer:** Option A. There is a floor for n that no configuration can go below; its value is set when the skill lifecycle of `0.6.0` is designed, from the evaluation data `0.5.0` produces. Until then nothing approves a skill automatically, because nothing of the lifecycle is built. Marked here.
 
 ## 1. What this is about
 
@@ -90,3 +89,10 @@ date is when you are asked to look, well before that design starts.
 "DEC-0028: Option A." — or B with the number, or C — in issue
 [#43](https://github.com/Jersyfi/taktus/issues/43). A free-text answer is read back as an
 interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-08
+**Answer:** Option A. Automatic approval of a skill at autonomy level 4 has a floor for n that no configuration can go below. Its value is set when the skill lifecycle of `0.6.0` is designed, from the evaluation data of `0.5.0`, and it is higher for skills used by `exact` steps.
+**Reasoning given:** none beyond accepting the recommendation, whose reason was that it answers the definition's question — yes, a floor — without inventing a number no measurement supports.
+**Recorded in:** [#106](https://github.com/Jersyfi/taktus/pull/106); `docs/roadmap.md`, `0.6.0`

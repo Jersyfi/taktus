@@ -4,7 +4,6 @@
 **Raised in:** [#46](https://github.com/Jersyfi/taktus/pull/46)
 **Issue:** [#44](https://github.com/Jersyfi/taktus/issues/44)
 **Needed by:** 2026-12-31
-**Provisional answer:** Option A. The catalogue ships marked as not legally reviewed, and no finance or personnel blueprint is used by any tenant before a review has happened. Marked here; no such blueprint exists yet.
 
 ## 1. What this is about
 
@@ -90,3 +89,10 @@ asked to look.
 "DEC-0029: Option A." — or B, or C — in issue
 [#44](https://github.com/Jersyfi/taktus/issues/44). A free-text answer is read back as an
 interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-08
+**Answer:** Option A. Before any finance or personnel blueprint is used by a tenant, the legal-anchor catalogue is reviewed for that tenant's jurisdiction by qualified reviewers — a tax adviser for the finance acts, a labour-law specialist for the personnel acts — and the review is recorded with its date and jurisdiction; every change to the catalogue and every new jurisdiction is reviewed again. Until then the catalogue is marked as not legally reviewed wherever it is shown.
+**Reasoning given:** none beyond accepting the recommendation, whose reason was that it is the only option under which the project can state that the catalogue holds, and it costs nothing before it is needed.
+**Recorded in:** [#106](https://github.com/Jersyfi/taktus/pull/106); `docs/architecture/governance.md` §2

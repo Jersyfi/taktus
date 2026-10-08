@@ -5,7 +5,7 @@ sets are rendered whether or not the cluster enforces them.
 The execution namespace: a unit is reached from the control plane only, on its contract port,
 and reaches the egress proxy only. The proxy alone leaves the cluster, by name through its
 CONNECT check (README §6), to the given ports and never to the cluster's own address ranges.
-The cluster execution adapter labels its pods with the component names used below.
+The cluster execution adapter labels its pods `taktus/role: unit` and `taktus/role: egress`.
 
 The control plane's namespace: the roles reach the name service, their database, the execution
 units and, where given, the API server and the hosts the operator lists; the api role is reached
@@ -70,7 +70,7 @@ spec:
               kubernetes.io/metadata.name: {{ $ex }}
           podSelector:
             matchLabels:
-              app.kubernetes.io/component: execution-unit
+              taktus/role: unit
       ports:
         - { protocol: TCP, port: {{ $execution.unitPort }} }
     {{- with $np.apiServer.cidrs }}
@@ -192,7 +192,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/component: execution-unit
+      taktus/role: unit
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
@@ -208,7 +208,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/component: egress-proxy
+              taktus/role: egress
       ports:
         - { protocol: TCP, port: {{ $execution.egress.proxyPort }} }
 ---
@@ -227,13 +227,13 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/component: egress-proxy
+      taktus/role: egress
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/component: execution-unit
+              taktus/role: unit
       ports:
         - { protocol: TCP, port: {{ $execution.egress.proxyPort }} }
   egress:

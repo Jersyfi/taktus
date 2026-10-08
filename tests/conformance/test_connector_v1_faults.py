@@ -37,3 +37,14 @@ async def test_fault_fails_exactly_its_check(
         if other.id != check:
             assert other.status in {Status.PASSED, Status.INCONCLUSIVE, Status.PENDING}
     assert report.exit_code == 1
+
+
+async def test_an_app_that_serves_a_call_without_a_credential_fails_c03(
+    start_connector: StartConnector,
+) -> None:
+    """The app mode's own risk is that the app becomes a fallback: a call that references no
+    credential served with a token the connector minted. The suite catches it as it catches the
+    token mode's (ADR-0033)."""
+    connector = start_connector(fault="C-03", app=True)
+    report = await connector.run_suite()
+    assert {c.id for c in report.failed} == {"C-03"}, report.render()

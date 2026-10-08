@@ -24,6 +24,8 @@ from typing import Any
 import pytest
 import yaml
 
+from taktus.adapters.driven.execution.kubernetes.api import PERMITTED
+
 ROOT = Path(__file__).resolve().parents[2]
 CHART = ROOT / "deploy" / "k8s" / "chart"
 EXAMPLE = ROOT / "deploy" / "k8s" / "values.example.yaml"
@@ -178,14 +180,11 @@ def test_a_unit_reaches_the_egress_proxy_and_nothing_else(rendered: list[dict[st
     unit = next(
         d
         for d in of_kind(rendered, "NetworkPolicy")
-        if d["spec"]["podSelector"].get("matchLabels", {}).get("app.kubernetes.io/component")
-        == "execution-unit"
+        if d["spec"]["podSelector"].get("matchLabels") == {"taktus/role": "unit"}
     )
     assert unit["metadata"]["namespace"] == EXECUTION_NAMESPACE
     [egress] = unit["spec"]["egress"]
-    assert egress["to"] == [
-        {"podSelector": {"matchLabels": {"app.kubernetes.io/component": "egress-proxy"}}}
-    ]
+    assert egress["to"] == [{"podSelector": {"matchLabels": {"taktus/role": "egress"}}}]
     [ingress] = unit["spec"]["ingress"]
     [peer] = ingress["from"]
     assert peer["namespaceSelector"]["matchLabels"] == {
@@ -193,7 +192,7 @@ def test_a_unit_reaches_the_egress_proxy_and_nothing_else(rendered: list[dict[st
     }
 
 
-def test_taktus_holds_a_role_never_a_cluster_role_for_jobs_and_their_logs(
+def test_taktus_holds_a_role_never_a_cluster_role_exactly_as_the_plan_states_it(
     rendered: list[dict[str, Any]],
 ) -> None:
     kinds = {d["kind"] for d in rendered}
@@ -210,7 +209,13 @@ def test_taktus_holds_a_role_never_a_cluster_role_for_jobs_and_their_logs(
         ("batch", "jobs"): {"create", "get", "list", "watch", "delete"},
         ("", "pods"): {"get", "list"},
         ("", "pods/log"): {"get", "list"},
+        ("", "secrets"): {"create", "delete"},
+        ("", "services"): {"create", "delete"},
     }
+    # Every call the cluster adapter's client permits itself is one the Role grants.
+    for resource, verb in PERMITTED:
+        group = "batch" if resource == "jobs" else ""
+        assert verb in granted[(group, resource)], (resource, verb)
     [binding] = of_kind(rendered, "RoleBinding")
     assert binding["metadata"]["namespace"] == EXECUTION_NAMESPACE
     assert binding["roleRef"] == {
@@ -317,6 +322,23 @@ def test_the_database_is_its_own_with_a_twenty_gibibyte_volume_that_is_watched(
     assert config["data"]["TAKTUS_CAPACITY_DATABASE_VOLUME_MB"] == "20480"
     assert config["data"]["TAKTUS_CAPACITY_STORAGE_EXPANDABLE"] == "false"
     assert config["data"]["TAKTUS_MIGRATE_ON_START"] == "false"
+
+
+def test_the_cluster_adapter_is_wired_to_the_namespace_the_account_and_the_state_claim() -> None:
+    documents = render("execution.kind=cluster", "execution.stateClaim=unit-state")
+    [config] = of_kind(documents, "ConfigMap")
+    data = config["data"]
+    assert data["TAKTUS_EXECUTION"] == "cluster"
+    assert data["TAKTUS_EXECUTION_NAMESPACE"] == EXECUTION_NAMESPACE
+    assert data["TAKTUS_EXECUTION_SERVICE_ACCOUNT"] == "taktus-unit"
+    assert data["TAKTUS_EXECUTION_EGRESS_ENFORCE"] == "true"
+    assert data["TAKTUS_EXECUTION_STATE_CLAIM"] == "unit-state"
+    claims = {
+        (d["metadata"]["namespace"], d["metadata"]["name"])
+        for d in of_kind(documents, "PersistentVolumeClaim")
+    }
+    assert (EXECUTION_NAMESPACE, "unit-state") in claims
+    assert {d["kind"] for d in documents} <= ALLOWED_KINDS
 
 
 def test_the_ingress_is_off_unless_a_host_is_given(rendered: list[dict[str, Any]]) -> None:

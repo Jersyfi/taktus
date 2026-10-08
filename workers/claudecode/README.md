@@ -166,6 +166,22 @@ used 1.8 to 4.3 times the estimate in the first live run — so that the suite's
 can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales every token count. The real agent is run with
 `--agent claude` (the default), and a live run needs a credential the operator supplies.
 
+## The live test
+
+`tests/workers/test_coding_worker_live.py` runs this worker against the real agent on one small
+assignment: one file in an empty workspace, through `taktusctl run`. The workflow `live` runs
+it on `main`, monthly and by dispatch, never on a pull request (DEC-0048, DEC-0058). It needs the
+agent's key in a file (`TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE`) and the cap per run
+(`LIVE_SPEND_CAP_USD`); without either it skips and says which.
+
+The cap becomes a budget in tokens, because money arrives only with the final result (see
+*Consumption*). It is converted at the dearest rate the agent was measured at in the first live
+run, rounded up to USD 8 per million input tokens. A quarter of that line is held back for the
+one call the limit yields by; the rest is the worker's ceiling, and the worker's estimate is set
+so that the run reserves exactly that ceiling (NTC-0028). The run's ledger, its output, the
+conversion and this worker's log are kept as the job's evidence. The agent's own configuration
+directory is not.
+
 ## Configuration
 
 | Option | Variable | Meaning |

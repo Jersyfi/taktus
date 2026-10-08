@@ -61,7 +61,7 @@ taktus/
 │   │   … governance/domain/service/capacity.py turns platform observations and growth per run into findings with a figure and a date; application/service/report_capacity.py records a crossing (docs/architecture/platform.md)
 │   │   … run/domain/service/capacity.py admits a job against the platform: memory for the unit plus a reserve, storage above its refusal share
 │   │   … catalog/domain/model/maturity.py is an adapter's maturity with its last removal result; catalog/domain/service/removal.py the rules that decide broke, changed, untested or exception, and when a process can be rehearsed; catalog/application/service/record_removal.py writes the result and the ledger entry `removal.tested`
-│   │   … run/domain/service/budget.py the budget's rules: the line less the margin, calibration and its seed, the reservation, the worker's ceiling, what a budget can promise; accounting/ meters a run from the ledger and prices it at the table its budget statement names (`taktusctl cost`)
+│   │   … run/domain/service/budget.py the budget's rules: the line less the margin, calibration and its seed, the reservation, the worker's ceiling, what a budget can promise; accounting/ meters a run from the ledger and prices it at the table its budget statement names (`taktusctl cost`, which also prints the statement's word that the uncalibrated margin was set below the floor)
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
 │   │     accounting/ knowledge/ value/ ledger/
 │   │
@@ -91,7 +91,7 @@ taktus/
 │   │       ├── clock/               # the system clock, identifiers, randomness — the only place
 │   │       ├── telemetry/           # otel: real spans, exported where TAKTUS_OTLP_* says; noop for tests
 │   │       ├── workers/http/        # the worker port over HTTP and SSE; workers/pool.py maps capabilities; workers/launched.py puts the port over the execution port
-│   │       ├── execution/           # process.py: a unit as a child process, its memory limit enforced on Linux and refused elsewhere; container/: a unit per job in a container with limits, no swap, credentials in memory, an egress proxy
+│   │       ├── execution/           # process.py: a unit as a child process, its memory limit enforced on Linux and refused elsewhere; container/: a unit per job in a container with limits, no swap, credentials in memory, an egress proxy; kubernetes/: a unit per job as a Job in the execution namespace, credentials from a Secret for the job's lifetime, an egress proxy Job — api.py speaks the cluster's API with httpx, only the calls of the Role (M1.3), and nothing else imports it
 │   │       ├── platform/            # host.py: the platform port for this machine or container — control group, /proc, the state directory's filesystem; standard library only
 │   │       ├── objectstore/ secret/ ledger/
 │   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
@@ -185,6 +185,9 @@ connector is a driven adapter and the suite its client, and neither imports the 
 - the core reading the clock, minting an identifier or drawing randomness by itself — only
   through `ports/clock.py`; `adapters/driven/clock/` is the one place that does
 - the core importing anything but the standard library, pydantic and itself
+- a cluster client anywhere but the cluster execution adapter: its own client
+  (`execution/kubernetes/api.py`) imported from outside `execution/kubernetes/`, or a cluster
+  client library imported anywhere
 
 ---
 
@@ -200,7 +203,7 @@ connector is a driven adapter and the suite its client, and neither imports the 
 | Context | actor and tenant travel as explicit arguments — today as fields of every command (`StartRun.tenant`), later bundled in an `ActorContext` — never in a context variable read by business code |
 | Time, randomness, IDs | only through ports (`ports/clock.py`) — otherwise no run is reproducible; enforced by `tests/architecture` |
 | Logging | `structlog`, structured, never personal data; every line written inside a span carries `trace_id`, the same identifier the engine writes into its ledger entries (`composition/logging.py`) |
-| Secrets | never a bare `str` — `ports/configuration.py`'s `Secret` masks on `repr` and `str`; `reveal()` is the one way to the value, and the database URL is read as one. **A secret is read from a file, not from the environment:** `TAKTUS_<KEY>_FILE` holds the path, the file holds the value; the inline variable is accepted for a value that carries no secret (the development database) and refused together with the file. The daemon logs its effective configuration at start with every secret masked and its source named, and `tests/composition` proves that no secret value reaches a line |
+| Secrets | never a bare `str` — `ports/configuration.py`'s `Secret` masks on `repr` and `str`; `reveal()` is the one way to the value, and the database URL is read as one. **A secret is read from a file, not from the environment:** `TAKTUS_<KEY>_FILE` holds the path, the file holds the value; the inline variable is accepted for a value that carries no secret (the development database) and refused together with the file. The daemon logs its effective configuration at start with every secret masked and its source named, and `tests/composition` proves that no secret value reaches a line. A setting an operator chose below what Taktus would choose itself — the uncalibrated margin below its floor — follows as a warning naming the value and the floor (DEC-0047) |
 | Configuration | every setting is a `TAKTUS_*` variable, read through the configuration port and validated once at start (`composition/settings.py`); a wrong one is refused with one sentence naming the variable, never a stack trace. `.env.example` lists every variable, names only. A credential an assignment references is read at the moment a unit is started, under `credential.<name>` — `TAKTUS_CREDENTIAL_<NAME>_FILE` |
 | Execution | `TAKTUS_EXECUTION` chooses how a `worker` step's unit comes to exist: by endpoint, as a process, as a container (`docs/architecture/contracts.md` §2.4). The `process` adapter is refused from autonomy level 3 upwards and when the level is unknown; the rule lives in `ports/execution.py` and `tests/governance` holds the adapter to it |
 | Capacity | every threshold of the capacity report and of admission against the platform is a `TAKTUS_CAPACITY_*` setting with a default, never a constant in a function; a quantity a platform adapter cannot observe is `Unobserved` with the reason, never a guess; every execution unit carries a memory limit its adapter enforces, or the job is refused (`docs/architecture/platform.md`) |

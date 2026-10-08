@@ -1,10 +1,9 @@
 # DEC-0059 — What Taktus may create where its jobs run
 
-**Category:** NON-BLOCKING
+**Category:** NOTE
 **Raised in:** [#118](https://github.com/Jersyfi/taktus/pull/118), which builds the chart (issue #64)
 **Issue:** [#113](https://github.com/Jersyfi/taktus/issues/113)
 **Needed by:** 2026-10-20
-**Provisional answer:** Option C. The chart grants exactly what issue #64 verifies: jobs, and reading their pods and logs. The cluster execution adapter (#65) is built against that; on the cluster it refuses a job that needs a credential or an allowed host, with the reason. Marked in `deploy/k8s/README.md` §1 and §10.
 
 ## 1. What this is about
 
@@ -111,3 +110,14 @@ without the coding worker on the cluster.
 ## 7. How to answer
 
 "DEC-0059: Option A.", "DEC-0059: Option B." or "DEC-0059: Option C."
+
+## Outcome
+
+**Recorded:** 2026-10-08
+**Why this is a note:** answered by DEC-0061, which corrected `deploy/k8s/README.md` §1 as a
+documentation defect in [#119](https://github.com/Jersyfi/taktus/pull/119) before this request
+was read, in the shape of this request's Option A: jobs, reading their pods and logs, and
+creating and deleting Secrets and Services, never reading a Secret back; the egress proxy runs
+as a Job. A question an earlier decision answers is not a question (CLAUDE.md §9). The chart
+renders that Role, and its test holds it to exactly that.
+**Recorded in:** [#118](https://github.com/Jersyfi/taktus/pull/118)
