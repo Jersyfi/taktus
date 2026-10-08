@@ -22,6 +22,7 @@ from taktus.components.run.domain.model.run import (
     StepState,
 )
 from taktus.components.run.domain.model.work import (
+    BacklogRule,
     CheckRule,
     Condition,
     ConnectorRule,
@@ -29,6 +30,7 @@ from taktus.components.run.domain.model.work import (
     Expectation,
     LlmWork,
     ReadyRule,
+    RoadmapRule,
     RuleWork,
     TemplateRule,
     VerifyArtifactRule,
@@ -50,6 +52,7 @@ __all__ = [
     "RESUMABLE",
     "RUN_TRANSITIONS",
     "STEP_TRANSITIONS",
+    "BacklogRule",
     "Cause",
     "CheckRule",
     "Checkpoint",
@@ -63,6 +66,7 @@ __all__ = [
     "NoConnector",
     "NoWorker",
     "ReadyRule",
+    "RoadmapRule",
     "RuleFailed",
     "RuleWork",
     "Run",

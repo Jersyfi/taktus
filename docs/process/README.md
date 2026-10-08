@@ -11,11 +11,20 @@ takes over, who executes changes; nothing on this page does (DEC-0051).
 
 There is no second list. Principle 1 forbids a parallel register, and the repository connector
 already reads issues. An issue labelled `decision-request` or `needs-owner` is not work: it is a
-question or a need waiting for the owner (`docs/decisions/`).
+question or a need waiting for the owner (`docs/decisions/`). Nor is an issue labelled `report`:
+it carries a process's reports.
 
 **Milestones** are the versions of `docs/roadmap.md`, `0.1.0` to `1.0.0`, with the same names.
 Which feature lands in which milestone is the session's (M1.7); the roadmap says it, and the
-issue's milestone follows it.
+issue's milestone follows it. **Each item of a milestone names the issues that carry it**, as
+`#N`, so that the two can be held against each other by a rule (NTC-0049).
+
+**P-01 Roadmap control** does that, and runs as a bundle
+(`blueprints/dev-orchestration/processes/P-01-roadmap-control.yaml`). It reports, as a comment
+on one issue labelled `report`, every item that names no issue, every open issue in a milestone
+whose items do not name it, and every issue labelled `ready` whose content fails the standard
+below; and it prints the backlog in its order. It proposes; a person names the issue in the
+roadmap, sets the milestone or removes the label (issue #71).
 
 ## Ready
 
@@ -53,11 +62,13 @@ the sections an issue lacks, writes those as a comment, and adds no label (issue
 | `in-progress` | a session has claimed the task and works on it; every other session skips it |
 | `priority:high`, `priority:normal`, `priority:low` | the order within a milestone; exactly one per task |
 | `task` | an issue made from the form `Task` |
+| `report` | the issue carries a process's reports, such as P-01's; it is not work |
 
 ## Order
 
 **Earliest milestone, then priority, then issue number.** `make backlog` prints the backlog in
-that order; `make backlog NEXT=1` prints the one task a session takes next.
+that order; `make backlog NEXT=1` prints the one task a session takes next. The order is written
+once, beside the standard (`backlog()` in the same module); P-01 prints it from the same code.
 
 ## Where the owner answers
 

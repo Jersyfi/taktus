@@ -44,14 +44,17 @@ processes:
     name: Roadmap control
     autonomy:
       level: 3
-      reason: reads the roadmap and the state and applies a reconciliation a rule computed; the diff is a model's judgement and is watched
-      toward_next: a quality history of applied reconciliations that nobody reverted
+      reason: the one outward effect is a report a person reads; every verdict in it is a rule's, and a person applies what it proposes
+      toward_next: a history of reports whose proposals a person carried out unchanged; then applying them itself is proposed (M3.9)
     triggers: [ { schedule: daily }, { event: roadmap.changed } ]
+    # The diff is a rule over the issue numbers the roadmap's items name, provisionally: the
+    # method of this step is the owner's (anchors.taktus.md M3.13), asked in DEC-0080.
     steps:
       - { id: read-roadmap, method: rule }
-      - { id: read-state,   method: rule }
-      - { id: diff,         method: llm, reason: "reconcile stated intent against real state; no rule can express it", exactness: sourced }
-      - { id: apply,        method: rule, exactness: exact }
+      - { id: read-state,   method: rule }                      # the open issues and the open records
+      - { id: order,        method: rule, exactness: exact }    # the backlog's order, as `make backlog`
+      - { id: reconcile,    method: rule, exactness: exact }    # an item without an issue, an issue its milestone does not name
+      - { id: report,       method: rule }                      # a comment on one issue labelled `report`
     slo: { freshness: 24h }
 
   - id: P-02
