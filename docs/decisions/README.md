@@ -39,6 +39,8 @@ printed by `make status` and carried by every pull request description (DEC-0026
 | [0002](NEED-0002-the-repository-connectors-token.md) | The repository connector's token | `credential` | provided 2026-09-22 as a fine-grained token for this repository; confirmed 2026-09-23; renewed under NEED-0006 |
 | [0003](NEED-0003-the-model-endpoint-and-its-key.md) | The model endpoint and its key | `credential` | provided 2026-09-22 as the endpoint, the model and the key file of NEED-0001; confirmed 2026-09-23; the model chosen is DEC-0019 |
 | [0004](NEED-0004-the-platforms-current-interface-note.md) | The platform's current interface note | `information` | superseded 2026-09-23: the owner decided the target (DEC-0023) and gave read-only access instead of a note; a session inspected the platform and answered all ten points, outside this repository. Replaced by NEED-0007 and NEED-0008 |
+| [0005](NEED-0005-renew-the-coding-agents-key.md) | Renew the coding agent's key | `credential` | provided 2026-10-07 as a new key without expiry, the old one deleted; confirmed 2026-10-08 |
+| [0006](NEED-0006-renew-the-repository-connectors-token.md) | Renew the repository connector's token | `credential` | provided 2026-10-07 as a new token without expiry, the old one deleted; confirmed 2026-10-08 |
 
 The open needs are printed by `make status` (DEC-0026).
 
@@ -117,3 +119,4 @@ The open needs are printed by `make status` (DEC-0026).
 | [0050](DEC-0050-dec-0037s-option-a-waits-for-its-trigger.md) | DEC-0037's Option A waits for its trigger | NON-BLOCKING | answered: the deferral stands; built with the automatic start of `0.2.0` |
 | [0051](DEC-0051-the-backlog-is-issues-and-a-standing-brief-replaces-hand-written-ones.md) | The backlog is issues, and a standing brief replaces hand-written ones | NON-BLOCKING | answered: issues in milestones, a ready standard in the template, claim by label, a fixed order, `docs/process/next-task.md`; retired when Taktus runs P-01 to P-03 itself |
 | [0052](DEC-0052-adr-0017-listed-four-notice-kinds-of-eight.md) | ADR-0017 listed four notice kinds of eight | DEFECT | corrected: the vocabulary is `anchors.md` §1, kept there and nowhere else |
+| [0054](DEC-0054-a-needs-check-claimed-more-than-it-shows.md) | A need's check claimed more than it shows | DEFECT | corrected: the token check of NEED-0002 and NEED-0006 shows that the token is valid; that it reaches this repository is the scope check in its settings |

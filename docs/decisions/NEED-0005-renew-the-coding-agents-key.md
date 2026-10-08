@@ -136,3 +136,16 @@ curl -sS -o /dev/null -w '%{http_code}\n' \
 ```
 
 Two `200`s, and the old key gone from the Console, is the whole confirmation.
+
+## Outcome
+
+**Provided:** 2026-10-07
+**Confirmed by:** section 7, run on 2026-10-08 against the credential file itself, since no
+`.env` exists in the checkout. The file is present and not empty; a request to the provider's
+model list carrying the key answered `200`. Nothing from the file was printed or read by the
+session. The second check of section 7, a chat completion against the model endpoint, was not
+run: it spends, and the first `200` already shows that the same file holds an accepted key.
+**What was provided:** a new API key in the same file, the old one deleted, as the owner wrote in
+[#24](https://github.com/Jersyfi/taktus/issues/24): the key does not expire. No successor renewal
+is raised; the key is rotated when it may have been seen (`CREDENTIALS.md`).
+**Recorded in:** [#96](https://github.com/Jersyfi/taktus/pull/96)
