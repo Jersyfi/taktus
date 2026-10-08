@@ -4,7 +4,6 @@
 **Raised in:** [#59](https://github.com/Jersyfi/taktus/pull/59), while building the backlog: the live run that proves the budget is a task, and its cost exceeds what a session may spend alone
 **Issue:** [#60](https://github.com/Jersyfi/taktus/issues/60)
 **Needed by:** 2026-10-20
-**Provisional answer:** none is spent. The budget half of the next live run stays unready in the backlog, and no live run is started, until this is answered. Marked in the backlog issue of that run.
 
 ## 1. What this is about
 
@@ -93,3 +92,12 @@ waits for NEED-0007 and NEED-0009.
 
 "DEC-0053: Option A.", "DEC-0053: Option B." or "DEC-0053: Option C." in the issue. A free-text
 answer is read back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-08
+**Answer:** Option A: USD 3 in total for the runs of the next live run's budget half.
+**Reasoning given:** none beyond accepting the recommendation; the recommendation's reason was
+that USD 3 covers both rows at the first run's worst case.
+**Recorded in:** [#97](https://github.com/Jersyfi/taktus/pull/97); backlog issue
+[#74](https://github.com/Jersyfi/taktus/issues/74) is no longer blocked.

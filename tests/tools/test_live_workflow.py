@@ -4,7 +4,7 @@ A test that needs a credential never runs on a pull request: the repository is p
 secret in a pull request's pipeline is reachable from every workflow that names it. It runs on a
 schedule or by dispatch, on `main`, never in a fork, in the environment `live`, under a cap. The
 environment's own rule — it admits `main` alone — is set by the owner at the hosting service
-(NEED-0011, NEED-0012) and cannot be seen from here; everything the workflows say can.
+(NEED-0012, NEED-0013) and cannot be seen from here; everything the workflows say can.
 """
 
 from __future__ import annotations
@@ -20,7 +20,8 @@ WORKFLOWS = Path(__file__).resolve().parents[2] / ".github" / "workflows"
 LIVE = WORKFLOWS / "live.yml"
 ENVIRONMENT = "live"
 LIVE_SECRETS = {"LIVE_REPOSITORY_TOKEN", "CODING_AGENT_API_KEY"}
-"""The secrets the owner provides for live tests (NEED-0011, NEED-0012)."""
+"""The secrets of the live tests (NEED-0012; the connector's scratch repository is reached through
+Taktus's own app, NEED-0013)."""
 SPENDING_SECRETS = {"CODING_AGENT_API_KEY"}
 """Secrets whose use costs money: a job that reads one carries the cap."""
 CAP = "vars.LIVE_SPEND_CAP_USD"

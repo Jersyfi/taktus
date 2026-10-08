@@ -101,3 +101,20 @@ Without revealing anything, with the place's own client and the credential of st
 
 A deletion that succeeds means the credential is wider than this need, and it is narrowed
 before anything is backed up with it.
+
+## Outcome
+
+**Provided:** 2026-10-08
+**Confirmed by:** with the credential, the bucket was listed (empty), an object was written, read
+back and deleted. Nothing from the credential file was printed. Versioning and object lock are
+off, as decided.
+**How it was provided:** a bucket at the owner's object-storage provider in the European Union,
+with a credential that may list, write, read and delete, in a file readable by the owner alone;
+the session also stored it as a secret in the control plane's namespace for the backup job. The
+owner decided against object lock and a fixed retention at the store (DEC-0058): **Taktus manages
+the retention itself, configurable, 30 days by default, and encryption is an option Taktus offers,
+off by default.** So section 1's "may not delete" and section 4's steps 3 and 4 no longer hold:
+the credential may delete, and an instance that is compromised could delete its own backups. The
+place's location and name are in the owner's private note.
+**Recorded in:** [#97](https://github.com/Jersyfi/taktus/pull/97); the backup task carries the
+retention and the encryption option
