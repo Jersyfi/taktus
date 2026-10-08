@@ -3,7 +3,8 @@
 A job names a kind and carries a payload; today the one kind is `run.execute`, and the payload
 names the run. A runner *claims* due jobs and holds each claim as a lease: while it works it
 *extends* the lease, and a claim it stops extending — because the runner died — expires, after
-which another runner may claim the same job. A claim is never stolen from a live runner. When
+which another runner may claim the same job. A runner that is alive but cannot renew for longer
+than the lease loses its claim the same way; `extend` then tells it so (DEC-0066). When
 the work is done the job is *completed* and gone; when the runner has to give it back — it was
 told to shut down, or the work failed for a reason another attempt may not share — the job is
 *released* and is claimable at once.

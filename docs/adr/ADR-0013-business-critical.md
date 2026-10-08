@@ -39,9 +39,18 @@ project itself and is not a general architectural claim.**
 
 Requirement A is proven for one instance and for two daemons on one database, and depends on
 the platform underneath: an instance whose only database is gone does not run without
-interruption, whatever Taktus does. Requirement B holds for the processes that carry
+interruption, whatever Taktus does. With two runner processes, one killed mid-step, its runs
+are resumed by the other at their last boundary (`tests/integration/test_runner_failover.py`).
+A runner that is alive but cut off from the database for longer than its lease is not covered:
+it loses its claim, and the step it is inside still commits beside the runner that took over
+(DEC-0066, #107). How many runs one instance carries is not measured; that is a `1.0.0`
+condition. Requirement B holds for the processes that carry
 instructions — each blueprint's README says which do — and passes the takeover test only when a
 person has actually run the process by hand; today that is the removal test
 (`blueprints/self-operation/README.md`, *By hand*). Requirement C is documented and not yet
 exercised on a schedule; the restore drill is a 1.0.0 condition. Requirement D is a rule the
 Taktus project follows about itself and is not enforced in code.
+
+*Amended 2026-10-08 (#73, DEC-0066): the section said requirement A was proven for one instance
+and named no limit for several. Runners on two instances are now proven against a runner that
+dies; a runner that is cut off and lives is the limit, and the work to close it is #107.*

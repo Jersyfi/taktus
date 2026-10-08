@@ -1,5 +1,6 @@
 """The queue port over the `job` table: `claim_jobs` with `SELECT … FOR UPDATE SKIP LOCKED`
-and a lease (`migrations/versions/0003_lease.py`).
+and a lease (`migrations/versions/0003_lease.py`), the locking query run exactly once so that a
+claim takes at most its batch (`0010_claim_once.py`, NTC-0027).
 
 Every statement runs on the open transaction's connection, as the application role, with the
 tenant set: the row-level security of the schema decides what a claim can see. Two runners
