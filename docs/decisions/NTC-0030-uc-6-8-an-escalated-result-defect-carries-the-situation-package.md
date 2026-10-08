@@ -3,7 +3,7 @@
 **Mode entry:** M2.7
 **Kind:** restoration
 **Decided:** 2026-10-08
-**Raised in:** [#61](https://github.com/Jersyfi/taktus/issues/61)
+**Raised in:** [#120](https://github.com/Jersyfi/taktus/pull/120)
 **How it follows:** the owner's project definition, version 2, UC-4.6 (the repository's UC-4.5): every business-critical or business-damaging finding or problem brings in a person with a complete situation package — what happened, what was tried, which systems and data are affected, the options with their risks, the documentation and access needed. A wrong result that the stop rule escalates or stops is such a finding. The amendment requires the same five parts for it as for a failure.
 
 ## 1. What was decided

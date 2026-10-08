@@ -1,7 +1,7 @@
 # DEC-0069 — The requirements of the second migration step
 
 **Category:** NON-BLOCKING
-**Raised in:** [#61](https://github.com/Jersyfi/taktus/issues/61)
+**Raised in:** [#120](https://github.com/Jersyfi/taktus/pull/120)
 **Issue:** [#111](https://github.com/Jersyfi/taktus/issues/111)
 **Needed by:** 2026-10-22
 **Provisional answer:** Option A. The seventeen use cases of the second migration step are in force with the conditions they add beyond version 2 of the definition, and bind any session that builds one of them before the answer. Marked here, in each use case that names this request, and in the status file.

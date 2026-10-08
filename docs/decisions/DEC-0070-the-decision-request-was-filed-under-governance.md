@@ -1,7 +1,7 @@
 # DEC-0070 — The decision request was filed under governance
 
 **Category:** DEFECT
-**Raised in:** [#61](https://github.com/Jersyfi/taktus/issues/61), while filing UC-7.4
+**Raised in:** [#120](https://github.com/Jersyfi/taktus/pull/120), while filing UC-7.4
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -59,4 +59,4 @@ the product's mechanism.
 **What it now says:** UC-7.4 is in `docs/usecases/decision/`; it is built for this repository by
 hand, and nothing of it is in the product.
 **What changed in substance:** nothing; the use case was written in the right folder from the start.
-**Recorded in:** [#61](https://github.com/Jersyfi/taktus/issues/61)
+**Recorded in:** [#120](https://github.com/Jersyfi/taktus/pull/120)
