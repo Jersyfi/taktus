@@ -17,8 +17,9 @@ boundary, A is killed: SIGKILL, no shutdown, no chance to halt or release anythi
   (`run.recovered`), started if A had not started it, or left as it was if it had ended before
   A could complete its job (NTC-0026); the run whose worker step was interrupted continued
   from the worker's checkpoint, and every output of that step exists once;
-- no step that had finished was started again, and in a run nobody interrupted every step
-  started exactly once;
+- no step that had finished was started again; a step A had started was started again, and a
+  step A had only admitted was started once, by B (NTC-0046); in a run nobody interrupted every
+  step started exactly once;
 - the ledger chain verifies, and the provenance chain of every run verifies against its run
   and its ledger entries.
 
@@ -315,48 +316,69 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
     async with database.persistence.transaction(TENANT):
         ledger = [e for e in await database.ledger.entries(TENANT) if e.refs.run_id in ours]
     for run_id in run_ids:
-        finished = await database.run(run_id)
-        assert finished is not None and finished.state is RunState.FINISHED
-        assert [s.state for s in finished.step_runs] == [StepState.SUCCEEDED] * 4
-        entries = [e for e in ledger if e.refs.run_id == run_id]
-        kinds = [e.kind for e in entries]
-        assert kinds[-1] == "run.finished" and kinds.count("run.finished") == 1
-        started = [e.refs.step_id for e in entries if e.kind == "step.started"]
-        ids = [a.id for a in finished.step_run("compute").artifacts]
-        assert ids == [f"output-{n}" for n in range(1, COMMANDS + 1)], "every output, once"
-        if run_id in orphaned:
-            # Recovered by B at the boundary A left: nothing A wrote changed, the entry after
-            # it is the recovery, and only the step in flight at the kill was started again.
-            earlier = before[run_id]
-            assert entries[: len(earlier)] == earlier
-            was = interrupted[run_id]
-            if was.state is RunState.FINISHED:
-                # A died after the run ended and before it completed the job (NTC-0026).
-                assert entries == earlier, f"run {run_id} ended before A died; nothing follows"
-            else:
-                expected = (
-                    "run.started"
-                    if was.state is RunState.PLANNED and was.in_flight() is None
-                    else "run.recovered"
+        try:
+            finished = await database.run(run_id)
+            assert finished is not None and finished.state is RunState.FINISHED
+            assert [s.state for s in finished.step_runs] == [StepState.SUCCEEDED] * 4
+            entries = [e for e in ledger if e.refs.run_id == run_id]
+            kinds = [e.kind for e in entries]
+            assert kinds[-1] == "run.finished" and kinds.count("run.finished") == 1
+            started = [e.refs.step_id for e in entries if e.kind == "step.started"]
+            ids = [a.id for a in finished.step_run("compute").artifacts]
+            assert ids == [f"output-{n}" for n in range(1, COMMANDS + 1)], "every output, once"
+            if run_id in orphaned:
+                # Recovered by B at the boundary A left: nothing A wrote changed, the entry after
+                # it is the recovery, and only a step A had started was started again. A step A
+                # had admitted and not yet started is in flight too, and goes back to its start:
+                # it is started once, by B (NTC-0046).
+                earlier = before[run_id]
+                assert entries[: len(earlier)] == earlier
+                was = interrupted[run_id]
+                if was.state is RunState.FINISHED:
+                    # A died after the run ended and before it completed the job (NTC-0026).
+                    assert entries == earlier, f"run {run_id} ended before A died; nothing follows"
+                else:
+                    expected = (
+                        "run.started"
+                        if was.state is RunState.PLANNED and was.in_flight() is None
+                        else "run.recovered"
+                    )
+                    assert kinds[len(earlier)] == expected, (run_id, kinds[len(earlier) :])
+                    assert kinds.count("run.recovered") == (expected == "run.recovered")
+                in_flight = was.in_flight()
+                started_by_a = {e.refs.step_id for e in earlier if e.kind == "step.started"}
+                restarted = in_flight is not None and in_flight.step_id in started_by_a
+                assert restarted == (
+                    in_flight is not None and in_flight.state is StepState.RUNNING
+                ), f"run {run_id}: a step is running exactly when A wrote its start"
+                again = [step for step in set(started) if started.count(step) > 1]
+                assert again == ([in_flight.step_id] if restarted else []), (
+                    f"run {run_id}: started more than once {again}; in flight at the kill "
+                    f"{None if in_flight is None else (in_flight.step_id, in_flight.state)}"
                 )
-                assert kinds[len(earlier)] == expected, (run_id, kinds[len(earlier) :])
-                assert kinds.count("run.recovered") == (expected == "run.recovered")
-            in_flight = interrupted[run_id].in_flight()
-            again = [step for step in set(started) if started.count(step) > 1]
-            assert again == ([] if in_flight is None else [in_flight.step_id]), (
-                f"run {run_id}: started again {again}"
-            )
-            finished_before = {
-                s.step_id for s in interrupted[run_id].step_runs if s.state is StepState.SUCCEEDED
-            }
-            assert finished_before.isdisjoint(again), "no finished step ran twice"
-        else:
-            assert "run.recovered" not in kinds
-            assert sorted(started) == sorted(set(started)), f"run {run_id}: {started}"
-            assert len(started) == 4, "every step started once"
-        records = await database.records(run_id)
-        verification = provenance.verify(finished, records, entries)
-        assert verification.intact, (run_id, verification.findings)
+                if in_flight is not None and not restarted:
+                    by_b = [
+                        e.refs.step_id for e in entries[len(earlier) :] if e.kind == "step.started"
+                    ]
+                    assert in_flight.step_id in by_b, f"run {run_id}: B started the admitted step"
+                finished_before = {
+                    s.step_id
+                    for s in interrupted[run_id].step_runs
+                    if s.state is StepState.SUCCEEDED
+                }
+                assert finished_before.isdisjoint(again), "no finished step ran twice"
+            else:
+                assert "run.recovered" not in kinds
+                assert sorted(started) == sorted(set(started)), f"run {run_id}: {started}"
+                assert len(started) == 4, "every step started once"
+            records = await database.records(run_id)
+            verification = provenance.verify(finished, records, entries)
+            assert verification.intact, (run_id, verification.findings)
+        except AssertionError as failure:
+            # What every run and claim looked like, so that a failure in CI explains itself.
+            raise AssertionError(
+                f"{failure}\n" + await describe(database, run_ids, claims)
+            ) from failure
 
     # The victim's worker step continued from the checkpoint A left, not from its start.
     resumed = await database.run(victim.id)
