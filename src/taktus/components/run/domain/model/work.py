@@ -2,11 +2,12 @@
 
 Four kinds are executable in this version. A `rule` step evaluates one of the built-in rules
 (`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
-of a backlog task, a text template — or calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits for a
-duration through the clock, or for an external state read through a connector. A `worker`
-step hands a task to an execution unit behind the worker contract. An `llm` step asks a model
-through the model port. Every other method has no executor yet and is refused before the run
-starts, so that a run never stops in the middle for a reason that was known at the beginning.
+of a backlog task, a text template — or calls a connector operation (`rule: connector`,
+ADR-0024). A `wait` step waits for a duration through the clock, or for an external state read
+through a connector. A `worker` step hands a task to an execution unit behind the worker
+contract. An `llm` step asks a model through the model port. Every other method has no executor
+yet and is refused before the run starts, so that a run never stops in the middle for a reason
+that was known at the beginning.
 
 **References.** Inside the untyped parts of a step's work — a worker task's `inputs`, a
 connector call's `input`, the values of a template, a check or a prompt — an object with a
