@@ -1,4 +1,5 @@
 from taktus.components.run.domain.model.errors import (
+    ClaimLost,
     IllegalTransition,
     NoConnector,
     NoWorker,
@@ -52,6 +53,7 @@ __all__ = [
     "Cause",
     "CheckRule",
     "Checkpoint",
+    "ClaimLost",
     "Condition",
     "ConnectorRule",
     "ConstantRule",

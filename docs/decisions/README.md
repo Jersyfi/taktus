@@ -83,6 +83,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0040](NTC-0040-p-02-and-p-03-read-the-ready-standard.md) | P-02 and P-03 read the ready standard | M2.4 | `behaviour-change` | P-03 admits by the backlog's ready standard and claims with `in-progress`; P-02 writes only the missing sections as a comment and adds no label; one module for the standard, shared with `make backlog`; two connector reads added |
 | [0042](NTC-0042-the-scheduler-fires-the-active-versions-schedule-triggers.md) | The scheduler fires the active version's schedule triggers | M2.4 | `behaviour-change` | registering a version makes it active; the elected scheduler starts one run per due slot, missed slots coalesce, `run.triggered` beside `run.created`, a refused run is `trigger.refused` (ADR-0035, #69) |
 | [0043](NTC-0043-a-schedule-trigger-gives-its-runs-their-inputs.md) | A schedule trigger gives its runs their inputs | M2.4 | `behaviour-change` | a schedule is cron in UTC or `hourly`/`daily`/`weekly`/`monthly`; `inputs` and `each` give every declared input or the version is refused; S-01 runs once per listed integration (ADR-0035, #69) |
+| [0044](NTC-0044-a-write-under-a-lost-claim-is-refused.md) | A write under a lost claim is refused | M2.4 | `behaviour-change` | every write of a run under a runner's claim checks the claim in its own transaction and holds the job until it ends; a runner whose job another runner claimed writes nothing more and gives the run up (#107, DEC-0066) |
 
 ## Decisions
 

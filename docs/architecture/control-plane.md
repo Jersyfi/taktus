@@ -166,9 +166,16 @@ job and recovers the run at its last boundary (`components/run/application/servi
 `tests/integration/test_daemon_scaling.py`; `tests/integration/test_runner_failover.py` kills
 one of two runner processes mid-step). A runner that dies after its run ended and before it
 completed the job leaves a job whose run is over; the next runner completes it and executes
-nothing (NTC-0026). The claim is not a fence. A runner that is alive but cannot renew for
-longer than the lease loses the job, and the step it is inside still commits when it ends;
-for that step two runners write to one run (DEC-0066, #107).
+nothing (NTC-0026). A runner that is alive but cannot renew for longer than the lease loses
+the job as well. The claim is therefore also a *fence*: a check that refuses a write from a
+holder who has lost the claim. Every transaction that writes a run executed under a claim first
+asks the queue whether the claim is still the runner's (`Queue.fence`). The queue compares the
+claimant and the claim's attempt — a later claim of the same job, even by the same runner, is
+another claim — and keeps the job's row locked until the transaction ends, so that no claim can
+take the job between the check and the commit. Once another runner has claimed the job, the
+write is refused, nothing of it lands, and the first runner gives the run up without touching
+the job. Two runners never both commit to one run (#107, NTC-0044;
+`tests/integration/test_runner_fence.py` pauses a runner inside a step past its lease).
 A shutdown on SIGTERM asks every running run to stop at its next boundary, waits up to the
 ceiling, releases the claims and exits; the next runner resumes at that boundary
 (`tests/integration/test_daemon_shutdown.py`). From the command line, `uv run taktusctl run

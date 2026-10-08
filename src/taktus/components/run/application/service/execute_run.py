@@ -49,14 +49,23 @@ step answers with the recorded response of the most recent real call of the same
 through the same adapter (`application/query/recordings.py`); it finishes with outcome
 `rehearsed`, writes no egress entry, and every ledger entry of the run carries
 `rehearsal: true`. Reads, rules, llm and worker steps run as they do in any run.
+
+A run a runner resumes on its claim is written under that claim (#107). Every transaction that
+writes the run first asks the queue whether the claim is still the runner's (`Queue.fence`),
+and the queue keeps it so until the transaction ends. When another runner has claimed the job
+meanwhile — this one was cut off for longer than the lease — the write is refused with
+`ClaimLost`, nothing of it lands, and the engine does nothing more for the run. Two runners
+therefore never both commit to one run.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
 from collections.abc import Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -67,6 +76,7 @@ from taktus.components.run.domain.model import (
     Cause,
     Checkpoint,
     CheckRule,
+    ClaimLost,
     ConnectorRule,
     ConstantRule,
     LlmWork,
@@ -127,7 +137,7 @@ from taktus.ports.persistence import (
     UnitOfWork,
 )
 from taktus.ports.platform import Platform
-from taktus.ports.queue import RUN_EXECUTE, Job, Queue
+from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue
 from taktus.ports.telemetry import Span, Telemetry
 from taktus.ports.worker import (
     ArtifactProduced,
@@ -206,8 +216,9 @@ class ResumeRun:
     submitted run that never started starts. A run still marked as executing is *recovered*:
     the instance that ran it is taken to be gone, the step it was inside is set back to its
     last persisted boundary, and the run continues. The caller asserts that no instance is
-    executing the run: the runner's claim on the run's job asserts it (`runner.py`),
-    `taktusctl run --resume` is an operator's explicit act."""
+    executing the run: the runner's claim on the run's job asserts it (`runner.py`) and fences
+    every write against a runner that lost the claim (`claim`); `taktusctl run --resume` is an
+    operator's explicit act."""
 
     run_id: str
     actor: str
@@ -220,6 +231,10 @@ class ResumeRun:
     whose run has already ended. Such a run — finished, escalated, or halted for any cause but
     a stop — is returned as it is, nothing executes, and the runner completes the job: what
     waits for a person stays with the person (issue #73)."""
+    claim: Claim | None = None
+    """The runner's claim on the run's job. Every write of the run is fenced by it: once
+    another runner has claimed the job, the write is refused with `ClaimLost` (#107). None for
+    an operator's resume, which no claim stands behind."""
 
 
 def _ended(run: Run) -> bool:
@@ -317,6 +332,10 @@ class RunEngine:
         self._inflight: dict[str, tuple[Worker, str]] = {}
         self._observed: dict[str, list[budgeting.Observation]] = {}
         self._limit_halts: set[str] = set()
+        self._claim: ContextVar[Claim | None] = ContextVar("claim", default=None)
+        """The claim the run executing in this task is written under (#107). Held per task,
+        not per run: a runner that lost a claim and claimed the same job again executes the
+        run twice for a moment, and only the later claim may write."""
 
     # --- entry points --------------------------------------------------------------------------
 
@@ -337,6 +356,21 @@ class RunEngine:
             return await self._create(command, enqueue=True)
 
     async def resume(self, command: ResumeRun) -> Run:
+        if command.claim is None:
+            return await self._resume(command)
+        if self._queue is None:
+            raise RunError("a resume under a claim needs the queue that fences it; none is wired")
+        token = self._claim.set(command.claim)
+        try:
+            return await self._resume(command)
+        except ClaimLost:
+            # The runner that took the job over executes the run; nothing here may.
+            self._stop_requested.discard(command.run_id)
+            raise
+        finally:
+            self._claim.reset(token)
+
+    async def _resume(self, command: ResumeRun) -> Run:
         async with self._telemetry.span("run", {"run.id": command.run_id}) as span:
             async with self._work.transaction(command.tenant):
                 run = await self._runs.get(command.tenant, command.run_id)
@@ -460,6 +494,7 @@ class RunEngine:
         }
         digest = await self._objects.put(_canonical(statement))
         async with self._work.transaction(run.tenant):
+            await self._fence(run)
             await self._record(run, "budget.set", actor=actor, digest=digest)
 
     async def _launch(self, run: Run) -> Run:
@@ -1464,6 +1499,18 @@ class RunEngine:
                     run, step_run, worker, assignment.assignment_id, trace, span
                 )
                 following.set_attribute("step.state", step_run.state)
+        except ClaimLost:
+            # The runner that took the run over assigns the step again from its checkpoint;
+            # this assignment has no one left to report to.
+            with contextlib.suppress(Exception):
+                await worker.stop(
+                    assignment.assignment_id,
+                    StopRequest(
+                        reason="the claim on the run was lost",
+                        ceiling_seconds=self._options.step_ceiling_seconds,
+                    ),
+                )
+            raise
         finally:
             self._inflight.pop(run.id, None)
         _measured(span, step_run)
@@ -1684,6 +1731,7 @@ class RunEngine:
         `trigger` records the trigger that started the run as `run.triggered`."""
         run = run.model_copy(update={"updated_at": self._clock.now()})
         async with self._work.transaction(run.tenant):
+            await self._fence(run)
             if new and await self._runs.get(run.tenant, run.id) is not None:
                 raise RunExists(run.id)
             await self._runs.put(run.tenant, run)
@@ -1725,6 +1773,19 @@ class RunEngine:
                             digest=trace.egress.content_digest,
                         )
         return run
+
+    async def _fence(self, run: Run) -> None:
+        """Inside a transaction that writes the run: refuse it unless the claim the run is
+        executed under is still this runner's. The queue keeps the claim from being taken
+        until the transaction ends, so the writes land under the claim or not at all."""
+        claim = self._claim.get()
+        if claim is None or self._queue is None:
+            return
+        if not await self._queue.fence(run.tenant, claim):
+            raise ClaimLost(
+                f"run {run.id!r}: job {claim.job_id!r} was claimed again after "
+                f"{claim.claimant!r} claimed it (attempt {claim.attempt}); the write is refused"
+            )
 
     async def _record(
         self,

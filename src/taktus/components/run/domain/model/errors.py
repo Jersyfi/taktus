@@ -46,3 +46,9 @@ class RunExists(RunError):
 
     def __init__(self, run_id: str) -> None:
         super().__init__(f"run {run_id!r} exists already")
+
+
+class ClaimLost(RunError):
+    """A write of a run executed under a runner's claim was refused: another runner has
+    claimed the run's job since. Nothing of the write landed, and the runner does nothing
+    more for the run (#107)."""

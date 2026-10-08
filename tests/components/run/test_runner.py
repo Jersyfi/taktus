@@ -1,7 +1,8 @@
 """The runner against the memory queue: a submitted run is claimed once and executed, two
 runners never execute the same run, a shutdown releases the run at its boundary for the next
-runner, a lost lease stops the run, a job that keeps failing is left for a person, and a job
-whose run ended before its runner completed the job is completed without executing anything.
+runner, a runner whose claim was taken writes nothing more to the run, a job that keeps failing
+is left for a person, and a job whose run ended before its runner completed the job is
+completed without executing anything.
 
 The clock is the real one here: the runner's loop and the heartbeat sleep through it, and the
 `wait` steps give a run a duration to be interrupted in. Intervals are short.
@@ -14,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-from fakes import FakeIdentifiers, FakeWorker
+from fakes import FakeIdentifiers, FakeWorker, HeldObjects
 
 from taktus.adapters.driven.clock import SystemClock
 from taktus.adapters.driven.memory import (
@@ -36,6 +37,8 @@ from taktus.components.run.application.service import (
     StartRun,
 )
 from taktus.components.run.domain.model import Cause, Run, RunExists, RunState, StepState
+from taktus.components.run.domain.service import provenance
+from taktus.ports.objectstore import ObjectStore
 from taktus.ports.queue import RUN_EXECUTE, Job
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import (
@@ -82,19 +85,24 @@ class World:
             self.persistence, self.clock, lease_seconds=lease_seconds, max_attempts=max_attempts
         )
         self.ledger = ChainedLedger(MemoryLedgerStore(self.persistence), self.clock)
-        self.engine = RunEngine(
+        self.provenance = MemoryProvenanceStore(self.persistence)
+        self.engine = self.another_engine(MemoryObjectStore())
+        self.tasks: list[asyncio.Task[None]] = []
+
+    def another_engine(self, objects: ObjectStore) -> RunEngine:
+        """An engine of its own over the same stores, as another instance would have."""
+        return RunEngine(
             runs=self.runs,
             work=self.persistence,
-            objects=MemoryObjectStore(),
+            objects=objects,
             ledger=self.ledger,
-            provenance=MemoryProvenanceStore(self.persistence),
+            provenance=self.provenance,
             workers=StaticWorkerPool([("worker.fake", FakeWorker())]),
             clock=self.clock,
             ids=self.ids,
             telemetry=NoTelemetry(),
             queue=self.queue,
         )
-        self.tasks: list[asyncio.Task[None]] = []
 
     async def submit(self, *definitions: tuple[Step, dict[str, Any]]) -> Run:
         steps = tuple(step for step, _ in definitions)
@@ -119,16 +127,23 @@ class World:
             )
         )
 
-    def runner(self, name: str, *, heartbeat: float = 0.05) -> Runner:
+    def runner(
+        self,
+        name: str,
+        *,
+        heartbeat: float = 0.05,
+        engine: RunEngine | None = None,
+        concurrency: int = 2,
+    ) -> Runner:
         runner = Runner(
-            engine=self.engine,
+            engine=engine or self.engine,
             queue=self.queue,
             work=self.persistence,
             clock=self.clock,
             options=RunnerOptions(
                 tenants=(TENANT,),
                 claimant=name,
-                concurrency=2,
+                concurrency=concurrency,
                 poll_seconds=0.02,
                 heartbeat_seconds=heartbeat,
             ),
@@ -236,7 +251,7 @@ async def test_a_shutdown_stops_the_run_at_its_boundary_and_releases_it_to_the_n
     assert kinds.count("step.started") == 3, "each step ran once; the halt cost no step"
 
 
-async def test_a_lost_lease_stops_the_run_at_its_boundary_and_leaves_the_job_alone() -> None:
+async def test_a_runner_whose_claim_was_taken_writes_nothing_more_and_leaves_the_job() -> None:
     world = World(lease_seconds=60)
     run = await world.submit(
         wait("a", 0.3), wait("b", 0.3, after=("a",)), rule("c", 1, after=("b",))
@@ -245,6 +260,8 @@ async def test_a_lost_lease_stops_the_run_at_its_boundary_and_leaves_the_job_alo
     await until(lambda: first.executing == 1)
     job = (await world.claimable("nobody")) or None
     assert job is None, "the job is held by r1 and not claimable"
+    before = await world.stored(run.id)
+    kinds = await world.kinds(run.id)
     # The claim goes to another instance underneath r1 — as it would after r1 had been unable
     # to reach the database for longer than the lease.
     async with world.persistence.transaction(TENANT):
@@ -254,10 +271,63 @@ async def test_a_lost_lease_stops_the_run_at_its_boundary_and_leaves_the_job_alo
     await until(lambda: len(first.outcomes) == 1)
     await world.stop(first)
     assert first.outcomes[0].disposition == "lost"
-    halted = await world.stored(run.id)
-    assert halted.state is RunState.HALTED and halted.cause is Cause.STOP
+    assert await world.stored(run.id) == before, "r1 wrote nothing after the claim was taken"
+    assert await world.kinds(run.id) == kinds
     async with world.persistence.transaction(TENANT):
         assert await world.queue.extend(TENANT, "job_0001", "r2"), "r2 still holds the job"
+
+
+async def test_a_runner_paused_past_its_lease_cannot_commit_the_step_it_was_inside() -> None:
+    """Issue #107. Runner A is inside step `a`, before its commit, and pauses — its heartbeat
+    never comes — for longer than the lease. Runner B claims the job, recovers the run and
+    executes it to its end. Then A goes on: its commit of the step's end is refused, and A
+    gives the run up. The run is B's, the ledger has no entry from A after B's recovery, and
+    the ledger and provenance chains verify with no step recorded twice."""
+    world = World(lease_seconds=1)
+    run = await world.submit(rule("a", 41), rule("b", 1, after=("a",)))
+    held = HeldObjects(b"41")
+    # A paused process neither renews its lease nor claims: no heartbeat, and no free place.
+    first = world.runner("a", heartbeat=3600, engine=world.another_engine(held), concurrency=1)
+    async with asyncio.timeout(5.0):
+        await held.reached.wait()
+    second = world.runner("b", engine=world.another_engine(MemoryObjectStore()))
+    await until(lambda: len(second.outcomes) == 1)
+    assert second.outcomes[0].disposition == "completed", second.outcomes[0].error
+    finished = await world.stored(run.id)
+    assert finished.state is RunState.FINISHED
+    entries_of_b = await world.kinds(run.id)
+
+    held.release.set()
+    await until(lambda: len(first.outcomes) == 1)
+    await world.stop(first, second)
+    lost = first.outcomes[0]
+    assert lost.disposition == "lost" and "refused" in (lost.error or "")
+    assert await world.stored(run.id) == finished, "the run is as B left it"
+    kinds = await world.kinds(run.id)
+    assert kinds == entries_of_b, "nothing from A after B's run.recovered"
+    assert kinds == [
+        "run.created",
+        "budget.set",
+        "run.started",
+        "step.admitted",
+        "step.started",
+        "run.recovered",
+        "step.admitted",
+        "step.started",
+        "step.finished",
+        "step.admitted",
+        "step.started",
+        "step.finished",
+        "run.finished",
+    ]
+    async with world.persistence.transaction(TENANT):
+        assert (await world.ledger.verify(TENANT)).intact
+        entries = list(await world.ledger.entries(TENANT, run.id))
+        records = list(await world.provenance.of_run(TENANT, run.id))
+    assert sorted(r.step_id for r in records) == ["a", "b"], "each step recorded once"
+    verification = provenance.verify(finished, records, entries)
+    assert verification.intact, verification.findings
+    assert await world.claimable() == [], "B completed the job"
 
 
 async def test_a_job_whose_run_cannot_be_executed_is_released_and_finally_left_alone() -> None:

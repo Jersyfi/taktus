@@ -4,7 +4,10 @@ A job names a kind and carries a payload; today the one kind is `run.execute`, a
 names the run. A runner *claims* due jobs and holds each claim as a lease: while it works it
 *extends* the lease, and a claim it stops extending — because the runner died — expires, after
 which another runner may claim the same job. A runner that is alive but cannot renew for longer
-than the lease loses its claim the same way; `extend` then tells it so (DEC-0066). When
+than the lease loses its claim the same way; `extend` then tells it so (DEC-0066). A claim is
+also a *fence*: every write made under it calls `fence` in its own transaction, which refuses
+once another runner has claimed the job and keeps the claim from being taken until that
+transaction ends (#107). So a runner that lost its claim writes nothing more. When
 the work is done the job is *completed* and gone; when the runner has to give it back — it was
 told to shut down, or the work failed for a reason another attempt may not share — the job is
 *released* and is claimable at once.
@@ -38,6 +41,16 @@ class Job(Value):
     """How many times the job has been claimed, including the current claim."""
 
 
+class Claim(Value):
+    """One claim on one job: who holds it, and which claim of the job it is. The attempt
+    counts the job's claims, so a later claim of the same job by the same claimant is a
+    different claim; it is the claim's *epoch*, the number a fence compares."""
+
+    job_id: str = Field(min_length=1)
+    claimant: str = Field(min_length=1)
+    attempt: int = Field(ge=1)
+
+
 class Queue(Protocol):
     async def enqueue(self, tenant: Tenant, job: Job) -> None:
         """Make the job claimable now. A job with an id the tenant already has is refused."""
@@ -53,6 +66,14 @@ class Queue(Protocol):
         """Renew the lease of a job `claimant` holds. False when the claim is no longer the
         claimant's — it expired and another instance took it — in which case the claimant
         must not act on the job any further."""
+        ...
+
+    async def fence(self, tenant: Tenant, claim: Claim) -> bool:
+        """Whether `claim` is still the job's current claim: the job exists and was not
+        claimed since, by anyone. True also when the lease has expired and nobody has claimed
+        the job yet. Called inside the transaction of a write made under the claim; while that
+        transaction is open, no other claimant can claim the job, so the write either lands
+        under the claim or not at all. False means the claimant must write nothing more."""
         ...
 
     async def release(self, tenant: Tenant, job_id: str, claimant: str) -> None:
