@@ -119,7 +119,7 @@ identity's token and this token is deleted.
 ## 7. How to confirm
 
 Without revealing the value — the first command prints `present`, the second an HTTP status,
-where `200` means the token reaches the repository:
+where `200` means the service accepts the token and `401` that it does not:
 
 ```bash
 test -s "$(sed -n 's/^TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE=//p' .env)" && echo "repository token file: present"
@@ -133,6 +133,12 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://api.github.com/repos/Jersyfi/t
 The scope is confirmed where it was set: GitHub → *Fine-grained tokens* → the token → the
 repository list shows `Jersyfi/taktus` alone and the permissions read as the table in section
 4. `tools/first_run.sh` checks the file's presence itself before it starts anything.
+
+Until 2026-10-08 this section said that `200` means the token reaches the repository. The
+repository is public: any token the service accepts reads it, whichever repositories it is scoped
+to. That the token reaches this repository, with write access, is the scope check below
+(DEC-0054). The confirmation of 2026-09-23 stands on the first run, which wrote to the
+repository with the token.
 
 ## Outcome
 

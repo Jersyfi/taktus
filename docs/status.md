@@ -62,8 +62,8 @@ left of the milestone's own list of items is below, and none of it is part of th
 | What | What it is for | State |
 |---|---|---|
 | a model endpoint that speaks the chat-completions dialect, and its key where it needs one | P-02's step `refine` (`llm`, purpose `reasoning`) derives the acceptance criteria | provided 2026-09-22, confirmed 2026-09-23 (NEED-0003, issue #20 closed); the model is the smaller one of the family, by the owner's choice (DEC-0019) |
-| a credential for the coding agent — an API key or a subscription token | P-03's step `implement` (`worker`) runs the coding worker against its real agent | provided 2026-09-22 as an API key, confirmed 2026-09-23 (NEED-0001, issue #18 closed); valid 30 days, renewed under NEED-0005 |
-| a repository token issued for the identity Taktus acts as | every read and write of the reference connector; the first run used the developer's own login, which is not what the owner's run should use | provided 2026-09-22 as a fine-grained token for this repository, confirmed 2026-09-23 (NEED-0002, issue #19 closed); valid 90 days, renewed under NEED-0006 |
+| a credential for the coding agent — an API key or a subscription token | P-03's step `implement` (`worker`) runs the coding worker against its real agent | provided 2026-09-22 as an API key, confirmed 2026-09-23 (NEED-0001, issue #18 closed); renewed under NEED-0005 on 2026-10-07, without expiry |
+| a repository token issued for the identity Taktus acts as | every read and write of the reference connector; the first run used the developer's own login, which is not what the owner's run should use | provided 2026-09-22 as a fine-grained token for this repository, confirmed 2026-09-23 (NEED-0002, issue #19 closed); renewed under NEED-0006 on 2026-10-07, without expiry |
 
 `tools/first_run.sh 11` is the one command that runs P-02 and then P-03 for issue #11 and
 opens the pull request. On the first run it could not be run a second time, which is why the

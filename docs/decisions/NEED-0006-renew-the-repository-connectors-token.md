@@ -104,7 +104,7 @@ than renewed.
 ## 7. How to confirm
 
 Without revealing the value — the file is present, and the token reaches the repository.
-`200` means it does:
+`200` means the service accepts it, `401` that it does not:
 
 ```bash
 test -s "$(sed -n 's/^TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE=//p' .env)" && echo "repository token file: present"
@@ -115,7 +115,27 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://api.github.com/repos/Jersyfi/t
   -H "Authorization: Bearer $(cat "$(sed -n 's/^TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE=//p' .env)")"
 ```
 
+The repository is public, so any token the service accepts reads it, whatever repositories it
+is scoped to: the `200` says the token is valid, not that it reaches this repository. That is
+the scope check below (DEC-0054).
+
 The scope is confirmed where it was set, and only there: GitHub → *Fine-grained tokens* → the
 token → the repository list shows `Jersyfi/taktus` alone and the permissions read as the table
 in section 4. A token cannot be asked through the API what it is allowed to do, so this half
 is yours and cannot be checked by a session.
+
+## Outcome
+
+**Provided:** 2026-10-07
+**Confirmed by:** section 7, run on 2026-10-08 against the credential file itself, since no
+`.env` exists in the checkout. The file is present and not empty; `/user` with the token answered
+`200`, a read of the repository with it answered `200` with the rate limit of an authenticated
+request (5000, not the anonymous 60), and the repository's permissions it returned include
+`push`. Nothing from the file was printed or read by the session. The
+scope — this repository alone, the permissions of section 4 — is the owner's to see in the
+service's token settings and cannot be checked by a session.
+**What was provided:** a new fine-grained token in the same file, the old one deleted, as the
+owner wrote in [#25](https://github.com/Jersyfi/taktus/issues/25): the token does not expire. No
+successor renewal is raised; the token is replaced by the identity of its own that `0.2.0`
+brings (#82), or rotated when it may have been seen.
+**Recorded in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR)
