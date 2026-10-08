@@ -69,7 +69,7 @@ left of the milestone's own list of items is below, and none of it is part of th
 opens the pull request. On the first run it could not be run a second time, which is why the
 seven repeats were started by hand; since the pull request that took up the first run's
 findings it runs one bundle alone, resumes a stopped run, treats P-02's refusal of an issue
-whose criteria exist as done, and stops before anything starts when a branch of an earlier
+that has nothing to write for as done, and stops before anything starts when a branch of an earlier
 attempt exists (issue #30).
 
 **The first run's findings, taken up.** Every finding of `docs/runs/first-run.md` that was an
@@ -165,6 +165,9 @@ before they were provided. A session may spend up to USD 1 per task on the owner
 to derive a fact instead of asking (M2.8). DEC-0037's Option A waits for event reactions. And
 the work now comes from the backlog — the repository's issues — through a standing brief,
 `docs/process/next-task.md`, until Taktus runs P-01, P-02 and P-03 on its own instance.
+P-02 and P-03 already read the backlog's ready standard, by the same code `make backlog` runs:
+P-03 admits only a ready issue and claims it with `in-progress`, and P-02 writes only the
+sections an issue lacks, as a comment (issue #70, NTC-0040).
 
 **A budget is a budget, built** (ADR-0005, third amendment; DEC-0035). Every step is estimated
 before it is admitted, or refused: a worker by its estimate, an `llm` step by the input its model
