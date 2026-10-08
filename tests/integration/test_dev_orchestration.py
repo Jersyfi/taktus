@@ -321,11 +321,11 @@ class Backlog:
 
 def backlog(outside: Outside) -> Backlog:
     """A backlog in the shape of this repository's: issues made from the form `Task`, a
-    milestone, and one open needs record on `main` under the directory of open records."""
+    milestone, and one open decision record on `main` under the directory of open records."""
     outside.commit_on_main(
         {
             f"{RECORDS}/README.md": "Open records.\n",
-            f"{RECORDS}/NEED-0011-a-repository-token.md": "# NEED-0011\n",
+            f"{RECORDS}/DEC-0999-an-open-decision.md": "# DEC-0999\n",
         }
     )
     milestone = outside.send("POST", f"/repos/{REPOSITORY}/milestones", {"title": "0.2.0"})
@@ -342,8 +342,8 @@ def backlog(outside: Outside) -> Backlog:
         ),
         no_milestone=outside.issue("Without a milestone", complete, labelled, None),
         blocked=outside.issue(
-            "Blocked by a need",
-            FORM.format(verified="hello.txt says hello.", blocked="NEED-0011"),
+            "Blocked by a decision",
+            FORM.format(verified="hello.txt says hello.", blocked="DEC-0999"),
             labelled,
             number,
         ),
@@ -408,7 +408,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     for number, reason in (
         (tasks.missing_section, "section 'How it is verified' is missing or empty"),
         (tasks.no_milestone, "no milestone"),
-        (tasks.blocked, "blocked by NEED-0011, still open"),
+        (tasks.blocked, "blocked by DEC-0999, still open"),
     ):
         output = run_bundle(outside, state_dir, p03, *p03_inputs(outside, number), expect=3)
         assert refused(output, "admit", f"issue #{number} is not ready: "), output
@@ -446,7 +446,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     paths = sorted(entry["path"] for entry in tree["tree"])
     assert paths == [
         "checked.txt",
-        f"{RECORDS}/NEED-0011-a-repository-token.md",
+        f"{RECORDS}/DEC-0999-an-open-decision.md",
         f"{RECORDS}/README.md",
         "hello.txt",
         "notes/plan.md",

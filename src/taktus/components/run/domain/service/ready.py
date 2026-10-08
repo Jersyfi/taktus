@@ -35,7 +35,7 @@ NOTHING = {"nothing", "none", "-", "_no response_", ""}
 HEADING = re.compile(r"^#{2,3}\s+(?:\d+\.\s+)?(.+?)\s*$", re.MULTILINE)
 RECORD = re.compile(r"\b((?:NEED|DEC)-\d{4})\b")
 ISSUE = re.compile(r"(?<![\w/])#(\d+)\b")
-RECORD_FILE = re.compile(r"^((?:NEED|DEC)-\d{4})-.*\.md$")
+RECORD_NAME = re.compile(r"^((?:NEED|DEC)-\d{4})-.*\.md$")
 
 
 def sections(body: str) -> dict[str, str]:
@@ -66,7 +66,7 @@ def blockers(text: str) -> tuple[set[str], set[int]]:
 def open_records(names: Iterable[str]) -> set[str]:
     """The identifiers of the records whose files are named — the file names of the directory
     that holds the open records, `docs/decisions/open/` in this repository."""
-    return {m[1] for name in names if (m := RECORD_FILE.match(name))}
+    return {m[1] for name in names if (m := RECORD_NAME.match(name))}
 
 
 def reasons(

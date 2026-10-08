@@ -36,7 +36,7 @@ docs/roadmap.md, 0.2.0
 {blocked}
 """
 
-RECORDS = [{"name": "README.md"}, {"name": "NEED-0011-a-token.md"}, {"name": "DEC-0044-x.md"}]
+RECORDS = [{"name": "README.md"}, {"name": "DEC-0999-a-token.md"}, {"name": "DEC-0044-x.md"}]
 
 
 def reading(**changes: Any) -> dict[str, Any]:
@@ -74,8 +74,8 @@ def test_a_ready_issue_is_admitted_with_nothing_missing() -> None:
             "section 'How it is verified' is missing or empty",
         ),
         (
-            {"body": FORM.format(verified="v", blocked="NEED-0011 and #3")},
-            "blocked by NEED-0011, still open; blocked by #3, still open",
+            {"body": FORM.format(verified="v", blocked="DEC-0999 and #3")},
+            "blocked by DEC-0999, still open; blocked by #3, still open",
         ),
     ],
 )

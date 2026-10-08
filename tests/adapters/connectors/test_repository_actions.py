@@ -250,7 +250,7 @@ async def test_a_directory_is_listed_at_a_ref_with_the_commit_it_was_read_at(
             "name": "taktus/list",
             "base": "main",
             "files": [
-                {"path": "docs/open/NEED-0011-a-token.md", "content": "x\n"},
+                {"path": "docs/open/DEC-0999-a-token.md", "content": "x\n"},
                 {"path": "docs/open/README.md", "content": "y\n"},
                 {"path": "docs/open/deeper/note.md", "content": "z\n"},
             ],
@@ -266,7 +266,7 @@ async def test_a_directory_is_listed_at_a_ref_with_the_commit_it_was_read_at(
     assert not error, listed
     assert listed["output"]["commit"] == branch["output"]["sha"]
     assert listed["output"]["entries"] == [
-        {"name": "NEED-0011-a-token.md", "path": "docs/open/NEED-0011-a-token.md", "type": "file"},
+        {"name": "DEC-0999-a-token.md", "path": "docs/open/DEC-0999-a-token.md", "type": "file"},
         {"name": "README.md", "path": "docs/open/README.md", "type": "file"},
         {"name": "deeper", "path": "docs/open/deeper", "type": "dir"},
     ]
