@@ -3,7 +3,7 @@
 **Mode entry:** M2.4
 **Kind:** behaviour-change
 **Decided:** 2026-10-09
-**Raised in:** [#127](https://github.com/Jersyfi/taktus/pull/127)
+**Raised in:** [#128](https://github.com/Jersyfi/taktus/pull/128)
 
 ## 1. What was decided
 
