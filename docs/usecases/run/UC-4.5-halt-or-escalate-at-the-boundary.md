@@ -62,3 +62,17 @@ situation package needs the decision and notification paths of that milestone; t
 escalation at the boundary are `0.1.0` and built. The definition called the escalation with its
 package `UC-4.6` and the intervention `UC-7.2`; the repository numbered it `UC-4.5`
 (`NUMBERING.md`).
+
+**What ADR-0021 supersedes in the definition's text.** The definition knew one way of going wrong:
+a business-critical finding or problem brings in a person with a complete situation package. Since
+ADR-0021 there are two, and the requirement is kept for both by different use cases:
+
+- a **failure** — a step did not complete — halts or escalates under this use case;
+- a **result defect** — a run completed and its result is wrong — never shows as a failure. It is
+  found by a check on the result (UC-4.10), escalated or stopped by the rule of ADR-0023 (UC-7.2),
+  and carried to a person as an incident with the same five-part situation package (UC-6.8).
+
+The definition's single escalation path for every finding is superseded by that split; its
+requirement — a business-critical finding always brings in a person, with everything needed to act
+— holds on both paths. That is why section 3 says *not a result defect* and section 1 still says
+*finding*.

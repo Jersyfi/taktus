@@ -31,28 +31,16 @@ given, and where a number used elsewhere points here, is [NUMBERING.md](NUMBERIN
 stored list would be edited by every pull request that adds a case, and two of them would
 conflict on it (CLAUDE.md §9).
 
-### Not yet in this format
+### Moved from their first files
 
-The migration of the project definition (`MIGRATION.md`) moves the cases below into their
-component's folder in its second step. Until then they stay where they were written, and this
-table shrinks to nothing.
-
-| Case | Title | Where | Version |
-|---|---|---|---|
-| UC-4.5 | A step fails: halt or escalate at the boundary | [run/UC-4.5](run/UC-4.5-halt-or-escalate-at-the-boundary.md) — moved | `0.1.0` |
-| UC-4.6 | Self-healing within the frame | [control-plane.md §5.2](../architecture/control-plane.md) | `0.2.0` |
-| UC-4.10 | Deviation detection | [run/UC-4.10](run/UC-4.10-deviation-detection.md) — moved | `0.5.0` |
-| UC-4.11 | Error window and impact analysis | [UC-4-result-defects.md](UC-4-result-defects.md) | `0.5.0` |
-| UC-4.12 | Remediation plan | [UC-4-result-defects.md](UC-4-result-defects.md) | `0.5.0` |
-| UC-4.13 | Working out how a step becomes exact | [UC-4-exactness-statement.md](UC-4-exactness-statement.md) | `0.5.0` |
-| UC-6.8 | Incident and incident report | [UC-4-result-defects.md](UC-4-result-defects.md) | `0.5.0` |
-| UC-6.9 | The exactness statement | [UC-4-exactness-statement.md](UC-4-exactness-statement.md) | `0.5.0` |
-| UC-7.2 | Emergency stop | [UC-4-result-defects.md](UC-4-result-defects.md) | by a person `0.2.0`, automatic `0.5.0` |
-
-Those files use the earlier five-part shape — the situation, what Taktus does, what it needs,
-what it never does, and how it is proven. The format below keeps all five: the situation and
-what Taktus does become section 1, what it never does and how it is proven become section 2,
-and what it needs becomes section 4.
+Seven cases were first written outside this format — UC-4.11, UC-4.12, UC-6.8 and UC-7.2 in
+`UC-4-result-defects.md`, UC-4.13 and UC-6.9 in `UC-4-exactness-statement.md`, and UC-4.6 as a
+state of `docs/architecture/control-plane.md` §5.2. The migration's second step moved them into
+their components' folders, and the two first files were removed (`MIGRATION.md`, NTC-0029). The
+earlier shape had five parts — the situation, what Taktus does, what it needs, what it never does,
+and how it is proven. The format below keeps all five: the situation and what Taktus does became
+section 1, what it never does and how it is proven became section 2, and what it needs became
+section 4.
 
 ---
 

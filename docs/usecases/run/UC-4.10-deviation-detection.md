@@ -88,6 +88,7 @@ silently benign.
 The provenance chain of ADR-0021 for the inputs a check compares against; the ledger for earlier
 results; the value ledger (`0.5.0`) for distributions over time; the connector contract
 (ADR-0024) for reference points in other systems; the rule of ADR-0023 for what follows a failed
-check. Written first in `UC-4-result-defects.md`; the definition's `UC-4.5` asked for quality
-monitoring of every process, and this is the part of it that concerns results
-(`NUMBERING.md`).
+check. Written first in `UC-4-result-defects.md`, which no longer exists: its other use cases moved
+into this format too (UC-4.11, UC-4.12, UC-6.8, UC-7.2). The definition's `UC-4.5` asked for
+quality monitoring of every process, and this is the part of it that concerns results; the part that
+concerns completion and performance is UC-4.6 (`NUMBERING.md`).

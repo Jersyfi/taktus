@@ -124,7 +124,8 @@ plausibility bounds, approval above a threshold, sampling — and every process 
 **exactness statement**: which checks apply, what they cover, what they do not cover, and what
 residual risk remains, visible in the dashboard and part of every report. Taktus never says
 "guaranteed correct"; it says what was checked against what and names the case that would slip
-through (`docs/usecases/UC-4-exactness-statement.md`).
+through (`docs/usecases/process/UC-4.13-working-out-how-a-step-becomes-exact.md`,
+`docs/usecases/process/UC-6.9-the-exactness-statement.md`).
 
 ---
 
