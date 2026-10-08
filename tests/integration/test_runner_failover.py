@@ -82,6 +82,8 @@ class Claims:
 
     by_job: dict[str, list[Claim]] = field(default_factory=dict)
     run_of: dict[str, str] = field(default_factory=dict)
+    attempts: dict[str, int] = field(default_factory=dict)
+    """How often each job was claimed, as the table counted it."""
 
     def observe(self, rows: Iterable[Any], runs: set[str]) -> None:
         for row in rows:
@@ -89,6 +91,7 @@ class Claims:
             if run_id not in runs or row.claimed_by is None or row.claimed_at is None:
                 continue
             self.run_of[row.id] = run_id
+            self.attempts[row.id] = row.attempts
             history = self.by_job.setdefault(row.id, [])
             if history and history[-1].claimant == row.claimed_by:
                 if row.claimed_at > history[-1].last_renewed:
@@ -135,11 +138,35 @@ async def job_rows(database: Database) -> list[Any]:
     async with database.persistence.transaction(TENANT):
         connection = database.persistence.connection(TENANT)
         result = await connection.execute(
-            select(s.job.c.id, s.job.c.payload, s.job.c.claimed_by, s.job.c.claimed_at).where(
-                s.job.c.tenant == TENANT
-            )
+            select(
+                s.job.c.id,
+                s.job.c.payload,
+                s.job.c.claimed_by,
+                s.job.c.claimed_at,
+                s.job.c.attempts,
+            ).where(s.job.c.tenant == TENANT)
         )
         return list(result)
+
+
+async def describe(database: Database, run_ids: list[str], claims: Claims) -> str:
+    """What every run and every claim looked like, for a failure message."""
+    lines = []
+    for run_id in run_ids:
+        run = await database.run(run_id)
+        if run is None:
+            lines.append(f"{run_id}: missing")
+            continue
+        steps = ", ".join(
+            f"{s.step_id}={s.state}" + (f"({s.reason})" if s.reason else "") for s in run.step_runs
+        )
+        kinds = [e.kind for e in await database.entries(run_id)]
+        lines.append(f"{run_id}: {run.state} {run.cause or ''} {run.reason or ''} [{steps}]")
+        lines.append(f"    {kinds}")
+    for job, history in claims.by_job.items():
+        holders = [c.claimant for c in history]
+        lines.append(f"{job} ({claims.run_of[job]}): {holders}, {claims.attempts[job]} claims")
+    return "\n".join(lines)
 
 
 async def all_finished(database: Database, run_ids: list[str]) -> bool:
@@ -155,10 +182,6 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
     await create_tenant(database)
     tenancy = {"TAKTUS_TENANTS": TENANT, "TAKTUS_PROVISIONAL_IDENTITY": f"{TENANT}=idn_test"}
     configured = settings(postgres_url, tmp_path, TAKTUS_WORKER=worker_endpoint, **tenancy)
-    async with wire(configured, EnvironmentConfiguration({})) as wired:
-        runs = [await submit(wired, bundle(n), TENANT) for n in range(RUNS)]
-    run_ids = [r.id for r in runs]
-    ours = set(run_ids)
     environment = {
         **tenancy,
         "TAKTUS_DATABASE_URL": postgres_url,
@@ -167,8 +190,9 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
         "TAKTUS_STATE_DIR": str(tmp_path / "state"),
         "TAKTUS_POLL_SECONDS": "0.05",
         "TAKTUS_LEASE_SECONDS": str(LEASE_SECONDS),
-        # Two runs per runner: four assignments at once, which is what the reference worker
-        # accepts, and the killed runner's assignments keep running in the worker after it.
+        # Two runs per runner. The reference worker accepts four assignments at once and
+        # answers 503 beyond, which fails the step. After the kill, the killed runner's
+        # assignments keep running in the worker beside the survivor's two: four again.
         "TAKTUS_RUNNER_CONCURRENCY": "2",
         "TAKTUS_SHUTDOWN_CEILING_SECONDS": "20",
         "TAKTUS_LOG_LEVEL": "debug",
@@ -184,27 +208,39 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
                 logs[name],
             )
             await wait_ready(port, processes[name])
+        # Submitted once both serve, so that neither has a head start.
+        async with wire(configured, EnvironmentConfiguration({})) as wired:
+            runs = [await submit(wired, bundle(n), TENANT) for n in range(RUNS)]
+        run_ids = [r.id for r in runs]
+        ours = set(run_ids)
 
         # Until some runs are done, and A holds a run whose worker step has persisted an inner
         # boundary: the kill then lands inside a step with something to resume from.
         victim: Run | None = None
-        async with asyncio.timeout(60):
-            while victim is None:
-                for name, process in processes.items():
-                    assert process.returncode is None, f"runner {name} exited; see {logs[name]}"
-                rows = await job_rows(database)
-                claims.observe(rows, ours)
-                ready = len(claims.completed(rows)) >= 4
-                for run_id in held_by(rows, "a", ours) if ready else ():
-                    stored = await database.run(run_id)
-                    if stored is None or stored.state is not RunState.RUNNING:
-                        continue
-                    compute = stored.step_run("compute")
-                    if compute.state is StepState.RUNNING and compute.checkpoint is not None:
-                        victim = stored
-                        break
-                else:
-                    await asyncio.sleep(0.02)
+        searching = asyncio.timeout(60)
+        try:
+            async with searching:
+                while victim is None:
+                    for name, process in processes.items():
+                        assert process.returncode is None, f"runner {name} exited; see {logs[name]}"
+                    rows = await job_rows(database)
+                    claims.observe(rows, ours)
+                    ready = len(claims.completed(rows)) >= 4
+                    for run_id in held_by(rows, "a", ours) if ready else ():
+                        stored = await database.run(run_id)
+                        if stored is None or stored.state is not RunState.RUNNING:
+                            continue
+                        compute = stored.step_run("compute")
+                        if compute.state is StepState.RUNNING and compute.checkpoint is not None:
+                            victim = stored
+                            break
+                    else:
+                        await asyncio.sleep(0.02)
+        except TimeoutError:
+            raise AssertionError(
+                "runner a never held a run inside its worker step after four were done:\n"
+                + await describe(database, run_ids, claims)
+            ) from None
         processes["a"].kill()
         assert await processes["a"].wait() == -signal.SIGKILL
 
@@ -228,11 +264,16 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
         before = {run_id: await database.entries(run_id) for run_id in orphaned}
         assert await database.verifies(), "nothing A wrote broke the chain"
 
-        async with asyncio.timeout(120):
-            while not await all_finished(database, run_ids):
-                assert processes["b"].returncode is None, f"runner b exited; see {logs['b']}"
-                claims.observe(await job_rows(database), ours)
-                await asyncio.sleep(0.02)
+        deadline = asyncio.get_running_loop().time() + 120
+        while not await all_finished(database, run_ids):
+            assert processes["b"].returncode is None, f"runner b exited; see {logs['b']}"
+            if asyncio.get_running_loop().time() > deadline:
+                raise AssertionError(
+                    "not every run finished within 120 seconds of the kill:\n"
+                    + await describe(database, run_ids, claims)
+                )
+            claims.observe(await job_rows(database), ours)
+            await asyncio.sleep(0.02)
         processes["b"].send_signal(signal.SIGTERM)
         stopped = await asyncio.wait_for(processes["b"].wait(), timeout=25)
         assert stopped == 0, logs["b"].read_text()

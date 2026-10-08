@@ -250,7 +250,8 @@ role it would tie the core to a model stack and the removal test would be lost.
   and renews the claim's lease from a heartbeat. Several runners share one database and never
   claim the same run; a runner that dies leaves its run for at most one lease. A run ends the
   job — completed when finished, halted by admission control or escalated; released when this
-  runner was told to shut down, so that the next runner resumes it at the boundary. A job
+  runner was told to shut down, so that the next runner resumes it at the boundary. A claim
+  takes at most the runner's free places, whatever plan the database chooses (NTC-0027). A job
   whose run had already ended when it was claimed — its runner died between the two writes —
   is completed and nothing executes (NTC-0026). Proven with two runner processes, one killed
   mid-step (`tests/integration/test_runner_failover.py`). The claim is not a fence: a runner
