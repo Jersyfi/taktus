@@ -175,7 +175,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 53, "every setting is in the startup log"
+    assert len(effective) == 57, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -272,3 +272,24 @@ def test_every_capacity_setting_is_read_from_its_variable() -> None:
     effective = dict(loaded.effective())
     assert effective["TAKTUS_CAPACITY_STORAGE_EXPANDABLE"] == "false"
     assert effective["TAKTUS_EXECUTION_MEMORY_UNENFORCED"] == "true"
+
+
+def test_the_cluster_kind_needs_its_namespace_and_reads_its_settings() -> None:
+    with pytest.raises(ConfigurationError, match="TAKTUS_EXECUTION_NAMESPACE"):
+        settings(TAKTUS_EXECUTION="cluster", TAKTUS_EXECUTION_UNIT="worker:1")
+    execution = settings(
+        TAKTUS_EXECUTION="cluster",
+        TAKTUS_EXECUTION_UNIT="worker:1",
+        TAKTUS_EXECUTION_NAMESPACE="jobs",
+        TAKTUS_EXECUTION_STATE_CLAIM="unit-state",
+    ).execution
+    assert execution.kind is ExecutionKind.CLUSTER and execution.namespace == "jobs"
+    assert execution.egress_enforced is True, "network policies are enforced unless told not"
+    assert execution.state_claim == "unit-state" and execution.service_account is None
+    off = settings(
+        TAKTUS_EXECUTION="cluster",
+        TAKTUS_EXECUTION_UNIT="worker:1",
+        TAKTUS_EXECUTION_NAMESPACE="jobs",
+        TAKTUS_EXECUTION_EGRESS_ENFORCE="false",
+    ).execution
+    assert off.egress_enforced is False

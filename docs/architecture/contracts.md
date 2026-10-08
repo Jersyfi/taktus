@@ -135,7 +135,7 @@ so that a resumed assignment finds them in a new unit.
 | `endpoint` | whoever runs the worker | `adapters/driven/workers/http/` | a worker that is already running, at `TAKTUS_WORKER`; the default |
 | `process` | none | `adapters/driven/execution/process.py` | local development, a single user. **Refused from autonomy level 3 upwards, and when the level is unknown** — the rule is `ports/execution.py:refusal()`, and `tests/governance` holds the adapter to it. The unit's memory limit is enforced on Linux (`RLIMIT_DATA`, per process) and refused elsewhere unless `TAKTUS_EXECUTION_MEMORY_UNENFORCED=true` accepts it unenforced (`docs/architecture/platform.md` §5) |
 | `container` | process, filesystem, network | `adapters/driven/execution/container/` | operation. One container per job with limits, credentials in memory only, and a network that reaches `frame.allowed_hosts` and nothing else |
-| cluster | pod with quota and network policy | next pull request | the same shape with a pod instead of two containers; the port does not change |
+| `cluster` | process, filesystem; network where the cluster enforces network policies | `adapters/driven/execution/kubernetes/` | a cluster the control plane runs in. One Job per job in the execution namespace with limits and a deadline, a `restricted` pod with no service-account token, credentials from a Secret that lives as long as the job, and an egress proxy of its own; refuses hosts, and every job from level 3 upwards, where network policies are not enforced (`deploy/k8s/README.md` §7) |
 
 The worker port over the execution port is `adapters/driven/workers/launched.py`: one unit
 per assignment, started with the credentials, the hosts and the autonomy level the assignment
@@ -176,6 +176,18 @@ engine's HTTP API over its socket — Docker or Podman — so that the control p
 no client. `tests/adapters/execution/test_container.py` proves every one of these from inside
 a job, and `tests/integration/test_launched_container.py` runs a process through it, stops it
 at a boundary and resumes it in a new container.
+
+**The cluster adapter's wall** is the same shape in a cluster's terms, specified in
+`deploy/k8s/README.md` §4 to §7: a Job instead of a container, a Pod Security level instead of
+engine flags, a namespace's default-deny network policy instead of an internal network, and an
+egress proxy that is a second Job instead of a second container. The proxy asks for a token
+only the job's own unit holds, because a namespace's policy cannot pair a unit with its proxy.
+Credentials come from a Secret created for the job: a file credential is mounted at its path,
+an env credential is a variable from the Secret. The adapter speaks the cluster's API with
+`httpx` and makes only the calls of the Role Taktus's service account holds.
+`tests/adapters/execution/test_kubernetes.py` holds it to all of it against a fake of the API;
+`test_kubernetes_cluster.py` runs the container adapter's checks from inside a job on a real
+cluster, and skips with the reason where none is configured (NEED-0015).
 
 ---
 
