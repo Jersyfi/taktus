@@ -138,4 +138,4 @@ service's token settings and cannot be checked by a session.
 owner wrote in [#25](https://github.com/Jersyfi/taktus/issues/25): the token does not expire. No
 successor renewal is raised; the token is replaced by the identity of its own that `0.2.0`
 brings (#82), or rotated when it may have been seen.
-**Recorded in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR)
+**Recorded in:** [#96](https://github.com/Jersyfi/taktus/pull/96)

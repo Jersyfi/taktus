@@ -1,7 +1,7 @@
 # DEC-0054 — A need's check claimed more than it shows
 
 **Category:** DEFECT
-**Raised in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR), while confirming NEED-0006
+**Raised in:** [#96](https://github.com/Jersyfi/taktus/pull/96), while confirming NEED-0006
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -51,4 +51,4 @@ public repository it means only that the token is valid.
 **What it now says:** `200` means the service accepts the token; whether it reaches this
 repository is the scope check in the token's settings.
 **What changed in substance:** nothing in the software; the confirmation step of two records.
-**Recorded in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR)
+**Recorded in:** [#96](https://github.com/Jersyfi/taktus/pull/96)

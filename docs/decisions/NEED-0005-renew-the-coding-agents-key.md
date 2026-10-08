@@ -148,4 +148,4 @@ run: it spends, and the first `200` already shows that the same file holds an ac
 **What was provided:** a new API key in the same file, the old one deleted, as the owner wrote in
 [#24](https://github.com/Jersyfi/taktus/issues/24): the key does not expire. No successor renewal
 is raised; the key is rotated when it may have been seen (`CREDENTIALS.md`).
-**Recorded in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR)
+**Recorded in:** [#96](https://github.com/Jersyfi/taktus/pull/96)
