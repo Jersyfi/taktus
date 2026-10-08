@@ -1,8 +1,8 @@
 """What a step does when it runs, typed per method, read from the bundle's `work` data.
 
 Four kinds are executable in this version. A `rule` step evaluates one of the built-in rules
-(`domain.service.rules`) — a constant, a verified artifact, a machine check, a text template —
-or calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits for a
+(`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
+of a backlog task, a text template — or calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits for a
 duration through the clock, or for an external state read through a connector. A `worker`
 step hands a task to an execution unit behind the worker contract. An `llm` step asks a model
 through the model port. Every other method has no executor yet and is refused before the run
@@ -31,7 +31,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, TypeAdapter, ValidationError
+from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
 from taktus.components.run.domain.model.errors import UnsupportedWork
 from taktus.ports.worker import CredentialReference, Host, Task, Workspace
@@ -85,6 +85,36 @@ class CheckRule(Value):
     conditions: tuple[Condition, ...] = Field(min_length=1)
 
 
+class ReadyRule(Value):
+    """The ready standard of a backlog task (DEC-0051, `domain.service.ready`), over a
+    repository's reading of one issue. `issue` is the reading — `number`, `state`,
+    `is_pull_request`, `body`, `labels` as names, `milestone` as a title or nothing.
+
+    `expect: ready` is an admission: the issue is open, not a pull request, not claimed, and
+    meets the whole standard — three sections, a component, a milestone, one priority label,
+    the label `ready`, and nothing open under "Blocked by". What is open is read, not assumed:
+    `open_records` are the file names of the directory that holds the open records, and
+    `open_issues` the repository's open issues, as numbers or as readings with a `number`.
+    `expect: sections_missing` asks the opposite of the content alone: the issue is open, not
+    a pull request, and lacks at least one of the three sections.
+
+    The result is `{"number", "ready", "reasons", "missing"}` once the expectation holds; when
+    it does not, the step fails naming every reason. The verdict comes from the fields read,
+    never from a judgement: admissible for `exact`."""
+
+    rule: Literal["ready"]
+    expect: Literal["ready", "sections_missing"]
+    issue: Any
+    open_records: Any = None
+    open_issues: Any = None
+
+    @model_validator(mode="after")
+    def _admission_reads_what_is_open(self) -> ReadyRule:
+        if self.expect == "ready" and (self.open_records is None or self.open_issues is None):
+            raise ValueError("an admission names open_records and open_issues: what blocks is read")
+        return self
+
+
 class TemplateRule(Value):
     """The result is `text` with every `${name}` replaced by the named value; a value that is
     not a string is inserted as its JSON text. A name the values do not carry fails the step."""
@@ -130,7 +160,7 @@ class ConnectorRule(Value):
 
 
 type RuleWork = Annotated[
-    ConstantRule | VerifyArtifactRule | CheckRule | TemplateRule | ConnectorRule,
+    ConstantRule | VerifyArtifactRule | CheckRule | ReadyRule | TemplateRule | ConnectorRule,
     Field(discriminator="rule"),
 ]
 
@@ -318,6 +348,8 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.input]
     if isinstance(work, CheckRule):
         return [condition.value for condition in work.conditions]
+    if isinstance(work, ReadyRule):
+        return [work.issue, work.open_records, work.open_issues]
     if isinstance(work, TemplateRule | LlmWork):
         return [work.values]
     if isinstance(work, WaitWork) and work.until is not None:

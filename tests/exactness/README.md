@@ -7,3 +7,6 @@ process version containing such a step does not exist), the example bundles unde
 `statistics`), and execution (an exact step runs as a rule of the run component, never through an
 adapter). A step that is classed exact and reads a worker's artifact does so through a machine
 check, which is the pattern of ADR-0014 §4.1.
+
+The backlog's ready standard is held the same way: P-03's admission and P-02's search for the
+sections an issue lacks are `rule` steps classed `exact` that run the rule `ready` (issue #70).

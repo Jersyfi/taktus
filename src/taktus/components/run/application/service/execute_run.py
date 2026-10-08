@@ -72,6 +72,7 @@ from taktus.components.run.domain.model import (
     LlmWork,
     NoConnector,
     NoWorker,
+    ReadyRule,
     RuleFailed,
     Run,
     RunError,
@@ -643,6 +644,11 @@ class RunEngine:
                 run, [condition.value for condition in work.conditions]
             )
             return rules.check(work, values), Trace(inputs=read), None, None
+        if isinstance(work, ReadyRule):
+            (issue, records, issues), read = await self._resolved(
+                run, [work.issue, work.open_records, work.open_issues]
+            )
+            return rules.ready(work, issue, records, issues), Trace(inputs=read), None, None
         if isinstance(work, TemplateRule):
             (values,), read = await self._resolved(run, [work.values])
             return rules.template(work, values), Trace(inputs=read), None, None

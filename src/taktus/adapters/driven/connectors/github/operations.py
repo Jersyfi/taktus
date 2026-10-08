@@ -113,6 +113,7 @@ def _account(user: Any) -> Json:
 
 
 def issue_output(issue: Json) -> Json:
+    milestone = issue.get("milestone")
     return {
         "number": int(issue["number"]),
         "title": str(issue.get("title", "")),
@@ -122,6 +123,10 @@ def issue_output(issue: Json) -> Json:
         "author": _account(issue.get("user")),
         "created_at": str(issue.get("created_at", "")),
         "is_pull_request": "pull_request" in issue,
+        # The labels by name, sorted; the milestone by its title, or null without one. What the
+        # ready standard of a backlog reads besides the body (issue #70).
+        "labels": sorted(str(label.get("name", "")) for label in issue.get("labels") or []),
+        "milestone": str(milestone.get("title", "")) or None if milestone else None,
     }
 
 
@@ -162,6 +167,27 @@ async def read_issue(api: Api, input: Json, key: str) -> Outcome:
     number = _int(input, "number")
     issue = await api.get(api.repo(f"issues/{number}"))
     return Outcome(issue_output(issue), read_effect())
+
+
+async def list_issues(api: Api, input: Json, key: str) -> Outcome:
+    """The repository's issues in one state — `open` unless `state` says `closed` or `all` —
+    without pull requests, newest first, in the shape of `repository.issues.read`. Read page by
+    page up to MAX_PAGES pages of 100; `complete` says whether every page was read, so that a
+    reader that must see every open issue can refuse a reading that stopped short."""
+    state = input.get("state", "open")
+    if state not in ("open", "closed", "all"):
+        raise invalid("state is open, closed or all")
+    path = api.repo("issues")
+    page, next_url = await api.get_page(path, {"state": state, "per_page": 100})
+    found: list[Json] = list(page)
+    pages = 1
+    while next_url and pages < MAX_PAGES:
+        page, next_url = await api.get_url(next_url)
+        found.extend(page)
+        pages += 1
+    issues = [issue_output(item) for item in found if "pull_request" not in item]
+    output = {"state": state, "issues": issues, "complete": next_url is None}
+    return Outcome(output, read_effect())
 
 
 async def read_pull_request(api: Api, input: Json, key: str) -> Outcome:
@@ -254,6 +280,34 @@ async def read_file(api: Api, input: Json, key: str) -> Outcome:
         output |= {"content": raw.decode("utf-8"), "encoding": "utf-8"}
     except UnicodeDecodeError:
         output |= {"content": base64.b64encode(raw).decode(), "encoding": "base64"}
+    return Outcome(output, read_effect())
+
+
+async def list_files(api: Api, input: Json, key: str) -> Outcome:
+    """The entries of one directory at a ref, resolved to a commit first as `read_file` does:
+    each with its name, its path and its type — `file`, `dir`, `symlink` or `submodule` —
+    sorted by name. A path that names a file is `invalid`: this lists directories."""
+    path = _tree_path(input.get("path"))
+    ref = _str(input, "ref")
+    commit = ref if SHA.match(ref) else await _ref(api, ref)
+    if commit is None:
+        raise TargetError("not_found", "none", False, f"ref {ref!r} is not a branch or a commit")
+    found = await api.get(api.repo(f"contents/{quote(path)}"), {"ref": commit})
+    if not isinstance(found, list):
+        raise invalid(f"{path!r} at {ref!r} is not a directory")
+    entries = sorted(
+        (
+            {
+                "name": str(entry.get("name") or str(entry.get("path", "")).rsplit("/", 1)[-1]),
+                "path": str(entry.get("path", "")),
+                "type": str(entry.get("type", "")),
+            }
+            for entry in found
+            if isinstance(entry, dict)
+        ),
+        key=lambda entry: entry["name"],
+    )
+    output = {"path": path, "ref": ref, "commit": commit, "entries": entries}
     return Outcome(output, read_effect())
 
 
@@ -611,6 +665,7 @@ type Operation = Callable[[Api, Json, str], Awaitable[Outcome]]
 
 OPERATIONS: dict[str, Operation] = {
     "repository.issues.read": read_issue,
+    "repository.issues.list": list_issues,
     "repository.issues.create": create_issue,
     "repository.pullrequests.read": read_pull_request,
     "repository.pullrequests.open": open_pull_request,
@@ -622,4 +677,5 @@ OPERATIONS: dict[str, Operation] = {
     "repository.branches.create": create_branch,
     "repository.labels.set": set_labels,
     "repository.files.read": read_file,
+    "repository.files.list": list_files,
 }

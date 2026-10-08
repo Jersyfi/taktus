@@ -19,7 +19,7 @@ from pydantic import ValidationError
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import InvalidProcess, ProcessVersion
 from taktus.components.process.domain.service import validation
-from taktus.components.run.domain.model import parse_work
+from taktus.components.run.domain.model import ReadyRule, parse_work
 from taktus.shared.v1 import (
     EXACT_ADMISSIBLE,
     PRODUCING,
@@ -125,3 +125,27 @@ def test_an_exact_step_s_value_comes_from_a_rule_at_run_time(bundle_path: Path) 
         work = parse_work(step, version.work.get(step.id), examples)
         assert type(work).__name__.endswith("Rule"), f"{step.id} would not run as a rule"
         assert not step.required_capabilities, f"{step.id} would need an adapter"
+
+
+@pytest.mark.parametrize(
+    ("bundle", "step_id", "expect"),
+    [
+        ("P-03-implementation.yaml", "admit", "ready"),
+        ("P-02-refinement.yaml", "missing", "sections_missing"),
+    ],
+)
+def test_the_ready_standard_is_read_by_an_exact_rule(
+    bundle: str, step_id: str, expect: str
+) -> None:
+    """Issue #70: P-03's admission is the backlog's ready standard, and P-02's search for the
+    sections an issue lacks is the same standard — each a `rule` step classed `exact`, running
+    the rule `ready`, so that neither verdict can come from a model."""
+    path = ROOT / "blueprints" / "dev-orchestration" / "processes" / bundle
+    with path.open(encoding="utf-8") as handle:
+        version = parse_bundle(yaml.safe_load(handle))
+    step = version.step(step_id)
+    assert step.method is Method.RULE and step.exactness is ExactnessClass.EXACT
+    examples = {name: declared.example for name, declared in version.inputs.items()}
+    work = parse_work(step, version.work.get(step.id), examples)
+    assert isinstance(work, ReadyRule)
+    assert work.expect == expect

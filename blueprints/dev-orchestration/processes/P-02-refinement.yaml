@@ -1,4 +1,4 @@
-# P-02 Refinement — an issue without acceptance criteria becomes one with them.
+# P-02 Refinement — an issue that lacks a section of the ready standard gains it as a comment.
 #
 # The second process of the dev-orchestration blueprint (blueprint.yaml, README.md), as a
 # bundle that runs. Every reference to the outside is a capability; the connector configured
@@ -8,12 +8,17 @@
 #     uv run taktusctl run --process blueprints/dev-orchestration/processes/P-02-refinement.yaml \
 #         --input issue=11
 #
-# What the steps do when they run is `work`, in the shape of examples/README.md. The one step
-# that judges is `refine`, a language model; everything before it reads and checks, and the
-# one step after it writes exactly what the check let through.
+# What the steps do when they run is `work`, in the shape of examples/README.md. The standard
+# is the backlog's (docs/process/README.md, DEC-0051): a task is ready when it carries three
+# sections — what must be achieved, how it is verified, where the boundary lies — and more. This
+# process writes the sections an issue lacks, no others, as a comment a person reads; it does
+# not edit the issue and does not add the label `ready`. A person, or P-01, does that once the
+# sections are in the issue, until this process's autonomy is raised (anchors.taktus.md M3.9).
+# The one step that judges is `refine`, a language model; everything before it reads and
+# checks, and the one step after it writes exactly what the check let through.
 
 id: p02-refinement
-version: "1"
+version: "2"
 name: P-02 Refinement
 autonomy:
   level: 3
@@ -22,7 +27,7 @@ autonomy:
     on it, the model's answer leaves the step only through a check, and a second run on the same
     issue writes nothing; a person watches through the comments themselves
   toward_next: >
-    a demonstrated quality history — criteria that a person did not have to rewrite, over a
+    a demonstrated quality history — sections that a person did not have to rewrite, over a
     month of issues — and the check on the answer's structure strengthened beyond a pattern;
     then the raise is proposed with that evidence (anchors.taktus.md M3.9)
 author: the repository
@@ -30,7 +35,7 @@ reason: the second process of the dev-orchestration blueprint, runnable
 
 triggers:
   - event: issue.opened
-    filter: missing acceptance criteria
+    filter: a section of the ready standard missing
 
 inputs:
   issue:
@@ -60,7 +65,7 @@ steps:
 
   - id: read-comments
     method: rule
-    reason: the discussion so far is context for the criteria, read verbatim
+    reason: the discussion so far is context for the sections, read verbatim
     rejected:
       - method: llm
         why: a read needs no language model
@@ -77,51 +82,63 @@ steps:
   - id: admit
     method: rule
     reason: >
-      whether the issue is open, is not a pull request, and has no acceptance criteria yet is
-      a machine check over the fields just read; a wrong verdict here would write criteria
-      onto the wrong record
+      whether this process already wrote its comment on the issue is a machine check over the
+      comments just read; a wrong verdict here would write the same sections twice
     rejected:
       - method: llm
-        why: a fixed set of conditions needs no judgement, and a judgement could be wrong
+        why: a fixed condition needs no judgement, and a judgement could be wrong
     exactness: exact
     depends_on: [read-issue, read-comments]
     work:
       rule: check
       conditions:
-        - value: { $from: read-issue, $select: output.state }
-          equals: open
-        - value: { $from: read-issue, $select: output.is_pull_request }
-          equals: false
-        # The section, not the phrase: an issue that mentions acceptance criteria in prose
-        # still lacks them (the run of 2026-09-19
-        # found exactly that, docs/runs/2026-09-19-the-run-that-stopped.md).
-        - value: { $from: read-issue, $select: output.body }
-          not_matches: "(?m)^## Acceptance criteria"
         - value: { $from: read-comments, $select: output.comments }
-          not_matches: "## Acceptance criteria"
+          not_matches: "Written by Taktus, process P-02 Refinement"
+
+  - id: missing
+    method: rule
+    reason: >
+      which sections of the ready standard the issue lacks is the standard's own reading of
+      its body — the rule `ready`, the same code a session's `make backlog` runs, rather than
+      a `check` with patterns that would state the standard a second time and could drift from
+      it; an issue that is closed, a pull request, or carries every section is refused here,
+      and nothing is written
+    rejected:
+      - method: llm
+        why: whether a section is there is a fact of the text, not a judgement
+    exactness: exact
+    depends_on: [admit]
+    work:
+      rule: ready
+      expect: sections_missing
+      issue: { $from: read-issue, $select: output }
 
   - id: refine
     method: llm
     reason: >
-      deriving acceptance criteria from an issue's text and its discussion is understanding
-      language and judging what "done" means for it; no rule expresses that
+      writing what must be achieved, how it is verified and where the boundary lies from an
+      issue's text and its discussion is understanding language and judging what "done" means
+      for it; no rule expresses that
     rejected:
       - method: rule
         why: the wording of issues is too varied for a rule set
       - method: ml
-        why: no labelled corpus of criteria exists yet; a classifier cannot write them
+        why: no labelled corpus of such sections exists yet; a classifier cannot write them
     exactness: sourced
     fallback:
       when: the answer fails the check, or the model is unavailable
       to: human
-    depends_on: [admit]
+    depends_on: [missing]
     work:
       purpose: reasoning
       system: >
-        You write acceptance criteria for software issues. Answer with a Markdown section
-        headed exactly "## Acceptance criteria", followed by a checklist of three to eight
-        items, each "- [ ] " and one testable sentence. Cite the issue's own words where the
-        criterion comes from them. Write nothing before the heading and nothing after the list.
+        You write the missing sections of a task in a software backlog. You are given the
+        names of the sections that are missing; write exactly those, each headed "### " and
+        the name, in the order given, and no other section. "What must be achieved" states the
+        outcome, not the route. "How it is verified" states the conditions that must hold, as a
+        list of testable sentences, so that it cannot be met by interpretation. "Where the
+        boundary lies" states what is not part of it. Cite the issue's own words where a
+        sentence comes from them. Write nothing before the first heading.
       prompt: |
         Issue #${number}: ${title}
 
@@ -129,19 +146,22 @@ steps:
 
         Comments so far (JSON, may be empty):
         ${comments}
+
+        The sections missing (JSON): ${missing}
       values:
         number: { $from: read-issue, $select: output.number }
         title: { $from: read-issue, $select: output.title }
         body: { $from: read-issue, $select: output.body }
         comments: { $from: read-comments, $select: output.comments }
-      max_output_tokens: 1024
-      # The check that makes this step sourced rather than free: the answer is the section the
-      # system message asked for, with at least one checklist item, or it does not leave.
-      pattern: "^## Acceptance criteria\\s*\\n(.*\\n)*?- \\[ \\] .+"
+        missing: { $from: missing, $select: missing }
+      max_output_tokens: 1536
+      # The check that makes this step sourced rather than free: the answer opens with one of
+      # the three headings of the standard and carries text under it, or it does not leave.
+      pattern: "^### (What must be achieved|How it is verified|Where the boundary lies)[ \\t]*\\n+\\s*\\S"
 
   - id: compose-comment
     method: rule
-    reason: the comment is the model's section plus a fixed footer that says who wrote it
+    reason: the comment is the model's sections plus a fixed footer that says who wrote them
     rejected:
       - method: llm
         why: a fixed composition needs no model
@@ -150,15 +170,17 @@ steps:
     work:
       rule: template
       text: |
-        ${criteria}
+        ${sections}
 
         ---
-        Written by Taktus, process P-02 Refinement, from the issue and its comments. Edit
-        freely; P-03 Implementation reads this section when the issue is ready.
+        Written by Taktus, process P-02 Refinement, from the issue and its comments: the
+        sections of the ready standard the issue lacks (docs/process/README.md). Edit freely.
+        Once they are in the issue, a person adds the label `ready`; P-03 Implementation reads
+        the issue, not this comment.
       values:
-        criteria: { $from: refine, $select: text }
+        sections: { $from: refine, $select: text }
 
-  - id: write-criteria
+  - id: write-sections
     method: rule
     reason: writing a comment is an API call with a fixed body; the effect leaves the system
     rejected:

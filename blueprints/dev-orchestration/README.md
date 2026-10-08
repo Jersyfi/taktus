@@ -11,7 +11,7 @@ Two of the eleven exist as bundles that run today, under `processes/`, in the sh
 | Process | State | Bundle |
 |---|---|---|
 | P-01 Roadmap control | description | — |
-| **P-02 Refinement** — an issue without acceptance criteria becomes one with them | **runs** | [`processes/P-02-refinement.yaml`](processes/P-02-refinement.yaml) |
+| **P-02 Refinement** — an issue that lacks a section of the ready standard gains it as a comment | **runs** | [`processes/P-02-refinement.yaml`](processes/P-02-refinement.yaml) |
 | **P-03 Implementation** — an issue that is ready becomes a pull request | **runs** | [`processes/P-03-implementation.yaml`](processes/P-03-implementation.yaml) |
 | P-04 Review | description | — |
 | P-05 Intake and triage | description | — |
@@ -25,22 +25,35 @@ Two of the eleven exist as bundles that run today, under `processes/`, in the sh
 ## The two that run
 
 Both name capabilities only — `repository.issues`, `repository.comments`,
-`repository.branches`, `repository.pipelines`, `repository.pullrequests`, `repository.labels`;
+`repository.branches`, `repository.pipelines`, `repository.pullrequests`, `repository.labels`, `repository.files`;
 `code.read`, `code.edit`, `code.test`, `shell.sandboxed`; the model purpose `reasoning` — and
 configuration maps them to a connector, a worker and a model (`.env.example`: `TAKTUS_CONNECTORS`,
 `TAKTUS_WORKER` or `TAKTUS_EXECUTION`, `TAKTUS_MODEL_*`). No product is named in either file.
 
-**P-02 Refinement** (autonomy 3, six steps): read the issue and its comments (`rule`, connector
-reads), check that it is open, not a pull request and without criteria (`rule`, `exact`), derive
-the criteria (`llm`, `sourced` — the answer leaves the step only when it is the section asked
-for with at least one checklist item), compose the comment (`rule`), write it (`rule`, outward
-effect: an `egress.write` entry in the ledger). Run again on the same issue, it stops at the
-check: the criteria are there, nothing is written twice.
+Both read the backlog's **ready standard** (`docs/process/README.md`, DEC-0051): three
+sections — what must be achieved, how it is verified, where the boundary lies — a component, a
+milestone, one priority label, the label `ready`, and nothing open under "Blocked by". The
+standard is one module, `src/taktus/components/run/domain/service/ready.py`, which the rule
+`ready` evaluates and `make backlog` runs too, so that a process and a session judge an issue the
+same way (issue #70).
 
-**P-03 Implementation** (autonomy 4, fourteen steps): read the issue and its comments, compose
-the context, admit — open, not a pull request, criteria present (`rule`, `exact`) — implement
-(`worker`, `tolerant`: the coding worker in a clone of the repository, with the issue's text as
-its task), name the branch, put the worker's changeset on it through the connector (`rule`,
+**P-02 Refinement** (autonomy 3, seven steps): read the issue and its comments (`rule`, connector
+reads), check that P-02 has not commented on it already (`rule`, `exact`), find the sections of
+the standard the body lacks (`rule` `ready`, `exact` — an issue that is closed, a pull request,
+or carries all three is refused here), write the missing ones (`llm`, `sourced` — the answer
+leaves the step only when it opens with one of the three headings and carries text under it),
+compose the comment (`rule`), write it (`rule`, outward effect: an `egress.write` entry in the
+ledger). P-02 never edits the issue and never adds the label `ready`: a person, or P-01, puts
+the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
+the same issue, it stops at the first check: nothing is written twice.
+
+**P-03 Implementation** (autonomy 4, seventeen steps): read the issue and its comments, compose
+the context, read the repository's open issues (every page, or the step fails) and the directory
+of open records on `main`, admit — the ready standard, and open, not a pull request, not claimed
+(`rule` `ready`, `exact`; a refusal names every reason) — claim the issue with the label
+`in-progress` (`rule`, outward), implement (`worker`, `tolerant`: the coding worker in a clone of
+the repository, with the issue's text as its task and its section "How it is verified" as the
+acceptance), name the branch, put the worker's changeset on it through the connector (`rule`,
 outward: one commit that carries the idempotency key), wait for the pipeline (`wait`, polling
 the pipeline's state), read the verdict, verify it is `success` (`rule`, `exact` — the pipeline's
 verdict, never the worker's opinion), compose the title and the body, open the pull request
@@ -54,8 +67,10 @@ Every step carries its method, the reason, the alternatives rejected, a fallback
 method can vary, and its exactness class; `tests/exactness` holds the `exact` steps to rules.
 `tests/integration/test_dev_orchestration.py` runs both bundles end to end with the outside
 faked — the repository service, the model endpoint and the coding agent — and everything inside
-real: one comment, one branch with the worker's files on one marked commit, one pull request
-with one label, three egress entries.
+real: one comment with the missing section, the claim, one branch with the worker's files on
+one marked commit, one pull request with one label, an egress entry for each write; and the
+refusals — a filled issue left alone by P-02, an issue missing a section, one without a
+milestone and one blocked by an open record refused by P-03 with the reason.
 
 ## Their autonomy, with the reason
 
@@ -64,7 +79,7 @@ the bundles state it in full, and this is the short form.
 
 | Process | Level | Why | Toward the next level |
 |---|---|---|---|
-| P-02 Refinement | 3 | the one outward effect is a comment a person reads before anything builds on it; the model's answer leaves only through a check; a second run writes nothing | a quality history — criteria a person did not rewrite, over a month — and a stronger check on the answer's structure; then the raise is proposed (M3.9) |
+| P-02 Refinement | 3 | the one outward effect is a comment a person reads before anything builds on it; the model's answer leaves only through a check; a second run writes nothing | a quality history — sections a person did not rewrite, over a month — and a stronger check on the answer's structure; then the raise is proposed (M3.9) |
 | P-03 Implementation | 4 | nothing writes to a protected branch, the pipeline's verdict is the gate, a person merges, every outward effect is reversible until the merge; the worker runs in isolation with exactly the hosts and credentials the frame names **where the execution kind provides it** (DEC-0022) | — |
 
 The last condition is the deployment's, not the bundle's. `container` and `cluster` enforce the
@@ -78,8 +93,11 @@ rather than assumed.
 connector, the coding worker and a configured model, from one command; `docs/runs/` holds
 the record of what happened the first time. Run again — the normal case once an attempt found
 a defect — it takes `--only P-03` to run one bundle with the same processes, and `--only P-03
---resume <run id>` to continue a stopped run. A P-02 that refuses the issue because its
-criteria are already there is reported as already done, and P-03 runs. A branch
+--resume <run id>` to continue a stopped run. A P-02 that refuses the issue because it
+carries every section, or because P-02 commented on it before, is reported as already done, and
+P-03 runs; P-03 then admits the issue only once it meets the ready standard. A P-03 run claims
+the issue with `in-progress`, and a new run on a claimed issue is refused at admission: the
+way on after a stopped run is `--resume`, or a person removes the label. A branch
 `taktus/issue-<n>` left by an earlier attempt stops the script before anything starts, with
 the two ways on: resume the run that made it, or delete the branch and start again; the script
 never deletes it (issue #30). The credentials it needs are parameters
@@ -96,7 +114,8 @@ enforced.
 
 - **Inputs.** A bundle declares what a run is given (`inputs:` — name, description, example),
   and `taktusctl run --input name=value` supplies it. P-02 needs the issue number; P-03 needs
-  it too, plus the clone URL, the one host the worker may reach, the name of the coding
+  it too, plus `records_path` — the directory of `main` that holds the open decision and needs
+  records, `docs/decisions/open` here — the clone URL, the one host the worker may reach, the name of the coding
   worker's credential, and `closing_section`: the section the repository generates for the end
   of every pull request description, verbatim with its heading, or empty. The run cannot
   generate it — a template composes, it does not run the repository's generator — so whoever

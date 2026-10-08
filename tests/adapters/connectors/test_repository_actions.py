@@ -196,6 +196,91 @@ async def test_reads_report_their_effect_and_count_their_requests(service: Servi
 
 
 @pytest.mark.usefixtures("credentials")
+async def test_an_issue_is_read_with_its_labels_and_milestone_and_listed_page_by_page(
+    service: Service,
+) -> None:
+    """What the ready standard of a backlog reads besides the body (issue #70): the labels by
+    name and the milestone by title, and every open issue — without pull requests — read to the
+    last page, with `complete` saying so."""
+    connector = Connector(config(service))
+    error, _ = await call(connector, "repository.issues.read", context("r", KEY), {"number": 1})
+    assert not error  # the fake creates the repository, and its seed issue, on first contact
+    milestone = _service_post(service, f"/repos/{REPOSITORY}/milestones", {"title": "0.2.0"})
+    task = _service_post(
+        service,
+        f"/repos/{REPOSITORY}/issues",
+        {"title": "t", "labels": ["task", "ready"], "milestone": milestone["number"]},
+    )
+    error, read = await call(
+        connector, "repository.issues.read", context("r", KEY), {"number": task["number"]}
+    )
+    assert not error, read
+    assert read["output"]["labels"] == ["ready", "task"]
+    assert read["output"]["milestone"] == "0.2.0"
+    error, seed = await call(connector, "repository.issues.read", context("r", KEY), {"number": 1})
+    assert seed["output"]["labels"] == [] and seed["output"]["milestone"] is None
+
+    for n in range(150):
+        _service_post(service, f"/repos/{REPOSITORY}/issues", {"title": f"more {n}"})
+    error, listed = await call(connector, "repository.issues.list", context("r", KEY), {})
+    assert not error, listed
+    assert listed["effect"] == {"kind": "read"}
+    assert listed["output"]["complete"] is True
+    numbers = [issue["number"] for issue in listed["output"]["issues"]]
+    assert len(numbers) == 152 and numbers == sorted(numbers, reverse=True)
+    assert listed["consumption"]["quota_units"] == 2, "two pages of 100"
+    error, refused = await call(
+        connector, "repository.issues.list", context("r", KEY), {"state": "draft"}
+    )
+    assert error and refused["cause"] == "invalid"
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_a_directory_is_listed_at_a_ref_with_the_commit_it_was_read_at(
+    service: Service,
+) -> None:
+    """`repository.files.list` (issue #70): the immediate entries of a directory at a branch,
+    each with its type, and the commit the branch pointed at. A file is not a directory."""
+    connector = Connector(config(service))
+    error, branch = await call(
+        connector,
+        "repository.branches.create",
+        context("b", "run_01:list:1-0123456789"),
+        {
+            "name": "taktus/list",
+            "base": "main",
+            "files": [
+                {"path": "docs/open/NEED-0011-a-token.md", "content": "x\n"},
+                {"path": "docs/open/README.md", "content": "y\n"},
+                {"path": "docs/open/deeper/note.md", "content": "z\n"},
+            ],
+        },
+    )
+    assert not error, branch
+    error, listed = await call(
+        connector,
+        "repository.files.list",
+        context("l", KEY),
+        {"path": "docs/open", "ref": "taktus/list"},
+    )
+    assert not error, listed
+    assert listed["output"]["commit"] == branch["output"]["sha"]
+    assert listed["output"]["entries"] == [
+        {"name": "NEED-0011-a-token.md", "path": "docs/open/NEED-0011-a-token.md", "type": "file"},
+        {"name": "README.md", "path": "docs/open/README.md", "type": "file"},
+        {"name": "deeper", "path": "docs/open/deeper", "type": "dir"},
+    ]
+    assert listed["consumption"]["quota_units"] == 2  # the ref, then the directory
+    for input, cause in [
+        ({"path": "docs/open/README.md", "ref": "taktus/list"}, "invalid"),
+        ({"path": "docs/nowhere", "ref": "taktus/list"}, "not_found"),
+        ({"path": "docs/open", "ref": "taktus/nowhere"}, "not_found"),
+    ]:
+        error, refused = await call(connector, "repository.files.list", context("l", KEY), input)
+        assert error and refused["cause"] == cause, (input, refused)
+
+
+@pytest.mark.usefixtures("credentials")
 async def test_source_system_permissions_remain_in_force(service: Service) -> None:
     """A read-only identity reads and is refused on a write; an unknown credential name is
     refused before any request; no credential at all is refused as well. The connector has no

@@ -73,6 +73,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0016](NTC-0016-uc-6-3-the-instructions-name-the-skills-by-version.md) | UC-6.3: the instructions name the skills by version | M2.7 | `restoration` | brought up to definition UC-6.3/UC-14.2; six items per step |
 | [0017](NTC-0017-uc-8-9-a-process-leaves-as-one-package-skills-included.md) | UC-8.9: a process leaves as one package, skills included | M2.7 | `restoration` | brought up to definition UC-8.9 |
 | [0018](NTC-0018-a-session-spends-on-the-owners-key-to-derive-instead-of-asking.md) | A session spends on the owner's key to derive instead of asking | M2.6 | `unlisted` | two calls, under one cent, to measure the output limit (M-03); proposed M2.8 `spend`, accepted with a cap of USD 1 per task (DEC-0049) |
+| [0040](NTC-0040-p-02-and-p-03-read-the-ready-standard.md) | P-02 and P-03 read the ready standard | M2.4 | `behaviour-change` | P-03 admits by the backlog's ready standard and claims with `in-progress`; P-02 writes only the missing sections as a comment and adds no label; one module for the standard, shared with `make backlog`; two connector reads added |
 
 ## Decisions
 

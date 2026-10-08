@@ -40,6 +40,11 @@ not by the label: a blocked task keeps its label and is offered as soon as its b
 `make backlog` checks both: it lists every issue labelled `ready` that fails the standard or is
 blocked, with the reason, and never offers it as the next task.
 
+The standard is written once, in `src/taktus/components/run/domain/service/ready.py`.
+`make backlog` runs it, and so does P-03 Implementation's admission, which also refuses a
+claimed issue and claims the one it admits with `in-progress`. P-02 Refinement uses it to find
+the sections an issue lacks, writes those as a comment, and adds no label (issue #70).
+
 ## Labels
 
 | Label | Means |

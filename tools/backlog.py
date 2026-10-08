@@ -19,6 +19,9 @@ decision request or a needs request, which are the owner's and not work. For eac
 - **not ready** otherwise, with every reason. An issue labelled `ready` that fails the standard is
   listed with the reasons too: the label is a claim, the standard is the check.
 
+The standard is not written here: it is `src/taktus/components/run/domain/service/ready.py`,
+which P-03 Implementation's admission evaluates too, loaded by its path (issue #70).
+
 Order: earliest milestone, then priority (`priority:high`, `priority:normal`, `priority:low`), then
 issue number. `--next` prints only the issue a session takes next — the top ready, unclaimed one —
 or, when none is ready, the top issue that is not, which the session makes ready first, as P-02
@@ -31,6 +34,7 @@ The last line is the duration.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import shutil
@@ -45,20 +49,23 @@ ROOT = Path(__file__).resolve().parent.parent
 OPEN = ROOT / "docs" / "decisions" / "open"
 CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
 
-SECTIONS = ("What must be achieved", "How it is verified", "Where the boundary lies")
-COMPONENT = "Component"
-BLOCKED_BY = "Blocked by"
-READY = "ready"
-CLAIMED = "in-progress"
-PRIORITIES = {"priority:high": 0, "priority:normal": 1, "priority:low": 2}
+# The standard itself is one module, shared with the rule that P-03's admission evaluates
+# (issue #70). It is loaded by its path, so that this script needs neither the project's
+# environment nor a copy of the standard.
+STANDARD = ROOT / "src" / "taktus" / "components" / "run" / "domain" / "service" / "ready.py"
+_spec = importlib.util.spec_from_file_location("taktus_ready_standard", STANDARD)
+if _spec is None or _spec.loader is None:
+    raise SystemExit(f"backlog: the ready standard is not at {STANDARD}")
+standard = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(standard)
+
+SECTIONS = standard.SECTIONS
+CLAIMED = standard.CLAIMED
+PRIORITIES = standard.PRIORITIES
 NOT_WORK = {"decision-request", "needs-owner"}
 """Labels of issues that are the owner's to answer or provide, not a session's to work."""
-EMPTY = {"", "_no response_", "none", "-", "n/a"}
-NOTHING = {"nothing", "none", "-", "_no response_", ""}
-
-HEADING = re.compile(r"^#{2,3}\s+(?:\d+\.\s+)?(.+?)\s*$", re.MULTILINE)
-RECORD = re.compile(r"\b((?:NEED|DEC)-\d{4})\b")
-ISSUE = re.compile(r"(?<![\w/])#(\d+)\b")
+sections = standard.sections
+blockers = standard.blockers
 VERSION = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 
 
@@ -80,17 +87,6 @@ class Issue:
         return not self.reasons
 
 
-def sections(body: str) -> dict[str, str]:
-    """The body's sections by heading, as an issue form renders them (`### Label`) or as a person
-    writes them (`## 1. Label`)."""
-    found: dict[str, str] = {}
-    marks = list(HEADING.finditer(body or ""))
-    for i, mark in enumerate(marks):
-        end = marks[i + 1].start() if i + 1 < len(marks) else len(body)
-        found[mark.group(1).strip()] = body[mark.end() : end].strip()
-    return found
-
-
 def milestone_key(title: str | None) -> tuple[int, int, int]:
     """A milestone's place in the roadmap; an issue without one sorts last."""
     if title and (m := VERSION.search(title)):
@@ -107,42 +103,22 @@ def order(issue: Issue) -> tuple[tuple[int, int, int], int, int]:
     return (milestone_key(issue.milestone), priority(issue.labels), issue.number)
 
 
-def blockers(text: str) -> tuple[set[str], set[int]]:
-    """The records and issues a "Blocked by" section names."""
-    return set(RECORD.findall(text)), {int(n) for n in ISSUE.findall(text)}
-
-
 def assess(issue: Issue, open_records: set[str], open_issues: set[int]) -> list[str]:
     """Every reason the issue is not ready; empty when the ready standard holds."""
-    reasons: list[str] = []
-    if READY not in issue.labels:
-        reasons.append("not labelled ready")
-    found = sections(issue.body)
-    for name in SECTIONS:
-        if found.get(name, "").strip().lower() in EMPTY:
-            reasons.append(f"section '{name}' is missing or empty")
-    if found.get(COMPONENT, "").strip().lower() in EMPTY:
-        reasons.append("no component")
-    if not issue.milestone:
-        reasons.append("no milestone")
-    if sum(1 for label in issue.labels if label in PRIORITIES) != 1:
-        reasons.append("not exactly one priority label")
-    blocked = found.get(BLOCKED_BY)
-    if blocked is None:
-        reasons.append("no 'Blocked by' section (write 'nothing' when nothing blocks it)")
-    else:
-        records, issues = blockers(blocked)
-        if not records and not issues and blocked.strip().lower() not in NOTHING:
-            reasons.append("'Blocked by' names no NEED, DEC or issue, and is not 'nothing'")
-        for record in sorted(records & open_records):
-            reasons.append(f"blocked by {record}, still open")
-        for number in sorted((issues & open_issues) - {issue.number}):
-            reasons.append(f"blocked by #{number}, still open")
-    return reasons
+    found: list[str] = standard.reasons(
+        number=issue.number,
+        body=issue.body,
+        labels=issue.labels,
+        milestone=issue.milestone,
+        open_record_ids=open_records,
+        open_issues=open_issues,
+    )
+    return found
 
 
 def open_record_ids() -> set[str]:
-    return {m[1] for p in OPEN.glob("*.md") if (m := re.match(r"((?:NEED|DEC)-\d{4})-", p.name))}
+    found: set[str] = standard.open_records(p.name for p in OPEN.glob("*.md"))
+    return found
 
 
 def gh(*args: str) -> str:
