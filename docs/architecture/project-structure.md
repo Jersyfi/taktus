@@ -254,9 +254,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   takes at most the runner's free places, whatever plan the database chooses (NTC-0027). A job
   whose run had already ended when it was claimed — its runner died between the two writes —
   is completed and nothing executes (NTC-0026). Proven with two runner processes, one killed
-  mid-step (`tests/integration/test_runner_failover.py`). The claim is not a fence: a runner
-  cut off for longer than the lease loses it, and the step it is inside still commits
-  (DEC-0066, #107).
+  mid-step (`tests/integration/test_runner_failover.py`). The claim is also a fence: a runner
+  cut off for longer than the lease loses it, and its next write to the run is refused in the
+  write's own transaction, so two runners never both commit to one run
+  (`tests/integration/test_runner_fence.py`, NTC-0044).
 - **`scheduler`** leads through the leadership port — a session-level advisory lock — and ticks
   while it leads; a second instance keeps trying and takes over when the leader's lead is
   gone, including when the leader was killed. The tick does nothing yet: time triggers arrive

@@ -6,6 +6,11 @@ Every statement runs on the open transaction's connection, as the application ro
 tenant set: the row-level security of the schema decides what a claim can see. Two runners
 claiming at once are kept apart by the row lock inside the function; a runner that dies is
 kept from holding a job by the lease, which it renews with `extend` while it works.
+
+The fence (`fence`, #107) reads the job's row `FOR SHARE` where it still names the claimant and
+the claim's attempt. The lock lasts until the transaction ends, and `claim_jobs` skips locked
+rows: no other runner can claim the job between the check and the commit of the writes made
+under it. A claim that committed first changed the row, and the check finds nothing.
 """
 
 from __future__ import annotations
@@ -14,14 +19,14 @@ from collections.abc import Sequence
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, insert, text, update
+from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.engine import Row
 from sqlalchemy.exc import IntegrityError
 
 from taktus.adapters.driven.postgres import _schema as s
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
 from taktus.ports.persistence import PersistenceError, Tenant
-from taktus.ports.queue import Job
+from taktus.ports.queue import Claim, Job
 
 
 class PostgresQueue:
@@ -78,6 +83,20 @@ class PostgresQueue:
             .values(claimed_at=func.now())
         )
         return bool(result.rowcount)
+
+    async def fence(self, tenant: Tenant, claim: Claim) -> bool:
+        connection = self._persistence.connection(tenant)
+        result = await connection.execute(
+            select(s.job.c.id)
+            .where(
+                s.job.c.tenant == tenant,
+                s.job.c.id == claim.job_id,
+                s.job.c.claimed_by == claim.claimant,
+                s.job.c.attempts == claim.attempt,
+            )
+            .with_for_update(read=True)
+        )
+        return result.first() is not None
 
     async def release(self, tenant: Tenant, job_id: str, claimant: str) -> None:
         connection = self._persistence.connection(tenant)

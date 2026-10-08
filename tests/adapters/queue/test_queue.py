@@ -1,14 +1,16 @@
-"""The queue port: exclusive claims, a lease that expires, renewal, release, completion, and a
-limit on attempts (ADR-0002: the job queue in the database)."""
+"""The queue port: exclusive claims, a lease that expires, renewal, release, completion, a
+limit on attempts (ADR-0002: the job queue in the database), and the fence a write under a
+claim checks (#107)."""
 
 from __future__ import annotations
 
 import asyncio
+import contextvars
 
 import pytest
 
 from taktus.ports.persistence import PersistenceError
-from taktus.ports.queue import RUN_EXECUTE, Job
+from taktus.ports.queue import RUN_EXECUTE, Claim, Job
 
 from .conftest import Backend
 
@@ -117,3 +119,55 @@ async def test_tenants_do_not_see_each_other_s_jobs(backend: Backend) -> None:
     await enqueue(backend, one, job(1))
     assert await claim(backend, two, "a") == []
     assert await claim(backend, one, "a") == ["job_1"]
+
+
+def held(claimant: str, attempt: int, n: int = 1) -> Claim:
+    return Claim(job_id=f"job_{n}", claimant=claimant, attempt=attempt)
+
+
+async def fence(backend: Backend, tenant: str, claim: Claim) -> bool:
+    async with backend.work.transaction(tenant):
+        return await backend.queue.fence(tenant, claim)
+
+
+async def test_a_fence_holds_for_the_current_claim_only(backend: Backend) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    assert await fence(backend, tenant, held("a", 1))
+    assert not await fence(backend, tenant, held("b", 1)), "not b's claim"
+    await backend.expire(tenant, "job_1")
+    assert await fence(backend, tenant, held("a", 1)), "expired, but nobody claimed it since"
+    assert await claim(backend, tenant, "b") == ["job_1"]
+    assert not await fence(backend, tenant, held("a", 1)), "b claimed it: a's writes are refused"
+    assert await fence(backend, tenant, held("b", 2))
+    async with backend.work.transaction(tenant):
+        await backend.queue.complete(tenant, "job_1", "b")
+    assert not await fence(backend, tenant, held("b", 2)), "a completed job fences nothing"
+
+
+async def test_an_earlier_claim_of_the_same_claimant_is_fenced_off(backend: Backend) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    await backend.expire(tenant, "job_1")
+    assert await claim(backend, tenant, "a") == ["job_1"], "claimed again by the same runner"
+    assert not await fence(backend, tenant, held("a", 1)), "the first claim is over"
+    assert await fence(backend, tenant, held("a", 2))
+
+
+async def test_no_claim_takes_a_job_while_a_write_under_its_claim_is_open(
+    backend: Backend,
+) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    await backend.expire(tenant, "job_1")
+    # Another instance claims while a's write is open; a fresh context is another connection.
+    async with backend.work.transaction(tenant):
+        assert await backend.queue.fence(tenant, held("a", 1))
+        taken = await asyncio.create_task(
+            claim(backend, tenant, "b"), context=contextvars.Context()
+        )
+        assert taken == [], "the job is held until a's write ends"
+    assert await claim(backend, tenant, "b") == ["job_1"], "and claimable once it has"
