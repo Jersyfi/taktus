@@ -60,10 +60,10 @@ processes:
       level: 3
       reason: the one outward effect is a comment a person reads before anything builds on it; the answer leaves only through a check
       toward_next: a month of criteria nobody rewrote and a stronger check on the answer's structure
-    triggers: [ { event: issue.opened, filter: "missing acceptance criteria" } ]
+    triggers: [ { event: issue.opened, filter: "a section of the ready standard missing" } ]
     steps:
       - { id: gather-context, method: rule }
-      - { id: refine,         method: llm, reason: "derive acceptance criteria from context and codebase", exactness: sourced }
+      - { id: refine,         method: llm, reason: "write the sections of the ready standard the issue lacks", exactness: sourced }
       - { id: write,          method: rule }
 
   - id: P-03
@@ -73,7 +73,8 @@ processes:
       reason: nothing writes to a protected branch, the pipeline's verdict is the gate and a person merges; the worker runs in isolation
     triggers: [ { event: issue.ready, condition: "capacity.available" } ]
     steps:
-      - { id: admit,     method: rule, exactness: exact }   # admission control against limits
+      - { id: admit,     method: rule, exactness: exact }   # the ready standard (docs/process/README.md)
+      - { id: claim,     method: rule }                     # the label in-progress
       - { id: implement, method: worker, exactness: tolerant }
       - { id: verify,    method: rule, exactness: exact }   # CI is the gate, not the worker's opinion
       - { id: open-pr,   method: rule }

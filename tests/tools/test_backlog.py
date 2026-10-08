@@ -154,3 +154,34 @@ def test_the_open_records_are_the_files_under_open() -> None:
     found = backlog.open_record_ids()
     names = [p.name for p in (ROOT / "docs" / "decisions" / "open").glob("*-*.md")]
     assert found == {name.rsplit("-", name.count("-") - 1)[0] for name in names}
+
+
+def test_the_standard_is_the_one_p03s_admission_evaluates() -> None:
+    """One standard, not two kept alike (issue #70): the script runs the very module the rule
+    `ready` of the run component imports, and on an open, unclaimed issue the rule refuses for
+    exactly the reasons the script lists."""
+    from taktus.components.run.domain.model import ReadyRule, RuleFailed
+    from taktus.components.run.domain.service import ready, rules
+
+    assert Path(backlog.standard.__file__) == Path(ready.__file__)
+    admission = ReadyRule(rule="ready", expect="ready", issue={}, open_records=[], open_issues=[])
+    records = [{"name": "NEED-0011-a-token.md"}, {"name": "README.md"}]
+    for task in (issue(), issue(blocked="NEED-0011 and #41"), issue(labels=(), milestone=None)):
+        reading = {
+            "number": task.number,
+            "state": "open",
+            "is_pull_request": False,
+            "body": task.body,
+            "labels": sorted(task.labels),
+            "milestone": task.milestone,
+        }
+        reasons = backlog.assess(task, {"NEED-0011"}, {41})
+        if not reasons:
+            assert rules.ready(admission, reading, records, [41])["ready"] is True
+            continue
+        try:
+            rules.ready(admission, reading, records, [41])
+        except RuleFailed as refused:
+            assert str(refused) == f"issue #{task.number} is not ready: " + "; ".join(reasons)
+        else:
+            raise AssertionError(f"the rule admitted what the script refuses: {reasons}")

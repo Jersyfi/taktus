@@ -92,6 +92,51 @@ async def test_the_connector_acts_under_the_apps_own_name(service: Service) -> N
 
 
 @pytest.mark.usefixtures("as_app")
+async def test_the_ready_standards_reads_and_the_claim_work_as_the_app(service: Service) -> None:
+    """What P-03's admission reads and how it claims (issue #70), with the app's token: an issue
+    with its labels and milestone, the open issues, a directory at a ref, and a label set."""
+    connector = app_connector(service)
+    error, created = await call(
+        connector, "repository.issues.create", context("create", "run_app:c:2"), {"title": "t"}
+    )
+    assert not error, created
+    number = created["output"]["number"]
+    error, claimed = await call(
+        connector,
+        "repository.labels.set",
+        context("claim", "run_app:l:1"),
+        {"number": number, "labels": ["in-progress"]},
+    )
+    assert not error, claimed
+    error, read = await call(
+        connector, "repository.issues.read", context("read", "run_app:r:2"), {"number": number}
+    )
+    assert not error, read
+    assert read["output"]["labels"] == ["in-progress"] and read["output"]["milestone"] is None
+    error, listed = await call(
+        connector, "repository.issues.list", context("list", "run_app:i:1"), {}
+    )
+    assert not error, listed
+    assert number in [issue["number"] for issue in listed["output"]["issues"]]
+    assert listed["output"]["complete"] is True
+    error, branch = await call(
+        connector,
+        "repository.branches.create",
+        context("branch", "run_app:b:1"),
+        {"name": "taktus/app-list", "base": "main", "files": [{"path": "d/a.md", "content": "a"}]},
+    )
+    assert not error, branch
+    error, files = await call(
+        connector,
+        "repository.files.list",
+        context("files", "run_app:f:1"),
+        {"path": "d", "ref": "taktus/app-list"},
+    )
+    assert not error, files
+    assert [entry["name"] for entry in files["output"]["entries"]] == ["a.md"]
+
+
+@pytest.mark.usefixtures("as_app")
 async def test_a_token_is_held_while_good_and_replaced_before_it_expires(
     service: Service,
 ) -> None:

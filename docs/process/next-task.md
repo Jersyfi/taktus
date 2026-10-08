@@ -40,8 +40,9 @@ answer has nothing to do with the task, they go into a pull request of their own
    your comment, leave the label, and take the next task.
 
 **If none is ready**, `make backlog NEXT=1` names the top task that is not, with what it lacks.
-Make it ready, as P-02 would: write the missing sections from the source the issue names, set the
-milestone and the priority, and add `ready`. Where a section cannot be written from the
+Make it ready: write the missing sections from the source the issue names, as P-02 would; then,
+as a person or P-01 does, set the milestone and the priority and add `ready` (P-02 adds no
+label, issue #70). Where a section cannot be written from the
 repository, the task stays unready and the issue says what is missing; take the next one.
 
 **Never invent work outside the backlog.** Something found on the way that is not the task becomes

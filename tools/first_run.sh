@@ -18,9 +18,11 @@
 #                    connector and the worker started again; `taktusctl run --resume` alone
 #                    would find neither running.
 #
-# When P-02 stops at its admission check because the issue already carries its acceptance
-# criteria, that is "already done", not a failure: the script says so and goes on to P-03.
-# Any other stop of P-02 ends the script.
+# When P-02 stops at its admission because the issue already carries every section of the ready
+# standard, or P-02 already wrote them as a comment, that is "already done", not a failure: the
+# script says so and goes on to P-03. Any other stop of P-02 ends the script. P-03 admits only
+# an issue that meets the ready standard (docs/process/README.md): P-02 writes a comment, and a
+# person puts the sections into the issue and adds the label `ready` before P-03 can run.
 #
 # The branch P-03 creates, taktus/issue-<n>, carries the idempotency key of the run that made
 # it. A new run has a new key, so a branch left by an earlier attempt makes the new run end
@@ -45,8 +47,9 @@
 #       set the app is used; one without the other is refused.
 #   or TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE
 #       for a tenant without an app: the file that holds the requesting identity's repository
-#       token — contents and pull requests write, issues read. The connector then acts as the
-#       person or account the token belongs to.
+#       token — contents and pull requests write, issues write (P-02 comments, P-03 claims an
+#       issue with a label). The connector then acts as the person or account the token
+#       belongs to.
 #   TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE  or  TAKTUS_CREDENTIAL_CODING_AGENT_SESSION_FILE
 #       the file that holds the coding agent's key, or its subscription token
 #       (workers/claudecode/README.md); the one that is set decides --auth
@@ -82,9 +85,9 @@ set -eu
 # any other failure. tests/integration/test_dev_orchestration.py holds both against the real
 # output, so that a change of wording there fails a test and not a live run.
 #
-# P-02's admission check refused the issue because the section is already there: the issue
-# body (condition 3) or a comment (condition 4) matches the heading it must not.
-P02_ALREADY_REFINED="admit +rule +exact +failed .*condition [34] does not hold: .*## Acceptance criteria', which it must not"
+# P-02 refused the issue because it has nothing to write: an earlier run of P-02 wrote its
+# comment (`admit`), or the issue carries every section of the ready standard (`missing`).
+P02_ALREADY_REFINED="(admit +rule +exact +failed .*condition 1 does not hold: .*Written by Taktus, process P-02 Refinement'?, which it must not|missing +rule +exact +failed .*carries every section already)"
 # P-03 found the branch it would create, carrying another run's key.
 P03_LEFTOVER_BRANCH="repository\.branches\.create failed: conflict .*exists and was not created for this step"
 
@@ -173,7 +176,7 @@ else
 fi
 [ -r "$coding_file" ] || fail "$coding_file cannot be read"
 if [ "$run_p02" = yes ]; then
-    [ -n "${TAKTUS_MODEL_ENDPOINT:-}" ] || fail "TAKTUS_MODEL_ENDPOINT is not set: the model P-02 asks for the acceptance criteria"
+    [ -n "${TAKTUS_MODEL_ENDPOINT:-}" ] || fail "TAKTUS_MODEL_ENDPOINT is not set: the model P-02 asks for the missing sections"
     [ -n "${TAKTUS_MODEL_NAME:-}" ] || fail "TAKTUS_MODEL_NAME is not set"
 fi
 if [ "$run_p02" = yes ] && [ -z "${TAKTUS_MODEL_OUTPUT_CAP:-}" ]; then
@@ -351,7 +354,7 @@ if [ "$run_p02" = yes ]; then
     run_bundle P-02 --process "$p02_process" "$@" || status=$?
     if [ "$status" -eq 3 ] && grep -Eq "$P02_ALREADY_REFINED" "$logs/P-02.txt"; then
         echo
-        echo "first_run: P-02 stopped at its admission check because the issue already carries its acceptance criteria — already done, not failed"
+        echo "first_run: P-02 stopped at its admission because the issue already carries its sections, or P-02 wrote them before — already done, not failed"
     elif [ "$status" -ne 0 ]; then
         did_not_finish P-02 "$status"
     fi
@@ -362,9 +365,9 @@ if [ "$run_p03" = yes ]; then
         set -- --resume "$resume"
     else
         closing="$(closing_section)"
-        set -- --input "issue=$issue" --input "repository_url=$clone_url" \
-            --input "repository_host=$host" --input "coding_credential=$coding_credential" \
-            --input "closing_section=$closing"
+        set -- --input "issue=$issue" --input "records_path=docs/decisions/open" \
+            --input "repository_url=$clone_url" --input "repository_host=$host" \
+            --input "coding_credential=$coding_credential" --input "closing_section=$closing"
     fi
     status=0
     run_bundle P-03 --process "$p03_process" "$@" || status=$?

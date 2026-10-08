@@ -7,11 +7,19 @@
 # to the base branch: the pull request is opened, the pipeline decides, a person merges.
 #
 #     uv run taktusctl run --process blueprints/dev-orchestration/processes/P-03-implementation.yaml \
-#         --input issue=11 --input repository_url=https://host/owner/name.git \
+#         --input issue=11 --input records_path=docs/decisions/open \
+#         --input repository_url=https://host/owner/name.git \
 #         --input repository_host=host --input coding_credential=CODING_AGENT_API_KEY \
 #         --input "closing_section=$(<the repository's generator>)"
 #
-# Inputs: `issue`, the issue's number; `repository_url`, where the worker clones from;
+# Ready means the backlog's ready standard (docs/process/README.md, DEC-0051), evaluated by the
+# rule `ready` — the same code a session's `make backlog` runs — over the issue, the repository's
+# open issues and the open records under `records_path` on the base branch. An issue that meets
+# it is claimed with the label `in-progress` before anything is implemented, so that a session
+# or another run skips it.
+#
+# Inputs: `issue`, the issue's number; `records_path`, the directory of the base branch that
+# holds the open decision and needs records; `repository_url`, where the worker clones from;
 # `repository_host`, the one host the worker may reach (the clone's); `coding_credential`, the
 # name of the credential the coding worker's authentication needs (its README);
 # `closing_section`, the section the repository generates for the end of every pull request
@@ -20,7 +28,7 @@
 # capabilities resolve to; no product is named here.
 
 id: p03-implementation
-version: "1"
+version: "2"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -42,6 +50,12 @@ inputs:
   issue:
     description: the number of the issue to implement
     example: 11
+  records_path:
+    description: >
+      the directory of the base branch that holds the open decision and needs records, one
+      file each, named by its identifier (NEED-NNNN-…, DEC-NNNN-…); a record named under
+      "Blocked by" is open while its file is there
+    example: docs/decisions/open
   repository_url:
     description: where the coding worker clones the repository from
     example: https://repo.example/owner/name.git
@@ -86,7 +100,7 @@ steps:
 
   - id: read-comments
     method: rule
-    reason: the acceptance criteria P-02 wrote are a comment; the discussion is context
+    reason: the discussion is context for the worker
     rejected:
       - method: llm
         why: a read needs no language model
@@ -123,34 +137,91 @@ steps:
         body: { $from: read-issue, $select: output.body }
         comments: { $from: read-comments, $select: output.comments }
 
+  - id: read-open-issues
+    method: rule
+    reason: >
+      an issue named under "Blocked by" blocks while it is open; which are open is read from
+      the system of record, every page, and a reading that stopped short fails
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    depends_on: [read-issue]
+    work:
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true }
+
+  - id: read-open-records
+    method: rule
+    reason: >
+      a decision or needs record named under "Blocked by" blocks while its file is in the
+      directory of open records on the base branch — where a session's `make backlog` looks
+      too; the directory is read, not a copy of it
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    depends_on: [read-issue]
+    work:
+      rule: connector
+      operation: repository.files.list
+      input:
+        path: { $input: records_path }
+        ref: main
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
   - id: admit
     method: rule
     reason: >
-      ready means: open, not a pull request, and acceptance criteria present in the issue or
-      its discussion — a machine check; the run's budget is checked by admission control
-      before every step, not here
+      ready means the backlog's ready standard — the three sections, a component, a milestone,
+      one priority label, the label `ready`, nothing open under "Blocked by" — and open, not a
+      pull request, not claimed: the rule `ready`, the same code a session's `make backlog`
+      runs, over the fields just read; a refusal names every reason. The run's budget is
+      checked by admission control before every step, not here
     rejected:
       - method: llm
         why: a fixed set of conditions needs no judgement, and a judgement could be wrong
     exactness: exact
-    depends_on: [context]
+    depends_on: [read-issue, read-open-issues, read-open-records]
     work:
-      rule: check
-      conditions:
-        - value: { $from: read-issue, $select: output.state }
-          equals: open
-        - value: { $from: read-issue, $select: output.is_pull_request }
-          equals: false
-        # Present anywhere in the issue or its discussion; the discussion is JSON text, so the
-        # heading is looked for as a phrase here, unlike P-02's check for its absence.
-        - value: { $from: context }
-          matches: "## Acceptance criteria"
+      rule: ready
+      expect: ready
+      issue: { $from: read-issue, $select: output }
+      open_issues: { $from: read-open-issues, $select: output.issues }
+      open_records: { $from: read-open-records, $select: output.entries }
+
+  - id: claim
+    method: rule
+    reason: >
+      the issue is claimed with the label `in-progress` before anything is implemented, so
+      that a session or another run reading the backlog skips it; a repeat finds the label
+      and adds nothing
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    depends_on: [admit]
+    work:
+      rule: connector
+      operation: repository.labels.set
+      input:
+        number: { $input: issue }
+        labels: [in-progress]
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
 
   - id: implement
     method: worker
     reason: >
-      changing code to meet acceptance criteria is multi-step work with tools in an isolated
-      workspace, which is what a worker offers; the worker proposes, the pipeline decides
+      changing code so that what the issue says is verified holds is multi-step work with
+      tools in an isolated workspace, which is what a worker offers; the worker proposes, the pipeline decides
     rejected:
       - method: llm
         why: a single completion cannot read a repository, run its tests and revise
@@ -161,14 +232,15 @@ steps:
       when: the assignment fails, is stopped twice, or the pipeline is red
       to: human
     requires: [code.read, code.edit, code.test, shell.sandboxed]
-    depends_on: [admit]
+    depends_on: [claim, context]
     work:
       task:
         goal: >
-          implement the issue given in the inputs — its title, text and discussion, with the
-          section "Acceptance criteria" — so that every criterion holds
+          implement the issue given in the inputs — its title, text and discussion — so that
+          what its section "What must be achieved" states is achieved, within its section
+          "Where the boundary lies"
         acceptance:
-          - every item of the section "Acceptance criteria" in the issue or its discussion holds
+          - every condition of the issue's section "How it is verified" holds
           # DEC-0021, answered: a pull request Taktus opens carries what every change of that
           # repository must carry, like any other; which changes need a status update is the
           # repository's own rule, and this criterion names no rule.

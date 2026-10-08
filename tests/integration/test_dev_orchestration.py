@@ -1,24 +1,27 @@
 """The two runnable processes of the dev-orchestration blueprint, end to end, with everything
 outside Taktus faked and everything inside real.
 
-P-02 Refinement reads an issue without acceptance criteria, has a model write them and posts
-them as a comment. P-03 Implementation reads the same issue, admits it now that the criteria
-are there, has the coding worker implement it in a clone of a repository, puts the worker's
-change on a branch through the connector, waits for the pipeline's verdict, opens the pull
-request and labels it. `taktusctl run` drives both, as the owner will drive the live run
-(`tools/first_run.sh`).
+Both read the backlog's ready standard (docs/process/README.md, issue #70). P-02 Refinement
+reads an issue that lacks a section of it, has a model write the missing section and posts it
+as a comment; an issue that carries every section it leaves alone. P-03 Implementation admits
+only an issue that meets the standard — made from the form `Task`, labelled `ready`, with a
+milestone, one priority and nothing open under "Blocked by" — and refuses any other with the
+reason; it claims the one it admits with `in-progress`, has the coding worker implement it in
+a clone of a repository, puts the worker's change on a branch through the connector, waits for
+the pipeline's verdict, opens the pull request and labels it. `taktusctl run` drives both, as
+the owner will drive the live run (`tools/first_run.sh`).
 
 What is real: the command line, the run engine, the reference connector (a process, over MCP),
 the coding worker (a process, behind the worker contract), the model adapter. What is faked:
 the repository hosting service (`tests/fakes/repository_service.py`, a process), the model
 endpoint (`tests/fakes/model_service.py`, a thread), the coding agent
 (`workers/claudecode/fake_agent.py`, which really writes files). What the fakes hold
-afterwards is the proof: one comment with the criteria, one branch with the worker's files on
-one marked commit, one pull request with one label, and the run's ledger with an egress entry
-for each of the three writes.
+afterwards is the proof: one comment with the missing section, the claim on the ready issue,
+one branch with the worker's files on one marked commit, one pull request with one label, and
+the run's ledger with an egress entry for each write.
 
 `tools/first_run.sh` tells two stops apart from any other failure by what `taktusctl run`
-prints: P-02 refusing an issue whose criteria are already there, and P-03 finding the branch an
+prints: P-02 refusing an issue it has nothing to write for, and P-03 finding the branch an
 earlier attempt left. Both patterns are read from the script and held against the real output
 here, so that a change of wording fails this test and not a live run (issue #30).
 """
@@ -49,7 +52,35 @@ CODING_WORKER = ROOT / "workers" / "claudecode" / "worker.py"
 FAKE_AGENT = ROOT / "workers" / "claudecode" / "fake_agent.py"
 FIRST_RUN = ROOT / "tools" / "first_run.sh"
 REPOSITORY = "acme/product"
-ISSUE = 1  # the fake seeds every repository with issue #1, without acceptance criteria
+RECORDS = "docs/decisions/open"
+# What the fake model answers P-02 with: the one section the issue it refines lacks.
+SECTION_ANSWER = "### How it is verified\n\n- the fake answered: {prompt}\n"
+
+# An issue as the form `Task` renders it (.github/ISSUE_TEMPLATE/task.yml).
+FORM = """### What must be achieved
+
+A greeting is written to hello.txt.
+
+### How it is verified
+
+{verified}
+
+### Where the boundary lies
+
+No other file changes.
+
+### Component
+
+workers
+
+### Source
+
+docs/roadmap.md, 0.2.0
+
+### Blocked by
+
+{blocked}
+"""
 
 
 @dataclass
@@ -81,6 +112,47 @@ class Outside:
     def get(self, path: str) -> object:
         headers = {"Authorization": f"Bearer {self.token}"}
         return httpx.get(f"{self.service_url}{path}", headers=headers, timeout=5).json()
+
+    def send(self, method: str, path: str, body: dict[str, object]) -> dict[str, object]:
+        headers = {"Authorization": f"Bearer {self.token}"}
+        answer = httpx.request(
+            method, f"{self.service_url}{path}", json=body, headers=headers, timeout=5
+        )
+        answer.raise_for_status()
+        result: dict[str, object] = answer.json()
+        return result
+
+    def issue(self, title: str, body: str, labels: list[str], milestone: int | None) -> int:
+        given: dict[str, object] = {"title": title, "body": body, "labels": labels}
+        if milestone is not None:
+            given["milestone"] = milestone
+        return int(str(self.send("POST", f"/repos/{REPOSITORY}/issues", given)["number"]))
+
+    def labels(self, number: int) -> list[str]:
+        issue = self.get(f"/repos/{REPOSITORY}/issues/{number}")
+        assert isinstance(issue, dict)
+        return sorted(label["name"] for label in issue["labels"])
+
+    def commit_on_main(self, files: dict[str, str]) -> None:
+        """Put files on `main` through the service's object interface, as a push would."""
+        repo = f"/repos/{REPOSITORY}"
+        ref = self.get(f"{repo}/git/ref/heads/main")
+        assert isinstance(ref, dict)
+        head = self.get(f"{repo}/git/commits/{ref['object']['sha']}")
+        assert isinstance(head, dict)
+        entries = []
+        for path, content in files.items():
+            blob = self.send("POST", f"{repo}/git/blobs", {"content": content})
+            entries.append({"path": path, "mode": "100644", "type": "blob", "sha": blob["sha"]})
+        tree = self.send(
+            "POST", f"{repo}/git/trees", {"base_tree": head["tree"]["sha"], "tree": entries}
+        )
+        commit = self.send(
+            "POST",
+            f"{repo}/git/commits",
+            {"message": "records", "tree": tree["sha"], "parents": [ref["object"]["sha"]]},
+        )
+        self.send("PATCH", f"{repo}/git/refs/heads/main", {"sha": commit["sha"]})
 
 
 def wait_ready(process: subprocess.Popen[bytes], url: str, log: Path, what: str) -> None:
@@ -142,7 +214,7 @@ def outside(tmp_path: Path) -> Iterator[Outside]:
         wait_ready(connector, f"{connector_url}/health", connector_log, "connector")
 
         # The model endpoint, faked, in a thread.
-        model, _ = model_service.make_server("127.0.0.1", 0)
+        model, _ = model_service.make_server("127.0.0.1", 0, answer=SECTION_ANSWER)
         threading.Thread(target=model.serve_forever, daemon=True).start()
         model_url = f"http://127.0.0.1:{model.server_address[1]}"
 
@@ -203,7 +275,9 @@ def outside(tmp_path: Path) -> Iterator[Outside]:
                 process.kill()
 
 
-def run_bundle(outside: Outside, state_dir: Path, bundle: str, *inputs: str) -> str:
+def run_bundle(
+    outside: Outside, state_dir: Path, bundle: str, *inputs: str, expect: int = 0
+) -> str:
     command = [taktusctl(), "run", "--process", str(BLUEPRINT / bundle)]
     for given in inputs:
         command += ["--input", given]
@@ -215,7 +289,7 @@ def run_bundle(outside: Outside, state_dir: Path, bundle: str, *inputs: str) -> 
         check=False,
         timeout=300,
     )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.returncode == expect, completed.stdout + completed.stderr
     return completed.stdout
 
 
@@ -226,81 +300,143 @@ def first_run_pattern(name: str) -> re.Pattern[str]:
     return re.compile(found.group(1))
 
 
+def refused(output: str, step: str, reason: str) -> bool:
+    """Whether the run stopped at `step`, a rule classed exact, with `reason` in its line."""
+    line = re.compile(rf"\b{re.escape(step)}\s+rule\s+exact\s+failed\b.*{re.escape(reason)}")
+    return any(line.search(row) for row in output.splitlines())
+
+
 # What `tools/first_run.sh` generates with `tools/check_status.py --print` and hands to P-03:
 # the section a description ends with. Here a fixed text, since the fake has no register.
 CLOSING = "## Needed from the owner\n\n<!-- generated -->\nNothing is open.\n<!-- end -->"
 
 
-def test_refinement_then_implementation_end_to_end(outside: Outside, tmp_path: Path) -> None:
-    state_dir = tmp_path / "state"
+@dataclass
+class Backlog:
+    ready: int
+    missing_section: int
+    no_milestone: int
+    blocked: int
 
-    # P-02: the issue gains its acceptance criteria as a comment.
-    output = run_bundle(outside, state_dir, "P-02-refinement.yaml", f"issue={ISSUE}")
-    assert "state finished" in output, output
-    assert re.search(r"egress\.write\s+write-criteria\s+acted", output), output
-    assert re.search(r"refine\s+llm\s+sourced\s+succeeded\s+tokens", output), output
-    comments = outside.get(f"/repos/{REPOSITORY}/issues/{ISSUE}/comments")
-    assert isinstance(comments, list) and len(comments) == 1
-    assert "## Acceptance criteria" in comments[0]["body"]
-    assert "Written by Taktus, process P-02" in comments[0]["body"]
-    assert "taktus-idempotency-key" in comments[0]["body"], "the mark that makes a repeat findable"
 
-    # P-02 again: the issue now has criteria, so admission refuses — nothing is written twice.
-    again = subprocess.run(  # noqa: S603
-        [
-            taktusctl(),
-            "run",
-            "--process",
-            str(BLUEPRINT / "P-02-refinement.yaml"),
-            "--input",
-            f"issue={ISSUE}",
-        ],
-        capture_output=True,
-        text=True,
-        env=outside.environment(state_dir),
-        check=False,
-        timeout=120,
+def backlog(outside: Outside) -> Backlog:
+    """A backlog in the shape of this repository's: issues made from the form `Task`, a
+    milestone, and one open decision record on `main` under the directory of open records."""
+    outside.commit_on_main(
+        {
+            f"{RECORDS}/README.md": "Open records.\n",
+            f"{RECORDS}/DEC-0999-an-open-decision.md": "# DEC-0999\n",
+        }
     )
-    assert again.returncode == 3, again.stdout + again.stderr
-    assert "condition 4 does not hold" in again.stdout, again.stdout
-    refused = first_run_pattern("P02_ALREADY_REFINED")
-    assert any(refused.search(line) for line in again.stdout.splitlines()), again.stdout
-    assert outside.state()[REPOSITORY]["comments"] == 1  # type: ignore[index]
+    milestone = outside.send("POST", f"/repos/{REPOSITORY}/milestones", {"title": "0.2.0"})
+    number = int(str(milestone["number"]))
+    labelled = ["task", "ready", "priority:high"]
+    complete = FORM.format(verified="hello.txt says hello.", blocked="nothing")
+    return Backlog(
+        ready=outside.issue("Write a greeting", complete, labelled, number),
+        missing_section=outside.issue(
+            "Without a verification",
+            FORM.format(verified="_No response_", blocked="nothing"),
+            labelled,
+            number,
+        ),
+        no_milestone=outside.issue("Without a milestone", complete, labelled, None),
+        blocked=outside.issue(
+            "Blocked by a decision",
+            FORM.format(verified="hello.txt says hello.", blocked="DEC-0999"),
+            labelled,
+            number,
+        ),
+    )
 
-    # P-03: the coding worker implements, the run branches, waits for the pipeline, opens the
-    # pull request and labels it.
-    output = run_bundle(
-        outside,
-        state_dir,
-        "P-03-implementation.yaml",
-        f"issue={ISSUE}",
+
+def p03_inputs(outside: Outside, issue: int) -> list[str]:
+    return [
+        f"issue={issue}",
+        f"records_path={RECORDS}",
         f"repository_url={outside.clone_url}",
         "repository_host=localhost",
         "coding_credential=CODING_AGENT_API_KEY",
         f"closing_section={CLOSING}",
-    )
+    ]
+
+
+def test_refinement_writes_only_the_missing_section(outside: Outside, tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    tasks = backlog(outside)
+    p02 = "P-02-refinement.yaml"
+    already = first_run_pattern("P02_ALREADY_REFINED")
+
+    # An issue that carries every section is left alone: refused before the model is asked.
+    output = run_bundle(outside, state_dir, p02, f"issue={tasks.ready}", expect=3)
+    assert refused(output, "missing", "carries every section already"), output
+    assert any(already.search(line) for line in output.splitlines()), output
+    assert outside.state()[REPOSITORY]["comments"] == 0  # type: ignore[index]
+
+    # An issue missing a section gains exactly that section, as a comment.
+    output = run_bundle(outside, state_dir, p02, f"issue={tasks.missing_section}")
+    assert "state finished" in output, output
+    assert re.search(r"missing\s+rule\s+exact\s+succeeded", output), output
+    assert re.search(r"egress\.write\s+write-sections\s+acted", output), output
+    assert re.search(r"refine\s+llm\s+sourced\s+succeeded\s+tokens", output), output
+    comments = outside.get(f"/repos/{REPOSITORY}/issues/{tasks.missing_section}/comments")
+    assert isinstance(comments, list) and len(comments) == 1
+    body = comments[0]["body"]
+    assert body.startswith("### How it is verified"), body
+    assert '["How it is verified"]' in body, "the model was told which section is missing"
+    assert "Written by Taktus, process P-02 Refinement" in body
+    assert "taktus-idempotency-key" in body, "the mark that makes a repeat findable"
+    labels = outside.labels(tasks.missing_section)
+    assert labels == ["priority:high", "ready", "task"], "P-02 adds no label"
+
+    # P-02 again on the same issue: its comment is there, so it writes nothing twice.
+    output = run_bundle(outside, state_dir, p02, f"issue={tasks.missing_section}", expect=3)
+    assert refused(output, "admit", "condition 1 does not hold"), output
+    assert any(already.search(line) for line in output.splitlines()), output
+    assert outside.state()[REPOSITORY]["comments"] == 1  # type: ignore[index]
+
+
+def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
+    outside: Outside, tmp_path: Path
+) -> None:
+    state_dir = tmp_path / "state"
+    tasks = backlog(outside)
+    p03 = "P-03-implementation.yaml"
+
+    # Each issue that fails the standard is refused at admission with the reason, and nothing
+    # is written: no claim, no branch.
+    for number, reason in (
+        (tasks.missing_section, "section 'How it is verified' is missing or empty"),
+        (tasks.no_milestone, "no milestone"),
+        (tasks.blocked, "blocked by DEC-0999, still open"),
+    ):
+        output = run_bundle(outside, state_dir, p03, *p03_inputs(outside, number), expect=3)
+        assert refused(output, "admit", f"issue #{number} is not ready: "), output
+        assert refused(output, "admit", reason), output
+        assert "in-progress" not in outside.labels(number)
+    assert outside.state()[REPOSITORY]["branches"] == 1  # type: ignore[index]
+
+    # The ready one is admitted, claimed, implemented, and becomes a pull request.
+    output = run_bundle(outside, state_dir, p03, *p03_inputs(outside, tasks.ready))
     assert "state finished" in output, output
     for step in ("admit", "verify"):
         assert f"{step:<20} rule       exact     succeeded" in output, output
     assert "implement            worker     tolerant  succeeded" in output, output
     assert "wait-for-pipeline    wait       -         succeeded" in output, output
-    kinds = [
-        line.split()[2]
+    writes = [
+        line.split()[2:4]
         for line in output.splitlines()
         if line.strip().startswith(tuple("0123456789")) and "egress" in line
     ]
-    assert kinds == ["egress.write", "egress.write", "egress.write"], output
+    assert writes == [
+        ["egress.write", "claim"],
+        ["egress.write", "create-branch"],
+        ["egress.write", "open-pr"],
+        ["egress.write", "label"],
+    ], output
+    assert outside.labels(tasks.ready) == ["in-progress", "priority:high", "ready", "task"]
 
-    state = outside.state()[REPOSITORY]
-    assert state == {  # type: ignore[comparison-overlap]
-        "issues": 1,
-        "pulls": 1,
-        "comments": 1,
-        "runs": 2,  # the seed's and the branch's
-        "branches": 2,  # main and taktus/issue-1
-        "labels": 1,
-    }
-    ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{ISSUE}")
+    ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
     commit = outside.get(f"/repos/{REPOSITORY}/git/commits/{ref['object']['sha']}")
     assert isinstance(commit, dict)
@@ -308,13 +444,20 @@ def test_refinement_then_implementation_end_to_end(outside: Outside, tmp_path: P
     tree = outside.get(f"/repos/{REPOSITORY}/git/trees/{commit['tree']['sha']}")
     assert isinstance(tree, dict)
     paths = sorted(entry["path"] for entry in tree["tree"])
-    assert paths == ["checked.txt", "hello.txt", "notes/plan.md"], "the fake agent's files"
+    assert paths == [
+        "checked.txt",
+        f"{RECORDS}/DEC-0999-an-open-decision.md",
+        f"{RECORDS}/README.md",
+        "hello.txt",
+        "notes/plan.md",
+    ], "main's files and the fake agent's"
     pulls = outside.get(f"/repos/{REPOSITORY}/pulls")
     assert isinstance(pulls, list) and len(pulls) == 1
     pull = pulls[0]
-    assert pull["head"]["ref"] == f"taktus/issue-{ISSUE}" and pull["base"]["ref"] == "main"
-    assert pull["title"] == f"Seed issue (#{ISSUE})"
-    assert f"Closes #{ISSUE}." in pull["body"] and "Opened by Taktus, process P-03" in pull["body"]
+    assert pull["head"]["ref"] == f"taktus/issue-{tasks.ready}" and pull["base"]["ref"] == "main"
+    assert pull["title"] == f"Write a greeting (#{tasks.ready})"
+    assert f"Closes #{tasks.ready}." in pull["body"]
+    assert "Opened by Taktus, process P-03" in pull["body"]
     assert "Wrote notes/plan.md" in pull["body"], "the worker's own summary"
     # The generated section closes the description, after the summary and verbatim; the mark
     # that makes a repeat findable is an HTML comment after it, which the check strips.
@@ -326,43 +469,33 @@ def test_refinement_then_implementation_end_to_end(outside: Outside, tmp_path: P
     # Every write is in the ledger as egress, and the chain and the provenance verify.
     ledger = json.loads((state_dir / "ledger.json").read_text())["default"]
     egress = [e for e in ledger if e["kind"].startswith("egress.")]
-    assert [e["refs"]["step_id"] for e in egress] == [
-        "write-criteria",
-        "create-branch",
-        "open-pr",
-        "label",
-    ]
+    assert [e["refs"]["step_id"] for e in egress] == ["claim", "create-branch", "open-pr", "label"]
     assert all(e["content_digest"].startswith("sha256:") for e in egress)
     assert "DOES NOT VERIFY" not in output
 
-    # P-03 again, as a second attempt after a defect would start it: the branch the first run
-    # made carries that run's key, so the new run ends `conflict` at create-branch, opens
-    # nothing, and says so in the words `tools/first_run.sh` looks for.
-    second = subprocess.run(  # noqa: S603
-        [
-            taktusctl(),
-            "run",
-            "--process",
-            str(BLUEPRINT / "P-03-implementation.yaml"),
-            "--input",
-            f"issue={ISSUE}",
-            "--input",
-            f"repository_url={outside.clone_url}",
-            "--input",
-            "repository_host=localhost",
-            "--input",
-            "coding_credential=CODING_AGENT_API_KEY",
-            "--input",
-            f"closing_section={CLOSING}",
-        ],
-        capture_output=True,
-        text=True,
-        env=outside.environment(state_dir),
-        check=False,
-        timeout=300,
-    )
-    assert second.returncode == 3, second.stdout + second.stderr
-    leftover = first_run_pattern("P03_LEFTOVER_BRANCH")
-    assert any(leftover.search(line) for line in second.stdout.splitlines()), second.stdout
+    # A second run on the same issue finds it claimed and takes nothing up.
+    output = run_bundle(outside, state_dir, p03, *p03_inputs(outside, tasks.ready), expect=3)
+    assert refused(output, "admit", "claimed: labelled in-progress"), output
     assert outside.state()[REPOSITORY]["pulls"] == 1  # type: ignore[index]
-    assert outside.state()[REPOSITORY]["branches"] == 2  # type: ignore[index]
+
+
+def test_a_branch_left_by_an_earlier_attempt_stops_the_run_in_the_words_first_run_reads(
+    outside: Outside, tmp_path: Path
+) -> None:
+    """A ready issue whose branch `taktus/issue-<n>` already exists without this run's key, as
+    an earlier attempt after a defect leaves it: the run ends `conflict` at create-branch,
+    opens nothing, and says so in the words `tools/first_run.sh` looks for (issue #30)."""
+    state_dir = tmp_path / "state"
+    tasks = backlog(outside)
+    main = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/main")
+    assert isinstance(main, dict)
+    outside.send(
+        "POST",
+        f"/repos/{REPOSITORY}/git/refs",
+        {"ref": f"refs/heads/taktus/issue-{tasks.ready}", "sha": main["object"]["sha"]},
+    )
+    inputs = p03_inputs(outside, tasks.ready)
+    output = run_bundle(outside, state_dir, "P-03-implementation.yaml", *inputs, expect=3)
+    leftover = first_run_pattern("P03_LEFTOVER_BRANCH")
+    assert any(leftover.search(line) for line in output.splitlines()), output
+    assert outside.state()[REPOSITORY]["pulls"] == 0  # type: ignore[index]

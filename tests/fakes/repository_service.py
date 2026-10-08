@@ -24,7 +24,12 @@ What it enforces, because the connector's checks depend on it:
   `[bot]`. Every repository is installed until `POST /_fake/app` says otherwise.
 - **Pull request uniqueness.** A second open pull request for the same head branch is refused
   with 422, as the real service does.
-- **Paging.** Comment lists page with `per_page`/`page` and a `Link: <…>; rel="next"` header.
+- **Paging.** Comment and issue lists page with `per_page`/`page` and a `Link: <…>; rel="next"`
+  header.
+- **Labels and milestones on an issue.** An issue is opened with label names and a milestone's
+  number (`POST …/milestones` makes one), and is read with both, as the ready standard of a
+  backlog reads them (issue #70). A directory reads as its immediate entries, each a `file` or a
+  `dir`, and a branch moves to a later commit with `PATCH …/git/refs/heads/<name>`.
 - **A pipeline per push.** Creating a reference creates one completed pipeline run for its
   commit, concluded `success` unless `POST /_fake/ci` said otherwise (`{"conclusion":
   "failure"}`, or `{"pending": true}` for a run that never completes), so that a process can
@@ -81,6 +86,7 @@ class Repository:
     runs: dict[int, Json] = field(default_factory=dict)
     refs: dict[str, str] = field(default_factory=dict)  # branch name -> commit sha
     objects: dict[str, Json] = field(default_factory=dict)  # sha -> blob | tree | commit
+    milestones: dict[int, Json] = field(default_factory=dict)
     next_number: int = 1
     next_comment: int = 1
     next_run: int = 1
@@ -226,9 +232,20 @@ class Store:
                     "encoding": "base64",
                     "content": base64.encodebytes(raw).decode(),
                 }
-        inside = [e for e in entries if str(e["path"]).startswith(path.rstrip("/") + "/")]
-        if inside:
-            return 200, [{"type": "file", "path": e["path"], "sha": e["sha"]} for e in inside]
+        prefix = path.rstrip("/") + "/"
+        children: dict[str, Json] = {}
+        for entry in entries:
+            full = str(entry["path"])
+            if not full.startswith(prefix):
+                continue
+            name, _, deeper = full[len(prefix) :].partition("/")
+            kind = "dir" if deeper else "file"
+            sha = "" if deeper else entry["sha"]
+            children.setdefault(
+                name, {"type": kind, "name": name, "path": prefix + name, "sha": sha}
+            )
+        if children:
+            return 200, [children[name] for name in sorted(children)]
         return 404, {"message": "Not Found"}
 
     def state(self) -> Json:
@@ -454,6 +471,34 @@ class Handler(BaseHTTPRequestHandler):
         with self.store.lock:
             self._post(url.path, body)
 
+    def do_PATCH(self) -> None:
+        """Moving a branch to another commit, as the service's reference interface does — how
+        a test puts files on `main`. A move that is not a fast-forward needs `force`."""
+        url = urlparse(self.path)
+        body = self._body()
+        if not self._guard(write=True):
+            return
+        with self.store.lock:
+            m = re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/refs/heads/(.+)", url.path)
+            if m is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            repo = self.store.repository(m.group(1), m.group(2))
+            name, sha = m.group(3), body.get("sha")
+            if name not in repo.refs:
+                self._send(422, {"message": "Reference does not exist"})
+                return
+            commit = repo.objects.get(str(sha))
+            if commit is None or commit["kind"] != "commit":
+                self._send(422, {"message": "Object does not exist"})
+                return
+            parents = {p["sha"] for p in commit.get("parents", [])}
+            if repo.refs[name] not in parents and not body.get("force"):
+                self._send(422, {"message": "Update is not a fast forward"})
+                return
+            repo.refs[name] = str(sha)
+            self._send(200, {"ref": f"refs/heads/{name}", "object": {"type": "commit", "sha": sha}})
+
     def _get(self, path: str, query: Json) -> None:
         store = self.store
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/issues/(\d+)/comments", path):
@@ -483,7 +528,15 @@ class Handler(BaseHTTPRequestHandler):
             state = query.get("state", "open")
             issues = [i for i in repo.issues.values() if state == "all" or i["state"] == state]
             issues.sort(key=lambda i: int(i["number"]), reverse=True)
-            self._send(200, issues[: int(query.get("per_page", 30))])
+            per_page = max(1, min(100, int(query.get("per_page", 30))))
+            page = max(1, int(query.get("page", 1)))
+            headers = {}
+            if page * per_page < len(issues):
+                headers["Link"] = (
+                    f"<{store.base_url}{path}?state={state}&per_page={per_page}"
+                    f'&page={page + 1}>; rel="next"'
+                )
+            self._send(200, issues[(page - 1) * per_page : page * per_page], headers)
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/pulls/(\d+)", path):
             repo = store.repository(m.group(1), m.group(2))
@@ -580,7 +633,27 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(body.get("title"), str) or not body["title"]:
                 self._send(422, {"message": "Validation Failed"})
                 return
-            self._send(201, store.create_issue(repo, body["title"], body.get("body") or "", login))
+            labels, milestone = body.get("labels") or [], body.get("milestone")
+            if not isinstance(labels, list) or not all(isinstance(n, str) for n in labels):
+                self._send(422, {"message": "Validation Failed"})
+                return
+            if milestone is not None and milestone not in repo.milestones:
+                self._send(422, {"message": "Validation Failed: no such milestone"})
+                return
+            issue = store.create_issue(repo, body["title"], body.get("body") or "", login)
+            issue["labels"] = [{"name": name, "color": "ededed"} for name in labels]
+            if milestone is not None:
+                issue["milestone"] = repo.milestones[milestone]
+            self._send(201, issue)
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/milestones", path):
+            repo = store.repository(m.group(1), m.group(2))
+            if not isinstance(body.get("title"), str) or not body["title"]:
+                self._send(422, {"message": "Validation Failed"})
+                return
+            number = len(repo.milestones) + 1
+            repo.milestones[number] = {"number": number, "title": body["title"], "state": "open"}
+            self._send(201, repo.milestones[number])
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/pulls", path):
             repo = store.repository(m.group(1), m.group(2))
