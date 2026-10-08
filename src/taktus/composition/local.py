@@ -58,7 +58,7 @@ from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
-from taktus.components.process.domain.model import ProcessVersion
+from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
@@ -199,7 +199,7 @@ class LocalWiring:
             )
             yield Services(
                 register_version=RegisterProcessVersionHandler(
-                    stores.of(ProcessVersion), stores.work
+                    stores.of(ProcessVersion), stores.work, stores.of(Process)
                 ),
                 commission=commission,
                 engine=engine,

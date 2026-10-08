@@ -96,6 +96,20 @@ process_version = Table(
     UniqueConstraint("tenant", "process_id", "version", name="process_version_unique"),
 )
 
+trigger_state = Table(
+    "trigger_state",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # <process>:<trigger key>
+    Column("process_id", Text, nullable=False),
+    Column("schedule", Text, nullable=False),
+    _at("armed_at"),
+    _at("fired_slot", nullable=True),
+    _at("fired_at", nullable=True),
+    Column("runs", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
 step = Table(
     "step",
     metadata,

@@ -14,6 +14,7 @@ import asyncio
 from collections.abc import Callable
 from typing import Any
 
+import pytest
 from fakes import FakeIdentifiers, FakeWorker, HeldObjects
 
 from taktus.adapters.driven.clock import SystemClock
@@ -35,7 +36,7 @@ from taktus.components.run.application.service import (
     RunnerOptions,
     StartRun,
 )
-from taktus.components.run.domain.model import Cause, Run, RunState, StepState
+from taktus.components.run.domain.model import Cause, Run, RunExists, RunState, StepState
 from taktus.components.run.domain.service import provenance
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.queue import RUN_EXECUTE, Job
@@ -376,3 +377,41 @@ async def test_a_job_whose_run_ended_before_its_runner_completed_it_is_completed
     assert (await world.stored(escalated.id)).state is RunState.ESCALATED
     assert (await world.stored(halted.id)).state is RunState.HALTED
     assert await world.claimable() == [], "every job completed"
+
+
+async def test_a_derived_run_is_created_once_and_carries_its_trigger() -> None:
+    """A trigger's firing names its run (ADR-0035): the same name a second time is refused, and
+    nothing of the second attempt lands — no run, no job, no entry."""
+    world = World()
+    step, work = rule("one", 1)
+    plan = Plan(
+        id=world.ids.new("pln"),
+        command_id="cmd_1",
+        goal="g",
+        autonomy_level=2,
+        steps=(step,),
+        results_in=PlanResult.RUN,
+        status=PlanStatus.COMMISSIONED,
+        commissioned=Commissioned(by="idn_t", at=world.clock.now()),
+    )
+    trigger = {"kind": "schedule", "trigger": "p:trg_1", "schedule": "daily", "slot": "x"}
+    start = StartRun(
+        plan=plan,
+        work={step.id: work},
+        budget=BUDGET,
+        process_version="p@1",
+        actor="idn_t",
+        tenant=TENANT,
+        run_id="run_0123456789abcdef0123",
+        trigger=trigger,
+    )
+    run = await world.engine.submit(start)
+    assert run.id == "run_0123456789abcdef0123"
+    with pytest.raises(RunExists):
+        await world.engine.submit(start)
+    async with world.persistence.transaction(TENANT):
+        entries = await world.ledger.entries(TENANT, run.id)
+        jobs = await world.queue.claim(TENANT, "c", 10)
+    assert [e.kind for e in entries] == ["run.created", "run.triggered", "budget.set"]
+    assert entries[1].outcome == "schedule" and entries[1].content_digest is not None
+    assert [job.id for job in jobs] == ["job_0123456789abcdef0123"]

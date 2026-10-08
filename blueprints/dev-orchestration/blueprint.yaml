@@ -46,7 +46,10 @@ processes:
       level: 3
       reason: the one outward effect is a report a person reads; every verdict in it is a rule's, and a person applies what it proposes
       toward_next: a history of reports whose proposals a person carried out unchanged; then applying them itself is proposed (M3.9)
-    triggers: [ { schedule: daily }, { event: roadmap.changed } ]
+    triggers:   # the scheduled run reports on #129, the issue labelled `report` (ADR-0035)
+      - schedule: daily
+        inputs: { roadmap_path: docs/roadmap.md, records_path: docs/decisions/open, report_issue: 129 }
+      - event: roadmap.changed
     # The diff is a rule over the issue numbers the roadmap's items name, provisionally: the
     # method of this step is the owner's (anchors.taktus.md M3.13), asked in DEC-0080.
     steps:

@@ -5,10 +5,9 @@
   it is the shutdown of ADR-0005: no new claim, the running step reaches its boundary, the
   claim is released.
 - `scheduler` is singular: it leads through the leadership port, and while it leads it ticks.
-  A second instance keeps trying and takes over when the leader's lead is gone. What a tick
-  does — time triggers, deadlines, budget windows — arrives with governance (`0.2.0`); today
-  the election is real and the tick logs that it happened, so that the takeover is provable
-  before anything depends on it.
+  A second instance keeps trying and takes over when the leader's lead is gone. The daemon's
+  tick fires the time triggers that are due (`triggers.py`, ADR-0035) and makes the capacity
+  report (`capacity.py`); deadlines and budget windows arrive with governance.
 - `automation` reacts to events; nothing publishes events yet (the outbox exists, nothing
   writes it), so the role starts, says so once, and waits. It is wired now so that the image
   and its configuration do not change when reactions arrive.

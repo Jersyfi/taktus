@@ -49,8 +49,8 @@ taktus/
 │   ├── components/
 │   │   └── process/                 # every component has the same shape
 │   │       ├── domain/
-│   │       │   ├── model/           # Process, ProcessVersion, Edge, Trigger, Slo; Step is the kernel's
-│   │       │   ├── service/         # validation (graph and step rules); later MethodSelection, Planner
+│   │       │   ├── model/           # Process, ProcessVersion, Edge, Trigger, Slo, TriggerState; Step is the kernel's
+│   │       │   ├── service/         # validation (graph and step rules), schedule (when a slot is due); later MethodSelection, Planner
 │   │       │   └── event/
 │   │       ├── application/
 │   │       │   ├── service/         # one use case per module
@@ -104,7 +104,7 @@ taktus/
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
-│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under
+│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 │   ├── script/                      # the reference worker: shell commands, no AI
@@ -130,7 +130,7 @@ taktus/
 │   ├── contract/                    # the Python bindings match the schemas and their examples
 │   ├── components/ adapters/        # domain tables and application tests against fakes/; adapters/persistence and adapters/queue: one suite, both implementations; adapters/connectors: the reference connector against fakes/repository_service.py; adapters/rest: the surface under two prefixes; adapters/execution: the process adapter, and the container adapter checked from inside a job; adapters/telemetry: spans nested, the trace id on every entry, no person and no secret in an attribute
 │   ├── composition/                 # the daemon's settings, and that no secret reaches a log line
-│   ├── integration/                 # the whole slice against the reference worker — by endpoint, as a process started per job, as a container started per job; the restart test; two runners, two schedulers, a real SIGTERM, the daemon under a prefix; the control plane image built and inspected
+│   ├── integration/                 # the whole slice against the reference worker — by endpoint, as a process started per job, as a container started per job; the restart test; two runners, two schedulers, time triggers fired once per slot on a clock the test sets, a real SIGTERM, the daemon under a prefix; the control plane image built and inspected
 │   └── security/ resilience/
 │
 ├── docs/{architecture,adr,usecases,vision,decisions,runs,research,roadmap.md}   # research: dated, sourced evidence a decision rests on
@@ -260,9 +260,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   (`tests/integration/test_runner_fence.py`, NTC-0044).
 - **`scheduler`** leads through the leadership port — a session-level advisory lock — and ticks
   while it leads; a second instance keeps trying and takes over when the leader's lead is
-  gone, including when the leader was killed. The tick does nothing yet: time triggers arrive
-  with governance (`0.2.0`). The election is real and proven first, so that nothing later
-  depends on an election that was never tested.
+  gone, including when the leader was killed. While it leads, every tick fires the schedule
+  triggers that are due (`composition/triggers.py`, ADR-0035): the process component answers
+  which are due, and each due slot becomes a command on `channel.schedule`, a commissioned plan
+  and a submitted run, which a runner executes. A slot starts its runs once — whoever leads,
+  across a restart of the leader — because the run's identifier is derived from the trigger
+  and the slot and the engine refuses a run that exists; slots missed while nobody led start
+  one run (`tests/integration/test_time_triggers.py`). The tick also makes the capacity
+  report; deadlines and budget windows arrive with governance.
 - **`automation`** starts, says so, and waits: nothing publishes events yet (the outbox
   exists, nothing writes it). It is wired now so that the image and its configuration do not
   change when reactions arrive.

@@ -6,7 +6,7 @@
 #
 #     uv run taktusctl run --process blueprints/dev-orchestration/processes/P-01-roadmap-control.yaml \
 #         --input roadmap_path=docs/roadmap.md --input records_path=docs/decisions/open \
-#         --input report_issue=<the issue labelled `report` that carries P-01's reports>
+#         --input report_issue=129   # the issue labelled `report` that carries P-01's reports
 #
 # It reads the roadmap on the base branch, the repository's open issues to the last page and
 # the directory of open records, and reports where the roadmap and the issues disagree: an
@@ -37,8 +37,15 @@ autonomy:
 author: the repository
 reason: the first process of the dev-orchestration blueprint, runnable
 
+# Daily, 00:00 UTC, through the elected scheduler (ADR-0035). A scheduled run has nobody to ask,
+# so the trigger gives every input: this repository's paths, and #129, the issue labelled
+# `report` that carries P-01's reports (NTC-0045).
 triggers:
   - schedule: daily
+    inputs:
+      roadmap_path: docs/roadmap.md
+      records_path: docs/decisions/open
+      report_issue: 129
   - event: roadmap.changed
 
 inputs:

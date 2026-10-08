@@ -19,7 +19,13 @@ from taktus.components.catalog.domain.model import (
 )
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.process.application.service.register_version import parse_bundle
-from taktus.components.process.domain.model import Process, ProcessVersion, Slo, Trigger
+from taktus.components.process.domain.model import (
+    Process,
+    ProcessVersion,
+    Slo,
+    Trigger,
+    TriggerState,
+)
 from taktus.components.run.domain.model import Checkpoint, Run, RunState, StepState
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import (
@@ -233,3 +239,15 @@ def run(id: str = "run_1", tenant: str = "t") -> Run:
 def rehearsal_run(id: str = "run_2", tenant: str = "t") -> Run:
     """The same run as a rehearsal (ADR-0030): the flag survives the round trip."""
     return run(id, tenant).model_copy(update={"rehearsal": True})
+
+
+def trigger_state(tenant: str = "t") -> TriggerState:
+    return TriggerState(
+        id="six-times-seven:trg_0123456789abcdef0123",
+        process_id="six-times-seven",
+        schedule="0 6 * * 1-5",
+        armed_at=AT,
+        fired_slot=datetime(2026, 9, 17, 6, 0, tzinfo=UTC),
+        fired_at=AT + timedelta(days=1),
+        runs=("run_a", "run_b"),
+    )

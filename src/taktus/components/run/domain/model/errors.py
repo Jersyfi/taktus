@@ -40,6 +40,14 @@ class UnknownRun(RunError):
     pass
 
 
+class RunExists(RunError):
+    """A run was to be created under an identifier a run already has. A trigger's firing
+    derives its run's identifier, so this is the answer to the same firing a second time."""
+
+    def __init__(self, run_id: str) -> None:
+        super().__init__(f"run {run_id!r} exists already")
+
+
 class ClaimLost(RunError):
     """A write of a run executed under a runner's claim was refused: another runner has
     claimed the run's job since. Nothing of the write landed, and the runner does nothing

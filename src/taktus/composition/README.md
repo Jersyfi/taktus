@@ -9,7 +9,9 @@ masked (`logging.py`), connects to PostgreSQL — migrating on start when told t
 serve against a schema that is not at this build's revision — wires every port once, starts the
 roles `TAKTUS_ROLES` names (`roles.py`: the runner over the queue port, the scheduler's
 election over the leadership port, automation) and the HTTP surface, and on SIGTERM lets every
-running step reach its boundary before it exits.
+running step reach its boundary before it exits. While the scheduler leads it fires the time
+triggers that are due (`triggers.py`, ADR-0035): a firing crosses the process, command and run
+components, so it is wired here.
 
 `local.py` wires `taktusctl` for a developer's machine: PostgreSQL when `TAKTUS_DATABASE_URL`
 (or `_FILE`) is configured, otherwise the in-memory stores with a file snapshot under a state

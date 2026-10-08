@@ -134,8 +134,10 @@ enforced.
 - **Inputs.** A bundle declares what a run is given (`inputs:` — name, description, example),
   and `taktusctl run --input name=value` supplies it. P-01 needs `roadmap_path`
   (`docs/roadmap.md` here), `records_path`, and `report_issue`: the number of the one issue,
-  labelled `report`, whose comments carry its reports, which a person opens once; a daily run
-  adds one comment to it. P-02 needs the issue number; P-03 needs
+  labelled `report`, whose comments carry its reports — #129 in this repository; a daily run
+  adds one comment to it. The bundle's daily trigger carries all three, so the elected
+  scheduler of `taktusd` runs P-01 every day at 00:00 UTC without anyone supplying them
+  (ADR-0035, NTC-0045). P-02 needs the issue number; P-03 needs
   it too, plus `records_path` — the directory of `main` that holds the open decision and needs
   records, `docs/decisions/open` here — the clone URL, the one host the worker may reach, the name of the coding
   worker's credential, and `closing_section`: the section the repository generates for the end

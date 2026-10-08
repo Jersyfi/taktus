@@ -68,7 +68,8 @@ from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
-from taktus.components.process.domain.model import ProcessVersion
+from taktus.components.process.application.service.triggers import TriggersHandler
+from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
 from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import (
     EngineOptions,
@@ -89,6 +90,8 @@ from taktus.composition.execution import (
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.settings import Role, Settings, load
+from taktus.composition.triggers import Triggers
+from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.leadership import Leadership
 from taktus.ports.ledger import Ledger
@@ -118,10 +121,12 @@ class Wired:
     intake: ReceiveIntakeHandler
     complete_intake: CompleteIntakeHandler | None
     leadership: Leadership
-    clock: SystemClock
+    clock: Clock
     ids: SystemIdentifiers
     capacity: ReportCapacityHandler
     """The capacity report the scheduler runs every `TAKTUS_CAPACITY_INTERVAL_SECONDS`."""
+    triggers: Triggers
+    """The time triggers the scheduler fires on every tick while it leads (ADR-0035)."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -152,9 +157,12 @@ class NotOperable(Exception):
 
 
 @asynccontextmanager
-async def wire(settings: Settings, configuration: Configuration) -> AsyncIterator[Wired]:
+async def wire(
+    settings: Settings, configuration: Configuration, *, clock: Clock | None = None
+) -> AsyncIterator[Wired]:
     """`configuration` is read again at runtime for what is not a setting: the credential
-    values a launched execution unit is given, at the moment a job starts."""
+    values a launched execution unit is given, at the moment a job starts. `clock` replaces the
+    system clock for a test that moves time itself."""
     url = settings.database.reveal()
     if settings.migrate_on_start:
         log.info("migrating", database=described(url))
@@ -170,7 +178,7 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
             raise NotOperable(str(error)) from error
         except (OSError, DBAPIError) as error:
             raise NotOperable(f"cannot reach the database at {described(url)}: {error}") from error
-        clock = SystemClock()
+        clock = clock or SystemClock()
         ids = SystemIdentifiers()
         telemetry = telemetry_of(settings.telemetry)
         # PROVISIONAL (DEC-0013): who acts is configured, not authenticated, until the
@@ -262,7 +270,9 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                 provenance=ProvenanceQuery(provenance_store, runs, ledger, persistence),
                 engine=engine,
                 register_version=RegisterProcessVersionHandler(
-                    PostgresRepository(persistence, ProcessVersion), persistence
+                    PostgresRepository(persistence, ProcessVersion),
+                    persistence,
+                    PostgresRepository(persistence, Process),
                 ),
                 commission=commission,
                 intake=ReceiveIntakeHandler(
@@ -298,6 +308,23 @@ async def wire(settings: Settings, configuration: Configuration) -> AsyncIterato
                     work=persistence,
                     database=persistence,
                 ),
+                triggers=Triggers(
+                    tenants=settings.tenants,
+                    triggers=TriggersHandler(
+                        PostgresRepository(persistence, Process),
+                        PostgresRepository(persistence, ProcessVersion),
+                        PostgresRepository(persistence, TriggerState),
+                        persistence,
+                    ),
+                    commission=commission,
+                    engine=engine,
+                    connectors=pools.connectors,
+                    identities=identities,
+                    ledger=ledger,
+                    work=persistence,
+                    clock=clock,
+                    ids=ids,
+                ),
             )
             if Role.RUNNER in settings.roles:
                 wired.runner = Runner(
@@ -327,14 +354,17 @@ async def serve(
     configuration: Configuration | None = None,
     stop: asyncio.Event | None = None,
     on_wired: Callable[[Wired], None] | None = None,
+    clock: Clock | None = None,
 ) -> int:
     """Run the roles until `stop` — set by SIGTERM or SIGINT, or by the caller — and wind
     down. The exit code of the process. `on_wired` hands the wired services to a test that
-    runs the daemon in-process."""
+    runs the daemon in-process; `clock` lets such a test move time itself."""
     stop = stop or asyncio.Event()
     _install_signal_handlers(stop)
     try:
-        async with wire(settings, configuration or EnvironmentConfiguration()) as wired:
+        async with wire(
+            settings, configuration or EnvironmentConfiguration(), clock=clock
+        ) as wired:
             if on_wired is not None:
                 on_wired(wired)
             log.info(
@@ -429,7 +459,10 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             interval_seconds=settings.capacity.interval_seconds,
         )
 
+        # And it fires the schedule triggers that are due: once per slot, however many
+        # schedulers stand by (ADR-0035).
         async def scheduled() -> None:
+            await wired.triggers.tick()
             await tick()
 
         tasks.append(

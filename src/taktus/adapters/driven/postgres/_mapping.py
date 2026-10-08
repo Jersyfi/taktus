@@ -662,6 +662,53 @@ class AdapterMaturityMapper:
         )
 
 
+# --- trigger state --------------------------------------------------------------------------------
+
+
+class TriggerStateMapper:
+    """One row per schedule trigger of a process: when the scheduler first saw it, the last
+    slot it fired for, and the runs that firing started (ADR-0035)."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.trigger_state, tenant, id)
+        return None if row is None else self._from(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.trigger_state,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "process_id": document["process_id"],
+                "schedule": document["schedule"],
+                "armed_at": _at(document["armed_at"]),
+                "fired_slot": _at(document.get("fired_slot")),
+                "fired_at": _at(document.get("fired_at")),
+                "runs": list(document.get("runs", [])),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.trigger_state, tenant, s.trigger_state.c.id)
+        return [self._from(row) for row in rows]
+
+    @staticmethod
+    def _from(row: Row[Any]) -> Document:
+        return _present(
+            {
+                "id": row.id,
+                "process_id": row.process_id,
+                "schedule": row.schedule,
+                "armed_at": _iso(row.armed_at),
+                "fired_slot": _iso(row.fired_slot),
+                "fired_at": _iso(row.fired_at),
+                "runs": row.runs,
+            }
+        )
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -672,4 +719,5 @@ MAPPERS: dict[str, Mapper] = {
     "plan": PlanMapper(),
     "run": RunMapper(),
     "adapter_maturity": AdapterMaturityMapper(),
+    "trigger_state": TriggerStateMapper(),
 }

@@ -76,8 +76,8 @@ integration of Taktus.
 Level 3: every step is a read of the instance's own state or a rule over what was read, nothing
 leaves the system, and the verdict is reproducible from the ledger; a person watches the weekly
 report and samples the rehearsals. Toward level 4: a month of weekly runs whose verdicts a
-person checked against the rehearsal runs and found right, and the scheduler starting the run
-from the bundle's trigger (`0.2.0`); then Taktus proposes the raise with that evidence (M3.9).
+person checked against the rehearsal runs and found right, started by the scheduler from the
+bundle's trigger; then Taktus proposes the raise with that evidence (M3.9).
 
 ### Running it
 
@@ -93,8 +93,22 @@ the weekly job runs (`.github/workflows/removal-test.yml`). One integration by h
 uv run taktusctl run --process blueprints/self-operation/processes/S-01-removal-test.yaml --input integration=worker.endpoint
 ```
 
-The bundle's trigger says `weekly`; the scheduler starts it from the trigger once it acts on
-triggers (`0.2.0`). Until then the script is the schedule.
+**From its trigger.** The bundle's trigger says `weekly` — Mondays 00:00 UTC — with `each`
+over `orchestrator.integrations.list`. On an instance that runs `taktusd` with the `scheduler`
+role and has S-01 registered, the elected scheduler starts one run per integration the instance
+lists, once per week, whichever scheduler leads (ADR-0035). The runs act as the tenant's
+provisional operator identity (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013), and each carries
+`run.triggered` in the ledger. A week missed while no scheduler ran is caught up once, not
+once per week missed. `tests/integration/test_time_triggers.py` runs it that way on a clock the
+test moves. Register the bundle once, through the daemon's database:
+
+```bash
+uv run taktusctl submit --process blueprints/self-operation/processes/S-01-removal-test.yaml \
+    --input integration=persistence.database
+```
+
+registers it and runs it once for the database. Until an installed instance runs S-01 on its
+own, the weekly job of the repository's CI stays the schedule of record (issue #69).
 
 ### By hand — the takeover test of this process
 

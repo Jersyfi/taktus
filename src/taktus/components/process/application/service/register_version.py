@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from taktus.components.process.domain.model import (
     InputDeclaration,
     InvalidProcess,
+    Process,
     ProcessVersion,
     Slo,
     Trigger,
@@ -38,14 +39,30 @@ class RegisterProcessVersion:
 
 
 class RegisterProcessVersionHandler:
-    def __init__(self, versions: Repository[ProcessVersion], work: UnitOfWork) -> None:
+    """Stores the version. With `processes`, the version registered last becomes the process's
+    active version: the one whose schedule triggers the scheduler fires (ADR-0035)."""
+
+    def __init__(
+        self,
+        versions: Repository[ProcessVersion],
+        work: UnitOfWork,
+        processes: Repository[Process] | None = None,
+    ) -> None:
         self._versions = versions
         self._work = work
+        self._processes = processes
 
     async def execute(self, command: RegisterProcessVersion) -> ProcessVersion:
         version = parse_bundle(command.bundle)
         async with self._work.transaction(command.tenant):
             await self._versions.put(command.tenant, version)
+            if self._processes is not None:
+                await self._processes.put(
+                    command.tenant,
+                    Process(
+                        id=version.process_id, name=version.name, active_version=version.version
+                    ),
+                )
         return version
 
 

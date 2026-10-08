@@ -10,7 +10,7 @@ from adapters.persistence import samples
 from adapters.persistence.conftest import Backend
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.domain.model import IntakeEvent
-from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.ports.persistence import WrongTenant
 from taktus.shared.v1 import Command, Plan
@@ -24,6 +24,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (Run, samples.run),
     (Run, samples.rehearsal_run),
     (AdapterMaturity, samples.adapter_maturity),
+    (TriggerState, samples.trigger_state),
 ]
 
 

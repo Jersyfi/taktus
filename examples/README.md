@@ -53,8 +53,26 @@ Top level:
 | `id`, `version`, `name` | the process, its version, its name; the ledger refers to `id@version` |
 | `autonomy` | the autonomy statement (ADR-0026): `level` — what the run and its worker assignments carry, 1 to 4 — `reason`, why the process runs at that level, and `toward_next`, what is missing to go one level higher or what forbids it (required below 4, absent at 4). A bare level does not register |
 | `limits` | the run's budget: `currency`, `quota` and `compute` in the shape of the worker contract's `Limits` (`contracts/worker/v1`). Every worker step's estimate is admitted against what is left of it. |
-| `triggers`, `slo`, `author`, `reason` | as in control-plane.md §4; recorded, not yet acted on |
+| `triggers` | what starts a run besides a person. `schedule` triggers are fired by the daemon's elected scheduler, once per slot (ADR-0035); `event` triggers are recorded, not yet acted on. A trigger is one of the two, see below |
+| `slo`, `author`, `reason` | as in control-plane.md §4; recorded, not yet acted on |
 | `steps` | the graph; edges are the `depends_on` lists. The graph is checked: acyclic, every dependency a step of the process, every step connected to the rest. |
+
+A **schedule trigger** — `schedule:` with a five-field cron expression read in UTC, or `hourly`,
+`daily`, `weekly` (Mondays 00:00 UTC) or `monthly` — starts a run of the version registered
+last for its process, through `taktusd` with the `scheduler` role. A slot that passed before the
+scheduler first saw the trigger does not fire; slots missed while no scheduler led start one
+run, for the latest. A scheduled run has nobody to ask, so the trigger gives every input the
+process declares, or the bundle does not register:
+
+| Field | Meaning |
+|---|---|
+| `inputs` | fixed values, by input name |
+| `each` | one run per item of a list: `operation`, a connector operation declared `read`; `select`, the dotted path to the list in its output; `field`, optionally, the dotted path to the value in each item; `input`, the input the value is given as |
+
+The run acts as the tenant's provisional operator identity (`TAKTUS_PROVISIONAL_IDENTITY`,
+DEC-0013), and its ledger carries `run.triggered` beside `run.created`. S-01 is the example:
+weekly, one run per integration `orchestrator.integrations.list` answers
+(`blueprints/self-operation/processes/S-01-removal-test.yaml`).
 
 `work` per step — what the step does when it runs. Four method kinds are executable in this
 version; every other method is refused before the run starts.
