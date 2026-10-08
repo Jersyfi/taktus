@@ -45,8 +45,11 @@ Three classes:
 | **Correction anchor** | correcting a result after it has left the system (ADR-0022) | re-issuing an invoice a customer received · re-sending a partner file · restating a value a tax authority holds · retracting a delivered report |
 
 The legal-anchor class above is the project's own list, not legally reviewed for any jurisdiction.
-Who reviews it, and when, is open as DEC-0029; until it is answered, no finance or personnel
-blueprint is used by a tenant.
+Before any finance or personnel blueprint is used by a tenant, it is reviewed for that tenant's
+jurisdiction by qualified reviewers — a tax adviser for the finance acts, a labour-law specialist
+for the personnel acts — and the review is recorded with its date and jurisdiction. Every change
+to the catalogue and every new jurisdiction is reviewed again. Until then it is marked as not
+legally reviewed wherever it is shown (DEC-0029).
 
 The correction anchor has a checkable trigger. A result *has left the system* when the ledger
 holds an egress entry for it or for anything derived from it: `egress.write` (a connector wrote
