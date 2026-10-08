@@ -359,7 +359,9 @@ class RunEngine:
     async def _state_budget(self, run: Run, actor: str | None) -> None:
         """Say what the budget can promise when it is set, not afterwards (principle 8): the
         budget, the margin, the line the run is held to, how each limited kind is held and
-        why, and the price table money is computed at — one document, its digest in the
+        why, the price table money is computed at, and the margin a worker without history
+        reserves — with the statement, where an operator set it below the floor, that it is
+        (DEC-0047) — one document, its digest in the
         ledger as `budget.set`, so that money stays recomputable from the ledger."""
         models: list[tuple[str, Calculability, bool]] = []
         worker_steps: list[str] = []
@@ -397,6 +399,11 @@ class RunEngine:
             "price_table": None
             if table is None
             else {"version": table.version, "digest": table_digest},
+            "uncalibrated_margin": {
+                "value": self._options.uncalibrated_margin,
+                "floor": budgeting.MARGIN_FLOOR,
+                "below_floor": budgeting.below_floor(self._options.uncalibrated_margin),
+            },
         }
         digest = await self._objects.put(_canonical(statement))
         async with self._work.transaction(run.tenant):
