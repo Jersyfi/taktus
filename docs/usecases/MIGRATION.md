@@ -11,11 +11,14 @@ chapters) was used by mistake when step 1 was first written; what that changed i
 **It is a working document.** When the migration is complete it is deleted, and nothing here
 survives except in the files it points to.
 
-**Where it stands (2026-09-29):** step 1 is done — `docs/vision/`, the use case format, the gates
-`make gate-vision` and `make gate-usecases`, the two rules in `CLAUDE.md` and in the anchor files,
-findings 1 to 3 decided, and thirteen use cases seeded so that every principle is served (their
-requirements, and where they differ from version 2, are DEC-0030). Steps 2 to 4 are open.
-`docs/status.md` §1 says the same.
+**Where it stands (2026-10-08):** steps 1 and 2 are done. Step 1 brought `docs/vision/`, the use
+case format, the gates `make gate-vision` and `make gate-usecases`, the two rules in `CLAUDE.md`
+and in the anchor files, findings 1 to 3 decided, and thirteen use cases seeded so that every
+principle is served (their requirements, and where they differ from version 2, are DEC-0030).
+Step 2 brought the use cases of `process`, `run` and `governance` — E4, E7, UC-15.3 to UC-15.5 —
+moved the seven cases still in their first files into the format, and resolved point 4 below; what
+its use cases require beyond version 2 is DEC-0069. Steps 3 and 4 are open. `docs/status.md` §1
+says the same.
 
 ---
 
@@ -59,11 +62,11 @@ a capability of the core, it belongs in `blueprints/`, not here.
 | **E1** Command, co-planning, interaction | `command/`, and UC-1.4, UC-1.6 and **UC-1.7 channel identity** to `identity/` | UC-1.7 is new in version 2: every command belongs to exactly one authenticated identity; unknown senders get a question, never an execution. Largely decided in `docs/architecture/control-plane.md`; the identity component is `0.2.0`. UC-1.8 (session with project knowledge) is in no version of the definition and must be included |
 | **E2** Engineering orchestration | **`blueprints/dev-orchestration/`** | Not core use cases. They describe one deployment of the core, and two of them already run |
 | **E3** Repository hygiene | **`blueprints/dev-orchestration/`** | Same |
-| **E4** Process engine | `process/` and `run/` | The largest group, and the one with the numbering problem below |
+| **E4** Process engine | `process/` and `run/` | The largest group, and the one with the numbering problem below. **Done in step 2**: UC-4.1 to UC-4.6 and UC-4.10 to UC-4.13; UC-4.7 to UC-4.9 stay unassigned (`NUMBERING.md`) |
 | **E5** Integration and knowledge | `knowledge/`; UC-5.1, 5.2, 5.4 are architecture and already decided (UC-5.2 is seeded in `process/`) | UC-5.8, new in version 2, connects an observability or evaluation platform — trace export, eval backend, prompt synchronisation, cost reconciliation — and is optional: removing it must pass the removal test. Filed in `catalog/` as an integration with a maturity level |
 | **E6** Reporting and transparency | a new component, **`reporting`** (ADR-0029); UC-6.1 to `ledger/`, UC-6.3 to `process/`, UC-6.7 to `value/` | UC-6.3 is the takeover test. UC-6.7, the bus-factor index, is new in version 2: computed from real takeover and removal test results, never estimated, per role and process, never per person. Finding 2, decided |
-| **E7** Governance and autonomy | `governance/` | UC-7.4 (decision request) was added later and is largely built |
-| **E8** Model platform | `catalog/` and `accounting/` | UC-8.5 must be reconciled with ADR-0005 and ADR-0010, which have moved well beyond it. UC-8.10 in version 2 already says admission control and step boundaries as ADR-0005 does. UC-8.11 role-based agents is new in version 2: one agent, a shared core and role profiles that only narrow rights, every profile's evals green before a core change goes live — `catalog/`, as governance.md §5 already describes it |
+| **E7** Governance and autonomy | `governance/`; UC-7.4 to **`decision/`** | UC-7.4 (decision request) was added later. It is built for this repository, by hand (ADR-0017), and not in the product; it is filed under `decision`, the component that owns decision requests (DEC-0070). **Done in step 2** |
+| **E8** Model platform | `catalog/` and `accounting/` | UC-8.5 must be reconciled with ADR-0005 and ADR-0010, which have moved well beyond it — **done in step 2**, filed in `accounting/`. UC-8.10 in version 2 already says admission control and step boundaries as ADR-0005 does. UC-8.11 role-based agents is new in version 2: one agent, a shared core and role profiles that only narrow rights, every profile's evals green before a core change goes live — `catalog/`, as governance.md §5 already describes it |
 | **E9** Controlling | `value/` | UC-9.5 (bottleneck and waiting analysis) was added later |
 | **E10** Platform and administration | Mostly architecture, already decided. **UC-10.3 (usability for non-technical people)** goes to `command/` (ADR-0029) | |
 | **E11** Security, privacy, European values | `governance/` | Needs a check against what exists: much is claimed, little is built |
@@ -99,7 +102,11 @@ coach, making the human contribution visible — is real product substance, prom
 
 Same treatment: decide where it lives and record why.
 
-**4. Several use cases are already superseded by ADRs.** At minimum UC-8.5 (cost control) has
+**4. Several use cases are already superseded by ADRs.** *Resolved in step 2: UC-4.5 and UC-4.6
+name what ADR-0021 and ADR-0022 supersede in the definition's monitoring and escalation; UC-7.1
+names what ADR-0008 and ADR-0022 supersede of level 4; UC-8.5, filed in `accounting/` ahead of step
+3, names what ADR-0005 and ADR-0010 supersede. Each keeps the requirement, marks what is
+superseded, and points at the ADR.* At minimum UC-8.5 (cost control) has
 been overtaken by ADR-0005's amendments and ADR-0010, and UC-4.5 (self-healing) does not know
 about the failure/defect distinction of ADR-0021.
 
@@ -205,7 +212,8 @@ The whole migration does not fit in one reviewable pull request. Four, in this o
    checked against.
 2. **The use cases of `process`, `run` and `governance`.** The largest group and the one closest
    to what is built, so contradictions surface early. Includes UC-15.3, UC-15.4 and UC-15.5 from
-   E15.
+   E15. **Done**, with UC-7.4 in `decision/` and UC-8.5 in `accounting/`; DEC-0069 asks what its
+   use cases add beyond version 2.
 3. **`command`, `identity`, `catalog`, `accounting`.** Includes E14 entire, UC-15.1, UC-5.8,
    UC-8.11 and UC-1.7.
 4. **`knowledge`, `value`, `ledger`, `reporting`, plus what moves into `blueprints/`.** Includes
