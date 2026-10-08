@@ -20,7 +20,7 @@ The milestone is complete when two things hold. **Both now do**, since 2026-09-2
 left of the milestone's own list of items is below, and none of it is part of the criterion.
 
 1. *Every step carries method, exactness class and consumption.* **Holds.** Every step of the
-   three bundles that exist (`P-02`, `P-03` of dev-orchestration; `S-01` of self-operation)
+   four bundles that exist (`P-01`, `P-02`, `P-03` of dev-orchestration; `S-01` of self-operation)
    carries its method, the reason, the alternatives rejected, a fallback where the method
    varies, and an exactness class; `tests/exactness` holds the bundles to the rules, and every
    step run records what it consumed.
@@ -167,7 +167,13 @@ the work now comes from the backlog — the repository's issues — through a st
 `docs/process/next-task.md`, until Taktus runs P-01, P-02 and P-03 on its own instance.
 P-02 and P-03 already read the backlog's ready standard, by the same code `make backlog` runs:
 P-03 admits only a ready issue and claims it with `in-progress`, and P-02 writes only the
-sections an issue lacks, as a comment (issue #70, NTC-0040).
+sections an issue lacks, as a comment (issue #70, NTC-0040). P-01 Roadmap control runs as a
+bundle too: it holds the roadmap against the open issues by the issue numbers each roadmap item
+now names, and reports every item without an issue, every issue its milestone does not name and
+every `ready` label on content that fails the standard, with the backlog's order computed by
+the code `make backlog` runs (issue #71, NTC-0048, NTC-0049). It changes nothing. Whether that
+reconciliation stays a rule or becomes a model's, as the blueprint first described it, is the
+owner's (DEC-0080).
 
 **A budget is a budget, built** (ADR-0005, third amendment; DEC-0035). Every step is estimated
 before it is admitted, or refused: a worker by its estimate, an `llm` step by the input its model

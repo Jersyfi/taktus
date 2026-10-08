@@ -38,11 +38,19 @@ brief is retired.** The issues, the ready standard and the order do not change (
 
 ## Milestones
 
+Each milestone opens with its items, separated by ` · `, up to its completion criterion. An item
+names the issues that carry it, as `#N`; an item delivered before the backlog existed names the
+pull requests that delivered it. P-01 Roadmap control holds this list against the open issues
+and reports an item that names no issue and an issue its milestone's items do not name
+(`docs/process/README.md`, issue #71).
+
 ### `0.1.0` — control-plane minimum
-Contracts and conformance suite · command, plan, process, run, ledger · **method kinds and exactness
-classes in the data model** · workers `script` and `mlbench` · execution adapters `process` and
-`container` · connector `github` · CLI channel · OpenTelemetry · architecture tests and
-`import-linter` contracts
+Contracts and conformance suite (#1, #4, #8) · command, plan, process, run, ledger (#5, #6, #7) ·
+**method kinds and exactness classes in the data model** (#5) · workers `script` and `mlbench`
+(#4, #89) · execution adapters `process` and `container` (#10) · the cluster execution adapter
+(#65) · the Helm chart and the image build (#64) · the instance installed on its platform, its
+database backed up and the restore exercised (#66, #67) · connector `github` (#8, #13, #99) · CLI
+channel (#5) · OpenTelemetry (#10) · architecture tests and `import-linter` contracts (#5)
 
 **Complete when** Taktus turns one of its own issues into a pull request that passes CI, and every
 step carries method, exactness class and consumption.
@@ -138,19 +146,23 @@ are tasks of `0.2.0`, where the list of that milestone already places their subs
 the live run in CI stay in `0.1.0`.
 
 ### `0.2.0` — governance, limits, availability
-Autonomy levels 1–3 per process **and per action class** · anchors, configurable per tenant ·
-decision requests and the register · budgets and admission control — **a budget is a budget**:
-the estimate reserved at admission, a currency budget converted into tokens and enforced there,
-a named safety margin, estimate quality measured per worker, the residual in every report
-(ADR-0005, second amendment) · **blocked-time accounts** · **Takt measurement, not yet
-charged** · multi-instance operation with restart at step boundaries · the scheduler starting
-runs from a bundle's trigger, so that the removal test runs weekly without a script · event
-reactions, with the worker generating the closing section of a pull request it opens (DEC-0037,
-DEC-0050) · chat connector · **the owner-facing channel**: one event rendered for the repository,
-the owner's channel and the web app, and the owner's answer filed where it belongs · **the
+Autonomy levels 1–3 per process **and per action class** (#78) · anchors, configurable per
+tenant (#79) · decision requests and the register (#79) · budgets and admission control — **a
+budget is a budget**: the estimate reserved at admission, a currency budget converted into
+tokens and enforced there, a named safety margin, estimate quality measured per worker, the
+residual in every report (ADR-0005, second amendment) (#72, #74, #75) · **blocked-time
+accounts** (#80) · **Takt measurement, not yet charged** (#81) · multi-instance operation with
+restart at step boundaries (#73, #107, #122) · the scheduler starting runs from a bundle's
+trigger, so that the removal test runs weekly without a script (#69) · event reactions, with the
+worker generating the closing section of a pull request it opens (DEC-0037, DEC-0050) (#76,
+#77) · the identity component in place of the provisional identity (#82) · a process that would
+give an instance credentials for its own infrastructure refused at planning time (#83) · chat
+connector (#84) · **the owner-facing channel**: one event rendered for the repository, the
+owner's channel and the web app, and the owner's answer filed where it belongs (#85) · **the
 product finding**: what an instance meets that the product lacks becomes an issue here, carrying
-the run, the block and the waiting time · the use-case migration, steps 2 to 4
-(`docs/usecases/MIGRATION.md`), before the use cases it adds are built
+the run, the block and the waiting time (#86, #100) · P-01, P-02 and P-03 running on Taktus's
+own instance, and the standing brief retired (#70, #71, #87) · the use-case migration, steps 2
+to 4 (`docs/usecases/MIGRATION.md`), before the use cases it adds are built (#61, #62, #63)
 
 **Complete when** Taktus maintains its own repository for **14 days** with no intervention in
 execution, and every block is analysable by cause and duration.
@@ -158,32 +170,34 @@ execution, and every block is analysable by cause and duration.
 ### `0.3.0` — visibility
 Web app: dashboard, process diagram, run history, ledger, consumption, bottleneck overview — **seen
 as it happens**: live representations drawn from the records, from the overview down to a run and
-the origin of a result, reproducible and variable steps drawn apart (UC-6.10, DEC-0055) · process
-bundle format · pair editing with rollback · sessions with project knowledge · documentation
-beyond the repository: administration and end-user guides generated from it and kept consistent
-with it, never a second source of truth
+the origin of a result, reproducible and variable steps drawn apart (UC-6.10, DEC-0055) (#103,
+#104, #105) · process bundle format · pair editing with rollback · sessions with project
+knowledge · documentation beyond the repository: administration and end-user guides generated
+from it and kept consistent with it, never a second source of truth (#88)
 
 **Complete when** a process can be created, viewed, changed and rolled back entirely from the web app
 and chat, and you can see your own share of the waiting time.
 
 ### `0.4.0` — the ML bench and the second tenant
-`mlbench` worker doing real work: training, evaluation, embeddings, classical ML · method maturation
-with change proposals · model hub for in-house models · second coding worker · model routing ·
+`mlbench` worker doing real work: training, evaluation, embeddings, classical ML (#89) · method
+maturation with change proposals · model hub for in-house models · second coding worker, so that
+the removal test can say *changed* (#90) · model routing ·
 `dev-orchestration` blueprint · **second tenant onboarded at level 1–2**
 
 **Complete when** a step moves from a language model to a trained model on Taktus's own proposal —
 measurably cheaper and reproducible — and the second tenant produces its first milestone.
 
 ### `0.5.0` — value and dependency measurable
-Value ledger with revert analysis · role-based views · takeover test automated (the removal
-test runs since `0.1.0`; the conformance half of *verified* recorded, so that an adapter can
-reach it) · marginal-value recommendations · BI export · **exactness is a result, not a
-switch**: Taktus works out with the user how a step becomes exact, and every process carries
-an exactness statement — what was checked against what, what was not, what would slip
-through — in the dashboard and in every report (UC-4.13, UC-6.9) · **result defects handled**: deviation detection,
-error window and impact analysis over the provenance chain, remediation plans under the
-correction anchor, incidents delivered into the organisation's own tracking (UC-4.10 to
-UC-4.12, UC-6.8; ADR-0021 to ADR-0023)
+Value ledger with revert analysis · role-based views · principle 14 enforced in the data model:
+no metric assesses a named person (#94) · takeover test automated (the removal test runs since
+`0.1.0`; the conformance half of *verified* recorded, so that an adapter can reach it) (#93) ·
+marginal-value recommendations · BI export · **exactness is a result, not a switch**: Taktus
+works out with the user how a step becomes exact, and every process carries an exactness
+statement — what was checked against what, what was not, what would slip through — in the
+dashboard and in every report (UC-4.13, UC-6.9) (#91) · **result defects handled**: deviation
+detection, error window and impact analysis over the provenance chain, remediation plans under
+the correction anchor, incidents delivered into the organisation's own tracking (UC-4.10 to
+UC-4.12, UC-6.8; ADR-0021 to ADR-0023) (#92)
 
 **Complete when** principles 6 and 13 are measured rather than asserted, and limit recommendations
 come with numbers.
@@ -197,8 +211,8 @@ proposal
 **Complete when** a release happens end to end without intervention.
 
 ### `0.7.0` — second domain
-`it-operations` blueprint · connectors for operations and monitoring · autonomy per action class in
-production use
+`it-operations` blueprint (#95) · connectors for operations and monitoring · autonomy per action
+class in production use
 
 **Complete when** the second use case runs in production.
 

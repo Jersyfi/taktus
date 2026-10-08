@@ -7,8 +7,9 @@
 Runs as `make backlog`. Standard library only; it reads the repository's issues through the `gh`
 command line, which must be installed and signed in.
 
-The backlog is the repository's open issues, without pull requests and without the issues of a
-decision request or a needs request, which are the owner's and not work. For each issue:
+The backlog is the repository's open issues, without pull requests, without the issues of a
+decision request or a needs request, which are the owner's and not work, and without an issue
+labelled `report`, which carries a process's reports. For each issue:
 
 - **claimed** when it carries the label `in-progress`: a session works on it; another skips it;
 - **ready** when it carries the label `ready` and the ready standard holds: the three sections of
@@ -23,10 +24,12 @@ The standard is not written here: it is `src/taktus/components/run/domain/servic
 which P-03 Implementation's admission evaluates too, loaded by its path (issue #70).
 
 Order: earliest milestone, then priority (`priority:high`, `priority:normal`, `priority:low`), then
-issue number. `--next` prints only the issue a session takes next — the top ready, unclaimed one —
-or, when none is ready, the top issue that is not, which the session makes ready first, as P-02
-would. `--answers` prints the owner's comments on the issues of open requests, so that a session
-records every answer first (CLAUDE.md §9).
+issue number. The grouping and the order are the same module's, `backlog()`, which P-01 Roadmap
+control runs as its rule `backlog`, so that the process and this script print the same order for
+the same issues (issue #71). `--next` prints only the issue a session takes next — the top
+ready, unclaimed one — or, when none is ready, the top issue that is not, which the session makes
+ready first, as P-02 would. `--answers` prints the owner's comments on the issues of open
+requests, so that a session records every answer first (CLAUDE.md §9).
 
 The last line is the duration.
 """
@@ -49,9 +52,9 @@ ROOT = Path(__file__).resolve().parent.parent
 OPEN = ROOT / "docs" / "decisions" / "open"
 CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
 
-# The standard itself is one module, shared with the rule that P-03's admission evaluates
-# (issue #70). It is loaded by its path, so that this script needs neither the project's
-# environment nor a copy of the standard.
+# The standard and the order are one module, shared with the rules that P-03's admission and
+# P-01's ordering evaluate (issues #70, #71). It is loaded by its path, so that this script
+# needs neither the project's environment nor a copy of either.
 STANDARD = ROOT / "src" / "taktus" / "components" / "run" / "domain" / "service" / "ready.py"
 _spec = importlib.util.spec_from_file_location("taktus_ready_standard", STANDARD)
 if _spec is None or _spec.loader is None:
@@ -62,11 +65,12 @@ _spec.loader.exec_module(standard)
 SECTIONS = standard.SECTIONS
 CLAIMED = standard.CLAIMED
 PRIORITIES = standard.PRIORITIES
-NOT_WORK = {"decision-request", "needs-owner"}
-"""Labels of issues that are the owner's to answer or provide, not a session's to work."""
+NOT_WORK = standard.NOT_WORK
+"""Labels of issues that are not work: the owner's to answer or provide, or a process's reports."""
 sections = standard.sections
 blockers = standard.blockers
-VERSION = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+milestone_key = standard.milestone_key
+priority = standard.priority
 
 
 @dataclass
@@ -87,20 +91,10 @@ class Issue:
         return not self.reasons
 
 
-def milestone_key(title: str | None) -> tuple[int, int, int]:
-    """A milestone's place in the roadmap; an issue without one sorts last."""
-    if title and (m := VERSION.search(title)):
-        return (int(m[1]), int(m[2]), int(m[3]))
-    return (9999, 0, 0)
-
-
-def priority(labels: set[str]) -> int:
-    ranks = [PRIORITIES[label] for label in labels if label in PRIORITIES]
-    return min(ranks) if ranks else len(PRIORITIES)
-
-
-def order(issue: Issue) -> tuple[tuple[int, int, int], int, int]:
-    return (milestone_key(issue.milestone), priority(issue.labels), issue.number)
+def order(issue: Issue) -> tuple[Any, ...]:
+    """The backlog's order, the standard's: earliest milestone, then priority, then number."""
+    found: tuple[Any, ...] = standard.order(issue.number, issue.labels, issue.milestone)
+    return found
 
 
 def assess(issue: Issue, open_records: set[str], open_issues: set[int]) -> list[str]:
@@ -135,22 +129,46 @@ def fetch() -> list[dict[str, Any]]:
     return raw
 
 
+def readings(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The issues `gh` printed, in the shape the repository connector reads them: labels by
+    name, the milestone by its title — the shape the standard's `backlog()` takes."""
+    found = []
+    for item in raw:
+        milestone = item.get("milestone") or {}
+        found.append(
+            {
+                "number": int(item["number"]),
+                "title": str(item["title"]),
+                "body": str(item.get("body") or ""),
+                "labels": sorted(label["name"] for label in item.get("labels") or []),
+                "milestone": milestone.get("title") if isinstance(milestone, dict) else None,
+            }
+        )
+    return found
+
+
+def groups(raw: list[dict[str, Any]], records: set[str]) -> dict[str, list[dict[str, Any]]]:
+    """The backlog in its three groups and its order — ready, claimed, not ready — computed by
+    the standard's `backlog()`, the function P-01 Roadmap control's rule `backlog` runs."""
+    every = {int(item["number"]) for item in raw}
+    found: dict[str, list[dict[str, Any]]] = standard.backlog(readings(raw), records, every)
+    return found
+
+
 def load(raw: list[dict[str, Any]]) -> tuple[list[Issue], set[int]]:
     """The backlog's issues, and the numbers of every open issue (a blocker may be any)."""
     every = {int(item["number"]) for item in raw}
     issues = []
-    for item in raw:
-        labels = {label["name"] for label in item.get("labels") or []}
-        if labels & NOT_WORK:
+    for item in readings(raw):
+        if set(item["labels"]) & NOT_WORK:
             continue
-        milestone = item.get("milestone") or {}
         issues.append(
             Issue(
-                number=int(item["number"]),
-                title=str(item["title"]),
-                body=str(item.get("body") or ""),
-                labels=labels,
-                milestone=milestone.get("title") if isinstance(milestone, dict) else None,
+                number=item["number"],
+                title=item["title"],
+                body=item["body"],
+                labels=set(item["labels"]),
+                milestone=item["milestone"],
             )
         )
     return issues, every
@@ -204,11 +222,12 @@ def main() -> int:
         answers()
         print(f"{time.monotonic() - started:.2f}s")
         return 0
-    issues, every = load(fetch())
+    raw = fetch()
     records = open_record_ids()
-    for issue in issues:
-        issue.reasons = assess(issue, records, every)
     if args.next:
+        issues, every = load(raw)
+        for issue in issues:
+            issue.reasons = assess(issue, records, every)
         chosen, ready = next_issue(issues)
         if chosen is None:
             print("the backlog is empty")
@@ -219,25 +238,20 @@ def main() -> int:
             for reason in chosen.reasons:
                 print(f"  - {reason}")
         return 0
-    ordered = sorted(issues, key=order)
-    print("ready, in the order a session takes them")
-    for issue in (i for i in ordered if i.ready and not i.claimed):
-        print(f"  #{issue.number:<4} {issue.milestone or '-':<7} {_prio(issue):<7} {issue.title}")
-    print("claimed")
-    for issue in (i for i in ordered if i.claimed):
-        print(f"  #{issue.number:<4} {issue.milestone or '-':<7} {_prio(issue):<7} {issue.title}")
-    print("not ready")
-    for issue in (i for i in ordered if not i.ready and not i.claimed):
-        print(f"  #{issue.number:<4} {issue.milestone or '-':<7} {_prio(issue):<7} {issue.title}")
-        for reason in issue.reasons:
-            print(f"         - {reason}")
+    found = groups(raw, records)
+    for heading, group in (
+        ("ready, in the order a session takes them", "ready"),
+        ("claimed", "claimed"),
+        ("not ready", "not_ready"),
+    ):
+        print(heading)
+        for entry in found[group]:
+            milestone, level = entry["milestone"] or "-", entry["priority"] or "-"
+            print(f"  #{entry['number']:<4} {milestone:<7} {level:<7} {entry['title']}")
+            for reason in entry["reasons"] if group == "not_ready" else []:
+                print(f"         - {reason}")
     print(f"{time.monotonic() - started:.2f}s")
     return 0
-
-
-def _prio(issue: Issue) -> str:
-    named = [label.split(":", 1)[1] for label in issue.labels if label in PRIORITIES]
-    return named[0] if named else "-"
 
 
 if __name__ == "__main__":

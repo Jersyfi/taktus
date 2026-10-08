@@ -2,12 +2,12 @@
 
 Four kinds are executable in this version. A `rule` step evaluates one of the built-in rules
 (`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
-of a backlog task, a text template — or calls a connector operation (`rule: connector`,
-ADR-0024). A `wait` step waits for a duration through the clock, or for an external state read
-through a connector. A `worker` step hands a task to an execution unit behind the worker
-contract. An `llm` step asks a model through the model port. Every other method has no executor
-yet and is refused before the run starts, so that a run never stops in the middle for a reason
-that was known at the beginning.
+of a backlog task, the backlog in its order, the roadmap held against the backlog, a text
+template — or calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits
+for a duration through the clock, or for an external state read through a connector. A `worker`
+step hands a task to an execution unit behind the worker contract. An `llm` step asks a model
+through the model port. Every other method has no executor yet and is refused before the run
+starts, so that a run never stops in the middle for a reason that was known at the beginning.
 
 **References.** Inside the untyped parts of a step's work — a worker task's `inputs`, a
 connector call's `input`, the values of a template, a check or a prompt — an object with a
@@ -116,6 +116,36 @@ class ReadyRule(Value):
         return self
 
 
+class BacklogRule(Value):
+    """The backlog in its order (DEC-0051, `domain.service.ready.backlog`), over a repository's
+    reading of its open issues — the same function `make backlog` runs. `issues` are readings
+    as `repository.issues.list` returns them; `open_records` the file names of the directory
+    that holds the open records (or entries with a `name`). An issue named under "Blocked by"
+    is open while it is among `issues`.
+
+    The result is `{ready, claimed, not_ready, disagreements, text}`: the three groups in the
+    order a session takes them, every issue labelled `ready` whose content fails the standard
+    (an open blocker is not such a failure: the label stays rightly), and both as text a person
+    reads. It never fails on what it finds: finding is its result. Admissible for `exact`."""
+
+    rule: Literal["backlog"]
+    issues: Any
+    open_records: Any
+
+
+class RoadmapRule(Value):
+    """The roadmap held against the open issues (`domain.service.roadmap`): every item of a
+    milestone that names no issue, and every open issue that is work in a milestone whose items
+    do not name it. `roadmap` is the roadmap's text; `issues` readings as `issues` above.
+
+    The result is `{milestones, disagreements, text}`. A text in which no milestone is found
+    fails the step — it is not a roadmap. Admissible for `exact`."""
+
+    rule: Literal["roadmap"]
+    roadmap: Any
+    issues: Any
+
+
 class TemplateRule(Value):
     """The result is `text` with every `${name}` replaced by the named value; a value that is
     not a string is inserted as its JSON text. A name the values do not carry fails the step."""
@@ -161,7 +191,14 @@ class ConnectorRule(Value):
 
 
 type RuleWork = Annotated[
-    ConstantRule | VerifyArtifactRule | CheckRule | ReadyRule | TemplateRule | ConnectorRule,
+    ConstantRule
+    | VerifyArtifactRule
+    | CheckRule
+    | ReadyRule
+    | BacklogRule
+    | RoadmapRule
+    | TemplateRule
+    | ConnectorRule,
     Field(discriminator="rule"),
 ]
 
@@ -351,6 +388,10 @@ def referenced_values(work: Work) -> list[Any]:
         return [condition.value for condition in work.conditions]
     if isinstance(work, ReadyRule):
         return [work.issue, work.open_records, work.open_issues]
+    if isinstance(work, BacklogRule):
+        return [work.issues, work.open_records]
+    if isinstance(work, RoadmapRule):
+        return [work.roadmap, work.issues]
     if isinstance(work, TemplateRule | LlmWork):
         return [work.values]
     if isinstance(work, WaitWork) and work.until is not None:

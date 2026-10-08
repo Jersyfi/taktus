@@ -185,3 +185,38 @@ def test_the_standard_is_the_one_p03s_admission_evaluates() -> None:
             assert str(refused) == f"issue #{task.number} is not ready: " + "; ".join(reasons)
         else:
             raise AssertionError(f"the rule admitted what the script refuses: {reasons}")
+
+
+def test_the_order_is_the_one_p01s_rule_computes() -> None:
+    """One order, not two kept alike (issue #71): for the same issues, the groups and the order
+    `make backlog` prints are the ones the rule `backlog` of P-01 Roadmap control computes."""
+    from taktus.components.run.domain.model import BacklogRule
+    from taktus.components.run.domain.service import rules
+
+    def raw(number: int, milestone: str | None, *labels: str, blocked: str = "nothing") -> dict:
+        return {
+            "number": number,
+            "title": f"task {number}",
+            "body": FORM.format(blocked=blocked),
+            "labels": [{"name": label} for label in labels],
+            "milestone": {"title": milestone} if milestone else None,
+        }
+
+    given = [
+        raw(9, "0.2.0", "ready", "priority:high"),
+        raw(3, "0.2.0", "ready", "priority:low"),
+        raw(8, "0.1.0", "ready", "priority:low"),
+        raw(4, "0.2.0", "ready", "priority:high", "in-progress"),
+        raw(5, "0.1.0", "priority:normal"),
+        raw(6, "0.1.0", "ready", "priority:high", blocked="NEED-0011 and #5"),
+        raw(2, None, "decision-request"),
+        raw(1, None, "report"),
+    ]
+    script = backlog.groups(given, {"NEED-0011"})
+    rule = BacklogRule(rule="backlog", issues=[], open_records=[])
+    process = rules.backlog(rule, backlog.readings(given), [{"name": "NEED-0011-a-token.md"}])
+    for group in ("ready", "claimed", "not_ready"):
+        assert [e["number"] for e in script[group]] == [e["number"] for e in process[group]]
+        assert [e["reasons"] for e in script[group]] == [e["reasons"] for e in process[group]]
+    assert [e["number"] for e in script["ready"]] == [8, 9, 3]
+    assert [e["number"] for e in script["not_ready"]] == [6, 5]

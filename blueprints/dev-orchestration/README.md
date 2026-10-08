@@ -5,12 +5,12 @@ that drive a software product from its roadmap. `blueprint.yaml` describes all e
 triggers, autonomy levels, steps and guardrails — as a curated template, in the shape the bundle
 format of `0.3.0` will make binding.
 
-Two of the eleven exist as bundles that run today, under `processes/`, in the shape
+Three of the eleven exist as bundles that run today, under `processes/`, in the shape
 `examples/README.md` documents. The rest remain descriptions.
 
 | Process | State | Bundle |
 |---|---|---|
-| P-01 Roadmap control | description | — |
+| **P-01 Roadmap control** — where the roadmap and the issues disagree, and the backlog's order, as a report | **runs** | [`processes/P-01-roadmap-control.yaml`](processes/P-01-roadmap-control.yaml) |
 | **P-02 Refinement** — an issue that lacks a section of the ready standard gains it as a comment | **runs** | [`processes/P-02-refinement.yaml`](processes/P-02-refinement.yaml) |
 | **P-03 Implementation** — an issue that is ready becomes a pull request | **runs** | [`processes/P-03-implementation.yaml`](processes/P-03-implementation.yaml) |
 | P-04 Review | description | — |
@@ -22,20 +22,36 @@ Two of the eleven exist as bundles that run today, under `processes/`, in the sh
 | P-10 Repository hygiene | description | — |
 | P-11 Billing | later; the `finance` blueprint | — |
 
-## The two that run
+## The three that run
 
-Both name capabilities only — `repository.issues`, `repository.comments`,
+All three name capabilities only — `repository.issues`, `repository.comments`,
 `repository.branches`, `repository.pipelines`, `repository.pullrequests`, `repository.labels`, `repository.files`;
 `code.read`, `code.edit`, `code.test`, `shell.sandboxed`; the model purpose `reasoning` — and
 configuration maps them to a connector, a worker and a model (`.env.example`: `TAKTUS_CONNECTORS`,
-`TAKTUS_WORKER` or `TAKTUS_EXECUTION`, `TAKTUS_MODEL_*`). No product is named in either file.
+`TAKTUS_WORKER` or `TAKTUS_EXECUTION`, `TAKTUS_MODEL_*`). No product is named in any of them.
 
-Both read the backlog's **ready standard** (`docs/process/README.md`, DEC-0051): three
+All three read the backlog's **ready standard** (`docs/process/README.md`, DEC-0051): three
 sections — what must be achieved, how it is verified, where the boundary lies — a component, a
 milestone, one priority label, the label `ready`, and nothing open under "Blocked by". The
 standard is one module, `src/taktus/components/run/domain/service/ready.py`, which the rule
 `ready` evaluates and `make backlog` runs too, so that a process and a session judge an issue the
-same way (issue #70).
+same way (issue #70). The backlog's order — earliest milestone, then priority, then issue
+number — is in the same module, `backlog()`, which `make backlog` prints from and P-01's rule
+`backlog` runs (issue #71).
+
+**P-01 Roadmap control** (autonomy 3, seven steps, no model): read the roadmap on `main`
+(`rule`, connector read, with the commit it was read at), read the open issues to the last page
+(a reading that stopped short fails) and the directory of open records (`rule`, connector
+reads), order the backlog (`rule` `backlog`, `exact` — the groups and the order `make backlog`
+prints, and every issue labelled `ready` whose content fails the standard; an open blocker is
+not such a failure, because the label claims the content), reconcile (`rule` `roadmap`, `exact`
+— every item of a milestone that names no issue, and every open issue in a milestone whose items
+do not name it, read from the issue numbers each item names, `#N`), compose the report
+(`rule`), write it as a comment on one issue labelled `report` (`rule`, outward effect: an
+`egress.write` entry). P-01 proposes: it creates no issue, sets no milestone or label and closes
+nothing, until its autonomy is raised (M3.9). The blueprint first described the reconciliation
+as a model's judgement; the rule is the provisional answer to DEC-0080, which asks the owner
+which method it keeps (M3.13).
 
 **P-02 Refinement** (autonomy 3, seven steps): read the issue and its comments (`rule`, connector
 reads), check that P-02 has not commented on it already (`rule`, `exact`), find the sections of
@@ -65,12 +81,14 @@ the base branch: a person merges.
 
 Every step carries its method, the reason, the alternatives rejected, a fallback where the
 method can vary, and its exactness class; `tests/exactness` holds the `exact` steps to rules.
-`tests/integration/test_dev_orchestration.py` runs both bundles end to end with the outside
+`tests/integration/test_dev_orchestration.py` runs the three bundles end to end with the outside
 faked — the repository service, the model endpoint and the coding agent — and everything inside
 real: one comment with the missing section, the claim, one branch with the worker's files on
 one marked commit, one pull request with one label, an egress entry for each write; and the
 refusals — a filled issue left alone by P-02, an issue missing a section, one without a
-milestone and one blocked by an open record refused by P-03 with the reason.
+milestone and one blocked by an open record refused by P-03 with the reason; and P-01's two
+reports — `none` for a consistent roadmap and backlog, and each kind of disagreement exactly
+once for one that is not — each with the order `tools/backlog.py` computes for the same issues.
 
 ## Their autonomy, with the reason
 
@@ -79,6 +97,7 @@ the bundles state it in full, and this is the short form.
 
 | Process | Level | Why | Toward the next level |
 |---|---|---|---|
+| P-01 Roadmap control | 3 | the one outward effect is a report a person reads; every verdict in it is a rule's over what was read, and a person carries out what it proposes | a history of reports whose proposals a person carried out unchanged, over a month of daily runs; then applying them itself — a milestone set, a label removed — is proposed (M3.9) |
 | P-02 Refinement | 3 | the one outward effect is a comment a person reads before anything builds on it; the model's answer leaves only through a check; a second run writes nothing | a quality history — sections a person did not rewrite, over a month — and a stronger check on the answer's structure; then the raise is proposed (M3.9) |
 | P-03 Implementation | 4 | nothing writes to a protected branch, the pipeline's verdict is the gate, a person merges, every outward effect is reversible until the merge; the worker runs in isolation with exactly the hosts and credentials the frame names **where the execution kind provides it** (DEC-0022) | — |
 
@@ -113,7 +132,10 @@ enforced.
 ## What a run needs that the blueprint does not say
 
 - **Inputs.** A bundle declares what a run is given (`inputs:` — name, description, example),
-  and `taktusctl run --input name=value` supplies it. P-02 needs the issue number; P-03 needs
+  and `taktusctl run --input name=value` supplies it. P-01 needs `roadmap_path`
+  (`docs/roadmap.md` here), `records_path`, and `report_issue`: the number of the one issue,
+  labelled `report`, whose comments carry its reports, which a person opens once; a daily run
+  adds one comment to it. P-02 needs the issue number; P-03 needs
   it too, plus `records_path` — the directory of `main` that holds the open decision and needs
   records, `docs/decisions/open` here — the clone URL, the one host the worker may reach, the name of the coding
   worker's credential, and `closing_section`: the section the repository generates for the end
