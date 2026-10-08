@@ -38,3 +38,11 @@ class NoConnector(RunError):
 
 class UnknownRun(RunError):
     pass
+
+
+class RunExists(RunError):
+    """A run was to be created under an identifier a run already has. A trigger's firing
+    derives its run's identifier, so this is the answer to the same firing a second time."""
+
+    def __init__(self, run_id: str) -> None:
+        super().__init__(f"run {run_id!r} exists already")

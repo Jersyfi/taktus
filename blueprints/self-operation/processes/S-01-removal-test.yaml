@@ -4,7 +4,8 @@
 # The first process Taktus operates for itself, and the check of the product's own central
 # claim (CLAUDE.md §6, ADR-0003): every integration can be removed without breaking a process.
 # A test that runs once proves nothing; this one is triggered weekly, once per configured
-# integration. Until the scheduler acts on triggers (0.2.0), tools/removal_test.sh runs it.
+# integration: the scheduler of an instance that runs the daemon starts it from the trigger
+# below. tools/removal_test.sh runs the same by hand, and for the weekly CI job.
 #
 #     uv run taktusctl run --process blueprints/self-operation/processes/S-01-removal-test.yaml \
 #         --input integration=worker.endpoint
@@ -25,15 +26,21 @@ autonomy:
     leaves the system, and the verdict is reproducible from the ledger; a person watches the
     weekly report and samples the rehearsals
   toward_next: >
-    a quality history — a month of weekly runs whose verdicts a person checked against the
-    rehearsal runs in the ledger and found right — and the scheduler starting the run from the
-    bundle's trigger (0.2.0), so that nobody starts it by hand; then Taktus proposes level 4
-    with that evidence (anchors.taktus.md M3.9)
+    a quality history — a month of weekly runs, started by the scheduler from the bundle's
+    trigger, whose verdicts a person checked against the rehearsal runs in the ledger and
+    found right; then Taktus proposes level 4 with that evidence (anchors.taktus.md M3.9)
 author: the repository
 reason: the removal test as a process that runs weekly, not a script that ran once
 
+# Weekly, Mondays 00:00 UTC: the elected scheduler starts one run per integration the instance
+# lists, each with that integration as its input (ADR-0035).
 triggers:
   - schedule: weekly
+    each:
+      input: integration
+      operation: orchestrator.integrations.list
+      select: integrations
+      field: integration
 
 inputs:
   integration:

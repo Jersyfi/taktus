@@ -76,6 +76,7 @@ from taktus.components.run.domain.model import (
     RuleFailed,
     Run,
     RunError,
+    RunExists,
     RunState,
     StepRun,
     StepState,
@@ -118,7 +119,13 @@ from taktus.ports.connector import (
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.model import Calculability, ModelError, PriceTable, Prompt, price
 from taktus.ports.objectstore import ObjectStore
-from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
+from taktus.ports.persistence import (
+    PersistenceError,
+    ProvenanceStore,
+    Repository,
+    Tenant,
+    UnitOfWork,
+)
 from taktus.ports.platform import Platform
 from taktus.ports.queue import RUN_EXECUTE, Job, Queue
 from taktus.ports.telemetry import Span, Telemetry
@@ -178,6 +185,13 @@ class StartRun:
     engine's configured margin."""
     rehearsal: bool = False
     """A rehearsal: no outward connector operation acts (ADR-0030)."""
+    run_id: str | None = None
+    """The run's identifier when the caller derives it — a trigger's firing does, so that the
+    same firing names the same run. A run that exists under it is never created again:
+    `RunExists`. None draws a fresh one."""
+    trigger: Mapping[str, Any] | None = None
+    """The trigger that started the run, as its document. Recorded as `run.triggered` beside
+    `run.created`, in the same transaction (ADR-0035)."""
 
     @property
     def identity(self) -> str:
@@ -349,7 +363,7 @@ class RunEngine:
     async def _create(self, command: StartRun, *, enqueue: bool = False) -> Run:
         now = self._clock.now()
         run = Run(
-            id=self._ids.new("run"),
+            id=command.run_id or self._ids.new("run"),
             plan_id=command.plan.id,
             process_version=command.process_version,
             tenant=command.tenant,
@@ -367,10 +381,33 @@ class RunEngine:
         self._check_executable(run)
         job = None
         if enqueue:
-            job = Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
-        run = await self._commit(run, "run.created", actor=command.actor, enqueue=job)
+            # A derived run gets a derived job: two creators of the same run collide on the
+            # job's identifier even when neither saw the other's run (ADR-0035).
+            job_id = (
+                self._ids.new("job")
+                if command.run_id is None
+                else "job_" + command.run_id.removeprefix("run_")
+            )
+            job = Job(id=job_id, kind=RUN_EXECUTE, payload={"run_id": run.id})
+        try:
+            run = await self._commit(
+                run,
+                "run.created",
+                actor=command.actor,
+                enqueue=job,
+                new=command.run_id is not None,
+                trigger=command.trigger,
+            )
+        except PersistenceError as error:
+            if command.run_id is not None and await self._exists(run.tenant, run.id):
+                raise RunExists(run.id) from error
+            raise
         await self._state_budget(run, command.actor)
         return run
+
+    async def _exists(self, tenant: Tenant, run_id: str) -> bool:
+        async with self._work.transaction(tenant):
+            return await self._runs.get(tenant, run_id) is not None
 
     async def _state_budget(self, run: Run, actor: str | None) -> None:
         """Say what the budget can promise when it is set, not afterwards (principle 8): the
@@ -1637,18 +1674,33 @@ class RunEngine:
         actor: str | None = None,
         trace: Trace | None = None,
         enqueue: Job | None = None,
+        new: bool = False,
+        trigger: Mapping[str, Any] | None = None,
     ) -> Run:
         """One transaction: the run as it now is, and — when `kind` is given — the ledger entry
         that says what changed. Either both land or neither does. A step that finished with a
         result gets its provenance record in the same transaction, bound to that entry; a job
-        to `enqueue` lands in it too."""
+        to `enqueue` lands in it too. `new` refuses a run that exists already (`RunExists`);
+        `trigger` records the trigger that started the run as `run.triggered`."""
         run = run.model_copy(update={"updated_at": self._clock.now()})
         async with self._work.transaction(run.tenant):
+            if new and await self._runs.get(run.tenant, run.id) is not None:
+                raise RunExists(run.id)
             await self._runs.put(run.tenant, run)
             if enqueue is not None and self._queue is not None:
                 await self._queue.enqueue(run.tenant, enqueue)
             if kind is not None:
                 entry = await self._record(run, kind, step=step, outcome=outcome, actor=actor)
+                if trigger is not None:
+                    # The ledger is content-free (ADR-0006): the entry names the trigger's kind
+                    # and carries the digest of its document; the command keeps the document.
+                    await self._record(
+                        run,
+                        "run.triggered",
+                        outcome=str(trigger.get("kind", "trigger")),
+                        actor=actor,
+                        digest=_digest(_canonical(dict(trigger))),
+                    )
                 if step is not None and trace is not None and step.done:
                     await self._provenance.append(
                         run.tenant,

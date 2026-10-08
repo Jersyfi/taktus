@@ -4,6 +4,7 @@ from taktus.components.run.domain.model.errors import (
     NoWorker,
     RuleFailed,
     RunError,
+    RunExists,
     UnknownRun,
     UnsupportedWork,
 )
@@ -64,6 +65,7 @@ __all__ = [
     "RuleWork",
     "Run",
     "RunError",
+    "RunExists",
     "RunState",
     "StepRun",
     "StepState",

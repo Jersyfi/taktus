@@ -7,9 +7,11 @@
 # configured with (blueprints/self-operation/processes/S-01-removal-test.yaml): each run
 # withholds one integration, rehearses the registered processes that use it (no outward call
 # is sent, ADR-0030), restores it and records the verdict — broke, changed, untested,
-# exception — in the ledger as `removal.tested` and in the adapter's maturity. The scheduler will start these runs weekly from the bundle's trigger
-# once it acts on triggers (0.2.0); until then this script is what the weekly job calls
-# (.github/workflows/removal-test.yml), and what a person runs by hand.
+# exception — in the ledger as `removal.tested` and in the adapter's maturity. On an instance
+# that runs the daemon's scheduler, the bundle's weekly trigger starts the same runs (ADR-0035);
+# this script is what the weekly job of the repository's CI calls
+# (.github/workflows/removal-test.yml) until an installed instance does, and what a person runs
+# by hand.
 #
 # What it needs: the same configuration the instance runs with (TAKTUS_WORKER or
 # TAKTUS_EXECUTION, TAKTUS_CONNECTORS, TAKTUS_MODEL_*, TAKTUS_DATABASE_URL to keep the state in
