@@ -103,5 +103,5 @@ today the interface answers only when asked, and that way arrives with an ADR be
 
 The roadmap's `0.3.0`, *visibility*, names a dashboard and a process diagram; blueprint UC-01 asks
 for "process diagrams with their data" (`AF-01-dev-orchestration.md` §5). Neither version of the
-project definition has this use case. The owner stated it on 2026-10-08; whether it stands is
-DEC-0055, and until the answer it is in force as written.
+project definition has this use case. The owner stated it on 2026-10-08 and accepted it as
+written the same day (DEC-0055).

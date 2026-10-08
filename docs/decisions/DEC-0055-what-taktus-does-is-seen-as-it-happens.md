@@ -143,3 +143,10 @@ one and, after `0.3.0` has started, the rework of what was built on it.
 the figure of 5 seconds, add it: "DEC-0055: Option A, with 2 seconds." To raise the guiding image
 into the vision as well: "DEC-0055: Option A, and raise the guiding image as a vision request." A
 free-text answer is read back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-08
+**Answer:** Option A, as the owner gave it in [#101](https://github.com/Jersyfi/taktus/issues/101#issuecomment-6068229988). UC-6.10 stands as written, with the 5 seconds, in `0.3.0`. The vision is not changed.
+**Reasoning given:** none beyond the option; the recommendation's reason stands: the idea in a form that can be checked, with the risk the metaphor carries held by a condition.
+**Recorded in:** [#102](https://github.com/Jersyfi/taktus/pull/102): the use case no longer says it is provisional; the roadmap's `0.3.0` names it (M1.7); the backlog gains its three tasks in milestone `0.3.0`, #103, #104 and #105.
