@@ -499,3 +499,162 @@ def test_a_branch_left_by_an_earlier_attempt_stops_the_run_in_the_words_first_ru
     leftover = first_run_pattern("P03_LEFTOVER_BRANCH")
     assert any(leftover.search(line) for line in output.splitlines()), output
     assert outside.state()[REPOSITORY]["pulls"] == 0  # type: ignore[index]
+
+
+# --- P-01 Roadmap control (issue #71) ------------------------------------------------------------
+
+ROADMAP = """# Roadmap
+
+### `0.1.0` — first
+{first}
+
+**Complete when** it is done.
+
+**Done so far:** the seed (#1) and more (#42).
+
+### `0.2.0` — second
+{second}
+
+**Complete when** it is done.
+"""
+
+
+def make_backlog_script() -> object:
+    """`tools/backlog.py`, the script behind `make backlog`, loaded by its path."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("backlog_script", ROOT / "tools" / "backlog.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # its dataclass resolves annotations through its module
+    spec.loader.exec_module(module)
+    return module
+
+
+def run_p01(outside: Outside, state_dir: Path, report: int) -> tuple[str, str]:
+    """P-01 once: what `taktusctl run` printed, and the report it wrote."""
+    before = outside.get(f"/repos/{REPOSITORY}/issues/{report}/comments")
+    assert isinstance(before, list)
+    output = run_bundle(
+        outside,
+        state_dir,
+        "P-01-roadmap-control.yaml",
+        "roadmap_path=docs/roadmap.md",
+        f"records_path={RECORDS}",
+        f"report_issue={report}",
+    )
+    assert "state finished" in output, output
+    for step in ("order", "reconcile"):
+        assert re.search(rf"{step}\s+rule\s+exact\s+succeeded", output), output
+    writes = [line.split()[2:4] for line in output.splitlines() if "egress." in line]
+    assert writes == [["egress.write", "write-report"]], output
+    after = outside.get(f"/repos/{REPOSITORY}/issues/{report}/comments")
+    assert isinstance(after, list) and len(after) == len(before) + 1
+    return output, str(after[-1]["body"])
+
+
+def section(report: str, heading: str) -> list[str]:
+    """The lines of one section of the report, up to the next heading or the footer."""
+    part = report.split(f"### {heading}\n", 1)[1]
+    part = re.split(r"^(?:### |---$)", part, maxsplit=1, flags=re.MULTILINE)[0]
+    return [line for line in part.strip().splitlines() if line.strip()]
+
+
+def order_in(report: str) -> dict[str, list[int]]:
+    """The order the report prints, group by group, as issue numbers."""
+    groups: dict[str, list[int]] = {}
+    current = ""
+    for line in section(report, "The backlog in its order"):
+        if line.startswith("**"):
+            current = {"Ready": "ready", "Claimed": "claimed", "Not ready": "not_ready"}[
+                line.strip("*").split(",")[0]
+            ]
+            groups[current] = []
+        elif m := re.match(r"- #(\d+) ", line):
+            groups[current].append(int(m[1]))
+    return groups
+
+
+def order_of_make_backlog(outside: Outside) -> dict[str, list[int]]:
+    """What `make backlog` prints for the fake's open issues, by the script's own code."""
+    script = make_backlog_script()
+    every = outside.get(f"/repos/{REPOSITORY}/issues?state=open&per_page=100")
+    assert isinstance(every, list)
+    raw = [issue for issue in every if "pull_request" not in issue]
+    found = script.groups(raw, {"DEC-0999"})  # type: ignore[attr-defined]
+    return {group: [e["number"] for e in found[group]] for group in found}
+
+
+def test_roadmap_control_reports_nothing_for_a_consistent_backlog(
+    outside: Outside, tmp_path: Path
+) -> None:
+    """A roadmap whose items name their issues, and issues in the milestones that name them: the
+    report says no disagreement, and its order is the one `make backlog` prints."""
+    first = outside.send("POST", f"/repos/{REPOSITORY}/milestones", {"title": "0.1.0"})
+    second = outside.send("POST", f"/repos/{REPOSITORY}/milestones", {"title": "0.2.0"})
+    complete = FORM.format(verified="hello.txt says hello.", blocked="nothing")
+    lacking = FORM.format(verified="_No response_", blocked="nothing")
+    ready = outside.issue("Ready", complete, ["task", "ready", "priority:high"], second["number"])  # type: ignore[arg-type]
+    unready = outside.issue("Unready", lacking, ["task", "priority:low"], first["number"])  # type: ignore[arg-type]
+    report = outside.issue("Reports of P-01", "", ["report"], None)
+    outside.commit_on_main(
+        {
+            "docs/roadmap.md": ROADMAP.format(
+                first=f"The first item (#{unready})", second=f"A greeting (#{ready})"
+            ),
+            f"{RECORDS}/DEC-0999-an-open-decision.md": "# DEC-0999\n",
+        }
+    )
+
+    _, body = run_p01(outside, tmp_path / "state", report)
+    assert section(body, "Where the roadmap and the issues disagree") == ["none"], body
+    assert section(body, "Issues labelled `ready` that fail the standard") == ["none"], body
+    assert order_in(body) == order_of_make_backlog(outside), body
+    assert order_in(body) == {"ready": [ready], "claimed": [], "not_ready": [unready, 1]}
+    assert "Written by Taktus, process P-01 Roadmap control" in body
+    assert outside.labels(unready) == ["priority:low", "task"], "P-01 changes nothing"
+
+
+def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_path: Path) -> None:
+    """Every kind of disagreement, each once: an item without an issue, an issue its
+    milestone's items do not name — named elsewhere or nowhere — and an issue labelled `ready`
+    whose content fails the standard; an issue blocked by an open record keeps its label
+    rightly and is not reported."""
+    first = outside.send("POST", f"/repos/{REPOSITORY}/milestones", {"title": "0.1.0"})
+    second = outside.send("POST", f"/repos/{REPOSITORY}/milestones", {"title": "0.2.0"})
+    complete = FORM.format(verified="hello.txt says hello.", blocked="nothing")
+    lacking = FORM.format(verified="_No response_", blocked="nothing")
+    blocked = FORM.format(verified="hello.txt says hello.", blocked="DEC-0999")
+    labelled = ["task", "ready", "priority:normal"]
+    one, two = first["number"], second["number"]
+    ready = outside.issue("Ready", complete, ["task", "ready", "priority:high"], two)  # type: ignore[arg-type]
+    failing = outside.issue("Labelled, lacking", lacking, labelled, one)  # type: ignore[arg-type]
+    elsewhere = outside.issue("Blocked, placed elsewhere", blocked, labelled, two)  # type: ignore[arg-type]
+    nowhere = outside.issue("Placed nowhere", complete, ["task", "priority:low"], two)  # type: ignore[arg-type]
+    report = outside.issue("Reports of P-01", "", ["report"], None)
+    outside.commit_on_main(
+        {
+            "docs/roadmap.md": ROADMAP.format(
+                first=f"The first item (#{failing}) · the second item (#{elsewhere})",
+                second=f"A greeting (#{ready}) · an item without an issue",
+            ),
+            f"{RECORDS}/DEC-0999-an-open-decision.md": "# DEC-0999\n",
+        }
+    )
+
+    _, body = run_p01(outside, tmp_path / "state", report)
+    assert section(body, "Where the roadmap and the issues disagree") == [
+        "- 0.2.0: the item “an item without an issue” names no issue",
+        f"- #{elsewhere} is in milestone 0.2.0; the roadmap places it in 0.1.0",
+        f"- #{nowhere} is in milestone 0.2.0; the roadmap does not name it",
+    ], body
+    assert section(body, "Issues labelled `ready` that fail the standard") == [
+        f"- #{failing} is labelled `ready` and fails the standard: "
+        "section 'How it is verified' is missing or empty"
+    ], body
+    for number in (failing, elsewhere, nowhere):
+        disagreements = body.split("### The backlog in its order")[0]
+        assert len(re.findall(rf"#{number}\b", disagreements)) == 1, body
+    assert order_in(body) == order_of_make_backlog(outside), body
+    assert outside.labels(failing) == ["priority:normal", "ready", "task"], "it only proposes"
+    assert outside.state()[REPOSITORY]["comments"] == 1  # type: ignore[index]

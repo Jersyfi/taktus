@@ -1,0 +1,212 @@
+# P-01 Roadmap control — the roadmap and the backlog held against each other, as a report.
+#
+# The first process of the dev-orchestration blueprint (blueprint.yaml, README.md), as a
+# bundle that runs. Every reference to the outside is a capability; the connector configured
+# for `repository.*` (TAKTUS_CONNECTORS) is what it resolves to. No model is asked.
+#
+#     uv run taktusctl run --process blueprints/dev-orchestration/processes/P-01-roadmap-control.yaml \
+#         --input roadmap_path=docs/roadmap.md --input records_path=docs/decisions/open \
+#         --input report_issue=<the issue labelled `report` that carries P-01's reports>
+#
+# It reads the roadmap on the base branch, the repository's open issues to the last page and
+# the directory of open records, and reports where the roadmap and the issues disagree: an
+# item of a milestone that names no issue, an open issue in a milestone whose items do not
+# name it, and an issue labelled `ready` whose content fails the ready standard. It computes
+# the backlog's order with the function `make backlog` runs, so that both print the same order
+# for the same issues (docs/process/README.md, DEC-0051). Its one outward effect is that
+# report, a comment on one fixed issue. It proposes and changes nothing: it creates no issue,
+# sets no milestone or label, and closes nothing, until its autonomy is raised (M3.9).
+#
+# The reconciliation is a rule over the issue numbers the roadmap's items name, not a model's
+# matching of the items' words to the issues' titles. That choice of method is the owner's
+# (anchors.taktus.md M3.13); this bundle carries it provisionally, as DEC-0080 recommends.
+
+id: p01-roadmap-control
+version: "1"
+name: P-01 Roadmap control
+autonomy:
+  level: 3
+  reason: >
+    the one outward effect is a report on an issue that a person reads; every verdict in it is
+    a rule's over what was read, and the process changes nothing it reports on — a person sets
+    the milestone, edits the roadmap or removes the label it proposes
+  toward_next: >
+    a history of reports whose proposals a person carried out unchanged, over a month of daily
+    runs; then applying them itself — a milestone set, a label removed — is proposed with that
+    evidence (anchors.taktus.md M3.9)
+author: the repository
+reason: the first process of the dev-orchestration blueprint, runnable
+
+triggers:
+  - schedule: daily
+  - event: roadmap.changed
+
+inputs:
+  roadmap_path:
+    description: the path of the roadmap on the base branch
+    example: docs/roadmap.md
+  records_path:
+    description: >
+      the directory of the base branch that holds the open decision and needs records, one
+      file each, named by its identifier (NEED-NNNN-…, DEC-NNNN-…); a record named under
+      "Blocked by" is open while its file is there
+    example: docs/decisions/open
+  report_issue:
+    description: >
+      the number of the issue whose comments carry the reports — one issue, labelled `report`
+      so that the backlog does not count it as work
+    example: 1
+
+# Connector calls are counted in requests: two for the roadmap, up to twenty for the issues,
+# two for the directory and three for the comment.
+limits:
+  quota: { units: 40 }
+
+steps:
+  - id: read-roadmap
+    method: rule
+    reason: the roadmap is read verbatim from the base branch, with the commit it was read at
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    work:
+      rule: connector
+      operation: repository.files.read
+      input:
+        path: { $input: roadmap_path }
+        ref: main
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: read-issues
+    method: rule
+    reason: >
+      the state is the repository's open issues with their labels and milestones, read from
+      the system of record to the last page; a reading that stopped short fails, because an
+      issue left out would be reported as missing
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    work:
+      rule: connector
+      operation: repository.issues.list
+      input:
+        state: open
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, equals: true }
+
+  - id: read-open-records
+    method: rule
+    reason: >
+      a decision or needs record named under "Blocked by" blocks while its file is in the
+      directory of open records on the base branch — where `make backlog` looks too
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    work:
+      rule: connector
+      operation: repository.files.list
+      input:
+        path: { $input: records_path }
+        ref: main
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: order
+    method: rule
+    reason: >
+      the backlog's order — earliest milestone, then priority, then issue number — and which
+      issue labelled `ready` fails the standard are the backlog's own rule over the fields
+      read: the rule `backlog`, the same function `make backlog` runs, so that the process and
+      a session cannot order the same issues differently
+    rejected:
+      - method: llm
+        why: an order fixed by a rule needs no judgement, and a judgement could differ from it
+    exactness: exact
+    depends_on: [read-issues, read-open-records]
+    work:
+      rule: backlog
+      issues: { $from: read-issues, $select: output.issues }
+      open_records: { $from: read-open-records, $select: output.entries }
+
+  - id: reconcile
+    method: rule
+    reason: >
+      where the stated intent and the real state disagree is read from the issue numbers each
+      roadmap item names, against each open issue's milestone: an item without an issue, an
+      issue its milestone's items do not name. A rule gives the same report for the same
+      roadmap and issues on every run, and a person fixes a disagreement by naming the issue
+      in the roadmap or moving its milestone
+    rejected:
+      - method: llm
+        why: >
+          matching the items' words to the issues' titles is a judgement that can differ from
+          one daily run to the next, and the report would then change with nothing changed;
+          the blueprint first described this step that way, and DEC-0080 asks the owner
+          which method it keeps
+    exactness: exact
+    depends_on: [read-roadmap, read-issues]
+    work:
+      rule: roadmap
+      roadmap: { $from: read-roadmap, $select: output.content }
+      issues: { $from: read-issues, $select: output.issues }
+
+  - id: compose-report
+    method: rule
+    reason: the report is the two rules' findings and the order between fixed headings
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [order, reconcile]
+    work:
+      rule: template
+      text: |
+        ## Roadmap control
+
+        `${roadmap_path}` at `${commit}`, held against the open issues.
+
+        ### Where the roadmap and the issues disagree
+
+        ${roadmap}
+
+        ### Issues labelled `ready` that fail the standard
+
+        ${failing}
+
+        ### The backlog in its order
+
+        ${order}
+
+        ---
+        Written by Taktus, process P-01 Roadmap control. It proposes and changes nothing: a
+        person names an issue in the roadmap, sets a milestone or removes a label
+        (docs/process/README.md). The order is the one `make backlog` prints.
+      values:
+        roadmap_path: { $input: roadmap_path }
+        commit: { $from: read-roadmap, $select: output.commit }
+        roadmap: { $from: reconcile, $select: disagreements_text }
+        failing: { $from: order, $select: disagreements_text }
+        order: { $from: order, $select: text }
+
+  - id: write-report
+    method: rule
+    reason: writing a comment is an API call with a fixed body; the effect leaves the system
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    depends_on: [compose-report]
+    work:
+      rule: connector
+      operation: repository.comments.create
+      input:
+        number: { $input: report_issue }
+        body: { $from: compose-report }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
