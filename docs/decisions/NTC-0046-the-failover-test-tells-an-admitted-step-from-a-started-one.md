@@ -44,8 +44,11 @@ step goes back to the worker's checkpoint if one arrived, to its start otherwise
   change that was not committed. The old assertion then failed in 3 of 4 runs, with the same
   message as on CI. Each time the run that failed held `compute` in state `admitted`, and the
   victim held it in `running`. The new assertion passed 6 of 6 runs under the same delay.
-- Without the delay, the changed test passed 20 of 20 runs alone, and again while `make test`
-  ran beside it (counts in the pull request).
+- Without the delay, the changed test passed 20 of 20 runs alone, and 10 of 10 while
+  `make gates` ran beside it.
+- #125 (the fence of #107) does not touch admission, start or recovery. After it merged, the
+  old assertion still failed in 2 of 4 runs under the delay, the new one passed 6 of 6, and 20
+  of 20 without the delay.
 
 ## 3. What was considered
 
