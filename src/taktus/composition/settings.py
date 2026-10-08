@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from taktus.components.run.domain.service import budget as budgeting
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.model import PriceTable
 
@@ -199,7 +200,13 @@ class BudgetSettings:
     budget)."""
     uncalibrated_margin: float = 1.0
     """`TAKTUS_BUDGET_UNCALIBRATED_MARGIN`: what a worker with no calibration history reserves
-    beyond its estimate — 1.0, twice the estimate, by default (DEC-0034)."""
+    beyond its estimate — 1.0, twice the estimate, by default (DEC-0034). A value below the
+    floor of 0.1 holds, and is said (`below_floor`, DEC-0047)."""
+
+    def below_floor(self) -> str | None:
+        """The warning the startup log carries when the uncalibrated margin is set below the
+        floor; None at or above it (DEC-0047)."""
+        return budgeting.below_floor(self.uncalibrated_margin)
 
     def table(self) -> PriceTable | None:
         """The price table the file holds, validated; None when none is configured."""

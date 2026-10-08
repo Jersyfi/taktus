@@ -186,7 +186,20 @@ MARGIN_FLOOR = 0.10
 (DEC-0043). Ten observations without an overrun are evidence about those ten steps, not a
 promise about the eleventh. The floor bounds how far observations narrow the margin; an
 operator who sets the uncalibrated margin itself below it (`TAKTUS_BUDGET_UNCALIBRATED_MARGIN`)
-has set a smaller limit, and that one holds."""
+has set a smaller limit, and that one holds — and is never silent (`below_floor`, DEC-0047)."""
+
+
+def below_floor(uncalibrated_margin: float, floor: float = MARGIN_FLOOR) -> str | None:
+    """What Taktus says when an operator set the uncalibrated margin below the floor: the value
+    holds, because a limit is the operator's decision (M3.10), and it is said where it is set and
+    in every report that relies on it (DEC-0047). None at or above the floor: nothing to say."""
+    if uncalibrated_margin >= floor:
+        return None
+    return (
+        f"the uncalibrated margin is set to {uncalibrated_margin:g}, below the floor of "
+        f"{floor:g}: workers reserve less beyond their estimate than observations alone would "
+        "ever narrow them to (DEC-0047)"
+    )
 
 
 def models_of(quantities: ConsumptionQuantities) -> frozenset[str]:

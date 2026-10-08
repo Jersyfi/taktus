@@ -3,7 +3,8 @@
 The tokens every step recorded, per model and price kind, priced at the table the run's budget
 statement names — the table it was held to, whatever is configured today. `--prices FILE`
 prices the same tokens at another table, to compare. What cannot be priced is named; nothing
-is counted as free.
+is counted as free. A run held with an uncalibrated margin an operator set below the floor says
+so beside its money (DEC-0047).
 """
 
 from __future__ import annotations
@@ -102,4 +103,6 @@ def render(result: RunCost) -> str:
         )
     for missing in result.unpriced:
         lines.append(f"unpriced {missing}")
+    if result.below_floor is not None:
+        lines.append(f"margin   {result.below_floor}")
     return "\n".join(lines)
