@@ -220,6 +220,12 @@ uv run taktusctl conformance run --contract connector/v1 --endpoint http://local
 | **reference** | maintained by the project, the model for new adapters |
 
 **Production processes at autonomy level 3 and above may only use adapters at *verified* or above.**
+The run engine holds it before a step starts (ADR-0039): a step at level 3 or above whose
+adapter is below *verified* is not run on it, and the finding names the step and the adapter. The
+engine asks the catalog's record through its maturity port; a rehearsal and the loopback
+connector, which act on nothing outside, are not held to it (NTC-0079). While nothing records the
+conformance half, no integration is *verified*, and a real run at level 3 halts at its first step
+that needs one.
 
 The conformance suite is the real asset here — not the adapter code, but the ability to check.
 Without it, "interchangeable" is an assertion.

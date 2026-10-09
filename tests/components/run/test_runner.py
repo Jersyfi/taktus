@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeIdentifiers, FakeWorker, HeldObjects, InnerStep
+from fakes.maturity import VERIFIED
 
 from taktus.adapters.driven.clock import SystemClock
 from taktus.adapters.driven.memory import (
@@ -114,6 +115,7 @@ class World:
     def another_engine(self, objects: ObjectStore) -> RunEngine:
         """An engine of its own over the same stores, as another instance would have."""
         return RunEngine(
+            maturities=VERIFIED,
             runs=self.runs,
             work=self.persistence,
             objects=objects,
@@ -132,7 +134,7 @@ class World:
             id=self.ids.new("pln"),
             command_id="cmd_1",
             goal="g",
-            autonomy_level=2,
+            autonomy_level=3,
             steps=steps,
             results_in=PlanResult.RUN,
             status=PlanStatus.COMMISSIONED,
@@ -414,7 +416,7 @@ async def test_a_derived_run_is_created_once_and_carries_its_trigger() -> None:
         id=world.ids.new("pln"),
         command_id="cmd_1",
         goal="g",
-        autonomy_level=2,
+        autonomy_level=3,
         steps=(step,),
         results_in=PlanResult.RUN,
         status=PlanStatus.COMMISSIONED,

@@ -6,6 +6,11 @@ invocation a command, the command a commissioned plan — and then the run is cr
 identifier and returns. A runner (`taktusd` with the `runner` role) claims the job and
 executes the run; `GET /runs/{id}` on the HTTP surface, or `taktusctl run --resume`, shows
 where it got to. Submitting needs a database: in memory there is no daemon to claim.
+
+A run the daemon executes waits for a person where its autonomy level asks for one (ADR-0039).
+`--resume RUN --approve STEP` confirms a step at level 2, `--resume RUN --performed STEP`
+reports a step's act at level 1 performed; the answer is recorded and the run is handed back to
+the daemon with a job, and the command line prints the run's identifier again.
 """
 
 from __future__ import annotations
@@ -25,7 +30,9 @@ from taktus.adapters.driving.cli.run_command import (
     _budget,
     _command,
     _load,
+    answers,
     parse_inputs,
+    refused,
     require_inputs,
     resolve_identity,
 )
@@ -34,8 +41,8 @@ from taktus.components.command.application.service import CommissionPlan
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
 )
-from taktus.components.process.domain.model import InvalidProcess
-from taktus.components.run.application.service import StartRun
+from taktus.components.process.domain.model import InvalidProcess, RaiseRefused
+from taktus.components.run.application.service import ConfirmSteps, StartRun
 from taktus.components.run.domain.model import RunError
 
 
@@ -65,16 +72,46 @@ def submit(
         list[str] | None,
         typer.Option("--input", metavar="NAME=VALUE", help="One input of the run, repeatable."),
     ] = None,
+    resume: Annotated[
+        str | None,
+        typer.Option(
+            "--resume", metavar="RUN_ID", help="The waiting run --approve or --performed answers."
+        ),
+    ] = None,
+    approve: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--approve", metavar="STEP", help="Confirm this step, waiting at level 2. Repeatable."
+        ),
+    ] = None,
+    performed: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--performed",
+            metavar="STEP",
+            help="Report this step's act, proposed at level 1, performed by you. Repeatable.",
+        ),
+    ] = None,
+    approve_raise: Annotated[
+        bool,
+        typer.Option(
+            "--approve-raise",
+            help="Approve, as the invoking person, a raise of the bundle's autonomy level.",
+        ),
+    ] = False,
 ) -> None:
     """Queue a process bundle for the daemon and print the run's identifier.
 
-    Exit code 0: queued. Exit code 2: the bundle or the invocation is wrong, or there is no
-    database to queue in.
+    Exit code 0: queued. Exit code 2: the bundle or the invocation is wrong, there is no
+    database to queue in, or a raise of the bundle's autonomy level is refused.
     """
     wiring: Wiring = ctx.obj
     try:
         bundle = _load(process)
         inputs = parse_inputs(input or [])
+        answer = answers(resume, approve or [], performed or [])
+        if resume is not None and answer is None:
+            raise ValueError("--resume names the waiting run that --approve or --performed answer")
     except (OSError, yaml.YAMLError, ValueError) as error:
         typer.echo(f"cannot read {process}: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -88,8 +125,14 @@ def submit(
                 identity=identity,
                 tenant=tenant,
                 inputs=inputs,
+                resume=resume,
+                answer=answer,
+                approve_raise=approve_raise,
             )
         )
+    except RaiseRefused as error:
+        refused(error)
+        raise typer.Exit(code=2) from error
     except InvalidProcess as error:
         typer.echo(f"{process} is not a valid process:", err=True)
         for finding in error.findings:
@@ -110,6 +153,9 @@ async def _submit(
     identity: str | None,
     tenant: str,
     inputs: dict[str, Any],
+    resume: str | None = None,
+    answer: tuple[tuple[str, ...], bool] | None = None,
+    approve_raise: bool = False,
 ) -> str:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
         if not services.queued:
@@ -120,8 +166,26 @@ async def _submit(
         typer.echo(f"state  {services.storage}", err=True)
         placed = await resolve_identity(services, identity, tenant)
         version = await services.register_version.execute(
-            RegisterProcessVersion(bundle, tenant=tenant, by=placed.identity)
+            RegisterProcessVersion(
+                bundle,
+                tenant=tenant,
+                by=placed.identity,
+                approved_by=placed.identity if approve_raise else None,
+            )
         )
+        if resume is not None and answer is not None:
+            steps, performed = answer
+            run = await services.engine.confirm(
+                ConfirmSteps(
+                    run_id=resume,
+                    steps=steps,
+                    actor=placed.identity,
+                    tenant=tenant,
+                    performed=performed,
+                    enqueue=True,
+                )
+            )
+            return run.id
         budget = _budget(version)
         require_inputs(version, inputs)
         command = _command(services, version, placed, inputs)
@@ -143,6 +207,7 @@ async def _submit(
                 actor=placed.identity,
                 tenant=tenant,
                 inputs=inputs,
+                actions=version.autonomy.action_levels,
             )
         )
         return run.id

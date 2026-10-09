@@ -6,8 +6,8 @@ epic: E7
 serves: [P10, P11, P12]
 state: building
 version: 0.6.0
-tests: [tests/components/process/test_bundle_parsing.py::test_autonomy_without_its_reason_is_refused]
-adrs: {ADR-0008: e6a4e033abd4, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0026: ccc4bd1f5423}
+tests: [tests/components/process/test_bundle_parsing.py::test_autonomy_without_its_reason_is_refused, tests/governance/test_autonomy.py::test_an_action_at_level_two_waits_while_the_rest_of_a_level_three_run_continues, tests/governance/test_autonomy.py::test_at_level_two_no_step_starts_before_a_person_confirmed_it, tests/governance/test_autonomy.py::test_at_level_one_taktus_proposes_and_executes_no_act, tests/governance/test_autonomy.py::test_at_level_three_the_run_proceeds_without_confirmations, tests/governance/test_autonomy.py::test_a_level_three_step_is_not_run_on_an_adapter_below_verified, tests/governance/test_autonomy.py::test_no_level_switches_off_the_stop_the_reports_or_the_escalation, tests/governance/test_autonomy.py::test_no_field_of_the_statement_reaches_the_stop_the_reports_or_the_escalation, tests/governance/test_autonomy.py::test_a_tenant_of_one_person_sets_any_of_the_three_levels, tests/governance/test_raise.py::test_a_raise_without_a_persons_approval_is_refused_and_recorded, tests/governance/test_raise.py::test_a_raise_without_the_history_is_refused_even_with_the_approval, tests/governance/test_raise.py::test_a_proposal_carries_the_evidence_and_never_applies_itself, tests/governance/test_raise.py::test_no_code_path_stores_a_version_but_the_one_that_asks_for_the_approval]
+adrs: {ADR-0008: e6a4e033abd4, ADR-0022: 69572977f46b, ADR-0023: 949c6f4e13af, ADR-0026: ccc4bd1f5423, ADR-0039: c716494667e5}
 supersedes: null
 ---
 
@@ -66,6 +66,8 @@ registration; anchors (ADR-0008) and the correction anchor (ADR-0022); the emerg
 rule (UC-7.2, ADR-0023); `docs/architecture/governance.md` §1; maturity and its threshold from level 3
 (`docs/architecture/contracts.md` §3, definition chapter 5.3; NTC-0051). Levels 1 to 3 per process and per
 action class are on the roadmap's `0.2.0`, level 4 on `0.6.0`, which is this use case's version.
+How levels 1 to 3 are enforced at the step boundary, and where a level rises, is ADR-0039; how
+the threshold from level 3 reads for a rehearsal and for Taktus reached by Taktus is NTC-0079.
 Definition `UC-7.1`.
 
 **What the accepted decisions supersede in the definition's text.** The definition describes level

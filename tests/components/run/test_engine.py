@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeClock, FakeIdentifiers, FakeWorker, InnerStep
+from fakes.maturity import VERIFIED
 
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
@@ -109,6 +110,7 @@ class Harness:
         self.provenance = MemoryProvenanceStore(self.persistence)
         self.workers = list(workers) or [FakeWorker()]
         self.engine = RunEngine(
+            maturities=VERIFIED,
             runs=self.runs,
             work=self.persistence,
             objects=self.objects,
@@ -130,7 +132,7 @@ class Harness:
             id="pln_1",
             command_id="cmd_1",
             goal="g",
-            autonomy_level=2,
+            autonomy_level=3,
             steps=self.steps,
             results_in=PlanResult.RUN,
             status=PlanStatus.COMMISSIONED,

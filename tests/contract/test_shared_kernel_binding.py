@@ -137,6 +137,12 @@ def assert_same_shape(
         sub_defs = defs
         if "$ref" in sub:
             sub, sub_defs = resolve(sub["$ref"], defs, base)
+        values = sub.get("additionalProperties")
+        if "properties" not in sub and isinstance(values, dict):
+            # A map: its values are the nested shape (Autonomy.actions).
+            sub = values
+            if "$ref" in sub:
+                sub, sub_defs = resolve(sub["$ref"], sub_defs, base)
         if sub.get("type") == "object":
             assert_same_shape(sub, nested, sub_defs, base, where=f"{where}.{name}")
     for name, sub in schema.get("properties", {}).items():

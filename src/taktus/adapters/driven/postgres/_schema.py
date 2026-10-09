@@ -264,6 +264,7 @@ run = Table(
     Column("work", JSONB, nullable=False),
     Column("inputs", JSONB, nullable=False),
     Column("rehearsal", Boolean, nullable=False),  # ADR-0030
+    Column("actions", JSONB, nullable=False, server_default=text("'{}'::jsonb")),  # ADR-0039
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),
@@ -296,6 +297,7 @@ step_run = Table(
     _at("finished_at", nullable=True),
     _at("waiting_since", nullable=True),  # ADR-0037
     Column("waits", Integer, nullable=False, server_default=text("0")),
+    Column("confirmed_by", Text),  # ADR-0039
     PrimaryKeyConstraint("tenant", "run_id", "step_id"),
     ForeignKeyConstraint(
         ["tenant", "run_id"], ["run.tenant", "run.id"], ondelete="CASCADE", name="step_run_run"

@@ -245,6 +245,7 @@ class Triggers:
                 inputs=inputs,
                 run_id=run_id,
                 trigger=triggered,
+                actions=version.autonomy.action_levels,
             )
         )
 

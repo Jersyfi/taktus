@@ -90,6 +90,7 @@ from taktus.composition.execution import (
 )
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
+from taktus.composition.maturity import CatalogMaturities
 from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.triggers import Triggers
@@ -244,6 +245,9 @@ async def wire(
                     connectors=connectors,
                     models=models,
                     recordings=recordings,
+                    maturities=CatalogMaturities(
+                        PostgresRepository(persistence, AdapterMaturity), persistence
+                    ),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -281,6 +285,7 @@ async def wire(
                     PostgresRepository(persistence, ProcessVersion),
                     persistence,
                     PostgresRepository(persistence, Process),
+                    ledger=ledger,
                 ),
                 commission=commission,
                 intake=ReceiveIntakeHandler(

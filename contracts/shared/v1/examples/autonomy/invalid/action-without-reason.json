@@ -1,0 +1,8 @@
+{
+  "level": 3,
+  "reason": "watched through reports",
+  "toward_next": "a quality history",
+  "actions": {
+    "repository.pullrequest.merge": { "level": 2, "toward_next": "a pipeline verdict" }
+  }
+}

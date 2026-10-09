@@ -29,6 +29,7 @@ import yaml
 from fakes import FakeClock, FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.connector import READ, WRITE
 from fakes.identity import added_by_command_line, directory
+from fakes.maturity import VERIFIED
 
 from integration.test_first_slice import taktusctl
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
@@ -273,8 +274,8 @@ FAKE_PROCESS: dict[str, Any] = {
     "version": "1",
     "name": "Read a record, write one",
     "autonomy": {
-        "level": 2,
-        "reason": "a test process: a read, and a write that leaves the system",
+        "level": 3,
+        "reason": "a test process: a read, and a write that leaves the system, run unattended",
         "toward_next": "nothing; it exists for the removal test's tests",
     },
     "author": "the tests",
@@ -331,6 +332,7 @@ def connector_services(connector: FakeConnector) -> Services:
         workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
     ) -> RunEngine:
         return RunEngine(
+            maturities=VERIFIED,
             runs=runs,
             work=persistence,
             objects=objects,
@@ -370,7 +372,7 @@ def connector_services(connector: FakeConnector) -> Services:
     )
     return Services(
         identities=directory((TENANT,), persistence=persistence, clock=clock).directory,
-        register_version=RegisterProcessVersionHandler(versions, persistence),
+        register_version=RegisterProcessVersionHandler(versions, persistence, ledger=ledger),
         commission=commission,
         engine=engine_for(pools.workers, pools.connectors, pools.models),
         provenance=ProvenanceQuery(provenance, runs, ledger, persistence),

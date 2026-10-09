@@ -14,7 +14,7 @@ from taktus.components.run.application.service import ResumeRun
 from taktus.components.run.domain.model import Cause, RunState, StepState
 from taktus.composition.local import LocalWiring
 
-from .test_first_slice import TENANT, bundle, entries_of, start, verifies
+from .test_first_slice import TENANT, bundle, entries_of, start, through, verified, verifies
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "script" / "worker.py"
@@ -83,6 +83,7 @@ async def test_a_worker_step_stopped_mid_way_resumes_in_a_new_unit(tmp_path: Pat
         run = await services.engine.resume(
             ResumeRun(run_id=run.id, actor="idn_test", tenant=TENANT)
         )
+        run = await through(services, run)
         assert run.state is RunState.FINISHED
         ids = [a.id for a in run.step_run("compute").artifacts]
         assert ids == [f"output-{n}" for n in range(1, 6)]
@@ -96,6 +97,8 @@ async def test_the_process_adapter_is_refused_at_level_3_and_the_run_escalates(
 ) -> None:
     document = bundle(with_overreach=False)
     document["autonomy"] = {"level": 3, "reason": "the test needs the level", "toward_next": "-"}
+    # Verified, so that what refuses the step is the execution rule and not its maturity.
+    verified(tmp_path / "state", "worker.process")
     async with wiring().services(state_dir=tmp_path / "state", worker_endpoint="") as services:
         run = await start(services, document)
         assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE

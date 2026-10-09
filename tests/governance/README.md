@@ -11,3 +11,9 @@ Anchors hold, limits are never breached, least privilege throughout (`docs/archi
   version; without it the chart's tests skip, and under `TAKTUS_REQUIRE_HELM` (CI) they fail.
 - `test_image_workflow.py`: the release images are built on a tag only, pushed only where a
   registry is named, and never deployed.
+- `test_autonomy.py`, `test_raise.py`: autonomy levels 1 to 3 at the step boundary (UC-7.1,
+  ADR-0039) — the lowest of the process's and its actions' levels holds, a step at level 2
+  waits for a person's confirmation, a step that acts at level 1 is proposed and never
+  executed, from level 3 only a verified adapter serves; no level switches off the stop, the
+  reports or the escalation; a raise needs a person's approval and the quality history, and
+  nothing stores a version without asking for both.

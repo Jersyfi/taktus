@@ -55,12 +55,13 @@ taktus/
 │   │       ├── application/
 │   │       │   ├── service/         # one use case per module
 │   │       │   └── query/           # read side (CQRS): run/application/query/provenance.py walks and verifies the chain; recordings.py finds the recorded response a rehearsal answers an outward call with (ADR-0030)
-│   │       └── ports/               # ports this component alone needs (run/ports/workers.py, connectors.py, models.py)
+│   │       └── ports/               # ports this component alone needs (run/ports/workers.py, connectors.py, models.py, maturity.py)
 │   │   … run/domain/service/provenance.py builds and verifies the provenance chain (ADR-0021); run/domain/service/rehearsal.py chooses the recording — the last real call, never a rehearsal (ADR-0030)
 │   │   … governance/domain/service/egress.py decides whether a result has left the system (ADR-0022)
 │   │   … governance/domain/service/capacity.py turns platform observations and growth per run into findings with a figure and a date; application/service/report_capacity.py records a crossing (docs/architecture/platform.md)
 │   │   … run/domain/service/capacity.py admits a job against the platform: memory for the unit plus a reserve, storage above its refusal share
 │   │   … run/domain/service/waiting.py a step whose worker is at capacity waits: the doubling delay, the ceiling, the wait's record for blocked time (ADR-0037)
+│   │   … run/domain/service/autonomy.py which autonomy level holds for a step and what it asks of a person before it starts; process/domain/service/autonomy.py what raises a level and when a raise is admitted, applied where a version is registered; process/application/service/propose_raise.py the proposal with its evidence, which never applies itself (ADR-0039)
 │   │   … catalog/domain/model/maturity.py is an adapter's maturity with its last removal result; catalog/domain/service/removal.py the rules that decide broke, changed, untested or exception, and when a process can be rehearsed; catalog/application/service/record_removal.py writes the result and the ledger entry `removal.tested`
 │   │   … run/domain/service/budget.py the budget's rules: the line less the margin, calibration and its seed, the reservation, the worker's ceiling, what a budget can promise; accounting/ meters a run from the ledger and prices it at the table its budget statement names (`taktusctl cost`, which also prints the statement's word that the uncalibrated margin was set below the floor)
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
@@ -105,7 +106,7 @@ taktus/
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
-│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); replies.py answers a sender in a channel through its connector's reply operation (ADR-0040); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under
+│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); replies.py answers a sender in a channel through its connector's reply operation (ADR-0040); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under; maturity.py answers the run's maturity port from the catalog's record (ADR-0039)
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 │   ├── script/                      # the reference worker: shell commands, no AI

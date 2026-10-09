@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeWorker, HeldObjects
+from fakes.maturity import VERIFIED
 from sqlalchemy import text
 
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
@@ -84,6 +85,7 @@ class Instance:
 
     def engine(self, objects: ObjectStore) -> RunEngine:
         return RunEngine(
+            maturities=VERIFIED,
             runs=self.runs,
             work=self.persistence,
             objects=objects,
@@ -157,7 +159,7 @@ async def submit(engine: RunEngine, clock: SystemClock) -> Run:
         id=f"pln_{os.urandom(4).hex()}",
         command_id="cmd_1",
         goal="g",
-        autonomy_level=2,
+        autonomy_level=3,
         steps=tuple(step for step, _ in definitions),
         results_in=PlanResult.RUN,
         status=PlanStatus.COMMISSIONED,

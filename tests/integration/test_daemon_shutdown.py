@@ -83,6 +83,7 @@ async def test_sigterm_mid_run_lands_on_a_boundary_and_the_next_daemon_resumes(
     async with wire(configured, EnvironmentConfiguration({})) as wired:
         run = await submit(wired, bundle(1))
     database = Database(postgres_url)
+    await database.verified("worker.endpoint")  # the bundle runs at level 3 (ADR-0039)
     environment = {
         "TAKTUS_DATABASE_URL": postgres_url,
         "TAKTUS_ROLES": "runner",

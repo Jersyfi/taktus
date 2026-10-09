@@ -276,10 +276,45 @@ def outside(tmp_path: Path) -> Iterator[Outside]:
                 process.kill()
 
 
+VERIFIED = ("worker.endpoint", "model.endpoint", "connector.channel.repo")
+"""The integrations the processes run on here. P-01 and P-02 run at level 3, P-03 at 4: a step
+on an integration runs only where it is *verified* (ADR-0039). The fakes are recorded so in
+the state the runs read, as both halves of a real verification would record them, so that what
+is tested is the processes' own logic. A live run needs the real integrations verified."""
+
+
+def verified(state_dir: Path) -> None:
+    """Write the catalog's maturity records for `VERIFIED` into the state's snapshot."""
+    path = state_dir / "adaptermaturity.json"
+    if path.exists():
+        return
+    at = "2026-10-09T12:00:00Z"
+    records = [
+        {
+            "id": adapter,
+            "tenant": "default",
+            "family": adapter.split(".", 1)[0],
+            "conformance_passed_at": at,
+            "removal": {
+                "integration": adapter,
+                "family": adapter.split(".", 1)[0],
+                "verdict": "changed",
+                "tested_at": at,
+                "run_id": "run_removal",
+            },
+            "updated_at": at,
+        }
+        for adapter in VERIFIED
+    ]
+    state_dir.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"default": records}), encoding="utf-8")
+
+
 def run_bundle(
     outside: Outside, state_dir: Path, bundle: str, *inputs: str, expect: int = 0
 ) -> str:
     added_by_command_line(taktusctl(), "idn_test", outside.environment(state_dir))
+    verified(state_dir)
     command = [taktusctl(), "run", "--process", str(BLUEPRINT / bundle)]
     for given in inputs:
         command += ["--input", given]

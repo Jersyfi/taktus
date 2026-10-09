@@ -379,6 +379,7 @@ class Loopback:
                     tenant=tenant,
                     inputs=inputs,
                     rehearsal=True,
+                    actions=version.autonomy.action_levels,
                 )
             )
         except (RunError, ValueError) as error:
