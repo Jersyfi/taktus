@@ -2,7 +2,7 @@
 
 **Kind:** action
 **Raised in:** [#PRNUMBER](https://github.com/Jersyfi/taktus/pull/PRNUMBER), for issue #85
-**Issue:** [#ISSUENUMBER](https://github.com/Jersyfi/taktus/issues/ISSUENUMBER)
+**Issue:** [#164](https://github.com/Jersyfi/taktus/issues/164)
 **Needed by:** 2026-11-07
 **Foreseeable since:** [#PRNUMBER](https://github.com/Jersyfi/taktus/pull/PRNUMBER), where the owner-facing channel was built
 
