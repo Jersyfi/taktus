@@ -15,7 +15,7 @@ The directory name is the definition in kebab-case: `assignment-state` is `Assig
 
 ## Transcripts
 
-Nine of the fifteen checks concern a whole stream, not one object. Their fixtures use the
+Nine of the seventeen checks concern a whole stream, not one object. Their fixtures use the
 `Transcript` shape — the assignment, the estimate the worker gave for it, and every event in order —
 and fail one of the stream rules in `src/taktus/conformance/rules.py`, which
 `tests/conformance/test_worker_v1_fixtures.py` applies to every file here:
@@ -45,6 +45,17 @@ which `tests/conformance/test_worker_v1_fixtures.py` applies to every file here.
 all its places answers one more with `503` and a problem body, and records nothing of it. An
 accepted one more is no violation when a held assignment had finished by then: the worker may
 have had a free place (`valid/a-place-freed-before-the-answer.json`).
+
+## Id probes
+
+W-16 and W-17 concern an assignment's id, not a stream. Their fixtures use two shapes, and fail
+the two id rules in `src/taktus/conformance/rules.py`, which
+`tests/conformance/test_worker_v1_fixtures.py` applies to every file here:
+
+| Directory | Shape | Rule |
+|---|---|---|
+| `unknown-id-probe/` | `UnknownIdProbe`: an id never posted, and the answer to its state | W-16: `404` with a problem body |
+| `repeated-id-probe/` | `RepeatedIdProbe`: the state of an assignment held, the answer to its id posted again, and the state after | W-17: `409` with a problem body, and the state after still the first assignment's — the same `accepted_at`, a `last_seq` no lower, and a finished state unchanged |
 
 ## Placeholders
 

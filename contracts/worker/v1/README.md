@@ -121,8 +121,9 @@ declared so that a reader of the response sees the obligation.
 The control plane chooses the `assignment_id`. It records the id before it posts the
 assignment, and may post the same id again when it does not know whether the first post arrived.
 A worker therefore answers an id it already holds with `409` and takes nothing new, and the
-state of an id it does not hold with `404` (`openapi.yaml`). An assignment the worker accepted
-keeps running when the client that posted it goes away; whoever holds the id may read its
+state of an id it does not hold with `404` (`openapi.yaml`). Checks W-17 and W-16 hold a
+worker to these two answers. An assignment the worker accepted keeps running when the client
+that posted it goes away; whoever holds the id may read its
 stream from any `seq` and stop it (ADR-0038). `context.checkpoint_ref` is present only when the
 assignment resumes an earlier one; the worker continues after that checkpoint and produces no
 artifact it produced before it.
@@ -262,8 +263,10 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 | W-13 | a host outside `allowed_hosts` is refused, not ignored |
 | W-14 | a running total that would cross `limits` halts the assignment at its next step boundary: no step starts once the reported running total of a limited kind has reached its limit, and the assignment ends `stopped` with a checkpoint and names the `limit` |
 | W-15 | a worker holding `max_concurrent_assignments` answers one more `POST /v1/assignments` with `503` and a problem body, and records nothing of it |
+| W-16 | `GET /v1/assignments/{id}` of an id the worker never received answers `404` with a problem body |
+| W-17 | a `POST /v1/assignments` whose id the worker already holds, running or finished, answers `409` with a problem body and starts nothing: the assignment of that id stays the first |
 
-The suite runs W-01 to W-11 and W-13 to W-15 against a live worker and reports W-12 as *pending*: the removal test
+The suite runs W-01 to W-11 and W-13 to W-17 against a live worker and reports W-12 as *pending*: the removal test
 takes the adapter out of running processes, which a suite talking to one endpoint cannot do, and
 which needs processes to exist (DEC-0005). W-14 can only be provoked in a worker whose actual
 consumption exceeds its own estimate: a limit the estimate fits is otherwise never crossed, and
@@ -283,7 +286,10 @@ the worker gave for it, and every event in order. The stream rules that judge th
 suite (`src/taktus/conformance/rules.py`) and are applied to the fixtures by `tests/conformance`
 and to a live worker by `uv run taktusctl conformance run`. W-15 concerns no stream: its fixtures
 use the `CapacityProbe` shape — the places declared, the assignments held, the answer to one
-more — and fail the capacity rule in the same file. `tools/validate_contracts.py` checks that
+more — and fail the capacity rule in the same file. W-16 and W-17 concern an assignment's id.
+Their fixtures use the `UnknownIdProbe` shape — an id never posted and the answer to its state —
+and the `RepeatedIdProbe` shape — the state held, the answer to the repeat, the state after it —
+and fail the two id rules there. `tools/validate_contracts.py` checks that
 every fixture is schema-valid and that every check has one.
 
 ## 8. Two proof cases

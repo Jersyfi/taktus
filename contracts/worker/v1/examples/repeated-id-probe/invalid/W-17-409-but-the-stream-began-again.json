@@ -1,0 +1,23 @@
+{
+  "held": {
+    "assignment_id": "asg_conf_3d9b0e6f1a72",
+    "status": "running",
+    "last_seq": 6,
+    "accepted_at": "2026-10-09T10:00:00Z",
+    "started_at": "2026-10-09T10:00:00Z"
+  },
+  "answer": {
+    "status": 409,
+    "body": {
+      "title": "assignment exists",
+      "status": 409
+    }
+  },
+  "after": {
+    "assignment_id": "asg_conf_3d9b0e6f1a72",
+    "status": "running",
+    "last_seq": 1,
+    "accepted_at": "2026-10-09T10:00:00Z",
+    "started_at": "2026-10-09T10:00:00Z"
+  }
+}

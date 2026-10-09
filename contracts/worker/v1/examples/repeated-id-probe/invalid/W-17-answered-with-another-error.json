@@ -1,0 +1,27 @@
+{
+  "held": {
+    "assignment_id": "asg_conf_8c2a4f6e0b13",
+    "status": "finished",
+    "outcome": "succeeded",
+    "last_seq": 14,
+    "accepted_at": "2026-10-09T10:00:00Z",
+    "started_at": "2026-10-09T10:00:00Z",
+    "finished_at": "2026-10-09T10:00:04Z"
+  },
+  "answer": {
+    "status": 400,
+    "body": {
+      "title": "invalid assignment",
+      "status": 400
+    }
+  },
+  "after": {
+    "assignment_id": "asg_conf_8c2a4f6e0b13",
+    "status": "finished",
+    "outcome": "succeeded",
+    "last_seq": 14,
+    "accepted_at": "2026-10-09T10:00:00Z",
+    "started_at": "2026-10-09T10:00:00Z",
+    "finished_at": "2026-10-09T10:00:04Z"
+  }
+}

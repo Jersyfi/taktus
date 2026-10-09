@@ -1,4 +1,4 @@
-"""The suite: W-01 to W-15 against a live worker.
+"""The suite: W-01 to W-17 against a live worker.
 
 The endpoint is the only required input. The suite reads the worker's capabilities, asks for an
 estimate, and then posts up to seven assignments one after the other, each for a purpose:
@@ -18,12 +18,21 @@ estimate, and then posts up to seven assignments one after the other, each for a
    boundary and name the limit. Proves W-14. A worker whose actual never exceeded its estimate
    cannot be made to cross a limit its estimate fits, and W-14 is then inconclusive.
 
-Last comes the capacity probe, the one time the suite holds assignments side by side. It posts
+Then the suite asks for the state of an id it never posted. The worker must answer `404` with a
+problem body. Proves W-16.
+
+Then comes the capacity probe, the one time the suite holds assignments side by side. It posts
 as many assignments as the worker declares in `max_concurrent_assignments` (purpose `held`)
 and then one more (`one-more`, recorded only when the worker accepts it). The worker must
 answer `503` with a problem body and record nothing. Proves W-15. A worker that finishes a held
 assignment before the suite has filled its places, or declares more places than the suite
 fills, leaves W-15 inconclusive.
+
+Last the suite posts assignments whose id the worker already holds: a fresh one (`repeated`)
+again while it runs, and `main` again after it finished. The worker must answer each repeat with
+`409` and a problem body, and still hold the first assignment of that id afterwards. Proves
+W-17. A repeat the worker accepted appears as `repeated-running` or `repeated-finished`; the
+suite stops every assignment of this probe and reads its stream to the end.
 
 W-08 scans everything the suite saw for the value of the credential it referenced by name. W-12
 is reported as pending: the removal test needs processes, and the suite has none.
@@ -173,7 +182,9 @@ async def run_suite(options: SuiteOptions) -> Report:
             await _w11(client, options, stopped, declared, fitting, estimate, findings, runs)
             await _w10(client, options, declared, estimate, findings, runs)
             await _w14(client, options, main, declared, fitting, estimate, findings, runs)
+            await _w16(client, findings)
             await _w15(client, options, capabilities, declared, fitting, findings, runs)
+            await _w17(client, options, main, declared, fitting, findings, runs)
         except httpx.HTTPError as error:
             report.notes.append(f"the worker at {options.endpoint} stopped answering: {error!r}")
             if not findings.evidence["W-01"]:
@@ -1080,7 +1091,10 @@ async def _w15(
             "held": [state.json or {} for state in states],
             "answer": {"status": answer.status, "body": answer.body},
         }
-        if answer.status == 503:
+        # A lookup shows that nothing was recorded only where the worker answers an id it does
+        # not hold with 404. Where W-16 failed it does not, and that failure is W-16's alone.
+        looked_up = answer.status == 503 and not findings.failed("W-16")
+        if looked_up:
             lookup = await client.get(f"/v1/assignments/{extra['assignment_id']}")
             probe["lookup"] = lookup.status
         for violation in rules.capacity_violations(probe):
@@ -1098,10 +1112,15 @@ async def _w15(
         findings.ok(
             "W-15",
             f"holding {still} of {capacity} declared assignment(s), the worker answered one more "
-            f"with 503 ({(answer.json or {}).get('title')!r}) and recorded nothing",
+            f"with 503 ({(answer.json or {}).get('title')!r}) and "
+            + (
+                "recorded nothing"
+                if looked_up
+                else "was not looked up, because it does not answer an unknown id with 404 (W-16)"
+            ),
         )
     finally:
-        await _release(client, options, posted, runs)
+        await _release(client, options, posted, runs, "W-15: the capacity probe is over")
 
 
 _LONGER = (
@@ -1148,7 +1167,7 @@ async def _fill(
 
 
 async def _release(
-    client: WorkerClient, options: SuiteOptions, posted: list[Run], runs: list[Run]
+    client: WorkerClient, options: SuiteOptions, posted: list[Run], runs: list[Run], why: str
 ) -> None:
     """Stop every assignment the probe posted that may still run, and read every stream to its
     end."""
@@ -1159,7 +1178,7 @@ async def _release(
         run.stop = await client.post(
             f"/v1/assignments/{run.id}/stop",
             {
-                "reason": "conformance W-15: the capacity probe is over",
+                "reason": f"conformance {why}",
                 "ceiling_seconds": max(1, int(options.timeout)),
             },
         )
@@ -1167,6 +1186,95 @@ async def _release(
         run.stream = await client.stream(run.id)
         run.final = await client.get(f"/v1/assignments/{run.id}")
         runs.append(run)
+
+
+# --- W-16, W-17 an assignment's id ------------------------------------------------------------
+
+
+async def _w16(client: WorkerClient, findings: Findings) -> None:
+    """Ask for the state of an id the suite never posted (`rules.unknown_id_violations`)."""
+    unknown = "asg_conf_" + secrets.token_hex(6)
+    answer = await client.get(f"/v1/assignments/{unknown}")
+    probe: Json = {
+        "assignment_id": unknown,
+        "answer": {"status": answer.status, "body": answer.body},
+    }
+    for violation in rules.unknown_id_violations(probe):
+        findings.add(violation, "unknown-id probe")
+    if not findings.failed("W-16"):
+        findings.ok(
+            "W-16",
+            f"the state of {unknown}, never posted, answered 404 "
+            f"({(answer.json or {}).get('title')!r})",
+        )
+
+
+async def _w17(
+    client: WorkerClient,
+    options: SuiteOptions,
+    main: Run,
+    declared: list[str],
+    limits: Json,
+    findings: Findings,
+    runs: list[Run],
+) -> None:
+    """Post an assignment whose id the worker holds, twice: once while it runs, and once for
+    `main`, which has finished. Judge each answer and what the worker holds afterwards
+    (`rules.repeated_id_violations`). Every assignment posted here is stopped afterwards and its
+    stream read to the end, so that W-08 and W-09 see it and the worker is left idle."""
+    posted: list[Run] = []
+    observed: list[str] = []
+    missing: list[str] = []
+    try:
+        assignment = _assignment(options, declared, limits)
+        accepted = await client.post("/v1/assignments", assignment)
+        if accepted.status in ACCEPTED and accepted.json is not None:
+            posted.append(Run("repeated", assignment, accepted, Stream(status=0)))
+            await _repeat(client, assignment, accepted.json, "running", findings, posted, observed)
+        else:
+            missing.append(
+                f"the worker answered the assignment to be repeated with {accepted.status}, so "
+                "no running assignment could be repeated; run the suite against an idle worker"
+            )
+        final = main.final.json if main.final is not None else None
+        if main.accepted.status == 201 and final is not None and final.get("status") == "finished":
+            await _repeat(client, main.assignment, final, "finished", findings, posted, observed)
+        else:
+            missing.append("the main run did not finish, so no finished assignment was repeated")
+    finally:
+        await _release(client, options, posted, runs, "W-17: the repeated-id probe is over")
+    if findings.failed("W-17"):
+        return
+    for line in observed:
+        findings.ok("W-17", line)
+    if missing:
+        findings.inconclusive["W-17"] = "; ".join(missing)
+
+
+async def _repeat(
+    client: WorkerClient,
+    assignment: Json,
+    held: Json,
+    which: str,
+    findings: Findings,
+    posted: list[Run],
+    observed: list[str],
+) -> None:
+    answer = await client.post("/v1/assignments", assignment)
+    if answer.status in ACCEPTED:
+        posted.append(Run(f"repeated-{which}", assignment, answer, Stream(status=0)))
+    after = await client.get(f"/v1/assignments/{assignment['assignment_id']}")
+    probe: Json = {
+        "held": held,
+        "answer": {"status": answer.status, "body": answer.body},
+        "after": after.json or {},
+    }
+    for violation in rules.repeated_id_violations(probe):
+        findings.add(violation, f"repeated-id probe ({which})")
+    observed.append(
+        f"a repeat of {assignment['assignment_id']} while it was {which} answered 409 "
+        f"({(answer.json or {}).get('title')!r}); the worker still holds the first"
+    )
 
 
 # --- W-08, W-09 across all runs ---------------------------------------------------------------

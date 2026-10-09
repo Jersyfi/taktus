@@ -34,11 +34,18 @@ async def test_reference_worker_passes(start_worker: StartWorker, profile: str) 
         "over-limit",
         "tight",
         "held",
+        "repeated",
     }
     held = [r for r in report.runs if r.purpose == "held"]
     assert len(held) == 4, "the reference worker declares four places by default"
     w15 = next(c for c in report.checks if c.id == "W-15")
-    assert "answered one more with 503" in w15.observed
+    assert "answered one more with 503" in w15.observed and "recorded nothing" in w15.observed
+    w16 = next(c for c in report.checks if c.id == "W-16")
+    assert "never posted, answered 404" in w16.observed
+    w17 = next(c for c in report.checks if c.id == "W-17")
+    repeats = [w17.observed, *w17.details]
+    assert any("while it was running answered 409" in line for line in repeats), repeats
+    assert any("while it was finished answered 409" in line for line in repeats), repeats
 
 
 async def test_report_is_machine_readable_and_claims_no_verification(
@@ -51,7 +58,7 @@ async def test_report_is_machine_readable_and_claims_no_verification(
     assert document["maturity"]["verified"] is False
     assert document["maturity"]["removal_test"] == "pending"
     assert document["maturity"]["conformance_suite"] == "passed"
-    assert [c["id"] for c in document["checks"]] == [f"W-{n:02d}" for n in range(1, 16)]
+    assert [c["id"] for c in document["checks"]] == [f"W-{n:02d}" for n in range(1, 18)]
     for check in document["checks"]:
         assert check["requirement"] and check["section"].startswith("contracts/worker/v1/README.md")
     assert worker.credential_value not in report.to_json()
