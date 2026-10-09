@@ -42,6 +42,7 @@ EMPTY = {"", "_no response_", "none", "-", "n/a"}
 NOTHING = {"nothing", "none", "-", "_no response_", ""}
 
 HEADING = re.compile(r"^#{2,3}\s+(?:\d+\.\s+)?(.+?)\s*$", re.MULTILINE)
+RULE = re.compile(r"^\s*-{3,}\s*$", re.MULTILINE)
 RECORD = re.compile(r"\b((?:NEED|DEC)-\d{4})\b")
 ISSUE = re.compile(r"(?<![\w/])#(\d+)\b")
 RECORD_NAME = re.compile(r"^((?:NEED|DEC)-\d{4})-.*\.md$")
@@ -49,12 +50,19 @@ VERSION = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 
 
 def sections(body: str) -> dict[str, str]:
-    """The body's sections by heading, each with the text up to the next heading."""
+    """The body's sections by heading, each with the text up to the next heading or up to a
+    horizontal rule (`---`), whichever comes first. A rule ends the form: what follows it — a
+    footer naming the record or pull request the issue was written under — belongs to no
+    section, so that a footer is never read as a blocker and never hides one."""
     found: dict[str, str] = {}
-    marks = list(HEADING.finditer(body or ""))
+    text = body or ""
+    marks = list(HEADING.finditer(text))
     for i, mark in enumerate(marks):
-        end = marks[i + 1].start() if i + 1 < len(marks) else len(body)
-        found[mark.group(1).strip()] = body[mark.end() : end].strip()
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+        content = text[mark.end() : end]
+        if (rule := RULE.search(content)) is not None:
+            content = content[: rule.start()]
+        found[mark.group(1).strip()] = content.strip()
     return found
 
 

@@ -49,7 +49,9 @@ not by the label: a blocked task keeps its label and is offered as soon as its b
 `make backlog` checks both: it lists every issue labelled `ready` that fails the standard or is
 blocked, with the reason, and never offers it as the next task.
 
-The standard is written once, in `src/taktus/components/run/domain/service/ready.py`.
+The standard is written once, in `src/taktus/components/run/domain/service/ready.py`. A section
+runs to the next heading or to a horizontal rule (`---`); a footer after the rule — the record or
+pull request the issue was written under — is part of no section and blocks nothing (DEC-0116).
 `make backlog` runs it, and so does P-03 Implementation's admission, which also refuses a
 claimed issue and claims the one it admits with `in-progress`. P-02 Refinement uses it to find
 the sections an issue lacks, writes those as a comment, and adds no label (issue #70).
