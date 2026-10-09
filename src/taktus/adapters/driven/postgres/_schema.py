@@ -244,6 +244,8 @@ step_run = Table(
     Column("retryable", Boolean),
     Column("adapter", Text),
     Column("assignment_id", Text),
+    Column("assignment_open", Boolean, nullable=False, server_default=text("false")),  # ADR-0038
+    Column("assignment_seq", Integer, nullable=False, server_default=text("0")),
     Column("estimate", JSONB),
     Column("reservation", JSONB),
     Column("consumption", JSONB),

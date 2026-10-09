@@ -155,7 +155,8 @@ as they arrive, so that the boundary a run resumes from can lie inside a worker 
 **Restart.** An instance that stops without a chance to halt its runs — killed, crashed,
 powered off — leaves each of them marked as running, with one step in flight. Resuming such a
 run *recovers* it: the step in flight goes back to its last persisted boundary (the worker's
-checkpoint if one arrived, its start otherwise), is admitted again, and the run continues;
+checkpoint if one arrived, its start otherwise), is admitted again — or, for a worker step
+whose assignment the worker still holds, adopted — and the run continues;
 the steps before it are kept as they are. That is ADR-0013 A made true, and
 `tests/integration/test_restart.py` proves it by killing the process. Whoever resumes a running
 run asserts that no instance is executing it. In the daemon that assertion is the runner's
@@ -176,6 +177,17 @@ take the job between the check and the commit. Once another runner has claimed t
 write is refused, nothing of it lands, and the first runner gives the run up without touching
 the job. Two runners never both commit to one run (#107, NTC-0044;
 `tests/integration/test_runner_fence.py` pauses a runner inside a step past its lease).
+**An assignment a dead runner handed over.** A worker keeps an assignment it accepted when the
+runner that posted it dies. The engine therefore commits the assignment's id with `step.assigned`
+before it posts it, and keeps it *open* until it reads the assignment's end. Whoever recovers the
+run asks the worker about an open assignment before handing over another. One the worker holds
+is adopted (`step.adopted`) and its stream read on after the last event the step run holds; one
+it does not know is posted again under the same id, so that a cut-off runner's late post meets
+the worker's `409`; a worker that cannot be asked fails the step. No work the worker does is
+unnamed in the ledger, and one step is never executed by two assignments at once. A runner that
+loses its claim leaves the assignment to the runner that holds it now (ADR-0038, NTC-0073;
+`tests/integration/test_handover.py` stops a runner after the worker accepted, after the first
+inner boundary, and before its post arrives).
 A shutdown on SIGTERM asks every running run to stop at its next boundary, waits up to the
 ceiling, releases the claims and exits; the next runner resumes at that boundary
 (`tests/integration/test_daemon_shutdown.py`). From the command line, `uv run taktusctl run

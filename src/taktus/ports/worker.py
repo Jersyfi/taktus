@@ -443,6 +443,19 @@ class WorkerAtCapacity(WorkerError):
     whether there is a free place (ADR-0037)."""
 
 
+class UnknownAssignment(WorkerError):
+    """The worker holds no assignment of this id: the contract's 404. Asked about an assignment
+    the run handed over, it means the assignment never reached the worker, or the worker no
+    longer keeps it (ADR-0038)."""
+
+
+class AssignmentExists(WorkerError):
+    """The worker already holds an assignment of this id and did not take this one: the
+    contract's 409 on `POST /v1/assignments`. An assignment's id is the run's record of one
+    handover, so the worker's answer is what keeps two runners from both handing it over
+    (ADR-0038)."""
+
+
 class Worker(Protocol):
     """One execution unit behind the worker contract, as the core uses it."""
 
@@ -453,14 +466,17 @@ class Worker(Protocol):
     async def assign(self, assignment: Assignment) -> AssignmentState:
         """Hand over an assignment. A rejection is a state, not an error: the state comes back
         finished with outcome rejected, and the stream carries one event. A worker at its
-        declared capacity raises WorkerAtCapacity; nothing was recorded."""
+        declared capacity raises WorkerAtCapacity; nothing was recorded. A worker that already
+        holds an assignment of this id raises AssignmentExists; it took nothing new."""
         ...
 
     def events(self, assignment_id: AssignmentId, *, after: int = 0) -> AsyncIterator[Event]:
         """The event stream from `after` onwards, until assignment.finished."""
         ...
 
-    async def state(self, assignment_id: AssignmentId) -> AssignmentState: ...
+    async def state(self, assignment_id: AssignmentId) -> AssignmentState:
+        """The assignment's state; UnknownAssignment when the worker holds none of this id."""
+        ...
 
     async def stop(self, assignment_id: AssignmentId, request: StopRequest) -> AssignmentState:
         """Request a stop at the next step boundary."""

@@ -261,7 +261,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   (`tests/integration/test_runner_fence.py`, NTC-0044). A run halted because its worker was at
   capacity is *deferred*: its job is claimable again after a delay that starts at the poll
   interval and doubles up to a minute, and the deferral is not a failed attempt (ADR-0037,
-  `tests/integration/test_capacity_wait.py`).
+  `tests/integration/test_capacity_wait.py`). A worker step's assignment is named in the ledger
+  before it is posted; a runner that recovers the run asks the worker about it and adopts it
+  instead of handing over another, and a runner that loses its claim leaves it running for the
+  next (ADR-0038, `tests/integration/test_handover.py`).
 - **`scheduler`** leads through the leadership port — a session-level advisory lock — and ticks
   while it leads; a second instance keeps trying and takes over when the leader's lead is
   gone, including when the leader was killed. While it leads, every tick fires the schedule

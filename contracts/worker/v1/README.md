@@ -118,7 +118,12 @@ declared so that a reader of the response sees the obligation.
 }
 ```
 
-The control plane chooses the `assignment_id`. `context.checkpoint_ref` is present only when the
+The control plane chooses the `assignment_id`. It records the id before it posts the
+assignment, and may post the same id again when it does not know whether the first post arrived.
+A worker therefore answers an id it already holds with `409` and takes nothing new, and the
+state of an id it does not hold with `404` (`openapi.yaml`). An assignment the worker accepted
+keeps running when the client that posted it goes away; whoever holds the id may read its
+stream from any `seq` and stop it (ADR-0038). `context.checkpoint_ref` is present only when the
 assignment resumes an earlier one; the worker continues after that checkpoint and produces no
 artifact it produced before it.
 
