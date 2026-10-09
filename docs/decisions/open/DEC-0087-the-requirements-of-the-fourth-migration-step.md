@@ -1,7 +1,7 @@
 # DEC-0087 — The requirements of the fourth migration step
 
 **Category:** NON-BLOCKING
-**Raised in:** [#136](https://github.com/Jersyfi/taktus/pull/136)
+**Raised in:** [#137](https://github.com/Jersyfi/taktus/pull/137)
 **Issue:** [#135](https://github.com/Jersyfi/taktus/issues/135)
 **Needed by:** 2026-10-23
 **Provisional answer:** Option A. The seventeen use cases of the fourth migration step, and the two blueprint descriptions, are in force with the conditions they add beyond version 2 of the definition and beyond the text in which you stated three requirements yourself; they bind any session that builds one of them before the answer. Marked here and in the status file.

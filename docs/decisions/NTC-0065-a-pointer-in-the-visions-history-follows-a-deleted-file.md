@@ -3,7 +3,7 @@
 **Mode entry:** M2.6
 **Kind:** unlisted
 **Decided:** 2026-10-09
-**Raised in:** [#136](https://github.com/Jersyfi/taktus/pull/136)
+**Raised in:** [#137](https://github.com/Jersyfi/taktus/pull/137)
 **How it follows:** M4.5 keeps what the vision layer says with the owner: what Taktus is for, the principles, the personas, the non-goals. A sentence that names the file in which two open points were carried says none of that; it says where to look. The migration's working file said that it is deleted at the migration's end, and the issue of this step (#63) asks that nothing point at it afterwards. Strict in substance: no statement of the vision changes, including one that is now out of date; sparing in ceremony: one sentence, recorded here, instead of a request about a pointer.
 
 ## 1. What was decided

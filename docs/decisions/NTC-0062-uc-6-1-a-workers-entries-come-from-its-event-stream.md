@@ -3,7 +3,7 @@
 **Mode entry:** M2.7
 **Kind:** restoration
 **Decided:** 2026-10-09
-**Raised in:** [#136](https://github.com/Jersyfi/taktus/pull/136)
+**Raised in:** [#137](https://github.com/Jersyfi/taktus/pull/137)
 **How it follows:** the owner's project definition, version 2, UC-6.1: the activity log is "fed from the event stream of the workers (UC-14.1)". The amendment writes that as a condition of UC-6.1 and adds nothing beyond it; the shape of the entries it names is the one the use case already requires of every entry.
 
 ## 1. What was decided

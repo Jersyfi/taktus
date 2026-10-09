@@ -3,7 +3,7 @@
 **Mode entry:** M2.7
 **Kind:** restoration
 **Decided:** 2026-10-09
-**Raised in:** [#136](https://github.com/Jersyfi/taktus/pull/136)
+**Raised in:** [#137](https://github.com/Jersyfi/taktus/pull/137)
 **How it follows:** the owner's project definition, version 2, UC-6.4, acceptance criteria: views are "configurable per role AND per person"; a person can hold several views at the same time; visibility follows the organisation's structure (UC-1.4). The amendment writes the per-person half as a condition and bounds it by principle 7, which the use case already applies: nobody sees what they are not entitled to.
 
 ## 1. What was decided

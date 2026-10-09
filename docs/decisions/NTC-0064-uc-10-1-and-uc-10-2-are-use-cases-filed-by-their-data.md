@@ -3,7 +3,7 @@
 **Mode entry:** M2.6
 **Kind:** unlisted
 **Decided:** 2026-10-09
-**Raised in:** [#136](https://github.com/Jersyfi/taktus/pull/136)
+**Raised in:** [#137](https://github.com/Jersyfi/taktus/pull/137)
 **How it follows:** ADR-0029 files a requirement with the component whose data and rules it concerns, so that someone working on that component finds it beside the code; `docs/architecture/project-structure.md` §1 names what each component owns. The definition states UC-10.1 and UC-10.2 as requirements with acceptance criteria, and `docs/usecases/README.md` holds a requirement to a verifiable condition, which an architecture decision does not give: an ADR says how something is built, not that it must hold. Between "carried by architecture" and "a use case", the stricter in substance is the use case; deciding its folder by the rule ADR-0029 already applies, with a notice rather than a request, is the option with less ceremony.
 
 ## 1. What was decided
