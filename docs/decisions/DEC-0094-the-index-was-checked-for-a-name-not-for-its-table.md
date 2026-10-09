@@ -1,7 +1,7 @@
 # DEC-0094 — The index was checked for a name, not for its table
 
 **Category:** DEFECT
-**Raised in:** [#PRN](https://github.com/Jersyfi/taktus/pull/PRN), after a notice was found listed among the decisions
+**Raised in:** [#141](https://github.com/Jersyfi/taktus/pull/141), after a notice was found listed among the decisions
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -48,4 +48,4 @@ among the decisions unnoticed.
 **Why it was wrong:** the check searched the whole index for a file name.
 **What it now says:** each record is checked in the table of its kind.
 **What changed in substance:** nothing in the product; the gate and one row of the index.
-**Recorded in:** [#PRN](https://github.com/Jersyfi/taktus/pull/PRN)
+**Recorded in:** [#141](https://github.com/Jersyfi/taktus/pull/141)
