@@ -13,6 +13,7 @@ from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
 )
+from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.run.domain.model import Run
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -31,8 +32,8 @@ class RestServices(Protocol):
 
     @property
     def tenants(self) -> Sequence[Tenant]:
-        """The tenants this instance serves; the first is the one a request that names none
-        is answered for, until identity exists."""
+        """The tenants this instance serves; the first is the one a read that names none is
+        answered for, and the one a reply to a sender nobody could place is made in."""
         ...
 
     @property
@@ -48,8 +49,12 @@ class RestServices(Protocol):
     def intake(self) -> ReceiveIntakeHandler: ...
 
     @property
-    def complete_intake(self) -> CompleteIntakeHandler | None:
-        """None when no identity is configured: an intake event then cannot be completed."""
+    def complete_intake(self) -> CompleteIntakeHandler: ...
+
+    @property
+    def identities(self) -> IdentityDirectory:
+        """The identity component: an account key proves an identity, and the identity makes
+        the link codes that link its channel accounts (ADR-0040)."""
         ...
 
     async def ready(self) -> str | None:

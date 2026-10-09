@@ -65,9 +65,11 @@ loopback connector and starts one run per integration.
 
 ### 6. Who acts, and what the ledger says
 A scheduled run comes from a command on the channel `channel.schedule`, commissioned like any
-other (control-plane.md §1). It acts as the identity the identity port places in the tenant;
-until the identity component exists that is the provisional operator identity (DEC-0013).
-Without one, nothing fires and the log says why. Every run a trigger started carries
+other (control-plane.md §1). It acts for the identity that registered the process's active
+version, as the identity component places it when the trigger fires (amended 2026-10-09 by
+ADR-0040; until then it was the provisional operator identity of DEC-0013). A version nobody
+registered, or registered by an identity the component does not know, fires nothing, and the
+log says why. Every run a trigger started carries
 `run.triggered` beside `run.created`, in the same transaction. The entry names the trigger's
 kind as its outcome and carries the digest of the trigger's document — the trigger, its
 schedule, the slot and the item — which the command keeps in its context. The ledger stays

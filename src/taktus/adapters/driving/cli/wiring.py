@@ -16,6 +16,7 @@ from typing import Protocol
 from taktus.components.accounting.application.service import CostOfRunHandler
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import ReportCapacityHandler
+from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
@@ -23,7 +24,6 @@ from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
-from taktus.ports.identity import IdentityResolver
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, UnitOfWork
 
@@ -35,6 +35,9 @@ class NotOperable(Exception):
 
 @dataclass(frozen=True)
 class Services:
+    identities: IdentityDirectory
+    """The identity component: the identity an invocation names must be one it knows, and the
+    administrative acts on identities and links go through it (ADR-0040)."""
     register_version: RegisterProcessVersionHandler
     commission: CommissionPlanHandler
     engine: RunEngine
@@ -52,10 +55,6 @@ class Services:
     `taktusd` runs; false in memory, where nothing else executes."""
     cost: CostOfRunHandler | None = None
     """What a run cost, recomputed from the ledger at its price table (`taktusctl cost`)."""
-    identities: IdentityResolver | None = None
-    """Who a command line invocation acts as, when `--identity` does not say: today the
-    provisional operator identity of the tenant (DEC-0013); None when none is configured,
-    and then nothing executes without `--identity`."""
 
 
 @dataclass(frozen=True)

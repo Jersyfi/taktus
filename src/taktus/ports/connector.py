@@ -378,6 +378,20 @@ class ActionConnector(Protocol):
         ...
 
 
+REPLY_OPERATION = "{channel}.reply"
+"""The operation a connector declares when Taktus may answer in a channel its intake serves:
+`channel.repo.reply` for `channel.repo`. Its input is `{"address", "thread", "text"}`, the
+reply address an intake produced and what to say there (`contracts/connector/v1` §7)."""
+
+
+class ChannelReplies(Protocol):
+    async def reply(self, tenant: str, to: IntakeReplyTo, text: str, *, key: str) -> bool:
+        """Say `text` at the reply address of an intake, as Taktus itself (ADR-0033). True when
+        the channel's connector delivered it; False when no connector answers in that channel
+        or the delivery failed, which the caller reports and does not retry."""
+        ...
+
+
 @dataclass(frozen=True)
 class ResolvedConnector:
     """A configured connector, as the run receives it from its pool: the connector, the

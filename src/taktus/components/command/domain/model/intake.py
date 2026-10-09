@@ -4,9 +4,9 @@ the identity component to say who the sender is (control-plane.md §2).
 A connector cannot know the Taktus identity behind an account, so what it accepts is not yet a
 command and gets no execution. It is kept, under the event identifier the source system gave
 the delivery — a redelivery replaces rather than duplicates — so that it can be completed
-into a command by the identity the identity port answers (`complete_intake.py`; today the
-provisional operator identity, DEC-0013), and so that a person can see what arrived and was
-not acted on.
+into a command by the identity the identity component answers (`complete_intake.py`), and
+so that a person can see what arrived and was not acted on. Only an event whose sender the
+identity component placed is kept; an unknown sender's is kept nowhere.
 """
 
 from __future__ import annotations

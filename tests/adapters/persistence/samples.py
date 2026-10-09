@@ -18,6 +18,14 @@ from taktus.components.catalog.domain.model import (
     Verdict,
 )
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.identity.domain.model import (
+    ChannelLink,
+    Identity,
+    LinkCode,
+    LinkOrigin,
+    code_id,
+    link_id,
+)
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import (
     Process,
@@ -69,7 +77,9 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
 
 
 def process(tenant: str = "t") -> Process:
-    return Process(id="six-times-seven", name="Six times seven", active_version="1")
+    return Process(
+        id="six-times-seven", name="Six times seven", active_version="1", activated_by="idn_ada"
+    )
 
 
 def command(id: str = "cmd_1", tenant: str = "t") -> Command:
@@ -250,4 +260,40 @@ def trigger_state(tenant: str = "t") -> TriggerState:
         fired_slot=datetime(2026, 9, 17, 6, 0, tzinfo=UTC),
         fired_at=AT + timedelta(days=1),
         runs=("run_a", "run_b"),
+    )
+
+
+def identity(tenant: str = "t") -> Identity:
+    return Identity(
+        id="idn_ada",
+        tenant=tenant,
+        org_path=(tenant, "finance", "payables"),
+        key_digest="ab" * 32,
+        created_at=AT,
+    )
+
+
+def channel_link(tenant: str = "t") -> ChannelLink:
+    return ChannelLink(
+        id=link_id("channel.repo", "100200"),
+        tenant=tenant,
+        channel="channel.repo",
+        account="100200",
+        identity="idn_ada",
+        origin=LinkOrigin.CONFIRMED,
+        linked_at=AT,
+        revoked_at=AT + timedelta(days=1),
+        revoked_by="idn_admin",
+    )
+
+
+def link_code(tenant: str = "t") -> LinkCode:
+    return LinkCode(
+        id=code_id("tkl-" + "0" * 24),
+        tenant=tenant,
+        identity="idn_ada",
+        channel="channel.repo",
+        created_at=AT,
+        expires_at=AT + timedelta(minutes=30),
+        used_at=AT + timedelta(minutes=1),
     )

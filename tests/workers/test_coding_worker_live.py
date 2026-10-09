@@ -53,6 +53,7 @@ from typing import Any
 import httpx
 import pytest
 import yaml
+from fakes.identity import added_by_command_line
 
 from taktus.components.run.domain.service.budget import scale_for
 from taktus.shared.v1 import Method
@@ -316,6 +317,15 @@ def run_under_cap(
         )
     try:
         wait_ready(worker, f"http://127.0.0.1:{port}/v1/health", log)
+        run_env = {
+            **{k: v for k, v in os.environ.items() if k not in (CREDENTIAL, CREDENTIAL_FILE)},
+            "TAKTUS_IDENTITY": "idn_live",
+            "NO_COLOR": "1",
+            "TERM": "dumb",
+        }
+        added_by_command_line(
+            taktusctl(), "idn_live", run_env, "--state-dir", str(evidence / "state")
+        )
         completed = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
             [
                 taktusctl(),
@@ -329,12 +339,7 @@ def run_under_cap(
             ],
             capture_output=True,
             text=True,
-            env={
-                **{k: v for k, v in os.environ.items() if k not in (CREDENTIAL, CREDENTIAL_FILE)},
-                "TAKTUS_PROVISIONAL_IDENTITY": "default=idn_live",
-                "NO_COLOR": "1",
-                "TERM": "dumb",
-            },
+            env=run_env,
             timeout=budget.estimate_wall_seconds * 2,
             check=False,
         )

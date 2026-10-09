@@ -28,6 +28,7 @@ from typing import Any
 import yaml
 from fakes import FakeClock, FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.connector import READ, WRITE
+from fakes.identity import added_by_command_line, directory
 
 from integration.test_first_slice import taktusctl
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
@@ -222,6 +223,7 @@ def test_taktusctl_runs_the_removal_test_from_the_command_line(
         "TAKTUS_WORKER": worker_endpoint,
         "TAKTUS_STATE_DIR": str(tmp_path / "state"),
     }
+    added_by_command_line(taktusctl(), "idn_test", env)
     registered = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
         [taktusctl(), "run", "--process", str(EXAMPLE), "--stop-after", "1"],
         capture_output=True,
@@ -367,6 +369,7 @@ def connector_services(connector: FakeConnector) -> Services:
         )
     )
     return Services(
+        identities=directory((TENANT,), persistence=persistence, clock=clock).directory,
         register_version=RegisterProcessVersionHandler(versions, persistence),
         commission=commission,
         engine=engine_for(pools.workers, pools.connectors, pools.models),

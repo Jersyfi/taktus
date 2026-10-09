@@ -6,7 +6,7 @@ epic: E1
 serves: [P1, P4]
 state: building
 version: 0.2.0
-tests: [tests/components/command/test_complete_intake.py::test_the_resolver_places_the_event_and_completes_it_as_the_operator]
+tests: [tests/components/command/test_complete_intake.py::test_the_link_places_the_event_and_completes_it_as_the_linked_identity]
 adrs: {ADR-0003: d0268914fed9, ADR-0024: ac6a1fe1610a}
 supersedes: null
 ---

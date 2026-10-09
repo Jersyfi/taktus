@@ -22,11 +22,12 @@ WORKER = ROOT / "workers" / "script" / "worker.py"
 
 
 @pytest.fixture(autouse=True)
-def provisional_identity(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Nothing executes without an identity: the command line takes the provisional operator
-    identity from the environment (DEC-0013), and these tests are about the run, not about
-    who is asking. A test that is about the identity deletes the variable itself."""
-    monkeypatch.setenv("TAKTUS_PROVISIONAL_IDENTITY", "default=idn_test")
+def identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing executes without an identity: the command line names one the tenant knows,
+    here through `TAKTUS_IDENTITY`, and a test adds it to its state first
+    (`fakes.identity.added_by_command_line`). These tests are about the run, not about who is
+    asking; a test that is about the identity deletes the variable itself."""
+    monkeypatch.setenv("TAKTUS_IDENTITY", "idn_test")
 
 
 def free_port() -> int:

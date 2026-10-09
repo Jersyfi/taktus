@@ -13,9 +13,10 @@ that dies in between leaves the slot to the next leader, which starts what is mi
 nothing twice.
 
 **Who acts.** Nothing executes without an identity (control-plane.md §2). A scheduled run acts
-as the identity the identity port places in the tenant for the schedule channel: today the
-provisional operator identity (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013). Without one the
-trigger does not fire, and every tick says so until one is configured.
+for the identity that registered the process's active version — the one that commissioned the
+schedule (ADR-0040) — as the identity component places it at the moment of firing. A version
+nobody registered, or registered by an identity the component no longer knows, does not fire,
+and every tick says so.
 
 This is wiring, because a firing crosses three components — process, command and run — and only
 the composition root may hold them all (`composition/README.md`).
@@ -42,14 +43,13 @@ from taktus.components.run.domain.model import RunError, RunExists, select
 from taktus.components.run.ports import ConnectorPool
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import CallContext, CallFailed, ConnectorError, idempotency_key
-from taktus.ports.identity import IdentityResolver
+from taktus.ports.identity import IdentityResolver, Resolution
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Tenant, UnitOfWork
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import Command, Intent, LedgerRefs, ReplyTo
 
 CHANNEL = "channel.schedule"
-ACCOUNT = "scheduler"
 REFUSED = "trigger.refused"
 
 log = structlog.get_logger("taktusd")
@@ -72,7 +72,7 @@ class Triggers:
         commission: CommissionPlanHandler,
         engine: RunEngine,
         connectors: ConnectorPool,
-        identities: IdentityResolver | None,
+        identities: IdentityResolver,
         ledger: Ledger,
         work: UnitOfWork,
         clock: Clock,
@@ -106,15 +106,19 @@ class Triggers:
         return started
 
     async def _fire(self, tenant: Tenant, firing: Firing) -> list[str]:
-        identity = await self._identity(tenant)
-        if identity is None:
+        placed = None
+        if firing.by is not None:
+            placed = await self._identities.identity(tenant, firing.by)
+        if placed is None:
             log.warning(
-                "a time trigger is due and nothing executes without an identity; set "
-                "TAKTUS_PROVISIONAL_IDENTITY for the tenant (DEC-0013)",
+                "a time trigger is due and nothing executes without an identity; register the "
+                "process's version again as an identity the tenant knows (ADR-0040)",
                 tenant=tenant,
                 trigger=firing.state.id,
+                activated_by=firing.by,
             )
             return []
+        identity = placed.identity
         try:
             items = await self._items(tenant, firing, identity)
         except TriggerFailed as error:
@@ -129,7 +133,7 @@ class Triggers:
         for item in items:
             run_id = firing.run_id(tenant, item)
             try:
-                await self._start(tenant, firing, item, run_id, identity)
+                await self._start(tenant, firing, item, run_id, placed)
             except RunExists:
                 runs.append(run_id)  # started by an earlier firing of the same slot
                 continue
@@ -152,12 +156,6 @@ class Triggers:
             RecordFiring(tenant=tenant, firing=firing, runs=tuple(runs), at=self._clock.now())
         )
         return started
-
-    async def _identity(self, tenant: Tenant) -> str | None:
-        if self._identities is None:
-            return None
-        resolution = await self._identities.resolve(CHANNEL, ACCOUNT, tenant=tenant)
-        return None if resolution is None else resolution.identity
 
     async def _items(self, tenant: Tenant, firing: Firing, identity: str) -> list[Any]:
         """[None] without `each`; otherwise the items the declared read answers."""
@@ -204,8 +202,9 @@ class Triggers:
         return inputs
 
     async def _start(
-        self, tenant: Tenant, firing: Firing, item: Any, run_id: str, identity: str
+        self, tenant: Tenant, firing: Firing, item: Any, run_id: str, placed: Resolution
     ) -> None:
+        identity = placed.identity
         version = firing.version
         if version.limits is None:
             raise RunError(f"{version.ref} names no `limits`; a run needs a budget")
@@ -219,7 +218,7 @@ class Triggers:
             id=self._ids.new("cmd"),
             channel=CHANNEL,
             identity=identity,
-            org_path=(tenant,),
+            org_path=placed.org_path,
             intent=Intent(raw=f"run {version.ref} on schedule", recognised="process.run"),
             context={"inputs": inputs, "trigger": triggered} if inputs else {"trigger": triggered},
             reply_to=ReplyTo(channel=CHANNEL, address="ledger"),

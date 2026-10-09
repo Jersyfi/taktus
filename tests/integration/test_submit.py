@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import yaml
+from fakes.identity import added_by_command_line
 
 from taktus.adapters.driven.postgres import PostgresQueue
 from taktus.components.run.domain.model import RunState
@@ -21,6 +22,9 @@ from .test_restart import TENANT, Database
 def test_submit_queues_the_run_in_a_database(postgres_url: str, tmp_path: Path) -> None:
     process_file = tmp_path / "bundle.yaml"
     process_file.write_text(yaml.safe_dump(rule_only_bundle(99)), encoding="utf-8")
+    added_by_command_line(
+        taktusctl(), "idn_test", {**os.environ, **PLAIN, "TAKTUS_DATABASE_URL": postgres_url}
+    )
     completed = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
         [taktusctl(), "submit", "--process", str(process_file)],
         capture_output=True,

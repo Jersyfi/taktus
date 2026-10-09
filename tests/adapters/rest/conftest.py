@@ -8,10 +8,10 @@ from typing import Any
 
 import httpx
 import pytest
-from fakes import FakeClock
+from fakes import FakeClock, FakeIdentifiers
+from fakes.identity import Directory, FakeReplies, directory
 
 from taktus.adapters.driven.memory import (
-    MemoryLedgerStore,
     MemoryPersistence,
     MemoryRepository,
 )
@@ -21,6 +21,7 @@ from taktus.components.command.application.service import (
     ReceiveIntakeHandler,
 )
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.domain.model import Run
 from taktus.ports.connector import (
@@ -34,7 +35,7 @@ from taktus.ports.connector import (
 from taktus.ports.ledger import Fact
 from taktus.ports.persistence import Repository, UnitOfWork
 from taktus.ports.worker import ComputeLimit, Limits
-from taktus.shared.v1 import ExactnessClass, LedgerRefs, Method, Step
+from taktus.shared.v1 import Command, ExactnessClass, LedgerRefs, Method, Step
 
 TENANT = "default"
 
@@ -82,7 +83,9 @@ class Services:
     intake: ReceiveIntakeHandler
     connector: ScriptedConnector
     clock: FakeClock
-    complete_intake: CompleteIntakeHandler | None = None
+    complete_intake: CompleteIntakeHandler
+    identity: Directory
+    replies: FakeReplies
     tenants: Sequence[str] = (TENANT,)
     roles: Sequence[str] = ("api", "runner")
     leading: bool = False
@@ -91,6 +94,17 @@ class Services:
     @property
     def work(self) -> UnitOfWork:
         return self.persistence
+
+    @property
+    def identities(self) -> IdentityDirectory:
+        return self.identity.directory
+
+    async def linked(self, name: str = "idn_ada", account: str = "100200") -> str:
+        """The person links the account with a code from their Taktus account; their key."""
+        who, key = await self.identity.person(TENANT, name)
+        code = await self.identity.code(who)
+        assert (await self.identities.unknown_sender("channel.repo", account, code)).linked
+        return key
 
     async def ready(self) -> str | None:
         return self.not_ready_reason
@@ -101,14 +115,28 @@ def services(connector: ScriptedConnector | None = None) -> Services:
     clock = FakeClock()
     scripted = connector or ScriptedConnector(ACCEPTED)
     events: Repository[IntakeEvent] = MemoryRepository(persistence, IntakeEvent)
+    identity = directory((TENANT,), persistence=persistence, clock=clock)
+    replies = FakeReplies()
     return Services(
         persistence=persistence,
         runs=MemoryRepository(persistence, Run),
-        ledger=ChainedLedger(MemoryLedgerStore(persistence), clock),
+        ledger=identity.ledger,
         events=events,
-        intake=ReceiveIntakeHandler({"channel.repo": scripted}, events, persistence),
+        intake=ReceiveIntakeHandler(
+            {"channel.repo": scripted}, events, persistence, identity.directory, replies=replies
+        ),
         connector=scripted,
         clock=clock,
+        complete_intake=CompleteIntakeHandler(
+            events,
+            MemoryRepository(persistence, Command),
+            identity.directory,
+            persistence,
+            clock,
+            FakeIdentifiers(),
+        ),
+        identity=identity,
+        replies=replies,
     )
 
 
