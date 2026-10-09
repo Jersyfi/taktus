@@ -25,6 +25,7 @@ from typing import Any
 
 import yaml
 from fakes.identity import added_by_command_line
+from fakes.maturity import configurations, verified
 
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
@@ -32,7 +33,7 @@ from taktus.adapters.driven.postgres import (
     PostgresProvenanceStore,
     PostgresRepository,
 )
-from taktus.components.catalog.domain.model import AdapterMaturity, RemovalResult, Verdict
+from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.components.run.domain.service import provenance
@@ -74,26 +75,15 @@ class Database:
         self.ledger = PostgresLedgerStore(self.persistence)
         self.provenance = PostgresProvenanceStore(self.persistence)
 
-    async def verified(self, adapter: str) -> None:
-        """Record both halves of *verified* for a worker, as a conformance run and a removal
-        test that said `changed` would: a step at level 3 runs only on such an adapter."""
-        at = datetime.now(UTC)
-        record = AdapterMaturity(
-            id=adapter,
-            tenant=self.tenant,
-            family="worker",
-            conformance_passed_at=at,
-            removal=RemovalResult(
-                integration=adapter,
-                family="worker",
-                verdict=Verdict.CHANGED,
-                tested_at=at,
-                run_id="run_removal",
-            ),
-            updated_at=at,
-        )
+    async def verified(self, adapter: str, endpoint: str) -> None:
+        """Record both halves of *verified* for the worker at `endpoint`, under the
+        configuration it declares, as a conformance run and a removal test that said `changed`
+        would: a step at level 3 runs only on such an adapter (ADR-0039, ADR-0044)."""
+        (declared,) = await configurations(workers={adapter: endpoint})
         async with self.persistence.transaction(self.tenant):
-            await PostgresRepository(self.persistence, AdapterMaturity).put(self.tenant, record)
+            await PostgresRepository(self.persistence, AdapterMaturity).put(
+                self.tenant, verified(declared, self.tenant, datetime.now(UTC))
+            )
 
     async def records(self, run_id: str) -> list[Provenance]:
         async with self.persistence.transaction(self.tenant):
@@ -148,7 +138,7 @@ async def test_a_run_survives_a_killed_process_and_resumes_at_its_last_boundary(
     }
     database = Database(postgres_url)
     added_by_command_line(taktusctl(), "idn_test", env)
-    await database.verified("worker.endpoint")
+    await database.verified("worker.endpoint", worker_endpoint)
     first = await asyncio.create_subprocess_exec(
         taktusctl(), "run", "--process", str(process_file), stdout=PIPE, stderr=STDOUT, env=env
     )

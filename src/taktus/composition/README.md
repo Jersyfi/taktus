@@ -24,3 +24,10 @@ confirmed there hands its run on. The phrasebooks Taktus ships, one per language
 (or `_FILE`) is configured, otherwise the in-memory stores with a file snapshot under a state
 directory; one HTTP worker, the system clock, no-op telemetry. Which one it chose is stated in
 `Services.storage` and printed by `taktusctl run`. `taktusctl.py` is the console script.
+
+`conformance.py` is the instance running an adapter's conformance suite itself: the catalog's
+`Suites` port over `taktus.conformance`, against the endpoint the configuration resolves for an
+adapter identifier (ADR-0044). Both `local.py` and `daemon.py` wire it to the catalog's one writer
+and to the loopback. `pools.py` holds the three pools the engine resolves from and reads what
+stands behind an identifier — the same reading for a removal verdict, a conformance pass and the
+maturity a run asks for (`maturity.py`).

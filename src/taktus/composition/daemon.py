@@ -51,7 +51,10 @@ from taktus.adapters.driven.postgres import (
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
-from taktus.components.catalog.application.service import RecordRemovalResultHandler
+from taktus.components.catalog.application.service import (
+    RecordRemovalResultHandler,
+    RunConformanceHandler,
+)
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import (
     CommissionPlanHandler,
@@ -88,6 +91,7 @@ from taktus.components.run.application.service import (
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
+from taktus.composition.conformance import InstanceSuites, worker_target
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.execution import (
     connector_pool,
@@ -292,7 +296,9 @@ async def wire(
                     models=models,
                     recordings=recordings,
                     maturities=CatalogMaturities(
-                        PostgresRepository(persistence, AdapterMaturity), persistence
+                        PostgresRepository(persistence, AdapterMaturity),
+                        persistence,
+                        Pools(workers, connectors, models),
                     ),
                     anchors=decisions.anchors,
                     decisions=decisions.requests,
@@ -326,8 +332,25 @@ async def wire(
                 clock,
                 ids,
             )
+            conformance = RunConformanceHandler(
+                InstanceSuites(
+                    pools=pools,
+                    settings=configuration,
+                    worker=worker_target(
+                        settings.execution, configuration, state_dir=settings.state_dir
+                    ),
+                    connectors=settings.connectors,
+                    model_endpoint=settings.model.endpoint,
+                ),
+                PostgresRepository(persistence, AdapterMaturity),
+                persistence,
+                ledger,
+                objects,
+                clock,
+            )
             loopback.bind(
                 Loopback(
+                    conformance=conformance,
                     pools=pools,
                     versions=PostgresRepository(persistence, ProcessVersion),
                     work=persistence,

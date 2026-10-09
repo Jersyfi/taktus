@@ -191,9 +191,14 @@ passes. Nothing the suite can read from your endpoints tells that apart.
 It is not yet *verified*. Taktus grades adapters in three levels — `experimental`, `verified`,
 `reference` — and *verified* needs two things: this suite passed, and the *removal test* passed.
 The removal test takes the worker out of a running Taktus and shows that processes still run,
-only at different quality or cost. It needs processes, and the part of Taktus that runs processes
-does not exist yet. The report states this: `removal test pending; verified: no`. Nothing in this
-repository marks a worker *verified* today.
+only at different quality or cost. A running Taktus does it as a process of its own. The report
+states this: `removal test pending; verified: no`.
+
+**A report you run does not make your worker *verified* in anybody's Taktus.** A Taktus instance
+records this suite's half only when it ran the suite itself, against the worker its own
+configuration names (`taktusctl conformance record worker.endpoint`, ADR-0044). It records the
+outcome with what your worker declared — its capabilities and its version. When either changes,
+the pass no longer counts, and the instance needs to run the suite again.
 
 ---
 
@@ -204,3 +209,41 @@ A suite that only ever passes proves nothing. The reference worker can be starte
 suite must then fail on that check and on no other. `make gate-conformance` does this for every
 fault. `python3 workers/script/worker.py --list-faults` prints them. If you want to see the suite
 catch something before trusting it with your own worker, this is the way.
+
+---
+
+## 9. Running the suite by hand, as an instance does
+
+A person can run the same suite against the same worker without Taktus, and keep the report as
+evidence. This is the way to check a worker when no instance runs, and the way to repair one
+(ADR-0013 B and C). Nothing about it needs a database or a running Taktus.
+
+1. **Find the endpoint.** It is the worker the instance is configured with: `TAKTUS_WORKER`. For a
+   launched kind (`TAKTUS_EXECUTION` is `process`, `container` or `cluster`), start one unit of
+   the configured program by hand, with no credential but the one in step 3, and use its
+   address.
+2. **Read what it declares**, and keep it with the report:
+
+   ```
+   curl -s http://localhost:9000/v1/capabilities > capabilities.json
+   ```
+
+3. **Run the suite** with what the instance reads from its configuration. The task file is
+   `TAKTUS_CONFORMANCE_WORKER_TASK`, the hosts `TAKTUS_CONFORMANCE_WORKER_HOSTS`, the
+   credential's name `TAKTUS_CONFORMANCE_WORKER_CREDENTIAL` (default
+   `TAKTUS_CONFORMANCE_CREDENTIAL`), its value the file `TAKTUS_CREDENTIAL_<NAME>_FILE`, and the
+   worker's log `TAKTUS_CONFORMANCE_WORKER_LOG`:
+
+   ```
+   export TAKTUS_CONFORMANCE_CREDENTIAL="$(cat "$TAKTUS_CREDENTIAL_TAKTUS_CONFORMANCE_CREDENTIAL_FILE")"
+   uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhost:9000 \
+       --task task.json --hosts registry.example --worker-log worker.log --json report.json
+   ```
+
+4. **Keep the evidence together**: `report.json`, `capabilities.json`, the date, who ran it, and
+   the commit of this repository the suite came from (`git rev-parse HEAD`). Put them where your
+   organisation keeps evidence. The exit code says what the instance would record: `0` passed,
+   `1` failed, `2` incomplete.
+
+The report kept this way is evidence for a person. A Taktus instance does not import it: it would
+be asserted, not measured by the instance.

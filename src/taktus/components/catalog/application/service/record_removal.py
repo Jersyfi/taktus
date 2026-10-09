@@ -4,8 +4,8 @@ ledger, in one transaction.
 The ledger entry is `removal.tested`: `adapter` names the integration, `outcome` the verdict,
 `content_digest` the digest of the result document, and `refs.run_id` the run of the removal
 test process that produced it. It carries nothing else (ADR-0006); the result itself is the
-step's artifact in that run. The maturity record keeps the last result and derives what is
-still missing for *verified*.
+step's artifact in that run. The maturity record keeps the last result beside the conformance
+half, which it leaves as it was, and derives what is still missing for *verified*.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ class RecordRemovalResultHandler:
                 id=result.integration,
                 tenant=command.tenant,
                 family=result.family,
-                conformance_passed_at=None if current is None else current.conformance_passed_at,
+                conformance=None if current is None else current.conformance,
                 removal=result,
                 updated_at=self._clock.now(),
             )

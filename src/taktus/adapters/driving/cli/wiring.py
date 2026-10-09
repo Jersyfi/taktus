@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Protocol
 
 from taktus.components.accounting.application.service import CostOfRunHandler
+from taktus.components.catalog.application.service import RunConformanceHandler
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import (
     AnchorsInForce,
@@ -69,6 +70,9 @@ class Services:
     ADR-0045)."""
     owner_channel: ChannelOf | None = None
     """The owner-facing channel a tenant configured (`taktusctl owner-channel show`)."""
+    conformance: RunConformanceHandler | None = None
+    """The instance runs an adapter's conformance suite and records it (`taktusctl
+    conformance record`, ADR-0044)."""
 
 
 @dataclass(frozen=True)

@@ -54,4 +54,5 @@ bounding. The section states the boundary; it does not point at it.
 | [0040](ADR-0040-a-channel-account-is-linked-by-the-person-who-holds-it.md) | A channel account is linked by the person who holds it | accepted |
 | [0042](ADR-0042-anchors-halt-at-the-step-boundary-and-raise-a-decision-request.md) | Anchors halt at the step boundary and raise a decision request | accepted |
 | [0043](ADR-0043-every-block-is-booked-to-an-account-when-it-ends.md) | Every block is booked to an account when it ends | accepted |
+| [0044](ADR-0044-the-instance-records-the-conformance-half-it-measured.md) | The instance records the conformance half it measured | accepted |
 | [0045](ADR-0045-what-is-needed-from-the-owner-reaches-them-as-one-report-in-three-renderings.md) | What is needed from the owner reaches them as one report in three renderings | accepted |

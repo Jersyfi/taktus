@@ -1,23 +1,31 @@
 from taktus.components.catalog.domain.model.maturity import (
     AdapterMaturity,
     Configuration,
+    ConformanceResult,
     Family,
     Maturity,
+    Outcome,
     ProcessFinding,
     RemovalResult,
     RunSummary,
     StepFinding,
     Verdict,
+    difference,
+    judged,
 )
 
 __all__ = [
     "AdapterMaturity",
     "Configuration",
+    "ConformanceResult",
     "Family",
     "Maturity",
+    "Outcome",
     "ProcessFinding",
     "RemovalResult",
     "RunSummary",
     "StepFinding",
     "Verdict",
+    "difference",
+    "judged",
 ]

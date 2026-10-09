@@ -55,7 +55,7 @@ moves. No entry of mode 2 names it. M2.6 applies: decided in the direction of th
 
 ## 5. The entry it proposes
 
-**M1.17** — *Reading in the owner-facing channel*: how an answer in the owner's channel is read,
+**M1.18** — *Reading in the owner-facing channel*: how an answer in the owner's channel is read,
 confirmed and shown follows ADR-0042's rule for a decision request — a whole-message rule, the
 same person confirms, no one named in a view — and a new kind of answer is read the same way.
 Mode 1, because it applies an accepted ADR's rule to a new channel without choosing anything new.

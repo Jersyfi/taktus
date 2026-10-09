@@ -314,7 +314,8 @@ adapter_maturity = Table(
     _tenant(),
     Column("id", Text, nullable=False),  # the adapter identifier, never a product name
     Column("family", Text, nullable=False),
-    _at("conformance_passed_at", nullable=True),
+    _at("conformance_passed_at", nullable=True),  # when the last conformance run passed
+    Column("conformance", JSONB),  # the last conformance run, as its document (ADR-0044)
     Column("removal", JSONB),  # the last removal result, as its document
     _at("updated_at"),
     PrimaryKeyConstraint("tenant", "id"),

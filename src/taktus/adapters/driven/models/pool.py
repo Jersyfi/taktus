@@ -29,6 +29,14 @@ class StaticModelPool:
         the removal test reads to know what is configured, and records its verdict under."""
         return [(adapter, purposes, version) for adapter, purposes, _, version in self._models]
 
+    def member(self, adapter: str) -> tuple[tuple[str, ...], Model, str | None] | None:
+        """The purposes, the model and its pinned version under one identifier; None when no
+        model has it."""
+        for configured, purposes, model, version in self._models:
+            if configured == adapter:
+                return purposes, model, version
+        return None
+
     def without(self, adapter: str) -> StaticModelPool:
         """The same configuration with one model withheld; the original is untouched."""
         return StaticModelPool([m for m in self._models if m[0] != adapter])

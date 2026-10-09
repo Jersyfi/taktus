@@ -1,9 +1,12 @@
 """`taktusctl` — the command line of Taktus.
 
 Eight commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
-worker, the connector or the model contract; the suite is not part of the control plane and
-needs no wiring. `run` and `submit` drive the control plane: `run` executes a bundle in this
-process, `submit` queues it for the daemon. `capacity` reports what the platform has left and
+worker, the connector or the model contract against an endpoint the caller names; the suite is
+not part of the control plane, needs no wiring and records nothing. `conformance record` has the
+instance run the suite against the adapter its configuration resolves for an identifier, and
+records the outcome in the adapter's maturity and the ledger (ADR-0044). `run` and `submit`
+drive the control plane: `run` executes a bundle in this process, `submit` queues it for the
+daemon. `capacity` reports what the platform has left and
 the date a person must act by. `cost` recomputes what a run cost from the ledger. `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `anchors` configures and shows a tenant's anchors (ADR-0042). `owner-channel`
@@ -27,6 +30,7 @@ import typer
 from taktus.adapters.driving.cli import (
     anchors_command,
     capacity_command,
+    conformance_command,
     cost_command,
     identity_command,
     owner_channel_command,
@@ -52,6 +56,7 @@ app = typer.Typer(
 )
 conformance = typer.Typer(help="Check an adapter against its contract.", no_args_is_help=True)
 app.add_typer(conformance, name="conformance")
+conformance.command("record")(conformance_command.record)
 app.command("run")(run_command.run)
 app.command("submit")(submit_command.submit)
 app.command("capacity")(capacity_command.capacity)

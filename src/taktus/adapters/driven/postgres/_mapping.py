@@ -640,8 +640,17 @@ def _step_run_from(
 # --- catalog --------------------------------------------------------------------------------------
 
 
+def _passed_at(conformance: Any) -> datetime | None:
+    """When a conformance run passed, or None for one that did not or none."""
+    if not isinstance(conformance, dict) or conformance.get("outcome") != "passed":
+        return None
+    return _at(conformance.get("tested_at"))
+
+
 class AdapterMaturityMapper:
-    """One row per adapter identifier; the removal result stays a document."""
+    """One row per adapter identifier; the conformance run and the removal result stay
+    documents. `conformance_passed_at` is written from the conformance run, for a reader of the
+    table, and never read back: the document is the record."""
 
     async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
         row = await _one(connection, s.adapter_maturity, tenant, id)
@@ -656,7 +665,8 @@ class AdapterMaturityMapper:
                 "tenant": tenant,
                 "id": document["id"],
                 "family": document["family"],
-                "conformance_passed_at": _at(document.get("conformance_passed_at")),
+                "conformance_passed_at": _passed_at(document.get("conformance")),
+                "conformance": document.get("conformance"),
                 "removal": document.get("removal"),
                 "updated_at": _at(document["updated_at"]),
             },
@@ -673,7 +683,7 @@ class AdapterMaturityMapper:
                 "id": row.id,
                 "tenant": row.tenant,
                 "family": row.family,
-                "conformance_passed_at": _iso(row.conformance_passed_at),
+                "conformance": row.conformance,
                 "removal": row.removal,
                 "updated_at": _iso(row.updated_at),
             }

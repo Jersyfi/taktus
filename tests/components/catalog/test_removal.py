@@ -9,6 +9,7 @@ import pytest
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
     Configuration,
+    ConformanceResult,
     Maturity,
     RemovalResult,
     RunSummary,
@@ -192,6 +193,20 @@ def test_the_database_is_the_known_exception() -> None:
     assert "ADR-0002" in removal.EXCEPTIONS["persistence.database"]
 
 
+def passed(configuration: Configuration) -> ConformanceResult:
+    return ConformanceResult(
+        integration=configuration.adapter,
+        family="worker",
+        contract="worker/v1",
+        taktus_version="0.0.0",
+        configuration=configuration,
+        outcome="passed",
+        digest="sha256:" + "0" * 64,
+        tested_at=AT,
+        actor="idn_test",
+    )
+
+
 def result(verdict: Verdict) -> RemovalResult:
     return RemovalResult(
         integration="worker.endpoint",
@@ -206,22 +221,23 @@ def result(verdict: Verdict) -> RemovalResult:
 
 
 def test_verified_needs_both_halves_and_the_record_names_what_is_missing() -> None:
+    now = Configuration(adapter="worker.endpoint", serves=("shell.script",), version="0.1.0")
     nothing = AdapterMaturity(id="worker.endpoint", tenant="t", family="worker", updated_at=AT)
-    assert nothing.maturity is Maturity.EXPERIMENTAL
-    assert nothing.missing == (
+    assert nothing.maturity(now) is Maturity.EXPERIMENTAL
+    assert nothing.missing(now) == (
         "the conformance suite has not been recorded as passed",
         "the removal test has not run",
     )
     removed = nothing.model_copy(update={"removal": result(Verdict.CHANGED)})
-    assert removed.removal_passed and removed.maturity is Maturity.EXPERIMENTAL
-    assert removed.missing == ("the conformance suite has not been recorded as passed",)
+    assert removed.removal_passed and removed.maturity(now) is Maturity.EXPERIMENTAL
+    assert removed.missing(now) == ("the conformance suite has not been recorded as passed",)
     broke = nothing.model_copy(update={"removal": result(Verdict.BROKE)})
-    assert not broke.removal_passed and "ended broke" in broke.missing[1]
+    assert not broke.removal_passed and "ended broke" in broke.missing(now)[1]
     untested = nothing.model_copy(update={"removal": result(Verdict.UNTESTED)})
-    assert not untested.removal_passed and untested.maturity is Maturity.EXPERIMENTAL
-    assert "no registered process that uses the integration" in untested.missing[1]
-    both = removed.model_copy(update={"conformance_passed_at": AT})
-    assert both.maturity is Maturity.VERIFIED and both.missing == ()
+    assert not untested.removal_passed and untested.maturity(now) is Maturity.EXPERIMENTAL
+    assert "no registered process that uses the integration" in untested.missing(now)[1]
+    both = removed.model_copy(update={"conformance": passed(now)})
+    assert both.maturity(now) is Maturity.VERIFIED and both.missing(now) == ()
 
 
 def test_a_verdict_names_the_configuration_it_was_taken_under() -> None:

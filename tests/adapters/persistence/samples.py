@@ -12,6 +12,8 @@ import yaml
 
 from taktus.components.catalog.domain.model import (
     AdapterMaturity,
+    Configuration,
+    ConformanceResult,
     ProcessFinding,
     RemovalResult,
     RunSummary,
@@ -111,7 +113,20 @@ def adapter_maturity(id: str = "worker.endpoint", tenant: str = "t") -> AdapterM
         id=id,
         tenant=tenant,
         family="worker",
-        conformance_passed_at=None,
+        conformance=ConformanceResult(
+            integration=id,
+            family="worker",
+            contract="worker/v1",
+            taktus_version="0.0.0",
+            configuration=Configuration(adapter=id, serves=("shell.script",), version="0.1.0"),
+            outcome="failed",
+            failed=("W-05",),
+            inconclusive=("W-14",),
+            digest="sha256:" + "1" * 64,
+            tested_at=AT,
+            actor="idn_ada",
+            run_id="run_s01",
+        ),
         removal=RemovalResult(
             integration=id,
             family="worker",
