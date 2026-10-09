@@ -162,7 +162,11 @@ owner's channel and the web app, and the owner's answer filed where it belongs (
 product finding**: what an instance meets that the product lacks becomes an issue here, carrying
 the run, the block and the waiting time (#86, #100) · P-01, P-02 and P-03 running on Taktus's
 own instance, and the standing brief retired (#70, #71, #87) · the use-case migration, steps 2
-to 4, before the use cases it adds are built (`docs/usecases/NUMBERING.md`) (#61, #62, #63)
+to 4, before the use cases it adds are built (`docs/usecases/NUMBERING.md`) (#61, #62, #63) ·
+**the way to *verified***, without which no step of P-01 to P-03 runs at level 3 on its own
+instance (ADR-0039): the conformance half of maturity recorded (#93), and every integration step
+of P-01 to P-03 taken over by a person when its adapter is removed, if that earns the removal half
+(#90, DEC-0111)
 
 **Complete when** Taktus maintains its own repository for **14 days** with no intervention in
 execution, and every block is analysable by cause and duration.
@@ -181,7 +185,7 @@ and chat, and you can see your own share of the waiting time.
 ### `0.4.0` — the ML bench and the second tenant
 `mlbench` worker doing real work: training, evaluation, embeddings, classical ML (#89) · method
 maturation with change proposals · model hub for in-house models · second coding worker, so that
-the removal test can say *changed* (#90) · model routing ·
+the removal test can say *changed* through an adapter, not only a person (#154) · model routing ·
 `dev-orchestration` blueprint · **second tenant onboarded at level 1–2**
 
 **Complete when** a step moves from a language model to a trained model on Taktus's own proposal —
@@ -190,7 +194,7 @@ measurably cheaper and reproducible — and the second tenant produces its first
 ### `0.5.0` — value and dependency measurable
 Value ledger with revert analysis · role-based views · principle 14 enforced in the data model:
 no metric assesses a named person (#94) · takeover test automated (the removal test runs since
-`0.1.0`; the conformance half of *verified* recorded, so that an adapter can reach it) (#93) ·
+`0.1.0`) ·
 marginal-value recommendations · BI export · **exactness is a result, not a switch**: Taktus
 works out with the user how a step becomes exact, and every process carries an exactness
 statement — what was checked against what, what was not, what would slip through — in the
