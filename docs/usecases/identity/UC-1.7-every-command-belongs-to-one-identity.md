@@ -7,7 +7,7 @@ serves: [P4, P12]
 state: building
 version: 0.2.0
 tests: [tests/integration/test_first_slice.py::test_nothing_executes_without_an_identity, tests/components/command/test_complete_intake.py::test_an_unknown_sender_is_kept_nowhere_and_completed_never]
-adrs: {ADR-0020: 406f1ca33b50, ADR-0024: ac6a1fe1610a, ADR-0033: eb18bea6bfb4}
+adrs: {ADR-0020: 406f1ca33b50, ADR-0024: a8baa5bc69f3, ADR-0033: eb18bea6bfb4}
 supersedes: null
 ---
 

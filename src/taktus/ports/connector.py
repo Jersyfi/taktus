@@ -124,9 +124,12 @@ class CredentialNeed(Value):
 
 
 class SignatureScheme(StrEnum):
-    """There is no scheme `none`: an intake declaration without a signature is not valid."""
+    """There is no scheme `none`: an intake declaration without a signature is not valid.
+    `hmac-sha256` signs the raw body; `hmac-sha256-timestamped` signs a version token, the
+    moment of sending and the raw body, and bounds a replay by that moment (§7)."""
 
     HMAC_SHA256 = "hmac-sha256"
+    HMAC_SHA256_TIMESTAMPED = "hmac-sha256-timestamped"
 
 
 class IntakeSignature(Value):

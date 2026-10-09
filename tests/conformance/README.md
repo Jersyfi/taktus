@@ -13,6 +13,7 @@ as a foreign one would be reached; the suite never imports it.
 | `test_connector_v1_rules.py` | the connector rules on known-good and known-bad documents |
 | `test_connector_v1_reference.py` | the reference connector passes C-01 to C-09 against the fake service, with a token and as Taktus's own app (ADR-0033); C-10 stays pending; the fake holds one record per key afterwards; as the app, no token the fake issued and no statement the connector signed appears in the report or the log — the suite's C-04 cannot know them |
 | `test_connector_v1_faults.py` | for every fault the reference connector can inject, the suite fails on exactly that check; the app serving a call without a credential fails C-03 |
+| `test_connector_v1_chat.py` | the chat connector passes C-01 to C-09 against the fake chat service under the timestamped signature scheme, C-10 pending; the fake holds one message per key afterwards; for every fault the chat connector can inject — `C-08-stale` among them — the suite fails on exactly that check |
 | `test_taktusctl.py` | `taktusctl conformance run` end to end, for both contracts |
 
 Credential values are random per test and reach the adapters through their environment only;

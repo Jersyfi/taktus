@@ -157,7 +157,7 @@ trigger, so that the removal test runs weekly without a script (#69) · event re
 worker generating the closing section of a pull request it opens (DEC-0037, DEC-0050) (#76,
 #77) · the identity component in place of the provisional identity (#82) · a process that would
 give an instance credentials for its own infrastructure refused at planning time (#83) · chat
-connector (#84) · **the owner-facing channel**: one event rendered for the repository, the
+connector, and the webhook intake answering a channel's URL verification (#84, #145) · **the owner-facing channel**: one event rendered for the repository, the
 owner's channel and the web app, and the owner's answer filed where it belongs (#85) · **the
 product finding**: what an instance meets that the product lacks becomes an issue here, carrying
 the run, the block and the waiting time (#86, #100) · P-01, P-02 and P-03 running on Taktus's
