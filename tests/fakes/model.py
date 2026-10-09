@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from taktus.ports.model import Calculability, Completion, Model, ModelError, Prompt
+from taktus.ports.model import Calculability, Completion, Model, ModelAtLimit, ModelError, Prompt
 from taktus.shared.v1 import PriceKinds
 
 
@@ -14,6 +14,8 @@ class FakeModel(Model):
     name: str = "fake-model@1"
     finish: str = "stop"
     unreachable: str | None = None
+    at_limit: int = 0
+    """Answer the next so many calls at the provider's rate limit, as a 429 does."""
     prompts: list[Prompt] = field(default_factory=list)
     declaration: Calculability = field(
         default_factory=lambda: Calculability(
@@ -38,6 +40,9 @@ class FakeModel(Model):
         self.prompts.append(prompt)
         if self.unreachable is not None:
             raise ModelError(self.unreachable)
+        if self.at_limit > 0:
+            self.at_limit -= 1
+            raise ModelAtLimit("the provider's rate limit is reached")
         tokens_in = _words(prompt)
         tokens_out = len(self.answer.split())
         return Completion(

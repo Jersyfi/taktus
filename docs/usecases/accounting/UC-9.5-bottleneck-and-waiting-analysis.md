@@ -4,10 +4,10 @@ title: Bottleneck and waiting analysis
 component: accounting
 epic: E9
 serves: [P8, P14]
-state: specified
+state: building
 version: 0.5.0
-tests: []
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: c28377b9027e, ADR-0010: 6b161e3f6831, ADR-0015: 420aac4db0cc, ADR-0029: 37c061ef032a}
+tests: [tests/components/run/test_blocked_time.py::test_a_block_of_each_cause_is_recorded_with_its_cause_and_its_duration, tests/components/run/test_blocked_time.py::test_blocked_time_and_share_sum_per_cause_process_and_period, tests/components/run/test_blocked_time.py::test_a_wait_on_a_person_is_readable_under_their_name_by_that_person_alone, tests/components/run/test_blocked_time.py::test_no_block_and_no_sum_has_a_field_that_can_hold_a_person]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: c28377b9027e, ADR-0010: 6b161e3f6831, ADR-0015: 3a42705e5561, ADR-0029: 37c061ef032a, ADR-0043: ef481621ce0f}
 supersedes: null
 ---
 
@@ -57,8 +57,25 @@ use case is the analysis over them.
 ## 4. What it rests on
 
 Measuring waiting and reporting marginal value (ADR-0015), with its protective rule; admission control
-before every step (ADR-0005); method selection (ADR-0004); consumption and money (ADR-0010). Filed in
+before every step (ADR-0005); the blocked-time accounts as the run engine keeps them (ADR-0043); method selection (ADR-0004); consumption and money (ADR-0010). Filed in
 `accounting`, which owns forecasts and marginal value; the blocked-time accounts are `run`'s
 (ADR-0029). Numbered in conversation after version 2 of the definition, in no version of it
 (`NUMBERING.md`). The roadmap places the blocked-time accounts in `0.2.0` and the marginal-value
 recommendations in `0.5.0`.
+
+## 5. What is proven so far
+
+The blocked-time accounts are built, as the `run` component records them (ADR-0043). The analysis
+over them is not. By the named tests:
+
+- A block of each of the seven causes is recorded with its account, its cause, the run, the step
+  and the process version it held up, and its duration; each cause once, none counted twice.
+- Blocked time, the number of blocks, the runs and steps held up and the share of the runs held
+  up sum per cause, per process and per period from the records alone, and equal what the test
+  sums by hand from the blocks it produced.
+- A wait on a person is in every block and every sum without the person's name, and readable
+  under the name by that person alone; no block and no sum has a field that can hold a person.
+
+Not yet: the marginal value of a higher limit, the recommendations and the check for a change of
+method, and the four ways to wait less on people (`0.5.0`). A wait on a person is summed over
+every person of the tenant, not by role or department, until a request is addressed to a role.

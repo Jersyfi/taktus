@@ -14,7 +14,7 @@ from fakes import model_service
 
 from taktus.adapters.driven.models import OpenAiCompatibleModel, StaticModelPool
 from taktus.ports.configuration import Secret
-from taktus.ports.model import ModelError, Prompt
+from taktus.ports.model import ModelAtLimit, ModelError, Prompt
 
 KEY = "key-" + secrets.token_hex(8)
 
@@ -71,6 +71,21 @@ async def test_a_refusal_is_a_model_error_without_the_credential(
         Prompt(user="x")
     )
     assert cut.finish == "length"
+
+
+async def test_a_rate_limit_is_the_provider_at_its_limit(
+    endpoint: tuple[str, model_service.Script],
+) -> None:
+    url, script = endpoint
+    script.status = 429
+    model = OpenAiCompatibleModel(url, "m", credential=Secret(KEY), timeout=5.0)
+    with pytest.raises(ModelAtLimit, match="429") as limited:
+        await model.complete(Prompt(user="x"))
+    assert KEY not in str(limited.value)
+    script.status = 503
+    with pytest.raises(ModelError) as other:
+        await model.complete(Prompt(user="x"))
+    assert not isinstance(other.value, ModelAtLimit), "only a 429 is a rate limit"
 
 
 async def test_an_endpoint_that_is_down_is_a_model_error() -> None:

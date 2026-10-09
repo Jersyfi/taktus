@@ -37,6 +37,7 @@ from taktus.ports.model import (
     Calculability,
     Completion,
     Model,
+    ModelAtLimit,
     ModelError,
     OutputCap,
     Prompt,
@@ -123,6 +124,11 @@ class OpenAiCompatibleModel(Model):
             raise ModelError(
                 f"the model endpoint {self._endpoint} did not answer: {type(error).__name__}"
             ) from error
+        if response.status_code == 429:
+            raise ModelAtLimit(
+                f"the model endpoint {self._endpoint} answered 429 for model {self._model!r}: "
+                f"the provider's rate limit is reached: {_message(response)}"
+            )
         if response.status_code >= 400:
             raise ModelError(
                 f"the model endpoint {self._endpoint} answered {response.status_code} for model "

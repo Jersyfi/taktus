@@ -85,6 +85,12 @@ class ModelError(Exception):
     message names the endpoint and the fault, never a credential."""
 
 
+class ModelAtLimit(ModelError):
+    """The provider answered that its rate limit is reached (HTTP 429): nothing was produced,
+    and the same call may be made again later. The step waits instead of failing, and the wait
+    is booked to `limit.provider` (ADR-0043)."""
+
+
 class Model(Protocol):
     def calculability(self) -> Calculability:
         """What this adapter can say before a call; constant for its configuration."""

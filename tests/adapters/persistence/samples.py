@@ -34,7 +34,7 @@ from taktus.components.process.domain.model import (
     Trigger,
     TriggerState,
 )
-from taktus.components.run.domain.model import Checkpoint, Run, RunState, StepState
+from taktus.components.run.domain.model import Checkpoint, OpenBlock, Run, RunState, StepState
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import (
     Artifact,
@@ -243,7 +243,18 @@ def run(id: str = "run_1", tenant: str = "t") -> Run:
             ),
         }
     )
-    return fresh.with_step_run(first).with_step_run(second)
+    # The third step is held back behind the second, in a block that has not ended (ADR-0043).
+    third = fresh.step_runs[2].model_copy(
+        update={
+            "block": OpenBlock(
+                account="wait.dependency",
+                cause="held_back",
+                since=AT + timedelta(seconds=3),
+                on="compute",
+            )
+        }
+    )
+    return fresh.with_step_run(first).with_step_run(second).with_step_run(third)
 
 
 def rehearsal_run(id: str = "run_2", tenant: str = "t") -> Run:

@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import Field, model_validator
 
+from taktus.components.run.domain.model.block import OpenBlock
 from taktus.components.run.domain.model.errors import IllegalTransition, UnsupportedWork
 from taktus.ports.worker import AssignmentId, Limits
 from taktus.shared.v1 import (
@@ -46,9 +47,9 @@ class Cause(StrEnum):
     FAILURE = "failure"
     CEILING = "ceiling"
     CAPACITY = "capacity"
-    """A step's worker was at its declared capacity. A run halted with this cause waits at the
-    step's boundary and its runner tries again later; one whose step waited beyond its ceiling
-    escalates with it (ADR-0037)."""
+    """A step's worker was at its declared capacity, or its model's provider at its rate limit.
+    A run halted with this cause waits at the step's boundary and its runner tries again later;
+    one whose step waited beyond its ceiling escalates with it (ADR-0037, ADR-0043)."""
     PERSON = "person"
     """A step waits for a person: to confirm it before it starts (level 2), or to perform the act
     Taktus only proposes and report it done (level 1). The run waits in `waiting_human` once
@@ -193,10 +194,14 @@ class StepRun(Value):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     waiting_since: datetime | None = None
-    """When the step's worker first answered that it was at capacity, in a wait that has not
-    ended yet; None while the step is not waiting (ADR-0037)."""
+    """When the step's worker first answered that it was at capacity, or its model's provider
+    that it was at its rate limit, in a wait that has not ended yet; None while the step is not
+    waiting so (ADR-0037, ADR-0043)."""
     waits: int = Field(default=0, ge=0)
     """How many times the worker answered so in that wait: what the next delay grows with."""
+    block: OpenBlock | None = None
+    """The block the step is in, while it waits: its account, its cause and when it began. The
+    record of the block is written when it ends (ADR-0015, ADR-0043)."""
     confirmed_by: str | None = Field(default=None, min_length=1)
     """The person who confirmed the step before it started (level 2), or who performed its act
     and reported it (level 1); None for a step no person had to answer (ADR-0039)."""

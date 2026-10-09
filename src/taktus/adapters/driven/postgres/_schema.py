@@ -298,6 +298,7 @@ step_run = Table(
     _at("waiting_since", nullable=True),  # ADR-0037
     Column("waits", Integer, nullable=False, server_default=text("0")),
     Column("confirmed_by", Text),  # ADR-0039
+    Column("block", JSONB),  # ADR-0043
     PrimaryKeyConstraint("tenant", "run_id", "step_id"),
     ForeignKeyConstraint(
         ["tenant", "run_id"], ["run.tenant", "run.id"], ondelete="CASCADE", name="step_run_run"

@@ -1,3 +1,4 @@
+from taktus.components.run.domain.model.block import ACCOUNTS, Account, OpenBlock
 from taktus.components.run.domain.model.errors import (
     ClaimLost,
     IllegalTransition,
@@ -48,10 +49,12 @@ from taktus.components.run.domain.model.work import (
 )
 
 __all__ = [
+    "ACCOUNTS",
     "INTERRUPTIBLE",
     "RESUMABLE",
     "RUN_TRANSITIONS",
     "STEP_TRANSITIONS",
+    "Account",
     "BacklogRule",
     "Cause",
     "CheckRule",
@@ -65,6 +68,7 @@ __all__ = [
     "LlmWork",
     "NoConnector",
     "NoWorker",
+    "OpenBlock",
     "ReadyRule",
     "RoadmapRule",
     "RuleFailed",
