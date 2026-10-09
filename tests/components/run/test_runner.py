@@ -1,8 +1,9 @@
 """The runner against the memory queue: a submitted run is claimed once and executed, two
 runners never execute the same run, a shutdown releases the run at its boundary for the next
 runner, a runner whose claim was taken writes nothing more to the run, a job that keeps failing
-is left for a person, and a job whose run ended before its runner completed the job is
-completed without executing anything.
+is left for a person, a job whose run ended before its runner completed the job is
+completed without executing anything, and runs whose worker is at capacity wait for it — their
+jobs deferred, never more assignments in the worker than it declares (ADR-0037).
 
 The clock is the real one here: the runner's loop and the heartbeat sleep through it, and the
 `wait` steps give a run a duration to be interrupted in. Intervals are short.
@@ -15,7 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-from fakes import FakeIdentifiers, FakeWorker, HeldObjects
+from fakes import FakeIdentifiers, FakeWorker, HeldObjects, InnerStep
 
 from taktus.adapters.driven.clock import SystemClock
 from taktus.adapters.driven.memory import (
@@ -44,6 +45,7 @@ from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import (
     Commissioned,
     ExactnessClass,
+    Fallback,
     Method,
     Plan,
     PlanResult,
@@ -72,11 +74,31 @@ def wait(id: str, seconds: float, *, after: tuple[str, ...] = ()) -> tuple[Step,
     return step, {"seconds": seconds}
 
 
+def work(id: str, *, ceiling: int | None = None) -> tuple[Step, dict[str, Any]]:
+    """A worker step."""
+    step = Step(
+        id=id,
+        method=Method.WORKER,
+        reason="r",
+        rejected=(),
+        exactness=ExactnessClass.TOLERANT,
+        fallback=Fallback(when="x", to=Method.HUMAN),
+        requires=("shell.script",),
+    )
+    document: dict[str, Any] = {"task": {"goal": "g", "acceptance": ["a"]}}
+    if ceiling is not None:
+        document["capacity_ceiling_seconds"] = ceiling
+    return step, document
+
+
 class World:
     """One persistence, one queue, one engine — and as many runners as a test starts on it,
     the way several processes would share one database."""
 
-    def __init__(self, *, lease_seconds: int = 60, max_attempts: int = 5) -> None:
+    def __init__(
+        self, *, lease_seconds: int = 60, max_attempts: int = 5, worker: FakeWorker | None = None
+    ) -> None:
+        self.worker = worker or FakeWorker()
         self.clock = SystemClock()
         self.ids = FakeIdentifiers()
         self.persistence = MemoryPersistence()
@@ -97,7 +119,7 @@ class World:
             objects=objects,
             ledger=self.ledger,
             provenance=self.provenance,
-            workers=StaticWorkerPool([("worker.fake", FakeWorker())]),
+            workers=StaticWorkerPool([("worker.fake", self.worker)]),
             clock=self.clock,
             ids=self.ids,
             telemetry=NoTelemetry(),
@@ -134,6 +156,8 @@ class World:
         heartbeat: float = 0.05,
         engine: RunEngine | None = None,
         concurrency: int = 2,
+        wait_first: float = 0.02,
+        wait_cap: float = 0.1,
     ) -> Runner:
         runner = Runner(
             engine=engine or self.engine,
@@ -146,6 +170,8 @@ class World:
                 concurrency=concurrency,
                 poll_seconds=0.02,
                 heartbeat_seconds=heartbeat,
+                wait_first_seconds=wait_first,
+                wait_cap_seconds=wait_cap,
             ),
         )
         self.tasks.append(asyncio.create_task(runner.run()))
@@ -415,3 +441,112 @@ async def test_a_derived_run_is_created_once_and_carries_its_trigger() -> None:
     assert [e.kind for e in entries] == ["run.created", "run.triggered", "budget.set"]
     assert entries[1].outcome == "schedule" and entries[1].content_digest is not None
     assert [job.id for job in jobs] == ["job_0123456789abcdef0123"]
+
+
+# --- a worker at capacity (ADR-0037) ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("capacity", [1, 2])
+async def test_runners_sharing_a_worker_never_exceed_its_capacity_and_every_run_finishes(
+    capacity: int,
+) -> None:
+    """Issue #122: two runners of concurrency two — four runs at once — share one worker that
+    declares a capacity of one or two. The runs the worker turns away wait at their boundary,
+    their jobs deferred; every run finishes, none escalates, and the worker never holds more
+    than it declares."""
+    fake = FakeWorker(
+        capacity=capacity,
+        inner_seconds=0.03,
+        script=(InnerStep("one", 0.5), InnerStep("two", 0.5)),
+    )
+    world = World(worker=fake)
+    runs = [await world.submit(work("do")) for _ in range(6)]
+    first, second = world.runner("r1"), world.runner("r2")
+    finished = {r.id for r in runs}
+
+    def done() -> bool:
+        completed = [o for o in (*first.outcomes, *second.outcomes) if o.disposition == "completed"]
+        return len(completed) == len(runs)
+
+    async with asyncio.timeout(10):
+        while not done():  # noqa: ASYNC110 — the state polled is the runners'
+            await asyncio.sleep(0.02)
+    await world.stop(first, second)
+
+    assert fake.peak <= capacity, f"the worker held {fake.peak} at once"
+    assert fake.refused > 0, "the runners asked for more than the worker holds"
+    outcomes = (*first.outcomes, *second.outcomes)
+    assert "deferred" in {o.disposition for o in outcomes}
+    assert all(o.error is None for o in outcomes), [o.error for o in outcomes]
+    waited = 0
+    for run_id in finished:
+        stored = await world.stored(run_id)
+        assert stored.state is RunState.FINISHED, (stored.state, stored.cause, stored.reason)
+        kinds = await world.kinds(run_id)
+        assert "run.escalated" not in kinds
+        assert kinds.count("step.started") == 1, "each run's step started once"
+        if "step.waiting" in kinds:
+            waited += 1
+            assert kinds.count("step.waited") == 1, "the wait ended once, and is recorded"
+            assert kinds.index("step.waited") < kinds.index("step.started")
+    assert waited > 0
+    async with world.persistence.transaction(TENANT):
+        assert (await world.ledger.verify(TENANT)).intact
+    assert await world.claimable() == [], "every job completed"
+
+
+async def test_a_waiting_run_s_job_is_deferred_and_not_counted_as_a_failed_attempt() -> None:
+    """A worker that turns a run away more often than the queue allows attempts: the run still
+    finishes, because a deferral is not an attempt; and between two tries the job is not
+    claimable."""
+    fake = FakeWorker(full_for=4)
+    world = World(worker=fake, max_attempts=2)
+    run = await world.submit(work("do"))
+    runner = world.runner("r1", wait_first=0.2, wait_cap=0.2)
+    await until(lambda: len(runner.outcomes) == 1)
+    assert runner.outcomes[0].disposition == "deferred"
+    halted = await world.stored(run.id)
+    assert halted.state is RunState.HALTED and halted.cause is Cause.CAPACITY
+    assert await world.claimable() == [], "deferred: not claimable before its delay"
+    await until(lambda: len(runner.outcomes) == 5)
+    await world.stop(runner)
+    assert [o.disposition for o in runner.outcomes] == ["deferred"] * 4 + ["completed"]
+    assert (await world.stored(run.id)).state is RunState.FINISHED
+
+
+async def test_a_wait_beyond_its_ceiling_escalates_and_the_job_is_completed() -> None:
+    fake = FakeWorker(full_for=1000)
+    world = World(worker=fake)
+    run = await world.submit(work("do", ceiling=1))
+    runner = world.runner("r1", wait_first=0.3, wait_cap=0.3)
+    await until(lambda: any(o.disposition == "completed" for o in runner.outcomes))
+    await world.stop(runner)
+    escalated = await world.stored(run.id)
+    assert escalated.state is RunState.ESCALATED and escalated.cause is Cause.CAPACITY
+    assert "stayed at capacity" in (escalated.step_run("do").reason or "")
+    assert await world.claimable() == [], "what waits for a person stays with the person"
+
+
+async def test_a_runner_that_lost_its_claim_while_its_worker_was_full_writes_no_wait() -> None:
+    """The claim goes to another runner while the worker is answering at capacity: the wait is
+    not written, the run is as it was, and the job is left to the other runner, not deferred."""
+    world = World()
+
+    async def taken(_: object) -> None:
+        async with world.persistence.transaction(TENANT):
+            await world.queue.release(TENANT, "job_0001", "r1")
+            assert [j.id for j in await world.queue.claim(TENANT, "r2", 1)] == ["job_0001"]
+
+    world.worker.full_for = 1
+    world.worker.on_assign = taken
+    run = await world.submit(work("do"))
+    runner = world.runner("r1")
+    await until(lambda: len(runner.outcomes) == 1)
+    await world.stop(runner)
+    assert runner.outcomes[0].disposition == "lost"
+    kinds = await world.kinds(run.id)
+    assert "step.waiting" not in kinds and "run.halted" not in kinds
+    stored = await world.stored(run.id)
+    assert stored.state is RunState.RUNNING and stored.step_run("do").waiting_since is None
+    async with world.persistence.transaction(TENANT):
+        assert await world.queue.extend(TENANT, "job_0001", "r2"), "r2 still holds the job"

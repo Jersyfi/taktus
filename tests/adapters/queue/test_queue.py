@@ -1,6 +1,6 @@
 """The queue port: exclusive claims, a lease that expires, renewal, release, completion, a
-limit on attempts (ADR-0002: the job queue in the database), and the fence a write under a
-claim checks (#107)."""
+limit on attempts (ADR-0002: the job queue in the database), the fence a write under a
+claim checks (#107), and a deferral that is not an attempt (ADR-0037)."""
 
 from __future__ import annotations
 
@@ -97,6 +97,48 @@ async def test_a_job_is_not_claimed_beyond_the_limit_of_attempts(backend: Backen
         async with backend.work.transaction(tenant):
             await backend.queue.release(tenant, "job_1", claimant)
     assert await claim(backend, tenant, "c") == [], "two attempts is the limit here"
+
+
+async def defer(backend: Backend, tenant: str, claimant: str, seconds: float) -> None:
+    async with backend.work.transaction(tenant):
+        await backend.queue.defer(tenant, "job_1", claimant, seconds)
+
+
+async def test_a_deferred_job_is_claimable_only_after_its_delay(backend: Backend) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    await defer(backend, tenant, "b", 0)  # not b's claim: nothing happens
+    assert await claim(backend, tenant, "b") == [], "still a's"
+    await defer(backend, tenant, "a", 0.5)
+    assert await claim(backend, tenant, "b") == [], "not before its delay"
+    await asyncio.sleep(0.7)
+    async with backend.work.transaction(tenant):
+        (again,) = await backend.queue.claim(tenant, "b", 1)
+    assert again.id == "job_1" and again.attempts == 2 and again.deferrals == 1
+
+
+async def test_a_deferral_is_not_counted_against_the_limit_of_attempts(backend: Backend) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    for _ in range(4):  # twice the limit of attempts here
+        assert await claim(backend, tenant, "a") == ["job_1"]
+        await defer(backend, tenant, "a", 0)
+    for _ in range(2):
+        assert await claim(backend, tenant, "a") == ["job_1"], "a deferral is no failed attempt"
+        async with backend.work.transaction(tenant):
+            await backend.queue.release(tenant, "job_1", "a")
+    assert await claim(backend, tenant, "a") == [], "two failed attempts are the limit"
+
+
+async def test_a_deferred_claim_is_fenced_off(backend: Backend) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    await defer(backend, tenant, "a", 0)
+    assert not await fence(backend, tenant, held("a", 1)), "the deferred claim writes nothing"
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    assert await fence(backend, tenant, held("a", 2))
 
 
 async def test_a_duplicate_job_is_refused_and_a_rolled_back_enqueue_is_no_job(

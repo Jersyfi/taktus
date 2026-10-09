@@ -76,6 +76,12 @@ worker reports `compute` with its resource classes. The control plane converts n
 — it derives the normalised **Takt** (`docs/architecture/accounting.md`). An exhausted window is not
 *more expensive*, it *blocks*, and that is a different state.
 
+`max_concurrent_assignments` is how many assignments the worker holds at once. A worker that
+holds that many answers a further `POST /v1/assignments` with `503` and a problem body, and
+records nothing (`openapi.yaml`). The control plane relies on that answer: the step waits and
+asks again later, and nothing on the control plane's side counts the worker's assignments
+(ADR-0037). The conformance suite does not check the answer yet (DEC-0085, #133).
+
 Of the four `supports` flags only `native_pause` varies. `step_boundary_signal`, `streaming_events`
 and `estimate` are constant `true`: without them sections 4 to 6 cannot be satisfied. They are
 declared so that a reader of the response sees the obligation.

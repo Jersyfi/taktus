@@ -37,6 +37,11 @@ def free_port() -> int:
 
 @pytest.fixture
 def worker_endpoint(tmp_path: Path) -> Iterator[str]:
+    yield from reference_worker(tmp_path)
+
+
+def reference_worker(tmp_path: Path, *options: str) -> Iterator[str]:
+    """Start the reference worker with `options` added, yield its endpoint, stop it."""
     port = free_port()
     log = tmp_path / "worker.log"
     args = [
@@ -48,6 +53,7 @@ def worker_endpoint(tmp_path: Path) -> Iterator[str]:
         str(tmp_path / "worker-state"),
         "--step-seconds",
         "0.1",
+        *options,
     ]
     with log.open("wb") as handle:
         process = subprocess.Popen(args, stdout=handle, stderr=subprocess.STDOUT)  # noqa: S603
