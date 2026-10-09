@@ -1,7 +1,7 @@
 # DEC-0085 — The suite was said to check what one endpoint shows
 
 **Category:** DEFECT
-**Raised in:** the pull request for issue #122
+**Raised in:** [#136](https://github.com/Jersyfi/taktus/pull/136), for issue #122
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -59,4 +59,4 @@ nothing relied on it until a step waited on it.
 **What it now says:** the suite does not check the capacity answer; issue #133 adds the check.
 **What changed in substance:** nothing in the software; one description, ADR-0037's boundary, and
 the task #133.
-**Recorded in:** the pull request for issue #122
+**Recorded in:** [#136](https://github.com/Jersyfi/taktus/pull/136), for issue #122
