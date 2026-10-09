@@ -166,11 +166,36 @@ used 1.8 to 4.3 times the estimate in the first live run — so that the suite's
 can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales every token count. The real agent is run with
 `--agent claude` (the default), and a live run needs a credential the operator supplies.
 
+## The agent's version
+
+The agent is pinned to one exact version, written in one file: `agent-version` in this
+directory. Today it is 2.1.295. The image installs that version and no other; a build whose file
+names `latest`, a tag or a range fails. A release therefore carries the version the file names
+at the release's tag, and two builds of one tag carry the same agent. The live test installs the
+same version from the same file, so that it checks what a release ships.
+`tests/governance/test_image_workflow.py` holds the image, the release workflow and the live job
+to the file, and fails on anything but one exact version.
+
+The agent's stream is not a stable interface. The first live run found that the real agent
+wrote it differently from the stand-in, and the worker undercounted tokens (DEC-0038). A new
+version of the agent is therefore taken deliberately, never by a build:
+
+1. A pull request changes `agent-version` and nothing else of the agent. Its description names
+   the old and the new version.
+2. After it is merged, the workflow `live` is dispatched on `main`, or its monthly run is
+   awaited. Its job `coding` runs the worker against the new version.
+3. A release is tagged only after that run passed. If it failed, the worker is adapted or the
+   file is set back, each in a pull request of its own.
+
+The job `coding` says on its page when the registry has a newer release than the pin. It does
+not install it.
+
 ## The live test
 
 `tests/workers/test_coding_worker_live.py` runs this worker against the real agent on one small
 assignment: one file in an empty workspace, through `taktusctl run`. The workflow `live` runs
-it on `main`, monthly and by dispatch, never on a pull request (DEC-0048, DEC-0058). It needs the
+it on `main`, monthly and by dispatch, never on a pull request (DEC-0048, DEC-0058). It installs
+the agent at the pinned version (*The agent's version*). It needs the
 agent's key in a file (`TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE`) and the cap per run
 (`LIVE_SPEND_CAP_USD`); without either it skips and says which.
 
