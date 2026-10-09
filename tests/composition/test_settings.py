@@ -170,7 +170,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 56, "every setting is in the startup log"
+    assert len(effective) == 57, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -319,3 +319,12 @@ def test_the_cluster_kind_needs_its_namespace_and_reads_its_settings() -> None:
         TAKTUS_EXECUTION_EGRESS_ENFORCE="false",
     ).execution
     assert off.egress_enforced is False
+
+
+def test_findings_are_sent_only_where_the_operator_names_a_connector() -> None:
+    """UC-6.12: an instance sends findings only where its operator enabled it."""
+    assert settings().findings_connector is None
+    enabled = settings(TAKTUS_FINDINGS_CONNECTOR="http://findings:9100/mcp/")
+    assert enabled.findings_connector == "http://findings:9100/mcp"
+    with pytest.raises(ConfigurationError, match="TAKTUS_FINDINGS_CONNECTOR"):
+        settings(TAKTUS_FINDINGS_CONNECTOR="findings:9100")

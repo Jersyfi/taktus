@@ -24,7 +24,7 @@ boundaries, `import-linter` contracts and `tests/architecture` are not optional 
 | `knowledge` | knowledge sources, embeddings, citations |
 | `value` | value ledger, cost and benefit entries, revert analysis |
 | `ledger` | hash chain, verification, export |
-| `reporting` | views and who may see them, reports and their delivery, the explanation of an action on request; owns no figure — every number is read from the component that produces it (ADR-0029); today: the owner-facing channel — a tenant's configuration and phrasebook, a report to the owner in three renderings, the answer in the channel read, reflected and confirmed (ADR-0045) |
+| `reporting` | views and who may see them, reports and their delivery, the explanation of an action on request; owns no figure — every number is read from the component that produces it (ADR-0029). Its package arrived with the product finding (UC-6.12, ADR-0046); the owner-facing channel — a tenant's configuration and phrasebook, a report to the owner in three renderings, the answer in the channel read, reflected and confirmed — is in it too (ADR-0045) |
 
 **Rules between components:** no direct import · communication through events · reading another
 component's data is allowed, writing is not · what is shared lives in the **language-neutral** shared

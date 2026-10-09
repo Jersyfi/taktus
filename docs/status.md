@@ -248,6 +248,17 @@ their fakes, every fault recorded as not passed (NTC-0092), and through the run 
 integration of Taktus's own instance has been recorded yet: that run belongs to #87, and the
 connector's suite there needs a sandbox it may write to (NEED-0019).
 
+**What an instance meets that the product lacks becomes an issue** (#86, `0.2.0`, ADR-0046). A step
+that fails because no configured worker, connector or operation offers what it needs now carries a
+block until it can start, booked to `wait.dependency` (NTC-0098). A rule makes one finding per lack
+of the blocks, ended and open, in the new `reporting` component. Where an operator sets
+`TAKTUS_FINDINGS_CONNECTOR`, the scheduler sends it to the Taktus repository as a task issue with
+the run, the step, the cause and the time waited; the same lack met again is a comment on the same
+issue, the waiting summed (NTC-0097). Elsewhere `taktusctl findings` shows it, ready to send by
+hand. A finding holds identifiers, causes, durations and counts, and no person. Proven against the
+fake repository service; the Taktus project's own instance sends nothing until its operator sets
+the connector.
+
 **Taktus watches its platform** (ADR-0031). The *Observe* stage is built: free CPU, memory and
 storage, growth per run extrapolated to a date, `taktusctl capacity` and a report by the
 scheduler, admission against free capacity, every job's memory limit enforced or the job
@@ -267,8 +278,9 @@ answers, for the first time, how much of the vision stands:
 
 - **Every one of the fourteen principles is served by at least one use case**; `make gate-vision`
   fails when one is not.
-- **Seventy-five use cases exist in the new format. None is verified; two are built**: UC-1.7
-  every command belongs to one identity (#82), and UC-7.4 the decision request (#79). Fifteen
+- **Seventy-five use cases exist in the new format. None is verified; three are built**: UC-1.7
+  every command belongs to one identity (#82), UC-7.4 the decision request (#79), and UC-6.12
+  the product finding (#86). Fifteen
   are *building* — part of what they require is built and named tests prove that part, which
   each states in its section 5, *What is proven so far*, outside the requirement (DEC-0106): UC-1.1
   commands from any channel, UC-4.5 halt or escalate at the boundary, UC-6.1 the complete activity
@@ -277,7 +289,7 @@ answers, for the first time, how much of the vision stands:
   UC-1.2 planning in dialogue, UC-5.8 observability
   platforms, UC-8.1 any model connected, UC-8.4 repeatability, UC-8.10 limits that do no harm,
   UC-14.1 the worker interface; and from the fourth step UC-9.5 bottleneck and waiting analysis,
-  whose blocked-time accounts are built (#80). Fifty-nine are *specified* and nothing of them is
+  whose blocked-time accounts are built (#80). Fifty-eight are *specified* and nothing of them is
   built. UC-6.10
   was added on 2026-10-08 and accepted by the owner (DEC-0055); seventeen came with the migration's
   second step on the same day, twenty-seven with the third on 2026-10-09, and seventeen with the

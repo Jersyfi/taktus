@@ -6,14 +6,24 @@ from taktus.components.reporting.ports.decisions import (
     DecisionRefused,
 )
 from taktus.components.reporting.ports.deliveries import Deliveries, NotDelivered, Sent
+from taktus.components.reporting.ports.findings import (
+    Blocks,
+    ChannelIncomplete,
+    FindingChannel,
+    Held,
+)
 from taktus.components.reporting.ports.phrasebooks import Phrasebooks
 from taktus.components.reporting.ports.secret_values import SecretValues
 
 __all__ = [
+    "Blocks",
+    "ChannelIncomplete",
     "DecisionAnswers",
     "DecisionRead",
     "DecisionRefused",
     "Deliveries",
+    "FindingChannel",
+    "Held",
     "NotDelivered",
     "Phrasebooks",
     "SecretValues",

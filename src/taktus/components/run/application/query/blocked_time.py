@@ -5,7 +5,7 @@ Everything here is read from the tenant's ledger and the records its `step.waite
 by digest, and from nothing else. A rehearsal's blocks are left out: a rehearsal acts on nothing
 outside, and its waits are not the work's (ADR-0030).
 
-Three reads, and no fourth:
+Three reads of what ended, and one of what has not:
 
 - `blocks` — every block, with its account, its cause, the run, the step and the process
   version it held up, and how long it lasted. A block on a person names no one;
@@ -13,7 +13,10 @@ Three reads, and no fourth:
   held up. No person is a key, and the order is by key, never by a figure;
 - `own` — the waits on a person that `reader` ended by answering. The reader is the identity
   the caller authenticated; a figure of waiting on a person is joined to a name only for the
-  person it names (ADR-0015, protective rule; principle 14).
+  person it names (ADR-0015, protective rule; principle 14);
+- `waiting` — every block that has not ended yet, from the step runs that carry it: what a
+  reader needs who must know of a block before it ends, such as the product finding
+  (ADR-0046). It is in no sum.
 """
 
 from __future__ import annotations
@@ -22,19 +25,22 @@ import json
 from collections import defaultdict
 from collections.abc import Sequence
 
+from taktus.components.run.domain.model.run import Run
 from taktus.components.run.domain.service.blocked import (
     RECORD_KIND,
     Block,
     BlockedSum,
     Period,
+    Waiting,
     parse,
     period_of,
     process_of,
     sums,
+    waiting,
 )
 from taktus.ports.ledger import Ledger
 from taktus.ports.objectstore import ObjectStore
-from taktus.ports.persistence import Tenant, UnitOfWork
+from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import LedgerEntry
 
 ANSWERS = frozenset({"step.confirmed", "step.performed", "step.decided"})
@@ -42,10 +48,37 @@ ANSWERS = frozenset({"step.confirmed", "step.performed", "step.decided"})
 
 
 class BlockedTime:
-    def __init__(self, ledger: Ledger, objects: ObjectStore, work: UnitOfWork) -> None:
+    def __init__(
+        self,
+        ledger: Ledger,
+        objects: ObjectStore,
+        work: UnitOfWork,
+        runs: Repository[Run] | None = None,
+    ) -> None:
         self._ledger = ledger
         self._objects = objects
         self._work = work
+        self._runs = runs
+
+    async def waiting(self, tenant: Tenant) -> tuple[Waiting, ...]:
+        """Every block that has not ended, in the order of the runs and their steps. A
+        rehearsal's blocks are left out, as they are from the records."""
+        if self._runs is None:
+            raise RuntimeError("the open blocks are read from the runs; none were wired")
+        async with self._work.transaction(tenant):
+            runs = await self._runs.list(tenant)
+        return tuple(
+            waiting(
+                step_run.block,
+                run_id=run.id,
+                step_id=step_run.step_id,
+                process_version=run.process_version,
+            )
+            for run in sorted(runs, key=lambda r: r.id)
+            if not run.rehearsal
+            for step_run in run.step_runs
+            if step_run.block is not None
+        )
 
     async def blocks(self, tenant: Tenant) -> tuple[Block, ...]:
         """Every block that ended in the tenant, oldest first."""

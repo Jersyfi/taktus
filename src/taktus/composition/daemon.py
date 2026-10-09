@@ -32,7 +32,7 @@ from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers, SystemR
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
-from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
+from taktus.adapters.driven.connectors.mcp import McpActionConnector, McpIntakeConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.models.pool import StaticModelPool
@@ -80,7 +80,12 @@ from taktus.components.process.application.service.register_version import (
 from taktus.components.process.application.service.triggers import TriggersHandler
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
 from taktus.components.reporting.application.query import ReportQueries
-from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
+from taktus.components.reporting.application.service import ProductFindings, Sending
+from taktus.components.run.application.query import (
+    BlockedTime,
+    ProvenanceQuery,
+    RecordedResponses,
+)
 from taktus.components.run.application.service import (
     DecideSteps,
     EngineOptions,
@@ -100,6 +105,7 @@ from taktus.composition.execution import (
     open_worker,
     telemetry_of,
 )
+from taktus.composition.findings import RepositoryChannel, RunBlocks, findings_tick
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturity import CatalogMaturities
@@ -153,6 +159,9 @@ class Wired:
     """The capacity report the scheduler runs every `TAKTUS_CAPACITY_INTERVAL_SECONDS`."""
     triggers: Triggers
     """The time triggers the scheduler fires on every tick while it leads (ADR-0035)."""
+    findings: ProductFindings
+    """The product findings (UC-6.12, ADR-0046): sent by the scheduler where the operator
+    enabled it with `TAKTUS_FINDINGS_CONNECTOR`, and only recorded otherwise."""
     owner: OwnerChannelWiring
     """The owner-facing channel: reports to the owner, their renderings and the answers
     given in the channel (ADR-0045)."""
@@ -415,6 +424,17 @@ async def wire(
                     work=persistence,
                     database=persistence,
                 ),
+                findings=ProductFindings(
+                    RunBlocks(BlockedTime(ledger, objects, persistence, runs)),
+                    None
+                    if settings.findings_connector is None
+                    else Sending(
+                        RepositoryChannel(McpActionConnector(settings.findings_connector)),
+                        ledger,
+                        objects,
+                        persistence,
+                    ),
+                ),
                 triggers=Triggers(
                     tenants=settings.tenants,
                     triggers=TriggersHandler(
@@ -570,9 +590,13 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
 
         # And it fires the schedule triggers that are due: once per slot, however many
         # schedulers stand by (ADR-0035).
+        # And, where the operator enabled it, it sends the product findings (UC-6.12).
+        send_findings = findings_tick(wired.findings, settings.tenants, wired.clock)
+
         async def scheduled() -> None:
             await wired.triggers.tick()
             await tick()
+            await send_findings()
 
         tasks.append(
             asyncio.create_task(

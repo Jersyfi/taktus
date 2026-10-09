@@ -19,6 +19,12 @@ from taktus.components.reporting.application.service.errors import (
     ReportingError,
     UnknownReport,
 )
+from taktus.components.reporting.application.service.product_findings import (
+    SENT,
+    ProductFindings,
+    Sending,
+    Sent,
+)
 from taktus.components.reporting.application.service.raise_report import (
     DONE,
     DeliverReport,
@@ -28,6 +34,7 @@ from taktus.components.reporting.application.service.raise_report import (
 
 __all__ = [
     "DONE",
+    "SENT",
     "Answer",
     "AnswerInChannel",
     "AnswerInChannelHandler",
@@ -40,8 +47,11 @@ __all__ = [
     "DeliverReport",
     "NoChannel",
     "NotSent",
+    "ProductFindings",
     "RaiseReport",
     "RaiseReportHandler",
     "ReportingError",
+    "Sending",
+    "Sent",
     "UnknownReport",
 ]

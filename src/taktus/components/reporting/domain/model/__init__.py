@@ -3,6 +3,15 @@ from taktus.components.reporting.domain.model.channel import (
     Phrasebook,
     TaskDestination,
 )
+from taktus.components.reporting.domain.model.finding import (
+    LACK_CAUSES,
+    Blocked,
+    Finding,
+    Lack,
+    LackCause,
+    Occurrence,
+    Reported,
+)
 from taktus.components.reporting.domain.model.report import (
     Delivery,
     DeliveryChannel,
@@ -18,12 +27,18 @@ from taktus.components.reporting.domain.model.report import (
 )
 
 __all__ = [
+    "LACK_CAUSES",
+    "Blocked",
     "Delivery",
     "DeliveryChannel",
     "DeliveryState",
     "Filed",
+    "Finding",
     "Happened",
+    "Lack",
+    "LackCause",
     "Link",
+    "Occurrence",
     "Offered",
     "OwnerChannel",
     "Phrasebook",
@@ -31,5 +46,6 @@ __all__ = [
     "Report",
     "ReportKind",
     "ReportState",
+    "Reported",
     "TaskDestination",
 ]

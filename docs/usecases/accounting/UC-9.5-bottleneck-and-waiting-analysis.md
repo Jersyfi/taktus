@@ -7,7 +7,7 @@ serves: [P8, P14]
 state: building
 version: 0.5.0
 tests: [tests/components/run/test_blocked_time.py::test_a_block_of_each_cause_is_recorded_with_its_cause_and_its_duration, tests/components/run/test_blocked_time.py::test_blocked_time_and_share_sum_per_cause_process_and_period, tests/components/run/test_blocked_time.py::test_a_wait_on_a_person_is_readable_under_their_name_by_that_person_alone, tests/components/run/test_blocked_time.py::test_no_block_and_no_sum_has_a_field_that_can_hold_a_person]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: c28377b9027e, ADR-0010: 6b161e3f6831, ADR-0015: 3a42705e5561, ADR-0029: 37c061ef032a, ADR-0043: bfb49e47d53b}
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: c28377b9027e, ADR-0010: 6b161e3f6831, ADR-0015: 3a42705e5561, ADR-0029: 37c061ef032a, ADR-0043: fe6020be8643}
 supersedes: null
 ---
 
