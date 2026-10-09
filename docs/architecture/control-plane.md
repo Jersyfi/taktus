@@ -242,8 +242,10 @@ planned → admitted → running → [waiting_human] → running → finished
 
 A run reaches `waiting_human` when every step it can still run waits for a person: a step at
 autonomy level 2 for a confirmation, a step that acts at level 1 for the person to perform it
-(ADR-0039). Such a step is in the step state `waiting_human`; the steps that do not depend on it
-run on before the run waits. A person's answer continues the run; a stop halts it at once.
+(ADR-0039), a step whose act an anchor names for the decision its request asks for, at every
+level (ADR-0042). Such a step is in the step state `waiting_human`; the steps that do not depend
+on it run on before the run waits. A person's answer continues the run; a stop halts it at once.
+A declined anchored act halts the run with cause `declined`, and a resume asks again.
 
 There are no open loops. Every execution produces a measurable result that flows back into
 monitoring and reports. Repeated self-healing of the same fault raises an improvement proposal or a

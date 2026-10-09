@@ -105,6 +105,7 @@ identity_table = Table(
     _tenant(),
     Column("id", Text, nullable=False),
     Column("org_path", JSONB, nullable=False),
+    Column("roles", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     Column("key_digest", Text),
     _at("created_at"),
     PrimaryKeyConstraint("tenant", "id"),
@@ -135,6 +136,53 @@ link_code = Table(
     _at("created_at"),
     _at("expires_at"),
     _at("used_at", nullable=True),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+# --- anchors and decisions (ADR-0042) -------------------------------------------------------------
+
+anchor_configuration = Table(
+    "anchor_configuration",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the tenant: one configuration each
+    Column("anchors", JSONB, nullable=False),
+    Column("risk_classes", JSONB, nullable=False),
+    _at("configured_at", nullable=True),
+    Column("configured_by", Text),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+decision_request = Table(
+    "decision_request",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("decider", Text, nullable=False),  # a role, never a person
+    Column("anchor", Text),
+    Column("status", Text, nullable=False),
+    Column("run_id", Text, nullable=False),
+    _at("raised_at"),
+    Column("request", JSONB, nullable=False),  # DecisionRequest.json
+    Column("answered_by", Text),
+    _at("answered_at", nullable=True),
+    Column("reflection", Text),
+    Column("decided_by", Text),
+    _at("decided_at", nullable=True),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("decision_request_status", "tenant", "status"),
+)
+
+register_entry = Table(
+    "register_entry",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("request_id", Text, nullable=False),
+    Column("run_id", Text, nullable=False),
+    Column("step_id", Text, nullable=False),
+    Column("entry", JSONB, nullable=False),
+    _at("decided_at"),
     PrimaryKeyConstraint("tenant", "id"),
 )
 
@@ -299,6 +347,7 @@ step_run = Table(
     Column("waits", Integer, nullable=False, server_default=text("0")),
     Column("confirmed_by", Text),  # ADR-0039
     Column("block", JSONB),  # ADR-0043
+    Column("anchoring", JSONB),  # ADR-0042
     PrimaryKeyConstraint("tenant", "run_id", "step_id"),
     ForeignKeyConstraint(
         ["tenant", "run_id"], ["run.tenant", "run.id"], ondelete="CASCADE", name="step_run_run"

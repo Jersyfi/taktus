@@ -471,6 +471,7 @@ class RunMapper:
                     "waits": sr.get("waits", 0),
                     "confirmed_by": sr.get("confirmed_by"),
                     "block": sr.get("block"),
+                    "anchoring": sr.get("anchoring"),
                 }
                 for sr in step_runs
             ],
@@ -631,6 +632,7 @@ def _step_run_from(
             "waits": row.waits,
             "confirmed_by": row.confirmed_by,
             "block": row.block,
+            "anchoring": row.anchoring,
         }
     )
 
@@ -742,6 +744,7 @@ class IdentityMapper:
                 "tenant": tenant,
                 "id": document["id"],
                 "org_path": list(document["org_path"]),
+                "roles": list(document.get("roles", [])),
                 "key_digest": document.get("key_digest"),
                 "created_at": _at(document["created_at"]),
             },
@@ -758,6 +761,7 @@ class IdentityMapper:
                 "tenant": row.tenant,
                 "id": row.id,
                 "org_path": row.org_path,
+                "roles": row.roles or None,
                 "key_digest": row.key_digest,
                 "created_at": _iso(row.created_at),
             }
@@ -848,6 +852,131 @@ class LinkCodeMapper:
         )
 
 
+# --- anchors and decisions ------------------------------------------------------------------------
+
+
+class AnchorConfigurationMapper:
+    """One row per tenant; the anchors and the risk classes stay documents."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.anchor_configuration, tenant, id)
+        return None if row is None else self._from(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.anchor_configuration,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "anchors": document["anchors"],
+                "risk_classes": document.get("risk_classes", {}),
+                "configured_at": _at(document.get("configured_at")),
+                "configured_by": document.get("configured_by"),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.anchor_configuration, tenant, s.anchor_configuration.c.id)
+        return [self._from(row) for row in rows]
+
+    @staticmethod
+    def _from(row: Row[Any]) -> Document:
+        return _present(
+            {
+                "id": row.id,
+                "tenant": row.tenant,
+                "anchors": row.anchors,
+                "risk_classes": row.risk_classes,
+                "configured_at": _iso(row.configured_at),
+                "configured_by": row.configured_by,
+            }
+        )
+
+
+class DecisionRequestMapper:
+    """One row per request: the request in its contract's shape as a document, and beside it
+    the columns the decider's list is read by."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.decision_request, tenant, id)
+        return None if row is None else self._from(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        request = document["request"]
+        await _upsert(
+            connection,
+            s.decision_request,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "decider": document["decider"],
+                "anchor": document.get("anchor"),
+                "status": request["status"],
+                "run_id": request["raised_by"]["run"],
+                "raised_at": _at(document["raised_at"]),
+                "request": request,
+                "answered_by": document.get("answered_by"),
+                "answered_at": _at(document.get("answered_at")),
+                "reflection": document.get("reflection"),
+                "decided_by": document.get("decided_by"),
+                "decided_at": _at(document.get("decided_at")),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.decision_request, tenant, s.decision_request.c.id)
+        return [self._from(row) for row in rows]
+
+    @staticmethod
+    def _from(row: Row[Any]) -> Document:
+        return _present(
+            {
+                "id": row.id,
+                "tenant": row.tenant,
+                "decider": row.decider,
+                "anchor": row.anchor,
+                "raised_at": _iso(row.raised_at),
+                "request": row.request,
+                "answered_by": row.answered_by,
+                "answered_at": _iso(row.answered_at),
+                "reflection": row.reflection,
+                "decided_by": row.decided_by,
+                "decided_at": _iso(row.decided_at),
+            }
+        )
+
+
+class RegisterEntryMapper:
+    """One row per entry of the decision register, linked to its run, step and request."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.register_entry, tenant, id)
+        return None if row is None else dict(row.entry)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.register_entry,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "request_id": document["request_id"],
+                "run_id": document["run_id"],
+                "step_id": document["step_id"],
+                "entry": document,
+                "decided_at": _at(document["decided_at"]),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.register_entry, tenant, s.register_entry.c.decided_at)
+        return [dict(row.entry) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -862,4 +991,7 @@ MAPPERS: dict[str, Mapper] = {
     "identity": IdentityMapper(),
     "channel_link": ChannelLinkMapper(),
     "link_code": LinkCodeMapper(),
+    "anchor_configuration": AnchorConfigurationMapper(),
+    "request": DecisionRequestMapper(),
+    "register_entry": RegisterEntryMapper(),
 }

@@ -31,8 +31,9 @@ account.
 | `at_capacity` | `limit.compute` | the worker holds as many assignments as it declares (ADR-0037) |
 | `rejected_by_capacity` | `limit.compute` | the platform cannot hold the job (`docs/architecture/platform.md`) |
 | `awaiting_confirmation`, `awaiting_performance` | `wait.human` | a person confirms the step, or performs its act (ADR-0039) |
+| `awaiting_decision` | `wait.human` | the step's act is anchored, and its decision requests wait for a decision (ADR-0042) |
 | `waiting_on_state`, `waiting_on_clock` | `wait.external` | a `wait` step waits for an external state, or for time to pass |
-| `held_back` | `wait.dependency` | the step depends on a step that waits for a person |
+| `held_back` | `wait.dependency` | the step depends on a step that waits for a person, an anchored one included |
 
 A refusal or a halt at the run's own limits is booked to `limit.quota` when quota alone did not
 fit, and to `limit.budget` otherwise. Quota is counted against a provider's window or a
@@ -41,7 +42,8 @@ run.
 
 ### 2. The step run carries the block while it lasts
 A step that is blocked carries the block: its account, its cause token, when it began, and for a
-step held back the step it waits on (`StepRun.block`, migration 0018). It is committed with the
+step held back the step it waits on, and for an anchored step the role its requests are
+addressed to when one role decides them (`StepRun.block`, migration 0018). It is committed with the
 state change that began it, so a restart loses none of its time. A step blocked for one cause and
 then for another ends the first block before the second begins. A step that is already blocked
 is not held back as well, so no time is counted twice.
@@ -62,6 +64,7 @@ A block ends:
 | `at_capacity` | the worker takes the assignment, or the ceiling passes (ADR-0037) |
 | `at_provider_limit` | the model answers, or the ceiling passes |
 | `awaiting_confirmation`, `awaiting_performance` | a person answers |
+| `awaiting_decision` | every request of the anchored step has a verdict, to proceed or to decline |
 | `waiting_on_state`, `waiting_on_clock` | the `wait` step ends, met or timed out |
 | `held_back` | the step can start |
 
@@ -126,8 +129,10 @@ over every person, and never ranked (ADR-0015, protective rule).
   `step.performed`.
 - A step waiting at capacity since before migration 0018 carries only `waiting_since`. Its wait
   is booked to `limit.compute` when it ends.
-- A new kind of wait — an anchor's halt at a step boundary (#79) — adds a cause token and books
-  to an existing account, `wait.human` for an anchor.
+- An anchor's halt at a step boundary (ADR-0042) is the cause `awaiting_decision`, booked to
+  `wait.human`, with the role it is addressed to. The verdict's `step.decided` entries name the
+  decider; `own` reads them as the answer. A declined act is then a person's choice and no
+  block. A further kind of wait adds a cause token and books to an existing account.
 
 ## Where this promise ends
 The accounts hold the blocks Taktus sees at a step's boundary. A block that has not ended is on
@@ -140,7 +145,10 @@ and is not seen. Steps run one at a time, so the steps after a blocked step wait
 names the blocked step and its run, and a later step is booked as held back only behind a step
 that waits for a person. A `wait` step's pause that the process means to take is booked to
 `wait.external` as well; its cause token `waiting_on_clock` tells it apart. A wait on a person
-carries no role and no department until a request is addressed to one (UC-7.3); until then it
-is summed over every person of the tenant. The ledger entry of an answer names the person and
+carries a role only where an anchor's requests are addressed to one; a confirmation at level 2
+or a performance at level 1 is addressed to nobody in particular (UC-7.3) and carries none. The
+sums here are per account, process and period: they are never per person, and a sum per role or
+department is the analysis's (`0.5.0`), beside the decision component's own aggregate of
+response times by role and department (ADR-0042). The ledger entry of an answer names the person and
 its time, as the audit requires, so whoever reads the ledger can compute a person's response
 time by hand; the accounts and their sums never do it for them.

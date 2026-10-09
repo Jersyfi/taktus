@@ -55,7 +55,7 @@ not what a use case requires (M3.15), and no limit or level moves (M3.9, M3.10).
 
 ## 5. The entry it proposes
 
-**M1.15** — *Booking a cause to an account*: a new cause the engine meets is booked to the account
+**M1.16** — *Booking a cause to an account*: a new cause the engine meets is booked to the account
 of ADR-0015 whose example it matches, with a cause token of its own; a halt that matches none is
 not a block. Mode 1, because it follows the table of `docs/architecture/throughput.md` §1 without
 judgement and changes nothing a use case requires.

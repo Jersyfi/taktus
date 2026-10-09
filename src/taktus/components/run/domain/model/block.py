@@ -64,6 +64,8 @@ AWAITING_CONFIRMATION = "awaiting_confirmation"
 """The step waits for a person to confirm it (level 2, ADR-0039)."""
 AWAITING_PERFORMANCE = "awaiting_performance"
 """The step waits for a person to perform its act (level 1, ADR-0039)."""
+AWAITING_DECISION = "awaiting_decision"
+"""The step's act is anchored, and waits for its decision requests to be decided (ADR-0042)."""
 WAITING_ON_STATE = "waiting_on_state"
 """A `wait` step waits for an external state: a pipeline, a partner system."""
 WAITING_ON_CLOCK = "waiting_on_clock"
@@ -95,3 +97,6 @@ class OpenBlock(Value):
     since: datetime
     on: StepId | None = None
     """For a step held back: the step it depends on that waited when the block began."""
+    role: str | None = Field(default=None, min_length=1)
+    """For a wait on a person addressed to a role — an anchor's decision request — the role.
+    Never a person."""

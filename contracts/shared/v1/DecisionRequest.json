@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://taktus.eu/contracts/shared/v1/DecisionRequest.json",
   "title": "DecisionRequest",
-  "description": "The planned question about direction during normal operation, distinct from an escalation. Same shape across every process and every channel: situation, question, options with exactly one recommendation, what is blocked, a deadline. A free-text answer is never acted on silently: it is interpreted, reflected back and confirmed before it is applied. See docs/architecture/governance.md and ADR-0008.",
+  "description": "The planned question about direction during normal operation, distinct from an escalation. Same shape across every process and every channel: situation, question, options with their consequences and exactly one recommendation with its reason, what is blocked, a deadline. A free-text answer is never acted on silently: it is interpreted, reflected back and confirmed before it is applied. See docs/architecture/governance.md and ADR-0008.",
   "type": "object",
   "properties": {
     "id": { "type": "string", "minLength": 1 },
@@ -27,10 +27,17 @@
           "proposal": { "type": "string", "minLength": 1 },
           "consequence": { "type": "string" },
           "effort": { "type": "string" },
-          "recommended": { "type": "boolean" }
+          "recommended": { "type": "boolean" },
+          "reason": {
+            "description": "Why this option is recommended. Required on the recommended option, so that the person reads the reason beside the recommendation (UC-7.4).",
+            "type": "string",
+            "minLength": 1
+          }
         },
         "required": ["id", "proposal", "recommended"],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "if": { "properties": { "recommended": { "const": true } }, "required": ["recommended"] },
+        "then": { "required": ["reason"] }
       },
       "minItems": 2,
       "contains": { "properties": { "recommended": { "const": true } }, "required": ["recommended"] },

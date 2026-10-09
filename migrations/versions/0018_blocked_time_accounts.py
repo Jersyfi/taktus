@@ -1,7 +1,7 @@
 """A step run carries the block it is in (ADR-0043).
 
 Revision: 0018
-Revises: 0016
+Revises: 0017
 
 What this adds:
 
@@ -21,7 +21,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0018"
-down_revision = "0016"
+down_revision = "0017"
 branch_labels = None
 depends_on = None
 

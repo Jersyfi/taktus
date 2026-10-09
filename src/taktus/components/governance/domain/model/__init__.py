@@ -1,3 +1,7 @@
+from taktus.components.governance.domain.model.anchors import (
+    AnchorConfiguration,
+    shipped_default,
+)
 from taktus.components.governance.domain.model.capacity import (
     CapacityReport,
     CapacityThresholds,
@@ -9,6 +13,7 @@ from taktus.components.governance.domain.model.capacity import (
 from taktus.components.governance.domain.model.egress import Egress, ResultRef
 
 __all__ = [
+    "AnchorConfiguration",
     "CapacityReport",
     "CapacityThresholds",
     "Egress",
@@ -17,4 +22,5 @@ __all__ = [
     "RunActivity",
     "Status",
     "StorageStore",
+    "shipped_default",
 ]

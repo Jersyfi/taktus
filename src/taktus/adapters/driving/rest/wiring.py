@@ -13,6 +13,11 @@ from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
 )
+from taktus.components.decision.application.query import DecisionQueries
+from taktus.components.decision.application.service import (
+    AnswerRequestHandler,
+    ConfirmRequestHandler,
+)
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.run.domain.model import Run
 from taktus.ports.ledger import Ledger
@@ -55,6 +60,23 @@ class RestServices(Protocol):
     def identities(self) -> IdentityDirectory:
         """The identity component: an account key proves an identity, and the identity makes
         the link codes that link its channel accounts (ADR-0040)."""
+        ...
+
+    @property
+    def decision_queries(self) -> DecisionQueries:
+        """The requests addressed to a decider, one request, the response times (ADR-0042)."""
+        ...
+
+    @property
+    def answer_decision(self) -> AnswerRequestHandler: ...
+
+    @property
+    def confirm_decision(self) -> ConfirmRequestHandler: ...
+
+    async def decided(self, tenant: Tenant, run_id: str, actor: str) -> None:
+        """A request of the run took effect: the run continues from the boundary it waits
+        at, or halts there, as the decision says. Nothing happens while another request of
+        the run waits."""
         ...
 
     async def ready(self) -> str | None:

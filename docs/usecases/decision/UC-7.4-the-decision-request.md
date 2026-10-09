@@ -4,10 +4,10 @@ title: The decision request
 component: decision
 epic: E7
 serves: [P9, P10, P11, P14]
-state: specified
+state: built
 version: 0.2.0
-tests: []
-adrs: {ADR-0008: e6a4e033abd4, ADR-0015: 3a42705e5561, ADR-0017: c932691e9072}
+tests: [tests/governance/test_anchors.py::test_no_autonomy_level_overrides_an_anchor, tests/governance/test_anchors.py::test_the_halt_is_at_the_boundary_and_the_rest_of_the_run_continues, tests/governance/test_anchors.py::test_the_request_holds_every_part_of_the_one_shape, tests/governance/test_anchors.py::test_a_request_missing_a_part_is_not_raised, tests/governance/test_anchors.py::test_an_anchored_step_whose_request_is_not_raised_fails_without_its_act, tests/governance/test_anchors.py::test_a_free_text_answer_is_not_acted_on_until_its_reading_is_confirmed, tests/governance/test_anchors.py::test_an_answer_no_option_can_be_read_from_changes_nothing, tests/governance/test_anchors.py::test_an_answered_request_is_an_entry_in_the_register_linked_to_run_and_request, tests/governance/test_anchors.py::test_waiting_work_is_in_the_run_s_history_and_the_decider_s_list_overdue_shown, tests/governance/test_anchors.py::test_another_identity_cannot_read_a_decider_s_response_time_under_their_name, tests/governance/test_anchors.py::test_response_times_are_aggregated_by_role_and_department_over_two_deciders, tests/adapters/rest/test_decisions.py::test_nobody_reads_a_deciders_response_time_under_their_name]
+adrs: {ADR-0008: e6a4e033abd4, ADR-0015: 3a42705e5561, ADR-0017: c932691e9072, ADR-0042: bfc76a4a3797}
 supersedes: null
 ---
 
@@ -54,9 +54,24 @@ applies the same shape by hand; this use case is the product's mechanism.
 
 ADR-0008, which makes the decision request a domain object beside the strategic anchor; the
 contract `contracts/shared/v1/DecisionRequest.json`, which exists; the `decision` component, which
-holds requests and the register and has no code yet; the anchors at step boundaries of `0.2.0`;
+holds requests and the register; the anchors at step boundaries of `0.2.0`, built by ADR-0042;
 the protective rule for response times (ADR-0015). This repository already works this way by hand
 under ADR-0017 — the register under `docs/decisions/`, the gate on its shape — and that is the
 mechanism's first use, not its implementation in the product. Numbered after version 2 of the
 definition, in conversation (`NUMBERING.md`); no version of the definition has this use case. Filed
 under `decision`, the component that owns decision requests (DEC-0070).
+
+## 5. What is proven so far
+
+Built by ADR-0042 (issue #79) and proven by the named tests. An anchored act halts the run at the
+step boundary before anything of its step starts, at each of levels 1 to 3, and the steps that do
+not depend on it run on; the run waits in `waiting_human` and continues from that boundary once
+the decision took effect. Every request has the one shape, its recommended option with its
+reason; one missing a part is not raised, and its act is not performed. A free-text answer is
+read by a rule, sent back in one message, and leaves the run waiting until the reading is
+confirmed; an answer from which no single option can be read changes nothing. Every applied
+request is an entry in the register, linked to the run, the step and the request. Waiting work is
+in the run's reason and ledger and in the decider's list, overdue shown. A decider reads their own
+response times; anyone else reads them aggregated by role or department over at least two
+deciders, never under the decider's name. Not built: the request in a chat (#85), the decider's
+page in the web app (`0.3.0`), rules from precedent (`0.6.0`).

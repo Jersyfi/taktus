@@ -45,6 +45,7 @@ RECORD_FIELDS = (
     "until",
     "seconds",
     "on",
+    "role",
 )
 """What every record carries. A record may carry more about its cause — the worker asked, how
 often — and the sums read none of it."""
@@ -63,6 +64,8 @@ class Block(Value):
     until: datetime
     seconds: float = Field(ge=0)
     on: StepId | None = None
+    role: str | None = Field(default=None, min_length=1)
+    """The role a wait on a person was addressed to, where it was addressed to one."""
 
     @property
     def process(self) -> str:
@@ -98,6 +101,8 @@ def record(
     }
     if block.on is not None:
         document["on"] = block.on
+    if block.role is not None:
+        document["role"] = block.role
     return document
 
 

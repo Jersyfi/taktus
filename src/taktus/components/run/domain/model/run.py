@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
@@ -57,11 +57,15 @@ class Cause(StrEnum):
     MATURITY = "maturity"
     """A step at level 3 or above would run on an adapter below *verified*, and was not run on
     it (NTC-0051, ADR-0039)."""
+    DECLINED = "declined"
+    """The person an anchor names declined the act of a step: it was not performed, and the
+    run halts at the step's boundary. A resume raises the request again (ADR-0042)."""
 
 
 # Every transition the run knows. Anything not listed is illegal. `self-healed` of §5.2 is a
 # running → running transition and arrives with retries. `waiting_human` is where a run waits
-# once nothing runs but steps that wait for a person (ADR-0039); anchors will halt there too.
+# once nothing runs but steps that wait for a person: a confirmation, a performed act
+# (ADR-0039), or a decision an anchor asks for (ADR-0042).
 RUN_TRANSITIONS: frozenset[tuple[RunState, RunState]] = frozenset(
     {
         (RunState.PLANNED, RunState.ADMITTED),
@@ -101,7 +105,8 @@ class StepState(StrEnum):
     STOPPED = "stopped"
     WAITING_HUMAN = "waiting_human"
     """The step waits for a person before anything of it starts: a confirmation at level 2, the
-    act performed by the person at level 1 (ADR-0039). Steps that do not depend on it run on."""
+    act performed by the person at level 1 (ADR-0039), a decision on an anchored act at any
+    level (ADR-0042). Steps that do not depend on it run on."""
 
 
 STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
@@ -137,6 +142,10 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
         (StepState.PLANNED, StepState.WAITING_HUMAN),
         (StepState.WAITING_HUMAN, StepState.PLANNED),
         (StepState.WAITING_HUMAN, StepState.SUCCEEDED),
+        # The person an anchor names declined the act: the step is not run (ADR-0042).
+        (StepState.WAITING_HUMAN, StepState.REJECTED),
+        # A resume after a decline raises the anchor's request again (ADR-0042).
+        (StepState.REJECTED, StepState.WAITING_HUMAN),
     }
 )
 
@@ -155,6 +164,29 @@ class Checkpoint(Value):
     taken_at: datetime
     artifact_ids: tuple[str, ...] = ()
     result_digest: Digest | None = None
+
+
+Verdict = Literal["proceed", "decline"]
+PROCEED: Verdict = "proceed"
+DECLINE: Verdict = "decline"
+
+
+class Anchoring(Value):
+    """The decision requests an anchored step raised before anything of it started, and what
+    their deciders decided (ADR-0042). One request per anchor that names the step's act; the
+    step proceeds only when every one of them was decided to proceed."""
+
+    requests: tuple[str, ...] = Field(min_length=1)
+    round: int = Field(ge=1)
+    """How many times the step has raised requests: a resume after a decline raises anew."""
+    verdict: Verdict | None = None
+    """None while a request is not applied."""
+    decided_by: str | None = Field(default=None, min_length=1)
+    """The person whose decision took effect last."""
+
+    @property
+    def proceeds(self) -> bool:
+        return self.verdict == PROCEED
 
 
 class StepRun(Value):
@@ -205,6 +237,9 @@ class StepRun(Value):
     confirmed_by: str | None = Field(default=None, min_length=1)
     """The person who confirmed the step before it started (level 2), or who performed its act
     and reported it (level 1); None for a step no person had to answer (ADR-0039)."""
+    anchoring: Anchoring | None = None
+    """The decision requests the step raised because an anchor names its act; None for a step
+    no anchor named (ADR-0042)."""
 
     def to(self, state: StepState, **changes: Any) -> StepRun:
         if (self.state, state) not in STEP_TRANSITIONS:

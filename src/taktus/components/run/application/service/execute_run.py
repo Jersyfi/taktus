@@ -1,13 +1,24 @@
 """Use cases: start a run from a commissioned plan, submit one for a runner, resume a halted
 one, request a stop, answer a step that waits for a person.
 
-One engine, five entry points. `start` creates the run and executes it in this process;
+One engine, six entry points. `start` creates the run and executes it in this process;
 `submit` creates the run and puts a job on the queue, so that a runner — this process or
 another — executes it (`runner.py`); `resume` continues a halted or escalated run at its
 boundary, starts a submitted one, or recovers a run whose instance stopped without halting it;
 `request_stop` asks a running run to stop at its next boundary; `confirm` records a person's
-answer to steps that wait for one. Execution is sequential: one step at a time, in the plan's
-order.
+answer to steps that wait for one; `decide` continues a run whose anchored steps were decided.
+Execution is sequential: one step at a time, in the plan's order.
+
+Before anything of a step starts, the tenant's anchors are asked which of them name the step's
+act (ADR-0042, `run/ports/anchors.py`). An anchor holds at every autonomy level: for each one
+that applies, a decision request is raised in the decision component — one shape, two options:
+perform the act as proposed, or not — and the step waits in `waiting_human`
+(`step.anchored`). A person answers the request there and confirms how the answer was read;
+only then does `decide` read the applied decision (`step.decided`): a step decided to proceed
+continues at its level from the same boundary, and one declined is not run, and the run halts
+with cause `declined`. A request that cannot be raised — a part missing — is not raised, the
+step fails without its act, and the run escalates. A rehearsal acts on nothing outside and is
+asked no anchor (NTC-0079). A step confirmed with `confirm` is never an anchored one.
 
 Before a step starts, its autonomy level is applied (ADR-0039, `domain.service.autonomy`): the
 lowest of the process's level and the levels of the tool actions the step uses. At level 2 the
@@ -98,13 +109,15 @@ import re
 from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from taktus.components.run.application.query.recordings import RecordedResponses
 from taktus.components.run.domain.model import (
     INTERRUPTIBLE,
+    PROCEED,
     RESUMABLE,
+    Anchoring,
     BacklogRule,
     Cause,
     Checkpoint,
@@ -141,7 +154,14 @@ from taktus.components.run.domain.model import (
     select,
 )
 from taktus.components.run.domain.model.block import Account, OpenBlock
-from taktus.components.run.domain.service import autonomy, blocked, provenance, rules, waiting
+from taktus.components.run.domain.service import (
+    anchoring,
+    autonomy,
+    blocked,
+    provenance,
+    rules,
+    waiting,
+)
 from taktus.components.run.domain.service import budget as budgeting
 from taktus.components.run.domain.service.admission import admit, remaining
 from taktus.components.run.domain.service.capacity import (
@@ -150,7 +170,16 @@ from taktus.components.run.domain.service.capacity import (
     admit_capacity,
 )
 from taktus.components.run.domain.service.rehearsal import REHEARSED
-from taktus.components.run.ports import ConnectorPool, Maturities, ModelPool, WorkerPool
+from taktus.components.run.ports import (
+    Anchors,
+    ConnectorPool,
+    Decisions,
+    Maturities,
+    ModelPool,
+    NotRaised,
+    Verdict,
+    WorkerPool,
+)
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
     CallContext,
@@ -205,6 +234,7 @@ from taktus.ports.worker import (
 )
 from taktus.shared.v1 import (
     QUANTITIES,
+    Anchor,
     Artifact,
     AutonomyLevel,
     Consumption,
@@ -308,6 +338,21 @@ class ConfirmSteps:
     stop_after: int | None = None
 
 
+@dataclass(frozen=True)
+class DecideSteps:
+    """Continue a run whose anchored steps were decided (ADR-0042). The engine reads each
+    request's verdict from the decision component: a step whose requests all took effect with
+    "perform it" continues from its boundary; a step any request declined is not run, and the
+    run halts. A step whose requests are not all applied keeps waiting. The run continues in this
+    process, or — with `enqueue` — on the runner that claims the job it is given."""
+
+    run_id: str
+    actor: str
+    tenant: Tenant
+    enqueue: bool = False
+    stop_after: int | None = None
+
+
 def _ended(run: Run) -> bool:
     """Whether a run has ended in a way a runner's claim does not continue."""
     if run.state in (RunState.FINISHED, RunState.ESCALATED):
@@ -353,6 +398,9 @@ class EngineOptions:
     capacity_ceiling_seconds: int = waiting.CAPACITY_CEILING_SECONDS
     """How long a worker step waits for a free place at its worker when its work names no
     ceiling (ADR-0037)."""
+    decision_days: int = 3
+    """How many days after it is raised a decision request an anchor raises is due
+    (ADR-0042)."""
 
 
 @dataclass(frozen=True)
@@ -390,6 +438,8 @@ class RunEngine:
         platform: Platform | None = None,
         recordings: RecordedResponses | None = None,
         maturities: Maturities | None = None,
+        anchors: Anchors | None = None,
+        decisions: Decisions | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -403,6 +453,12 @@ class RunEngine:
         self._maturities = maturities
         """Where a step at level 3 learns its adapter's maturity. None: no record can be read,
         and no step at level 3 runs on an adapter (NTC-0079)."""
+        self._anchors = anchors
+        """Which of the tenant's anchors name a step's act. None: no anchor is evaluated; every
+        composition root wires it (ADR-0042)."""
+        self._decisions = decisions
+        """Where an anchored step raises its decision requests. None with anchors wired: an
+        anchored step cannot ask, and fails without its act."""
         self._recordings = recordings or RecordedResponses(runs, work, objects)
         self._clock = clock
         self._ids = ids
@@ -469,6 +525,11 @@ class RunEngine:
             if command.budget is not None and command.budget != run.budget:
                 run = run.model_copy(update={"budget": command.budget})
                 await self._state_budget(run, command.actor)
+            if run.state is RunState.WAITING_HUMAN:
+                # A decision applied while nobody continued the run takes effect here.
+                run, declined = await self._apply_decisions(run)
+                if declined is not None:
+                    return await self._end(run, RunState.HALTED, Cause.DECLINED, declined, span)
             if run.state in RESUMABLE:
                 run = await self._commit(
                     run.to(RunState.RUNNING), "run.resumed", actor=command.actor
@@ -687,6 +748,12 @@ class RunEngine:
             raise RunError(f"run {run.id!r} has no step {step_id!r}") from None
         if step_run.state is not StepState.WAITING_HUMAN:
             raise RunError(f"step {step_id!r} is {step_run.state}; it does not wait for a person")
+        if step_run.anchoring is not None and not step_run.anchoring.proceeds:
+            raise RunError(
+                f"step {step_id!r} is anchored and waits for the decision request(s) "
+                f"{', '.join(step_run.anchoring.requests)}: an anchored act is decided there, "
+                "by the person the anchor names, not confirmed here (ADR-0042)"
+            )
         level = self._held(run, run.step(step_id)).level
         if level == 1 and not command.performed:
             raise RunError(
@@ -714,6 +781,87 @@ class RunEngine:
     def _held(self, run: Run, step: Step) -> autonomy.Held:
         work = parse_work(step, run.work.get(step.id), run.inputs)
         return autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
+
+    async def decide(self, command: DecideSteps) -> Run:
+        """Continue a run whose anchored steps were decided. A run that does not wait, or whose
+        requests are not all applied yet, is returned as it is: a decision that took effect is
+        never lost, and one that has not yet changes nothing."""
+        async with self._telemetry.span("run", {"run.id": command.run_id}) as span:
+            async with self._work.transaction(command.tenant):
+                run = await self._runs.get(command.tenant, command.run_id)
+            if run is None:
+                raise UnknownRun(command.run_id)
+            span.set_attribute("process.version", run.process_version)
+            if run.state is not RunState.WAITING_HUMAN:
+                return run
+            if command.enqueue and self._queue is None:
+                raise RunError("no queue is wired; a run is handed to a runner through one")
+            before = run
+            run, declined = await self._apply_decisions(run)
+            if declined is not None:
+                return await self._end(run, RunState.HALTED, Cause.DECLINED, declined, span)
+            if run is before or run.runnable() is None:
+                return run
+            if command.enqueue:
+                job = Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
+                return await self._commit(run, enqueue=job)
+            run = await self._commit(run.to(RunState.RUNNING), "run.resumed", actor=command.actor)
+            return await self._execute(run, command.stop_after, span)
+
+    async def _apply_decisions(self, run: Run) -> tuple[Run, str | None]:
+        """Every anchored step whose requests have all taken effect gets its verdict, each
+        recorded as `step.decided` with the decider as actor. Returns the run and, when a step
+        was declined, why the run halts."""
+        if self._decisions is None:
+            return run, None
+        declined: list[str] = []
+        for step_run in run.waiting():
+            held = step_run.anchoring
+            if held is None or held.verdict is not None:
+                continue
+            verdicts: list[Verdict] = []
+            for request in held.requests:
+                verdict = await self._decisions.verdict(run.tenant, request)
+                if verdict is None or not verdict.applied:
+                    break
+                verdicts.append(verdict)
+            if len(verdicts) != len(held.requests):
+                continue
+            decided = anchoring.verdict_of([v.option or "" for v in verdicts])
+            by = verdicts[-1].decided_by
+            settled = held.model_copy(update={"verdict": decided, "decided_by": by})
+            entries = ", ".join(v.entry or "?" for v in verdicts)
+            # The wait on the decision ends with the verdict, whichever it is (ADR-0043). A
+            # declined act is then a person's choice, not a block.
+            run, step_run = await self._close_block(run, step_run)
+            if decided == PROCEED:
+                level = self._held(run, run.step(step_run.step_id)).level
+                updated = step_run.to(
+                    StepState.PLANNED,
+                    anchoring=settled,
+                    reason=None,
+                    # The decision is the person's confirmation of the step (level 2 and up);
+                    # at level 1 the person still performs the act.
+                    confirmed_by=by if level >= 2 else step_run.confirmed_by,
+                )
+            else:
+                reason = (
+                    f"declined by {by} ({entries}): the act of step {step_run.step_id} was "
+                    "not performed; resuming the run asks again"
+                )
+                updated = step_run.to(StepState.REJECTED, anchoring=settled, reason=reason)
+                declined.append(reason)
+            run = run.with_step_run(updated)
+            for request, verdict in zip(held.requests, verdicts, strict=True):
+                run = await self._commit(
+                    run,
+                    "step.decided",
+                    step=updated,
+                    outcome=decided,
+                    actor=verdict.decided_by,
+                    decision=request,
+                )
+        return run, "; ".join(declined) or None
 
     def relinquish(self, run_id: str) -> None:
         """The runner's claim on the run is lost. The run stops at its next boundary, where the
@@ -828,8 +976,15 @@ class RunEngine:
                 # What it depended on no longer waits: the step can start (ADR-0043).
                 run, step_run = await self._close_block(run, step_run)
             work = parse_work(step, run.work.get(step.id), run.inputs)
-            held = autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
+            used = autonomy.actions_of(step, work)
+            held = autonomy.held(run.autonomy_level, run.actions, used)
             span.set_attribute("autonomy.level", held.level)
+            if not run.rehearsal and step_run.state in (StepState.PLANNED, StepState.REJECTED):
+                # The step boundary, first: an anchor holds at every level (ADR-0042).
+                decided = step_run.anchoring is not None and step_run.anchoring.proceeds
+                anchors = () if decided else await self._applying(run, used)
+                if anchors:
+                    return await self._anchor(run, step, step_run, held, anchors)
             if not run.rehearsal and step_run.state is StepState.PLANNED:
                 # The step boundary: what the level asks of a person, before anything starts.
                 acting = held.level == 1 and autonomy.acts(work, await self._outward(work))
@@ -841,6 +996,71 @@ class RunEngine:
             if isinstance(work, WorkerWork):
                 return await self._worker_step(run, step, step_run, work, span, held)
             return await self._local_step(run, step, step_run, work, span, held)
+
+    async def _applying(self, run: Run, used: tuple[str, ...]) -> tuple[Anchor, ...]:
+        if self._anchors is None:
+            return ()
+        return await self._anchors.applying(run.tenant, anchoring.process_of(run), used)
+
+    async def _anchor(
+        self,
+        run: Run,
+        step: Step,
+        step_run: StepRun,
+        held: autonomy.Held,
+        anchors: tuple[Anchor, ...],
+    ) -> tuple[Run, StepRun]:
+        """The step's act is anchored: one decision request per anchor, and the step waits
+        before anything of it starts. A request that cannot be raised fails the step, without
+        its act: the run escalates rather than run an anchored act or wait on nothing."""
+        round = 1 if step_run.anchoring is None else step_run.anchoring.round + 1
+        due = self._clock.now().date() + timedelta(days=self._options.decision_days)
+        drafts = [anchoring.draft(run, step, held, a, round=round, due=due) for a in anchors]
+        named = "; ".join(f"{a.class_} anchor {a.id}: {a.act}" for a in anchors)
+        try:
+            if self._decisions is None:
+                raise NotRaised("no decision requests can be raised here")
+            for draft in drafts:
+                await self._decisions.raise_request(run.tenant, draft)
+        except NotRaised as error:
+            failed = step_run.to(
+                StepState.FAILED,
+                reason=f"anchored ({named}), and its decision request was not raised: {error}. "
+                "The act was not performed",
+                finished_at=self._clock.now(),
+            )
+            run = await self._commit(
+                run.with_step_run(failed), "step.failed", step=failed, outcome="not_raised"
+            )
+            return run, failed
+        waiting_on = Anchoring(requests=tuple(d.id for d in drafts), round=round)
+        roles = sorted({d.decider for d in drafts})
+        addressed = ", ".join(f"the role {r}" for r in roles)
+        # The anchored step waits for a person: a block on `wait.human`, addressed to the role
+        # where one role decides it, and the steps behind it held back (ADR-0043).
+        run, step_run = await self._open_block(
+            run,
+            step_run,
+            "wait.human",
+            block.AWAITING_DECISION,
+            role=roles[0] if len(roles) == 1 else None,
+        )
+        step_run = step_run.to(
+            StepState.WAITING_HUMAN,
+            anchoring=waiting_on,
+            reason=f"anchored ({named}): waits for the decision request(s) "
+            f"{', '.join(waiting_on.requests)}, addressed to {addressed}, due {due.isoformat()}",
+        )
+        run = self._hold_back(run.with_step_run(step_run), step.id)
+        for draft, anchor in zip(drafts, anchors, strict=True):
+            run = await self._commit(
+                run,
+                "step.anchored",
+                step=step_run,
+                outcome=str(anchor.class_),
+                decision=draft.id,
+            )
+        return run, step_run
 
     async def _outward(self, work: Work) -> bool | None:
         """Whether a connector call's operation is declared outward; None when it cannot be
@@ -945,6 +1165,7 @@ class RunEngine:
         *,
         since: datetime | None = None,
         on: StepId | None = None,
+        role: str | None = None,
     ) -> tuple[Run, StepRun]:
         """The step is blocked from now — or from `since` — for this cause, unless it is
         already. A block it is in for another cause ends first, with its record. The block is
@@ -953,7 +1174,9 @@ class RunEngine:
             return run, step_run
         if step_run.block is not None:
             run, step_run = await self._close_block(run, step_run)
-        opened = OpenBlock(account=account, cause=cause, since=since or self._clock.now(), on=on)
+        opened = OpenBlock(
+            account=account, cause=cause, since=since or self._clock.now(), on=on, role=role
+        )
         return run, step_run.model_copy(update={"block": opened})
 
     async def _close_block(self, run: Run, step_run: StepRun, **more: Any) -> tuple[Run, StepRun]:
@@ -2493,6 +2716,7 @@ class RunEngine:
         new: bool = False,
         trigger: Mapping[str, Any] | None = None,
         digest: Digest | None = None,
+        decision: str | None = None,
     ) -> Run:
         """One transaction: the run as it now is, and — when `kind` is given — the ledger entry
         that says what changed. Either both land or neither does. A step that finished with a
@@ -2509,7 +2733,13 @@ class RunEngine:
                 await self._queue.enqueue(run.tenant, enqueue)
             if kind is not None:
                 entry = await self._record(
-                    run, kind, step=step, outcome=outcome, actor=actor, digest=digest
+                    run,
+                    kind,
+                    step=step,
+                    outcome=outcome,
+                    actor=actor,
+                    digest=digest,
+                    decision=decision,
                 )
                 if trigger is not None:
                     # The ledger is content-free (ADR-0006): the entry names the trigger's kind
@@ -2568,6 +2798,7 @@ class RunEngine:
         outcome: str | None = None,
         actor: str | None = None,
         digest: Digest | None = None,
+        decision: str | None = None,
     ) -> LedgerEntry:
         refs = LedgerRefs(
             tenant=run.tenant,
@@ -2576,6 +2807,7 @@ class RunEngine:
             run_id=run.id,
             step_id=None if step is None else step.step_id,
             assignment_id=None if step is None else step.assignment_id,
+            decision_request_id=decision,
             artifact_ids=None
             if step is None or not step.artifacts
             else tuple(a.id for a in step.artifacts),

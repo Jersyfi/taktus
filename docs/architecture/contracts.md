@@ -82,7 +82,8 @@ and lists a directory at a ref (issue #70). P-03 Implementation feeds those read
 component's built-in rule `ready`, the backlog's ready standard
 (`components/run/domain/service/ready.py`, DEC-0051). P-01 Roadmap control feeds the open
 issues and the roadmap's text, read as a file, to the rules `backlog` and `roadmap` of the same
-component (issue #71). The rules judge the readings; the connector judges nothing.
+component (issue #71). The rules judge the readings; the connector judges nothing. An issue's
+form ends at a horizontal rule: a footer after it belongs to no section (DEC-0116).
 
 **What idempotency requires of a connector, seen from the run.** The run derives the
 idempotency key of every call from the run, the step and the step's *attempt*:
