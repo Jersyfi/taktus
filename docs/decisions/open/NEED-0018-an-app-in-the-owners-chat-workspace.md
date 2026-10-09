@@ -22,6 +22,9 @@ workspace that acts as Taktus: an identity of its own, not you. Concretely:
    beside it.
 4. **Its bot token and its signing secret** in two files on your workstation, for the instance
    that will run the owner-facing channel (#85).
+5. **Its event subscription**, pointed at that instance's webhook intake, once the instance
+   serves the chat channel at its public address: the service then sends what you write to the
+   app to Taktus.
 
 ## 2. Why
 
@@ -35,7 +38,9 @@ workflow `live` has a job `chat` that runs the suite there, monthly and by dispa
 The owner-facing channel (#85, UC-6.11) rests on this connector: decisions and needs reach you in
 the chat, and your answers come back through it. It cannot reach you without the app. The
 signing secret is what every event the service sends is verified with; without it no message
-you write reaches Taktus.
+you write reaches Taktus. The event subscription is what makes the service send events at all.
+The service accepts its address only after a check that the instance must answer; the webhook
+intake answers it since issue #145.
 
 ## 3. By when
 
@@ -45,6 +50,10 @@ If it is not there by then: that run says "nothing ran", and the connector's int
 real service stays proven against a stand-in only. The owner-facing channel (#85) can be built
 against the stand-in, but cannot be shown to you. A half-done step 4 — the variable without the
 token — makes the run fail, on purpose: half a configuration is a fault, not a skip.
+
+Step 6, the event subscription, is the exception to the date. It can be done only once an
+instance serves the chat channel at its public address with the signing secret of step 5, which
+comes with the owner-facing channel (#85). Until then it waits, and nothing else does.
 
 ## 4. How to provide it
 
@@ -75,9 +84,9 @@ settings:
   token_rotation_enabled: false
 ```
 
-There is no event subscription yet. Its request URL can be set only once the instance answers the
-service's URL check (issue #145); that is a later step under #85, not this need. If you ever
-talk to Taktus in a public channel, `channels:history` is added then, not now.
+The manifest sets no event subscription: the service checks its address the moment it is set,
+and that is step 6. If you ever talk to Taktus in a public channel, `channels:history` is added
+then, not now.
 
 **Step 2 — install it.** On the app's page, *Install App → Install to Workspace*, and allow.
 The page then shows the **Bot User OAuth Token**, starting `xoxb-`. *Basic Information → App
@@ -120,6 +129,24 @@ TAKTUS_CREDENTIAL_CHAT_SIGNING_SECRET_FILE=<the signing secret's file>
 On the platform they go into the instance's secret when the chat connector is deployed with the
 owner-facing channel (#85); the chart then mounts them as files under the same two variables.
 
+**Step 6 — the event subscription, once an instance serves the chat channel.** This step waits
+until an instance runs the chat connector with the signing secret of step 5 and answers at its
+public address; the session that deploys it with the owner-facing channel (#85) says so in this
+issue. Then, on the app's page, *Event Subscriptions*: switch *Enable Events* on and enter as
+**Request URL**
+
+```
+https://<the instance's public address><the instance's path prefix>/intake/channel.chat
+```
+
+The service checks the address at once, with a signed request that carries a random value; the
+instance answers with that value, and the page shows **Verified**. Under *Subscribe to bot
+events* add exactly two events, `app_mention` and `message.im`, and *Save Changes*. If the page
+asks you to reinstall the app, do so; the token does not change. Not `message.channels` or
+`message.groups`: a mention in a channel would then arrive twice, once as each event, and become
+two commands. The address is the instance's, not a secret, but it names your platform: it stays
+on the app's page and out of this repository.
+
 **Validity and rotation.** With token rotation off, the bot token does not expire. Both are
 replaced when they may have been seen: the token by reinstalling the app (*Install App →
 Reinstall*), the signing secret by *Regenerate* under *App Credentials*. A new value goes into
@@ -136,13 +163,18 @@ the same file and the same environment secret in one move.
 - **Never more scopes than the manifest names.** A scope added "just in case" lets Taktus see
   what no process needs.
 - **No workspace name, channel name or identifier in this repository.** The channel's ID lives
-  in the environment's variable; the files' paths in your `.env`.
+  in the environment's variable; the files' paths in your `.env`; the instance's address on the
+  app's page.
 
 ## 6. What happens next
 
 Write in the issue: **"NEED-0018 is provided."** The next session records it first, dispatches
 the workflow `live` once on `main` (`gh workflow run live.yml --ref main`), and records the
 outcome. Afterwards the job `chat` runs on its own, on the first of every month.
+
+Step 6 may follow later. Until it is done the need stays open for it alone: write **"NEED-0018
+is provided but step 6"**, and **"NEED-0018 step 6 is done"** once the page shows *Verified*.
+The need is closed with the second.
 
 ## 7. How to confirm
 
@@ -159,3 +191,8 @@ The dispatched run of the job `chat` is green, and its log carries `PASSED` for
 `test_a_reply_retried_after_a_restart_is_posted_once_on_the_real_service`. The scratch channel
 shows a message from Taktus that begins *Conformance run*, with its replies in one thread, and
 exactly one answer in the thread of the message that begins *Restart test*.
+
+For step 6: the app's *Event Subscriptions* page shows **Verified** beside the request URL and
+lists `app_mention` and `message.im` under the bot events. *Verified* is the instance's answer
+to the service's check: it can appear only when the instance verified the check's signature with
+the signing secret of step 5.

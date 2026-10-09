@@ -1,0 +1,8 @@
+{
+  "reason": "bad_signature",
+  "detail": "the signature does not verify against the intake secret",
+  "answer": {
+    "media_type": "text/plain",
+    "body": "placeholder-challenge"
+  }
+}

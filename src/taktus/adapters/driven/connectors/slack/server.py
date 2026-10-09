@@ -186,6 +186,10 @@ class Connector:
             )
         window = None if "C-08-stale" in self.faults else intake.WINDOW
         result = intake.normalise(given, body, received_at, secret, window=window)
+        if "C-08-handshake" in self.faults and "refused" in result:
+            handshake = _unverified_handshake(body)
+            if handshake is not None:
+                result = handshake
         if "accepted" in result and "C-07" in self.faults:
             del result["accepted"]["reply_to"]
         if "accepted" in result:
@@ -194,6 +198,17 @@ class Connector:
         else:
             log(f"intake: refused, {result['refused']['reason']}")
         return envelope(result)
+
+
+def _unverified_handshake(body: str) -> Json | None:
+    """The fault C-08-handshake: a URL verification answered without its signature verified."""
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return None
+    if isinstance(payload, dict) and payload.get("type") == intake.HANDSHAKE:
+        return intake.handshake(payload)
+    return None
 
 
 def _epoch(received_at: str) -> str:
