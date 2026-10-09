@@ -53,6 +53,9 @@ class Identity(Value):
     tenant: str = Field(min_length=1)
     org_path: tuple[str, ...] = Field(min_length=1)
     """Tenant → department or group → team → project: the first element is the tenant."""
+    roles: tuple[str, ...] = ()
+    """The roles the identity holds. An anchor names the role that decides its act, and the
+    identities holding it are the deciders its requests are addressed to (ADR-0042)."""
     key_digest: str | None = None
     """The digest of the account key that proves this identity on the control plane's surface;
     None while no key was issued."""
@@ -60,6 +63,8 @@ class Identity(Value):
 
     @model_validator(mode="after")
     def _the_path_starts_at_the_tenant(self) -> Identity:
+        if any(not r for r in self.roles) or len(set(self.roles)) != len(self.roles):
+            raise ValueError(f"the roles of {self.id!r} are names, each once")
         if self.org_path[0] != self.tenant:
             raise ValueError(
                 f"the organisational path of {self.id!r} starts at its tenant {self.tenant!r}"

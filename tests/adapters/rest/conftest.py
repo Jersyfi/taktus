@@ -21,9 +21,15 @@ from taktus.components.command.application.service import (
     ReceiveIntakeHandler,
 )
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.decision.application.query import DecisionQueries
+from taktus.components.decision.application.service import (
+    AnswerRequestHandler,
+    ConfirmRequestHandler,
+)
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.domain.model import Run
+from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.ports.connector import (
     ConnectorError,
     Delivery,
@@ -86,6 +92,9 @@ class Services:
     complete_intake: CompleteIntakeHandler
     identity: Directory
     replies: FakeReplies
+    decisions: DecisionWiring
+    continued: list[tuple[str, str, str]] = field(default_factory=list)
+    """The runs handed on after a decision took effect: tenant, run, actor."""
     tenants: Sequence[str] = (TENANT,)
     roles: Sequence[str] = ("api", "runner")
     leading: bool = False
@@ -105,6 +114,21 @@ class Services:
         code = await self.identity.code(who)
         assert (await self.identities.unknown_sender("channel.repo", account, code)).linked
         return key
+
+    @property
+    def decision_queries(self) -> DecisionQueries:
+        return self.decisions.queries
+
+    @property
+    def answer_decision(self) -> AnswerRequestHandler:
+        return self.decisions.answer
+
+    @property
+    def confirm_decision(self) -> ConfirmRequestHandler:
+        return self.decisions.confirm
+
+    async def decided(self, tenant: str, run_id: str, actor: str) -> None:
+        self.continued.append((tenant, run_id, actor))
 
     async def ready(self) -> str | None:
         return self.not_ready_reason
@@ -137,6 +161,13 @@ def services(connector: ScriptedConnector | None = None) -> Services:
         ),
         identity=identity,
         replies=replies,
+        decisions=decision_wiring(
+            lambda kind: MemoryRepository(persistence, kind),
+            persistence,
+            identity.ledger,
+            clock,
+            identity.directory,
+        ),
     )
 
 

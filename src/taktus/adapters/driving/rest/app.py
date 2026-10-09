@@ -8,8 +8,10 @@ it is not therefore unhealthy, and restarting it in a loop would only make the o
 
 The `api` role adds the rest: webhook intake for the channel a connector serves, the completion
 of an intake event into a command by the identity the identity component places, the link code
-a person creates in their Taktus account to link a channel account (ADR-0040), and a read API
-for runs and ledger entries. No other write, no UI.
+a person creates in their Taktus account to link a channel account (ADR-0040), the decision
+requests addressed to a decider — listed, answered, the reading confirmed — and the decider's
+own response times (ADR-0042), and a read API for runs and ledger entries. No other write, no
+UI.
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -38,8 +40,18 @@ from taktus.components.command.application.service import (
     UnknownIntakeEvent,
     UnknownSender,
 )
+from taktus.components.decision.application.query import Addressed
+from taktus.components.decision.application.service import (
+    AnswerRequest,
+    ConfirmRequest,
+    DecisionError,
+    NotAnswerable,
+    NotTheDecider,
+    UnknownRequest,
+)
 from taktus.components.identity.application.service import UnknownIdentity
 from taktus.ports.connector import ConnectorError, Delivery, RefusalReason
+from taktus.ports.identity import Resolution
 from taktus.shared.v1.capability import CAPABILITY_PATTERN
 
 VERSION = "0.1.0"
@@ -84,6 +96,7 @@ def build_app(services: RestServices, *, prefix: str = "/", full: bool = True) -
     if full:
         app.include_router(_intake(services), prefix=base)
         app.include_router(_identity(services), prefix=base)
+        app.include_router(_decisions(services), prefix=base)
         app.include_router(_reads(services), prefix=base)
     return app
 
@@ -263,12 +276,7 @@ def _identity(services: RestServices) -> APIRouter:
         request: LinkCodeRequest,
         authorization: str | None = Header(default=None),
     ) -> JSONResponse:
-        scheme, _, key = (authorization or "").partition(" ")
-        who = (
-            await services.identities.authenticate(key.strip())
-            if scheme.lower() == "bearer"
-            else None
-        )
+        who = await _authenticated(services, authorization)
         if who is None:
             return problem(401, "an account key is needed: Authorization: Bearer <key>")
         try:
@@ -286,6 +294,210 @@ def _identity(services: RestServices) -> APIRouter:
         )
 
     return router
+
+
+async def _authenticated(services: RestServices, authorization: str | None) -> Resolution | None:
+    """The identity the account key in `Authorization: Bearer` proves, or None."""
+    scheme, _, key = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer":
+        return None
+    return await services.identities.authenticate(key.strip())
+
+
+class AnswerBody(BaseModel):
+    option: str | None = Field(
+        default=None, pattern=r"^[A-Z]$", description="The identifier of one option."
+    )
+    text: str | None = Field(
+        default=None, min_length=1, description="Free text, as you would write it."
+    )
+
+
+class ConfirmBody(BaseModel):
+    confirmed: bool = Field(
+        description="True: the reading sent back is right, and it takes effect. False: it is "
+        "not; nothing takes effect and the request is open again."
+    )
+
+
+def _view(addressed: Addressed, reader: str) -> dict[str, Any]:
+    """A request as a decider sees it. Who answered and when is shown to that person alone:
+    the time it took is theirs (ADR-0015)."""
+    request = addressed.request
+    yours = request.answered_by == reader
+    view: dict[str, Any] = {
+        "id": request.id,
+        "decider": request.decider,
+        "anchor": request.anchor,
+        "raised_at": request.raised_at.isoformat(),
+        "overdue": addressed.overdue,
+        "answered_by_you": yours,
+        "request": request.request.document(),
+    }
+    if yours and request.reflection is not None:
+        view["reflection"] = request.reflection
+    return view
+
+
+def _decisions(services: RestServices) -> APIRouter:
+    router = APIRouter(tags=["decisions"])
+    unauthenticated: dict[int | str, dict[str, Any]] = {
+        401: {"description": "No account key, or one that proves no identity.", **PROBLEM}
+    }
+    needs_key = "an account key is needed: Authorization: Bearer <key>"
+
+    @router.get(
+        "/decisions",
+        summary="The decision requests addressed to you",
+        description="Every request not yet applied whose deciding role your identity holds, "
+        "the oldest due first; `overdue` marks one past its due date. Nothing waits silently "
+        "(ADR-0042).",
+        responses={200: {"description": "The requests."}, **unauthenticated, **INVALID},
+    )
+    async def addressed(authorization: str | None = Header(default=None)) -> JSONResponse:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        waiting = await services.decision_queries.addressed_to(who.tenant, who.identity)
+        return JSONResponse(
+            {
+                "identity": who.identity,
+                "requests": [_view(a, who.identity) for a in waiting],
+                "overdue": sum(1 for a in waiting if a.overdue),
+            }
+        )
+
+    @router.get(
+        "/decisions/response-times",
+        summary="How long decisions took: yours, and the rest only aggregated",
+        description="Your own response times, each decision with its time; everyone else's only "
+        "aggregated by role and by department, never by person, and withheld where a group has "
+        "fewer than two deciders (ADR-0015).",
+        responses={
+            200: {"description": "The response times you may read."},
+            **unauthenticated,
+            **INVALID,
+        },
+    )
+    async def response_times(authorization: str | None = Header(default=None)) -> JSONResponse:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        read = await services.decision_queries.response_times(who.tenant, who.identity)
+        return JSONResponse(read.document())
+
+    @router.get(
+        "/decisions/{request_id}",
+        summary="One decision request addressed to you",
+        responses={
+            200: {"description": "The request."},
+            403: {"description": "The request is not addressed to you.", **PROBLEM},
+            404: {"description": "No such request.", **PROBLEM},
+            **unauthenticated,
+            **INVALID,
+        },
+    )
+    async def one(request_id: str, authorization: str | None = Header(default=None)) -> Any:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        found = await services.decision_queries.one(who.tenant, request_id)
+        if found is None:
+            return problem(404, f"no decision request {request_id!r}")
+        if found.request.decider not in who.roles:
+            return problem(403, f"{request_id} is addressed to the role {found.request.decider}")
+        return JSONResponse(_view(found, who.identity))
+
+    @router.post(
+        "/decisions/{request_id}/answer",
+        summary="Answer a decision request",
+        description="With `option`, one option by its identifier; with `text`, free text. "
+        "Neither takes effect: the answer is read, the reading comes back in one message, and "
+        "only once you confirm it does it take effect (ADR-0008). Free text from which no "
+        "single option can be read changes nothing, and the message says so.",
+        responses={
+            200: {"description": "The message sent back, and the request."},
+            403: {"description": "You do not hold the role that decides it.", **PROBLEM},
+            404: {"description": "No such request.", **PROBLEM},
+            409: {"description": "The request's answer already took effect.", **PROBLEM},
+            **unauthenticated,
+            **INVALID,
+        },
+    )
+    async def answer(
+        request_id: str, body: AnswerBody, authorization: str | None = Header(default=None)
+    ) -> JSONResponse:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        try:
+            answered = await services.answer_decision.execute(
+                AnswerRequest(
+                    tenant=who.tenant,
+                    request_id=request_id,
+                    identity=who.identity,
+                    text=body.text,
+                    option=body.option,
+                )
+            )
+        except DecisionError as error:
+            return _refused(error)
+        found = Addressed(answered.request, overdue=False)
+        return JSONResponse({"message": answered.message, "request": _view(found, who.identity)})
+
+    @router.post(
+        "/decisions/{request_id}/confirm",
+        summary="Confirm, or reject, how your answer was read",
+        description="Confirmed, the reading takes effect: the request is applied, the decision "
+        "register gains its entry, and the run continues — or halts at its boundary, if the "
+        "act was declined. Rejected, nothing takes effect and the request is open again.",
+        responses={
+            200: {"description": "Whether it was applied, and the register entry."},
+            403: {"description": "You did not give the answer that was read.", **PROBLEM},
+            404: {"description": "No such request.", **PROBLEM},
+            409: {"description": "There is no reading to confirm.", **PROBLEM},
+            **unauthenticated,
+            **INVALID,
+        },
+    )
+    async def confirm(
+        request_id: str, body: ConfirmBody, authorization: str | None = Header(default=None)
+    ) -> JSONResponse:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        try:
+            confirmed = await services.confirm_decision.execute(
+                ConfirmRequest(
+                    tenant=who.tenant,
+                    request_id=request_id,
+                    identity=who.identity,
+                    confirmed=body.confirmed,
+                )
+            )
+        except DecisionError as error:
+            return _refused(error)
+        if confirmed.entry is not None:
+            await services.decided(who.tenant, confirmed.entry.run_id, who.identity)
+        return JSONResponse(
+            {
+                "applied": confirmed.entry is not None,
+                "entry": None if confirmed.entry is None else confirmed.entry.id,
+                "request": _view(Addressed(confirmed.request, overdue=False), who.identity),
+            }
+        )
+
+    return router
+
+
+def _refused(error: DecisionError) -> JSONResponse:
+    if isinstance(error, UnknownRequest):
+        return problem(404, str(error))
+    if isinstance(error, NotTheDecider):
+        return problem(403, str(error))
+    if isinstance(error, NotAnswerable):
+        return problem(409, str(error))
+    return problem(422, str(error))
 
 
 def _reads(services: RestServices) -> APIRouter:

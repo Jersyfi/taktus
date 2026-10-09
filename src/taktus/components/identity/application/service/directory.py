@@ -59,6 +59,7 @@ CREATED = "identity.created"
 LINKED = "identity.linked"
 UNLINKED = "identity.unlinked"
 KEY_ISSUED = "identity.key_issued"
+ROLES_SET = "identity.roles_set"
 
 
 class IdentityError(Exception):
@@ -248,7 +249,13 @@ class IdentityDirectory(IdentityResolver):
     # --- an administrator --------------------------------------------------------------------
 
     async def add(
-        self, tenant: Tenant, identity: str, org_path: Sequence[str], *, by: str | None = None
+        self,
+        tenant: Tenant,
+        identity: str,
+        org_path: Sequence[str],
+        *,
+        by: str | None = None,
+        roles: Sequence[str] = (),
     ) -> tuple[Identity, str]:
         """A new identity with its first account key; the key is returned to be handed to the
         person once. `IdentityExists` when the tenant has one of that name."""
@@ -258,6 +265,7 @@ class IdentityDirectory(IdentityResolver):
             id=identity,
             tenant=tenant,
             org_path=tuple(org_path) or (tenant,),
+            roles=tuple(dict.fromkeys(roles)),
             key_digest=digest(key),
             created_at=self._clock.now(),
         )
@@ -271,9 +279,34 @@ class IdentityDirectory(IdentityResolver):
                 CREATED,
                 "created",
                 actor=by or identity,
-                document={"identity": identity, "org_path": list(added.org_path)},
+                document={
+                    "identity": identity,
+                    "org_path": list(added.org_path),
+                    "roles": list(added.roles),
+                },
             )
         return added, key
+
+    async def set_roles(
+        self, tenant: Tenant, identity: str, roles: Sequence[str], *, by: str | None = None
+    ) -> Identity:
+        """The roles the identity holds from now on, replacing the ones before."""
+        self._served(tenant)
+        async with self._work.transaction(tenant):
+            existing = await self._identities.get(tenant, identity)
+            if existing is None:
+                raise UnknownIdentity(tenant, identity)
+            changed = existing.model_copy(update={"roles": tuple(dict.fromkeys(roles))})
+            Identity.model_validate(changed.document())
+            await self._identities.put(tenant, changed)
+            await self._record(
+                tenant,
+                ROLES_SET,
+                "set",
+                actor=by,
+                document={"identity": identity, "roles": list(changed.roles)},
+            )
+        return changed
 
     async def issue_key(self, tenant: Tenant, identity: str, *, by: str | None = None) -> str:
         """A new account key for an identity; the old one stops working."""
@@ -421,4 +454,9 @@ class IdentityDirectory(IdentityResolver):
 
 
 def _resolution(identity: Identity) -> Resolution:
-    return Resolution(tenant=identity.tenant, identity=identity.id, org_path=identity.org_path)
+    return Resolution(
+        tenant=identity.tenant,
+        identity=identity.id,
+        org_path=identity.org_path,
+        roles=identity.roles,
+    )
