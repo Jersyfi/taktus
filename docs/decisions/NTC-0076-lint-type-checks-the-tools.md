@@ -3,7 +3,7 @@
 **Mode entry:** M2.2
 **Kind:** test-strategy
 **Decided:** 2026-10-09
-**Raised in:** pull request to follow, for issue #142
+**Raised in:** [#143](https://github.com/Jersyfi/taktus/pull/143), for issue #142
 
 ## 1. What was decided
 
