@@ -1,0 +1,25 @@
+{
+  "held": {
+    "assignment_id": "asg_conf_3d9b0e6f1a72",
+    "status": "running",
+    "last_seq": 5,
+    "accepted_at": "2026-10-09T10:00:00Z",
+    "started_at": "2026-10-09T10:00:00Z"
+  },
+  "answer": {
+    "status": 201,
+    "body": {
+      "assignment_id": "asg_conf_3d9b0e6f1a72",
+      "status": "accepted",
+      "last_seq": 0,
+      "accepted_at": "2026-10-09T10:00:02Z"
+    }
+  },
+  "after": {
+    "assignment_id": "asg_conf_3d9b0e6f1a72",
+    "status": "running",
+    "last_seq": 1,
+    "accepted_at": "2026-10-09T10:00:02Z",
+    "started_at": "2026-10-09T10:00:02Z"
+  }
+}

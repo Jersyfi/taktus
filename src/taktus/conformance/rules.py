@@ -4,9 +4,11 @@ A stream rule cannot be expressed in JSON Schema because it concerns the order a
 completeness of events, not the shape of one. These are the executable reading of the checks
 W-03 to W-07, W-10, W-11, W-13 and W-14 of contracts/worker/v1/README.md §7. They take a
 transcript — the assignment, the estimate the worker gave for it, and every event in order — and
-return every violation found, each naming its check. One rule concerns no stream: W-15 judges a
+return every violation found, each naming its check. Three rules concern no stream. W-15 judges a
 capacity probe — the assignments the suite held, and the answer to one more
-(`capacity_violations`).
+(`capacity_violations`). W-16 judges the answer to the state of an id the worker never received
+(`unknown_id_violations`). W-17 judges the answer to an assignment whose id the worker already
+holds, and what it holds afterwards (`repeated_id_violations`).
 
 The same functions serve two callers: the gate under tests/conformance, which applies them to the
 fixtures under contracts/worker/v1/examples/transcript, and the live suite, which applies them to
@@ -40,6 +42,8 @@ CHECKS: dict[str, str] = {
     "W-14": "a running total that would cross limits halts the assignment at its next step "
     "boundary",
     "W-15": "a worker holding max_concurrent_assignments answers one more with 503",
+    "W-16": "the state of an assignment id the worker never received answers 404",
+    "W-17": "an assignment whose id the worker holds answers 409 and starts no second one",
 }
 
 # Where the README states each rule. A failure cites this so that the reader can look it up.
@@ -59,6 +63,8 @@ SECTIONS: dict[str, str] = {
     "W-13": "§3 Assignment and §4 Events",
     "W-14": "§6 Stopping",
     "W-15": "§2 Capabilities",
+    "W-16": "§3 Assignment",
+    "W-17": "§3 Assignment",
 }
 
 REQUIREMENTS: dict[str, str] = {
@@ -100,6 +106,12 @@ REQUIREMENTS: dict[str, str] = {
     "answers a further POST /v1/assignments with 503 and a problem body — a JSON object with a "
     "title and status 503 — and records nothing: GET /v1/assignments/{id} of that assignment "
     "answers 404",
+    "W-16": "GET /v1/assignments/{id} of an id the worker never received answers 404 with a "
+    "problem body — a JSON object with a title and status 404",
+    "W-17": "a POST /v1/assignments whose assignment_id the worker already holds, running or "
+    "finished, answers 409 with a problem body — a JSON object with a title and status 409 — "
+    "and starts nothing: the assignment of that id is still the first, with its accepted_at, "
+    "its stream not begun again and, once finished, its outcome",
 }
 
 CATALOGUE = Catalogue.build(
@@ -540,6 +552,93 @@ def capacity_violations(probe: Json) -> list[Violation]:
                 "W-15",
                 f"the worker answered 503 but recorded the assignment: looking it up answered "
                 f"{lookup}, expected 404",
+            )
+        )
+    return out
+
+
+def _problem_answer(check: str, what: str, answer: Json, expected: int) -> list[Violation]:
+    """The answer must be `expected` with a problem body: a JSON object with a title and that
+    status."""
+    status = int(answer["status"])
+    body = answer.get("body")
+    if status != expected:
+        return [Violation(check, f"{what} answered {status}, expected {expected}")]
+    if not isinstance(body, dict) or not isinstance(body.get("title"), str):
+        return [Violation(check, f"the {expected} to {what} carries no problem body with a title")]
+    if body.get("status") != expected:
+        return [
+            Violation(
+                check, f"the problem body of the {expected} says status {body.get('status')!r}"
+            )
+        ]
+    return []
+
+
+def unknown_id_violations(probe: Json) -> list[Violation]:
+    """W-16: the state of an assignment id the worker never received answers `404` with a
+    problem body. `probe` has the shape `UnknownIdProbe` of Worker.json: the id asked about and
+    the answer. A runner that recovers a run relies on this answer: a `404` makes it post the
+    assignment again under the same id (ADR-0038)."""
+    what = f"GET /v1/assignments/{probe['assignment_id']}, an id the worker never received,"
+    return _problem_answer("W-16", what, probe["answer"], 404)
+
+
+def repeated_id_violations(probe: Json) -> list[Violation]:
+    """W-17: an assignment whose id the worker already holds answers `409` with a problem body,
+    and the worker starts nothing. `probe` has the shape `RepeatedIdProbe` of Worker.json: the
+    state of the assignment the worker held before the repeat, the answer to the repeat, and
+    the state read after it.
+
+    The state after must still be the first assignment's. A finished state does not change. A
+    state that had not finished may move on, but not back: the same `accepted_at`, and a
+    `last_seq` no lower than before. A lower one means the stream began again, which only a
+    second assignment under the same id does."""
+    held = probe["held"]
+    after = probe["after"]
+    assignment_id = held.get("assignment_id")
+    out = _problem_answer(
+        "W-17",
+        f"a repeated POST /v1/assignments of {assignment_id}, an id the worker holds "
+        f"({held.get('status')}),",
+        probe["answer"],
+        409,
+    )
+    if after.get("assignment_id") != assignment_id:
+        out.append(
+            Violation(
+                "W-17",
+                f"after the repeat the state names {after.get('assignment_id')!r}, "
+                f"not {assignment_id!r}",
+            )
+        )
+        return out
+    if after.get("accepted_at") != held.get("accepted_at"):
+        out.append(
+            Violation(
+                "W-17",
+                f"after the repeat {assignment_id} was accepted at {after.get('accepted_at')!r}, "
+                f"not {held.get('accepted_at')!r}: the worker took the repeat as a second "
+                "assignment",
+            )
+        )
+    if held.get("status") == "finished":
+        fields = ("status", "outcome", "last_seq", "finished_at")
+        changed = [f for f in fields if after.get(f) != held.get(f)]
+        if changed:
+            out.append(
+                Violation(
+                    "W-17",
+                    f"{assignment_id} had finished, and after the repeat its "
+                    f"{', '.join(changed)} changed: the worker started it again",
+                )
+            )
+    elif int(after.get("last_seq", 0)) < int(held.get("last_seq", 0)):
+        out.append(
+            Violation(
+                "W-17",
+                f"after the repeat {assignment_id} is at seq {after.get('last_seq')}, below "
+                f"{held.get('last_seq')} before it: its stream began again",
             )
         )
     return out

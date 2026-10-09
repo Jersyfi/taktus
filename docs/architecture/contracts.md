@@ -226,7 +226,7 @@ Without it, "interchangeable" is an assertion.
 
 The suite lives in `src/taktus/conformance/` and imports nothing from the control plane; it talks
 to a worker over HTTP and SSE, and to a connector over MCP, as a foreign control plane would. It
-runs W-01 to W-11 and W-13 to W-15 against a live worker and C-01 to C-09 against a live connector, and reports
+runs W-01 to W-11 and W-13 to W-17 against a live worker and C-01 to C-09 against a live connector, and reports
 W-12 and C-10, the removal test, as *pending*: a suite that talks to one adapter cannot remove
 it from processes. Its report states which half of *verified* it proves.
 
@@ -259,7 +259,7 @@ every fault either reference adapter can inject the suite fails on exactly that 
 
 Before the suite runs against an adapter, `make gate-contracts` checks the contract itself: every
 schema is valid and carries the `$id` its path prescribes, every example validates, and every check
-W-01..W-15 and C-01..C-10 has a fixture (`tools/validate_contracts.py`).
+W-01..W-17 and C-01..C-10 has a fixture (`tools/validate_contracts.py`).
 
 Every schema is identified by `https://taktus.eu/contracts/<family>/v1/<Concept>.json` — its path
 under `contracts/` behind the project's domain. A released v1 schema is immutable; changes become

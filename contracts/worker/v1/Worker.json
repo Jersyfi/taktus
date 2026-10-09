@@ -638,6 +638,47 @@
       },
       "required": ["max_concurrent_assignments", "held", "answer"],
       "additionalProperties": false
+    },
+
+    "UnknownIdProbe": {
+      "title": "UnknownIdProbe",
+      "description": "Not a wire object. The fixture shape for check W-16: an assignment id the worker never received, and the answer to GET /v1/assignments/{id} for it. The suite checks the unknown-id rule against this shape.",
+      "type": "object",
+      "properties": {
+        "assignment_id": { "$ref": "#/$defs/AssignmentId" },
+        "answer": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+            "body": {}
+          },
+          "required": ["status", "body"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["assignment_id", "answer"],
+      "additionalProperties": false
+    },
+
+    "RepeatedIdProbe": {
+      "title": "RepeatedIdProbe",
+      "description": "Not a wire object. The fixture shape for check W-17: the state of an assignment the worker held, read before the suite posted its id again, the answer to that repeated POST /v1/assignments, and the state of the id read after it. The suite checks the repeated-id rule against this shape.",
+      "type": "object",
+      "properties": {
+        "held": { "$ref": "#/$defs/AssignmentState" },
+        "answer": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+            "body": {}
+          },
+          "required": ["status", "body"],
+          "additionalProperties": false
+        },
+        "after": { "$ref": "#/$defs/AssignmentState" }
+      },
+      "required": ["held", "answer", "after"],
+      "additionalProperties": false
     }
   }
 }

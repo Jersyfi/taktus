@@ -116,6 +116,8 @@ FAULTS: dict[str, str] = {
     "W-13": "a host outside allowed_hosts is reached and reported without refused: true",
     "W-14": "the limits are ignored once running: the agent goes on after the total reached them",
     "W-15": "an assignment beyond max_concurrent_assignments is accepted instead of answered 503",
+    "W-16": "the state of an id never received is answered 200, accepted, instead of 404",
+    "W-17": "an assignment whose id is held is accepted again as a second one instead of 409",
 }
 
 
@@ -321,7 +323,7 @@ class Worker:
             return 400, {"title": "invalid assignment", "status": 400, "detail": problem}
         assignment_id = str(body["assignment_id"])
         with self.lock:
-            if assignment_id in self.assignments:
+            if assignment_id in self.assignments and self.fault != "W-17":
                 return 409, {"title": "assignment exists", "status": 409}
             running = sum(1 for a in self.assignments.values() if a.status != "finished")
             if running >= MAX_CONCURRENT and self.fault != "W-15":
@@ -1286,7 +1288,10 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._json(503, {"status": "not_ready", "detail": "at capacity"})
         elif len(parts) == 3 and parts[:2] == ["v1", "assignments"]:
-            if (assignment := self._assignment(parts[2])) is not None:
+            if self.worker.fault == "W-16" and parts[2] not in self.worker.assignments:
+                # the W-16 fault: an id never received is answered as if it were held
+                self._json(200, {"assignment_id": parts[2], "status": "accepted", "last_seq": 0})
+            elif (assignment := self._assignment(parts[2])) is not None:
                 with assignment.lock:
                     self._json(200, assignment.state())
         elif len(parts) == 4 and parts[:2] == ["v1", "assignments"] and parts[3] == "events":

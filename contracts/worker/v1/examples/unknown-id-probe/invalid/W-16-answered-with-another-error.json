@@ -1,0 +1,10 @@
+{
+  "assignment_id": "asg_conf_5e1c9d7a3b20",
+  "answer": {
+    "status": 500,
+    "body": {
+      "title": "internal error",
+      "status": 500
+    }
+  }
+}

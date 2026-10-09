@@ -97,8 +97,9 @@ boundary, and leaves it open. A resume adopts what remains.
 ## Where this promise ends
 The promise holds for a worker that keeps an assignment it accepted until it ends, answers
 `404` for an id it does not hold and `409` for an id it holds, and resumes its stream after a
-`seq` (W-03). The conformance suite checks the last of these only; the 404 and the 409 are
-issue #138 (DEC-0091). A worker that forgets assignments while they run makes the step post
+`seq` (W-03). The conformance suite checks all three: the 404 is W-16 and the 409 is W-17
+(NTC-0077). It cannot see a worker that answers 409 and still runs the work again without
+showing it. A worker that forgets assignments while they run makes the step post
 the same id again: what the forgotten assignment did outward before is not undone. That is the
 limit ADR-0013 states for a cut-off runner. A worker that answers a repeated id with `201`
 instead of `409` takes the second post, and two assignments run under one id. A worker that

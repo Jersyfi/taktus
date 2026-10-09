@@ -1,8 +1,11 @@
-"""The stream rules and the capacity rule against the fixtures of the worker contract.
+"""The stream rules, the capacity rule and the id rules against the fixtures of the worker
+contract.
 
 Every fixture under contracts/worker/v1/examples/transcript/valid/ must break no stream rule;
 every fixture under invalid/W-NN-*.json must break exactly the check its name carries. The same
-holds for the capacity probes under examples/capacity-probe/ and W-15. This is
+holds for the capacity probes under examples/capacity-probe/ and W-15, the unknown-id probes
+under examples/unknown-id-probe/ and W-16, and the repeated-id probes under
+examples/repeated-id-probe/ and W-17. This is
 what makes the fixtures known good or known bad, and it is the test that pinned the rules when
 they moved out of tools/validate_contracts.py (DEC-0003).
 """
@@ -11,12 +14,19 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from taktus.conformance.rules import capacity_violations, stream_violations
+from taktus.conformance.findings import Violation
+from taktus.conformance.rules import (
+    capacity_violations,
+    repeated_id_violations,
+    stream_violations,
+    unknown_id_violations,
+)
 
 TRANSCRIPTS = Path(__file__).resolve().parents[2] / "contracts" / "worker" / "v1" / "examples"
 TRANSCRIPTS /= "transcript"
@@ -75,3 +85,35 @@ def test_invalid_capacity_probe_breaks_w15(path: Path) -> None:
 
 def test_the_capacity_rule_has_fixtures() -> None:
     assert VALID_PROBES and INVALID_PROBES
+
+
+# W-16 and W-17 concern an assignment's id: each probe directory, its rule and its check.
+ID_PROBES = [
+    ("unknown-id-probe", unknown_id_violations, "W-16"),
+    ("repeated-id-probe", repeated_id_violations, "W-17"),
+]
+ID_CASES = [
+    (path, rule, check if path.parent.name == "invalid" else None)
+    for directory, rule, check in ID_PROBES
+    for path in sorted((TRANSCRIPTS.parent / directory).glob("*/*.json"))
+]
+
+
+@pytest.mark.parametrize(
+    ("path", "rule", "check"),
+    ID_CASES,
+    ids=[f"{p.parent.parent.name}/{p.parent.name}/{p.stem}" for p, _, _ in ID_CASES],
+)
+def test_id_probe_breaks_exactly_its_check(
+    path: Path, rule: Callable[[Any], list[Violation]], check: str | None
+) -> None:
+    violations = rule(load(path))
+    expected = set() if check is None else {check}
+    assert {v.check for v in violations} == expected, [str(v) for v in violations]
+
+
+def test_the_id_rules_have_fixtures() -> None:
+    for directory, _, check in ID_PROBES:
+        valid = list((TRANSCRIPTS.parent / directory / "valid").glob("*.json"))
+        invalid = list((TRANSCRIPTS.parent / directory / "invalid").glob(f"{check}-*.json"))
+        assert valid and invalid, directory
