@@ -38,8 +38,12 @@ async def test_a_signed_delivery_reaches_the_connector_and_comes_back_as_an_even
         Config(target="http://127.0.0.1:1", repository="placeholder-owner/placeholder-repo")
     )
     given = services()
+    await given.linked(account="100000001")
     given.intake = ReceiveIntakeHandler(
-        {"channel.repo": McpIntakeConnector(server)}, given.events, given.persistence
+        {"channel.repo": McpIntakeConnector(server)},
+        given.events,
+        given.persistence,
+        given.identities,
     )
     headers, body = recorded("issue-comment-created")
     async with httpx.AsyncClient(
@@ -92,7 +96,10 @@ async def test_a_signed_url_verification_is_answered_with_its_challenge_and_kept
     server = build_chat_server(ChatConfig(target="http://127.0.0.1:1"))
     given = services()
     given.intake = ReceiveIntakeHandler(
-        {"channel.chat": McpIntakeConnector(server)}, given.events, given.persistence
+        {"channel.chat": McpIntakeConnector(server)},
+        given.events,
+        given.persistence,
+        given.identities,
     )
     monkeypatch.delenv(f"TAKTUS_CREDENTIAL_{CHAT_INTAKE_CREDENTIAL}_FILE", raising=False)
     monkeypatch.setenv(CHAT_INTAKE_CREDENTIAL, CHAT_SHARED)
@@ -133,7 +140,10 @@ async def test_the_repository_connectors_ping_is_still_refused_without_an_answer
     )
     given = services()
     given.intake = ReceiveIntakeHandler(
-        {"channel.repo": McpIntakeConnector(server)}, given.events, given.persistence
+        {"channel.repo": McpIntakeConnector(server)},
+        given.events,
+        given.persistence,
+        given.identities,
     )
     monkeypatch.setenv(INTAKE_CREDENTIAL, SHARED)
     headers, body = recorded("ping")

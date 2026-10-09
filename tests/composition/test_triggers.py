@@ -9,11 +9,10 @@ from typing import Any
 
 from fakes import FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.connector import READ, WRITE
+from fakes.identity import directory
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
-from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
 from taktus.adapters.driven.memory import (
-    MemoryLedgerStore,
     MemoryObjectStore,
     MemoryPersistence,
     MemoryProvenanceStore,
@@ -23,7 +22,6 @@ from taktus.adapters.driven.memory import (
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.command.application.service import CommissionPlanHandler
-from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     RegisterProcessVersionHandler,
@@ -51,12 +49,14 @@ class Clock:
 
 class World:
     def __init__(self, *, identity: bool = True) -> None:
+        self.by = "idn_op" if identity else None
         self.clock = Clock(datetime(2026, 10, 9, 10, 30, tzinfo=UTC))
         self.ids = FakeIdentifiers()
         self.persistence = MemoryPersistence()
         self.runs = MemoryRepository(self.persistence, Run)
         self.states = MemoryRepository(self.persistence, TriggerState)
-        self.ledger = ChainedLedger(MemoryLedgerStore(self.persistence), self.clock)
+        self.identity = directory((TENANT,), persistence=self.persistence, clock=self.clock)
+        self.ledger = self.identity.ledger
         self.connector = FakeConnector()
         connectors = StaticConnectorPool([("connector.fake", self.connector)])
         engine = RunEngine(
@@ -87,16 +87,26 @@ class World:
             ),
             engine=engine,
             connectors=connectors,
-            identities=ProvisionalOperatorIdentity({TENANT: "idn_op"}) if identity else None,
+            identities=self.identity.directory,
             ledger=self.ledger,
             work=self.persistence,
             clock=self.clock,
             ids=self.ids,
         )
 
+    async def registered(self, document: dict[str, Any], *, by: str | None = None) -> None:
+        """The version registered — and so activated — by the world's identity, which the
+        identity component knows under the path default/ops."""
+        if self.by is not None and await self.identity.directory.identity(TENANT, self.by) is None:
+            await self.identity.directory.add(TENANT, self.by, (TENANT, "ops"))
+        await self.register.execute(
+            RegisterProcessVersion(document, tenant=TENANT, by=by or self.by)
+        )
+
     async def kinds(self) -> list[str]:
         async with self.persistence.transaction(TENANT):
-            return [entry.kind for entry in await self.ledger.entries(TENANT)]
+            entries = await self.ledger.entries(TENANT)
+        return [entry.kind for entry in entries if not entry.kind.startswith("identity.")]
 
     async def state(self) -> TriggerState:
         async with self.persistence.transaction(TENANT):
@@ -134,9 +144,7 @@ def bundle(trigger: dict[str, Any], *, limits: bool = True) -> dict[str, Any]:
 
 async def test_a_due_trigger_starts_one_run_with_its_inputs_and_its_trigger() -> None:
     world = World()
-    await world.register.execute(
-        RegisterProcessVersion(bundle({"inputs": {"target": "b"}}), tenant=TENANT)
-    )
+    await world.registered(bundle({"inputs": {"target": "b"}}))
     assert await world.at(10, 31) == []  # armed now: the next slot is 11:00
     assert await world.at(10, 59) == []
     (started,) = await world.at(11, 0)
@@ -151,7 +159,7 @@ async def test_a_due_trigger_starts_one_run_with_its_inputs_and_its_trigger() ->
 async def test_each_starts_one_run_per_item_a_read_answers() -> None:
     world = World()
     each = {"input": "target", "operation": READ, "select": "items", "field": "name"}
-    await world.register.execute(RegisterProcessVersion(bundle({"each": each}), tenant=TENANT))
+    await world.registered(bundle({"each": each}))
     world.connector.read_sequence.append({"items": [{"name": "x"}, {"name": "y"}]})
     await world.at(10, 31)
     started = await world.at(11, 1)
@@ -165,7 +173,7 @@ async def test_each_starts_one_run_per_item_a_read_answers() -> None:
 async def test_each_over_a_write_starts_nothing_and_stays_due() -> None:
     world = World()
     each = {"input": "target", "operation": WRITE, "select": "items"}
-    await world.register.execute(RegisterProcessVersion(bundle({"each": each}), tenant=TENANT))
+    await world.registered(bundle({"each": each}))
     await world.at(10, 31)
     assert await world.at(11, 1) == []
     assert world.connector.calls == [], "a trigger only reads"
@@ -174,19 +182,37 @@ async def test_each_over_a_write_starts_nothing_and_stays_due() -> None:
 
 async def test_without_an_identity_nothing_fires() -> None:
     world = World(identity=False)
-    await world.register.execute(
-        RegisterProcessVersion(bundle({"inputs": {"target": "b"}}), tenant=TENANT)
-    )
+    await world.registered(bundle({"inputs": {"target": "b"}}))
     await world.at(10, 31)
     assert await world.at(11, 1) == []
     assert (await world.state()).fired_slot is None
 
 
+async def test_an_identity_the_component_does_not_know_fires_nothing() -> None:
+    """The scheduler acts for whoever activated the version, as the identity component places
+    them at the moment of firing — never for a name it does not know."""
+    world = World()
+    await world.registered(bundle({"inputs": {"target": "b"}}), by="idn_ghost")
+    await world.at(10, 31)
+    assert await world.at(11, 1) == []
+    assert (await world.state()).fired_slot is None
+
+
+async def test_a_scheduled_command_carries_the_activators_identity_and_path() -> None:
+    world = World()
+    await world.registered(bundle({"inputs": {"target": "b"}}))
+    await world.at(10, 31)
+    (started,) = await world.at(11, 0)
+    async with world.persistence.transaction(TENANT):
+        run = await world.runs.get(TENANT, started)
+        (command,) = await MemoryRepository(world.persistence, Command).list(TENANT)
+    assert run is not None and run.identity == "idn_op"
+    assert command.identity == "idn_op" and command.org_path == (TENANT, "ops")
+
+
 async def test_a_run_the_engine_refuses_is_said_once_and_the_slot_recorded() -> None:
     world = World()
-    await world.register.execute(
-        RegisterProcessVersion(bundle({"inputs": {"target": "b"}}, limits=False), tenant=TENANT)
-    )
+    await world.registered(bundle({"inputs": {"target": "b"}}, limits=False))
     await world.at(10, 31)
     assert await world.at(11, 1) == []
     assert await world.at(11, 2) == []

@@ -42,6 +42,7 @@ from pathlib import Path
 import httpx
 import pytest
 from fakes import model_service
+from fakes.identity import added_by_command_line
 
 from .conftest import ROOT, free_port
 from .test_first_slice import PLAIN, taktusctl
@@ -278,6 +279,7 @@ def outside(tmp_path: Path) -> Iterator[Outside]:
 def run_bundle(
     outside: Outside, state_dir: Path, bundle: str, *inputs: str, expect: int = 0
 ) -> str:
+    added_by_command_line(taktusctl(), "idn_test", outside.environment(state_dir))
     command = [taktusctl(), "run", "--process", str(BLUEPRINT / bundle)]
     for given in inputs:
         command += ["--input", given]

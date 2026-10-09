@@ -8,18 +8,10 @@ from pathlib import Path
 
 import httpx
 import pytest
-from fakes import FakeIdentifiers
 
 import taktus.adapters.driving.rest.app as app_module
-from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
-from taktus.adapters.driven.memory import MemoryRepository
 from taktus.adapters.driving.rest import build_app
-from taktus.components.command.application.service import (
-    CompleteIntakeHandler,
-    ReceiveIntakeHandler,
-)
 from taktus.ports.connector import ConnectorError, IntakeResult, Refusal
-from taktus.shared.v1 import Command
 
 from .conftest import TENANT, ScriptedConnector, Services, a_run, refused, services
 
@@ -91,6 +83,7 @@ async def test_the_ledger_of_a_run_comes_with_the_chain_s_verification(client: C
 
 async def test_an_accepted_delivery_is_kept_awaiting_identity(client: Client) -> None:
     http, given, base = client
+    await given.linked()
     response = await http.post(
         f"{base}/intake/channel.repo",
         content=b'{"action": "created"}',
@@ -112,41 +105,62 @@ async def test_an_accepted_delivery_is_kept_awaiting_identity(client: Client) ->
         assert len(await given.events.list(TENANT)) == 1, "a redelivery replaces, never doubles"
 
 
-async def test_an_intake_event_is_completed_into_a_command_by_the_provisional_identity(
+async def test_an_intake_event_is_completed_into_a_command_by_the_linked_identity(
     client: Client,
 ) -> None:
     http, given, base = client
-    # No identity configured: nothing completes, and the surface says so.
-    missing = await http.post(f"{base}/intake-events/dlv_1/complete")
-    is_problem(missing, 503)
+    await given.linked()
+    accepted = await http.post(f"{base}/intake/channel.repo", content=b"{}")
+    assert accepted.status_code == 202 and accepted.json()["accepted"]["tenant"] == TENANT
+    completed = await http.post(f"{base}/intake-events/dlv_1/complete")
+    assert completed.status_code == 200, completed.text
+    command = completed.json()
+    assert command["identity"] == "idn_ada" and command["org_path"] == [TENANT]
+    assert "identity_provisional" not in command["context"]
+    assert command["reply_to"]["address"] == "acme/taktus#412"
+    is_problem(await http.post(f"{base}/intake-events/dlv_1/complete"), 409)
+    is_problem(await http.post(f"{base}/intake-events/dlv_9/complete"), 404)
+    is_problem(await http.post(f"{base}/intake-events/dlv_1/complete?tenant=other"), 404)
 
-    resolver = ProvisionalOperatorIdentity({TENANT: "idn_owner"})
-    given.intake = ReceiveIntakeHandler(
-        {"channel.repo": given.connector}, given.events, given.persistence, identities=resolver
+
+async def test_an_unknown_sender_is_answered_in_the_channel_and_nothing_is_kept(
+    client: Client,
+) -> None:
+    http, given, base = client
+    response = await http.post(f"{base}/intake/channel.repo", content=b"{}")
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["unknown_sender"] == {"account": "100200", "kind": "person"}
+    assert body["replied"] is True and body["linked"] is False
+    ((_, to, text, _),) = given.replies.said
+    assert to.address == "acme/taktus#412" and "link code" in text
+    async with given.persistence.transaction(TENANT):
+        assert await given.events.list(TENANT) == []
+    is_problem(await http.post(f"{base}/intake-events/dlv_1/complete"), 404)
+
+
+async def test_a_link_code_is_made_in_the_persons_account_and_nowhere_else(
+    client: Client,
+) -> None:
+    http, given, base = client
+    path = f"{base}/identity/link-codes"
+    is_problem(await http.post(path, json={"channel": "channel.repo"}), 401)
+    is_problem(
+        await http.post(
+            path, json={"channel": "channel.repo"}, headers={"Authorization": "Bearer tka_00"}
+        ),
+        401,
     )
-    given.complete_intake = CompleteIntakeHandler(
-        given.events,
-        MemoryRepository(given.persistence, Command),
-        resolver,
-        given.persistence,
-        given.clock,
-        FakeIdentifiers(),
-    )
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=build_app(given, prefix=base or "/")),
-        base_url="http://taktus.test",
-    ) as http:
-        accepted = await http.post(f"{base}/intake/channel.repo", content=b"{}")
-        assert accepted.status_code == 202 and accepted.json()["accepted"]["tenant"] == TENANT
-        completed = await http.post(f"{base}/intake-events/dlv_1/complete")
-        assert completed.status_code == 200, completed.text
-        command = completed.json()
-        assert command["identity"] == "idn_owner" and command["org_path"] == [TENANT]
-        assert command["context"]["identity_provisional"] is True
-        assert command["reply_to"]["address"] == "acme/taktus#412"
-        is_problem(await http.post(f"{base}/intake-events/dlv_1/complete"), 409)
-        is_problem(await http.post(f"{base}/intake-events/dlv_9/complete"), 404)
-        is_problem(await http.post(f"{base}/intake-events/dlv_1/complete?tenant=other"), 404)
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    bearer = {"Authorization": f"Bearer {key}"}
+    assert (await http.post(path, json={"channel": "Repo"}, headers=bearer)).status_code == 422
+    made = await http.post(path, json={"channel": "channel.repo"}, headers=bearer)
+    assert made.status_code == 201, made.text
+    code = made.json()
+    assert code["identity"] == "idn_ada" and code["channel"] == "channel.repo"
+    assert code["code"].startswith("tkl-") and code["expires_at"]
+    linked = await given.identities.unknown_sender("channel.repo", "100200", code["code"])
+    assert linked.linked is not None and linked.linked.identity == "idn_ada"
 
 
 async def test_refusals_answer_with_the_status_that_says_who_should_act(prefix: str) -> None:

@@ -340,6 +340,20 @@ answered nothing. The connector knows its target's handshake; the endpoint copie
 and knows no target. A connector whose target has no handshake never answers, and conforms
 (ADR-0024, amendment of 2026-10-09).
 
+**Answering in the channel.** A connector whose intake serves a channel may declare one more
+operation, named after the channel: `<channel>.reply`, with the channel as its capability —
+`channel.repo.reply` for `channel.repo`. Its input is the reply address an accepted event
+carried and what to say there:
+
+```json
+{ "address": "acme/taktus#412", "thread": "9001", "text": "Taktus does not know this account yet …" }
+```
+
+It is an outward operation like any other: it declares its effect and its idempotency, and a
+repeat with the same key acts once. Taktus calls it as itself (ADR-0033), never as the sender,
+to answer a sender it cannot place (ADR-0040). A connector that declares no reply operation
+serves the channel all the same; its senders are then not answered.
+
 ---
 
 ## 8. Conformance

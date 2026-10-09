@@ -48,13 +48,13 @@ paths:
       summary: Webhook intake for a channel
       description: The delivery as the source system sent it — every header, the raw body — is handed
         to the connector that serves the channel. The connector verifies the signature before it reads
-        the body, then normalises the event into the channel's half of a command. The sender is placed
-        in a tenant by the identity resolver — today the provisional operator identity (DEC-0013) — and
-        the event is kept there until it is completed into a command. A sender that cannot be placed is
-        answered `unknown_sender` and nothing is kept. A verified delivery that is a handshake, not an
-        event — a sender checking the address before it sends events — is refused with the answer the
-        connector gives, and that answer is returned as it is, status 200; nothing is kept. Nothing is
-        executed from here.
+        the body, then normalises the event into the channel's half of a command. The identity component
+        places the sender — the account must be linked to an identity — and the event is kept in that
+        identity's tenant until it is completed into a command. A sender it cannot place is answered `unknown_sender`
+        and nothing is kept; the sender is told in the channel how to link the account, or that a link
+        code they wrote linked it. A verified delivery that is a handshake, not an event — a sender checking
+        the address before it sends events — is refused with the answer the connector gives, and that
+        answer is returned as it is, status 200; nothing is kept. Nothing is executed from here.
       operationId: intake_intake__channel__post
       parameters:
       - name: channel
@@ -65,7 +65,8 @@ paths:
           title: Channel
       responses:
         '202':
-          description: 'Decided: `accepted` with the intake event, `refused`, or `unknown_sender`.'
+          description: 'Decided: `accepted` with the intake event, `refused`, or `unknown_sender` with
+            whether the sender was answered in the channel and whether the message linked their account.'
           content:
             application/json:
               schema: {}
@@ -100,10 +101,10 @@ paths:
       tags:
       - intake
       summary: Complete an intake event into a command
-      description: 'The event the connector accepted becomes a command: the identity resolver supplies
-        who acts — today the provisional operator identity of the tenant (DEC-0013), marked as such in
-        the command''s context — and the event is marked completed. Nothing is executed; the command is
-        returned for whoever commissions a plan from it.'
+      description: 'The event the connector accepted becomes a command: the identity component supplies
+        who acts and the organisational path, from the link of the sender''s account, and the event is
+        marked completed. Nothing is executed; the command is returned for whoever commissions a plan
+        from it.'
       operationId: complete_intake_events__event_id__complete_post
       parameters:
       - name: event_id
@@ -140,8 +141,43 @@ paths:
           description: The sender cannot be placed.
           content:
             application/problem+json: {}
-        '503':
-          description: No identity is configured.
+  /identity/link-codes:
+    post:
+      tags:
+      - identity
+      summary: Create a link code in your Taktus account
+      description: 'The account key in `Authorization: Bearer` proves the identity. The answer is a single-use
+        code, valid for 30 minutes and shown once: written in the named channel from the account to be
+        linked, it links that account to this identity. Nothing else links an account; a matching name
+        or address never does (ADR-0040).'
+      operationId: create_link_code_identity_link_codes_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkCodeRequest'
+      responses:
+        '201':
+          description: The code, the channel and when the code expires.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
           content:
             application/problem+json: {}
   /runs:
@@ -245,3 +281,16 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+components:
+  schemas:
+    LinkCodeRequest:
+      properties:
+        channel:
+          type: string
+          pattern: ^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+$
+          title: Channel
+          description: The channel whose account is to be linked, as a capability (`channel.repo`).
+      type: object
+      required:
+      - channel
+      title: LinkCodeRequest

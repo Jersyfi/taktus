@@ -29,7 +29,7 @@ from sqlalchemy import text
 
 from taktus.adapters.driven.postgres import PostgresPersistence, PostgresRepository
 from taktus.components.process.application.service.register_version import RegisterProcessVersion
-from taktus.components.process.domain.model import TriggerState
+from taktus.components.process.domain.model import ProcessVersion, TriggerState
 from taktus.components.run.domain.model import Run, RunState
 from taktus.composition.daemon import Wired, serve
 from taktus.composition.settings import Settings
@@ -121,7 +121,6 @@ async def daemons(
                 TAKTUS_INSTANCE=name,
                 TAKTUS_HTTP_PORT=str(free_port()),
                 TAKTUS_TENANTS=tenant,
-                TAKTUS_PROVISIONAL_IDENTITY=f"{tenant}=idn_scheduler",
                 **environment,
             ),
             clock,
@@ -134,6 +133,16 @@ async def daemons(
         if daemon.task is not None and not daemon.task.done():
             daemon.stop.set()
             await asyncio.wait_for(daemon.task, timeout=30)
+
+
+async def registered(wired: Wired, tenant: str, bundle: dict[str, Any]) -> ProcessVersion:
+    """The version registered by `idn_scheduler`, an identity the tenant knows: whom its
+    schedule triggers act for (ADR-0040)."""
+    if await wired.identities.identity(tenant, "idn_scheduler") is None:
+        await wired.identities.add(tenant, "idn_scheduler", (tenant,))
+    return await wired.register_version.execute(
+        RegisterProcessVersion(bundle, tenant=tenant, by="idn_scheduler")
+    )
 
 
 async def runs_of(wired: Wired, tenant: str, ref: str) -> list[Run]:
@@ -196,7 +205,7 @@ async def test_a_due_trigger_starts_exactly_one_run_whoever_leads(
     await until(lambda: a.leading)
     assert a.wired is not None
     wired = a.wired
-    version = await wired.register_version.execute(RegisterProcessVersion(bundle, tenant=tenant))
+    version = await registered(wired, tenant, bundle)
     b = await daemons("scheduler-b", clock, TAKTUS_ROLES="scheduler").start()
 
     # Not yet due: the trigger is armed at 10:30, and the next slot is 11:00.
@@ -260,7 +269,7 @@ async def test_the_removal_test_runs_weekly_from_its_trigger(
     wired = daemon.wired
     with REMOVAL.open(encoding="utf-8") as handle:
         bundle: dict[str, Any] = yaml.safe_load(handle)
-    version = await wired.register_version.execute(RegisterProcessVersion(bundle, tenant=tenant))
+    version = await registered(wired, tenant, bundle)
     assert version.triggers[0].schedule == "weekly"
     await eventually(lambda: _armed(wired, tenant))
     await asyncio.sleep(SETTLE)

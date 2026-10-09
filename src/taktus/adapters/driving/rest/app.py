@@ -7,8 +7,9 @@ this build needs. A role that has lost its database is not ready and must not re
 it is not therefore unhealthy, and restarting it in a loop would only make the outage louder.
 
 The `api` role adds the rest: webhook intake for the channel a connector serves, the completion
-of an intake event into a command by the configured identity, and a read API for runs and
-ledger entries. No other write, no UI.
+of an intake event into a command by the identity the identity component places, the link code
+a person creates in their Taktus account to link a channel account (ADR-0040), and a read API
+for runs and ledger entries. No other write, no UI.
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -21,9 +22,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, Query, Request
+from fastapi import APIRouter, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
@@ -36,7 +38,9 @@ from taktus.components.command.application.service import (
     UnknownIntakeEvent,
     UnknownSender,
 )
+from taktus.components.identity.application.service import UnknownIdentity
 from taktus.ports.connector import ConnectorError, Delivery, RefusalReason
+from taktus.shared.v1.capability import CAPABILITY_PATTERN
 
 VERSION = "0.1.0"
 PROBLEM: dict[str, Any] = {"content": {"application/problem+json": {}}}
@@ -79,6 +83,7 @@ def build_app(services: RestServices, *, prefix: str = "/", full: bool = True) -
     app.include_router(_operations(services), prefix=base)
     if full:
         app.include_router(_intake(services), prefix=base)
+        app.include_router(_identity(services), prefix=base)
         app.include_router(_reads(services), prefix=base)
     return app
 
@@ -122,12 +127,13 @@ def _intake(services: RestServices) -> APIRouter:
         description="The delivery as the source system sent it — every header, the raw body — "
         "is handed to the connector that serves the channel. The connector verifies the "
         "signature before it reads the body, then normalises the event into the channel's "
-        "half of a command. The sender is placed in a tenant by the identity resolver — "
-        "today the provisional operator identity (DEC-0013) — and the event is kept there "
-        "until it is completed into a command. A sender that cannot be placed is answered "
-        "`unknown_sender` and nothing is kept. A verified delivery that is a handshake, not "
-        "an event — a sender checking the address before it sends events — is refused with "
-        "the answer the connector gives, and that answer is returned as it is, status 200; "
+        "half of a command. The identity component places the sender — the account must be "
+        "linked to an identity — and the event is kept in that identity's tenant until it is "
+        "completed into a command. A sender it cannot place is answered `unknown_sender` and "
+        "nothing is kept; the sender is told in the channel how to link the account, or that "
+        "a link code they wrote linked it. A verified delivery that is a handshake, not an "
+        "event — a sender checking the address before it sends events — is refused with the "
+        "answer the connector gives, and that answer is returned as it is, status 200; "
         "nothing is kept. Nothing is executed from here.",
         status_code=202,
         responses={
@@ -138,7 +144,8 @@ def _intake(services: RestServices) -> APIRouter:
             },
             202: {
                 "description": "Decided: `accepted` with the intake event, `refused`, or "
-                "`unknown_sender`."
+                "`unknown_sender` with whether the sender was answered in the channel and "
+                "whether the message linked their account."
             },
             400: {"description": "The body cannot be read.", **PROBLEM},
             401: {"description": "Unsigned, or the signature does not verify.", **PROBLEM},
@@ -156,8 +163,8 @@ def _intake(services: RestServices) -> APIRouter:
         )
         try:
             outcome = await services.intake.execute(
-                # The tenant is the resolver's to decide; the first configured tenant is the
-                # fallback of an instance without an identity, and is named as such.
+                # Where an event is kept is the identity component's to decide; the first
+                # tenant is only where a sender nobody could place is answered from.
                 ReceiveIntake(channel=channel, delivery=delivery, tenant=services.tenants[0])
             )
         except UnknownChannel as error:
@@ -181,7 +188,12 @@ def _intake(services: RestServices) -> APIRouter:
             )
         if outcome.unknown_sender is not None:
             return JSONResponse(
-                {"unknown_sender": outcome.unknown_sender.document()}, status_code=202
+                {
+                    "unknown_sender": outcome.unknown_sender.document(),
+                    "replied": outcome.replied,
+                    "linked": outcome.linked is not None,
+                },
+                status_code=202,
             )
         if outcome.accepted is None:  # unreachable: an outcome is one of the three
             return problem(503, "the intake decided nothing")
@@ -195,24 +207,20 @@ def _intake(services: RestServices) -> APIRouter:
     @router.post(
         "/intake-events/{event_id}/complete",
         summary="Complete an intake event into a command",
-        description="The event the connector accepted becomes a command: the identity resolver "
-        "supplies who acts — today the provisional operator identity of the tenant "
-        "(DEC-0013), marked as such in the command's context — and the event is marked "
-        "completed. Nothing is executed; the command is returned for whoever commissions a "
-        "plan from it.",
+        description="The event the connector accepted becomes a command: the identity component "
+        "supplies who acts and the organisational path, from the link of the sender's account, "
+        "and the event is marked completed. Nothing is executed; the command is returned for "
+        "whoever commissions a plan from it.",
         status_code=200,
         responses={
             200: {"description": "The command the event became."},
             404: {"description": "No such intake event in the tenant.", **PROBLEM},
             409: {"description": "The event was completed before.", **PROBLEM},
             422: {"description": "The sender cannot be placed.", **PROBLEM},
-            503: {"description": "No identity is configured.", **PROBLEM},
         },
     )
     async def complete(event_id: str, tenant: str | None = tenant_query) -> JSONResponse:
         handler = services.complete_intake
-        if handler is None:
-            return problem(503, "no identity is configured; nothing can complete an intake")
         chosen = tenant or services.tenants[0]
         try:
             command = await handler.execute(CompleteIntake(tenant=chosen, event_id=event_id))
@@ -223,6 +231,59 @@ def _intake(services: RestServices) -> APIRouter:
         except UnknownSender as error:
             return problem(422, str(error))
         return JSONResponse(command.document(), status_code=200)
+
+    return router
+
+
+class LinkCodeRequest(BaseModel):
+    channel: str = Field(
+        pattern=CAPABILITY_PATTERN,
+        description="The channel whose account is to be linked, as a capability (`channel.repo`).",
+    )
+
+
+def _identity(services: RestServices) -> APIRouter:
+    router = APIRouter(tags=["identity"])
+
+    @router.post(
+        "/identity/link-codes",
+        summary="Create a link code in your Taktus account",
+        description="The account key in `Authorization: Bearer` proves the identity. The answer "
+        "is a single-use code, valid for 30 minutes and shown once: written in the named "
+        "channel from the account to be linked, it links that account to this identity. "
+        "Nothing else links an account; a matching name or address never does (ADR-0040).",
+        status_code=201,
+        responses={
+            201: {"description": "The code, the channel and when the code expires."},
+            401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+            **INVALID,
+        },
+    )
+    async def create_link_code(
+        request: LinkCodeRequest,
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        scheme, _, key = (authorization or "").partition(" ")
+        who = (
+            await services.identities.authenticate(key.strip())
+            if scheme.lower() == "bearer"
+            else None
+        )
+        if who is None:
+            return problem(401, "an account key is needed: Authorization: Bearer <key>")
+        try:
+            code, record = await services.identities.create_link_code(who, request.channel)
+        except UnknownIdentity as error:
+            return problem(401, str(error))
+        return JSONResponse(
+            {
+                "code": code,
+                "channel": record.channel,
+                "identity": record.identity,
+                "expires_at": record.expires_at.isoformat(),
+            },
+            status_code=201,
+        )
 
     return router
 

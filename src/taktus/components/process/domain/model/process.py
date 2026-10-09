@@ -44,6 +44,9 @@ class Process(Value):
     name: str = Field(min_length=1)
     description: str | None = None
     active_version: str | None = None
+    activated_by: str | None = Field(default=None, min_length=1)
+    """The identity that registered the active version: whom its schedule triggers act for
+    (ADR-0040). None for a version registered without one, whose triggers do not fire."""
 
 
 class Edge(Value):

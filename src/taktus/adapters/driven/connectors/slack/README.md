@@ -30,6 +30,7 @@ The resource `taktus://connector/v1/capabilities` ([`declaration.py`](declaratio
 | Operation | Effect | Idempotency | Input | How a repeat is recognised |
 |---|---|---|---|---|
 | `chat.threads.read` | read | — | `address`, `thread` | — ; one thread, its first message and every reply, oldest first, each with its author as the service names them (`account`, `kind`); `complete` says whether every page was read (at most ten of 200) |
+| `channel.chat.reply` | delivery | marked | `address`, `thread` (optional), `text` | as `chat.threads.post`: the answer Taktus gives at a reply address its intake produced, to a sender it cannot place (contract §7, ADR-0040) |
 | `chat.threads.post` | delivery | marked | `address`, `thread` (optional), `text` | the key in the message's **metadata**, a structured field the service keeps on every message. A post into a thread is looked for among every reply of the thread, up to ten pages of 200; a post at the top of a conversation among the 100 most recent messages of it. A repeat after more than that is not recognised; the bound is stated, as the repository connector states its own |
 
 `address` is the conversation's identifier and `thread` the timestamp of the message that opens

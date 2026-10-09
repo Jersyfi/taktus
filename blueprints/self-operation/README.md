@@ -96,8 +96,8 @@ uv run taktusctl run --process blueprints/self-operation/processes/S-01-removal-
 **From its trigger.** The bundle's trigger says `weekly` — Mondays 00:00 UTC — with `each`
 over `orchestrator.integrations.list`. On an instance that runs `taktusd` with the `scheduler`
 role and has S-01 registered, the elected scheduler starts one run per integration the instance
-lists, once per week, whichever scheduler leads (ADR-0035). The runs act as the tenant's
-provisional operator identity (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013), and each carries
+lists, once per week, whichever scheduler leads (ADR-0035). The runs act for the identity
+that registered the bundle — it must be one the tenant knows (ADR-0040) — and each carries
 `run.triggered` in the ledger. A week missed while no scheduler ran is caught up once, not
 once per week missed. `tests/integration/test_time_triggers.py` runs it that way on a clock the
 test moves. Register the bundle once, through the daemon's database:

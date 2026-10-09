@@ -52,8 +52,8 @@ shutdownCeilingSeconds: 300
 logLevel: info
 
 # Non-secret settings of the daemon not named elsewhere in this file, as TAKTUS_* variables:
-# TAKTUS_TENANTS, TAKTUS_CONNECTORS, TAKTUS_PROVISIONAL_IDENTITY and the like. A secret never goes
-# here; it goes into `credentials`.
+# TAKTUS_TENANTS, TAKTUS_CONNECTORS and the like. A secret never goes here; it goes into
+# `credentials`.
 env: {}
 
 # Where artifact bytes are written (TAKTUS_STATE_DIR): one volume, shared by every role. The

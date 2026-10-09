@@ -73,7 +73,7 @@ taktus/
 │   │   ├── execution.py             # how a unit comes to exist for a job: process | container | cluster; the fail-closed refusal of no isolation from level 3
 │   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore (with `summary`: a kind counted without reading the chain), ProvenanceStore, UnitOfWork — every call names its tenant; StateSize: the state's size on disk
 │   │   ├── ledger.py                # facts in, chained entries out, verify — one chain per tenant
-│   │   ├── identity.py              # who acts: a sender on a channel placed in a tenant as an identity; served PROVISIONALLY by adapters/driven/identity (DEC-0013)
+│   │   ├── identity.py              # who acts: a sender on a channel placed in a tenant as an identity; served by components/identity (ADR-0040); IdentitySource is the organisation's own source
 │   │   ├── configuration.py         # what an instance is told about itself, by key; Secret; ConfigurationError
 │   │   ├── queue.py                 # jobs a runner claims once, as a lease it renews (ADR-0002); a deferred job waits out its delay, not counted as an attempt (ADR-0037)
 │   │   ├── leadership.py            # one instance leads a singular role; a dead leader is replaced
@@ -100,13 +100,12 @@ taktus/
 │   │       ├── connectors/loopback/ # Taktus reached by Taktus: the capabilities orchestrator.* behind the action side of the connector port, over an Orchestrator the composition root implements
 │   │       ├── connectors/slack/    # the chat connector: chat.threads and channel.chat behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/http/
-│   │       ├── identity/            # PROVISIONAL: one configured operator identity per tenant, until the identity component (DEC-0013)
 │   │       └── models/              # openai_compatible/: the model port over the chat-completions dialect; pool.py maps purposes
 │   │
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
-│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under
+│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); replies.py answers a sender in a channel through its connector's reply operation (ADR-0040); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 │   ├── script/                      # the reference worker: shell commands, no AI
@@ -284,8 +283,7 @@ role it would tie the core to a model stack and the removal test would be lost.
   worker step may finish up to `TAKTUS_SHUTDOWN_CEILING_SECONDS`, the claims are released, the
   process exits 0. A role still running at the ceiling is abandoned and its run recovered by
   the next runner from its last persisted boundary.
-- **Tenants.** Until the identity component exists, an instance is told which tenants it serves
-  (`TAKTUS_TENANTS`, default `default`); the runner claims for each in turn. An intake lands
-  in the tenant the identity port places its sender in — with the provisional identity
-  (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013), the one configured tenant; with none configured,
-  the first tenant, as a stated fallback.
+- **Tenants.** An instance is told which tenants it serves (`TAKTUS_TENANTS`, default
+  `default`); the runner claims for each in turn. An intake lands in the tenant of the identity
+  the sender's account is linked to, and nowhere when it is linked to none (ADR-0040); the
+  first tenant is only where such a sender is answered from.

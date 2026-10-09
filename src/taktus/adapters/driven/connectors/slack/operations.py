@@ -193,4 +193,5 @@ type Operation = Callable[[Api, Json, str], Awaitable[Outcome]]
 OPERATIONS: dict[str, Operation] = {
     "chat.threads.read": read_thread,
     "chat.threads.post": post_message,
+    "channel.chat.reply": post_message,
 }

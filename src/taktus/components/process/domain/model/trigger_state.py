@@ -57,6 +57,9 @@ class Firing(Value):
     trigger: Trigger
     slot: datetime
     state: TriggerState
+    by: str | None = None
+    """The identity that activated the version (`Process.activated_by`): whom the runs act
+    for. None when nobody did; such a firing starts nothing."""
 
     def run_id(self, tenant: str, item: Any = None) -> str:
         """The identifier of the run this firing starts for `item` (None without `each`).

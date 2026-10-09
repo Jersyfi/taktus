@@ -93,3 +93,5 @@ nothing. The identity component and its version are decided (roadmap `0.2.0`, co
 (`anchors.md` §2, row D5). It has a record rather than a line in a description because the
 mechanism outlives the pull request and the obligation to remove it must be findable.
 **Recorded in:** [#13](https://github.com/Jersyfi/taktus/pull/13)
+**Replaced:** 2026-10-09, by the identity component (ADR-0040, NTC-0080, issue #82). The variable
+`TAKTUS_PROVISIONAL_IDENTITY` was removed, not kept as a fallback, as section 4 required.

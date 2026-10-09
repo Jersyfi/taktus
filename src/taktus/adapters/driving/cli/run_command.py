@@ -30,6 +30,7 @@ from taktus.components.run.application.query import ProvenanceOfRun
 from taktus.components.run.application.service import ResumeRun, StartRun
 from taktus.components.run.domain.model import Run, RunError, RunState
 from taktus.components.run.domain.service.provenance import ChainVerification
+from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Verification
 from taktus.ports.worker import Limits, WorkerError
 from taktus.shared.v1 import Command, ConsumptionQuantities, Intent, LedgerEntry, ReplyTo
@@ -37,8 +38,6 @@ from taktus.shared.v1 import Command, ConsumptionQuantities, Intent, LedgerEntry
 DEFAULT_WORKER = "http://127.0.0.1:9000"
 DEFAULT_STATE_DIR = "~/.cache/taktus/taktusctl"
 DEFAULT_TENANT = "default"
-CLI_ACCOUNT = "local"
-"""How the CLI channel names its one sender to the identity port: it authenticates nobody."""
 
 
 def run(
@@ -77,10 +76,11 @@ def run(
         str | None,
         typer.Option(
             "--identity",
-            help="The identity the command is attributed to and the run acts on behalf of. "
-            "Default: the provisional operator identity configured for the tenant "
-            "(TAKTUS_PROVISIONAL_IDENTITY). The CLI channel authenticates nobody yet; this is "
-            "an opaque label, not a name.",
+            envvar="TAKTUS_IDENTITY",
+            help="The identity the command is attributed to and the run acts on behalf of: one "
+            "the tenant knows (`taktusctl identity add`). The command line authenticates by "
+            "holding the instance's state; whoever runs it names whom the command is for, and "
+            "the identity component supplies the organisational path.",
         ),
     ] = None,
     tenant: Annotated[
@@ -88,8 +88,7 @@ def run(
         typer.Option(
             "--tenant",
             envvar="TAKTUS_TENANT",
-            help="The tenant the run belongs to. Until the identity component exists there is "
-            "one, created by the migration.",
+            help="The tenant the run belongs to: one the instance serves (TAKTUS_TENANTS).",
         ),
     ] = DEFAULT_TENANT,
     input: Annotated[
@@ -164,22 +163,23 @@ def require_inputs(version: ProcessVersion, inputs: dict[str, Any]) -> None:
     )
 
 
-async def resolve_identity(services: Services, given: str | None, tenant: str) -> str:
-    """The identity the invocation acts as: `--identity` when given, else what the identity
-    port answers for the CLI channel in this tenant. Nothing executes without one
-    (control-plane.md §2)."""
-    if given is not None:
-        return given
-    if services.identities is not None:
-        resolution = await services.identities.resolve("channel.cli", CLI_ACCOUNT, tenant=tenant)
-        if resolution is not None:
-            note = " (provisional: DEC-0013)" if resolution.provisional else ""
-            typer.echo(f"identity  {resolution.identity}{note}", err=True)
-            return resolution.identity
-    raise NotOperable(
-        "nothing executes without an identity: set TAKTUS_PROVISIONAL_IDENTITY="
-        f"{tenant}=<identity> (provisional, DEC-0013) or pass --identity"
-    )
+async def resolve_identity(services: Services, given: str | None, tenant: str) -> Resolution:
+    """The identity the invocation acts as: the one `--identity` names, as the identity
+    component knows it in this tenant. Nothing executes without one (control-plane.md §2),
+    and never as an identity the component does not know."""
+    if given is None:
+        raise NotOperable(
+            "nothing executes without an identity: pass --identity (or set TAKTUS_IDENTITY) "
+            "naming one the tenant knows; `taktusctl identity add <identity>` adds one"
+        )
+    resolution = await services.identities.identity(tenant, given)
+    if resolution is None:
+        raise NotOperable(
+            f"nothing executes without an identity: tenant {tenant!r} has no identity "
+            f"{given!r}; `taktusctl identity add {given}` adds it"
+        )
+    typer.echo(f"identity  {resolution.identity}", err=True)
+    return resolution
 
 
 def parse_inputs(given: list[str]) -> dict[str, Any]:
@@ -211,19 +211,19 @@ async def _run(
 ) -> Run:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
         typer.echo(f"state  {services.storage}")
-        identity = await resolve_identity(services, identity, tenant)
+        placed = await resolve_identity(services, identity, tenant)
         version = await services.register_version.execute(
-            RegisterProcessVersion(bundle, tenant=tenant)
+            RegisterProcessVersion(bundle, tenant=tenant, by=placed.identity)
         )
         budget = _budget(version)
         if resume is None:
             require_inputs(version, inputs)
-            run = await _start(services, version, budget, identity, tenant, stop_after, inputs)
+            run = await _start(services, version, budget, placed, tenant, stop_after, inputs)
         else:
             run = await services.engine.resume(
                 ResumeRun(
                     run_id=resume,
-                    actor=identity,
+                    actor=placed.identity,
                     tenant=tenant,
                     budget=budget,
                     stop_after=stop_after,
@@ -241,12 +241,12 @@ async def _start(
     services: Services,
     version: ProcessVersion,
     budget: Limits,
-    identity: str,
+    placed: Resolution,
     tenant: str,
     stop_after: int | None,
     inputs: dict[str, Any],
 ) -> Run:
-    command = _command(services, version, identity, tenant, inputs)
+    command = _command(services, version, placed, inputs)
     plan = await services.commission.execute(
         CommissionPlan(
             command=command,
@@ -262,7 +262,7 @@ async def _start(
             work=version.work,
             budget=budget,
             process_version=version.ref,
-            actor=identity,
+            actor=placed.identity,
             tenant=tenant,
             stop_after=stop_after,
             inputs=inputs,
@@ -273,8 +273,7 @@ async def _start(
 def _command(
     services: Services,
     version: ProcessVersion,
-    identity: str,
-    tenant: str,
+    placed: Resolution,
     inputs: dict[str, Any],
 ) -> Command:
     """The invocation as a command on the `channel.cli` capability; the inputs are its
@@ -282,8 +281,8 @@ def _command(
     return Command(
         id=services.ids.new("cmd"),
         channel="channel.cli",
-        identity=identity,
-        org_path=(tenant,),
+        identity=placed.identity,
+        org_path=placed.org_path,
         intent=Intent(raw=f"run {version.ref}", recognised="process.run"),
         context={"inputs": inputs} if inputs else None,
         reply_to=ReplyTo(channel="channel.cli", address="stdout"),

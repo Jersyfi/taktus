@@ -134,8 +134,8 @@ calibration point for the budget of `0.2.0`.
 Also not yet, from the list above: `mlbench` (its real work is `0.4.0`; no proof-case worker
 of that shape exists yet), the model contract as a schema with a conformance suite (the port
 and one adapter exist), governance and anchors, the cluster execution adapter, the container
-registry build and the Helm chart, the identity component (a provisional identity stands in
-for it), time triggers (the scheduler leads and ticks; nothing is scheduled), event reactions
+registry build and the Helm chart, the identity component (a provisional identity stood in
+for it until #82 replaced it in `0.2.0`), time triggers (the scheduler leads and ticks; nothing is scheduled), event reactions
 (the automation role starts and waits; the outbox exists, nothing writes it; an intake event is
 completed into a command by hand), and a passing live run of the coding worker against its real
 agent in CI (the gate runs the stand-in; the live test is written and runs in the workflow

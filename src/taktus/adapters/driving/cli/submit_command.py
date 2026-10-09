@@ -53,8 +53,9 @@ def submit(
         str | None,
         typer.Option(
             "--identity",
-            help="The identity the command is attributed to; default: the provisional "
-            "operator identity of the tenant (TAKTUS_PROVISIONAL_IDENTITY).",
+            envvar="TAKTUS_IDENTITY",
+            help="The identity the command is attributed to: one the tenant knows "
+            "(`taktusctl identity add`).",
         ),
     ] = None,
     tenant: Annotated[
@@ -117,13 +118,13 @@ async def _submit(
                 "TAKTUS_DATABASE_URL_FILE (or TAKTUS_DATABASE_URL) — in memory, use `run`"
             )
         typer.echo(f"state  {services.storage}", err=True)
-        identity = await resolve_identity(services, identity, tenant)
+        placed = await resolve_identity(services, identity, tenant)
         version = await services.register_version.execute(
-            RegisterProcessVersion(bundle, tenant=tenant)
+            RegisterProcessVersion(bundle, tenant=tenant, by=placed.identity)
         )
         budget = _budget(version)
         require_inputs(version, inputs)
-        command = _command(services, version, identity, tenant, inputs)
+        command = _command(services, version, placed, inputs)
         plan = await services.commission.execute(
             CommissionPlan(
                 command=command,
@@ -139,7 +140,7 @@ async def _submit(
                 work=version.work,
                 budget=budget,
                 process_version=version.ref,
-                actor=identity,
+                actor=placed.identity,
                 tenant=tenant,
                 inputs=inputs,
             )
