@@ -91,13 +91,17 @@ the message came from a bot. The context is the conversation, the message and �
 thread. A message the connector's own app posted, or one that carries its mark, is refused as
 `own_action`, so that a reply is never answered. A message with a subtype — an edit, a deletion,
 a join — is not a new message and is refused as `unsupported_event`; so is every delivery that is
-not an event, the service's URL verification among them.
+not an event.
 
-**Not here: answering the URL verification.** When the request URL of the app's event
-subscription is set, the service sends a challenge and expects it back in the answer. That
-answer is the receiving endpoint's, not intake's: intake decides `accepted` or `refused` and
-answers nothing to the service. Until the HTTP surface answers it, the event subscription cannot
-be pointed at an instance; issue #145 carries it.
+**The URL verification.** When the request URL of the app's event subscription is set, the
+service sends a signed delivery of type `url_verification` with a `challenge`. It accepts the URL
+only when the answer carries the challenge back. The connector verifies the delivery like any
+other. Verified, it is refused as `unsupported_event` — it is no event, and nothing is kept — with
+an `answer`: media type `text/plain`, body exactly the challenge. The HTTP surface returns that
+answer to the service with status 200, as it is, and knows no service (ADR-0024, amendment of
+2026-10-09; `POST <prefix>/intake/channel.chat`). Unsigned, wrongly signed or signed long before
+it arrived, it is refused as `unsigned` or `bad_signature` and answered nothing. A
+verification without a usable challenge is `malformed`.
 
 The recorded payloads under [`payloads/`](payloads/) have the service's shape with every
 identifier, name and URL replaced by a placeholder.
@@ -107,7 +111,8 @@ identifier, name and URL replaced by a placeholder.
 `--fault NAME` makes the connector break exactly one conformance check, so that the suite can be
 shown to catch it ([`faults.py`](faults.py)); `--list-faults` prints them. Besides the faults the
 repository connector has, `C-08-stale` stops checking the moment of sending, and the suite's
-stale delivery catches it. `make gate-conformance` runs the suite against every fault and
+stale delivery catches it; `C-08-handshake` answers a URL verification before its signature is
+verified, and the suite's unsigned handshake catches it. `make gate-conformance` runs the suite against every fault and
 expects exactly that check to fail (`tests/conformance/test_connector_v1_chat.py`).
 
 ## Conformance

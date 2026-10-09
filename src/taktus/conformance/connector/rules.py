@@ -321,3 +321,22 @@ def intake_violations(
     if reason is not None and got != reason:
         out.append(Violation(check, f"{where}refused with reason {got!r}, expected {reason!r}"))
     return out
+
+
+def answer_violations(result: Json, expected: Json | None) -> list[Violation]:
+    """C-08 on a handshake's refusal: a verified one carries exactly the expected answer, an
+    unverified one none — answering before the signature verified is answering anyone."""
+    refusal = result.get("refused")
+    if not isinstance(refusal, dict):
+        return []  # already a violation of intake_violations
+    got = refusal.get("answer")
+    if expected is None and got is not None:
+        return [Violation("C-08", "a handshake that did not verify was answered anyway")]
+    if expected is not None and got != expected:
+        return [
+            Violation(
+                "C-08",
+                f"a verified handshake was answered with {got!r}, expected {expected!r}",
+            )
+        ]
+    return []

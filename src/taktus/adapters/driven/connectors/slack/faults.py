@@ -22,6 +22,7 @@ FAULTS: dict[str, str] = {
     "C-08-unsigned": "an unsigned delivery is accepted",
     "C-08-signature": "a signature is never verified: any signature is accepted",
     "C-08-stale": "the moment of sending is never checked: a replayed delivery is accepted",
+    "C-08-handshake": "a URL verification is answered before its signature is verified",
     "C-09": "results report no consumption",
 }
 

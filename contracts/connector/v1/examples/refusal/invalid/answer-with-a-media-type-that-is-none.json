@@ -1,0 +1,8 @@
+{
+  "reason": "unsupported_event",
+  "detail": "a URL verification is no event",
+  "answer": {
+    "media_type": "challenge",
+    "body": "placeholder-challenge"
+  }
+}

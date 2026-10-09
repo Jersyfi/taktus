@@ -10,7 +10,9 @@ writes, one call the target must refuse, and the recorded payloads for intake. T
 4. calls the invalid case — C-06;
 5. delivers the intake payload signed, unsigned, wrongly signed — and, under a timestamped
    scheme, signed at a moment long before it arrived — and the unsupported and own-action
-   payloads where the scenario has them — C-07, C-08;
+   payloads where the scenario has them — C-07, C-08; and the handshake where the scenario
+   names one: signed, it must be refused with exactly the answer the scenario expects, and
+   unsigned, wrongly signed or stale with no answer at all — C-08;
 6. scans everything it saw, and the connector's log, for every credential value it knows —
    C-04;
 7. reports C-10 as pending: the removal test needs processes, and the suite has none.
@@ -542,6 +544,11 @@ async def _intake(
             if "own_action" in intake
             else None
         )
+        handshake = (
+            load_payload(intake["handshake"]["payload"], options.scenario_dir)
+            if "handshake" in intake
+            else None
+        )
     except (OSError, ValueError, KeyError) as error:
         for check in ("C-07", "C-08"):
             findings.inconclusive.setdefault(
@@ -597,6 +604,26 @@ async def _intake(
         ("unsigned", supported, signer.headers(body, None), "unsigned"),
         ("wrongly signed", supported, signer.headers(body, secret + "-not"), "bad_signature"),
     ]
+    expected_answer: Json | None = None
+    if handshake is not None:
+        # A handshake is answered only once its signature verified: the signed one must come
+        # back refused with exactly the answer the scenario names, every other one without.
+        expected_answer = dict(intake["handshake"]["answer"])
+        shake = str(handshake["body"])
+        cases.append(("handshake", handshake, signer.headers(shake, secret), "unsupported_event"))
+        cases.append(("handshake unsigned", handshake, signer.headers(shake, None), "unsigned"))
+        cases.append(
+            (
+                "handshake wrongly signed",
+                handshake,
+                signer.headers(shake, secret + "-not"),
+                "bad_signature",
+            )
+        )
+        if signer.timestamped:
+            cases.append(
+                ("handshake stale", handshake, signer.stale(shake, secret), "bad_signature")
+            )
     if signer.timestamped:
         # Signed with the right secret, at a moment long before it arrived: a replay.
         cases.append(("stale", supported, signer.stale(body, secret), "bad_signature"))
@@ -620,6 +647,10 @@ async def _intake(
             capabilities, result, expect="refused", reason=reason
         ):
             findings.add(violation, f"intake ({purpose})")
+        if purpose.startswith("handshake"):
+            want = expected_answer if purpose == "handshake" else None
+            for violation in rules.answer_violations(result, want):
+                findings.add(violation, f"intake ({purpose})")
         refused += 1
     if refused and not findings.failed("C-08"):
         findings.ok(

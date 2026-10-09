@@ -1,0 +1,10 @@
+{
+  "refused": {
+    "reason": "unsupported_event",
+    "detail": "a URL verification is no event; it is answered with its challenge",
+    "answer": {
+      "media_type": "application/json",
+      "body": "{\"challenge\":\"placeholder\"}"
+    }
+  }
+}

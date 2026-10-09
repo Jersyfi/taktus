@@ -318,6 +318,28 @@ deciding:
 | `unsupported_event` | an event kind the declaration does not list |
 | `own_action` | the event was caused by the connector's own earlier action; acting on it would loop |
 
+**A handshake is refused with an answer.** Some targets check an address before they send
+events there: a signed delivery that is no event, carrying a value the target expects back. Once
+its signature verified, the connector refuses it as `unsupported_event` and adds `answer`
+(`IntakeAnswer`): a media type and a body of at most 4096 characters. The receiving endpoint
+answers the sender with status `200`, that media type and exactly that body, and keeps nothing:
+
+```json
+{
+  "refused": {
+    "reason": "unsupported_event",
+    "detail": "a URL verification is no event; it is answered with its challenge",
+    "answer": { "media_type": "text/plain", "body": "placeholder-challenge" }
+  }
+}
+```
+
+Only `unsupported_event` may carry an answer, and the schema refuses it on every other reason.
+An unsigned, wrongly signed or stale handshake is therefore refused like any delivery and
+answered nothing. The connector knows its target's handshake; the endpoint copies the answer
+and knows no target. A connector whose target has no handshake never answers, and conforms
+(ADR-0024, amendment of 2026-10-09).
+
 **Answering in the channel.** A connector whose intake serves a channel may declare one more
 operation, named after the channel: `<channel>.reply`, with the channel as its capability —
 `channel.repo.reply` for `channel.repo`. Its input is the reply address an accepted event
@@ -350,7 +372,7 @@ uv run taktusctl conformance run --contract connector/v1 --endpoint http://local
 | C-05 | an outward call repeated with the same idempotency key returns the original result with `replayed: true` and acts once; a new key acts again |
 | C-06 | an error is classified: a failure with cause, effect and retryable, and the cause the scenario expects — never a bare message |
 | C-07 | a correctly signed intake payload becomes a well-formed intake command with sender, context and reply address |
-| C-08 | an unsigned or wrongly signed intake payload — or, under `hmac-sha256-timestamped`, one signed long before it arrived — is refused with its reason, never processed |
+| C-08 | an unsigned or wrongly signed intake payload — or, under `hmac-sha256-timestamped`, one signed long before it arrived — is refused with its reason, never processed; where the scenario names a handshake, the verified one is answered exactly as expected and an unverified one not at all |
 | C-09 | every result reports consumption in a declared kind |
 | C-10 | the adapter passes the removal test: removing it breaks no process |
 
@@ -386,5 +408,6 @@ the service in every run of the gate and against the real service when a credent
 
 A second connector beside it serves a chat service: the capability `chat.threads` — read a
 thread, post into a conversation or a thread, `delivery` and `marked` — and intake on the
-channel `channel.chat` under `hmac-sha256-timestamped`. It passes the same suite against a fake
-of its service, fault for fault (`tests/conformance/test_connector_v1_chat.py`).
+channel `channel.chat` under `hmac-sha256-timestamped`, its service's URL check answered as a
+handshake. It passes the same suite against a fake of its service, fault for fault
+(`tests/conformance/test_connector_v1_chat.py`).

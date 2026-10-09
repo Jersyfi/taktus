@@ -752,9 +752,29 @@
         "own_action"
       ]
     },
+    "IntakeAnswer": {
+      "title": "IntakeAnswer",
+      "description": "What the receiving endpoint answers the sender of a delivery that is a handshake, not an event: a target that checks an address before it sends events there expects a value of its check back. The endpoint answers with status 200, this media type and exactly this body, and keeps nothing. Only the connector knows its target's handshake; the endpoint copies the answer and knows no target.",
+      "type": "object",
+      "properties": {
+        "media_type": {
+          "type": "string",
+          "pattern": "^[a-z]+/[a-z0-9.+-]+$"
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      },
+      "required": [
+        "media_type",
+        "body"
+      ],
+      "additionalProperties": false
+    },
     "Refusal": {
       "title": "Refusal",
-      "description": "A clean refusal: the event was not processed, and this says why. An unsigned or wrongly signed event is refused before its body is read.",
+      "description": "A clean refusal: the event was not processed, and this says why. An unsigned or wrongly signed event is refused before its body is read. answer is allowed with the reason unsupported_event alone, which a connector decides only after the signature verified: a verified handshake is refused as no event and answered, an unverified one is refused like any delivery and answered nothing.",
       "type": "object",
       "properties": {
         "reason": {
@@ -763,13 +783,28 @@
         "detail": {
           "type": "string",
           "minLength": 1
+        },
+        "answer": {
+          "$ref": "#/$defs/IntakeAnswer"
         }
       },
       "required": [
         "reason",
         "detail"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "if": {
+        "required": [
+          "answer"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reason": {
+            "const": "unsupported_event"
+          }
+        }
+      }
     },
     "IntakeResult": {
       "title": "IntakeResult",
@@ -958,6 +993,23 @@
             },
             "own_action": {
               "$ref": "#/$defs/ScenarioPayload"
+            },
+            "handshake": {
+              "description": "A recorded handshake of the target, and the answer the connector must give it once it verified the signature (IntakeAnswer). The suite delivers it signed and expects a refusal as unsupported_event with exactly this answer; then unsigned, wrongly signed and, under hmac-sha256-timestamped, stale, and expects the refusal without an answer.",
+              "type": "object",
+              "properties": {
+                "payload": {
+                  "$ref": "#/$defs/ScenarioPayload"
+                },
+                "answer": {
+                  "$ref": "#/$defs/IntakeAnswer"
+                }
+              },
+              "required": [
+                "payload",
+                "answer"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [

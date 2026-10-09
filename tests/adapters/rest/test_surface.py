@@ -4,10 +4,14 @@ problem details for every error."""
 
 from __future__ import annotations
 
-import httpx
+from pathlib import Path
 
+import httpx
+import pytest
+
+import taktus.adapters.driving.rest.app as app_module
 from taktus.adapters.driving.rest import build_app
-from taktus.ports.connector import ConnectorError
+from taktus.ports.connector import ConnectorError, IntakeResult, Refusal
 
 from .conftest import TENANT, ScriptedConnector, Services, a_run, refused, services
 
@@ -190,6 +194,43 @@ async def test_refusals_answer_with_the_status_that_says_who_should_act(prefix: 
                 assert problem["reason"] == reason and problem["title"] == "Refused"
         async with given.persistence.transaction(TENANT):
             assert await given.events.list(TENANT) == [], "a refusal leaves nothing behind"
+
+
+@pytest.mark.parametrize(
+    ("media_type", "body"),
+    [("text/plain", "a-challenge-0123"), ("application/json", '{"challenge":"a-challenge"}')],
+)
+async def test_a_refusal_with_an_answer_is_answered_with_it_and_keeps_nothing(
+    prefix: str, media_type: str, body: str
+) -> None:
+    """A handshake: the connector says what its sender expects back, and the surface returns
+    exactly that, status 200, whoever the sender is (ADR-0024, amendment of 2026-10-09)."""
+    base = "" if prefix == "/" else prefix
+    answer = Refusal.model_validate(
+        {
+            "reason": "unsupported_event",
+            "detail": "a handshake",
+            "answer": {"media_type": media_type, "body": body},
+        }
+    )
+    given = services(ScriptedConnector(IntakeResult(refused=answer)))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=build_app(given, prefix=prefix)),
+        base_url="http://taktus.test",
+    ) as http:
+        response = await http.post(f"{base}/intake/channel.repo", content=b"x")
+    assert response.status_code == 200
+    assert response.text == body
+    assert response.headers["content-type"].split(";")[0] == media_type
+    async with given.persistence.transaction(TENANT):
+        assert await given.events.list(TENANT) == [], "a handshake leaves nothing behind"
+
+
+def test_the_surface_names_no_target_and_no_handshake() -> None:
+    """The handshake is the connector's to recognise; the route only copies an answer."""
+    source = Path(app_module.__file__).read_text(encoding="utf-8").lower()
+    for word in ("slack", "url_verification", "challenge", "github"):
+        assert word not in source, word
 
 
 async def test_an_unknown_channel_and_a_silent_connector_are_problems(prefix: str) -> None:
