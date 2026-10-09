@@ -20,9 +20,16 @@
 # The reconciliation is a rule over the issue numbers the roadmap's items name, not a model's
 # matching of the items' words to the issues' titles. That choice of method is the owner's
 # (anchors.taktus.md M3.13); this bundle carries it provisionally, as DEC-0080 recommends.
+#
+# Every step an integration serves — a connector call, a wait on a connector, the worker, the
+# model — names a person as its fallback for when that integration is unavailable (issue #90).
+# The engine does not switch to the person: the step fails or is refused, and the run escalates
+# or halts there. A person then does the step, or continues the process, by hand, following
+# "By hand — the takeover test of these processes" in the blueprint's README.md. The removal
+# test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p01-roadmap-control
-version: "1"
+version: "2"
 name: P-01 Roadmap control
 autonomy:
   level: 3
@@ -77,6 +84,9 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    fallback:
+      when: the connector serving repository.files is unavailable
+      to: human
     work:
       rule: connector
       operation: repository.files.read
@@ -96,6 +106,9 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
     work:
       rule: connector
       operation: repository.issues.list
@@ -115,6 +128,9 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    fallback:
+      when: the connector serving repository.files is unavailable
+      to: human
     work:
       rule: connector
       operation: repository.files.list
@@ -208,6 +224,9 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    fallback:
+      when: the connector serving repository.comments is unavailable
+      to: human
     depends_on: [compose-report]
     work:
       rule: connector

@@ -16,9 +16,16 @@
 # sections are in the issue, until this process's autonomy is raised (anchors.taktus.md M3.9).
 # The one step that judges is `refine`, a language model; everything before it reads and
 # checks, and the one step after it writes exactly what the check let through.
+#
+# Every step an integration serves — a connector call, a wait on a connector, the worker, the
+# model — names a person as its fallback for when that integration is unavailable (issue #90).
+# The engine does not switch to the person: the step fails or is refused, and the run escalates
+# or halts there. A person then does the step, or continues the process, by hand, following
+# "By hand — the takeover test of these processes" in the blueprint's README.md. The removal
+# test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p02-refinement
-version: "2"
+version: "3"
 name: P-02 Refinement
 autonomy:
   level: 3
@@ -55,6 +62,9 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
     work:
       rule: connector
       operation: repository.issues.read
@@ -70,6 +80,9 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    fallback:
+      when: the connector serving repository.comments is unavailable
+      to: human
     depends_on: [read-issue]
     work:
       rule: connector
@@ -126,7 +139,7 @@ steps:
         why: no labelled corpus of such sections exists yet; a classifier cannot write them
     exactness: sourced
     fallback:
-      when: the answer fails the check, or the model is unavailable
+      when: the answer fails the check, or the model serving the purpose reasoning is unavailable
       to: human
     depends_on: [missing]
     work:
@@ -187,6 +200,9 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    fallback:
+      when: the connector serving repository.comments is unavailable
+      to: human
     depends_on: [compose-comment]
     work:
       rule: connector

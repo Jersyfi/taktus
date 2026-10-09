@@ -6,7 +6,7 @@ epic: E8
 serves: [P3, P4, P13]
 state: building
 version: 0.5.0
-tests: [tests/components/catalog/test_removal.py::test_a_step_changes_with_an_alternative_or_a_person_and_breaks_otherwise, tests/components/catalog/test_removal.py::test_a_process_breaks_if_any_step_does, tests/components/catalog/test_removal.py::test_the_integration_breaks_if_any_process_does_and_changes_when_nothing_uses_it, tests/components/catalog/test_removal.py::test_the_database_is_the_known_exception, tests/components/catalog/test_removal.py::test_verified_needs_both_halves_and_the_record_names_what_is_missing, tests/integration/test_removal_test.py::test_withholding_the_only_worker_changes_the_example_and_is_recorded]
+tests: [tests/components/catalog/test_removal.py::test_a_step_changes_with_an_alternative_or_a_person_and_breaks_otherwise, tests/components/catalog/test_removal.py::test_a_process_breaks_if_any_step_does, tests/components/catalog/test_removal.py::test_the_integration_breaks_if_any_process_does_and_changes_when_nothing_uses_it, tests/components/catalog/test_removal.py::test_the_database_is_the_known_exception, tests/components/catalog/test_removal.py::test_verified_needs_both_halves_and_the_record_names_what_is_missing, tests/integration/test_removal_test.py::test_withholding_the_only_worker_changes_the_example_and_is_recorded, tests/integration/test_dev_orchestration.py::test_removing_each_integration_of_the_three_processes_changes_them]
 adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0027: 8f3f450eeecb}
 supersedes: null
 ---
@@ -60,3 +60,11 @@ The verdict rules, the exception, and a removal recorded in the ledger, by the
 named tests; the weekly run is started by a workflow of the repository host, not yet by Taktus's
 own scheduler. The validation run after a replacement and the export of a registered version do
 not exist.
+
+For Taktus's own development processes, P-01 to P-03, the verdict is *changed* for each of the
+three integrations they use — the repository connector, the coding worker and the model — with
+the three registered (issue #90). Every step one of them serves names a person as its fallback
+when the integration is unavailable, and no second adapter is configured for any of them. That
+*changed* rests on a person taking the step over, not on an alternative adapter. Whether a
+person counts for this requirement is the owner's open question, DEC-0111; under its other
+answer these verdicts are *broke*.
