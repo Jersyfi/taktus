@@ -26,6 +26,10 @@ that "what did the removal test do" is answerable from the ledger like everythin
 behind the identifier, what it declared and its version, because the same identifier can name
 a different adapter next week.
 
+**The conformance suite** of an integration's contract is run by the instance through the
+catalog's one writer, when a process asks for it with the integration's identifier (ADR-0044,
+NTC-0091).
+
 **Which steps an integration serves** is decided the way the run decides it: the step's work
 is parsed, and the pool that would serve it — a worker for the capabilities it requires, a
 connector for the capability of its operation, a model for its purpose — is asked with and
@@ -46,6 +50,8 @@ from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.catalog.application.service import (
     RecordRemovalResult,
     RecordRemovalResultHandler,
+    RunConformance,
+    RunConformanceHandler,
 )
 from taktus.components.catalog.domain.model import (
     Configuration,
@@ -56,77 +62,32 @@ from taktus.components.catalog.domain.model import (
     Verdict,
 )
 from taktus.components.catalog.domain.service import removal
+from taktus.components.catalog.ports import NotConfigured, NotRunnable
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
 from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.run.application.query import RecordedResponses
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import (
     ConnectorRule,
-    LlmWork,
     Run,
     RunError,
     RunState,
     StepState,
-    WaitWork,
     WorkerWork,
     parse_work,
 )
+from taktus.composition.pools import Pools
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.worker import Limits
-from taktus.shared.v1 import Command, Intent, ReplyTo, Step
+from taktus.shared.v1 import Command, Intent, ReplyTo
 
 DATABASE = "persistence.database"
 CHANNEL = "channel.loopback"
 
 type EngineFactory = Callable[[StaticWorkerPool, StaticConnectorPool, StaticModelPool], RunEngine]
 
-
-class Pools:
-    """The three pools the run engine resolves adapters from, as one configuration."""
-
-    def __init__(
-        self, workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
-    ) -> None:
-        self.workers = workers
-        self.connectors = connectors
-        self.models = models
-
-    def without(self, integration: str) -> Pools:
-        return Pools(
-            self.workers.without(integration),
-            self.connectors.without(integration),
-            self.models.without(integration),
-        )
-
-    async def serving(self, step: Step, work: Any) -> tuple[str, str | None] | None:
-        """What the step needs and which adapter serves it, or None when the step needs no
-        adapter: (`served`, adapter identifier or None when nothing serves it)."""
-        if isinstance(work, WorkerWork):
-            needed = ", ".join(step.required_capabilities)
-            worker = await self.workers.resolve(step.required_capabilities)
-            return needed, None if worker is None else worker.adapter
-        if isinstance(work, ConnectorRule):
-            connector = await self.connectors.resolve(work.capability)
-            return work.capability, None if connector is None else connector.adapter
-        if isinstance(work, WaitWork) and work.until is not None:
-            connector = await self.connectors.resolve(work.until.capability)
-            return work.until.capability, None if connector is None else connector.adapter
-        if isinstance(work, LlmWork):
-            model = await self.models.resolve(work.purpose)
-            return f"purpose {work.purpose}", None if model is None else model.adapter
-        return None
-
-    async def outward(self, work: Any) -> bool:
-        """Whether the step's connector operation is declared outward: its effect would leave
-        the system, and a rehearsal answers it from a recording instead."""
-        if isinstance(work, ConnectorRule):
-            connector = await self.connectors.resolve(work.capability)
-            if connector is None:
-                return False
-            operation = connector.declaration.operation(work.operation)
-            return operation is not None and operation.outward
-        return False
+__all__ = ["CHANNEL", "DATABASE", "EngineFactory", "Loopback", "Pools", "summary"]
 
 
 class Loopback:
@@ -144,8 +105,10 @@ class Loopback:
         recordings: RecordedResponses,
         clock: Clock,
         ids: Identifiers,
+        conformance: RunConformanceHandler | None = None,
     ) -> None:
         self._pools = pools
+        self._conformance = conformance
         self._recordings = recordings
         self._versions = versions
         self._work = work
@@ -226,11 +189,8 @@ class Loopback:
         self, tenant: Tenant, integration: str, *, run_id: str, identity: str
     ) -> dict[str, Any]:
         entry = await self._entry(tenant, integration)
-        configuration = Configuration(
-            adapter=integration,
-            serves=tuple(entry["serves"]),
-            operations=tuple(entry["operations"]) if "operations" in entry else None,
-            version=entry.get("version"),
+        configuration = await self._pools.configuration(integration) or Configuration(
+            adapter=integration, serves=tuple(entry["serves"])
         )
         if integration in removal.EXCEPTIONS:
             return RemovalResult(
@@ -278,10 +238,43 @@ class Loopback:
     async def record(self, tenant: Tenant, result: dict[str, Any]) -> dict[str, Any]:
         parsed = RemovalResult.model_validate(result)
         maturity, entry = await self._record.execute(RecordRemovalResult(parsed, tenant))
+        current = await self._pools.configuration(maturity.id)
         return {
             "integration": maturity.id,
-            "maturity": str(maturity.maturity),
-            "missing": list(maturity.missing),
+            "maturity": str(maturity.maturity(current)),
+            "missing": list(maturity.missing(current)),
+            "ledger_seq": entry.seq,
+            "content_digest": entry.content_digest,
+        }
+
+    async def conformance(
+        self, tenant: Tenant, integration: str, *, run_id: str, identity: str
+    ) -> dict[str, Any]:
+        """Run the conformance suite of the integration's contract against the endpoint this
+        instance's configuration resolves for it, and record what it found (ADR-0044). The
+        input is the identifier alone: no report, no verdict and no date can be handed in."""
+        if self._conformance is None:
+            raise UnknownIntegration("this instance runs no conformance suite")
+        try:
+            maturity, entry = await self._conformance.execute(
+                RunConformance(integration, tenant, actor=identity, run_id=run_id)
+            )
+        except NotConfigured as error:
+            raise UnknownIntegration(str(error)) from error
+        except NotRunnable as error:
+            raise ValueError(str(error)) from error
+        current = await self._pools.configuration(maturity.id)
+        result = maturity.conformance
+        if result is None:  # unreachable: the handler has just written it
+            raise ValueError(f"no conformance run was recorded for {integration}")
+        return {
+            "integration": maturity.id,
+            "contract": result.contract,
+            "outcome": result.outcome,
+            "failed": list(result.failed),
+            "inconclusive": list(result.inconclusive),
+            "maturity": str(maturity.maturity(current)),
+            "missing": list(maturity.missing(current)),
             "ledger_seq": entry.seq,
             "content_digest": entry.content_digest,
         }

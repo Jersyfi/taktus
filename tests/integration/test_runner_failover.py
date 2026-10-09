@@ -194,7 +194,9 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
 ) -> None:
     database = Database(postgres_url, TENANT)
     await create_tenant(database)
-    await database.verified("worker.endpoint")  # the bundle runs at level 3 (ADR-0039)
+    await database.verified(
+        "worker.endpoint", worker_endpoint
+    )  # the bundle runs at level 3 (ADR-0039)
     tenancy = {"TAKTUS_TENANTS": TENANT}
     configured = settings(postgres_url, tmp_path, TAKTUS_WORKER=worker_endpoint, **tenancy)
     environment = {

@@ -8,8 +8,10 @@ chat-completions dialect, exactly as a foreign control plane would, so that an a
 in any language can be checked by anyone who can install this package.
 
 Entry points: `taktusctl conformance run` (src/taktus/adapters/driving/cli) and the gate under
-tests/conformance. What both contracts share — the report, the findings, the catalogue of checks,
-the schema validators — lives at this level; what is the worker's is `rules`, `client` and
+tests/conformance. An instance runs the same suites through `composition/conformance.py` and
+records the outcome in an adapter's maturity (ADR-0044); this package knows nothing of that.
+What both contracts share — the report, the findings, the catalogue of checks, the schema
+validators — lives at this level; what is the worker's is `rules`, `client` and
 `suite`; what is the connector's is under `connector/`; what is the model's under `model/`.
 """
 

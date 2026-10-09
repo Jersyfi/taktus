@@ -22,12 +22,32 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+from taktus.adapters.driven.clock import SystemClock
+from taktus.adapters.driven.configuration import EnvironmentConfiguration
+from taktus.adapters.driven.connectors.mcp import McpActionConnector
+from taktus.adapters.driven.connectors.pool import StaticConnectorPool
+from taktus.adapters.driven.memory import (
+    MemoryLedgerStore,
+    MemoryObjectStore,
+    MemoryPersistence,
+    MemoryRepository,
+)
+from taktus.adapters.driven.models.pool import StaticModelPool
+from taktus.adapters.driven.workers.http import HttpWorker
+from taktus.adapters.driven.workers.pool import StaticWorkerPool
+from taktus.components.catalog.application.service import RunConformance, RunConformanceHandler
+from taktus.components.catalog.domain.model import AdapterMaturity, Configuration
+from taktus.components.ledger.application.service import ChainedLedger
+from taktus.composition.conformance import InstanceSuites, worker_target
+from taktus.composition.pools import Pools
+from taktus.composition.settings import load_execution
 from taktus.conformance import (
     ConnectorSuiteOptions,
     Report,
@@ -35,6 +55,7 @@ from taktus.conformance import (
     run_connector_suite,
     run_suite,
 )
+from taktus.shared.v1 import LedgerEntry
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "script" / "worker.py"
@@ -437,3 +458,123 @@ def start_chat_connector(tmp_path: Path) -> Iterator[StartConnector]:
 
     yield start
     stop_all(started)
+
+
+# --- the instance runs the suite and records it (ADR-0044) ----------------------------------------
+
+
+@dataclass
+class Recorded:
+    """What the instance recorded after it ran a suite: the maturity record, the ledger entry,
+    and the evidence the entry's digest names — the report with its configuration."""
+
+    maturity: AdapterMaturity
+    entry: LedgerEntry
+    evidence: dict[str, Any]
+    current: Configuration | None
+
+    @property
+    def report(self) -> dict[str, Any]:
+        report: dict[str, Any] = self.evidence["report"]
+        return report
+
+    def failed(self) -> set[str]:
+        return {c["id"] for c in self.report["checks"] if c["status"] == "failed"}
+
+
+async def record(
+    adapter: str,
+    pools: Pools,
+    environment: dict[str, str],
+    *,
+    worker: str | None = None,
+    connectors: dict[str, str] | None = None,
+    model_endpoint: str | None = None,
+    state_dir: Path,
+) -> Recorded:
+    """The instance's own path: `InstanceSuites` over the pools and the configuration, the
+    catalog's handler over memory stores — the one writer of the conformance half."""
+    settings = EnvironmentConfiguration(environment)
+    clock = SystemClock()
+    persistence = MemoryPersistence()
+    ledger = ChainedLedger(MemoryLedgerStore(persistence), clock)
+    objects = MemoryObjectStore()
+    target = None
+    if worker is not None:
+        execution = load_execution(EnvironmentConfiguration({"TAKTUS_WORKER": worker}))
+        target = worker_target(execution, settings, state_dir=state_dir)
+    handler = RunConformanceHandler(
+        InstanceSuites(
+            pools=pools,
+            settings=settings,
+            worker=target,
+            connectors=connectors or {},
+            model_endpoint=model_endpoint,
+        ),
+        MemoryRepository(persistence, AdapterMaturity),
+        persistence,
+        ledger,
+        objects,
+        clock,
+    )
+    maturity, entry = await handler.execute(RunConformance(adapter, "t", actor="idn_test"))
+    assert entry.content_digest is not None
+    evidence = json.loads(await objects.get(entry.content_digest) or b"{}")
+    try:
+        current = await pools.configuration(adapter)
+    except Exception:  # a declaration the run cannot read resolves nothing
+        current = None
+    return Recorded(maturity, entry, evidence, current)
+
+
+async def record_worker(worker: RunningWorker, tmp_path: Path) -> Recorded:
+    """The instance runs the worker suite against `worker.endpoint`, configured as the suite's
+    own options are: the task, the host, the credential and the worker's log."""
+    task = tmp_path / "conformance-task.json"
+    task.write_text(json.dumps(TASK), encoding="utf-8")
+    variable = "TAKTUS_CREDENTIAL_" + worker.credential_name.upper()
+    environment = {
+        "TAKTUS_CONFORMANCE_WORKER_TASK": str(task),
+        "TAKTUS_CONFORMANCE_WORKER_HOSTS": HOST,
+        "TAKTUS_CONFORMANCE_WORKER_CREDENTIAL": worker.credential_name,
+        variable: worker.credential_value,
+        "TAKTUS_CONFORMANCE_WORKER_LOG": str(worker.log),
+        "TAKTUS_CONFORMANCE_TIMEOUT": "90",
+        "TAKTUS_CONFORMANCE_IDLE_TIMEOUT": "30",
+    }
+    async with HttpWorker(worker.endpoint) as http:
+        pools = Pools(
+            StaticWorkerPool([("worker.endpoint", http)]),
+            StaticConnectorPool([]),
+            StaticModelPool(),
+        )
+        return await record(
+            "worker.endpoint", pools, environment, worker=worker.endpoint, state_dir=tmp_path
+        )
+
+
+async def record_connector(connector: RunningConnector, tmp_path: Path) -> Recorded:
+    """The instance runs the connector suite against `connector.channel.repo`, with the
+    scenario, the credential values and the connector's log configured."""
+    environment = {
+        "TAKTUS_CONFORMANCE_CONNECTOR_CHANNEL_REPO_SCENARIO": str(connector.scenario),
+        "TAKTUS_CONFORMANCE_CONNECTOR_CHANNEL_REPO_LOG": str(connector.log),
+        "TAKTUS_CONFORMANCE_TIMEOUT": "30",
+        **{
+            "TAKTUS_CREDENTIAL_" + name.upper(): value
+            for name, value in connector.credential_values.items()
+        },
+    }
+    adapter = "connector.channel.repo"
+    pools = Pools(
+        StaticWorkerPool([]),
+        StaticConnectorPool([(adapter, McpActionConnector(connector.endpoint))]),
+        StaticModelPool(),
+    )
+    return await record(
+        adapter,
+        pools,
+        environment,
+        connectors={"channel.repo": connector.endpoint},
+        state_dir=tmp_path,
+    )

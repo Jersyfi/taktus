@@ -11,7 +11,9 @@ The same report serves every contract: a check names its catalogue by its identi
 
 Maturity is stated as two halves (docs/architecture/contracts.md §3): the conformance half, which
 this report proves or refutes, and the removal-test half, which stays pending. No report marks an
-adapter *verified*.
+adapter *verified*. The instance records the conformance half only from a suite it ran itself,
+against the endpoint its configuration resolves (ADR-0044); a report handed in is never
+recorded.
 """
 
 from __future__ import annotations
@@ -156,8 +158,9 @@ class Report:
             "note": (
                 "Maturity 'verified' needs the conformance suite and the removal test "
                 "(docs/architecture/contracts.md §3). This report covers the first half. The "
-                "removal test needs processes to remove the adapter from and does not exist yet; "
-                "no adapter is 'verified' on the strength of this report."
+                "removal test is a process an instance runs, not a check of this suite. An "
+                "instance records the first half only from a suite it ran itself against its "
+                "configured adapter; no adapter is 'verified' on the strength of this report."
             ),
         }
 

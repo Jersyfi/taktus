@@ -16,12 +16,14 @@ import json
 import os
 import shutil
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 from fakes.identity import added_by_command_line
+from fakes.maturity import configurations, write_verified
 
 from taktus.adapters.driving.cli.wiring import Services
 from taktus.components.command.application.service import CommissionPlan
@@ -31,6 +33,8 @@ from taktus.components.run.domain.model import Cause, Run, RunState, StepState
 from taktus.composition.local import LocalWiring
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import Command, Intent, ReplyTo
+
+from .conftest import reference_worker
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE = ROOT / "examples" / "processes" / "six-times-seven.yaml"
@@ -46,34 +50,17 @@ def bundle(*, budget_seconds: float = 2, with_overreach: bool = True) -> dict[st
     return document
 
 
-def verified(state_dir: Path, *adapters: str) -> None:
+async def verified(state_dir: Path, *adapters: str) -> None:
     """Record both halves of *verified* for the adapters in a state directory's snapshot, as a
     conformance run and a removal test that said `changed` would. A step at level 3 or above
-    runs only on such an adapter (ADR-0039)."""
-    at = "2026-10-09T12:00:00Z"
-    records = [
-        {
-            "id": adapter,
-            "tenant": tenant,
-            "family": adapter.split(".", 1)[0],
-            "conformance_passed_at": at,
-            "removal": {
-                "integration": adapter,
-                "family": adapter.split(".", 1)[0],
-                "verdict": "changed",
-                "tested_at": at,
-                "run_id": "run_removal",
-            },
-            "updated_at": at,
-        }
-        for adapter in adapters
-        for tenant in ("default", TENANT)
-    ]
-    by_tenant: dict[str, list[dict[str, Any]]] = {}
-    for record in records:
-        by_tenant.setdefault(str(record["tenant"]), []).append(record)
-    state_dir.mkdir(parents=True, exist_ok=True)
-    (state_dir / "adaptermaturity.json").write_text(json.dumps(by_tenant), encoding="utf-8")
+    runs only on such an adapter (ADR-0039). Each adapter is the reference worker, started per
+    job or by endpoint; a pass counts for the configuration it declares (ADR-0044), so that
+    declaration is read from a reference worker started for the purpose."""
+    where = state_dir.parent / "declared"
+    where.mkdir(parents=True, exist_ok=True)
+    with contextmanager(reference_worker)(where) as endpoint:
+        declared = await configurations(workers=dict.fromkeys(adapters, endpoint))
+    write_verified(state_dir, declared, ("default", TENANT))
 
 
 async def confirm(services: Services, run: Run, *steps: str, stop_after: int | None = None) -> Run:
