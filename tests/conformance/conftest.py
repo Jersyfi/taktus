@@ -262,9 +262,10 @@ class RunningConnector:
     service_url: str
     credential_values: dict[str, str]
     process: subprocess.Popen[bytes]
+    scenario: Path = SCENARIO
 
     def options(self) -> ConnectorSuiteOptions:
-        with SCENARIO.open(encoding="utf-8") as handle:
+        with self.scenario.open(encoding="utf-8") as handle:
             scenario = json.load(handle)
         return ConnectorSuiteOptions(
             endpoint=self.endpoint,
@@ -272,7 +273,7 @@ class RunningConnector:
             credential_values=self.credential_values,
             adapter_log=self.log,
             timeout=30.0,
-            scenario_dir=SCENARIO.parent,
+            scenario_dir=self.scenario.parent,
         )
 
     async def run_suite(self) -> Report:
@@ -354,6 +355,85 @@ def start_connector(tmp_path: Path) -> Iterator[StartConnector]:
         endpoint = f"http://127.0.0.1:{port}"
         wait_ready(process, f"{endpoint}/health", log, "connector")
         return RunningConnector(f"{endpoint}/mcp", log, service_url, values, process)
+
+    yield start
+    stop_all(started)
+
+
+CHAT_CONNECTOR = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors" / "slack"
+CHAT_SCENARIO = CHAT_CONNECTOR / "scenario.json"
+FAKE_CHAT = ROOT / "tests" / "fakes" / "chat_service.py"
+CHAT_ACTIONS = "CHAT_TOKEN"
+CHAT_INTAKE = "CHAT_SIGNING_SECRET"
+
+
+def chat_connector_faults() -> list[tuple[str, str]]:
+    """Every fault the chat connector offers, with the check it breaks, from the connector."""
+    return _list_faults(
+        [sys.executable, "-m", "taktus.adapters.driven.connectors.slack", "--list-faults"]
+    )
+
+
+@pytest.fixture
+def start_chat_connector(tmp_path: Path) -> Iterator[StartConnector]:
+    """The fake chat service and the chat connector, each a process of its own. The token the
+    connector reads under CHAT_TOKEN is the one the fake accepts; the signing secret reaches the
+    connector through the file `TAKTUS_CREDENTIAL_CHAT_SIGNING_SECRET_FILE` names, as every
+    secret does, and the suite signs with the same value."""
+    started: list[subprocess.Popen[bytes]] = []
+
+    def start(*, fault: str | None = None) -> RunningConnector:
+        token = "tok-" + secrets.token_hex(12)
+        secret = "sig-" + secrets.token_hex(12)
+        name = fault or "honest"
+        secret_file = tmp_path / f"chat-signing-secret-{name}"
+        secret_file.write_text(secret, encoding="utf-8")
+        secret_file.chmod(0o600)
+        service_env = {**os.environ, "FAKE_CHAT_TOKENS": f"{token}:write"}
+        connector_env = {
+            **os.environ,
+            CHAT_ACTIONS: token,
+            "TAKTUS_CREDENTIAL_CHAT_SIGNING_SECRET_FILE": str(secret_file),
+        }
+        connector_env.pop(CHAT_INTAKE, None)
+        connector_env.pop("TAKTUS_CREDENTIAL_CHAT_TOKEN_FILE", None)
+        service_port = free_port()
+        service_log = tmp_path / f"chat-service-{name}.log"
+        with service_log.open("wb") as handle:
+            service = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
+                [sys.executable, str(FAKE_CHAT), "--port", str(service_port)],
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                env=service_env,
+            )
+        started.append(service)
+        service_url = f"http://127.0.0.1:{service_port}"
+        wait_ready(service, f"{service_url}/_fake/state", service_log, "fake chat service")
+
+        port = free_port()
+        log = tmp_path / f"chat-connector-{name}.log"
+        args = [
+            sys.executable,
+            "-m",
+            "taktus.adapters.driven.connectors.slack",
+            "--port",
+            str(port),
+            "--target",
+            service_url,
+        ]
+        if fault:
+            args += ["--fault", fault]
+        with log.open("wb") as handle:
+            process = subprocess.Popen(  # noqa: S603 — our own module, fixed arguments
+                args, stdout=handle, stderr=subprocess.STDOUT, env=connector_env
+            )
+        started.append(process)
+        endpoint = f"http://127.0.0.1:{port}"
+        wait_ready(process, f"{endpoint}/health", log, "chat connector")
+        values = {CHAT_ACTIONS: token, CHAT_INTAKE: secret}
+        return RunningConnector(
+            f"{endpoint}/mcp", log, service_url, values, process, scenario=CHAT_SCENARIO
+        )
 
     yield start
     stop_all(started)

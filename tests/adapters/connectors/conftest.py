@@ -17,6 +17,7 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fakes import chat_service as chat_fake
 from fakes import repository_service
 
 type Json = dict[str, Any]
@@ -99,3 +100,59 @@ def credentials(service: Service, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(WRITE_CREDENTIAL, service.write_value)
     monkeypatch.setenv(READ_CREDENTIAL, service.read_value)
     service.reset()
+
+
+# --- the chat service -----------------------------------------------------------------------------
+
+CHAT_WRITE = "CHAT_TOKEN"
+CHAT_READ = "CHAT_TOKEN_READONLY"
+
+
+@dataclass(frozen=True)
+class ChatService:
+    url: str
+    write_value: str
+    read_value: str
+
+    def state(self) -> Json:
+        result: Json = httpx.get(f"{self.url}/_fake/state", timeout=5.0).json()
+        return result
+
+    def messages(self, conversation: str) -> list[Json]:
+        listed = httpx.get(
+            f"{self.url}/_fake/messages", params={"channel": conversation}, timeout=5.0
+        )
+        result: list[Json] = listed.json()["messages"]
+        return result
+
+    def control(self, path: str, body: Json) -> None:
+        httpx.post(f"{self.url}{path}", json=body, timeout=5.0).raise_for_status()
+
+    def reset(self) -> None:
+        self.control("/_fake/reset", {})
+
+
+@pytest.fixture(scope="session")
+def chat_service() -> Iterator[ChatService]:
+    write_value = "chat-write-" + secrets.token_hex(8)
+    read_value = "chat-read-" + secrets.token_hex(8)
+    server = chat_fake.make_server("127.0.0.1", 0, {write_value: "write", read_value: "read"})
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    try:
+        yield ChatService(f"http://{host!s}:{port}", write_value, read_value)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.fixture
+def chat_credentials(chat_service: ChatService, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The two tokens in the environment, as the connector's runtime would put them there, and
+    no file variable that would take precedence."""
+    for name in (CHAT_WRITE, CHAT_READ):
+        monkeypatch.delenv(f"TAKTUS_CREDENTIAL_{name}_FILE", raising=False)
+    monkeypatch.setenv(CHAT_WRITE, chat_service.write_value)
+    monkeypatch.setenv(CHAT_READ, chat_service.read_value)
+    chat_service.reset()

@@ -88,8 +88,10 @@ REQUIREMENTS: dict[str, str] = {
     "scheme, returns accepted with an Intake that validates, names an event the declaration "
     "lists, a sender, a context and a reply address",
     "C-08": "the intake tool returns refused with reason unsigned for a payload without a "
-    "signature and bad_signature for a wrongly signed one; an event the declaration does not "
-    "list is refused as unsupported_event; the connector's own action is refused as own_action",
+    "signature and bad_signature for a wrongly signed one, and under the scheme "
+    "hmac-sha256-timestamped for one signed more than 300 seconds before it was received; an "
+    "event the declaration does not list is refused as unsupported_event; the connector's own "
+    "action is refused as own_action",
     "C-09": "every Result carries consumption with at least one quantity, and a quantity of a "
     "kind the capabilities declare",
     "C-10": "removing the adapter changes quality or cost but breaks no process",

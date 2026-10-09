@@ -4,6 +4,6 @@
     "message.mentioned"
   ],
   "signature": {
-    "scheme": "hmac-sha256"
+    "scheme": "hmac-sha256-timestamped"
   }
 }

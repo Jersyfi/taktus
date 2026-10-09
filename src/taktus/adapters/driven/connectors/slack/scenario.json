@@ -1,0 +1,60 @@
+{
+  "credentials": {
+    "actions": "CHAT_TOKEN",
+    "intake": "CHAT_SIGNING_SECRET"
+  },
+  "read": {
+    "operation": "chat.threads.read",
+    "input": {
+      "address": "C0000000001",
+      "thread": "1700000000.000100"
+    }
+  },
+  "writes": [
+    {
+      "operation": "chat.threads.post",
+      "input": {
+        "address": "C0000000001",
+        "thread": "1700000000.000100",
+        "text": "Reply {{unique}} from the conformance suite."
+      }
+    },
+    {
+      "operation": "chat.threads.post",
+      "input": {
+        "address": "C0000000001",
+        "text": "Message {{unique}} from the conformance suite."
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "chat.threads.read",
+    "input": {
+      "address": "C0000000999",
+      "thread": "1700000000.000100"
+    },
+    "expected_cause": "not_found"
+  },
+  "intake": {
+    "signature": {
+      "header": "x-slack-signature",
+      "prefix": "v0=",
+      "timestamp": {
+        "header": "x-slack-request-timestamp",
+        "version": "v0"
+      }
+    },
+    "supported": {
+      "headers_file": "payloads/message-posted.headers.json",
+      "body_file": "payloads/message-posted.body.json"
+    },
+    "unsupported": {
+      "headers_file": "payloads/url-verification.headers.json",
+      "body_file": "payloads/url-verification.body.json"
+    },
+    "own_action": {
+      "headers_file": "payloads/message-own-action.headers.json",
+      "body_file": "payloads/message-own-action.body.json"
+    }
+  }
+}

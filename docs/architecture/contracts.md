@@ -284,7 +284,7 @@ read from the base tree before the new tree is written (DEC-0020). A file entry 
 `executable`, and the coding worker's changeset sets it on every file its index records as
 executable, so a script a change adds arrives executable too; a file the base does not have
 and that carries no flag is written as a plain file (issue #28) |
-| Connector | `chat` | both a command channel and a delivery channel |
+| Connector | `slack` | the chat service the owner of this tenant uses: both a command channel and a delivery channel, the capability `chat.threads` and the channel `channel.chat`. Exists (`src/taktus/adapters/driven/connectors/slack/`): a thread read, a message posted into a conversation or a thread as a `delivery` that is `marked` by its metadata — posted once across a restart of the connector — and event intake under `hmac-sha256-timestamped`, a delivery signed more than 300 seconds before it arrived refused as a replay (ADR-0024, amendment). Passes the suite against a fake of its service, fault for fault; against the real service when NEED-0018 is provided. Added to an instance by one entry of `TAKTUS_CONNECTORS`, nothing in the core changed (`tests/adapters/connectors/test_chat_channel.py`). The URL check the service makes before it sends events is #145 |
 | Connector | `http` | the generic fallback for anything with a documented API |
 | Model | `openai_compatible` | covers Ollama, vLLM and most vendors. Exists (`src/taktus/adapters/driven/models/openai_compatible/`), proven against a fake of the endpoint; the one model `llm` steps ask |
 | Model | `anthropic` | native capabilities the common denominator does not carry |

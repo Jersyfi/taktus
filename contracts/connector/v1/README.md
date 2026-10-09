@@ -271,9 +271,16 @@ endpoint would.
 
 `body` is the raw body as text, exactly as received, because the signature covers it byte for
 byte. **Signature verification is part of the contract:** an unsigned or wrongly signed payload
-is refused before its body is read, never processed. The scheme is declared (`hmac-sha256`: a
-keyed hash over the raw body with the intake secret); there is no scheme `none`, and an intake
-declaration without a signature is not valid.
+is refused before its body is read, never processed. The scheme is declared, and there are two:
+
+| Scheme | What is signed | What it adds |
+|---|---|---|
+| `hmac-sha256` | the raw body, keyed with the intake secret | — |
+| `hmac-sha256-timestamped` | `<version>:<moment>:<raw body>`, keyed with the intake secret; the version is a token the target fixes, the moment of sending is whole seconds since the epoch and travels in a header of its own | a bound on replay: a payload whose moment lies more than 300 seconds from `received_at` is refused as `bad_signature` |
+
+There is no scheme `none`, and an intake declaration without a signature is not valid. The
+second scheme exists because a chat service signs that way (ADR-0024, amendment of
+2026-10-09); a target that signs the raw body uses the first.
 
 The structured content is exactly one of `accepted` and `refused`:
 
@@ -343,7 +350,7 @@ uv run taktusctl conformance run --contract connector/v1 --endpoint http://local
 | C-05 | an outward call repeated with the same idempotency key returns the original result with `replayed: true` and acts once; a new key acts again |
 | C-06 | an error is classified: a failure with cause, effect and retryable, and the cause the scenario expects — never a bare message |
 | C-07 | a correctly signed intake payload becomes a well-formed intake command with sender, context and reply address |
-| C-08 | an unsigned or wrongly signed intake payload is refused with its reason, never processed |
+| C-08 | an unsigned or wrongly signed intake payload — or, under `hmac-sha256-timestamped`, one signed long before it arrived — is refused with its reason, never processed |
 | C-09 | every result reports consumption in a declared kind |
 | C-10 | the adapter passes the removal test: removing it breaks no process |
 
@@ -376,3 +383,8 @@ service appears only in its own directory, its README and configuration. It is t
 idempotency, not the exception: opening a pull request twice for the same step is impossible,
 and `tests/adapters/connectors` tries — across a restart of the connector, against a fake of
 the service in every run of the gate and against the real service when a credential is given.
+
+A second connector beside it serves a chat service: the capability `chat.threads` — read a
+thread, post into a conversation or a thread, `delivery` and `marked` — and intake on the
+channel `channel.chat` under `hmac-sha256-timestamped`. It passes the same suite against a fake
+of its service, fault for fault (`tests/conformance/test_connector_v1_chat.py`).

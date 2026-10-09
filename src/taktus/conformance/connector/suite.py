@@ -8,8 +8,9 @@ writes, one call the target must refuse, and the recorded payloads for intake. T
 2. calls the read with a fresh key, and once without any credential — C-02, C-03, C-09;
 3. calls every write twice with one key and once with another — C-05, and C-02, C-09 again;
 4. calls the invalid case — C-06;
-5. delivers the intake payload signed, unsigned, wrongly signed, and the unsupported and
-   own-action payloads where the scenario has them — C-07, C-08;
+5. delivers the intake payload signed, unsigned, wrongly signed — and, under a timestamped
+   scheme, signed at a moment long before it arrived — and the unsupported and own-action
+   payloads where the scenario has them — C-07, C-08;
 6. scans everything it saw, and the connector's log, for every credential value it knows —
    C-04;
 7. reports C-10 as pending: the removal test needs processes, and the suite has none.
@@ -436,8 +437,61 @@ async def _c06(client: ConnectorClient, scenario: Json, findings: Findings, seen
 # --- C-07, C-08 on intake ----------------------------------------------------------------------
 
 
+RECEIVED_AT = "2026-01-01T00:00:00Z"
+"""The moment the suite says every delivery arrived."""
+RECEIVED_EPOCH = 1767225600
+"""RECEIVED_AT in whole seconds since the epoch: the moment a timestamped signature carries."""
+STALE_SECONDS = 3600
+"""How far before RECEIVED_AT the stale delivery says it was sent: well past the 300 seconds the
+scheme hmac-sha256-timestamped admits (README §7)."""
+STALE_MOMENT = RECEIVED_EPOCH - STALE_SECONDS
+
+
 def _sign(body: str, secret: str) -> str:
     return hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
+
+
+@dataclass(frozen=True)
+class _Signer:
+    """The signature headers for one payload, as the scenario says the target writes them:
+    the digest over the raw body, or — with `timestamp` — over `<version>:<moment>:<body>`, the
+    moment in a header of its own."""
+
+    header: str
+    prefix: str
+    timestamp_header: str | None = None
+    version: str = ""
+
+    @classmethod
+    def of(cls, signature: Json) -> _Signer:
+        timestamp = signature.get("timestamp")
+        if isinstance(timestamp, dict):
+            return cls(
+                str(signature["header"]),
+                str(signature["prefix"]),
+                str(timestamp["header"]),
+                str(timestamp["version"]),
+            )
+        return cls(str(signature["header"]), str(signature["prefix"]))
+
+    @property
+    def timestamped(self) -> bool:
+        return self.timestamp_header is not None
+
+    def stale(self, body: str, secret: str) -> Json:
+        """Signed correctly, at a moment STALE_SECONDS before the payload arrives."""
+        return self.headers(body, secret, moment=STALE_MOMENT)
+
+    def headers(self, body: str, secret: str | None, *, moment: int = RECEIVED_EPOCH) -> Json:
+        """`secret` None: the moment alone where the scheme carries one, and no signature."""
+        headers: Json = {}
+        base = body
+        if self.timestamp_header is not None:
+            headers[self.timestamp_header] = str(moment)
+            base = f"{self.version}:{moment}:{body}"
+        if secret is not None:
+            headers[self.header] = self.prefix + _sign(base, secret)
+        return headers
 
 
 async def _intake(
@@ -475,8 +529,7 @@ async def _intake(
             )
         return
     intake = scenario["intake"]
-    header = str(intake["signature"]["header"])
-    prefix = str(intake["signature"]["prefix"])
+    signer = _Signer.of(intake["signature"])
     try:
         supported = load_payload(intake["supported"], options.scenario_dir)
         unsupported = (
@@ -496,14 +549,12 @@ async def _intake(
             )
         return
 
-    async def deliver(purpose: str, payload: Json, signature: str | None) -> Json | None:
-        headers = dict(payload["headers"])
-        if signature is not None:
-            headers[header] = signature
+    async def deliver(purpose: str, payload: Json, signature: Json) -> Json | None:
+        headers = {**payload["headers"], **signature}
         arguments = {
             "headers": headers,
             "body": payload["body"],
-            "received_at": "2026-01-01T00:00:00Z",
+            "received_at": RECEIVED_AT,
         }
         answer = await client.call(INTAKE_TOOL, arguments)
         seen.answered(purpose, answer)
@@ -529,7 +580,7 @@ async def _intake(
         return answer.json
 
     body = str(supported["body"])
-    signed = await deliver("signed", supported, prefix + _sign(body, secret))
+    signed = await deliver("signed", supported, signer.headers(body, secret))
     if signed is not None:
         for violation in rules.intake_violations(capabilities, signed, expect="accepted"):
             findings.add(violation, "intake (signed)")
@@ -542,21 +593,24 @@ async def _intake(
                 f"{accepted['reply_to']['address']!r}",
             )
 
-    cases: list[tuple[str, Json, str | None, str]] = [
-        ("unsigned", supported, None, "unsigned"),
-        ("wrongly signed", supported, prefix + _sign(body, secret + "-not"), "bad_signature"),
+    cases: list[tuple[str, Json, Json, str]] = [
+        ("unsigned", supported, signer.headers(body, None), "unsigned"),
+        ("wrongly signed", supported, signer.headers(body, secret + "-not"), "bad_signature"),
     ]
+    if signer.timestamped:
+        # Signed with the right secret, at a moment long before it arrived: a replay.
+        cases.append(("stale", supported, signer.stale(body, secret), "bad_signature"))
     if unsupported is not None:
         cases.append(
             (
                 "unsupported",
                 unsupported,
-                prefix + _sign(str(unsupported["body"]), secret),
+                signer.headers(str(unsupported["body"]), secret),
                 "unsupported_event",
             )
         )
     if own is not None:
-        cases.append(("own action", own, prefix + _sign(str(own["body"]), secret), "own_action"))
+        cases.append(("own action", own, signer.headers(str(own["body"]), secret), "own_action"))
     refused = 0
     for purpose, payload, signature, reason in cases:
         result = await deliver(purpose, payload, signature)

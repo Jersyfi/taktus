@@ -98,7 +98,8 @@ taktus/
 │   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/mcp/      # the connector port as an MCP client: intake and actions; connectors/pool.py maps capabilities
 │   │       ├── connectors/loopback/ # Taktus reached by Taktus: the capabilities orchestrator.* behind the action side of the connector port, over an Orchestrator the composition root implements
-│   │       ├── connectors/{chat,http}/
+│   │       ├── connectors/slack/    # the chat connector: chat.threads and channel.chat behind contracts/connector/v1; the product name lives only here
+│   │       ├── connectors/http/
 │   │       └── models/              # openai_compatible/: the model port over the chat-completions dialect; pool.py maps purposes
 │   │
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters

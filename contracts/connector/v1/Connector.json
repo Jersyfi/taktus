@@ -220,10 +220,11 @@
     },
     "SignatureScheme": {
       "title": "SignatureScheme",
-      "description": "How the target system signs the events it sends. hmac-sha256: a keyed hash over the raw body with the intake secret, carried in a header. There is no scheme none: an intake without a signature is not a valid declaration.",
+      "description": "How the target system signs the events it sends. hmac-sha256: a keyed hash over the raw body with the intake secret, carried in a header. hmac-sha256-timestamped: a keyed hash with the intake secret over a base string of three parts joined by colons — a version token the target fixes, the moment of sending in whole seconds since the epoch, and the raw body — with the moment carried in a header of its own; a delivery whose moment lies more than 300 seconds from received_at is refused as bad_signature, so that a captured delivery cannot be replayed later. There is no scheme none: an intake without a signature is not a valid declaration.",
       "type": "string",
       "enum": [
-        "hmac-sha256"
+        "hmac-sha256",
+        "hmac-sha256-timestamped"
       ]
     },
     "IntakeDeclaration": {
@@ -914,7 +915,7 @@
           "type": "object",
           "properties": {
             "signature": {
-              "description": "Where the suite puts the signature it computes: the header, and the prefix before the lowercase hex digest.",
+              "description": "Where the suite puts the signature it computes: the header, and the prefix before the lowercase hex digest. timestamp is for the scheme hmac-sha256-timestamped: the header the suite writes the moment of sending into, in whole seconds since the epoch, and the version token that opens the signed base string.",
               "type": "object",
               "properties": {
                 "header": {
@@ -923,6 +924,24 @@
                 },
                 "prefix": {
                   "type": "string"
+                },
+                "timestamp": {
+                  "type": "object",
+                  "properties": {
+                    "header": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "version": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "header",
+                    "version"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [

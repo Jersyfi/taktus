@@ -198,6 +198,18 @@ when a budget is set the run records what it can promise, and where a provider b
 window it says that a currency budget cannot be enforced. The evidence is
 `docs/research/2026-09-30-what-providers-allow.md`.
 
+**The chat connector exists** (#84, `0.2.0`). The capability `chat.threads` and the channel
+`channel.chat` are served by a connector for the chat service the owner uses, added to an
+instance by one entry of `TAKTUS_CONNECTORS` with nothing under `src/taktus/components/`
+changed. A message becomes an intake event and then a command equal to the same instruction from
+the repository channel in every field but the channel and the identity of the message
+(NTC-0082); a reply lands in the thread the command arrived in, once across a restart. It passes
+the conformance suite, fault for fault, against a fake of its service. The service signs the
+moment of sending with the body, so the connector contract gained a second signature scheme that
+bounds a replay to 300 seconds (ADR-0024, amendment; NTC-0083). Against the real service it waits
+for Taktus's app in the owner's workspace (NEED-0018); before the service will send events to an
+instance, the webhook intake must answer its URL check (#145).
+
 **Taktus watches its platform** (ADR-0031). The *Observe* stage is built: free CPU, memory and
 storage, growth per run extrapolated to a date, `taktusctl capacity` and a report by the
 scheduler, admission against free capacity, every job's memory limit enforced or the job
@@ -375,5 +387,6 @@ rather than enforced, anything marked provisional.
 | a pull request description can be acted on without the diff | ADR-0017 §7 | the gate checks that the four sections are there, filled and in order; not that they are readable without the diff |
 | Taktus is repairable without Taktus: a restore, documented and exercised | ADR-0013 C | not for a deployed instance: there is no backup yet. Its destination exists (NEED-0009); Taktus keeps backups for a configurable time, 30 days by default, encrypted only if chosen (DEC-0058); the backup and its restore, exercised once, are #67 |
 | the repository connector keeps its promise against the real service | `tests/adapters/connectors/test_repository_live.py` | runs only where an identity is set. Since DEC-0048 it runs in the workflow `live` — monthly and by dispatch, on `main`, never on a pull request — as Taktus's own app, minting its token in the run (ADR-0033), and as the app it also holds the pull request it opens to the app's name. It has not run as the app yet: the environment needs the app's identifier and key (NEED-0016); until then the job says in a notice that nothing ran |
+| the chat connector keeps its promise against the real service | `tests/adapters/connectors/test_chat_live.py`, #84 | runs only where a scratch conversation and the app's token are set: in the workflow `live`, monthly and by dispatch on `main`, never on a pull request (DEC-0048). It has not run: the app in the owner's workspace is NEED-0018, and until it is provided the job says in a notice that nothing ran. Proven against the fake of the service only. No message reaches an instance yet: the service checks the request URL before it sends events, and the webhook intake does not answer that check (#145) |
 | what Taktus writes on the repository service appears under its own app's name | ADR-0033, DEC-0058, issue #50 | built: the connector acts as the app when configured, shown against the fake service and in the conformance suite. Not yet shown on the installed instance — a pull request opened there by P-03 — which waits for the install (#66); where that check lives is DEC-0063. Runs on the owner's workstation still use the personal token until NEED-0016 |
 | a licence | ADR-0012 | open: all rights reserved, no outside contribution accepted. The owner's own question, DEC-0044, settled by the release of `1.0.0` and taken up only when that release is prepared, as the owner confirmed on 2026-10-08; before the first outside contribution too |
