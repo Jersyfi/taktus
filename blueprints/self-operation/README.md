@@ -179,4 +179,7 @@ installation with more than one adapter per capability will show, and the roadma
 section asks for the test green for every adapter, not one.
 
 `tests/integration/test_removal_test.py` runs the same, every time CI runs, and holds the
-verdicts to the reasons above.
+verdicts to the reasons above. `tests/integration/test_dev_orchestration.py` runs S-01 with
+P-01 to P-03 registered, for the repository connector, the coding worker and the model they
+use: each ends *changed*, every step through a person, because every step those integrations
+serve names a person as its fallback (issue #90, `blueprints/dev-orchestration/README.md`).
