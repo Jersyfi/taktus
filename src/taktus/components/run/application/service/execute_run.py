@@ -64,6 +64,18 @@ and the queue keeps it so until the transaction ends. When another runner has cl
 meanwhile — this one was cut off for longer than the lease — the write is refused with
 `ClaimLost`, nothing of it lands, and the engine does nothing more for the run. Two runners
 therefore never both commit to one run.
+
+A worker step hands its assignment over in four stages: the worker's estimate, the committed
+`step.admitted`, the committed `step.assigned` naming the assignment's id, and the worker's
+acceptance over HTTP, after which `step.started` is committed. The id is recorded before the
+worker sees it, and stays *open* until the step reads the assignment's end (ADR-0038). A step
+with an open assignment — its instance died, its stream broke, its runner lost the claim — asks
+the worker about it before it hands over another. One the worker holds is *adopted*
+(`step.adopted`): followed from the last event the step run holds, never repeated beside it.
+One the worker does not know is posted again under the same id, so that a cut-off runner whose
+post arrives late meets the worker's 409. A worker that cannot be asked fails the step; nothing
+new is handed over. A runner that loses its claim leaves the assignment running for the runner
+that holds the claim now.
 """
 
 from __future__ import annotations
@@ -152,16 +164,20 @@ from taktus.ports.telemetry import Span, Telemetry
 from taktus.ports.worker import (
     ArtifactProduced,
     Assignment,
+    AssignmentExists,
     AssignmentFinished,
+    AssignmentState,
     Callback,
     ConsumptionReported,
     Context,
     Frame,
     Limits,
     Outcome,
+    ResolvedWorker,
     StepBoundary,
     StopRequest,
     Task,
+    UnknownAssignment,
     Worker,
     WorkerAtCapacity,
     WorkerError,
@@ -522,13 +538,21 @@ class RunEngine:
         """The instance executing this run stopped without halting it. The step it was inside
         goes back to its last persisted boundary — the worker's checkpoint if one arrived, its
         start otherwise — and is admitted again; steps before it are kept as they are. That is
-        the "at most one step of work is lost" of ADR-0005, made true across a restart."""
+        the "at most one step of work is lost" of ADR-0005, made true across a restart.
+
+        A worker step whose assignment was handed over keeps it open: before the step hands
+        over another, the worker is asked about it, and an assignment it still holds is adopted
+        instead of repeated (ADR-0038)."""
         interrupted = run.in_flight()
         if interrupted is not None:
+            reason = "the instance stopped while this step was in flight"
+            if interrupted.assignment_open:
+                reason += (
+                    f"; its assignment {interrupted.assignment_id} is asked about before "
+                    "another is handed over"
+                )
             interrupted = interrupted.to(
-                StepState.STOPPED,
-                reason="the instance stopped while this step was in flight",
-                finished_at=self._clock.now(),
+                StepState.STOPPED, reason=reason, finished_at=self._clock.now()
             )
             run = run.with_step_run(interrupted)
         if run.state is RunState.PLANNED:
@@ -550,6 +574,12 @@ class RunEngine:
                     reason="stop requested", ceiling_seconds=self._options.step_ceiling_seconds
                 ),
             )
+
+    def relinquish(self, run_id: str) -> None:
+        """The runner's claim on the run is lost. The run stops at its next boundary, where the
+        fence refuses whatever it would still write. The worker's assignment is not stopped:
+        the runner that holds the claim now adopts it (ADR-0038)."""
+        self._stop_requested.add(run_id)
 
     # --- the loop ------------------------------------------------------------------------------
 
@@ -1430,12 +1460,23 @@ class RunEngine:
             return run, step_run
         adapter, worker = resolved.adapter, resolved.worker
         span.set_attribute("adapter", adapter)
-        resuming = step_run.checkpoint if step_run.state is StepState.STOPPED else None
-        left = remaining(self._line(run), run.consumed())
+        call = {"run.id": run.id, "step.id": step.id, "adapter": adapter}
         (inputs,), read = await self._resolved(run, [work.task.inputs])
         trace = Trace(inputs=read, adapter_version=resolved.version)
+        if step_run.assignment_open:
+            # An assignment handed over earlier and never seen to end may still be running in
+            # the worker: it is asked about before another is handed over (ADR-0038).
+            reclaimed = await self._reclaim(run, step, step_run, work, resolved, trace, span, call)
+            if reclaimed is not None:
+                return reclaimed
+        resuming = step_run.checkpoint if step_run.state is StepState.STOPPED else None
+        left = remaining(self._line(run), run.consumed())
         assignment = Assignment(
-            assignment_id=self._ids.new("asg"),
+            # An open assignment the worker never received is posted again under its own id:
+            # a runner that handed it over and was cut off then meets the worker's 409.
+            assignment_id=step_run.assignment_id
+            if step_run.assignment_open and step_run.assignment_id is not None
+            else self._ids.new("asg"),
             task=Task(
                 goal=work.task.goal,
                 acceptance=work.task.acceptance,
@@ -1461,7 +1502,6 @@ class RunEngine:
         # 1 + 2: estimate and admit, before anything starts. A worker that cannot answer — an
         # execution unit that does not start, an endpoint that does not answer — fails the
         # step with that cause; the run escalates and nothing is left half done.
-        call = {"run.id": run.id, "step.id": step.id, "adapter": adapter}
         try:
             async with self._telemetry.span("worker.estimate", call):
                 estimate = await worker.estimate(assignment.estimate_request())
@@ -1493,23 +1533,125 @@ class RunEngine:
             }
         )
 
-        # 3: run.
+        # 3: hand over. The assignment's id is committed first, with `step.assigned`: whatever
+        # the worker accepts is named in the ledger even if this instance dies before it learns
+        # of the acceptance, and whoever recovers the run knows what to ask the worker about.
         call["assignment.id"] = assignment.assignment_id
+        step_run = step_run.model_copy(
+            update={
+                "assignment_id": assignment.assignment_id,
+                "assignment_open": True,
+                "assignment_seq": 0,
+            }
+        )
+        run = await self._commit(run.with_step_run(step_run), "step.assigned", step=step_run)
         try:
             async with self._telemetry.span("worker.assign", call):
                 state = await worker.assign(assignment)
         except WorkerAtCapacity as error:
             return await self._full(run, step_run, work, adapter, resuming, span, error)
+        except AssignmentExists:
+            # Another runner handed the same assignment over first: it is the worker's, and
+            # this step continues it.
+            try:
+                state = await worker.state(assignment.assignment_id)
+            except WorkerError as error:
+                return await self._unavailable(run, step_run, adapter, span, error)
+            return await self._handed_over(
+                run, step, step_run, work, worker, state, trace, span, call, adopted=True
+            )
         except WorkerError as error:
             return await self._unavailable(run, step_run, adapter, span, error)
+        return await self._handed_over(
+            run, step, step_run, work, worker, state, trace, span, call, adopted=False
+        )
+
+    async def _reclaim(
+        self,
+        run: Run,
+        step: Step,
+        step_run: StepRun,
+        work: WorkerWork,
+        resolved: ResolvedWorker,
+        trace: Trace,
+        span: Span,
+        call: dict[str, Any],
+    ) -> tuple[Run, StepRun] | None:
+        """The step's assignment was handed over and its end never read: an instance died
+        between handing it over and reading its end, or the stream broke. The worker is asked.
+        An assignment it holds is adopted — followed from the last event the step run holds,
+        whatever its status. One it does not know never reached it, or is gone with a restart
+        of the worker: None, and the caller posts it again under the same id. A worker that
+        cannot be asked fails the step, and no other assignment is handed over (ADR-0038)."""
+        assignment_id = step_run.assignment_id
+        if assignment_id is None:  # unreachable: an open assignment carries its id
+            return None
+        call["assignment.id"] = assignment_id
+        if step_run.adapter is not None and step_run.adapter != resolved.adapter:
+            # The worker that holds it no longer serves the step. Nothing can ask it; a person
+            # who resumes the run accepts that it may still run there.
+            span.record_failure("assignment unreachable")
+            step_run = step_run.to(
+                StepState.FAILED,
+                assignment_open=False,
+                reason=f"assignment {assignment_id} was handed to the worker {step_run.adapter}, "
+                f"which no longer serves this step ({resolved.adapter} does); it cannot be asked "
+                "whether the assignment still runs there, and a resume hands over a new one",
+                retryable=True,
+                finished_at=self._clock.now(),
+            )
+            run = await self._commit(
+                run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+            )
+            return run, step_run
+        try:
+            async with self._telemetry.span("worker.state", call):
+                state = await resolved.worker.state(assignment_id)
+        except UnknownAssignment:
+            return None
+        except WorkerError as error:
+            span.record_failure("worker unavailable")
+            step_run = step_run.to(
+                StepState.FAILED,
+                reason=f"assignment {assignment_id}, handed over earlier, may still be running: "
+                f"the worker could not be asked about it, so no other is handed over: {error}",
+                finished_at=self._clock.now(),
+            )
+            run = await self._commit(
+                run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+            )
+            return run, step_run
+        return await self._handed_over(
+            run, step, step_run, work, resolved.worker, state, trace, span, call, adopted=True
+        )
+
+    async def _handed_over(
+        self,
+        run: Run,
+        step: Step,
+        step_run: StepRun,
+        work: WorkerWork,
+        worker: Worker,
+        state: AssignmentState,
+        trace: Trace,
+        span: Span,
+        call: dict[str, Any],
+        *,
+        adopted: bool,
+    ) -> tuple[Run, StepRun]:
+        """The worker holds the step's assignment: this runner handed it over and the worker
+        took it (`step.started`), or it was found handed over earlier (`step.adopted`). Either
+        way the step follows it, from the last event the step run holds."""
+        assignment_id = state.assignment_id
         if step_run.waiting_since is not None:
             run, step_run = await self._waited(run, step_run, work, "assigned")
-        if state.status == "finished":
+        if state.status == "finished" and state.outcome is Outcome.REJECTED:
             # A rejection is a state, not an error: the worker's own check refused it.
             span.record_failure("rejected by the worker")
             step_run = step_run.to(
                 StepState.REJECTED,
-                assignment_id=assignment.assignment_id,
+                assignment_id=assignment_id,
+                assignment_open=False,
                 reason=f"rejected by the worker: {state.reason or 'no reason given'}",
             )
             run = await self._commit(
@@ -1519,34 +1661,46 @@ class RunEngine:
                 outcome="rejected_by_worker",
             )
             return run, step_run
-        step_run = step_run.to(
-            StepState.RUNNING, assignment_id=assignment.assignment_id, started_at=self._clock.now()
-        )
-        run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
-        self._inflight[run.id] = (worker, assignment.assignment_id)
+        now = self._clock.now()
+        if adopted:
+            step_run = step_run.to(
+                StepState.RUNNING,
+                assignment_id=assignment_id,
+                started_at=step_run.started_at or now,
+                reason=None,
+                retryable=None,
+                finished_at=None,
+            )
+            run = await self._commit(
+                run.with_step_run(step_run), "step.adopted", step=step_run, outcome=state.status
+            )
+        else:
+            step_run = step_run.to(StepState.RUNNING, assignment_id=assignment_id, started_at=now)
+            run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
+        self._inflight[run.id] = (worker, assignment_id)
         if run.id in self._stop_requested:
             await self.request_stop(run.id)
         try:
             async with self._telemetry.span("worker.follow", call) as following:
                 run, step_run = await self._follow(
-                    run, step_run, worker, assignment.assignment_id, trace, span
+                    run, step_run, worker, assignment_id, trace, span, after=step_run.assignment_seq
                 )
                 following.set_attribute("step.state", step_run.state)
-        except ClaimLost:
-            # The runner that took the run over assigns the step again from its checkpoint;
-            # this assignment has no one left to report to.
-            with contextlib.suppress(Exception):
-                await worker.stop(
-                    assignment.assignment_id,
-                    StopRequest(
-                        reason="the claim on the run was lost",
-                        ceiling_seconds=self._options.step_ceiling_seconds,
-                    ),
-                )
-            raise
         finally:
+            # On ClaimLost the assignment is left running: the runner that holds the claim now
+            # adopts it (ADR-0038).
             self._inflight.pop(run.id, None)
         _measured(span, step_run)
+        if (
+            adopted
+            and step_run.state is StepState.STOPPED
+            and run.id not in self._limit_halts
+            and run.id not in self._stop_requested
+        ):
+            # Stopped at a request this runner did not make: the runner that handed it over
+            # asked before it gave the run up. The run is not stopped; the step continues from
+            # the checkpoint with a new assignment.
+            return await self._worker_step(run, step, step_run, work, span)
         return run, step_run
 
     async def _full(
@@ -1657,8 +1811,12 @@ class RunEngine:
         assignment_id: str,
         trace: Trace,
         span: Span,
+        *,
+        after: int = 0,
     ) -> tuple[Run, StepRun]:
-        """Read the stream to its end, persisting what arrives as it arrives."""
+        """Read the stream after `after` to its end, persisting what arrives as it arrives. The
+        step run holds the effect of every event up to `after`; an adopted assignment is read
+        from there, so that nothing is counted twice (ADR-0038)."""
         # What an earlier attempt of this step used was used all the same: a resumed or
         # retried step accumulates on top of it, and the budget sees the whole.
         used: dict[str, Any] = {}
@@ -1671,8 +1829,11 @@ class RunEngine:
             None if step_run.checkpoint is None else step_run.checkpoint.ref
         )
         finished: AssignmentFinished | None = None
+        last_seq = after
         try:
-            async for event in worker.events(assignment_id):
+            async for event in worker.events(assignment_id, after=after):
+                if event.seq <= last_seq:
+                    continue  # its effect is held already
                 if isinstance(event, ConsumptionReported):
                     _accumulate(used, event)
                 elif isinstance(event, ArtifactProduced):
@@ -1695,6 +1856,7 @@ class RunEngine:
                         update={
                             "artifacts": tuple(artifacts),
                             "consumption": _consumption(used),
+                            "assignment_seq": event.seq,
                             "checkpoint": Checkpoint(
                                 ref=checkpoint_ref,
                                 step_id=step_run.step_id,
@@ -1706,14 +1868,27 @@ class RunEngine:
                     run = await self._commit(run.with_step_run(step_run))
                 elif isinstance(event, AssignmentFinished):
                     finished = event
+                last_seq = event.seq
             if finished is None:
                 raise WorkerError("the stream ended without assignment.finished")
         except WorkerError as error:
             span.record_failure("worker error")
+            # The assignment may still be running, and no run follows it now: it is asked to
+            # stop, and stays open, so that a resume asks the worker about it before it hands
+            # over another (ADR-0038).
+            with contextlib.suppress(Exception):
+                await worker.stop(
+                    assignment_id,
+                    StopRequest(
+                        reason="the step failed: " + str(error)[:200],
+                        ceiling_seconds=self._options.step_ceiling_seconds,
+                    ),
+                )
             step_run = step_run.to(
                 StepState.FAILED,
                 artifacts=tuple(artifacts),
                 consumption=_consumption(used),
+                assignment_seq=last_seq,
                 reason=str(error),
                 finished_at=self._clock.now(),
             )
@@ -1724,6 +1899,10 @@ class RunEngine:
 
         now = self._clock.now()
         consumption = _consumption(used)
+        # Its end is read: the assignment is closed, and nothing is asked about it again.
+        step_run = step_run.model_copy(
+            update={"assignment_open": False, "assignment_seq": last_seq}
+        )
         if finished.outcome is Outcome.STOPPED:
             if finished.limit is not None:
                 self._limit_halts.add(run.id)

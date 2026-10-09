@@ -202,6 +202,7 @@ async def test_a_run_completes_and_every_state_change_is_in_the_ledger() -> None
         "step.started:prep",
         "step.finished:prep:succeeded",
         "step.admitted:do",
+        "step.assigned:do",
         "step.started:do",
         "step.finished:do:succeeded",
         "step.admitted:pause",
@@ -444,17 +445,18 @@ async def test_a_run_whose_instance_died_recovers_from_the_last_persisted_bounda
     assert run.step_run("prep").started_at == left.step_run("prep").started_at, (
         "a step before the interruption is not run again"
     )
-    resumed = fake.assignments[1]
-    assert resumed.context.checkpoint_ref == "ckpt/asg_0001/0", (
-        "the worker continues from the persisted boundary, not from the start"
-    )
+    # The worker kept the assignment: it is adopted and read on after the persisted boundary,
+    # not handed over again (ADR-0038).
+    assert len(fake.assignments) == 1
+    assert fake.follows[-1] == ("asg_0001", 4)
     do = run.step_run("do")
     assert [a.id for a in do.artifacts] == ["out-1", "out-2", "out-3"]
     assert do.consumption is not None and do.consumption.compute_seconds == 3.0
     kinds = await h.kinds(run)
     assert kinds[: len(before)] == before, "nothing before the interruption changed"
     assert kinds[len(before)] == "run.recovered:do"
-    assert kinds.count("step.started:prep") == 1 and kinds.count("step.started:do") == 2
+    assert kinds.count("step.started:prep") == 1 and kinds.count("step.started:do") == 1
+    assert kinds.count("step.adopted:do:accepted") == 1
     assert await h.verify()
 
 

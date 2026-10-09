@@ -17,9 +17,11 @@ boundary, A is killed: SIGKILL, no shutdown, no chance to halt or release anythi
   (`run.recovered`), started if A had not started it, or left as it was if it had ended before
   A could complete its job (NTC-0026); the run whose worker step was interrupted continued
   from the worker's checkpoint, and every output of that step exists once;
-- no step that had finished was started again; a step A had started was started again, and a
-  step A had only admitted was started once, by B (NTC-0046); in a run nobody interrupted every
-  step started exactly once;
+- no step that had finished was started again. A worker step whose assignment A had handed
+  over was adopted by B, never handed over or started again: the ledger names one assignment
+  for it (ADR-0038, NTC-0074). Any other step A had started was started again, and a step A had
+  only admitted was started once, by B (NTC-0046). In a run nobody interrupted every step
+  started exactly once;
 - the ledger chain verifies, and the provenance chain of every run verifies against its run
   and its ledger entries.
 
@@ -328,10 +330,12 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
             ids = [a.id for a in finished.step_run("compute").artifacts]
             assert ids == [f"output-{n}" for n in range(1, COMMANDS + 1)], "every output, once"
             if run_id in orphaned:
-                # Recovered by B at the boundary A left: nothing A wrote changed, the entry after
-                # it is the recovery, and only a step A had started was started again. A step A
-                # had admitted and not yet started is in flight too, and goes back to its start:
-                # it is started once, by B (NTC-0046).
+                # Recovered by B at the boundary A left: nothing A wrote changed, and the entry
+                # after it is the recovery. A worker step whose assignment A had handed over is
+                # adopted by B: the worker kept it, and nothing is handed over or started again
+                # (ADR-0038). Any other step A had started was started again. A step A had
+                # admitted and not yet started is in flight too, and goes back to its start: it
+                # is started once, by B (NTC-0046).
                 earlier = before[run_id]
                 assert entries[: len(earlier)] == earlier
                 was = interrupted[run_id]
@@ -348,16 +352,32 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
                     assert kinds.count("run.recovered") == (expected == "run.recovered")
                 in_flight = was.in_flight()
                 started_by_a = {e.refs.step_id for e in earlier if e.kind == "step.started"}
-                restarted = in_flight is not None and in_flight.step_id in started_by_a
-                assert restarted == (
+                handed = in_flight is not None and in_flight.assignment_open
+                assert (in_flight is not None and in_flight.step_id in started_by_a) == (
                     in_flight is not None and in_flight.state is StepState.RUNNING
                 ), f"run {run_id}: a step is running exactly when A wrote its start"
+                restarted = (
+                    in_flight is not None and not handed and in_flight.step_id in started_by_a
+                )
+                adopted = [
+                    e.refs.step_id for e in entries[len(earlier) :] if e.kind == "step.adopted"
+                ]
+                assert adopted == ([in_flight.step_id] if handed else []), (
+                    f"run {run_id}: adopted {adopted}; in flight at the kill "
+                    f"{None if in_flight is None else (in_flight.step_id, in_flight.state)}"
+                )
+                assigned = {
+                    e.refs.assignment_id
+                    for e in entries
+                    if e.kind == "step.assigned" and e.refs.step_id == "compute"
+                }
+                assert len(assigned) == 1, f"run {run_id}: one assignment for compute {assigned}"
                 again = [step for step in set(started) if started.count(step) > 1]
                 assert again == ([in_flight.step_id] if restarted else []), (
                     f"run {run_id}: started more than once {again}; in flight at the kill "
                     f"{None if in_flight is None else (in_flight.step_id, in_flight.state)}"
                 )
-                if in_flight is not None and not restarted:
+                if in_flight is not None and not restarted and not handed:
                     by_b = [
                         e.refs.step_id for e in entries[len(earlier) :] if e.kind == "step.started"
                     ]

@@ -49,3 +49,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0033](ADR-0033-taktus-authenticates-to-a-repository-service-as-an-app-of-its-own.md) | Taktus authenticates to a repository service as an app of its own | accepted |
 | [0035](ADR-0035-a-time-trigger-fires-once-per-slot.md) | A time trigger fires once per slot, through the elected scheduler | accepted |
 | [0037](ADR-0037-a-worker-at-capacity-makes-a-step-wait.md) | A worker at capacity makes a step wait | accepted |
+| [0038](ADR-0038-an-assignment-is-recorded-before-it-is-handed-over.md) | An assignment is recorded before it is handed over | accepted |

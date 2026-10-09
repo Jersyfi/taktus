@@ -3,9 +3,11 @@
 `taktusctl run` executes a bundle against the reference worker with the state in PostgreSQL.
 Once two steps have finished and the third — a worker step — has persisted its first inner
 boundary, the process is killed: SIGKILL, no shutdown, no chance to halt the run. A second
-invocation resumes the run by id. Then: it continued from the last boundary, at most one
-step's work was lost, no artifact is duplicated, and the ledger verifies unbroken across the
-restart with every entry from before it unchanged — and so does the provenance chain: the
+invocation resumes the run by id. The worker kept the assignment the killed process handed
+over, so the second process adopts it instead of handing over another (ADR-0038). Then: it
+continued from the last boundary, at most one step's work was lost, no artifact is duplicated,
+and the ledger verifies unbroken across the restart with every entry from before it
+unchanged — and so does the provenance chain: the
 records written before the kill are unchanged, the interrupted step gets its record from the
 second process, and the chain verifies with no gap at the boundary (ADR-0021).
 """
@@ -183,7 +185,8 @@ async def test_a_run_survives_a_killed_process_and_resumes_at_its_last_boundary(
     assert [s.state for s in resumed.step_runs] == [StepState.SUCCEEDED] * 4
 
     # Continued from the last boundary: the steps before it are untouched, the interrupted
-    # step was resumed from its persisted checkpoint rather than started over.
+    # step's assignment was adopted and read on after its persisted boundary rather than
+    # started over.
     for step_id in ("prepare-commands",):
         assert resumed.step_run(step_id).started_at == interrupted.step_run(step_id).started_at
         assert resumed.step_run(step_id).finished_at == interrupted.step_run(step_id).finished_at
@@ -209,8 +212,11 @@ async def test_a_run_survives_a_killed_process_and_resumes_at_its_last_boundary(
     kinds = [e.kind for e in after]
     assert kinds[len(before)] == "run.recovered"
     assert kinds[-1] == "run.finished"
-    assert kinds.count("step.started") == 5, "prepare once, compute twice, the last two once"
-    assert sum(1 for e in after if e.kind == "step.started" and e.refs.step_id == "compute") == 2
+    assert kinds.count("step.started") == 4, "every step once"
+    assert sum(1 for e in after if e.kind == "step.started" and e.refs.step_id == "compute") == 1
+    assert [e.refs.step_id for e in after if e.kind == "step.adopted"] == ["compute"], (
+        "the second process adopted what the first handed over"
+    )
     assert (
         sum(1 for e in after if e.kind == "step.started" and e.refs.step_id == "prepare-commands")
         == 1

@@ -11,6 +11,12 @@ one at capacity, as the contract's 503 does; `full_for` answers the next so many
 whatever it holds. `peak` is the most it ever held, `refused` how many it turned away.
 `inner_seconds` makes every inner step take that long, in real time, so that assignments of
 several runs overlap.
+
+The stream can be read again from any `seq` (`after`): the script is replayed and every event
+up to it skipped, without calling `on_event` for it. An assignment id the worker holds already
+is refused as the contract's 409 (`AssignmentExists`); one it never received is unknown to
+`state` and `stop`, as the contract's 404 (`UnknownAssignment`). `forget()` drops every
+assignment, as a worker that restarted does.
 """
 
 from __future__ import annotations
@@ -25,6 +31,7 @@ from taktus.ports.worker import (
     ArtifactList,
     ArtifactProduced,
     Assignment,
+    AssignmentExists,
     AssignmentFinished,
     AssignmentId,
     AssignmentState,
@@ -40,6 +47,7 @@ from taktus.ports.worker import (
     StepStarted,
     StopRequest,
     Supports,
+    UnknownAssignment,
     WorkerAtCapacity,
     WorkerError,
 )
@@ -77,6 +85,8 @@ class FakeWorker:
     assignments: list[Assignment] = field(default_factory=list)
     estimates: list[EstimateRequest] = field(default_factory=list)
     stops: list[tuple[str, StopRequest]] = field(default_factory=list)
+    follows: list[tuple[str, int]] = field(default_factory=list)
+    """Every read of a stream: the assignment and the `seq` it was read after."""
     _stop_requested: set[str] = field(default_factory=set)
     _states: dict[str, AssignmentState] = field(default_factory=dict)
     _bytes: dict[str, bytes] = field(default_factory=dict)
@@ -115,6 +125,10 @@ class FakeWorker:
     async def assign(self, assignment: Assignment) -> AssignmentState:
         if self.on_assign is not None:
             await self.on_assign(assignment)
+        if self.unreachable is not None:
+            raise WorkerError(self.unreachable)
+        if assignment.assignment_id in self._states:
+            raise AssignmentExists(f"{assignment.assignment_id} exists")
         if self.full_for > 0 or (self.capacity is not None and len(self._held) >= self.capacity):
             self.full_for = max(self.full_for - 1, 0)
             self.refused += 1
@@ -144,14 +158,28 @@ class FakeWorker:
         return state
 
     async def events(self, assignment_id: AssignmentId, *, after: int = 0) -> AsyncIterator[Event]:
+        self.follows.append((assignment_id, after))
         try:
-            async for event in self._events(assignment_id):
+            async for event in self._events(assignment_id, after):
+                if event.seq <= after:
+                    continue  # read before: the stream resumes after it (W-03)
+                if isinstance(event, AssignmentFinished):
+                    self._states[assignment_id] = self._states[assignment_id].model_copy(
+                        update={
+                            "status": "finished",
+                            "outcome": event.outcome,
+                            "last_seq": event.seq,
+                            "checkpoint_ref": event.checkpoint_ref,
+                            "reason": event.reason,
+                            "finished_at": event.ts,
+                        }
+                    )
                 yield event
         finally:
             # The assignment is over, or nobody follows it any more: its place is free.
             self._held.discard(assignment_id)
 
-    async def _events(self, assignment_id: AssignmentId) -> AsyncIterator[Event]:
+    async def _events(self, assignment_id: AssignmentId, after: int) -> AsyncIterator[Event]:
         assignment = next(a for a in self.assignments if a.assignment_id == assignment_id)
         seq = 0
         ts = datetime.now(UTC)
@@ -162,7 +190,7 @@ class FakeWorker:
             return {"assignment_id": assignment_id, "seq": seq, "ts": ts}
 
         async def emit(event: Event) -> Event:
-            if self.on_event is not None:
+            if self.on_event is not None and event.seq > after:
                 await self.on_event(event)
             return event
 
@@ -247,18 +275,33 @@ class FakeWorker:
         )
 
     async def state(self, assignment_id: AssignmentId) -> AssignmentState:
+        if self.unreachable is not None:
+            raise WorkerError(self.unreachable)
+        if assignment_id not in self._states:
+            raise UnknownAssignment(f"{assignment_id} is unknown")
         return self._states[assignment_id]
 
     async def stop(self, assignment_id: AssignmentId, request: StopRequest) -> AssignmentState:
+        if assignment_id not in self._states:
+            raise UnknownAssignment(f"{assignment_id} is unknown")
         self.stops.append((assignment_id, request))
         self._stop_requested.add(assignment_id)
-        return self._states[assignment_id].model_copy(update={"status": "stopping"})
+        state = self._states[assignment_id]
+        if state.status != "finished":
+            state = state.model_copy(update={"status": "stopping"})
+            self._states[assignment_id] = state
+        return state
 
     async def artifacts(self, assignment_id: AssignmentId) -> ArtifactList:
         return ArtifactList(assignment_id=assignment_id, artifacts=())
 
     async def artifact_bytes(self, assignment_id: AssignmentId, artifact: Artifact) -> bytes:
         return self._bytes[artifact.id]
+
+    def forget(self) -> None:
+        """Drop every assignment, as a worker that restarted does."""
+        self._states.clear()
+        self._held.clear()
 
     def _start_index(self, checkpoint_ref: str | None) -> int:
         if checkpoint_ref is None:

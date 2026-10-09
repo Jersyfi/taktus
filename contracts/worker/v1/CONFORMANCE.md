@@ -168,6 +168,14 @@ The capacity answer is checked too: W-15 holds as many assignments as you declar
 `503` for one more. Until W-15 existed, a worker that took more than it declared passed this
 suite (DEC-0085).
 
+Two answers about an assignment's id are not checked yet (`openapi.yaml`): `409` to an
+assignment whose id the worker already holds, taking nothing new, and `404` to the state of an
+id it does not hold. Taktus relies on both. It records an assignment's id before it posts it. A
+runner that recovers a run asks your worker about that id: a `404` makes it post the same id
+again, and a `409` to that post makes it continue the assignment another runner handed over
+(ADR-0038). A worker that takes a repeated id as a second assignment passes this suite today,
+and two assignments then run for one step. The checks are issue #138 (DEC-0091).
+
 It is not yet *verified*. Taktus grades adapters in three levels — `experimental`, `verified`,
 `reference` — and *verified* needs two things: this suite passed, and the *removal test* passed.
 The removal test takes the worker out of a running Taktus and shows that processes still run,
