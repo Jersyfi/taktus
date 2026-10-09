@@ -15,6 +15,11 @@ the account identifier, never a name — what they wrote, in which conversation,
 reply goes: into the thread of the message, so that a reply never lands outside the
 conversation it answers. A message the connector itself posted carries its mark, or comes from
 the very app the delivery is addressed to, and is refused, so that a reply is never answered.
+
+One delivery is no event: the URL verification by which the service checks an address before
+it sends events there. Once its signature verified, it is refused as `unsupported_event` with an
+answer — its challenge, as plain text — which the receiving endpoint returns to the service as
+it is (ADR-0024, amendment of 2026-10-09). Unverified, it is refused like any delivery.
 """
 
 from __future__ import annotations
@@ -36,6 +41,11 @@ TIMESTAMP_HEADER = "x-slack-request-timestamp"
 VERSION = "v0"
 WINDOW = 300
 """Seconds a delivery's moment of sending may lie from the moment it arrived."""
+
+HANDSHAKE = "url_verification"
+"""The type of the delivery by which the service checks an address before it sends events."""
+ANSWER_LIMIT = 4096
+"""The most characters an answer's body may hold (`Connector.json#/$defs/IntakeAnswer`)."""
 
 # The service's event type -> the event kind the declaration lists. A `message` with a subtype
 # — an edit, a deletion, a join — is not a new message and is not normalised.
@@ -113,6 +123,8 @@ def normalise(
         return refused("malformed", f"the body is not JSON: {error}")
     if not isinstance(payload, dict):
         return refused("malformed", "the body is not an object")
+    if payload.get("type") == HANDSHAKE:
+        return handshake(payload)
     if payload.get("type") != "event_callback":
         return refused(
             "unsupported_event",
@@ -122,6 +134,21 @@ def normalise(
         return _event(payload, received_at)
     except Malformed as error:
         return refused("malformed", str(error))
+
+
+def handshake(payload: Json) -> Json:
+    """The service's check of the address, verified like every delivery: no event, nothing
+    kept, and the challenge sent back as the whole body of the answer, as plain text."""
+    challenge = payload.get("challenge")
+    if not isinstance(challenge, str) or not challenge or len(challenge) > ANSWER_LIMIT:
+        return refused("malformed", "the URL verification carries no usable challenge")
+    return {
+        "refused": {
+            "reason": "unsupported_event",
+            "detail": "a URL verification is no event; it is answered with its challenge",
+            "answer": {"media_type": "text/plain", "body": challenge},
+        }
+    }
 
 
 def _event(payload: Json, received_at: str) -> Json:

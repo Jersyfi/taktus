@@ -121,6 +121,42 @@ contract had no word for the scheme the service uses.
   repository connector's run of the suite is unchanged. `v1` is not yet released (ADR-0019),
   and no published contract is broken (M3.5).
 
+## Amendment — a refusal may carry the answer to a handshake (2026-10-09)
+
+The chat service checks an address before it sends events there (issue #145). It sends a signed
+delivery that is no event: a URL check with a random value, the challenge. It accepts the
+address only when the answer carries that value back. Intake could not express that answer. It
+decided `accepted` or `refused`, and the HTTP surface answered every decision with `202` and a
+body of its own. The check therefore never succeeded, and no event could ever be sent.
+
+Two places could carry the answer: a third branch of `IntakeResult`, beside `accepted` and
+`refused`, or a field of a refusal. The second is taken.
+
+- **A handshake is refused, with an answer.** A refusal whose reason is `unsupported_event` may
+  carry `answer`: a media type and a body, at most 4096 characters (`Connector.json`,
+  `IntakeAnswer`). It means that the delivery is not an event, that nothing is kept, and that
+  the receiving endpoint answers the sender with exactly this body, status `200`. Only the
+  connector knows its target's handshake. The receiving endpoint knows no target and copies the
+  body.
+- **Only a verified delivery is answered.** The schema allows `answer` on `unsupported_event`
+  alone, which a connector decides only after the signature verified (§5). An unsigned, wrongly
+  signed or stale handshake is refused as `unsigned` or `bad_signature`, like any delivery, and
+  carries no answer.
+- **Why not a third branch.** A handshake is a delivery on which nothing is kept and nothing is
+  executed. That is what a refusal already means, everywhere a refusal is handled. A third
+  branch would make every reader of an intake result — the `command` component among them —
+  learn a case that changes nothing it does. The field reaches only the one reader that answers
+  the sender: the receiving endpoint.
+- **The suite checks it.** A scenario may name a recorded handshake and the answer it expects
+  (`Scenario`, `intake.handshake`). C-08 then delivers it signed and expects the answer
+  exactly, and unsigned, wrongly signed and stale and expects the refusal without an answer
+  (NTC-0085).
+- **Nothing that conformed stops conforming.** The change adds an optional field and an
+  optional scenario part. A refusal, a scenario or a connector that was valid before is valid
+  now. A connector that never answers a handshake keeps conforming, and a receiving endpoint
+  that ignores the field answers as before. `v1` is not yet released (ADR-0019), and no
+  published contract is broken (M3.5).
+
 ## Where this promise ends
 
 Effect and idempotency are the connector's declarations, and the run trusts them: a connector
@@ -133,3 +169,10 @@ time and verifies; only `hmac-sha256-timestamped` bounds that, and only to 300 s
 them a replay is recognised by the event's identifier, where the store that keeps intake
 events recognises it at all. C-10, the removal test, is proven by the process under
 `blueprints/self-operation/`, not by the suite.
+
+An answer to a handshake is only as trustworthy as the signature before it: the contract keeps
+an unverified delivery from being answered, not a verified one from being answered wrongly. The
+receiving endpoint copies the body and the media type and does not judge them; a connector that
+answers with a value the target did not send has broken nothing the suite can see unless its
+scenario names the handshake. Status `200` is the only status an answer has: a handshake that
+needs another, or headers of its own, is not covered.

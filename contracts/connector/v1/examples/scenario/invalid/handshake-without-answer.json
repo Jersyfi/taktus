@@ -49,10 +49,6 @@
           "content-type": "application/json"
         },
         "body": "{\"type\":\"url_verification\",\"challenge\":\"placeholder-challenge\"}"
-      },
-      "answer": {
-        "media_type": "text/plain",
-        "body": "placeholder-challenge"
       }
     }
   }
