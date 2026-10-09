@@ -124,7 +124,7 @@ verify-compose: need-docker ## From nothing: up with the reference worker, the c
 migrate: env ## Bring the database named by TAKTUS_DATABASE_URL to the current schema
 	$(UV) run alembic -c migrations/alembic.ini upgrade head
 
-lint: env ## Static analysis and types
+lint: env ## Static analysis and types, of the product and of the Python tools under tools/
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
 	$(UV) run mypy

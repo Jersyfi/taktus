@@ -97,6 +97,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0065](NTC-0065-a-pointer-in-the-visions-history-follows-a-deleted-file.md) | A pointer in the vision's history follows a deleted file | M2.6 | `unlisted` | one sentence of `docs/vision/history.md` no longer names the deleted migration file; nothing the vision states changed; proposed M1.13 |
 | [0072](NTC-0072-the-coding-workers-agent-is-pinned.md) | The coding worker's agent is pinned | M2.4 | `behaviour-change` | the image and the live job install the agent at the one exact version `workers/claudecode/agent-version` names, 2.1.295; a newer release is said on the live job's page and taken by a pull request the live test proves (#116) |
 | [0075](NTC-0075-the-suite-checks-the-capacity-answer.md) | The suite checks the capacity answer | M2.2 | `test-strategy` | conformance check W-15 holds as many assignments as a worker declares and expects `503` with a problem body for one more, nothing recorded; a fault in each reference worker is caught by W-15 alone; inconclusive, with what to do, when a place frees or more than sixteen are declared (#133) |
+| [0076](NTC-0076-lint-type-checks-the-tools.md) | Lint type-checks the tools | M2.2 | `test-strategy` | `make lint` runs `mypy --strict` over the Python tools under `tools/` as over the product; two errors in `check_decisions.py` fixed without changing what it checks; a test fails when a tool is left out or a wrong annotation in one passes (#142) |
 
 ## Decisions
 

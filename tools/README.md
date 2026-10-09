@@ -24,6 +24,8 @@ tools/validate_contracts.py` works without the project installed. A third party 
 with nothing but that file. `check_decisions.py`, `check_adrs.py`, `check_status.py`, `check_vision.py`, `check_usecases.py` and `checkdocs.py` use the standard
 library only and run the same way; CI runs the first four without `make install`. `check_usecases.py` runs in the gates job, through `uv run python`, because a `verified` use case's tests need the project environment.
 
+Every Python tool here is type-checked by `make lint` with the project's `mypy --strict`, like the product (`[tool.mypy]` in `pyproject.toml`, NTC-0076). The check runs in the project environment; it adds no dependency to a tool, and a tool with a PEP 723 header keeps the dependencies that header lists. The shell scripts are not type-checked.
+
 **A gate with nothing to check reports green and says so.** A gate that is red because it found
 nothing is broken, not strict. `make gates` needs `uv`, `gitleaks` and `git` on the path, and nothing else
 — no Node, no database, and no `make install` first. The tests that need PostgreSQL bring their
