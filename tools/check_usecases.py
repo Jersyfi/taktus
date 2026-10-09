@@ -10,7 +10,7 @@ state `verified`, whose named tests are run with pytest from the project environ
 
 A use case is a file `docs/usecases/<component>/UC-<area>.<case>-<slug>.md`: front matter, then
 the requirement in three sections — what must be achieved, how it is verified, where the boundary
-lies — and a fourth that says what it rests on.
+lies — and two that describe: what it rests on, and, optionally, what is proven so far.
 
 Checks, per use case:
 
@@ -23,7 +23,9 @@ Checks, per use case:
 4. its state is one of specified, building, built, verified, retired; its version is a milestone
    of `docs/roadmap.md`;
 5. sections 1 to 3 are present, in order, not empty, no placeholder — a use case without a
-   verification condition is not a requirement;
+   verification condition is not a requirement; what is proven so far is not stated inside them:
+   it is a statement of the state, described in section 5, so that the pull request that proves
+   more can say so (DEC-0106);
 6. in state `built` or `verified` it names at least one test, and every test it names exists
    (`path::name`, a function of that name in that file);
 7. in state `verified` its named tests pass: run with pytest, none failing, none skipped;
@@ -70,7 +72,8 @@ SECTIONS = [
     "2. How it is verified",
     "3. Where the boundary lies",
 ]
-DESCRIBED = "4. What it rests on"
+DESCRIBED = ["4. What it rests on", "5. What is proven so far"]
+PROVEN = re.compile(r"\*\*Proven so far\b", re.IGNORECASE)
 
 FILENAME = re.compile(r"^(UC-\d+\.\d+)-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 USECASE_ID = re.compile(r"^UC-\d+\.\d+$")
@@ -351,8 +354,13 @@ def check_shape(
             problems.append(f"`## {name}` is empty")
         elif hit := PLACEHOLDER.search(strip_noise(text)):
             problems.append(f"`## {name}` keeps a placeholder: {hit.group(0)!r}")
-    expected = [name for name in [*SECTIONS, DESCRIBED] if name in case.order]
-    extra = [name for name in case.order if name not in [*SECTIONS, DESCRIBED]]
+        elif PROVEN.search(text):
+            problems.append(
+                f"`## {name}` states what is proven so far: that describes the state and "
+                f"belongs in `## {DESCRIBED[1]}`, outside the requirement (DEC-0106)"
+            )
+    expected = [name for name in [*SECTIONS, *DESCRIBED] if name in case.order]
+    extra = [name for name in case.order if name not in [*SECTIONS, *DESCRIBED]]
     if extra:
         problems.append("unexpected section(s): " + ", ".join(f"`## {e}`" for e in extra))
     elif case.order != expected:

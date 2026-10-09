@@ -35,6 +35,7 @@ def usecase(
     verified_by: str = "A fixture shows the outcome.",
     boundary: str = "Nothing else.",
     extra: str = "",
+    proven: str = "",
 ) -> str:
     return (
         "---\n"
@@ -51,6 +52,7 @@ def usecase(
         f"## 2. How it is verified\n\n{verified_by}\n\n"
         f"## 3. Where the boundary lies\n\n{boundary}\n\n"
         f"## 4. What it rests on\n\nNothing.{extra}\n"
+        + (f"\n## 5. What is proven so far\n\n{proven}\n" if proven else "")
     )
 
 
@@ -260,6 +262,26 @@ def test_a_changed_description_with_the_implementation_passes(
     (repo / "src/taktus/components/run/engine.py").write_text("x = 2\n")
     code, out = gate(repo, capsys)
     assert code == 0, out
+
+
+def test_what_is_proven_so_far_changes_with_the_implementation(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Section 5 describes the state: the pull request that proves more says so (DEC-0106)."""
+    write(repo, usecase(proven="Nothing is built."))
+    settle(repo)
+    write(repo, usecase(proven="The outcome, by the named test."))
+    (repo / "src/taktus/components/run/engine.py").write_text("x = 2\n")
+    code, out = gate(repo, capsys)
+    assert code == 0, out
+
+
+def test_what_is_proven_so_far_inside_the_requirement_fails(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(repo, usecase(verified_by="A fixture shows it.\n\n**Proven so far:** nothing."))
+    code, out = gate(repo, capsys)
+    assert code == 1 and "`## 2. How it is verified` states what is proven so far" in out
 
 
 def test_a_requirement_alone_passes(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:

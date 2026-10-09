@@ -30,11 +30,6 @@ hardware set aside for them. A process does not change when the model behind it 
 - A model the organisation trained itself is reached through the same contract as any other.
 - Every answer's provenance names the model that gave it (ADR-0021).
 
-**Proven so far:** the contract's checks pass against an honest endpoint and fail on an invalid
-declaration, and a purpose without a model fails its step, by the named tests. One adapter exists;
-the same process against a local and a remote model, and a trained model reached through the
-contract, are not shown.
-
 ## 3. Where the boundary lies
 
 **Not equal quality.** Models differ; that the quality holds after a change is UC-8.4 and UC-8.9.
@@ -55,3 +50,10 @@ it can compute before a call, the usage of one call by price kind, and the price
 third amendment; ADR-0010). The chat-completions dialect most endpoints answer is how the one
 reference adapter speaks on the wire, not the contract, and an adapter for a provider's own
 interface is equally valid.
+
+## 5. What is proven so far
+
+The contract's checks pass against an honest endpoint and fail on an invalid
+declaration, and a purpose without a model fails its step, by the named tests. One adapter exists;
+the same process against a local and a remote model, and a trained model reached through the
+contract, are not shown.

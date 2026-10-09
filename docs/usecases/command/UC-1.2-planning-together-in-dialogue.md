@@ -38,9 +38,6 @@ because someone approved one step too many.
   is persisted. A plan with a step that cannot be estimated before it starts is refused before
   anything runs (ADR-0005).
 
-**Proven so far:** commissioning is a recorded act, by the named test. The plan as a record with its
-four parts, the estimates and their basis, and re-commissioning a changed plan are not built.
-
 ## 3. Where the boundary lies
 
 **Not building the process.** Turning a description into a process, testing it and registering it
@@ -56,3 +53,8 @@ The plan of `docs/architecture/control-plane.md` §3; commissioning as a recorde
 decomposition of long work (ADR-0005, and definition `UC-8.10`, which asks for the decomposition at
 planning). Definition `UC-1.2`. The version is `0.3.0`, where a process is created, changed and
 rolled back from the web app and from chat.
+
+## 5. What is proven so far
+
+Commissioning is a recorded act, by the named test. The plan as a record with its
+four parts, the estimates and their basis, and re-commissioning a changed plan are not built.
