@@ -7,7 +7,10 @@ reopened from the last sequence number seen (`Last-Event-ID`), which the contrac
 worker to honour (W-03). Two timeouts guard the read: `idle_timeout` between two events and
 `stream_timeout` for the whole stream; either becomes a WorkerError, which the run engine treats
 as a failed step. A 503 to a new assignment is the contract's "at capacity" and becomes
-WorkerAtCapacity, on which the run engine makes the step wait (ADR-0037).
+WorkerAtCapacity, on which the run engine makes the step wait (ADR-0037). A 409 to a new
+assignment is the contract's "an assignment with this id exists" and becomes AssignmentExists;
+a 404 to the state of an assignment becomes UnknownAssignment. The run engine asks both when it
+finds an assignment a dead runner handed over (ADR-0038).
 
 Credential values never pass through here: the contract carries names, and the environment of
 the worker process is the execution adapter's business.
@@ -27,6 +30,7 @@ from taktus.ports.worker import (
     EVENT,
     ArtifactList,
     Assignment,
+    AssignmentExists,
     AssignmentId,
     AssignmentState,
     Capabilities,
@@ -34,6 +38,7 @@ from taktus.ports.worker import (
     EstimateRequest,
     Event,
     StopRequest,
+    UnknownAssignment,
     WorkerAtCapacity,
     WorkerError,
 )
@@ -85,11 +90,11 @@ class HttpWorker:
 
     async def assign(self, assignment: Assignment) -> AssignmentState:
         return await self._post(
-            "/v1/assignments", assignment, AssignmentState, expected=201, capacity=True
+            "/v1/assignments", assignment, AssignmentState, expected=201, handover=True
         )
 
     async def state(self, assignment_id: AssignmentId) -> AssignmentState:
-        return await self._get(f"/v1/assignments/{assignment_id}", AssignmentState)
+        return await self._get(f"/v1/assignments/{assignment_id}", AssignmentState, known=True)
 
     async def stop(self, assignment_id: AssignmentId, request: StopRequest) -> AssignmentState:
         return await self._post(
@@ -169,27 +174,33 @@ class HttpWorker:
         except ValidationError as error:
             raise WorkerError(f"{self.endpoint}: {path}: {_first(error)}") from error
 
-    async def _get[T: Value](self, path: str, shape: type[T]) -> T:
+    async def _get[T: Value](self, path: str, shape: type[T], *, known: bool = False) -> T:
+        """`known`: a 404 is the contract's answer that no assignment of this id exists."""
         try:
             response = await self._http.get(path)
         except httpx.HTTPError as error:
             raise WorkerError(f"{self.endpoint}: GET {path} failed: {error!r}") from error
+        if known and response.status_code == 404:
+            raise UnknownAssignment(f"{self.endpoint}: {path} answered 404, no such assignment")
         return self._read(response, path, shape, expected=200)
 
     async def _post[T: Value](
-        self, path: str, body: Value, shape: type[T], *, expected: int, capacity: bool = False
+        self, path: str, body: Value, shape: type[T], *, expected: int, handover: bool = False
     ) -> T:
-        """`capacity`: a 503 is the contract's answer of a worker at its declared capacity."""
+        """`handover`: a 503 is the contract's answer of a worker at its declared capacity, and a
+        409 its answer to an assignment id it holds already."""
         try:
             response = await self._http.post(path, json=body.document())
         except httpx.HTTPError as error:
             raise WorkerError(f"{self.endpoint}: POST {path} failed: {error!r}") from error
-        if capacity and response.status_code == 503:
+        if handover and response.status_code == 503:
             detail = _problem(response)
             raise WorkerAtCapacity(
                 f"{self.endpoint}: {path} answered 503, at capacity"
                 + (f": {detail}" if detail else "")
             )
+        if handover and response.status_code == 409:
+            raise AssignmentExists(f"{self.endpoint}: {path} answered 409, the assignment exists")
         return self._read(response, path, shape, expected=expected)
 
     def _read[T: Value](

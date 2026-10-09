@@ -111,6 +111,11 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
         (StepState.STOPPED, StepState.FAILED),
         (StepState.FAILED, StepState.FAILED),
         (StepState.ADMITTED, StepState.FAILED),
+        # Adopted: the assignment an earlier attempt handed over is still the worker's, and the
+        # step continues it instead of handing over another (ADR-0038).
+        (StepState.STOPPED, StepState.RUNNING),
+        (StepState.FAILED, StepState.RUNNING),
+        (StepState.REJECTED, StepState.RUNNING),
     }
 )
 
@@ -146,6 +151,15 @@ class StepRun(Value):
     second effect, as the connector said. None for a failure that was not a connector's."""
     adapter: str | None = None
     assignment_id: AssignmentId | None = None
+    assignment_open: bool = False
+    """Whether the assignment `assignment_id` names was handed to the worker and the run has
+    not read its end. Set and committed before the assignment is posted, cleared when its
+    `assignment.finished` or its rejection is read. An open assignment may be running in the
+    worker without anyone following it, so a step never hands over another while one is open:
+    it asks the worker first, and adopts it, or posts it again under the same id (ADR-0038)."""
+    assignment_seq: int = Field(default=0, ge=0)
+    """The `seq` of the last event of the open assignment whose effect the step run holds: the
+    worker's last boundary persisted. Whoever adopts the assignment reads its stream after it."""
     estimate: ConsumptionQuantities | None = None
     """What the step was estimated to use, as the adapter or the method said."""
     reservation: ConsumptionQuantities | None = None

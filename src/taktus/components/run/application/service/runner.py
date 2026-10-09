@@ -234,7 +234,9 @@ class Runner:
 
     async def _heartbeat(self, executing: _Executing) -> None:
         """Renew the lease while the run executes. A renewal that fails means the claim is no
-        longer ours: the run is asked to stop at its boundary and the job is left alone."""
+        longer ours: the run is asked to stop at its boundary and the job is left alone, and
+        so is the worker's assignment, which the runner holding the claim now adopts
+        (ADR-0038)."""
         while True:
             await self.clock.sleep(self.options.heartbeat_seconds)
             renewed = await self._renew(executing)
@@ -243,7 +245,7 @@ class Runner:
             if not renewed:
                 executing.lost = True
                 executing.stop_requested = True
-                await self.engine.request_stop(executing.run_id)
+                self.engine.relinquish(executing.run_id)
                 return
 
     async def _renew(self, executing: _Executing) -> bool | None:
