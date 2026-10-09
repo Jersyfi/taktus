@@ -348,3 +348,21 @@ def test_a_record_written_after_the_answer_and_a_mode_4_answer_are_left_out(
     assert (
         "20 decided under the reversed default, the override rate goes to the owner at 40" in line
     )
+
+
+# --- the index reads by kind ------------------------------------------------------------------
+
+
+def test_a_row_filed_in_another_table_of_the_index_is_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text = (REGISTER / "README.md").read_text(encoding="utf-8")
+    row = next(line for line in text.splitlines() if line.startswith("| [0001](NTC-0001"))
+    moved = text.replace(row + "\n", "", 1).replace("## Decisions\n", f"## Decisions\n\n{row}\n", 1)
+    index = tmp_path / "README.md"
+    index.write_text(moved, encoding="utf-8")
+    monkeypatch.setattr(check_decisions, "INDEX", index)
+    assert "NTC-0001-" not in check_decisions.index_section("Notices")
+    assert "NTC-0001-" in check_decisions.index_section("Decisions")
+    index.write_text(text, encoding="utf-8")
+    assert "NTC-0001-" in check_decisions.index_section("Notices")

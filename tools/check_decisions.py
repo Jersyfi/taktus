@@ -17,7 +17,8 @@ Checks:
 2. every record under docs/decisions/ has the same shape plus an Outcome with a date and an
    answer (or, for a DEFECT, what it now says; for a NOTE, why it is a note);
 3. a number is used once, and never both under open/ and as a record;
-4. every record is listed in docs/decisions/README.md;
+4. every record is listed in docs/decisions/README.md, in its own table — a decision under
+   Decisions, a notice under Notices, a provided need under Needs;
 4a. every notice (NTC-NNNN, a mode-2 record, ADR-0017 §2a) has its header — a mode-2 entry of
    anchors.taktus.md that exists, the kind that entry names there, a date, the pull request —
    the four sections in order, no placeholder, and is listed in the index; a notice of kind
@@ -253,6 +254,15 @@ class Document:
 
 
 # --- parsing -------------------------------------------------------------------------------------
+
+
+def index_section(heading: str) -> str:
+    """The part of the register's index under `## <heading>`: a record is listed in its own
+    table — a notice under Notices, a need under Needs, a decision under Decisions — so that the
+    index reads by kind and a row filed in the wrong table is found."""
+    text = INDEX.read_text(encoding="utf-8") if INDEX.exists() else ""
+    found = re.search(rf"^## {re.escape(heading)}\s*$(.*?)(?=^## |\Z)", text, re.M | re.S)
+    return found[1] if found else ""
 
 
 def strip_comments(text: str) -> str:
@@ -553,15 +563,15 @@ def check_notices(report: Report) -> list[Document]:
     if not notices:
         report.ok("no notices yet")
         return notices
-    index = INDEX.read_text(encoding="utf-8") if INDEX.exists() else ""
+    index = index_section("Notices")
     unlisted = [doc for doc in notices if doc.path.name not in index]
     if unlisted:
         report.fail(
             str(INDEX.relative_to(ROOT)),
-            "not listed: " + ", ".join(doc.path.name for doc in unlisted),
+            "not listed under Notices: " + ", ".join(doc.path.name for doc in unlisted),
         )
     else:
-        report.ok(f"{INDEX.relative_to(ROOT)} lists every notice")
+        report.ok(f"{INDEX.relative_to(ROOT)} lists every notice under Notices")
     return notices
 
 
@@ -664,15 +674,15 @@ def check_needs(report: Report) -> tuple[list[Document], list[Document]]:
             report.fail(doc.rel, f"NEED-{doc.number} is also {seen[doc.number]}")
         seen[doc.number] = doc.rel
     if provided:
-        index = INDEX.read_text(encoding="utf-8") if INDEX.exists() else ""
+        index = index_section("Needs")
         unlisted = [doc for doc in provided if doc.path.name not in index]
         if unlisted:
             report.fail(
                 str(INDEX.relative_to(ROOT)),
-                "not listed: " + ", ".join(doc.path.name for doc in unlisted),
+                "not listed under Needs: " + ", ".join(doc.path.name for doc in unlisted),
             )
         else:
-            report.ok(f"{INDEX.relative_to(ROOT)} lists every provided need")
+            report.ok(f"{INDEX.relative_to(ROOT)} lists every provided need under Needs")
     return open_needs, provided
 
 
@@ -914,15 +924,15 @@ def check_register(report: Report) -> tuple[list[Document], list[Document]]:
             report.fail(doc.rel, "its record exists, but the file is still under open/")
 
     if records:
-        index = INDEX.read_text(encoding="utf-8") if INDEX.exists() else ""
+        index = index_section("Decisions")
         unlisted = [doc for doc in records if doc.path.name not in index]
         if unlisted:
             report.fail(
                 str(INDEX.relative_to(ROOT)),
-                "not listed: " + ", ".join(doc.path.name for doc in unlisted),
+                "not listed under Decisions: " + ", ".join(doc.path.name for doc in unlisted),
             )
         else:
-            report.ok(f"{INDEX.relative_to(ROOT)} lists every record")
+            report.ok(f"{INDEX.relative_to(ROOT)} lists every record under Decisions")
     return open_docs, records
 
 
