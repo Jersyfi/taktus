@@ -515,13 +515,13 @@ def check_notice(doc: Document, problems: list[str], entries: dict[str, str | No
             problems.append(f"`## {name}` is empty")
         elif found := PLACEHOLDER.search(strip_code(body)):
             problems.append(f"`## {name}` keeps a placeholder: {found.group(0)!r}")
-    if kind == GATE_KIND and (body := doc.sections.get(GATE_SECTION)):
-        if GATE_NAME.search(body) is None:
+    if kind == GATE_KIND and (gate_body := doc.sections.get(GATE_SECTION)):
+        if GATE_NAME.search(gate_body) is None:
             problems.append(
                 f"`## {GATE_SECTION}` names no gate (`make gate-<name>`, `make test`, `make lint` "
                 "or a `tests/<path>`)"
             )
-        if len(body) < 300:
+        if len(gate_body) < 300:
             problems.append(
                 f"`## {GATE_SECTION}` is too short to be a demonstration: state what the gate "
                 "looked at, what it would have caught, and the evidence it caught nothing"
@@ -533,8 +533,8 @@ def check_notice(doc: Document, problems: list[str], entries: dict[str, str | No
             f"a notice of kind {kind} decides by a source and states `**{FOLLOWS}:**` — how the "
             "decision follows from it, not only which source was named (DEC-0040)"
         )
-    if kind == UNLISTED_KIND and (body := doc.sections.get(UNLISTED_SECTION)):
-        if re.search(r"\bM[1-4]\.\d+\b", body) is None:
+    if kind == UNLISTED_KIND and (unlisted_body := doc.sections.get(UNLISTED_SECTION)):
+        if re.search(r"\bM[1-4]\.\d+\b", unlisted_body) is None:
             problems.append(
                 f"`## {UNLISTED_SECTION}` names no entry (`M<mode>.<n>`) for the anchor page"
             )
