@@ -3,6 +3,7 @@ one exists, so that the shape the tests store is the shape the product stores.""
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,8 @@ from taktus.components.catalog.domain.model import (
     Verdict,
 )
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.decision.domain.model import RegisterEntry, Request
+from taktus.components.governance.domain.model import AnchorConfiguration
 from taktus.components.identity.domain.model import (
     ChannelLink,
     Identity,
@@ -34,7 +37,7 @@ from taktus.components.process.domain.model import (
     Trigger,
     TriggerState,
 )
-from taktus.components.run.domain.model import Checkpoint, Run, RunState, StepState
+from taktus.components.run.domain.model import Anchoring, Checkpoint, Run, RunState, StepState
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import (
     Artifact,
@@ -235,6 +238,13 @@ def run(id: str = "run_1", tenant: str = "t") -> Run:
                 ),
             ),
             "consumption": Consumption(compute_seconds=0.5, resource_class="cpu.small"),
+            "confirmed_by": "idn_ada",
+            "anchoring": Anchoring(
+                requests=("dr_0123456789abcdef01234567",),
+                round=1,
+                verdict="proceed",
+                decided_by="idn_ada",
+            ),
             "checkpoint": Checkpoint(
                 ref="ckpt/asg_0001/0",
                 step_id="compute",
@@ -268,8 +278,75 @@ def identity(tenant: str = "t") -> Identity:
         id="idn_ada",
         tenant=tenant,
         org_path=(tenant, "finance", "payables"),
+        roles=("finance.lead", "owner"),
         key_digest="ab" * 32,
         created_at=AT,
+    )
+
+
+def anchor_configuration(tenant: str = "t") -> AnchorConfiguration:
+    examples = ROOT / "contracts/shared/v1/examples/anchor/valid"
+    anchors = []
+    for name in ("payment-release", "correction-after-delivery", "release"):
+        anchor = json.loads((examples / f"{name}.json").read_text())
+        anchor.pop("scope", None)
+        anchors.append(anchor)
+    return AnchorConfiguration.model_validate(
+        {
+            "id": tenant,
+            "tenant": tenant,
+            "anchors": anchors,
+            "risk_classes": {
+                "financial.high": ["payment.release:large"],
+                "egress.any": ["correction.execute:*"],
+            },
+            "configured_at": AT,
+            "configured_by": "idn_admin",
+        }
+    )
+
+
+def decision_request(tenant: str = "t") -> Request:
+    shaped = json.loads(
+        (ROOT / "contracts/shared/v1/examples/decision-request/valid/applied.json").read_text()
+    )
+    return Request.model_validate(
+        {
+            "id": shaped["id"],
+            "tenant": tenant,
+            "decider": "product.owner",
+            "anchor": "anc-release",
+            "raised_at": AT,
+            "request": shaped,
+            "answered_by": "idn_ada",
+            "answered_at": AT + timedelta(hours=2),
+            "reflection": "I read your answer as option A. Confirm to apply this.",
+            "decided_by": "idn_ada",
+            "decided_at": AT + timedelta(hours=2, minutes=1),
+        }
+    )
+
+
+def register_entry(tenant: str = "t") -> RegisterEntry:
+    return RegisterEntry.model_validate(
+        {
+            "id": "dce_2026-014",
+            "tenant": tenant,
+            "request_id": "DR-2026-014",
+            "run_id": "run_17342",
+            "step_id": "roadmap-consistency",
+            "class": "strategic",
+            "anchor": "anc-release",
+            "decider": "product.owner",
+            "option": "A",
+            "proposal": "Ship 0.2.0 without the chat connector.",
+            "modifications": "release notes name the missing connector",
+            "answer_raw": "yes, ship it, but mention the gap in the release notes",
+            "decided_by": "idn_ada",
+            "raised_at": AT,
+            "answered_at": AT + timedelta(hours=2),
+            "decided_at": AT + timedelta(hours=2, minutes=1),
+        }
     )
 
 

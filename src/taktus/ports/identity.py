@@ -25,6 +25,8 @@ class Resolution(Value):
     tenant: str = Field(min_length=1)
     identity: str = Field(min_length=1)
     org_path: tuple[str, ...] = Field(min_length=1)
+    roles: tuple[str, ...] = ()
+    """The roles the identity holds (ADR-0042)."""
 
 
 class UnknownSenderAnswer(Value):

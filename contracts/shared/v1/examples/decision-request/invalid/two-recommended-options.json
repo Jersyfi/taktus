@@ -13,14 +13,16 @@
       "proposal": "Ship 0.2.0 without the chat connector.",
       "consequence": "Decision requests reach people by CLI only for one more version.",
       "effort": "none",
-      "recommended": true
+      "recommended": true,
+      "reason": "Everything else for 0.2.0 is done, and the gap reaches only the chat channel."
     },
     {
       "id": "B",
       "proposal": "Hold 0.2.0 until the chat connector passes conformance.",
       "consequence": "About two weeks later.",
       "effort": "two weeks",
-      "recommended": true
+      "recommended": true,
+      "reason": "Everything else for 0.2.0 is done, and the gap reaches only the chat channel."
     }
   ],
   "blocking": [],

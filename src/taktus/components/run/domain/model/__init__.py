@@ -10,10 +10,13 @@ from taktus.components.run.domain.model.errors import (
     UnsupportedWork,
 )
 from taktus.components.run.domain.model.run import (
+    DECLINE,
     INTERRUPTIBLE,
+    PROCEED,
     RESUMABLE,
     RUN_TRANSITIONS,
     STEP_TRANSITIONS,
+    Anchoring,
     Cause,
     Checkpoint,
     Run,
@@ -48,10 +51,13 @@ from taktus.components.run.domain.model.work import (
 )
 
 __all__ = [
+    "DECLINE",
     "INTERRUPTIBLE",
+    "PROCEED",
     "RESUMABLE",
     "RUN_TRANSITIONS",
     "STEP_TRANSITIONS",
+    "Anchoring",
     "BacklogRule",
     "Cause",
     "CheckRule",

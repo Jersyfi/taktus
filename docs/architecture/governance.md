@@ -86,6 +86,15 @@ that reaches a third party.
 An anchor halts the run at a **step boundary** — never before, never after — and raises a decision
 request.
 
+**In the product** (ADR-0042) a tenant's anchors are a configuration the governance component
+keeps: the anchors in the shape of `contracts/shared/v1/Anchor.json`, and the tenant's risk
+classes, each a name for a set of tool actions. One that leaves the legal or the correction class
+empty is refused; a tenant that configured nothing holds the shipped default, one legal and one
+correction anchor decided by the role `owner`. An anchor applies to a step when every selector it
+gives matches its tool actions, its process and its risk classes. The run asks before anything of
+a step starts, before its autonomy level is applied, and the step waits in `waiting_human` with
+one decision request per anchor.
+
 > Full autonomy without responsibility would be a bus factor of zero in another form. Every
 > instantiated department has exactly one human owner.
 
@@ -135,6 +144,14 @@ it in their sleep by the third one.
    similar cases itself.
 3. **Blocked work is visible.** Whatever waits on an answer appears in the decider's view and in the
    run history. An unanswered request is never a silent stall.
+
+**In the product** (ADR-0042) the `decision` component holds requests and the register. A request
+is addressed to the role its anchor names and reached on the control plane's own surface
+(`/decisions`, with the decider's account key): listed with what is overdue, answered, its reading
+sent back and confirmed. The reading is a rule — the answer names exactly one option, or none is
+read — and every answer is confirmed, a chosen option as well as free text. A decider reads their
+own response times; anyone else reads them aggregated by role or department over at least two
+deciders (ADR-0015).
 
 ### 3.3 Against escalation
 

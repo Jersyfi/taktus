@@ -39,6 +39,14 @@ class DecisionOption(Value):
     consequence: str | None = None
     effort: str | None = None
     recommended: bool
+    reason: str | None = Field(default=None, min_length=1)
+    """Why the option is recommended; required on the recommended one."""
+
+    @model_validator(mode="after")
+    def _a_recommendation_carries_its_reason(self) -> DecisionOption:
+        if self.recommended and self.reason is None:
+            raise ValueError(f"the recommended option {self.id} carries its reason")
+        return self
 
 
 class DecisionChannel(Value):

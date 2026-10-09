@@ -59,6 +59,11 @@ from taktus.components.command.application.service import (
     ReceiveIntakeHandler,
 )
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.decision.application.query import DecisionQueries
+from taktus.components.decision.application.service import (
+    AnswerRequestHandler,
+    ConfirmRequestHandler,
+)
 from taktus.components.governance.application.service import (
     ReportCapacity,
     ReportCapacityHandler,
@@ -73,6 +78,7 @@ from taktus.components.process.application.service.triggers import TriggersHandl
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
 from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import (
+    DecideSteps,
     EngineOptions,
     RunEngine,
     Runner,
@@ -81,6 +87,7 @@ from taktus.components.run.application.service import (
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
+from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.execution import (
     connector_pool,
     memory_demand,
@@ -98,7 +105,7 @@ from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.leadership import Leadership
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Repository, UnitOfWork
+from taktus.ports.persistence import Repository, Stored, UnitOfWork
 from taktus.shared.v1 import Command, Plan
 
 EXIT_CONFIGURATION = 2
@@ -126,6 +133,9 @@ class Wired:
     identities: IdentityDirectory
     """The identity component: who a sender is, the link codes a person makes, the links an
     administrator sees and revokes (ADR-0040)."""
+    decisions: DecisionWiring
+    """Anchors and decision requests: what the engine asks at the step boundary, and what the
+    decider answers on the HTTP surface (ADR-0042)."""
     leadership: Leadership
     clock: Clock
     ids: SystemIdentifiers
@@ -144,6 +154,24 @@ class Wired:
     @property
     def tenants(self) -> tuple[str, ...]:
         return self.settings.tenants
+
+    @property
+    def decision_queries(self) -> DecisionQueries:
+        return self.decisions.queries
+
+    @property
+    def answer_decision(self) -> AnswerRequestHandler:
+        return self.decisions.answer
+
+    @property
+    def confirm_decision(self) -> ConfirmRequestHandler:
+        return self.decisions.confirm
+
+    async def decided(self, tenant: str, run_id: str, actor: str) -> None:
+        # The run is handed to a runner through the queue; this process may serve only `api`.
+        await self.engine.decide(
+            DecideSteps(run_id=run_id, actor=actor, tenant=tenant, enqueue=True)
+        )
 
     async def ready(self) -> str | None:
         """None when the database answers and is at the schema this build needs; otherwise
@@ -203,6 +231,11 @@ async def wire(
         )
         provenance_store = PostgresProvenanceStore(persistence)
         queue = PostgresQueue(persistence, lease_seconds=settings.lease_seconds)
+
+        def stored[T: Stored](kind: type[T]) -> Repository[T]:
+            return PostgresRepository(persistence, kind)
+
+        decisions = decision_wiring(stored, persistence, ledger, clock, identities)
         async with open_worker(settings.execution, configuration, state_dir=settings.state_dir) as (
             adapter,
             worker,
@@ -248,6 +281,8 @@ async def wire(
                     maturities=CatalogMaturities(
                         PostgresRepository(persistence, AdapterMaturity), persistence
                     ),
+                    anchors=decisions.anchors,
+                    decisions=decisions.requests,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -301,6 +336,7 @@ async def wire(
                     ConnectorReplies(pools.connectors),
                 ),
                 identities=identities,
+                decisions=decisions,
                 complete_intake=CompleteIntakeHandler(
                     PostgresRepository(persistence, IntakeEvent),
                     PostgresRepository(persistence, Command),

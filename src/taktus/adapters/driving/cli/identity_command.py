@@ -3,7 +3,9 @@
 `add` adds an identity and prints its first account key, once: the person proves their Taktus
 account with it on the control plane's surface. `key` issues a new key, and the old one stops
 working. `links` lists every link of the tenant — active and revoked — and `revoke` revokes
-one: the next event from that account is from an unknown sender. Every act is a ledger entry.
+one: the next event from that account is from an unknown sender. `roles` sets the roles an
+identity holds: an anchor names the role that decides its act (ADR-0042). Every act is a ledger
+entry.
 
 The command line authenticates by holding the instance's state: whoever can run it against the
 database is its administrator. `--identity` names the administrator who acts, for the ledger.
@@ -71,6 +73,10 @@ def add(
             "default/finance/payables. Default: the tenant.",
         ),
     ] = None,
+    role: Annotated[
+        list[str] | None,
+        typer.Option("--role", help="A role the identity holds; repeat for several."),
+    ] = None,
     tenant: Tenant = DEFAULT_TENANT,
     by: By = None,
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
@@ -84,7 +90,7 @@ def add(
 
     async def act(services: Services) -> str | None:
         try:
-            _, key = await services.identities.add(tenant, name, path, by=by)
+            _, key = await services.identities.add(tenant, name, path, by=by, roles=role or ())
         except IdentityExists as exists:
             if exists.identity.org_path != path:
                 raise
@@ -114,6 +120,28 @@ def key(
 
     issued = _with(ctx, state_dir, act)
     typer.echo(f"account key of {name}, shown once — hand it to the person: {issued}")
+
+
+@identity.command("roles")
+def roles(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="The identity whose roles are set.")],
+    role: Annotated[
+        list[str] | None,
+        typer.Option("--role", help="A role the identity holds; repeat for several, none clears."),
+    ] = None,
+    tenant: Tenant = DEFAULT_TENANT,
+    by: By = None,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Set the roles an identity holds, replacing the ones before."""
+
+    async def act(services: Services) -> str:
+        changed = await services.identities.set_roles(tenant, name, role or (), by=by)
+        held = ", ".join(changed.roles) or "no role"
+        return f"identity {name} in {tenant} holds {held}"
+
+    typer.echo(_with(ctx, state_dir, act))
 
 
 @identity.command("links")
