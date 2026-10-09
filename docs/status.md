@@ -231,7 +231,8 @@ answers, for the first time, how much of the vision stands:
   fails when one is not.
 - **Seventy-five use cases exist in the new format. None is verified; one is built**: UC-1.7
   every command belongs to one identity (#82). Fourteen
-  are *building* — part of what they require is built and named tests prove that part: UC-1.1
+  are *building* — part of what they require is built and named tests prove that part, which
+  each states in its section 5, *What is proven so far*, outside the requirement (DEC-0106): UC-1.1
   commands from any channel, UC-4.5 halt or escalate at the boundary, UC-6.1 the complete activity
   log, UC-8.9 changing a vendor breaks nothing, UC-7.1 the autonomy range, UC-7.2 the emergency
   stop, UC-7.3 least privilege down to the worker, UC-8.5 cost control; and from the third step
