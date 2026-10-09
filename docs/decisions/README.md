@@ -95,6 +95,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0063](NTC-0063-uc-6-4-views-configurable-per-role-and-per-person.md) | UC-6.4: views configurable per role and per person | M2.7 | `restoration` | brought up to definition UC-6.4: a view can be given to one person beyond their roles, never widening what they are entitled to see |
 | [0064](NTC-0064-uc-10-1-and-uc-10-2-are-use-cases-filed-by-their-data.md) | UC-10.1 and UC-10.2 are use cases, filed by their data | M2.6 | `unlisted` | UC-10.1 in `governance`, UC-10.2 in `identity`, UC-9.5 in `accounting`, by ADR-0029's rule; proposed M1.12 |
 | [0065](NTC-0065-a-pointer-in-the-visions-history-follows-a-deleted-file.md) | A pointer in the vision's history follows a deleted file | M2.6 | `unlisted` | one sentence of `docs/vision/history.md` no longer names the deleted migration file; nothing the vision states changed; proposed M1.13 |
+| [0075](NTC-0075-the-suite-checks-the-capacity-answer.md) | The suite checks the capacity answer | M2.2 | `test-strategy` | conformance check W-15 holds as many assignments as a worker declares and expects `503` with a problem body for one more, nothing recorded; a fault in each reference worker is caught by W-15 alone; inconclusive, with what to do, when a place frees or more than sixteen are declared (#133) |
 
 ## Decisions
 

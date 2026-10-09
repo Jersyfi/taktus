@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from taktus.conformance import Status
+from taktus.conformance import Status, run_suite
 
 from .conftest import StartWorker
 
@@ -33,7 +33,12 @@ async def test_reference_worker_passes(start_worker: StartWorker, profile: str) 
         "resumed",
         "over-limit",
         "tight",
+        "held",
     }
+    held = [r for r in report.runs if r.purpose == "held"]
+    assert len(held) == 4, "the reference worker declares four places by default"
+    w15 = next(c for c in report.checks if c.id == "W-15")
+    assert "answered one more with 503" in w15.observed
 
 
 async def test_report_is_machine_readable_and_claims_no_verification(
@@ -46,7 +51,7 @@ async def test_report_is_machine_readable_and_claims_no_verification(
     assert document["maturity"]["verified"] is False
     assert document["maturity"]["removal_test"] == "pending"
     assert document["maturity"]["conformance_suite"] == "passed"
-    assert [c["id"] for c in document["checks"]] == [f"W-{n:02d}" for n in range(1, 15)]
+    assert [c["id"] for c in document["checks"]] == [f"W-{n:02d}" for n in range(1, 16)]
     for check in document["checks"]:
         assert check["requirement"] and check["section"].startswith("contracts/worker/v1/README.md")
     assert worker.credential_value not in report.to_json()
@@ -92,3 +97,19 @@ async def test_a_worker_that_never_overruns_leaves_w14_inconclusive(
     assert "compute_seconds" in w14.observed
     assert report.failed == []
     assert "tight" not in {r.purpose for r in report.runs}
+
+
+async def test_a_capacity_beyond_what_the_suite_fills_leaves_w15_inconclusive(
+    start_worker: StartWorker,
+) -> None:
+    """The reference worker declares four places. A suite that fills at most two says what to
+    do instead of claiming a pass, and posts no assignment for the probe."""
+    worker = start_worker()
+    options = worker.options()
+    options.max_held = 2
+    report = await run_suite(options)
+    w15 = next(c for c in report.checks if c.id == "W-15")
+    assert w15.status is Status.INCONCLUSIVE, report.render()
+    assert "declares 4 places" in w15.observed and "2 or fewer" in w15.observed
+    assert report.failed == []
+    assert "held" not in {r.purpose for r in report.runs}

@@ -1,0 +1,8 @@
+{
+  "max_concurrent_assignments": 1,
+  "held": [
+    { "assignment_id": "asg_conf_71aa03be5c90", "status": "running", "last_seq": 2, "accepted_at": "2026-10-09T10:00:00Z", "started_at": "2026-10-09T10:00:00Z" }
+  ],
+  "answer": { "status": 503, "body": { "title": "at capacity", "status": 503 } },
+  "lookup": 200
+}

@@ -4,7 +4,9 @@ A stream rule cannot be expressed in JSON Schema because it concerns the order a
 completeness of events, not the shape of one. These are the executable reading of the checks
 W-03 to W-07, W-10, W-11, W-13 and W-14 of contracts/worker/v1/README.md §7. They take a
 transcript — the assignment, the estimate the worker gave for it, and every event in order — and
-return every violation found, each naming its check.
+return every violation found, each naming its check. One rule concerns no stream: W-15 judges a
+capacity probe — the assignments the suite held, and the answer to one more
+(`capacity_violations`).
 
 The same functions serve two callers: the gate under tests/conformance, which applies them to the
 fixtures under contracts/worker/v1/examples/transcript, and the live suite, which applies them to
@@ -37,6 +39,7 @@ CHECKS: dict[str, str] = {
     "W-13": "a host outside allowed_hosts is refused, not ignored",
     "W-14": "a running total that would cross limits halts the assignment at its next step "
     "boundary",
+    "W-15": "a worker holding max_concurrent_assignments answers one more with 503",
 }
 
 # Where the README states each rule. A failure cites this so that the reader can look it up.
@@ -55,6 +58,7 @@ SECTIONS: dict[str, str] = {
     "W-12": "§7 Conformance",
     "W-13": "§3 Assignment and §4 Events",
     "W-14": "§6 Stopping",
+    "W-15": "§2 Capabilities",
 }
 
 REQUIREMENTS: dict[str, str] = {
@@ -92,6 +96,10 @@ REQUIREMENTS: dict[str, str] = {
     "W-14": "no step starts once the reported running total of a limited kind has reached its "
     "limit; an assignment halted by a limit ends stopped at the boundary it is at, with that "
     "boundary's checkpoint_ref, and names the limit in assignment.finished",
+    "W-15": "a worker that holds as many assignments as max_concurrent_assignments declares "
+    "answers a further POST /v1/assignments with 503 and a problem body — a JSON object with a "
+    "title and status 503 — and records nothing: GET /v1/assignments/{id} of that assignment "
+    "answers 404",
 }
 
 CATALOGUE = Catalogue.build(
@@ -481,4 +489,57 @@ def duplicate_artifacts(before: Sequence[Json], after: Sequence[Json]) -> list[V
                     f"again (seq {event['seq']})",
                 )
             )
+    return out
+
+
+def capacity_violations(probe: Json) -> list[Violation]:
+    """W-15: a worker that holds as many assignments as it declares answers one more with
+    `503` and a problem body, and records nothing. `probe` has the shape `CapacityProbe` of
+    Worker.json: what the worker declared, the states of the assignments the suite held, read
+    after the answer, the answer, and what a lookup of the refused assignment returned.
+
+    An accepted assignment is a violation only when every held assignment was still unfinished
+    after the answer. A finished state does not change back, so those were all held when the
+    worker accepted. Where one had finished, the worker may have had a free place; that is no
+    violation, and the suite reports the check inconclusive."""
+    declared = int(probe["max_concurrent_assignments"])
+    held = [s for s in probe["held"] if s.get("status") != "finished"]
+    answer = probe["answer"]
+    status = int(answer["status"])
+    body = answer.get("body")
+    out: list[Violation] = []
+    if status in (200, 201, 202):
+        if len(held) >= declared:
+            out.append(
+                Violation(
+                    "W-15",
+                    f"holding {len(held)} assignment(s) of {declared} declared, the worker "
+                    f"accepted one more with {status} instead of answering 503",
+                )
+            )
+        return out
+    if status != 503:
+        out.append(
+            Violation(
+                "W-15",
+                f"holding {len(held)} assignment(s) of {declared} declared, the worker answered "
+                f"one more with {status}, expected 503",
+            )
+        )
+        return out
+    if not isinstance(body, dict) or not isinstance(body.get("title"), str):
+        out.append(Violation("W-15", "the 503 carries no problem body with a title"))
+    elif body.get("status") != 503:
+        out.append(
+            Violation("W-15", f"the problem body of the 503 says status {body.get('status')!r}")
+        )
+    lookup = probe.get("lookup")
+    if lookup is not None and int(lookup) != 404:
+        out.append(
+            Violation(
+                "W-15",
+                f"the worker answered 503 but recorded the assignment: looking it up answered "
+                f"{lookup}, expected 404",
+            )
+        )
     return out

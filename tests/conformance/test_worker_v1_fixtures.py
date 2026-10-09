@@ -1,7 +1,8 @@
-"""The stream rules against the transcript fixtures of the worker contract.
+"""The stream rules and the capacity rule against the fixtures of the worker contract.
 
 Every fixture under contracts/worker/v1/examples/transcript/valid/ must break no stream rule;
-every fixture under invalid/W-NN-*.json must break exactly the check its name carries. This is
+every fixture under invalid/W-NN-*.json must break exactly the check its name carries. The same
+holds for the capacity probes under examples/capacity-probe/ and W-15. This is
 what makes the fixtures known good or known bad, and it is the test that pinned the rules when
 they moved out of tools/validate_contracts.py (DEC-0003).
 """
@@ -15,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from taktus.conformance.rules import stream_violations
+from taktus.conformance.rules import capacity_violations, stream_violations
 
 TRANSCRIPTS = Path(__file__).resolve().parents[2] / "contracts" / "worker" / "v1" / "examples"
 TRANSCRIPTS /= "transcript"
@@ -54,3 +55,23 @@ def test_invalid_transcript_breaks_its_check(path: Path) -> None:
 def test_every_stream_check_has_a_fixture() -> None:
     named = {p.name[:4] for p in INVALID}
     assert named == {"W-03", "W-04", "W-05", "W-06", "W-07", "W-10", "W-11", "W-13", "W-14"}
+
+
+PROBES = TRANSCRIPTS.parent / "capacity-probe"
+VALID_PROBES = sorted((PROBES / "valid").glob("*.json"))
+INVALID_PROBES = sorted((PROBES / "invalid").glob("W-*.json"))
+
+
+@pytest.mark.parametrize("path", VALID_PROBES, ids=[p.stem for p in VALID_PROBES])
+def test_valid_capacity_probe_breaks_no_rule(path: Path) -> None:
+    assert not capacity_violations(load(path))
+
+
+@pytest.mark.parametrize("path", INVALID_PROBES, ids=[p.stem for p in INVALID_PROBES])
+def test_invalid_capacity_probe_breaks_w15(path: Path) -> None:
+    violations = capacity_violations(load(path))
+    assert {v.check for v in violations} == {"W-15"}, [str(v) for v in violations]
+
+
+def test_the_capacity_rule_has_fixtures() -> None:
+    assert VALID_PROBES and INVALID_PROBES
