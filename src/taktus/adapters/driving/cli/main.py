@@ -1,12 +1,13 @@
 """`taktusctl` — the command line of Taktus.
 
-Seven commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
+Eight commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
 worker, the connector or the model contract; the suite is not part of the control plane and
 needs no wiring. `run` and `submit` drive the control plane: `run` executes a bundle in this
 process, `submit` queues it for the daemon. `capacity` reports what the platform has left and
 the date a person must act by. `cost` recomputes what a run cost from the ledger. `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
-(ADR-0040). `anchors` configures and shows a tenant's anchors (ADR-0042). They need
+(ADR-0040). `anchors` configures and shows a tenant's anchors (ADR-0042). `findings` shows
+what the instance met that the product lacks, ready to send by hand (UC-6.12). They need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -27,6 +28,7 @@ from taktus.adapters.driving.cli import (
     anchors_command,
     capacity_command,
     cost_command,
+    findings_command,
     identity_command,
     run_command,
     submit_command,
@@ -54,6 +56,7 @@ app.command("run")(run_command.run)
 app.command("submit")(submit_command.submit)
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
+app.command("findings")(findings_command.findings)
 app.add_typer(identity_command.identity, name="identity")
 app.add_typer(anchors_command.anchors, name="anchors")
 

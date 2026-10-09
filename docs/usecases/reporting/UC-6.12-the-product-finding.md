@@ -4,10 +4,10 @@ title: The product finding
 component: reporting
 epic: E6
 serves: [P11, P12, P14]
-state: specified
+state: built
 version: 0.2.0
-tests: []
-adrs: {ADR-0006: 4ef70c98354b, ADR-0015: 3a42705e5561, ADR-0027: 8f3f450eeecb, ADR-0033: eb18bea6bfb4}
+tests: [tests/adapters/connectors/test_product_findings.py::test_one_lack_met_twice_is_one_issue_with_two_occurrences, tests/adapters/connectors/test_product_findings.py::test_an_instance_not_enabled_records_and_shows_and_sends_nothing, tests/components/reporting/test_product_findings.py::test_no_other_block_is_a_finding, tests/components/reporting/test_product_findings.py::test_a_lack_not_named_by_an_identifier_is_never_a_finding, tests/components/reporting/test_product_findings.py::test_no_value_of_a_finding_can_hold_a_person, tests/components/reporting/test_product_findings.py::test_a_finding_closed_by_the_product_is_not_reopened_and_a_new_lack_opens_anew, tests/components/run/test_blocked_time.py::test_a_lack_of_an_adapter_is_a_block_that_lasts_until_the_step_can_start, tests/integration/test_findings_command.py::test_the_operator_sees_each_finding_ready_to_send_by_hand, tests/composition/test_settings.py::test_findings_are_sent_only_where_the_operator_names_a_connector]
+adrs: {ADR-0006: 4ef70c98354b, ADR-0015: 3a42705e5561, ADR-0027: 8f3f450eeecb, ADR-0033: eb18bea6bfb4, ADR-0043: fe6020be8643, ADR-0046: f1891033c571}
 supersedes: null
 ---
 
@@ -60,3 +60,18 @@ adapter fails its step with the reason (NTC-0002); the repository connector and 
 repository service (ADR-0027, ADR-0033); the owner-facing channel (UC-6.11). Stated by the owner outside
 the definition, in conversation, as a requirement; it is the requirement behind the definition's
 chapter 9, "every friction is a product finding". The roadmap places it in `0.2.0` (#86).
+
+## 5. What is proven so far
+
+Built by ADR-0046 (issue #86) and proven by the named tests, under the provisional answer of
+DEC-0087. A step that fails for want of an adapter carries a block booked to `wait.dependency`
+until it can start, and its record names what was lacking (ADR-0043, amended). A rule over the
+blocks, ended and open, makes a finding of a lack and of nothing else. Against the fake repository
+service, one lack met by two runs is one issue in the shape of the issue form `Task`, with two
+occurrences, each with its run, step and cause, and the waiting of both summed once their blocks
+ended; a second sending and a restarted instance add nothing. No text holds a person, the
+project's content or a secret value, and every text sent is a `finding.sent` entry in the ledger.
+An instance whose operator did not set `TAKTUS_FINDINGS_CONNECTOR` sends nothing, and
+`taktusctl findings` shows each finding ready to send by hand. Not built: the Taktus project's own
+instance sending its findings, which needs its operator to set the connector; a finding a person
+raises from the run in the web app (`0.3.0`).

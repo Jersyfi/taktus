@@ -1166,16 +1166,26 @@ class RunEngine:
         since: datetime | None = None,
         on: StepId | None = None,
         role: str | None = None,
+        lacking: str | None = None,
     ) -> tuple[Run, StepRun]:
         """The step is blocked from now — or from `since` — for this cause, unless it is
-        already. A block it is in for another cause ends first, with its record. The block is
-        carried by the step run the caller commits (ADR-0043)."""
-        if step_run.block is not None and step_run.block.cause == cause:
+        already. A block it is in for another cause, or for another lack, ends first, with its
+        record. The block is carried by the step run the caller commits (ADR-0043)."""
+        if (
+            step_run.block is not None
+            and step_run.block.cause == cause
+            and step_run.block.lacking == lacking
+        ):
             return run, step_run
         if step_run.block is not None:
             run, step_run = await self._close_block(run, step_run)
         opened = OpenBlock(
-            account=account, cause=cause, since=since or self._clock.now(), on=on, role=role
+            account=account,
+            cause=cause,
+            since=since or self._clock.now(),
+            on=on,
+            role=role,
+            lacking=lacking,
         )
         return run, step_run.model_copy(update={"block": opened})
 
@@ -1209,6 +1219,23 @@ class RunEngine:
             digest=digest,
         )
         return run, step_run
+
+    async def _lacking(
+        self, run: Run, step_run: StepRun, lack: tuple[str, str] | None
+    ) -> tuple[Run, StepRun]:
+        """A step that failed for want of an adapter is blocked from now until it can start;
+        one that failed for anything else is not (ADR-0046). A step met by the same lack again
+        on a retry keeps the block it is in, so that its waiting is one stretch."""
+        if lack is None:
+            return run, step_run
+        cause, lacking = lack
+        return await self._open_block(run, step_run, block.LACK_ACCOUNT, cause, lacking=lacking)
+
+    async def _lack_ends(self, run: Run, step_run: StepRun) -> tuple[Run, StepRun]:
+        """The adapter the step lacked is there now: its block ends here, with its record."""
+        if step_run.block is None or step_run.block.cause not in block.LACKS:
+            return run, step_run
+        return await self._close_block(run, step_run)
 
     def _hold_back(self, run: Run, waiting_on: StepId) -> Run:
         """Every step that depends on `waiting_on`, directly or through another, cannot start
@@ -1315,8 +1342,15 @@ class RunEngine:
             return await self._failed_before(run, step_run, span, str(failure), None, None)
         except _StepFailed as failure:
             return await self._failed_before(
-                run, step_run, span, failure.reason, failure.adapter, failure.retryable
+                run,
+                step_run,
+                span,
+                failure.reason,
+                failure.adapter,
+                failure.retryable,
+                lack=failure.lack,
             )
+        run, step_run = await self._lack_ends(run, step_run)
         unverified = await self._unverified(run, step, demand.adapter, held)
         if unverified is not None and demand.adapter is not None:
             return await self._refuse_unverified(run, step_run, demand.adapter, unverified, span)
@@ -1377,6 +1411,7 @@ class RunEngine:
         except _StepFailed as failure:
             span.record_failure(failure.outcome)
             run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
+            run, step_run = await self._lacking(run, step_run, failure.lack)
             step_run = step_run.to(
                 StepState.FAILED,
                 adapter=failure.adapter,
@@ -1484,6 +1519,7 @@ class RunEngine:
                     consumption=None,
                     adapter=resolved.adapter,
                     outcome="no connector",
+                    lack=(block.OPERATION_UNSUPPORTED, work.until.operation),
                 )
             if operation.demand is None:
                 return _Demand(None, _undeclared(operation.name), resolved.adapter)
@@ -1499,6 +1535,7 @@ class RunEngine:
                     consumption=None,
                     adapter=resolved.adapter,
                     outcome="no connector",
+                    lack=(block.OPERATION_UNSUPPORTED, work.operation),
                 )
             if operation.demand is None:
                 return _Demand(None, _undeclared(operation.name), resolved.adapter)
@@ -1696,11 +1733,15 @@ class RunEngine:
         reason: str,
         adapter: str | None,
         retryable: bool | None,
+        *,
+        lack: tuple[str, str] | None = None,
     ) -> tuple[Run, StepRun]:
         """A step that failed while it was being estimated — its adapter is not configured,
         a reference in its prompt does not resolve — fails at its boundary like one that
-        failed while running; nothing was admitted and nothing started."""
+        failed while running; nothing was admitted and nothing started. For want of an adapter
+        it is blocked until it can start (ADR-0046)."""
         span.record_failure("failed before admission")
+        run, step_run = await self._lacking(run, step_run, lack)
         step_run = step_run.to(
             StepState.FAILED,
             adapter=adapter,
@@ -1840,6 +1881,7 @@ class RunEngine:
                 consumption=None,
                 adapter=None,
                 outcome="no connector",
+                lack=(block.NO_CONNECTOR, capability),
             )
         return resolved
 
@@ -1858,6 +1900,7 @@ class RunEngine:
                 consumption=None,
                 adapter=resolved.adapter,
                 outcome="no connector",
+                lack=(block.OPERATION_UNSUPPORTED, work.operation),
             )
         (input,), read = await self._resolved(run, [work.input])
         if work.expect and operation.outward:
@@ -2036,6 +2079,7 @@ class RunEngine:
                 consumption=None,
                 adapter=resolved.adapter,
                 outcome="no connector",
+                lack=(block.OPERATION_UNSUPPORTED, until.operation),
             )
         if operation.outward:
             raise UnsupportedWork(step_run.step_id, "a wait reads an external state, never writes")
@@ -2118,6 +2162,9 @@ class RunEngine:
             # No configured worker offers the capabilities: a failed step, the run escalates
             # at the boundary, and a resume after the configuration changed retries it.
             span.record_failure("no worker")
+            run, step_run = await self._lacking(
+                run, step_run, (block.NO_WORKER, ",".join(step.required_capabilities) or "nothing")
+            )
             step_run = step_run.to(
                 StepState.FAILED,
                 reason=str(NoWorker(step.id, step.required_capabilities)),
@@ -2128,6 +2175,7 @@ class RunEngine:
                 run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
             )
             return run, step_run
+        run, step_run = await self._lack_ends(run, step_run)
         adapter, worker = resolved.adapter, resolved.worker
         span.set_attribute("adapter", adapter)
         call = {"run.id": run.id, "step.id": step.id, "adapter": adapter}
@@ -2860,6 +2908,9 @@ class _StepFailed(Exception):
     consumption: Consumption | None
     adapter: str | None
     outcome: str
+    lack: tuple[str, str] | None = None
+    """For a step that failed for want of an adapter: the cause token of the lack and what was
+    lacking. The step then carries a block until it can start (ADR-0046)."""
 
 
 def _digest(content: bytes) -> str:

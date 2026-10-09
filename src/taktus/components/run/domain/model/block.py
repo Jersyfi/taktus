@@ -9,6 +9,11 @@ A block is *open* while the step waits. The step run carries it (`StepRun.block`
 wait survives a restart and its start is never lost. When the wait ends, the engine writes the
 block's record and clears it (ADR-0043).
 
+A block for want of an adapter — no configured worker offers what the step requires, no
+configured connector serves its capability, or the connector does not offer its operation — is
+a *lack*: the step failed for it and waits, until the configuration or the product changes, for
+the step to start again (ADR-0046). It carries what was lacking, an identifier only.
+
 A block on a person names no person. Who answered is the audit's, in the ledger entry of the
 answer; the block holds the time only (ADR-0015, protective rule).
 """
@@ -72,6 +77,18 @@ WAITING_ON_CLOCK = "waiting_on_clock"
 """A `wait` step waits for a time to pass."""
 HELD_BACK = "held_back"
 """The step depends on a step that waits, and cannot start before it ends."""
+NO_WORKER = "no_worker"
+"""No configured worker offers the capabilities the step requires (NTC-0002, ADR-0046)."""
+NO_CONNECTOR = "no_connector"
+"""No configured connector serves the capability the step calls (NTC-0002, ADR-0046)."""
+OPERATION_UNSUPPORTED = "operation_unsupported"
+"""The connector that serves the capability does not offer the operation (NTC-0002,
+ADR-0046)."""
+
+LACKS: frozenset[str] = frozenset({NO_WORKER, NO_CONNECTOR, OPERATION_UNSUPPORTED})
+"""The causes that are a lack of an adapter. Each books to `wait.dependency`: the step depends
+on an adapter the instance does not have (ADR-0046)."""
+LACK_ACCOUNT: Account = "wait.dependency"
 
 CLOSED_BY_ADMISSION: frozenset[str] = frozenset(
     {REJECTED_BY_CAPACITY, REJECTED_BY_ADMISSION, HALTED_AT_LIMIT}
@@ -100,3 +117,6 @@ class OpenBlock(Value):
     role: str | None = Field(default=None, min_length=1)
     """For a wait on a person addressed to a role — an anchor's decision request — the role.
     Never a person."""
+    lacking: str | None = Field(default=None, min_length=1)
+    """For a lack: what no configured adapter offers — the capabilities, comma-separated, or
+    the operation. An identifier, never a text."""

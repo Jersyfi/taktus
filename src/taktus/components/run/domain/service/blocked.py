@@ -46,6 +46,7 @@ RECORD_FIELDS = (
     "seconds",
     "on",
     "role",
+    "lacking",
 )
 """What every record carries. A record may carry more about its cause — the worker asked, how
 often — and the sums read none of it."""
@@ -66,10 +67,43 @@ class Block(Value):
     on: StepId | None = None
     role: str | None = Field(default=None, min_length=1)
     """The role a wait on a person was addressed to, where it was addressed to one."""
+    lacking: str | None = Field(default=None, min_length=1)
+    """For a lack (ADR-0046): what no configured adapter offered."""
 
     @property
     def process(self) -> str:
         return process_of(self.process_version)
+
+
+class Waiting(Value):
+    """A block that has not ended, with the run and the step it holds up: what a step run
+    carries while it waits, read where it is. It is in no sum (ADR-0043 §6); a reader that must
+    know of a block before it ends reads it here (ADR-0046)."""
+
+    account: Account
+    cause: str = Field(pattern=CAUSE_PATTERN)
+    run_id: str = Field(min_length=1)
+    step_id: StepId
+    process_version: str = Field(min_length=1)
+    since: datetime
+    on: StepId | None = None
+    role: str | None = Field(default=None, min_length=1)
+    lacking: str | None = Field(default=None, min_length=1)
+
+
+def waiting(block: OpenBlock, *, run_id: str, step_id: StepId, process_version: str) -> Waiting:
+    """The open block of one step run, with what it holds up."""
+    return Waiting(
+        account=block.account,
+        cause=block.cause,
+        run_id=run_id,
+        step_id=step_id,
+        process_version=process_version,
+        since=block.since,
+        on=block.on,
+        role=block.role,
+        lacking=block.lacking,
+    )
 
 
 def process_of(process_version: str) -> str:
@@ -103,6 +137,8 @@ def record(
         document["on"] = block.on
     if block.role is not None:
         document["role"] = block.role
+    if block.lacking is not None:
+        document["lacking"] = block.lacking
     return document
 
 
