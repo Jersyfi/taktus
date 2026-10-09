@@ -37,8 +37,10 @@ which gives it volumes of its own. Nothing here removes a volume. From then on:
 | `http://127.0.0.1:8080/intake-events/{id}/complete` | completes an accepted delivery into a command that acts as the identity the sender's account is linked to |
 | `http://127.0.0.1:8080/identity/link-codes` | a person, with their account key, creates the code that links an account on a channel to their identity |
 | `http://127.0.0.1:8080/decisions` | a decider, with their account key, lists the decision requests addressed to a role they hold, answers one, and confirms how the answer was read; `/decisions/response-times` shows them their own (ADR-0042) |
+| `http://127.0.0.1:8080/owner/reports` | the owner, or someone the owner named, with their account key, reads what is needed from the owner, each report with its deliveries and history; `/owner/reports/{id}/text` is its repository text (ADR-0045) |
 | `docker compose -f deploy/docker/compose.yml exec taktus taktusctl identity add idn_ada` | add an identity; prints its account key once. `identity links` and `identity revoke` see and revoke the links of a tenant; `--role` and `identity roles` set the roles it holds |
 | `docker compose -f deploy/docker/compose.yml exec taktus taktusctl anchors set /path/anchors.json` | configure the tenant's anchors; `anchors show` prints those in force — the shipped default while none is configured (ADR-0042) |
+| `docker compose -f deploy/docker/compose.yml exec taktus taktusctl owner-channel set /path/owner-channel.json` | configure where what is needed from the owner reaches them — the owner, whom they named, the channel and address, the language; `owner-channel show` prints it (ADR-0045) |
 | `docker compose -f deploy/docker/compose.yml exec taktus taktusctl submit --process …` | queue a bundle for the daemon; prints the run's identifier |
 
 `make down` stops the containers and keeps every volume — the database, the artifact bytes,

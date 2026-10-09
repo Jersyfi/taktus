@@ -19,6 +19,7 @@ from taktus.components.decision.application.service import (
     ConfirmRequestHandler,
 )
 from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.reporting.application.query import ReportQueries
 from taktus.components.run.domain.model import Run
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -65,6 +66,11 @@ class RestServices(Protocol):
     @property
     def decision_queries(self) -> DecisionQueries:
         """The requests addressed to a decider, one request, the response times (ADR-0042)."""
+        ...
+
+    @property
+    def owner_reports(self) -> ReportQueries:
+        """The reports to the owner, read by the owner and whom they named (ADR-0045)."""
         ...
 
     @property

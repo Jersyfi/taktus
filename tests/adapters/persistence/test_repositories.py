@@ -14,6 +14,7 @@ from taktus.components.decision.domain.model import RegisterEntry, Request
 from taktus.components.governance.domain.model import AnchorConfiguration
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
+from taktus.components.reporting.domain.model import OwnerChannel, Report
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.ports.persistence import WrongTenant
 from taktus.shared.v1 import Command, Plan
@@ -34,6 +35,8 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (AnchorConfiguration, samples.anchor_configuration),
     (Request, samples.decision_request),
     (RegisterEntry, samples.register_entry),
+    (OwnerChannel, samples.owner_channel),
+    (Report, samples.report),
 ]
 
 

@@ -9,6 +9,7 @@ two through its own ports (`run/ports/anchors.py`), decision asks identity throu
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -53,6 +54,11 @@ class DirectoryDeciders:
         return Decider(identity=known.identity, roles=known.roles, department=department)
 
 
+type Reported = Callable[[Tenant, Request], Awaitable[object]]
+"""Where a raised request is reported besides the control plane's surface: the owner-facing
+channel (composition/owner_channel.py, ADR-0045)."""
+
+
 class RequestsOfTheRun:
     """The run's decision port, answered from the decision component."""
 
@@ -62,10 +68,15 @@ class RequestsOfTheRun:
         self._raising = raising
         self._requests = requests
         self._work = work
+        self._reported: Reported | None = None
+
+    def report_to(self, reported: Reported) -> None:
+        """Bound once the owner-facing channel is wired, which needs the connector pool."""
+        self._reported = reported
 
     async def raise_request(self, tenant: Tenant, draft: Draft) -> None:
         try:
-            await self._raising.execute(
+            raised = await self._raising.execute(
                 RaiseRequest(
                     tenant=tenant,
                     id=draft.id,
@@ -96,6 +107,8 @@ class RequestsOfTheRun:
             )
         except RequestNotRaised as error:
             raise NotRaised(str(error)) from error
+        if self._reported is not None:
+            await self._reported(tenant, raised)
 
     async def verdict(self, tenant: Tenant, request_id: str) -> Verdict | None:
         async with self._work.transaction(tenant):

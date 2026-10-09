@@ -39,6 +39,7 @@ from taktus.components.process.domain.model import (
     Trigger,
     TriggerState,
 )
+from taktus.components.reporting.domain.model import OwnerChannel, Report
 from taktus.components.run.domain.model import (
     Anchoring,
     Checkpoint,
@@ -406,4 +407,86 @@ def link_code(tenant: str = "t") -> LinkCode:
         created_at=AT,
         expires_at=AT + timedelta(minutes=30),
         used_at=AT + timedelta(minutes=1),
+    )
+
+
+PHRASEBOOK = json.loads(
+    (ROOT / "src/taktus/composition/phrasebooks/de.json").read_text(encoding="utf-8")
+)
+
+
+def owner_channel(tenant: str = "t") -> OwnerChannel:
+    return OwnerChannel.model_validate(
+        {
+            "id": tenant,
+            "tenant": tenant,
+            "owner": "idn_owner",
+            "named": ["idn_deputy"],
+            "roles": ["owner", "product.owner"],
+            "channel": "channel.chat",
+            "address": "D0000000001",
+            "phrasebook": PHRASEBOOK,
+            "task": {"capability": "repository.issues", "operation": "repository.issues.create"},
+            "view_base": "https://taktus.example/instance",
+            "configured_at": AT,
+            "configured_by": "operator",
+        }
+    )
+
+
+def report(tenant: str = "t") -> Report:
+    return Report.model_validate(
+        {
+            "id": "dr_run17342_release_1",
+            "tenant": tenant,
+            "kind": "decision",
+            "title": "Run run_17342 has reached step release, whose act is anchored.",
+            "needed": ["Does Taktus release the payment?"],
+            "steps": ["A: Release it. (Proposed here.)", "B: Do not release it."],
+            "standing_still": ["run_17342", "run_17342/release"],
+            "due": (AT + timedelta(days=3)).date().isoformat(),
+            "offered": [
+                {"id": "A", "label": "Release it.", "recommended": True},
+                {"id": "B", "label": "Do not release it."},
+            ],
+            "links": [{"label": "Run", "url": "https://taktus.example/runs/run_17342"}],
+            "raised_at": AT,
+            "state": "filed",
+            "filed": {
+                "answer": "A",
+                "by": "idn_owner",
+                "at": AT + timedelta(hours=2),
+                "record": "dce_run17342_release_1",
+                "where": "channel.chat D0000000001 1700000000.000100",
+            },
+            "deliveries": [
+                {
+                    "channel": "task",
+                    "state": "delivered",
+                    "at": AT,
+                    "record": "issue:412",
+                    "url": "https://repository.example/issues/412",
+                },
+                {
+                    "channel": "message",
+                    "state": "failed",
+                    "at": AT,
+                    "reason": "unreachable",
+                    "address": "D0000000001",
+                },
+                {
+                    "channel": "message",
+                    "state": "delivered",
+                    "at": AT + timedelta(minutes=5),
+                    "address": "D0000000001",
+                    "thread": "1700000000.000100",
+                    "record": "chat.message:D0000000001/1700000000.000100",
+                },
+            ],
+            "history": [
+                {"at": AT, "event": "raised"},
+                {"at": AT + timedelta(hours=1), "event": "reflected", "by": "idn_owner"},
+                {"at": AT + timedelta(hours=2), "event": "filed", "by": "idn_owner"},
+            ],
+        }
     )

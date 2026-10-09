@@ -32,6 +32,11 @@
         "step_id": { "type": "string", "minLength": 1 },
         "assignment_id": { "type": "string", "minLength": 1 },
         "decision_request_id": { "type": "string", "minLength": 1 },
+        "report_id": {
+          "description": "The report to the owner the entry is about: the record its renderings are composed from (ADR-0045).",
+          "type": "string",
+          "minLength": 1
+        },
         "artifact_ids": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 },

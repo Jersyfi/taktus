@@ -4,10 +4,10 @@ title: The owner-facing channel
 component: reporting
 epic: E6
 serves: [P4, P7, P10]
-state: specified
+state: building
 version: 0.2.0
-tests: []
-adrs: {ADR-0006: 4ef70c98354b, ADR-0008: e6a4e033abd4, ADR-0017: c932691e9072, ADR-0028: 84461cdccb02}
+tests: [tests/components/reporting/test_owner_channel.py::test_every_kind_produces_three_renderings_that_agree, tests/components/reporting/test_owner_channel.py::test_the_repository_text_holds_what_future_work_needs_and_no_conversation, tests/components/reporting/test_owner_channel.py::test_the_message_is_in_the_configured_language_and_links_everything, tests/components/reporting/test_owner_channel.py::test_a_report_without_one_of_the_four_is_not_sent, tests/components/reporting/test_owner_channel.py::test_an_answer_is_filed_only_after_its_reading_is_confirmed, tests/components/reporting/test_owner_channel.py::test_a_decision_answer_is_filed_in_the_register_only_once_confirmed, tests/components/reporting/test_owner_channel.py::test_an_answer_no_offered_answer_can_be_read_from_is_asked_back, tests/components/reporting/test_owner_channel.py::test_an_answer_from_anyone_else_is_acknowledged_as_not_filed, tests/components/reporting/test_owner_channel.py::test_the_report_also_goes_to_a_configured_ticket_system_as_a_task, tests/components/reporting/test_owner_channel.py::test_closing_the_task_without_an_answer_files_nothing, tests/components/reporting/test_owner_channel.py::test_a_message_that_cannot_be_delivered_leaves_the_event_and_shows_the_failure, tests/components/reporting/test_owner_channel.py::test_a_failure_taktus_noticed_about_itself_reaches_the_owner_the_same_way, tests/components/reporting/test_owner_channel.py::test_no_message_carries_a_secret_value, tests/adapters/connectors/test_owner_channel_chat.py::test_the_owner_answers_in_the_thread_and_the_answer_is_filed_once_confirmed, tests/adapters/rest/test_owner_reports.py::test_the_view_and_the_repository_text_carry_the_same_report]
+adrs: {ADR-0006: 4ef70c98354b, ADR-0008: e6a4e033abd4, ADR-0017: c932691e9072, ADR-0028: 84461cdccb02, ADR-0045: e1fcb1254c71}
 supersedes: null
 ---
 
@@ -87,3 +87,24 @@ renderings come *from the ledger*. The ledger holds no free text and no copy of 
 identifiers, tokens and digests (ADR-0006). The event is therefore a ledger entry, and its three
 renderings are composed from the record that entry references — the decision request, the needs
 request — not from the ledger alone.
+
+## 5. What is proven so far
+
+Built by ADR-0045 (issue #85) and proven by the named tests, against a recording carrier and
+against the chat connector with the fake of its service. A decision request addressed to the
+owner, a need, a date and a failure Taktus noticed about itself each become one report, and its
+repository text, its message and its view carry the same identifier, the same items and the same
+date. The repository text is English and names where an answer was given, never what was said.
+The message is in the configured language — German for this tenant — and links every file, issue
+and pull request the report names, the task and the view. A report without one of its four items,
+or one that would carry a secret value, is not sent. An answer in the report's thread is read by a
+rule, reflected without being quoted, and filed only once the same person confirmed it; one that
+reads as no offered answer is asked back; one from anyone but the owner or someone the owner named
+is acknowledged as not filed. A configured ticket system receives the report as a task, and closing
+it files nothing. A message that cannot be delivered leaves the report in the view and in its
+repository text with the failed delivery.
+
+Not built: the owner's questions in the chat or the web app (UC-6.4, UC-1.5), the web app's page
+(#105), raising a need or a date from a step of a process, and noticing a broken interface (#100),
+which calls the failure entry built here. Against the real chat service nothing has run; that
+waits for NEED-0018, and configuring the channel on the installed instance for NEED-0020.

@@ -10,7 +10,8 @@ daemon. `capacity` reports what the platform has left and
 the date a person must act by. `cost` recomputes what a run cost from the ledger. `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `anchors` configures and shows a tenant's anchors (ADR-0042). `findings` shows
-what the instance met that the product lacks, ready to send by hand (UC-6.12). They need
+what the instance met that the product lacks, ready to send by hand (UC-6.12). `owner-channel`
+configures and shows where what is needed from the owner reaches them (ADR-0045). They need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -34,6 +35,7 @@ from taktus.adapters.driving.cli import (
     cost_command,
     findings_command,
     identity_command,
+    owner_channel_command,
     run_command,
     submit_command,
 )
@@ -64,6 +66,7 @@ app.command("cost")(cost_command.cost)
 app.command("findings")(findings_command.findings)
 app.add_typer(identity_command.identity, name="identity")
 app.add_typer(anchors_command.anchors, name="anchors")
+app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 
 CONTRACTS = {"worker/v1", "connector/v1", "model/v1"}
 

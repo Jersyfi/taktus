@@ -25,7 +25,11 @@ from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
-from taktus.components.reporting.application.service import ProductFindings
+from taktus.components.reporting.application.service import (
+    ChannelOf,
+    ConfigureChannelHandler,
+    ProductFindings,
+)
 from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
@@ -65,6 +69,11 @@ class Services:
     """A tenant's anchors, configured (`taktusctl anchors set`, ADR-0042)."""
     anchors: AnchorsInForce | None = None
     """The anchors a tenant holds now (`taktusctl anchors show`)."""
+    configure_owner_channel: ConfigureChannelHandler | None = None
+    """A tenant's owner-facing channel, configured (`taktusctl owner-channel set`,
+    ADR-0045)."""
+    owner_channel: ChannelOf | None = None
+    """The owner-facing channel a tenant configured (`taktusctl owner-channel show`)."""
     findings: ProductFindings | None = None
     """The product findings the instance recorded, to show its operator (`taktusctl findings`,
     UC-6.12)."""

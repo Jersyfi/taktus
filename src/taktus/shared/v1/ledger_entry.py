@@ -33,6 +33,8 @@ class LedgerRefs(Value):
     step_id: str | None = Field(default=None, min_length=1)
     assignment_id: str | None = Field(default=None, min_length=1)
     decision_request_id: str | None = Field(default=None, min_length=1)
+    report_id: str | None = Field(default=None, min_length=1)
+    """The report to the owner the entry is about (ADR-0045)."""
     artifact_ids: tuple[str, ...] | None = None
     actor: str | None = Field(default=None, min_length=1)
     trace_id: str | None = Field(default=None, pattern=TRACE_ID_PATTERN)

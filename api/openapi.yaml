@@ -65,8 +65,9 @@ paths:
           title: Channel
       responses:
         '202':
-          description: 'Decided: `accepted` with the intake event, `refused`, or `unknown_sender` with
-            whether the sender was answered in the channel and whether the message linked their account.'
+          description: 'Decided: `accepted` with the intake event, `refused`, `unknown_sender` with whether
+            the sender was answered in the channel and whether the message linked their account, or `answer`
+            for a message in the thread of a report to the owner, with what became of it.'
           content:
             application/json:
               schema: {}
@@ -394,6 +395,134 @@ paths:
             application/problem+json: {}
         '401':
           description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /owner/reports:
+    get:
+      tags:
+      - owner
+      summary: What is needed from the owner
+      description: 'Every report to the owner — a decision request addressed to them, a need, a date,
+        a failure Taktus noticed about itself — the open ones first, the earliest due first, each as its
+        view: what is needed, the steps, what stands still, the date, every delivery with its outcome,
+        and its history (ADR-0045). The history says whether you acted, never who did.'
+      operationId: reports_owner_reports_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The reports.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /owner/reports/{report_id}:
+    get:
+      tags:
+      - owner
+      summary: One report to the owner, with its history
+      operationId: one_owner_reports__report_id__get
+      parameters:
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Report Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The report's view.
+          content:
+            application/json:
+              schema:
+                title: Response One Owner Reports  Report Id  Get
+        '404':
+          description: No such report.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /owner/reports/{report_id}/text:
+    get:
+      tags:
+      - owner
+      summary: One report as a repository text
+      description: 'The report as a record in a repository: English, minimal — what future work needs,
+        and where an answer was given, never what was said there.'
+      operationId: text_owner_reports__report_id__text_get
+      parameters:
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Report Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The text.
+          content:
+            application/json:
+              schema:
+                title: Response Text Owner Reports  Report Id  Text Get
+            text/markdown: {}
+        '404':
+          description: No such report.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
           content:
             application/problem+json: {}
         '422':
