@@ -3,7 +3,7 @@
 **Mode entry:** M2.6
 **Kind:** unlisted
 **Decided:** 2026-10-09
-**Raised in:** issue #80
+**Raised in:** [#157](https://github.com/Jersyfi/taktus/pull/157), for issue #80
 **How it follows:** ADR-0015 §1 names seven accounts and `docs/architecture/throughput.md` §1 gives each its example: a provider's rate limit, an exhausted subscription window, a configured budget that would be exceeded, no free GPU or worker slot, an open decision or approval, CI or a partner system, another step that must finish first. Each example is something the work waits for and then continues unchanged; each booking below follows the example it matches. A halt that matches none — no estimate, an adapter below verified, a failure, a stop — is something the work does not wait for: it needs a change, is an incident (ADR-0021), or is a person's choice. Between counting those as blocks too and leaving them to their own records, the stricter in substance is to keep the seven accounts exact, so that a sum per account says what ADR-0015 means by it; leaving them out adds no record, which is the option with less ceremony.
 
 ## 1. What was decided
