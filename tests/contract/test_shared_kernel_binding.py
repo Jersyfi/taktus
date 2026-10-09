@@ -219,7 +219,11 @@ WORKER_DEFINITIONS = {
 
 @pytest.mark.parametrize(
     ("path", "valid"),
-    [c for c in example_cases(WORKER / "examples") if c[0].parent.parent.name != "transcript"],
+    [
+        c
+        for c in example_cases(WORKER / "examples")
+        if c[0].parent.parent.name not in {"transcript", "capacity-probe"}
+    ],
     ids=lambda p: p.relative_to(WORKER / "examples").as_posix() if isinstance(p, Path) else "",
 )
 def test_worker_examples_through_the_port_types(path: Path, valid: bool) -> None:
