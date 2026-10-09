@@ -1,7 +1,7 @@
 # DEC-0111 — Does a person standing by count as an alternative?
 
 **Category:** NON-BLOCKING
-**Raised in:** [#PRN](https://github.com/Jersyfi/taktus/pull/PRN), while making #90 ready after #153 enforced the maturity threshold
+**Raised in:** [#156](https://github.com/Jersyfi/taktus/pull/156), while making #90 ready after #153 enforced the maturity threshold
 **Issue:** [#155](https://github.com/Jersyfi/taktus/issues/155)
 **Needed by:** 2026-10-23
 **Provisional answer:** Option A, marked in #90. The person fallbacks #90 declares are needed under either option — a person must be able to take over every process (principle 6) — so #90 proceeds; only whether they earn *verified* follows your answer.
