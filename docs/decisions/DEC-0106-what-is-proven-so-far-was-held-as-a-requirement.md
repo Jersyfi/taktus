@@ -1,7 +1,7 @@
 # DEC-0106 — What is proven so far was held as a requirement
 
 **Category:** DEFECT
-**Raised in:** issue #150, after UC-1.1 and UC-1.7 kept saying what #148 and #149 had built was not built
+**Raised in:** [#152](https://github.com/Jersyfi/taktus/pull/152), for issue #150, after UC-1.1 and UC-1.7 kept saying what #148 and #149 had built was not built
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -60,4 +60,4 @@ section 2 as the owner's.
 state it.
 **What changed in substance:** nothing in the product; fifteen use cases' layout, the format, the
 gate, and the description of UC-1.1 and UC-1.7.
-**Recorded in:** issue #150
+**Recorded in:** [#152](https://github.com/Jersyfi/taktus/pull/152)
