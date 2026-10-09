@@ -241,12 +241,21 @@ the call that produced it; and it never raises an incident, because that is the 
 | `invalid` | the input is not acceptable to the target | `none` | no |
 | `conflict` | the state of the target does not admit the operation — a record that exists and is not ours | `none` | no |
 | `unavailable` | the target did not answer, or answered that it cannot right now | `none` | yes, with the same key |
-| `unknown` | the call was made and the answer did not arrive | `unknown` | only if the operation's idempotency is `native` or `marked` |
+| `unexpected` | the target answered with a status or a body the connector does not foresee; the interface it serves may have changed | `none` | no |
+| `unknown` | the call was made and the answer did not arrive, or arrived and could not be read | `unknown` | only if the operation's idempotency is `native` or `marked` |
 
 `effect` says whether the outward effect happened: `none`, or `unknown` when the answer did not
 arrive. `retryable` says whether the same call with the same key may be repeated without a second
 effect. For an operation with `idempotency: none` and `effect: unknown` it is `false`, and §4 says
 what follows. An error may carry `consumption` too: a call that failed still counted.
+
+`unexpected` exists because a connector's mapping of the target's answers is its expectation of
+an interface it does not control (ADR-0047). A status outside that mapping, or a body it cannot
+read, is not the input's fault and not a moment's unavailability: it is the interface behaving in
+a way the connector was not written for. Nothing was acted on, so its effect is `none`. Where the
+target may have acted — an answer to a write that cannot be read — the cause is `unknown`, whose
+effect is `unknown`. The run reads the cause of every failed call by a rule, and notices a broken
+interface from it (ADR-0047).
 
 Arguments that do not match a tool's input schema are refused by the MCP layer before the
 connector sees them; that is MCP's error, not this contract's.

@@ -1,6 +1,6 @@
 """`taktusctl` — the command line of Taktus.
 
-Eight commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
+Nine commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
 worker, the connector or the model contract against an endpoint the caller names; the suite is
 not part of the control plane, needs no wiring and records nothing. `conformance record` has the
 instance run the suite against the adapter its configuration resolves for an identifier, and
@@ -11,7 +11,9 @@ the date a person must act by. `cost` recomputes what a run cost from the ledger
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `anchors` configures and shows a tenant's anchors (ADR-0042). `findings` shows
 what the instance met that the product lacks, ready to send by hand (UC-6.12). `owner-channel`
-configures and shows where what is needed from the owner reaches them (ADR-0045). They need
+configures and shows where what is needed from the owner reaches them (ADR-0045). `interfaces`
+shows every interface the instance noticed had stopped behaving as its adapter expects, and
+whether the owner heard of it (ADR-0047). They need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -35,6 +37,7 @@ from taktus.adapters.driving.cli import (
     cost_command,
     findings_command,
     identity_command,
+    interfaces_command,
     owner_channel_command,
     run_command,
     submit_command,
@@ -64,6 +67,7 @@ app.command("submit")(submit_command.submit)
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
 app.command("findings")(findings_command.findings)
+app.command("interfaces")(interfaces_command.interfaces)
 app.add_typer(identity_command.identity, name="identity")
 app.add_typer(anchors_command.anchors, name="anchors")
 app.add_typer(owner_channel_command.owner_channel, name="owner-channel")

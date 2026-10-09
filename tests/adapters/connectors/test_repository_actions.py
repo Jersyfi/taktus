@@ -416,6 +416,51 @@ async def test_errors_are_classified(service: Service) -> None:
 
 
 @pytest.mark.usefixtures("credentials")
+async def test_an_answer_the_connector_does_not_foresee_is_unexpected(service: Service) -> None:
+    """A status outside the connector's mapping, or a body in a shape it was not written for,
+    is the interface behaving in a way the connector does not foresee (ADR-0047): `unexpected`
+    for a read, which acted on nothing; `unknown` for a write, which may have acted."""
+    connector = Connector(config(service))
+    cases: list[tuple[int, Any, str, Json, tuple[str, str]]] = [
+        (
+            418,
+            {"message": "teapot"},
+            "repository.issues.read",
+            {"number": 1},
+            ("unexpected", "none"),
+        ),
+        (
+            301,
+            {"message": "Moved"},
+            "repository.issues.read",
+            {"number": 1},
+            ("unexpected", "none"),
+        ),
+        (200, {"no": "issue"}, "repository.issues.read", {"number": 1}, ("unexpected", "none")),
+        (200, ["a", "list"], "repository.issues.list", {}, ("unexpected", "none")),
+        (
+            201,
+            {"no": "number"},
+            "repository.issues.create",
+            {"title": "x"},
+            ("unknown", "unknown"),
+        ),
+    ]
+    for status, body, operation, input, (cause, effect) in cases:
+        service.control("/_fake/answer", {"status": status, "body": body})
+        try:
+            error, answered = await call(connector, operation, context("s", KEY), input)
+        finally:
+            service.control("/_fake/answer", {})
+        assert error, (status, operation)
+        assert (answered["cause"], answered["effect"], answered["retryable"]) == (
+            cause,
+            effect,
+            False,
+        ), (status, operation, answered)
+
+
+@pytest.mark.usefixtures("credentials")
 async def test_the_declaration_is_served_and_every_operation_is_a_tool(service: Service) -> None:
     async with Client(build_server(config(service))) as client:
         resource = await client.read_resource("taktus://connector/v1/capabilities")

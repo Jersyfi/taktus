@@ -225,8 +225,20 @@ and filed only once the same person confirmed it, and only from the owner or som
 named; a decision is filed in the register and its run continues. A delivery that fails stays
 with the report and is shown. No message carries a secret value the instance holds. Proven
 against the fake chat service; on the installed instance it waits for NEED-0018 and NEED-0020
-(NTC-0095, NTC-0096). Nothing raises a need or a date from a step yet; the failure entry waits
-for #100 to call it; the owner's own questions in the chat are UC-6.4.
+(NTC-0095, NTC-0096). Nothing raises a need or a date from a step yet; the owner's own questions
+in the chat are UC-6.4.
+
+**A broken interface reaches the owner** (#100, `0.2.0`, ADR-0047). Taktus notices from its own
+calls when an interface it depends on stops behaving as its adapter expects (DEC-0058). The
+connector contract names the answer a connector does not foresee (`unexpected`), and the run
+writes `interface.failed` for every call that failed as unforeseen — a contract broken, an
+authentication refused, a status or a shape not foreseen — or transiently. A rule makes one broken
+interface per interface and cause; a transient failure counts only once a retry of the same step
+failed too. While the scheduler leads it reports each once through the owner-facing channel, with
+the first and the last failed call and their runs and steps (NTC-0099, NTC-0100). Without a channel
+it stays recorded, and `taktusctl interfaces` shows it as not delivered. Proven against the fake
+repository service; on the installed instance it reaches the owner once the channel is configured
+there (NEED-0020).
 
 **Every block is booked to an account** (#80, `0.2.0`, ADR-0043). A stretch in which a step of a
 run could not go on is recorded when it ends, with one of the seven accounts of ADR-0015, its

@@ -6,7 +6,9 @@ content back as a `Result`, or as an `Error` when the tool answered `isError`. T
 is the resource `taktus://connector/v1/capabilities`, read the same way.
 
 What the adapter refuses to guess: a tool that answers with an error and no classified error
-body is a `ConnectorError`, not a failure with a made-up cause — the contract says every error
+body is a `ContractBroken` — a `ConnectorError` that says the connector answered outside its
+contract, which the run counts toward a broken interface (ADR-0047) — not a failure with a
+made-up cause — the contract says every error
 is classified (C-06), and a connector that does not classify has broken it. Nothing of a
 credential travels here: the context names credentials, the connector's runtime holds the
 values.
@@ -28,6 +30,7 @@ from taktus.ports.connector import (
     CallFailed,
     Capabilities,
     ConnectorError,
+    ContractBroken,
     Error,
     Result,
 )
@@ -83,19 +86,19 @@ class McpActionConnector(ActionConnector):
             try:
                 classified = Error.model_validate(content)
             except ValidationError as invalid:
-                raise ConnectorError(
+                raise ContractBroken(
                     f"the connector at {self.endpoint} answered {operation} with an error that is "
                     f"not classified: {_first(invalid)}"
                 ) from invalid
             raise CallFailed(operation, classified)
         if not isinstance(content, dict):
-            raise ConnectorError(
+            raise ContractBroken(
                 f"the connector at {self.endpoint} answered {operation} without structured content"
             )
         try:
             return Result.model_validate(content)
         except ValidationError as invalid:
-            raise ConnectorError(
+            raise ContractBroken(
                 f"the connector at {self.endpoint} answered {operation} with a result that does "
                 f"not validate: {_first(invalid)}"
             ) from invalid

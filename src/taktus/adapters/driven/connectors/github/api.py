@@ -131,13 +131,29 @@ class Api:
             try:
                 return response.json()
             except ValueError as error:
-                raise TargetError(
-                    "unavailable",
-                    "none",
-                    True,
-                    "the service answered with something that is not JSON",
-                ) from error
+                raise unreadable(response.request.method, "a body that is not JSON") from error
         raise classify(response)
+
+
+def unreadable(method: str, what: str) -> TargetError:
+    """A success the connector cannot read: the interface answered in a shape it was not written
+    for (ADR-0047). A read acted on nothing, so the cause is `unexpected`; a write may have
+    acted, and whether it did is not known, so the cause is `unknown`."""
+    if method.upper() == "GET":
+        return TargetError(
+            "unexpected",
+            "none",
+            False,
+            f"the service answered with {what} the connector does "
+            "not foresee: its interface may have changed",
+        )
+    return TargetError(
+        "unknown",
+        "unknown",
+        False,
+        f"the service answered with {what} the connector does not "
+        "foresee; whether it acted is not known",
+    )
 
 
 def classify(response: httpx.Response) -> TargetError:
@@ -170,8 +186,16 @@ def classify(response: httpx.Response) -> TargetError:
         return TargetError("invalid", "none", False, f"the input was refused: {message}", status)
     if status == 429 or status >= 500:
         return TargetError("unavailable", "none", True, f"the service answered {status}", status)
+    if status == 400:
+        return TargetError("invalid", "none", False, f"the input was refused: {message}", status)
+    # Any other status is one the connector was not written for: a redirect, a method the
+    # service no longer allows, a resource gone. Its interface may have changed (ADR-0047).
     return TargetError(
-        "invalid", "none", False, f"the service answered {status}: {message}", status
+        "unexpected",
+        "none",
+        False,
+        f"the service answered {status}, which the connector does not foresee: {message}",
+        status,
     )
 
 

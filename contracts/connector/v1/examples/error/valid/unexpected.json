@@ -1,0 +1,7 @@
+{
+  "class": "failure",
+  "cause": "unexpected",
+  "effect": "none",
+  "retryable": false,
+  "detail": "the target answered 410, which the connector does not foresee: its interface may have changed"
+}

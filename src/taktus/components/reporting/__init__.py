@@ -28,6 +28,11 @@ The owner-facing channel (UC-6.11, ADR-0045):
   person confirmed it, and only from the owner or someone the owner named
   (`application/service/answer_in_channel.py`).
 
+A broken interface (ADR-0047): an interface Taktus depends on that stopped behaving as its
+adapter expects, one per interface and cause, read by a rule from the run's failed calls
+(`domain/service/interfaces.py`, through the port `ports/interfaces.py`) and reported to the
+owner as a report of kind `failure` (`application/service/broken_interfaces.py`).
+
 Which connector carries a message, how a decision answer is kept and which values are secret are
 asked through `ports/`, and answered by the composition root, because components never import
 each other.

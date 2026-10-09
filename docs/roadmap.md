@@ -158,9 +158,10 @@ worker generating the closing section of a pull request it opens (DEC-0037, DEC-
 #77) · the identity component in place of the provisional identity (#82) · a process that would
 give an instance credentials for its own infrastructure refused at planning time (#83) · chat
 connector, and the webhook intake answering a channel's URL verification (#84, #145) · **the owner-facing channel**: one event rendered for the repository, the
-owner's channel and the web app, and the owner's answer filed where it belongs (#85) · **the
-product finding**: what an instance meets that the product lacks becomes an issue here, carrying
-the run, the block and the waiting time (#86, #100) · P-01, P-02 and P-03 running on Taktus's
+owner's channel and the web app, and the owner's answer filed where it belongs (#85), and an
+interface that stopped behaving as its adapter expects, noticed from Taktus's own calls, reported
+through it (#100) · **the product finding**: what an instance meets that the product lacks becomes
+an issue here, carrying the run, the block and the waiting time (#86) · P-01, P-02 and P-03 running on Taktus's
 own instance, and the standing brief retired (#70, #71, #87) · the use-case migration, steps 2
 to 4, before the use cases it adds are built (`docs/usecases/NUMBERING.md`) (#61, #62, #63) ·
 **the way to *verified***, without which no step of P-01 to P-03 runs at level 3 on its own

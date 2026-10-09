@@ -12,6 +12,7 @@ from taktus.components.reporting.ports.findings import (
     FindingChannel,
     Held,
 )
+from taktus.components.reporting.ports.interfaces import Failures
 from taktus.components.reporting.ports.phrasebooks import Phrasebooks
 from taktus.components.reporting.ports.secret_values import SecretValues
 
@@ -22,6 +23,7 @@ __all__ = [
     "DecisionRead",
     "DecisionRefused",
     "Deliveries",
+    "Failures",
     "FindingChannel",
     "Held",
     "NotDelivered",

@@ -19,7 +19,8 @@ writes. This module answers each from the other:
 
 A decision request addressed to one of the roles the tenant's channel carries is raised as a
 report the moment it is raised (`decision_raised`); a failure Taktus notices about itself is
-reported through `failure`, the entry the run's noticing will call (issue #100).
+reported through `failure`. A broken interface the run's calls show (ADR-0047) is raised through
+the same handler `failure` wraps, by `interfaces.py`.
 """
 
 from __future__ import annotations

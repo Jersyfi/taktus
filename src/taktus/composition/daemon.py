@@ -80,7 +80,11 @@ from taktus.components.process.application.service.register_version import (
 from taktus.components.process.application.service.triggers import TriggersHandler
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
 from taktus.components.reporting.application.query import ReportQueries
-from taktus.components.reporting.application.service import ProductFindings, Sending
+from taktus.components.reporting.application.service import (
+    BrokenInterfaces,
+    ProductFindings,
+    Sending,
+)
 from taktus.components.run.application.query import (
     BlockedTime,
     ProvenanceQuery,
@@ -106,6 +110,7 @@ from taktus.composition.execution import (
     telemetry_of,
 )
 from taktus.composition.findings import RepositoryChannel, RunBlocks, findings_tick
+from taktus.composition.interfaces import broken_interfaces, interfaces_tick
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturity import CatalogMaturities
@@ -165,6 +170,9 @@ class Wired:
     owner: OwnerChannelWiring
     """The owner-facing channel: reports to the owner, their renderings and the answers
     given in the channel (ADR-0045)."""
+    interfaces: BrokenInterfaces
+    """The broken interfaces noticed from the run's failed calls, reported to the owner by the
+    scheduler (ADR-0047)."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -404,6 +412,7 @@ async def wire(
                 identities=identities,
                 decisions=decisions,
                 owner=owner,
+                interfaces=broken_interfaces(ledger, persistence, owner, clock),
                 complete_intake=CompleteIntakeHandler(
                     PostgresRepository(persistence, IntakeEvent),
                     PostgresRepository(persistence, Command),
@@ -592,11 +601,15 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # schedulers stand by (ADR-0035).
         # And, where the operator enabled it, it sends the product findings (UC-6.12).
         send_findings = findings_tick(wired.findings, settings.tenants, wired.clock)
+        # And it reports to the owner every interface that stopped behaving as its adapter
+        # expects, noticed from the run's own calls (ADR-0047).
+        report_interfaces = interfaces_tick(wired.interfaces, settings.tenants, wired.clock)
 
         async def scheduled() -> None:
             await wired.triggers.tick()
             await tick()
             await send_findings()
+            await report_interfaces()
 
         tasks.append(
             asyncio.create_task(

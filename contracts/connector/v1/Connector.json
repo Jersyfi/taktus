@@ -546,7 +546,7 @@
     },
     "Cause": {
       "title": "Cause",
-      "description": "Why a call failed, as one token. unauthenticated: no usable credential for the requesting identity. forbidden: the identity may not do this in the target system — the source system's permission stands. not_found: the record does not exist or the identity cannot see it. invalid: the input is not acceptable to the target. conflict: the state of the target does not admit the operation, for example a record that already exists and is not ours. unavailable: the target did not answer, or answered that it cannot right now. unknown: the call was made and the answer did not arrive, so the effect may or may not have happened.",
+      "description": "Why a call failed, as one token. unauthenticated: no usable credential for the requesting identity. forbidden: the identity may not do this in the target system — the source system's permission stands. not_found: the record does not exist or the identity cannot see it. invalid: the input is not acceptable to the target. conflict: the state of the target does not admit the operation, for example a record that already exists and is not ours. unavailable: the target did not answer, or answered that it cannot right now. unexpected: the target answered with a status or a body the connector does not foresee, so the interface it serves may have changed; nothing was acted on. unknown: the call was made and the answer did not arrive, or arrived and could not be read, so the effect may or may not have happened.",
       "type": "string",
       "enum": [
         "unauthenticated",
@@ -555,6 +555,7 @@
         "invalid",
         "conflict",
         "unavailable",
+        "unexpected",
         "unknown"
       ]
     },
