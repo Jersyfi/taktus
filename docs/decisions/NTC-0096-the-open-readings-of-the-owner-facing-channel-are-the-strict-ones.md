@@ -3,7 +3,7 @@
 **Mode entry:** M2.6
 **Kind:** unlisted
 **Decided:** 2026-10-09
-**Raised in:** [#PRNUMBER](https://github.com/Jersyfi/taktus/pull/PRNUMBER), for issue #85
+**Raised in:** [#165](https://github.com/Jersyfi/taktus/pull/165), for issue #85
 **How it follows:** UC-6.11 §2 states what must hold and leaves six readings open. Each is decided by the source that governs the same question elsewhere: the repository rule of CLAUDE.md §9 (English; the link, never the content), ADR-0008 and ADR-0042 (an answer read by a rule, nothing acted on before it is confirmed, the person whose answer was read confirms it), UC-1.7 (only a placed identity acts), ADR-0015 (no time of a named person shown to others) and principle 1 (no tool of Taktus's own). Where two readings were both consistent, the one taken is the stricter in substance — fewer answers read, fewer people named, nothing written outside the product — and the one with less ceremony: no new message kind, no new store.
 
 ## 1. What was decided

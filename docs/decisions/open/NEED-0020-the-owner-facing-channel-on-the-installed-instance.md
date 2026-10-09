@@ -1,10 +1,10 @@
 # NEED-0020 — The owner-facing channel on the instance
 
 **Kind:** action
-**Raised in:** [#PRNUMBER](https://github.com/Jersyfi/taktus/pull/PRNUMBER), for issue #85
+**Raised in:** [#165](https://github.com/Jersyfi/taktus/pull/165), for issue #85
 **Issue:** [#164](https://github.com/Jersyfi/taktus/issues/164)
 **Needed by:** 2026-11-07
-**Foreseeable since:** [#PRNUMBER](https://github.com/Jersyfi/taktus/pull/PRNUMBER), where the owner-facing channel was built
+**Foreseeable since:** [#165](https://github.com/Jersyfi/taktus/pull/165), where the owner-facing channel was built
 
 ## 1. What is needed
 
