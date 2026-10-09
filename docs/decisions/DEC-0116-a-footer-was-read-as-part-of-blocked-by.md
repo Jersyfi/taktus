@@ -1,7 +1,7 @@
 # DEC-0116 — A footer was read as part of "Blocked by"
 
 **Category:** DEFECT
-**Raised in:** [#PRN](https://github.com/Jersyfi/taktus/pull/PRN), after making #90 ready showed the ready rule missing a blocker
+**Raised in:** [#159](https://github.com/Jersyfi/taktus/pull/159), after making #90 ready showed the ready rule missing a blocker
 **Issue:** none; a defect is corrected, not asked (ADR-0017 §2)
 
 ## 1. What this is about
@@ -50,4 +50,4 @@ Nothing to answer. To object: "Reopen DEC-0116" in an issue.
 **Why it was wrong:** a section ran to the next heading, and the footer has none.
 **What it now says:** a section ends at a horizontal rule as well.
 **What changed in substance:** the readiness of an issue with a footer is now judged on its form alone.
-**Recorded in:** [#PRN](https://github.com/Jersyfi/taktus/pull/PRN)
+**Recorded in:** [#159](https://github.com/Jersyfi/taktus/pull/159)
