@@ -1,10 +1,10 @@
 # NEED-0017 — Your repository account linked to your identity
 
 **Kind:** action
-**Raised in:** the pull request for issue #82
+**Raised in:** [#149](https://github.com/Jersyfi/taktus/pull/149), for issue #82
 **Issue:** [#147](https://github.com/Jersyfi/taktus/issues/147)
 **Needed by:** 2026-10-31
-**Foreseeable since:** the pull request for issue #82, where the identity component replaced the provisional operator identity (ADR-0040)
+**Foreseeable since:** [#149](https://github.com/Jersyfi/taktus/pull/149), where the identity component replaced the provisional operator identity (ADR-0040)
 
 ## 1. What is needed
 
