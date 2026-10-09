@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from fakes import FakeConnector, FakeWorker, InnerStep, failure
 from fakes.connector import BLIND, READ, WRITE
+from fakes.maturity import VERIFIED
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.components.governance.domain.model import ResultRef
@@ -72,6 +73,7 @@ class ConnectorHarness(Harness):
         super().__init__(*definitions, workers=workers)
         self.connector = connector or FakeConnector()
         self.engine = RunEngine(
+            maturities=VERIFIED,
             runs=self.runs,
             work=self.persistence,
             objects=self.objects,

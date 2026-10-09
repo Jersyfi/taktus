@@ -53,11 +53,20 @@ run_id="$(compose exec -T taktus taktusctl submit --process /tmp/verify-bundle.y
 echo "run ${run_id}"
 
 state() { curl -fsS "${api}/runs/${run_id}" | python3 -c 'import json,sys; r=json.load(sys.stdin); c=[s for s in r["step_runs"] if s["step_id"]=="compute"][0]; print(r["state"], c["state"], len(c.get("artifacts",[])))'; }
+# The example runs at autonomy level 2: no step starts before a person confirmed it (ADR-0039).
+# Whatever waits is confirmed here, as the operator would, and the run goes back to the daemon.
+confirm_waiting() {
+    for step in $(curl -fsS "${api}/runs/${run_id}" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(" ".join(s["step_id"] for s in r["step_runs"] if s["state"]=="waiting_human"))'); do
+        compose exec -T taktus taktusctl submit --process /tmp/verify-bundle.yaml --resume "$run_id" --approve "$step" >/dev/null 2>&1
+        echo "confirmed ${step}"
+    done
+}
 say "3. waiting until the worker step is inside the run with a boundary persisted"
 for _ in $(seq 1 120); do
     read -r run_state step_state artifacts <<<"$(state)"
     if [ "$step_state" = "running" ] && [ "$artifacts" -gt 0 ]; then break; fi
     if [ "$run_state" = "finished" ]; then echo "the run finished before it could be killed; raise the command count"; exit 1; fi
+    if [ "$run_state" = "waiting_human" ]; then confirm_waiting; fi
     sleep 0.5
 done
 echo "run ${run_state}, compute ${step_state}, ${artifacts} artifact(s) so far"
@@ -72,6 +81,7 @@ compose up --detach --wait taktus
 for _ in $(seq 1 240); do
     read -r run_state step_state artifacts <<<"$(state)"
     if [ "$run_state" = "finished" ]; then break; fi
+    if [ "$run_state" = "waiting_human" ]; then confirm_waiting; fi
     sleep 0.5
 done
 echo "run ${run_state}, compute ${step_state}, ${artifacts} artifact(s)"

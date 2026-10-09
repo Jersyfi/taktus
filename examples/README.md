@@ -21,14 +21,24 @@ bundle instead and prints the run's identifier; the daemon executes it, and
 lives — the database named by `TAKTUS_DATABASE_URL`, or memory with a file snapshot, development
 only — then the run, its steps, the ledger entries of the run with the result of verifying the
 tenant's whole chain, the provenance of the run — one record per completed step — with the
-result of verifying its chain, and the raw consumption against the budget. Exit code `0` means the run finished; `3` means it halted or
-escalated, and the last line says how to resume; `2` means the bundle or the invocation is
-wrong.
+result of verifying its chain, and the raw consumption against the budget. Exit code `0` means the run finished; `3` means it halted,
+escalated or waits for a person, and the last lines say how to continue; `2` means the bundle or
+the invocation is wrong, or a raise of its autonomy level is refused.
+
+The example runs at autonomy level 2: no step starts before a person confirmed it (ADR-0039).
+Each invocation therefore ends with the next step waiting and the line that confirms it:
+
+```bash
+uv run taktusctl run --process examples/processes/six-times-seven.yaml --resume <run> --approve prepare-commands
+```
 
 | Option | Meaning |
 |---|---|
 | `--resume RUN_ID` | continue a halted run at its step boundary. The bundle is read again: a changed `limits` block is a changed budget, which is how a run rejected by admission control is given more room. The steps a run executes are the ones it started with. A run still marked as running — its process was killed — is recovered: the step in flight goes back to its last persisted boundary and the run continues. |
 | `--stop-after N` | request a stop after `N` steps have finished. The stop takes effect at the boundary; nothing is aborted. |
+| `--approve STEP` | with `--resume`: confirm a step that waits for a person at level 2, and continue the run. Repeatable. `taktusctl submit --resume RUN --approve STEP` confirms it and hands the run back to the daemon |
+| `--performed STEP` | with `--resume`: report that you performed the act of a step that Taktus only proposes at level 1, and continue the run. Repeatable |
+| `--approve-raise` | approve, as the invoking person, a raise of the bundle's autonomy level over the version it replaces. It is admitted only with the quality history that version names under `autonomy.history`; a refusal is recorded in the ledger as `autonomy.refused` |
 | `--worker URL` | the worker endpoint (default `http://127.0.0.1:9000`, or `TAKTUS_WORKER`) — for `TAKTUS_EXECUTION=endpoint`, the default. With `TAKTUS_EXECUTION=process` or `container` the command starts a unit per worker step instead, from the command line or image `TAKTUS_EXECUTION_UNIT` names (`.env.example`, `docs/architecture/contracts.md` §2.4); the bundle's `autonomy` decides whether `process` is allowed at all |
 | `--state-dir PATH` | where artifact bytes are written, and — without a database — the snapshot of runs, plans and the ledger between invocations (default `~/.cache/taktus/taktusctl`, or `TAKTUS_STATE_DIR`). The snapshot is development only: the in-memory adapters, not a supported deployment. With `TAKTUS_DATABASE_URL` set the state lives in PostgreSQL (`README.md`, *Operating it*). |
 | `--input NAME=VALUE` | one input of the run, repeatable; what `$input` references in the bundle resolve to. A value that reads as JSON is JSON (`--input issue=11` is a number, `--input labels='["taktus"]'` a list); anything else is text |
@@ -51,7 +61,7 @@ Top level:
 | Field | Meaning |
 |---|---|
 | `id`, `version`, `name` | the process, its version, its name; the ledger refers to `id@version` |
-| `autonomy` | the autonomy statement (ADR-0026): `level` — what the run and its worker assignments carry, 1 to 4 — `reason`, why the process runs at that level, and `toward_next`, what is missing to go one level higher or what forbids it (required below 4, absent at 4). A bare level does not register |
+| `autonomy` | the autonomy statement (ADR-0026): `level` — what the run and its worker assignments carry, 1 to 4 — `reason`, why the process runs at that level, and `toward_next`, what is missing to go one level higher or what forbids it (required below 4, absent at 4). A bare level does not register. Optional: `actions`, a lower level per tool action — a capability a step requires or a connector operation it calls — each with its own `level`, `reason` and `toward_next`; a step runs at the lowest level that applies to it. And `history`, how many runs in a row without a failure a raise of any of these levels needs (ADR-0039) |
 | `limits` | the run's budget: `currency`, `quota` and `compute` in the shape of the worker contract's `Limits` (`contracts/worker/v1`). Every worker step's estimate is admitted against what is left of it. |
 | `triggers` | what starts a run besides a person. `schedule` triggers are fired by the daemon's elected scheduler, once per slot (ADR-0035); `event` triggers are recorded, not yet acted on. A trigger is one of the two, see below |
 | `slo`, `author`, `reason` | as in control-plane.md §4; recorded, not yet acted on |

@@ -1,0 +1,13 @@
+{
+  "level": 3,
+  "reason": "every result-producing step carries an exactness class and the outward effects are comments a person reads; the run is watched through reports and samples",
+  "toward_next": "a demonstrated quality history: thirty runs in a row without a failure, with the comments checked by a rule",
+  "actions": {
+    "repository.pullrequest.merge": {
+      "level": 2,
+      "reason": "a merge changes the branch every other process reads; a person confirms each",
+      "toward_next": "a pipeline whose verdict covers what a person checks before a merge"
+    }
+  },
+  "history": 30
+}

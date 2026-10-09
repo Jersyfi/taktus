@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from fakes import FakeClock
 
-from taktus.adapters.driven.memory import MemoryPersistence, MemoryRepository
+from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
+from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     RegisterProcessVersionHandler,
@@ -118,7 +120,10 @@ def test_work_that_is_not_a_mapping_is_a_finding() -> None:
 async def test_the_handler_stores_the_version() -> None:
     persistence = MemoryPersistence()
     versions = MemoryRepository(persistence, ProcessVersion)
-    handler = RegisterProcessVersionHandler(versions, persistence)
+    ledger = ChainedLedger(
+        MemoryLedgerStore(persistence), FakeClock(datetime(2026, 10, 9, tzinfo=UTC))
+    )
+    handler = RegisterProcessVersionHandler(versions, persistence, ledger=ledger)
     version = await handler.execute(RegisterProcessVersion(bundle(), tenant="t"))
     async with persistence.transaction("t"):
         assert await versions.get("t", "p@1") == version

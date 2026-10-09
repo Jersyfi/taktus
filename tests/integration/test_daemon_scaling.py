@@ -108,6 +108,9 @@ def rule_only_bundle(n: int) -> dict[str, Any]:
     with EXAMPLE.open(encoding="utf-8") as handle:
         document: dict[str, Any] = yaml.safe_load(handle)
     document["id"] = f"scaling-{os.getpid()}-{n}"
+    # Unattended: the example's level 2 would wait for a person before every step (ADR-0039).
+    # Rules need no adapter, so level 3 asks nothing of the maturity record either.
+    document["autonomy"] = {"level": 3, "reason": "rules only", "toward_next": "-"}
     document["limits"] = {"compute": {"seconds": 5, "resource_class": "cpu.small"}}
     document["steps"] = [
         {

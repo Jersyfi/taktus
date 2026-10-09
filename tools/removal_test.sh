@@ -91,7 +91,9 @@ if [ "$with_example" -eq 1 ]; then
         done
     fi
     # Registering is running: the bundle is stored when the run is created, and one step is
-    # enough. The run is left halted; the removal test rehearses the version, not this run.
+    # enough. The run is left halted, or waiting for a confirmation at the example's level 2
+    # (ADR-0039); the removal test rehearses the version, not this run, and a rehearsal asks
+    # for no confirmation (NTC-0079).
     uv run taktusctl run --process "$example" --stop-after 1 >"$logs/register-example.txt" 2>&1 || true
 fi
 

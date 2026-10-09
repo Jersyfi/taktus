@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fakes.maturity import VERIFIED
 from sqlalchemy import text
 
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
@@ -93,6 +94,7 @@ class Instance:
         store = PostgresProvenanceStore(persistence)
         queue = PostgresQueue(persistence, lease_seconds=30)
         engine = RunEngine(
+            maturities=VERIFIED,
             runs=runs,
             work=persistence,
             objects=MemoryObjectStore(),
@@ -165,7 +167,7 @@ async def submit(engine: RunEngine) -> Run:
         id=f"pln_{os.urandom(4).hex()}",
         command_id="cmd_1",
         goal="g",
-        autonomy_level=2,
+        autonomy_level=3,
         steps=(step,),
         results_in=PlanResult.RUN,
         status=PlanStatus.COMMISSIONED,

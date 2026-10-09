@@ -32,6 +32,7 @@ from typing import Literal
 
 import httpx
 import pytest
+from fakes.maturity import VERIFIED
 from sqlalchemy import text
 
 from taktus.adapters.driven.memory import MemoryObjectStore
@@ -225,6 +226,7 @@ async def instances(postgres_url: str) -> AsyncIterator[tuple[Instance, Instance
 
 def engine(instance: Instance, worker: Recorder) -> RunEngine:
     return RunEngine(
+        maturities=VERIFIED,
         runs=instance.runs,
         work=instance.persistence,
         objects=MemoryObjectStore(),
@@ -253,7 +255,7 @@ async def submit(engine: RunEngine, instance: Instance) -> str:
         id=f"pln_{os.urandom(4).hex()}",
         command_id="cmd_1",
         goal="g",
-        autonomy_level=2,
+        autonomy_level=3,
         steps=(step,),
         results_in=PlanResult.RUN,
         status=PlanStatus.COMMISSIONED,

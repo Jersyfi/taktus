@@ -31,6 +31,24 @@ person decides. The statement is shown wherever the process is shown.
 Level 4 is not reserved for large organisations. A private individual with three daily micro-jobs
 has the same claim to it as a corporation.
 
+**How levels 1 to 3 are enforced** (ADR-0039). The statement sets a level per process and, under
+`actions`, per tool action: a capability a step requires or a connector operation it calls. A
+step runs at the lowest level that applies to it, and the run engine applies it before anything
+of the step starts:
+
+| Level | Before a step starts |
+|---|---|
+| 1 | a step that acts — hands work to a worker, calls an outward operation — is not executed: its proposal is recorded, and it waits until a person reports the act performed; analysis runs |
+| 2 | the step waits until a person confirmed it |
+| 3 | nothing is asked; the step runs only on an adapter at *verified* or above, and is refused with a finding that names it and the adapter otherwise |
+
+A waiting step holds back only the steps that depend on it; the run waits in `waiting_human` once
+nothing else can run. A rehearsal is asked for neither (NTC-0079). A level rises only where a
+version is registered: with a person's approval and the quality history — runs in a row without
+a failure or a result defect — that the replaced version names under `history`. A refusal is the
+ledger entry `autonomy.refused`; Taktus may propose a raise (`autonomy.proposed`) and never
+applies one. Level 4 and levels per risk class are not built yet.
+
 ---
 
 ## 2. Anchors

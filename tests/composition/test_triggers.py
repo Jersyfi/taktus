@@ -10,6 +10,7 @@ from typing import Any
 from fakes import FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.connector import READ, WRITE
 from fakes.identity import directory
+from fakes.maturity import VERIFIED
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
@@ -60,6 +61,7 @@ class World:
         self.connector = FakeConnector()
         connectors = StaticConnectorPool([("connector.fake", self.connector)])
         engine = RunEngine(
+            maturities=VERIFIED,
             runs=self.runs,
             work=self.persistence,
             objects=MemoryObjectStore(),
@@ -74,7 +76,9 @@ class World:
         )
         processes = MemoryRepository(self.persistence, Process)
         versions = MemoryRepository(self.persistence, ProcessVersion)
-        self.register = RegisterProcessVersionHandler(versions, self.persistence, processes)
+        self.register = RegisterProcessVersionHandler(
+            versions, self.persistence, processes, ledger=self.ledger
+        )
         self.triggers = Triggers(
             tenants=(TENANT,),
             triggers=TriggersHandler(processes, versions, self.states, self.persistence),

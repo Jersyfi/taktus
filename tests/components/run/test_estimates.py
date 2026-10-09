@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 import pytest
 from fakes import FakeConnector, FakeModel, FakeWorker, InnerStep
+from fakes.maturity import VERIFIED
 
 from taktus.adapters.driven.models import StaticModelPool
 from taktus.components.run.application.service import EngineOptions, RunEngine, StartRun
@@ -35,6 +36,7 @@ ISSUE = rule("issue", {"rule": "constant", "value": {"number": 11, "title": "Rep
 def priced(h: ModelHarness, table: PriceTable | None = TABLE) -> ModelHarness:
     """The harness's engine, with a price table."""
     h.engine = RunEngine(
+        maturities=VERIFIED,
         runs=h.runs,
         work=h.persistence,
         objects=h.objects,
@@ -53,6 +55,7 @@ def priced(h: ModelHarness, table: PriceTable | None = TABLE) -> ModelHarness:
 def margined(h: Harness, uncalibrated_margin: float) -> Harness:
     """The harness's engine, with the uncalibrated margin an operator set."""
     h.engine = RunEngine(
+        maturities=VERIFIED,
         runs=h.runs,
         work=h.persistence,
         objects=h.objects,

@@ -2,7 +2,7 @@
 
 from taktus.shared.v1.anchor import Anchor, AnchorClass, AnchorScope, AppliesTo, Decider
 from taktus.shared.v1.artifact import Artifact, Digest
-from taktus.shared.v1.autonomy import Autonomy
+from taktus.shared.v1.autonomy import ActionAutonomy, Autonomy
 from taktus.shared.v1.autonomy_level import AutonomyLevel
 from taktus.shared.v1.capability import Capability, CapabilityPattern
 from taktus.shared.v1.command import Command, Intent, ReplyTo
@@ -51,6 +51,7 @@ __all__ = [
     "PRODUCING",
     "QUANTITIES",
     "VARIABLE",
+    "ActionAutonomy",
     "Anchor",
     "AnchorClass",
     "AnchorScope",

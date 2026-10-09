@@ -12,6 +12,7 @@ from pydantic import Field, model_validator
 
 from taktus.components.process.domain.model.errors import InvalidProcess
 from taktus.components.process.domain.service import schedule
+from taktus.components.process.domain.service.autonomy import actions_used
 from taktus.components.process.domain.service.validation import topological_order, validate_graph
 from taktus.shared.v1 import Autonomy, AutonomyLevel, ExactnessClass, Step, StepId, Value
 
@@ -155,6 +156,12 @@ class ProcessVersion(Value):
             f"work is given for {step_id!r}, which is not a step of this process"
             for step_id in self.work
             if step_id not in ids
+        )
+        used = actions_used(self.steps, self.work)
+        findings.extend(
+            f"the autonomy statement sets a level for the action {action!r}, which no step of "
+            "this process uses: the level would never apply (ADR-0039)"
+            for action in sorted(set(self.autonomy.action_levels) - used)
         )
         for trigger in self.triggers:
             if trigger.schedule is None:

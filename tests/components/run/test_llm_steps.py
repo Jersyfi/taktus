@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from fakes import FakeModel
+from fakes.maturity import VERIFIED
 
 from taktus.adapters.driven.models import StaticModelPool
 from taktus.components.run.application.service import RunEngine
@@ -36,6 +37,7 @@ class ModelHarness(Harness):
         super().__init__(*definitions)
         self.model = model or FakeModel()
         self.engine = RunEngine(
+            maturities=VERIFIED,
             runs=self.runs,
             work=self.persistence,
             objects=self.objects,
