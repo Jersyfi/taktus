@@ -63,7 +63,12 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.domain.model import Process, ProcessVersion
-from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
+from taktus.components.reporting.application.service import ProductFindings
+from taktus.components.run.application.query import (
+    BlockedTime,
+    ProvenanceQuery,
+    RecordedResponses,
+)
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.composition.capacity import capacity_report, rules_of
@@ -76,6 +81,7 @@ from taktus.composition.execution import (
     open_worker,
     telemetry_of,
 )
+from taktus.composition.findings import RunBlocks
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturity import CatalogMaturities
 from taktus.composition.settings import (
@@ -262,6 +268,9 @@ class LocalWiring:
                 identities=identities,
                 configure_anchors=decisions.configure,
                 anchors=decisions.anchors,
+                findings=ProductFindings(
+                    RunBlocks(BlockedTime(ledger, objects, stores.work, runs))
+                ),
             )
             telemetry.shutdown()
 

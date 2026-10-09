@@ -468,6 +468,10 @@ class Settings:
     """What the capacity report is told: thresholds, the database's volume, the interval."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
+    findings_connector: str | None
+    """The MCP URL of the connector through which product findings go to the Taktus repository
+    (UC-6.12, ADR-0046). None: the operator did not enable it, and findings are only recorded
+    on the instance and shown to the operator."""
     state_dir: Path
     """Where artifact bytes are written."""
     tenants: tuple[str, ...]
@@ -504,6 +508,7 @@ class Settings:
             *self.budget.effective(),
             *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
+            ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
             ("TAKTUS_TENANTS", ",".join(self.tenants)),
             ("TAKTUS_INSTANCE", self.instance),
@@ -547,6 +552,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         budget=load_budget(configuration),
         capacity=load_capacity(configuration),
         connectors=reader.connectors(),
+        findings_connector=reader.url("findings.connector", "") or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         tenants=load_tenants(configuration),
         instance=reader.text("instance", default_instance),

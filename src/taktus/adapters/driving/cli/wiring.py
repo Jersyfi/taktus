@@ -25,6 +25,7 @@ from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
+from taktus.components.reporting.application.service import ProductFindings
 from taktus.components.run.application.query import ProvenanceQuery
 from taktus.components.run.application.service import RunEngine
 from taktus.components.run.domain.model import Run
@@ -64,6 +65,9 @@ class Services:
     """A tenant's anchors, configured (`taktusctl anchors set`, ADR-0042)."""
     anchors: AnchorsInForce | None = None
     """The anchors a tenant holds now (`taktusctl anchors show`)."""
+    findings: ProductFindings | None = None
+    """The product findings the instance recorded, to show its operator (`taktusctl findings`,
+    UC-6.12)."""
     conformance: RunConformanceHandler | None = None
     """The instance runs an adapter's conformance suite and records it (`taktusctl
     conformance record`, ADR-0044)."""

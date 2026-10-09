@@ -39,6 +39,7 @@ from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
+from taktus.components.reporting.domain.model import LACK_CAUSES
 from taktus.components.run.application.query import BlockedTime
 from taktus.components.run.application.service import (
     ConfirmSteps,
@@ -48,7 +49,7 @@ from taktus.components.run.application.service import (
     StartRun,
 )
 from taktus.components.run.domain.model import ACCOUNTS, Cause, Run, RunState, StepState
-from taktus.components.run.domain.model.block import limit_account
+from taktus.components.run.domain.model.block import LACKS, limit_account
 from taktus.components.run.domain.service.blocked import Block, BlockedSum, parse
 from taktus.ports.platform import Headroom, PlatformObservation
 from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit
@@ -162,7 +163,7 @@ class World:
             options=EngineOptions(uncalibrated_margin=0.0),
             maturities=FakeMaturities(),
         )
-        self.accounts = BlockedTime(self.ledger, self.objects, self.persistence)
+        self.accounts = BlockedTime(self.ledger, self.objects, self.persistence, self.runs)
 
     async def start(
         self,
@@ -206,6 +207,10 @@ class World:
 
     def later(self, by: timedelta = GAP) -> None:
         self.clock.current += by
+
+    async def runs_of(self, process: str) -> list[Run]:
+        async with self.persistence.transaction(TENANT):
+            return [r for r in await self.runs.list(TENANT) if r.process_version == f"{process}@1"]
 
 
 async def every_cause(w: World) -> dict[str, Run]:
@@ -371,6 +376,59 @@ async def test_a_provider_at_its_limit_past_the_ceiling_escalates_with_its_wait_
     assert entry.content_digest is not None
     content = await w.objects.get(entry.content_digest)
     assert content is not None and json.loads(content)["ended"] == "ceiling"
+
+
+def call(id: str, operation: str) -> tuple[Step, dict[str, Any]]:
+    step = Step(
+        id=id, method=Method.RULE, reason="r", rejected=(), exactness=ExactnessClass.SOURCED
+    )
+    return step, {"rule": "connector", "operation": operation, "input": {"id": "x"}}
+
+
+async def test_a_lack_of_an_adapter_is_a_block_that_lasts_until_the_step_can_start() -> None:
+    """For want of an adapter the step fails, its run escalates (NTC-0002), and the step carries
+    a block booked to `wait.dependency` naming what was lacking (ADR-0046). A retry that meets
+    the same lack keeps the one block; the block ends, with its record, once the step starts."""
+    w = World(worker=FakeWorker(capabilities_offered=("code.edit",)))
+    cases = {
+        "no_worker": (worker("build"), "shell.script"),
+        "no_connector": (call("look", "other.things.read"), "other.things"),
+        "operation_unsupported": (call("look", "fake.records.destroy"), "fake.records.destroy"),
+    }
+    for cause, (definition, lacking) in cases.items():
+        run = await w.start(cause, definition)
+        assert run.state is RunState.ESCALATED, cause
+        step_run = run.step_run(definition[0].id)
+        assert step_run.state is StepState.FAILED and step_run.retryable is True
+        assert step_run.block is not None
+        assert (step_run.block.account, step_run.block.cause) == ("wait.dependency", cause)
+        assert step_run.block.lacking == lacking
+        w.later()
+        again = await w.resume(run)
+        assert again.state is RunState.ESCALATED
+        assert again.step_run(definition[0].id).block == step_run.block, "one stretch of waiting"
+    assert await w.accounts.blocks(TENANT) == (), "a lack that lasts is recorded when it ends"
+    waiting = await w.accounts.waiting(TENANT)
+    assert {(b.cause, b.lacking) for b in waiting} == {
+        (cause, lacking) for cause, (_, lacking) in cases.items()
+    }
+
+    w.worker.capabilities_offered = ("code.edit", "shell.script")
+    w.engine._workers = StaticWorkerPool([("worker.fake", w.worker)])
+    (run,) = [r for r in await w.runs_of("no_worker")]
+    w.later()
+    assert (await w.resume(run)).state is RunState.FINISHED
+    (ended,) = await w.accounts.blocks(TENANT)
+    assert (ended.account, ended.cause, ended.lacking) == (
+        "wait.dependency",
+        "no_worker",
+        "shell.script",
+    )
+    assert ended.seconds >= 2 * GAP.total_seconds()
+
+
+def test_the_causes_that_are_a_lack_are_the_ones_the_product_finding_reads() -> None:
+    assert LACKS == LACK_CAUSES
 
 
 @pytest.mark.parametrize(

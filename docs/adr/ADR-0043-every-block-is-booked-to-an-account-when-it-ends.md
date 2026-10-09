@@ -1,6 +1,6 @@
 # ADR-0043 — Every block is booked to an account when it ends
 
-**Status:** accepted
+**Status:** accepted · amended 2026-10-09 (ADR-0046): a failure for want of an adapter is a block
 
 ## Context
 ADR-0015 §1 requires every run to record each block with its cause, its duration and the work it
@@ -74,6 +74,12 @@ that frees itself or is raised, a person's answer, an external state, another st
 are not blocks. A step refused for want of an estimate, or because its adapter is below
 *verified*, needs its process or its integration changed. A failure is an incident (ADR-0021).
 A stop is a person's choice. Each stays in the ledger as what it is.
+
+*Amended 2026-10-09 (ADR-0046):* one failure is a block as well. A step that failed for want of an
+adapter — `no_worker`, `no_connector`, `operation_unsupported` — waits for the configuration or the
+product to change, and continues as it is once it does. It is booked to `wait.dependency` from the
+failure until the step can start, and its record names what was lacking. Its run still escalates
+(NTC-0002).
 
 ### 5. A provider at its rate limit makes a step wait
 The model port gains `ModelAtLimit`, a kind of `ModelError`. The adapter for the
