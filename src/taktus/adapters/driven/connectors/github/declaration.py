@@ -28,6 +28,7 @@ ACTIONS_CREDENTIAL = "REPOSITORY_TOKEN"
 INTAKE_CREDENTIAL = "REPOSITORY_WEBHOOK_SECRET"
 
 CAPABILITIES = [
+    CHANNEL,
     "repository.issues",
     "repository.pullrequests",
     "repository.pipelines",
@@ -119,6 +120,16 @@ OPERATIONS: list[Json] = [
         "idempotency": "marked",
         "summary": "Comment on an issue or pull request. The comment carries the idempotency "
         "key as a mark; a repeat finds it.",
+    },
+    {
+        "name": "channel.repo.reply",
+        "demand": {"quota_units": 3},
+        "capability": CHANNEL,
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Answer at a reply address this connector's intake produced — a comment on "
+        "that issue or pull request — with `address`, an optional `thread` and `text`. Marked "
+        "like a comment: a repeat finds it.",
     },
     {
         "name": "repository.branches.create",

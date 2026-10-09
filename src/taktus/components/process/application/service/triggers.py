@@ -79,7 +79,13 @@ class TriggersHandler:
                     slot = state.due(query.now)
                     if slot is not None:
                         firings.append(
-                            Firing(version=version, trigger=trigger, slot=slot, state=state)
+                            Firing(
+                                version=version,
+                                trigger=trigger,
+                                slot=slot,
+                                state=state,
+                                by=process.activated_by,
+                            )
                         )
         return firings
 

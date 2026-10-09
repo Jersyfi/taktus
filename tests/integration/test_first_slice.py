@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 import yaml
+from fakes.identity import added_by_command_line
 
 from taktus.adapters.driving.cli.wiring import Services
 from taktus.components.command.application.service import CommissionPlan
@@ -233,6 +234,7 @@ def test_taktusctl_run_executes_the_example_and_resumes_in_a_later_invocation(
         "TAKTUS_WORKER": worker_endpoint,
         "TAKTUS_STATE_DIR": str(tmp_path / "state"),
     }
+    added_by_command_line(taktusctl(), "idn_test", env)
     first = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
         [taktusctl(), "run", "--process", str(EXAMPLE), "--stop-after", "2"],
         capture_output=True,
@@ -267,6 +269,7 @@ def test_taktusctl_run_refuses_an_invalid_bundle(tmp_path: Path) -> None:
     document = bundle()
     document["steps"][0]["method"] = "llm"  # exact on llm
     bad.write_text(yaml.safe_dump(document), encoding="utf-8")
+    added_by_command_line(taktusctl(), "idn_test", None, "--state-dir", str(tmp_path / "state"))
     completed = subprocess.run(  # noqa: S603
         [taktusctl(), "run", "--process", str(bad), "--state-dir", str(tmp_path / "state")],
         capture_output=True,
@@ -294,11 +297,12 @@ def test_taktusctl_run_needs_a_process(missing: str) -> None:
 def test_nothing_executes_without_an_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No `--identity` and no provisional identity configured: the command refuses before it
-    registers anything, and names both ways out (control-plane.md §2, DEC-0013)."""
-    monkeypatch.delenv("TAKTUS_PROVISIONAL_IDENTITY")
+    """No `--identity`, or one the identity component does not know: the command refuses
+    before it registers anything, and names the way out (control-plane.md §2, ADR-0040)."""
+    monkeypatch.delenv("TAKTUS_IDENTITY")
+    state = str(tmp_path / "state")
     completed = subprocess.run(  # noqa: S603
-        [taktusctl(), "run", "--process", str(EXAMPLE), "--state-dir", str(tmp_path / "state")],
+        [taktusctl(), "run", "--process", str(EXAMPLE), "--state-dir", state],
         capture_output=True,
         text=True,
         check=False,
@@ -306,9 +310,20 @@ def test_nothing_executes_without_an_identity(
     )
     assert completed.returncode == 2, completed.stdout + completed.stderr
     assert "nothing executes without an identity" in completed.stderr
-    assert "TAKTUS_PROVISIONAL_IDENTITY=default=<identity>" in completed.stderr
     assert "--identity" in completed.stderr
     assert not (tmp_path / "state" / "ledger.json").exists()
+
+    unknown = subprocess.run(  # noqa: S603
+        [taktusctl(), "run", "--process", str(EXAMPLE), "--state-dir", state, "--identity", "x"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **PLAIN},
+    )
+    assert unknown.returncode == 2, unknown.stdout + unknown.stderr
+    assert "has no identity 'x'" in unknown.stderr
+    assert "taktusctl identity add x" in unknown.stderr
+    assert not (tmp_path / "state" / "ledger.json").exists(), "nothing registered either"
 
 
 async def test_what_a_run_cost_is_read_back_from_the_ledger(

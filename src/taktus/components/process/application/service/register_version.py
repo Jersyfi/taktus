@@ -36,6 +36,9 @@ UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 class RegisterProcessVersion:
     bundle: Document
     tenant: Tenant
+    by: str | None = None
+    """The identity that registers the version and so makes it active; its schedule triggers
+    act for that identity."""
 
 
 class RegisterProcessVersionHandler:
@@ -60,7 +63,10 @@ class RegisterProcessVersionHandler:
                 await self._processes.put(
                     command.tenant,
                     Process(
-                        id=version.process_id, name=version.name, active_version=version.version
+                        id=version.process_id,
+                        name=version.name,
+                        active_version=version.version,
+                        activated_by=command.by,
                     ),
                 )
         return version

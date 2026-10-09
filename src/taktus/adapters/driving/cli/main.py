@@ -1,10 +1,11 @@
 """`taktusctl` — the command line of Taktus.
 
-Five commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
+Six commands. `conformance run` drives the conformance suite (src/taktus/conformance) for the
 worker, the connector or the model contract; the suite is not part of the control plane and
 needs no wiring. `run` and `submit` drive the control plane: `run` executes a bundle in this
 process, `submit` queues it for the daemon. `capacity` reports what the platform has left and
-the date a person must act by. `cost` recomputes what a run cost from the ledger. They need
+the date a person must act by. `cost` recomputes what a run cost from the ledger. `identity`
+adds identities and lists and revokes the links of channel accounts (ADR-0040). They need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -21,7 +22,13 @@ from typing import Annotated
 
 import typer
 
-from taktus.adapters.driving.cli import capacity_command, cost_command, run_command, submit_command
+from taktus.adapters.driving.cli import (
+    capacity_command,
+    cost_command,
+    identity_command,
+    run_command,
+    submit_command,
+)
 from taktus.conformance import (
     ConnectorSuiteOptions,
     ModelSuiteOptions,
@@ -45,6 +52,7 @@ app.command("run")(run_command.run)
 app.command("submit")(submit_command.submit)
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
+app.add_typer(identity_command.identity, name="identity")
 
 CONTRACTS = {"worker/v1", "connector/v1", "model/v1"}
 

@@ -59,8 +59,9 @@
 #       TAKTUS_MODEL_OUTPUT_CAP, when not set, is derived: the model contract's check M-03 is run
 #       against the endpoint — two calls of a few tokens — and the limit is declared `hard` when
 #       the endpoint holds it, `soft` otherwise (contracts/model/v1 §3). Nobody declares it by hand.
-#   TAKTUS_PROVISIONAL_IDENTITY
-#       default `default=idn_owner` (DEC-0013)
+#   TAKTUS_IDENTITY
+#       the identity the runs act for, default `idn_owner`; added to the tenant `default` with
+#       `taktusctl identity add` when the tenant does not know it yet (ADR-0040)
 #
 # Optional: TAKTUS_FIRST_RUN_REPOSITORY (owner/name; default: from `git remote get-url origin`),
 # TAKTUS_STATE_DIR (default ~/.cache/taktus/taktusctl), TAKTUS_DATABASE_URL to keep the state
@@ -246,8 +247,13 @@ state="${TAKTUS_STATE_DIR:-$HOME/.cache/taktus/taktusctl}"
 logs="$state/first-run"
 mkdir -p "$logs"
 export TAKTUS_STATE_DIR="$state"
-export TAKTUS_PROVISIONAL_IDENTITY="${TAKTUS_PROVISIONAL_IDENTITY:-default=idn_owner}"
+export TAKTUS_IDENTITY="${TAKTUS_IDENTITY:-idn_owner}"
 export TAKTUS_EXECUTION="${TAKTUS_EXECUTION:-endpoint}"
+# Nothing executes as an identity the tenant does not know; an identity that exists is left as
+# it is. The account key a first addition prints is discarded, never written to a file or a log:
+# these runs need none, and `taktusctl identity key` issues one to a person who does.
+uv run taktusctl identity add "$TAKTUS_IDENTITY" >/dev/null 2>"$logs/identity.txt" ||
+    { cat "$logs/identity.txt" >&2; exit 2; }
 
 echo "first_run: repository $repository, issue #$issue"
 echo "first_run: state under $state, logs under $logs"

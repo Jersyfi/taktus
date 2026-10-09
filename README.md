@@ -200,12 +200,13 @@ export TAKTUS_DATABASE_URL=postgresql://taktus@127.0.0.1:5432/taktus && make mig
 ```
 
 ```bash
-export TAKTUS_PROVISIONAL_IDENTITY=default=idn_owner && uv run taktusctl run --process examples/processes/six-times-seven.yaml
+uv run taktusctl identity add idn_owner && uv run taktusctl run --identity idn_owner --process examples/processes/six-times-seven.yaml
 ```
 
-Nothing executes without an identity: until the identity component exists, the identity every
-command of a tenant acts as is configured — `TAKTUS_PROVISIONAL_IDENTITY`, provisional and
-named so (DEC-0013) — or given as `--identity`. `make db-up` starts PostgreSQL alone (`deploy/docker/compose.dev.yml`, bound to `127.0.0.1`,
+Nothing executes without an identity, and never as one Taktus does not know: an administrator
+adds it with `taktusctl identity add`, which prints its account key once, and the command line
+names it with `--identity` (or `TAKTUS_IDENTITY`). A sender on a channel is placed by the link
+of their account, made by the person with a link code from their Taktus account (ADR-0040). `make db-up` starts PostgreSQL alone (`deploy/docker/compose.dev.yml`, bound to `127.0.0.1`,
 no password — which is why the URL may be inline here; `TAKTUS_DB_PORT` when 5432 is taken);
 `make migrate` brings it to the current schema; `make db-down` stops it and keeps its data.
 `uv run taktusd` then runs the daemon against the same database, and `uv run taktusctl submit`

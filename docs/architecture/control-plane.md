@@ -54,15 +54,26 @@ executed from it. `POST /intake-events/{id}/complete` completes it into a comman
 (`complete_intake.py`), and the command is then commissioned like any other.
 
 The identity port (`src/taktus/ports/identity.py`) is what the core asks: place a sender —
-tenant, identity, organisational path — or answer that the sender is unknown. **Until the
-identity component exists (`0.2.0`) the port is served by a provisional adapter:** one
-configured operator identity per tenant, `TAKTUS_PROVISIONAL_IDENTITY=<tenant>=<identity>`,
-which every command of that tenant acts as — from the command line, where `taktusctl run`
-takes it when `--identity` is not given and refuses to run with neither, and from a webhook,
-where every sender of the one configured tenant resolves to its operator. Every resolution it
-answers carries `provisional: true`, every command it completes carries
-`identity_provisional: true` in its context, and DEC-0013 states what it does not do and what
-replaces it.
+tenant, identity, organisational path — or answer that the sender is unknown. The identity
+component serves it (`src/taktus/components/identity`, ADR-0040), and replaced the
+provisional operator identity of DEC-0013 in `0.2.0`:
+
+- **A sender is placed by the link of their account, and by nothing else.** A link maps one
+  account on one channel to one identity; its identifier is derived from the two, so a second
+  link for the account is refused. It is made by the person — who creates a single-use link
+  code in their Taktus account, proved by its account key, and writes it in the channel from
+  the account — or by the organisation's identity source, a port of its own. A matching name or
+  address links nothing.
+- **An unknown sender is answered, not executed.** The event is kept nowhere; the sender is
+  told in the channel how to link the account, through the reply operation the channel's
+  connector declares (`contracts/connector/v1` §7), as Taktus itself (ADR-0033).
+- **Every link and every revocation is a ledger entry** (`identity.linked`,
+  `identity.unlinked`). An administrator sees every link of a tenant and revokes one with
+  `taktusctl identity links` and `revoke`; the next event from that account is from an
+  unknown sender.
+- **The command line names an identity the component knows** (`--identity`); the component
+  supplies its organisational path. **A scheduled run acts for the identity that registered
+  the process's active version** (ADR-0035, amended).
 
 ---
 

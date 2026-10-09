@@ -28,13 +28,12 @@ import structlog
 import uvicorn
 from sqlalchemy.exc import DBAPIError
 
-from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
+from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers, SystemRandomness
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
-from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
 from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
@@ -64,6 +63,8 @@ from taktus.components.governance.application.service import (
     ReportCapacity,
     ReportCapacityHandler,
 )
+from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
@@ -89,6 +90,7 @@ from taktus.composition.execution import (
 )
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
+from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.triggers import Triggers
 from taktus.ports.clock import Clock
@@ -119,7 +121,10 @@ class Wired:
     register_version: RegisterProcessVersionHandler
     commission: CommissionPlanHandler
     intake: ReceiveIntakeHandler
-    complete_intake: CompleteIntakeHandler | None
+    complete_intake: CompleteIntakeHandler
+    identities: IdentityDirectory
+    """The identity component: who a sender is, the link codes a person makes, the links an
+    administrator sees and revokes (ADR-0040)."""
     leadership: Leadership
     clock: Clock
     ids: SystemIdentifiers
@@ -181,17 +186,20 @@ async def wire(
         clock = clock or SystemClock()
         ids = SystemIdentifiers()
         telemetry = telemetry_of(settings.telemetry)
-        # PROVISIONAL (DEC-0013): who acts is configured, not authenticated, until the
-        # identity component exists. Without it an intake is placed in the first tenant and
-        # can be completed by nobody.
-        identities = (
-            ProvisionalOperatorIdentity(settings.provisional_identity)
-            if settings.provisional_identity
-            else None
-        )
         runs = PostgresRepository(persistence, Run)
         ledger_store = PostgresLedgerStore(persistence)
         ledger = ChainedLedger(ledger_store, clock)
+        # Who a sender is, and who acts: the identity component, and nothing else (ADR-0040).
+        identities = IdentityDirectory(
+            tenants=settings.tenants,
+            identities=PostgresRepository(persistence, Identity),
+            links=PostgresRepository(persistence, ChannelLink),
+            codes=PostgresRepository(persistence, LinkCode),
+            work=persistence,
+            ledger=ledger,
+            clock=clock,
+            randomness=SystemRandomness(),
+        )
         provenance_store = PostgresProvenanceStore(persistence)
         queue = PostgresQueue(persistence, lease_seconds=settings.lease_seconds)
         async with open_worker(settings.execution, configuration, state_dir=settings.state_dir) as (
@@ -283,12 +291,12 @@ async def wire(
                     },
                     PostgresRepository(persistence, IntakeEvent),
                     persistence,
-                    telemetry,
                     identities,
+                    telemetry,
+                    ConnectorReplies(pools.connectors),
                 ),
-                complete_intake=None
-                if identities is None
-                else CompleteIntakeHandler(
+                identities=identities,
+                complete_intake=CompleteIntakeHandler(
                     PostgresRepository(persistence, IntakeEvent),
                     PostgresRepository(persistence, Command),
                     identities,

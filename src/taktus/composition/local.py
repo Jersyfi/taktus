@@ -23,12 +23,11 @@ from typing import Protocol
 
 from sqlalchemy.exc import DBAPIError
 
-from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers
+from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers, SystemRandomness
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
-from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
     MemoryObjectStore,
@@ -54,6 +53,8 @@ from taktus.components.accounting.application.service import CostOfRunHandler
 from taktus.components.catalog.application.service import RecordRemovalResultHandler
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
+from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
@@ -77,7 +78,6 @@ from taktus.composition.settings import (
     load_connectors,
     load_execution,
     load_model,
-    load_provisional_identity,
     load_telemetry,
     load_tenants,
 )
@@ -129,7 +129,7 @@ class LocalWiring:
             budget = load_budget(self._configuration)
             capacity = load_capacity(self._configuration)
             prices = budget.table()
-            operators = load_provisional_identity(self._configuration)
+            tenants = load_tenants(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         async with (
@@ -214,9 +214,16 @@ class LocalWiring:
                 cost=CostOfRunHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work
                 ),
-                # PROVISIONAL (DEC-0013): the configured operator identity, until the identity
-                # component exists. None when nothing is configured.
-                identities=ProvisionalOperatorIdentity(operators) if operators else None,
+                identities=IdentityDirectory(
+                    tenants=tenants,
+                    identities=stores.of(Identity),
+                    links=stores.of(ChannelLink),
+                    codes=stores.of(LinkCode),
+                    work=stores.work,
+                    ledger=ledger,
+                    clock=clock,
+                    randomness=SystemRandomness(),
+                ),
             )
             telemetry.shutdown()
 

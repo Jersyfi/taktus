@@ -28,7 +28,7 @@ INTAKE_CREDENTIAL = "CHAT_SIGNING_SECRET"
 MAX_PAGES = 10
 """How many pages of a thread a read or a lookup reads, at most."""
 
-CAPABILITIES = ["chat.threads"]
+CAPABILITIES = ["chat.threads", CHANNEL]
 
 OPERATIONS: list[Json] = [
     {
@@ -49,6 +49,16 @@ OPERATIONS: list[Json] = [
         "summary": "Post a message into a conversation, into a thread when one is named. The "
         "message carries the idempotency key in its metadata; a repeat finds it there and "
         "posts nothing.",
+    },
+    {
+        "name": "channel.chat.reply",
+        "demand": {"quota_units": MAX_PAGES + 1},
+        "capability": CHANNEL,
+        "effect": "delivery",
+        "idempotency": "marked",
+        "summary": "Answer at a reply address this connector's intake produced — `address`, "
+        "an optional `thread`, `text` — exactly as `chat.threads.post` posts and finds a "
+        "message (contract §7).",
     },
 ]
 

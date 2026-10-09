@@ -50,6 +50,22 @@ async def call(service: ChatService, name: str, ctx: Json, input: Json) -> tuple
 
 
 @pytest.mark.usefixtures("chat_credentials")
+async def test_the_answer_to_an_unknown_sender_lands_once_in_their_thread(
+    chat_service: ChatService,
+) -> None:
+    """`channel.chat.reply` is how Taktus answers a sender it cannot place (ADR-0040): the
+    reply address of the intake, posted and found again as any post is."""
+    input = {"address": CONVERSATION, "thread": THREAD, "text": "Link this account first."}
+    key = "taktus:intake:offer:0123456789abcdef"
+    failed, first = await call(chat_service, "channel.chat.reply", context("reply", key=key), input)
+    assert not failed, first
+    failed, again = await call(chat_service, "channel.chat.reply", context("reply", key=key), input)
+    assert not failed and again["effect"]["replayed"] is True
+    replies = [m for m in chat_service.messages(CONVERSATION) if m.get("thread_ts") == THREAD]
+    assert [m["text"] for m in replies] == ["Link this account first."]
+
+
+@pytest.mark.usefixtures("chat_credentials")
 async def test_a_reply_posted_for_a_step_is_posted_once_across_a_restart(
     chat_service: ChatService,
 ) -> None:

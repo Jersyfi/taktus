@@ -28,8 +28,12 @@ async def test_a_signed_delivery_reaches_the_connector_and_comes_back_as_an_even
         Config(target="http://127.0.0.1:1", repository="placeholder-owner/placeholder-repo")
     )
     given = services()
+    await given.linked(account="100000001")
     given.intake = ReceiveIntakeHandler(
-        {"channel.repo": McpIntakeConnector(server)}, given.events, given.persistence
+        {"channel.repo": McpIntakeConnector(server)},
+        given.events,
+        given.persistence,
+        given.identities,
     )
     headers, body = recorded("issue-comment-created")
     async with httpx.AsyncClient(

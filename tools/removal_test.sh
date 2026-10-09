@@ -15,8 +15,8 @@
 #
 # What it needs: the same configuration the instance runs with (TAKTUS_WORKER or
 # TAKTUS_EXECUTION, TAKTUS_CONNECTORS, TAKTUS_MODEL_*, TAKTUS_DATABASE_URL to keep the state in
-# PostgreSQL; .env is read first if present) and TAKTUS_PROVISIONAL_IDENTITY (default
-# `default=idn_owner`, DEC-0013). The integrations to exercise are read from the instance
+# PostgreSQL; .env is read first if present) and TAKTUS_IDENTITY (default `idn_owner`, added to
+# the tenant when it does not know it yet, ADR-0040). The integrations to exercise are read from the instance
 # through the loopback connector, never listed here.
 #
 # `--with-example` registers examples/processes/six-times-seven.yaml first, so that an
@@ -59,7 +59,7 @@ state="${TAKTUS_STATE_DIR:-$HOME/.cache/taktus/taktusctl}"
 logs="$state/removal-test"
 mkdir -p "$logs"
 export TAKTUS_STATE_DIR="$state"
-export TAKTUS_PROVISIONAL_IDENTITY="${TAKTUS_PROVISIONAL_IDENTITY:-default=idn_owner}"
+export TAKTUS_IDENTITY="${TAKTUS_IDENTITY:-idn_owner}"
 export TAKTUS_EXECUTION="${TAKTUS_EXECUTION:-endpoint}"
 
 pids=""
@@ -69,6 +69,11 @@ stop() {
     done
 }
 trap stop EXIT INT TERM
+
+# Nothing executes as an identity the tenant does not know; one that exists is left as it is.
+# The account key a first addition prints is discarded, never written to a file or a log.
+uv run taktusctl identity add "$TAKTUS_IDENTITY" >/dev/null 2>"$logs/identity.txt" ||
+    fail "the identity $TAKTUS_IDENTITY could not be added; see $logs/identity.txt"
 
 bundle=blueprints/self-operation/processes/S-01-removal-test.yaml
 example=examples/processes/six-times-seven.yaml

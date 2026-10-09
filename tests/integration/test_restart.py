@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from fakes.identity import added_by_command_line
 
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
@@ -120,6 +121,7 @@ async def test_a_run_survives_a_killed_process_and_resumes_at_its_last_boundary(
         "TAKTUS_DATABASE_URL": postgres_url,
     }
     database = Database(postgres_url)
+    added_by_command_line(taktusctl(), "idn_test", env)
     first = await asyncio.create_subprocess_exec(
         taktusctl(), "run", "--process", str(process_file), stdout=PIPE, stderr=STDOUT, env=env
     )

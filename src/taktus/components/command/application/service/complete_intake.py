@@ -89,7 +89,6 @@ class CompleteIntakeHandler:
                 "event": event.event,
                 "event_id": event.id,
                 "sender": {"account": event.sender_account, "kind": event.sender_kind},
-                "identity_provisional": resolution.provisional,
             },
             reply_to=ReplyTo(
                 channel=event.reply_channel,

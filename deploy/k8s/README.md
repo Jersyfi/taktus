@@ -88,7 +88,7 @@ operator's. The parts that carry a decision:
 | `ingress.*` | off unless `host` is given; `tls.secretName` names an existing certificate Secret, and then nothing is requested; only without it does `tls.issuer` ask the platform's certificate manager, by an annotation on the ingress |
 | `networkPolicy.*` | the name service, the API server's addresses, the ingress controller's namespace, and further egress rules for the hosts the control plane needs (section 5) |
 | `telemetry.otlp.*`, `model.*`, `capacity.*` | as their `TAKTUS_*` variables; `model.outputCap: hard` because this tenant's endpoint holds the limit (research [A4]; M-03 passed against it on 2026-10-01) — for another endpoint, run M-03 and set what it shows |
-| `env` | further non-secret `TAKTUS_*` settings — tenants, connectors, the provisional identity; a `_FILE` variable here fails the render, because a secret goes through `credentials` |
+| `env` | further non-secret `TAKTUS_*` settings — tenants, connectors; a `_FILE` variable here fails the render, because a secret goes through `credentials` |
 
 **Every secret is mounted as a file and read through `TAKTUS_<KEY>_FILE`** — never handed to a
 container as an environment variable, because variables leak into process listings and child

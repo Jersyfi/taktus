@@ -35,11 +35,11 @@ from typing import Any
 import httpx
 import pytest
 from fakes import FakeClock, FakeIdentifiers
+from fakes.identity import Directory, directory
 
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
-from taktus.adapters.driven.identity import ProvisionalOperatorIdentity
-from taktus.adapters.driven.memory import MemoryPersistence, MemoryRepository
+from taktus.adapters.driven.memory import MemoryRepository
 from taktus.components.command.application.service import (
     CompleteIntake,
     CompleteIntakeHandler,
@@ -64,6 +64,8 @@ INSTRUCTION = "Turn issue 412 into a pull request at level 3"
 RECEIVED = datetime(2026, 9, 16, 8, 15, 2, tzinfo=UTC)
 TENANT = "default"
 OWNER = "idn_owner"
+CHAT_ACCOUNT = "U0000000001"
+REPOSITORY_ACCOUNT = "100000001"
 
 type Json = dict[str, Any]
 
@@ -191,20 +193,24 @@ def repository_delivery(secret: str, text: str = INSTRUCTION) -> Delivery:
 
 
 class CommandComponent:
-    """The `command` component's two handlers over memory, with the instance's identity."""
+    """The `command` component's two handlers over memory, with the identity component.
+    The owner has linked both accounts — the chat's and the repository's — with a code from
+    their Taktus account, as every sender must be linked (UC-1.7, ADR-0040)."""
 
     def __init__(self, running: Running) -> None:
-        self.persistence = MemoryPersistence()
+        self.identity: Directory = directory((TENANT,), clock=FakeClock(RECEIVED))
+        self.persistence = self.identity.persistence
         self.events = MemoryRepository(self.persistence, IntakeEvent)
         self.commands = MemoryRepository(self.persistence, Command)
-        identities = ProvisionalOperatorIdentity({TENANT: OWNER})
+        self.linked = False
+        identities = self.identity.directory
         channels = load_connectors(running.configuration)
         self.receive = ReceiveIntakeHandler(
             # As the daemon builds it: one intake connector per configured channel.
             {channel: McpIntakeConnector(url) for channel, url in channels.items()},
             self.events,
             self.persistence,
-            identities=identities,
+            identities,
         )
         self.complete = CompleteIntakeHandler(
             self.events,
@@ -215,8 +221,20 @@ class CommandComponent:
             FakeIdentifiers(),
         )
 
+    async def link(self) -> None:
+        if self.linked:
+            return
+        owner, _ = await self.identity.person(TENANT, OWNER)
+        for channel, account in ((CHAT, CHAT_ACCOUNT), (REPOSITORY, REPOSITORY_ACCOUNT)):
+            code = await self.identity.code(owner, channel)
+            assert (await self.identity.directory.unknown_sender(channel, account, code)).linked
+        self.linked = True
+
     async def command(self, channel: str, delivery: Delivery) -> tuple[IntakeEvent, Command]:
-        outcome = await self.receive.execute(ReceiveIntake(channel=channel, delivery=delivery))
+        await self.link()
+        outcome = await self.receive.execute(
+            ReceiveIntake(channel=channel, delivery=delivery, tenant=TENANT)
+        )
         assert outcome.accepted is not None, outcome
         command = await self.complete.execute(
             CompleteIntake(tenant=TENANT, event_id=outcome.accepted.id)
@@ -256,7 +274,7 @@ async def test_a_chat_message_becomes_an_intake_event_and_then_a_command(
     )
     assert event.channel == CHAT and event.sender_account == "U0000000001"
     assert command.channel == CHAT
-    assert command.identity == OWNER, "the identity port completed it"
+    assert command.identity == OWNER, "the link of the account placed it"
     assert command.intent.raw == INSTRUCTION
     assert command.reply_to.channel == CHAT
     assert command.reply_to.address == "D0000000001"
@@ -289,7 +307,7 @@ async def test_the_same_instruction_through_two_channels_is_the_same_command(
         return document
 
     assert remainder(chat, chat_event) == remainder(repo, repo_event)
-    assert remainder(chat, chat_event)["context"] == {"identity_provisional": True}
+    assert remainder(chat, chat_event)["context"] == {}
     assert chat.identity == repo.identity == OWNER
     assert chat.org_path == repo.org_path
     assert chat.intent == repo.intent

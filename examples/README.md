@@ -32,8 +32,8 @@ wrong.
 | `--worker URL` | the worker endpoint (default `http://127.0.0.1:9000`, or `TAKTUS_WORKER`) — for `TAKTUS_EXECUTION=endpoint`, the default. With `TAKTUS_EXECUTION=process` or `container` the command starts a unit per worker step instead, from the command line or image `TAKTUS_EXECUTION_UNIT` names (`.env.example`, `docs/architecture/contracts.md` §2.4); the bundle's `autonomy` decides whether `process` is allowed at all |
 | `--state-dir PATH` | where artifact bytes are written, and — without a database — the snapshot of runs, plans and the ledger between invocations (default `~/.cache/taktus/taktusctl`, or `TAKTUS_STATE_DIR`). The snapshot is development only: the in-memory adapters, not a supported deployment. With `TAKTUS_DATABASE_URL` set the state lives in PostgreSQL (`README.md`, *Operating it*). |
 | `--input NAME=VALUE` | one input of the run, repeatable; what `$input` references in the bundle resolve to. A value that reads as JSON is JSON (`--input issue=11` is a number, `--input labels='["taktus"]'` a list); anything else is text |
-| `--identity LABEL` | the identity the command is attributed to and the run acts on behalf of — what every connector call carries. Default: the provisional operator identity configured for the tenant (`TAKTUS_PROVISIONAL_IDENTITY`, DEC-0013); with neither, nothing executes. The CLI channel authenticates nobody yet |
-| `--tenant ID` | the tenant the run belongs to (default `default`, or `TAKTUS_TENANT`); until the identity component exists there is that one, created by the first migration. |
+| `--identity ID` | the identity the command is attributed to and the run acts on behalf of — what every connector call carries. One the tenant knows (`taktusctl identity add ID`), or nothing executes; `TAKTUS_IDENTITY` when the option is not given. The command line authenticates by holding the instance's state, and the identity component supplies the organisational path (ADR-0040) |
+| `--tenant ID` | the tenant the run belongs to (default `default`, or `TAKTUS_TENANT`): one the instance serves (`TAKTUS_TENANTS`). |
 
 ## The shape of a bundle
 
@@ -69,8 +69,9 @@ process declares, or the bundle does not register:
 | `inputs` | fixed values, by input name |
 | `each` | one run per item of a list: `operation`, a connector operation declared `read`; `select`, the dotted path to the list in its output; `field`, optionally, the dotted path to the value in each item; `input`, the input the value is given as |
 
-The run acts as the tenant's provisional operator identity (`TAKTUS_PROVISIONAL_IDENTITY`,
-DEC-0013), and its ledger carries `run.triggered` beside `run.created`. S-01 is the example:
+The run acts for the identity that registered the version (`--identity` of the `run` or
+`submit` that registered it, ADR-0040), and its ledger carries `run.triggered` beside
+`run.created`. S-01 is the example:
 weekly, one run per integration `orchestrator.integrations.list` answers
 (`blueprints/self-operation/processes/S-01-removal-test.yaml`).
 

@@ -134,6 +134,7 @@ async def test_a_new_attempt_key_opens_a_new_pull_request_only_for_a_new_head(
     [
         ("repository.issues.create", {"title": "Found a thing", "body": "Details."}, "issues"),
         ("repository.comments.create", {"number": 1, "body": "On it."}, "comments"),
+        ("channel.repo.reply", {"address": f"{REPOSITORY}#1", "text": "Link it."}, "comments"),
     ],
 )
 async def test_issues_and_comments_are_marked_and_found_again(
@@ -152,6 +153,26 @@ async def test_issues_and_comments_are_marked_and_found_again(
     assert repeat["effect"]["records"] == first["effect"]["records"]
     assert service.state()[REPOSITORY][counter] == baseline + 1
     assert "taktus-idempotency-key" in first["output"]["body"]
+
+
+@pytest.mark.usefixtures("credentials")
+@pytest.mark.parametrize(
+    "address", [REPOSITORY, f"{REPOSITORY}#x", f"{REPOSITORY}#0", "someone/else#1"]
+)
+async def test_a_reply_goes_only_to_a_conversation_of_this_repository(
+    service: Service, address: str
+) -> None:
+    """The reply operation answers at a reply address the intake produced: an issue or a pull
+    request of the repository it serves, and nowhere else (ADR-0040)."""
+    assert declaration.operation("channel.repo.reply")["capability"] == declaration.CHANNEL
+    error, result = await call(
+        Connector(config(service)),
+        "channel.repo.reply",
+        context("reply", "taktus:intake:dlv-1:reply"),
+        {"address": address, "text": "Link it."},
+    )
+    assert error and result["cause"] == "invalid", result
+    assert count(service, "comments") == 0
 
 
 @pytest.mark.usefixtures("credentials")

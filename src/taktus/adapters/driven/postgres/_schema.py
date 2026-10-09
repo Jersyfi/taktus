@@ -72,6 +72,7 @@ process = Table(
     Column("name", Text, nullable=False),
     Column("description", Text),
     Column("active_version", Text),
+    Column("activated_by", Text),
     PrimaryKeyConstraint("tenant", "id"),
 )
 
@@ -94,6 +95,47 @@ process_version = Table(
     Column("reason", Text),
     PrimaryKeyConstraint("tenant", "id"),
     UniqueConstraint("tenant", "process_id", "version", name="process_version_unique"),
+)
+
+# --- identity -----------------------------------------------------------------------------------
+
+identity_table = Table(
+    "identity",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("org_path", JSONB, nullable=False),
+    Column("key_digest", Text),
+    _at("created_at"),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+channel_link = Table(
+    "channel_link",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # derived from channel and account: one per account
+    Column("channel", Text, nullable=False),
+    Column("account", Text, nullable=False),
+    Column("identity", Text, nullable=False),
+    Column("origin", Text, nullable=False),
+    _at("linked_at"),
+    _at("revoked_at", nullable=True),
+    Column("revoked_by", Text),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+link_code = Table(
+    "link_code",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the digest of the code; the code is kept nowhere
+    Column("identity", Text, nullable=False),
+    Column("channel", Text, nullable=False),
+    _at("created_at"),
+    _at("expires_at"),
+    _at("used_at", nullable=True),
+    PrimaryKeyConstraint("tenant", "id"),
 )
 
 trigger_state = Table(

@@ -11,6 +11,7 @@ from typing import Any
 
 import structlog
 from fakes import FakeClock, FakeIdentifiers, FakeWorker, InnerStep
+from fakes.identity import directory
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -191,6 +192,7 @@ async def test_the_connector_call_is_a_span_of_its_own() -> None:
         {"channel.repo": Connector()},
         MemoryRepository(persistence, IntakeEvent),
         persistence,
+        directory(persistence=persistence).directory,
         telemetry_,
     )
     delivery = Delivery(headers={"X-Secret": PLANTED}, body=PLANTED, received_at=AT)

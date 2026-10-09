@@ -421,6 +421,20 @@ async def create_comment(api: Api, input: Json, key: str) -> Outcome:
     )
 
 
+async def reply(api: Api, input: Json, key: str) -> Outcome:
+    """Taktus's answer at a reply address the intake produced (`contracts/connector/v1` §7):
+    `<repository>#<number>` is a comment on that issue or pull request, made and found again
+    exactly as `repository.comments.create` makes and finds one. An address without a number
+    names no conversation to answer in, and is refused."""
+    address = _str(input, "address")
+    repository, separator, number = address.rpartition("#")
+    if not separator or not number.isdigit() or int(number) < 1:
+        raise invalid(f"{address!r} names no issue or pull request to answer in")
+    if repository and repository.lower() != api.repository.lower():
+        raise invalid(f"{address!r} is not in the repository this connector serves")
+    return await create_comment(api, {"number": int(number), "body": _str(input, "text")}, key)
+
+
 def _comment_records(comment: Json, number: int) -> list[Json]:
     return [
         {
@@ -674,6 +688,7 @@ OPERATIONS: dict[str, Operation] = {
     "repository.pipelines.trigger": trigger_pipeline,
     "repository.comments.list": list_comments,
     "repository.comments.create": create_comment,
+    "channel.repo.reply": reply,
     "repository.branches.create": create_branch,
     "repository.labels.set": set_labels,
     "repository.files.read": read_file,

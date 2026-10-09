@@ -108,6 +108,7 @@ class ProcessMapper:
                 "name": document["name"],
                 "description": document.get("description"),
                 "active_version": document.get("active_version"),
+                "activated_by": document.get("activated_by"),
             },
         )
 
@@ -123,6 +124,7 @@ class ProcessMapper:
                 "name": row.name,
                 "description": row.description,
                 "active_version": row.active_version,
+                "activated_by": row.activated_by,
             }
         )
 
@@ -717,6 +719,129 @@ class TriggerStateMapper:
         )
 
 
+# --- identity -------------------------------------------------------------------------------------
+
+
+class IdentityMapper:
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.identity_table, tenant, id)
+        return None if row is None else self._from(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.identity_table,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "org_path": list(document["org_path"]),
+                "key_digest": document.get("key_digest"),
+                "created_at": _at(document["created_at"]),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.identity_table, tenant, s.identity_table.c.id)
+        return [self._from(row) for row in rows]
+
+    @staticmethod
+    def _from(row: Row[Any]) -> Document:
+        return _present(
+            {
+                "tenant": row.tenant,
+                "id": row.id,
+                "org_path": row.org_path,
+                "key_digest": row.key_digest,
+                "created_at": _iso(row.created_at),
+            }
+        )
+
+
+class ChannelLinkMapper:
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.channel_link, tenant, id)
+        return None if row is None else self._from(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.channel_link,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "channel": document["channel"],
+                "account": document["account"],
+                "identity": document["identity"],
+                "origin": document["origin"],
+                "linked_at": _at(document["linked_at"]),
+                "revoked_at": _at(document.get("revoked_at")),
+                "revoked_by": document.get("revoked_by"),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.channel_link, tenant, s.channel_link.c.id)
+        return [self._from(row) for row in rows]
+
+    @staticmethod
+    def _from(row: Row[Any]) -> Document:
+        return _present(
+            {
+                "tenant": row.tenant,
+                "id": row.id,
+                "channel": row.channel,
+                "account": row.account,
+                "identity": row.identity,
+                "origin": row.origin,
+                "linked_at": _iso(row.linked_at),
+                "revoked_at": _iso(row.revoked_at),
+                "revoked_by": row.revoked_by,
+            }
+        )
+
+
+class LinkCodeMapper:
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.link_code, tenant, id)
+        return None if row is None else self._from(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.link_code,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "identity": document["identity"],
+                "channel": document["channel"],
+                "created_at": _at(document["created_at"]),
+                "expires_at": _at(document["expires_at"]),
+                "used_at": _at(document.get("used_at")),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.link_code, tenant, s.link_code.c.id)
+        return [self._from(row) for row in rows]
+
+    @staticmethod
+    def _from(row: Row[Any]) -> Document:
+        return _present(
+            {
+                "tenant": row.tenant,
+                "id": row.id,
+                "identity": row.identity,
+                "channel": row.channel,
+                "created_at": _iso(row.created_at),
+                "expires_at": _iso(row.expires_at),
+                "used_at": _iso(row.used_at),
+            }
+        )
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -728,4 +853,7 @@ MAPPERS: dict[str, Mapper] = {
     "run": RunMapper(),
     "adapter_maturity": AdapterMaturityMapper(),
     "trigger_state": TriggerStateMapper(),
+    "identity": IdentityMapper(),
+    "channel_link": ChannelLinkMapper(),
+    "link_code": LinkCodeMapper(),
 }

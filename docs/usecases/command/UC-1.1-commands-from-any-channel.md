@@ -6,7 +6,7 @@ epic: E1
 serves: [P1, P4]
 state: building
 version: 0.2.0
-tests: [tests/components/command/test_complete_intake.py::test_the_resolver_places_the_event_and_completes_it_as_the_operator, tests/adapters/connectors/test_chat_channel.py::test_the_chat_channel_is_added_by_configuration_and_a_connector_alone, tests/adapters/connectors/test_chat_channel.py::test_the_same_instruction_through_two_channels_is_the_same_command, tests/adapters/connectors/test_chat_channel.py::test_a_reply_is_delivered_into_the_thread_the_command_arrived_in]
+tests: [tests/components/command/test_complete_intake.py::test_the_link_places_the_event_and_completes_it_as_the_linked_identity, tests/adapters/connectors/test_chat_channel.py::test_the_chat_channel_is_added_by_configuration_and_a_connector_alone, tests/adapters/connectors/test_chat_channel.py::test_the_same_instruction_through_two_channels_is_the_same_command, tests/adapters/connectors/test_chat_channel.py::test_a_reply_is_delivered_into_the_thread_the_command_arrived_in]
 adrs: {ADR-0003: d0268914fed9, ADR-0024: a8baa5bc69f3}
 supersedes: null
 ---
