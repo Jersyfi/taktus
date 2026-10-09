@@ -162,7 +162,7 @@ owner's channel and the web app, and the owner's answer filed where it belongs (
 product finding**: what an instance meets that the product lacks becomes an issue here, carrying
 the run, the block and the waiting time (#86, #100) · P-01, P-02 and P-03 running on Taktus's
 own instance, and the standing brief retired (#70, #71, #87) · the use-case migration, steps 2
-to 4 (`docs/usecases/MIGRATION.md`), before the use cases it adds are built (#61, #62, #63)
+to 4, before the use cases it adds are built (`docs/usecases/NUMBERING.md`) (#61, #62, #63)
 
 **Complete when** Taktus maintains its own repository for **14 days** with no intervention in
 execution, and every block is analysable by cause and duration.

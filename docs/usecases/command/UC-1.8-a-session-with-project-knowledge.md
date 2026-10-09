@@ -36,7 +36,7 @@ reached from the web app and from chat.
 ## 3. Where the boundary lies
 
 **Not the knowledge layer.** How sources are connected and read is the `knowledge` component's
-(definition E5, migrated in step 4). **Not a chat tool of its own**: the session is presented in the
+(UC-5.5). **Not a chat tool of its own**: the session is presented in the
 web app and in the organisation's own chat channel. **Not a person's assessment**: nothing in a
 session is used to judge its participant (principle 14).
 

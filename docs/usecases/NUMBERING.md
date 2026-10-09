@@ -53,14 +53,32 @@ one Taktus identity; `UC-5.8` connecting observability and evaluation platforms,
 the execution layer: workers, skills and the learning loop); `UC-15.1` domain blueprints,
 `UC-15.2` the finance reference domain under legal anchors, `UC-15.3` partner interfaces,
 `UC-15.4` end-to-end processes across domains, `UC-15.5` the responsibility anchor (epic E15,
-the virtual agent business). Where each is filed is `MIGRATION.md`.
+the virtual agent business). `make usecases` prints where each is filed. `UC-15.2` is a
+deployment and is described in `blueprints/finance/`.
 
 ## Numbers given after version 2
 
-Numbered in conversation, in no version of the definition, known to the repository by the titles
-`MIGRATION.md` gives them: `UC-1.8` a session with project knowledge (the roadmap's `0.3.0` names
-it); `UC-7.4` the decision request (ADR-0008 and ADR-0017 carry it); `UC-9.5` bottleneck and
-waiting analysis (ADR-0015 carries it). Their text arrives with the step of the migration that
-files them.
+Numbered in conversation, in no version of the definition: `UC-1.8` a session with project
+knowledge; `UC-7.4` the decision request; `UC-9.5` bottleneck and waiting analysis. Numbered by
+the migration's fourth step, for the requirements the owner stated outside the definition, each the
+next free number of its area: `UC-6.11` the owner-facing channel; `UC-6.12` the product finding;
+`UC-13.6` readable documentation beyond the repository.
+
+## Numbers of the definition with no file of their own
+
+- `UC-5.1`, coupled control, is part of **`UC-5.2`**, which holds both modes as one use case.
+- `UC-5.4`, the connector interface, is carried by architecture: the adapter obligation
+  (ADR-0003), the connector contract (ADR-0024, `contracts/connector/v1`) and its conformance
+  suite, which is its verification.
+- `UC-12.2`, the IT service chat, is a deployment and is described in `blueprints/it-operations/`.
+- The definition's table of example domains under `UC-15.1` is `blueprints/README.md`.
 
 Every other number of the definition, `UC-1.1` to `UC-15.5`, keeps its meaning.
+
+## The migration of the definition
+
+The definition was moved into `docs/vision/` and `docs/usecases/` in four steps, from 2026-09-29 to
+2026-10-09, following a working file, `docs/usecases/MIGRATION.md`. As that file said of itself, it
+was deleted when the fourth step was complete; the repository's history holds it, and records that
+name it refer to that history. What each step asked the owner is DEC-0030, DEC-0069, DEC-0082 and
+DEC-0087.

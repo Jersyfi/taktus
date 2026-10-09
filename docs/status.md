@@ -139,8 +139,9 @@ webhook secret (NEED-0010), the live connector test in CI (since superseded by T
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
 each with the pull request that recorded it. **Open:** DEC-0044, the licence, which must be settled
 by the release of `1.0.0` and is taken up only when that release is prepared, DEC-0069, the
-same question as DEC-0030 for the seventeen use cases of the migration's second step, and DEC-0082,
-the same question for the twenty-seven of the third. DEC-0028,
+same question as DEC-0030 for the seventeen use cases of the migration's second step, DEC-0082,
+the same question for the twenty-seven of the third, and DEC-0087, the same question for the
+seventeen of the fourth and the two blueprint descriptions. DEC-0028,
 DEC-0029 and DEC-0030, raised by the pull request that brought in the vision layer, were answered on
 2026-10-08, each with the recommended option: a floor for automatic skill approval set from data,
 qualified reviewers for the legal-anchor catalogue before a finance or personnel blueprint, and
@@ -209,16 +210,17 @@ answers, for the first time, how much of the vision stands:
 
 - **Every one of the fourteen principles is served by at least one use case**; `make gate-vision`
   fails when one is not.
-- **Fifty-eight use cases exist in the new format. None is verified and none is built.** Fifteen
+- **Seventy-five use cases exist in the new format. None is verified and none is built.** Fifteen
   are *building* — part of what they require is built and named tests prove that part: UC-1.1
   commands from any channel, UC-4.5 halt or escalate at the boundary, UC-6.1 the complete activity
   log, UC-8.9 changing a vendor breaks nothing, UC-7.1 the autonomy range, UC-7.2 the emergency
   stop, UC-7.3 least privilege down to the worker, UC-8.5 cost control; and from the third step
   UC-1.2 planning in dialogue, UC-1.7 every command belongs to one identity, UC-5.8 observability
   platforms, UC-8.1 any model connected, UC-8.4 repeatability, UC-8.10 limits that do no harm,
-  UC-14.1 the worker interface. Forty-three are *specified* and nothing of them is built. UC-6.10
+  UC-14.1 the worker interface. Sixty are *specified* and nothing of them is built. UC-6.10
   was added on 2026-10-08 and accepted by the owner (DEC-0055); seventeen came with the migration's
-  second step on the same day, twenty-seven with the third on 2026-10-09.
+  second step on the same day, twenty-seven with the third on 2026-10-09, and seventeen with the
+  fourth the same day.
 - **Principles served only by specified use cases**, so that nothing of them stands yet beyond the
   text: P5 coupled or decoupled control, P9 efficiency over verbosity. The others have a use case
   in *building*.
@@ -242,12 +244,21 @@ answers, for the first time, how much of the vision stands:
   the twenty-seven add beyond the definition is asked as DEC-0082, in force provisionally. UC-1.1 and
   UC-7.1 were brought up to the definition without asking (NTC-0050, NTC-0051). The skill format
   still needs an ADR before UC-14.2 is built.
-- **Not yet in the format**: the use cases of step 4 — knowledge, value, ledger and reporting —
-  with UC-15.2 and the domain table of UC-15.1, UC-12.2 and UC-13.4; and UC-10.1 and UC-10.2, which no
-  step has filed yet. `MIGRATION.md` maps them from their text.
+- **The fourth step of the migration is done** (2026-10-09), and with it the migration: `knowledge`,
+  `value` and `reporting` — the rest of E5, E6 and E9, UC-13.4, and UC-9.5 in `accounting` — and
+  UC-10.1 in `governance` and UC-10.2 in `identity` (NTC-0064). The three requirements the owner
+  stated outside the definition are use cases: the owner-facing channel (UC-6.11), the product
+  finding (UC-6.12), readable documentation beyond the repository (UC-13.6). The finance reference
+  domain (UC-15.2) and the IT service chat (UC-12.2) are described as deployments in `blueprints/`,
+  and the definition's example domains are `blueprints/README.md`. What accepted decisions moved past
+  is marked as superseded in three of them, never deleted. What the fourth step adds beyond the
+  definition and the owner's stated text is asked as DEC-0087, in force provisionally. UC-6.1 and
+  UC-6.4 were brought up to the definition without asking (NTC-0062, NTC-0063). The working file of
+  the migration is deleted, as it said; `docs/usecases/NUMBERING.md` keeps where every number of the
+  definition went.
 
-**The migration of the project definition** into `docs/vision/` and `docs/usecases/` runs in four
-pull requests (`docs/usecases/MIGRATION.md`):
+**The migration of the project definition** into `docs/vision/` and `docs/usecases/` ran in four
+pull requests and is complete:
 
 1. **`vision/`, the use case format, the two gates, the rules, the three findings** — done in the
    pull request that brought in the vision layer. The findings: reporting is a component and
@@ -259,8 +270,9 @@ pull requests (`docs/usecases/MIGRATION.md`):
    2026-10-09; what they add beyond the definition is DEC-0082.
 4. **`knowledge`, `value`, `ledger`, `reporting`, and what moves into `blueprints/`**, with the
    finance domain of UC-15.2 and three requirements the owner stated outside the definition — the
-   owner-facing channel, documentation beyond the repository, and the product finding; then
-   `MIGRATION.md` is deleted.
+   owner-facing channel, documentation beyond the repository, and the product finding — done on
+   2026-10-09; what they add beyond the definition is DEC-0087. The migration's working file is
+   deleted.
 
 **The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) ran on
 its schedule for the first time on 2026-09-28, green, in 25 seconds — started by the host at

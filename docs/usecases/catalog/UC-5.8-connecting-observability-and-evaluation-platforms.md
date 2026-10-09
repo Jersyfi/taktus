@@ -58,7 +58,7 @@ exists, not of this requirement.
 The telemetry port and its OpenTelemetry export (ADR-0003 lists telemetry among the internal ports);
 the connector contract for the platform's interface (ADR-0024); the bundle as the truth of a process
 version (ADR-0011); evaluations (UC-8.4); the removal test (UC-8.9). Definition `UC-5.8`, new in
-version 2. Filed in `catalog` as an integration with a maturity level (`MIGRATION.md`). The roadmap
+version 2. Filed in `catalog` as an integration with a maturity level. The roadmap
 names no version; `0.6.0`, beside the catalogue, is the session's proposal.
 
 **What the accepted decisions supersede in the definition's text.**

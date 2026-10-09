@@ -72,7 +72,7 @@ breakdown and its two tables, money and Takt (ADR-0010); the `accounting` compon
 a run from its ledger entries; the organisation's structure from the identity component (`0.2.0`);
 the views of UC-6.4; the protective rule of ADR-0015. Definition `UC-8.5`. Filed here although the
 rest of E8 is migrated in step 3, because the migration's step 2 reconciles it with the decisions
-that moved past it (`MIGRATION.md`, *Four things*, point 4).
+that moved past it.
 
 **What the accepted decisions supersede in the definition's text.** The requirement above is the
 definition's; four parts of how the definition said it no longer hold, and each is kept here so

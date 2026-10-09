@@ -7,7 +7,7 @@ serves: [P6, P11, P12]
 state: building
 version: 0.5.0
 tests: [tests/components/ledger/test_chain.py::test_entries_link_and_verify, tests/components/ledger/test_chain.py::test_an_altered_field_is_found, tests/components/ledger/test_chain.py::test_a_removed_entry_is_found, tests/components/ledger/test_chain.py::test_a_reordered_chain_is_found, tests/components/ledger/test_chain.py::test_a_fact_carries_no_text, tests/components/ledger/test_chain.py::test_the_hash_rule_is_the_documented_one, tests/components/run/test_engine.py::test_a_run_completes_and_every_state_change_is_in_the_ledger, tests/components/run/test_provenance.py::test_every_completed_step_has_one_record_bound_to_its_ledger_entry]
-adrs: {ADR-0006: 4ef70c98354b, ADR-0021: 202e0442e7ec, ADR-0022: 69572977f46b}
+adrs: {ADR-0006: 4ef70c98354b, ADR-0007: 48adf2cc7e70, ADR-0021: 202e0442e7ec, ADR-0022: 69572977f46b}
 supersedes: null
 ---
 
@@ -19,7 +19,8 @@ Every action Taktus takes is recorded so that it can be audited: what was done, 
 which method — and for a model or a worker, which one — at what cost, and with what result. The
 record cannot be changed afterwards without the change being found. It is complete enough that
 a person who was not there can reconstruct what happened, and it holds no content it does not
-need: it references documents and data, it does not copy them.
+need: it references documents and data, it does not copy them. What a worker does is recorded from
+the stream of events the worker reports as it works.
 
 ## 2. How it is verified
 
@@ -37,9 +38,12 @@ need: it references documents and data, it does not copy them.
   documented hash rule, without Taktus running.
 - The log can be exported as a telemetry signal, entry by entry, with nothing the ledger itself
   would not carry.
+- For a step a worker runs, the entries of what the worker did are fed from the worker's event
+  stream (UC-14.1), in the shape every other entry has: identifiers, tokens and digests, no text.
 
 **Proven so far:** the first four conditions, by the named tests. The export, a verification
-outside Taktus, and the export as a telemetry signal do not exist.
+outside Taktus, and the export as a telemetry signal do not exist. That a worker's entries are fed
+from its event stream is proven by no named test.
 
 ## 3. Where the boundary lies
 
@@ -55,6 +59,8 @@ telemetry the record.
 ## 4. What it rests on
 
 The ledger as a content-free hash chain (ADR-0006); the provenance record of every completed
-step (ADR-0021); egress entries for every outward effect (ADR-0022). Definition `UC-6.1`. The
+step (ADR-0021); egress entries for every outward effect (ADR-0022); the worker interface and its
+event stream (UC-14.1, ADR-0007). Definition `UC-6.1`; the feed from the worker's event stream was
+restored to it in the migration's fourth step (NTC-0062). The
 version is `0.5.0`, where the roadmap measures principles 6 and 13; the chain itself is `0.1.0`
 and built.

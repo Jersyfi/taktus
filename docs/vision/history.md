@@ -42,7 +42,8 @@ one must before the skill lifecycle of epic E14 is built. **Command channels and
 channels**: a person commanding Taktus acts with their own rights, while a person using an
 assistant Taktus rolled out acts with the agent's rights plus their own credentials. The second
 half is in `docs/architecture/governance.md` for shared agents; the distinction between the two
-kinds of channel is not written down. Both are carried in `docs/usecases/MIGRATION.md`.
+kinds of channel is not written down. Both were carried by the migration's working file, deleted
+at its end; where each stands now is in UC-14.2 and UC-12.1.
 
 Where the chapter and an ADR disagree, **the ADR wins**. The chapter is not maintained.
 

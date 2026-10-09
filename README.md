@@ -99,6 +99,7 @@ you see the domain, not the framework.
 | [workers/README.md](workers/README.md) | The workers of this repository, each in its own image: the reference worker, and the coding worker with what it can and cannot do |
 | [docs/architecture/project-structure.md](docs/architecture/project-structure.md) | Components, tree, dependency rules, conventions |
 | [examples/README.md](examples/README.md) | Running a process bundle with `uv run taktusctl run`; the shape of a bundle |
+| [blueprints/README.md](blueprints/README.md) | The blueprints — one domain of a business each — and the example domains, with what stays with a person in each |
 | [blueprints/dev-orchestration/README.md](blueprints/dev-orchestration/README.md) | The dev-orchestration blueprint: P-02 Refinement and P-03 Implementation run; the rest remain descriptions |
 | [docs/runs/](docs/runs/) | What happened when Taktus was used rather than tested: one record per run worth keeping, with what each step consumed against what was estimated, where a person had to step in, and every piece of friction. [first-run.md](docs/runs/first-run.md) is the first issue of this repository that became a pull request opened by Taktus |
 | [docs/adr/README.md](docs/adr/README.md) | every architecture decision with the alternatives rejected |

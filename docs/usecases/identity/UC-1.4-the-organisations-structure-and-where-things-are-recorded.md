@@ -41,8 +41,7 @@ model, and where cost is attributed.
 **Not who a person is.** Authenticating a sender and mapping a channel account to an identity is
 UC-1.7. **Not rights.** Who may do what is UC-7.3; the structure is where rights are granted, not the
 rights themselves. **Not what the documentation says.** The takeover instructions of a process are
-UC-6.3; documentation of Taktus itself beyond the repository is a requirement of step 4 of the
-migration. **Not a separate database per unit.** Whether a unit is a tenant of its own, kept apart
+UC-6.3; documentation of Taktus itself beyond the repository is UC-13.6. **Not a separate database per unit.** Whether a unit is a tenant of its own, kept apart
 by the database, or a unit inside one is the organisation's configuration (ADR-0020).
 
 ## 4. What it rests on
