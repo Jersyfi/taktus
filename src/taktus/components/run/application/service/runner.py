@@ -21,6 +21,11 @@ What happens when a run ends decides the job:
   continue the run, and a person raises the budget or repairs and resumes;
 - halted because *this runner* was told to shut down — the job is *released*: another runner,
   or this one after its restart, resumes the run at the boundary it stopped at;
+- halted because the step's worker was at capacity — the job is *deferred*: given back to be
+  claimed again after a delay that doubles with every answer of the same wait, up to a cap.
+  The run waits at its boundary, holding no slot of any runner and no place at the worker; the
+  runner that claims the job next asks the worker again, and the step's ceiling turns a wait
+  that does not end into an escalation (ADR-0037);
 - the engine raised — the job is *released* and counted as an attempt; after the queue's limit
   of attempts the job stays for a person.
 
@@ -42,6 +47,7 @@ from dataclasses import dataclass, field
 
 from taktus.components.run.application.service.execute_run import ResumeRun, RunEngine
 from taktus.components.run.domain.model import Cause, ClaimLost, Run, RunState
+from taktus.components.run.domain.service import waiting
 from taktus.ports.clock import Clock
 from taktus.ports.persistence import Tenant, UnitOfWork
 from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue
@@ -58,6 +64,11 @@ class RunnerOptions:
     """How often a held lease is renewed; a third of the lease is a safe value."""
     actor: str = "taktusd"
     """Who the ledger names as the actor of `run.resumed` and `run.recovered`."""
+    wait_first_seconds: float = 1.0
+    """How long a run whose worker was at capacity waits before it is tried again the first
+    time; every further answer of the same wait doubles it (ADR-0037)."""
+    wait_cap_seconds: float = 60.0
+    """The longest delay between two tries of a waiting run."""
 
 
 @dataclass
@@ -67,7 +78,7 @@ class Outcome:
     tenant: Tenant
     job: Job
     run: Run | None = None
-    disposition: str = "unknown"  # completed | released | lost
+    disposition: str = "unknown"  # completed | released | deferred | lost
     error: str | None = None
 
 
@@ -200,7 +211,10 @@ class Runner:
             if executing.lost:
                 outcome.disposition = "lost"
                 return outcome
-            if (
+            if run.state is RunState.HALTED and run.cause is Cause.CAPACITY:
+                await self._defer(executing, run)
+                outcome.disposition = "deferred"
+            elif (
                 run.state is RunState.HALTED
                 and run.cause is Cause.STOP
                 and executing.stop_requested
@@ -245,6 +259,17 @@ class Runner:
     async def _release(self, executing: _Executing) -> None:
         async with self.work.transaction(executing.tenant):
             await self.queue.release(executing.tenant, executing.job.id, self.options.claimant)
+
+    async def _defer(self, executing: _Executing, run: Run) -> None:
+        waiting_step = run.next_step_run()
+        waits = 1 if waiting_step is None else waiting_step.waits
+        seconds = waiting.delay(
+            waits, self.options.wait_first_seconds, self.options.wait_cap_seconds
+        )
+        async with self.work.transaction(executing.tenant):
+            await self.queue.defer(
+                executing.tenant, executing.job.id, self.options.claimant, seconds
+            )
 
     async def _complete(self, executing: _Executing) -> None:
         async with self.work.transaction(executing.tenant):

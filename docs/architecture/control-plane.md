@@ -181,13 +181,24 @@ ceiling, releases the claims and exits; the next runner resumes at that boundary
 (`tests/integration/test_daemon_shutdown.py`). From the command line, `uv run taktusctl run
 --resume` is the operator's explicit act of the same assertion.
 
+**A worker at capacity.** A worker answers a new assignment with `503` when it holds as many as
+it declares. That is no failure: nothing started. The step goes back to the boundary it was
+admitted from, the run halts there with cause `capacity`, and the runner *defers* the job —
+claimable again after a delay that doubles with every answer of the same wait, up to a minute,
+and not counted as a failed attempt. The next runner to claim it asks the worker again. The
+worker's own answer decides whether it has a free place; no runner counts a worker's
+assignments, so runners that share one worker never place more on it than it declares. A wait
+beyond the step's ceiling, one hour unless the step names one, escalates the run with cause
+`capacity`. The ledger carries `step.waiting` for each answer and `step.waited` with the wait's
+duration (ADR-0037; `tests/integration/test_capacity_wait.py`).
+
 ### 5.2 States
 
 ```
 planned → admitted → running → [waiting_human] → running → finished
                         │            │
                         │            └─ decision request open (anchor, approval)
-                        ├─ halted (limit, emergency stop, user) → resumed
+                        ├─ halted (limit, emergency stop, user, worker at capacity) → resumed
                         ├─ self-healed (retry or correction within frame) → running
                         └─ escalated (frame exceeded) → situation package to a person
 ```

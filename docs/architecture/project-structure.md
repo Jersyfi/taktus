@@ -60,6 +60,7 @@ taktus/
 │   │   … governance/domain/service/egress.py decides whether a result has left the system (ADR-0022)
 │   │   … governance/domain/service/capacity.py turns platform observations and growth per run into findings with a figure and a date; application/service/report_capacity.py records a crossing (docs/architecture/platform.md)
 │   │   … run/domain/service/capacity.py admits a job against the platform: memory for the unit plus a reserve, storage above its refusal share
+│   │   … run/domain/service/waiting.py a step whose worker is at capacity waits: the doubling delay, the ceiling, the wait's record for blocked time (ADR-0037)
 │   │   … catalog/domain/model/maturity.py is an adapter's maturity with its last removal result; catalog/domain/service/removal.py the rules that decide broke, changed, untested or exception, and when a process can be rehearsed; catalog/application/service/record_removal.py writes the result and the ledger entry `removal.tested`
 │   │   … run/domain/service/budget.py the budget's rules: the line less the margin, calibration and its seed, the reservation, the worker's ceiling, what a budget can promise; accounting/ meters a run from the ledger and prices it at the table its budget statement names (`taktusctl cost`, which also prints the statement's word that the uncalibrated margin was set below the floor)
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
@@ -74,7 +75,7 @@ taktus/
 │   │   ├── ledger.py                # facts in, chained entries out, verify — one chain per tenant
 │   │   ├── identity.py              # who acts: a sender on a channel placed in a tenant as an identity; served PROVISIONALLY by adapters/driven/identity (DEC-0013)
 │   │   ├── configuration.py         # what an instance is told about itself, by key; Secret; ConfigurationError
-│   │   ├── queue.py                 # jobs a runner claims once, as a lease it renews (ADR-0002)
+│   │   ├── queue.py                 # jobs a runner claims once, as a lease it renews (ADR-0002); a deferred job waits out its delay, not counted as an attempt (ADR-0037)
 │   │   ├── leadership.py            # one instance leads a singular role; a dead leader is replaced
 │   │   ├── platform.py              # what the machine or container has left — CPU, memory, storage — each observed or unobserved with the reason
 │   │   ├── objectstore.py  clock.py  telemetry.py
@@ -257,7 +258,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   mid-step (`tests/integration/test_runner_failover.py`). The claim is also a fence: a runner
   cut off for longer than the lease loses it, and its next write to the run is refused in the
   write's own transaction, so two runners never both commit to one run
-  (`tests/integration/test_runner_fence.py`, NTC-0044).
+  (`tests/integration/test_runner_fence.py`, NTC-0044). A run halted because its worker was at
+  capacity is *deferred*: its job is claimable again after a delay that starts at the poll
+  interval and doubles up to a minute, and the deferral is not a failed attempt (ADR-0037,
+  `tests/integration/test_capacity_wait.py`).
 - **`scheduler`** leads through the leadership port — a session-level advisory lock — and ticks
   while it leads; a second instance keeps trying and takes over when the leader's lead is
   gone, including when the leader was killed. While it leads, every tick fires the schedule

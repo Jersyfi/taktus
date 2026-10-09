@@ -150,9 +150,15 @@ stop can land on, without a stopped run there is nothing to resume. Fix the fail
 
 ## 7. What a pass means
 
-A worker whose report shows thirteen `passed` and one `pending` satisfies the contract as far as a
-suite talking to one endpoint can tell. A W-14 that stays *inconclusive* because your worker's
-estimate always held is no failure; it means the halt was not observed.
+A worker whose report shows thirteen `passed` and one `pending` satisfies the numbered checks. A
+W-14 that stays *inconclusive* because your worker's estimate always held is no failure; it
+means the halt was not observed.
+
+One obligation the suite could check from one endpoint, and does not yet: a worker that holds
+as many assignments as `max_concurrent_assignments` declares answers a further one with `503`
+(`openapi.yaml`). Taktus relies on that answer. A step whose worker answers `503` waits for a
+free place, and Taktus does not count your assignments itself (ADR-0037). A worker that takes
+more than it declares passes this suite today. The check is issue #133 (DEC-0085).
 
 It is not yet *verified*. Taktus grades adapters in three levels — `experimental`, `verified`,
 `reference` — and *verified* needs two things: this suite passed, and the *removal test* passed.

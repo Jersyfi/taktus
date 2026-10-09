@@ -203,8 +203,9 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
         "TAKTUS_POLL_SECONDS": "0.05",
         "TAKTUS_LEASE_SECONDS": str(LEASE_SECONDS),
         # Two runs per runner. The reference worker accepts four assignments at once and
-        # answers 503 beyond, which fails the step. After the kill, the killed runner's
-        # assignments keep running in the worker beside the survivor's two: four again.
+        # answers 503 beyond, which makes the step wait (ADR-0037). After the kill, the killed
+        # runner's assignments keep running in the worker beside the survivor's two: four
+        # again, so this test sees no wait; test_capacity_wait.py is the one about waiting.
         "TAKTUS_RUNNER_CONCURRENCY": str(CONCURRENCY),
         "TAKTUS_SHUTDOWN_CEILING_SECONDS": "20",
         "TAKTUS_LOG_LEVEL": "debug",

@@ -10,7 +10,9 @@ once another runner has claimed the job and keeps the claim from being taken unt
 transaction ends (#107). So a runner that lost its claim writes nothing more. When
 the work is done the job is *completed* and gone; when the runner has to give it back — it was
 told to shut down, or the work failed for a reason another attempt may not share — the job is
-*released* and is claimable at once.
+*released* and is claimable at once. When the work has to wait — its worker is at capacity
+(ADR-0037) — the job is *deferred*: claimable again only after a delay, and the claim it ends
+is not counted as a failed attempt.
 
 Every call happens inside a unit of work of the same persistence and names its tenant
 (`ports/persistence.py`); the claim and the state it changes commit with the transaction. Two
@@ -39,6 +41,9 @@ class Job(Value):
     payload: Mapping[str, Any]
     attempts: int = Field(default=0, ge=0)
     """How many times the job has been claimed, including the current claim."""
+    deferrals: int = Field(default=0, ge=0)
+    """How many of those claims ended deferred; they do not count towards the limit of
+    attempts."""
 
 
 class Claim(Value):
@@ -59,7 +64,8 @@ class Queue(Protocol):
     async def claim(self, tenant: Tenant, claimant: str, batch: int) -> Sequence[Job]:
         """Up to `batch` jobs that are due and either unclaimed or whose lease has expired,
         now claimed by `claimant` — the oldest first. Two claimants never receive the same job,
-        and a job whose attempts have reached the adapter's limit is never claimed again."""
+        and a job whose attempts — its claims less its deferrals — have reached the adapter's
+        limit is never claimed again."""
         ...
 
     async def extend(self, tenant: Tenant, job_id: str, claimant: str) -> bool:
@@ -79,6 +85,13 @@ class Queue(Protocol):
     async def release(self, tenant: Tenant, job_id: str, claimant: str) -> None:
         """Give the job back, claimable at once by anyone. A no-op when the claim is not the
         claimant's any more."""
+        ...
+
+    async def defer(self, tenant: Tenant, job_id: str, claimant: str, seconds: float) -> None:
+        """Give the job back, claimable again once `seconds` have passed. The work waits, it did
+        not fail: the claim this ends does not count towards the limit of attempts, and the
+        next claim is a new claim all the same — the fence of this one refuses from now on. A
+        no-op when the claim is not the claimant's any more."""
         ...
 
     async def complete(self, tenant: Tenant, job_id: str, claimant: str) -> None:

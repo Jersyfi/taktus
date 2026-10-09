@@ -95,7 +95,10 @@ def wait(id: str, seconds: float, *, after: tuple[str, ...] = ()) -> tuple[Step,
 
 class Harness:
     def __init__(
-        self, *definitions: tuple[Step, dict[str, Any]], workers: Sequence[Worker] = ()
+        self,
+        *definitions: tuple[Step, dict[str, Any]],
+        workers: Sequence[Worker] = (),
+        options: EngineOptions | None = None,
     ) -> None:
         self.clock = FakeClock(AT)
         self.ids = FakeIdentifiers()
@@ -117,7 +120,7 @@ class Harness:
             telemetry=NoTelemetry(),
             # The engine's mechanics are tested at the estimate the fake gives; what an
             # uncalibrated worker reserves beyond it (DEC-0034) is test_estimates.py's.
-            options=EngineOptions(uncalibrated_margin=0.0),
+            options=options or EngineOptions(uncalibrated_margin=0.0),
         )
         self.steps = tuple(step for step, _ in definitions)
         self.work = {step.id: work for step, work in definitions}

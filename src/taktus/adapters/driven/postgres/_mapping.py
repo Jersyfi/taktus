@@ -462,6 +462,8 @@ class RunMapper:
                     "reason": sr.get("reason"),
                     "started_at": _at(sr.get("started_at")),
                     "finished_at": _at(sr.get("finished_at")),
+                    "waiting_since": _at(sr.get("waiting_since")),
+                    "waits": sr.get("waits", 0),
                 }
                 for sr in step_runs
             ],
@@ -615,6 +617,8 @@ def _step_run_from(
             "reason": row.reason,
             "started_at": _iso(row.started_at),
             "finished_at": _iso(row.finished_at),
+            "waiting_since": _iso(row.waiting_since),
+            "waits": row.waits,
         }
     )
 
