@@ -3,7 +3,7 @@
 **Mode entry:** M2.6
 **Kind:** unlisted
 **Decided:** 2026-10-09
-**Raised in:** [#79](https://github.com/Jersyfi/taktus/issues/79)
+**Raised in:** [#158](https://github.com/Jersyfi/taktus/pull/158), for issue #79
 **How it follows:** The contracts and ADRs leave four points open, and each has two readings consistent with them. CLAUDE.md §8 settles such a tie as "strict in substance, sparing in ceremony" (DEC-0040). Strict in substance: a selector the contract's own example reads as narrowing narrows; an anchor scoped to what Taktus cannot evaluate yet holds everywhere rather than nowhere; an aggregate that is one person's number is withheld, because ADR-0015 forbids it "by person" and an average over one person is that; every answer is confirmed, because ADR-0008 prices "one extra confirmation message" into each decision. Sparing in ceremony: no new record, step or notification is added for any of them.
 
 ## 1. What was decided
