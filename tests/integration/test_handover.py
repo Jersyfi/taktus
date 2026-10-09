@@ -38,8 +38,13 @@ from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
-from taktus.components.run.application.service import RunEngine, StartRun
-from taktus.components.run.domain.model import RunState, StepState
+from taktus.components.run.application.service import (
+    RunEngine,
+    Runner,
+    RunnerOptions,
+    StartRun,
+)
+from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.components.run.domain.service import provenance
 from taktus.ports.worker import (
     ArtifactList,
@@ -67,7 +72,44 @@ from taktus.shared.v1 import (
     Step,
 )
 
-from .test_runner_fence import TENANT, Instance
+from .test_runner_fence import Instance as FenceInstance
+
+TENANT = f"handover_{os.urandom(4).hex()}"
+
+
+class Instance(FenceInstance):
+    """The fence test's view of the shared database, in this test's own tenant."""
+
+    @classmethod
+    def open(cls, url: str) -> Instance:
+        base = FenceInstance.open(url)
+        return cls(**{f: getattr(base, f) for f in base.__dataclass_fields__})
+
+    def runner(self, engine: RunEngine, name: str, *, heartbeat: float) -> Runner:
+        return Runner(
+            engine=engine,
+            queue=self.queue,
+            work=self.persistence,
+            clock=self.clock,
+            options=RunnerOptions(
+                tenants=(TENANT,),
+                claimant=name,
+                concurrency=1,
+                poll_seconds=0.05,
+                heartbeat_seconds=heartbeat,
+            ),
+        )
+
+    async def run(self, run_id: str) -> Run:
+        async with self.persistence.transaction(TENANT):
+            run = await self.runs.get(TENANT, run_id)
+        assert run is not None
+        return run
+
+    async def kinds(self, run_id: str) -> list[str]:
+        async with self.persistence.transaction(TENANT):
+            return [e.kind for e in await self.ledger.entries(TENANT, run_id)]
+
 
 COMMANDS = 12  # times --step-seconds 0.1 in the worker: a step of about a second and a half
 
@@ -170,7 +212,7 @@ async def instances(postgres_url: str) -> AsyncIterator[tuple[Instance, Instance
         await connection.execute(
             text(
                 "INSERT INTO tenant (id, name, created_at) VALUES (:t, :t, now()) "
-                "ON CONFLICT DO NOTHING"
+                "ON CONFLICT DO NOTHING"  # one tenant for the three points
             ),
             {"t": TENANT},
         )
