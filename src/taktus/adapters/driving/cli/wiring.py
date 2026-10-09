@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Protocol
 
 from taktus.components.accounting.application.service import CostOfRunHandler
+from taktus.components.catalog.application.service import RunConformanceHandler
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import (
     AnchorsInForce,
@@ -63,6 +64,9 @@ class Services:
     """A tenant's anchors, configured (`taktusctl anchors set`, ADR-0042)."""
     anchors: AnchorsInForce | None = None
     """The anchors a tenant holds now (`taktusctl anchors show`)."""
+    conformance: RunConformanceHandler | None = None
+    """The instance runs an adapter's conformance suite and records it (`taktusctl
+    conformance record`, ADR-0044)."""
 
 
 @dataclass(frozen=True)

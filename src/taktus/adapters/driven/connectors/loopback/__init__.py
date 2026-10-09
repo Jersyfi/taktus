@@ -2,19 +2,24 @@
 
 A process that Taktus runs for itself — the removal test of `blueprints/self-operation/` —
 needs to read the configuration of the instance it runs in, exercise processes with an
-integration withheld, and record what it found. Nothing is called directly (CLAUDE.md §6): the
-process names the capabilities `orchestrator.integrations`, `orchestrator.removal` and
-`orchestrator.maturity`, and this connector serves them. It is an adapter like any other —
+integration withheld, and record what it found. A process may also have the instance run the
+conformance suite of an integration's contract and record that (ADR-0044). Nothing is called
+directly (CLAUDE.md §6): the process names the capabilities `orchestrator.integrations`,
+`orchestrator.removal`, `orchestrator.maturity` and `orchestrator.conformance`, and this
+connector serves them. It is an adapter like any other —
 behind the action side of the connector port, with a declaration the run reads — and it
 imports no component: what it needs from the instance is the `Orchestrator` protocol below,
 which the composition root implements over the instance's own services
 (`composition/loopback.py`). In an installation with several instances the same capabilities
 can be served over the HTTP surface instead; the process does not change.
 
-Every operation declares effect `read`. The effect field says whether an operation's effect
-leaves Taktus (contracts/connector/v1 §3); a rehearsal run inside Taktus and a record in the
-catalog do not leave it, so no egress entry is written for them (ADR-0022). Each call is
-counted as one unit of quota, as a connector call is.
+Every operation but one declares effect `read`. The effect field says whether an operation's
+effect leaves Taktus (contracts/connector/v1 §3); a rehearsal run inside Taktus and a record in
+the catalog do not leave it, so no egress entry is written for them (ADR-0022). Running a
+conformance suite does leave it: the suite posts assignments to a worker, calls a model, and
+writes records through a connector into the target its scenario names. That operation declares
+effect `write` with idempotency `none`: a repeat runs the suite again, so the run never repeats
+it on its own. Each call is counted as one unit of quota, as a connector call is.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from taktus.ports.connector import (
     Effect,
     EffectReport,
     Error,
+    Record,
     Result,
 )
 from taktus.shared.v1 import Consumption
@@ -41,11 +47,13 @@ ADAPTER = "connector.loopback"
 INTEGRATIONS = "orchestrator.integrations"
 REMOVAL = "orchestrator.removal"
 MATURITY = "orchestrator.maturity"
+CONFORMANCE = "orchestrator.conformance"
 
 LIST = f"{INTEGRATIONS}.list"
 DESCRIBE = f"{INTEGRATIONS}.describe"
 EXERCISE = f"{REMOVAL}.exercise"
 RECORD = f"{MATURITY}.record"
+RUN_SUITE = f"{CONFORMANCE}.run"
 
 
 class UnknownIntegration(LookupError):
@@ -78,12 +86,22 @@ class Orchestrator(Protocol):
         maturity now is and what is still missing."""
         ...
 
+    async def conformance(
+        self, tenant: str, integration: str, *, run_id: str, identity: str
+    ) -> dict[str, Any]:
+        """Run the conformance suite of the integration's contract against the endpoint the
+        instance resolves for it, and record what it found: the outcome, the maturity and
+        what is still missing, the ledger entry's `ledger_seq` and `content_digest`. Takes the
+        identifier alone. Raises `UnknownIntegration`; `ValueError` when the suite cannot run
+        as configured."""
+        ...
+
 
 DECLARATION = Capabilities.model_validate(
     {
         "contract": "connector/v1",
         "version": "1",
-        "capabilities": [INTEGRATIONS, REMOVAL, MATURITY],
+        "capabilities": [INTEGRATIONS, REMOVAL, MATURITY, CONFORMANCE],
         "operations": [
             {
                 "name": LIST,
@@ -114,6 +132,16 @@ DECLARATION = Capabilities.model_validate(
                 "effect": "read",
                 "demand": {"quota_units": 1},
                 "summary": "Record a removal result in the adapter's maturity and the ledger.",
+            },
+            {
+                "name": RUN_SUITE,
+                "capability": CONFORMANCE,
+                "effect": "write",
+                "idempotency": "none",
+                "demand": {"quota_units": 1},
+                "summary": "Run the conformance suite of an integration's contract against "
+                "the endpoint the instance resolves for it, and record the outcome in its "
+                "maturity and the ledger. Takes the integration's identifier alone.",
             },
         ],
         "credentials": [],
@@ -150,7 +178,7 @@ class LoopbackConnector:
             ) from error
         return Result(
             output=output,
-            effect=EffectReport(kind=Effect.READ),
+            effect=_effect(operation, output),
             consumption=Consumption(quota_units=1),
         )
 
@@ -175,7 +203,24 @@ class LoopbackConnector:
             if not isinstance(result, Mapping):
                 raise ValueError("`result` is the document the exercise answered")
             return await orchestrator.record(tenant, dict(result))
+        if operation == RUN_SUITE:
+            return await orchestrator.conformance(
+                tenant, _name(input), run_id=context.run_id, identity=context.identity
+            )
         raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
+
+
+def _effect(operation: str, output: Mapping[str, Any]) -> EffectReport:
+    """A read for every operation but the suite's run, which reports the ledger entry that
+    records it as the record that went out, and the digest of its evidence."""
+    if operation != RUN_SUITE:
+        return EffectReport(kind=Effect.READ)
+    return EffectReport(
+        kind=Effect.WRITE,
+        replayed=False,
+        records=(Record(kind="conformance.tested", id=str(output["ledger_seq"])),),
+        content_digest=output.get("content_digest"),
+    )
 
 
 def _name(input: Mapping[str, Any]) -> str:

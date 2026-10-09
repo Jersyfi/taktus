@@ -1,19 +1,23 @@
-"""The maturity record of one adapter, and the removal result it carries.
+"""The maturity record of one adapter, with the two halves it rests on.
 
 An adapter is identified by its configuration identifier — `worker.endpoint`,
-`connector.<label>`, `model.endpoint` — never by a product (ADR-0003). The record keeps the
-last removal result and derives the maturity from what has been shown: *verified* needs both
-halves, the conformance suite and the removal test (contracts.md §3), and this record holds
-the removal half. Nothing writes the conformance half yet — the suite stands alone and reports
-to whoever ran it — so no adapter reaches *verified* through this record alone; the record says
-which half is missing.
+`connector.<label>`, `model.endpoint` — never by a product (ADR-0003). *verified* needs both
+halves (contracts.md §3). The conformance half is the last run of the contract's suite that
+the instance ran itself against the adapter (ADR-0044). The removal half is the last removal
+test (ADR-0030). Each half names the configuration it was taken under.
+
+A conformance pass counts only for the configuration it names. The same identifier can name
+another adapter tomorrow, or the same adapter in another version. The record therefore derives
+the maturity against the configuration that resolves the identifier now, and says which half is
+missing and why.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -124,6 +128,82 @@ class RemovalResult(Value):
     recorded before it was recorded."""
 
 
+type Outcome = Literal["passed", "failed", "incomplete"]
+
+NOT_RECORDED = "the conformance suite has not been recorded as passed"
+
+
+class ConformanceResult(Value):
+    """One run of a contract's conformance suite that the instance ran itself against the
+    endpoint its configuration resolves for the adapter (ADR-0044). The ledger entry
+    `conformance.tested` references it by `digest`. Nothing but the code that ran the suite
+    writes it: no surface takes a report, a verdict or a date."""
+
+    integration: str = Field(min_length=1)
+    family: Family
+    contract: str = Field(pattern=r"^[a-z]+/v[0-9]+$")
+    """The contract and its version the suite checked, as `worker/v1`."""
+    taktus_version: str = Field(min_length=1)
+    """The version of Taktus whose suite ran."""
+    configuration: Configuration
+    """What stood behind the identifier when the suite ran. The pass counts for it alone."""
+    outcome: Outcome
+    """`passed`: no check failed and none was inconclusive; a pending check does not count
+    against it. `failed`: a check failed. `incomplete`: nothing failed, and a check could not
+    be proven."""
+    failed: tuple[str, ...] = ()
+    inconclusive: tuple[str, ...] = ()
+    digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    """The digest of the evidence: the suite's report together with the configuration."""
+    tested_at: datetime
+    actor: str = Field(min_length=1)
+    """Who started the run: the person through the command line, the identity of the run
+    through the loopback connector."""
+    run_id: str | None = Field(default=None, min_length=1)
+    """The run of the process that started it, when a process did."""
+
+    @property
+    def passed(self) -> bool:
+        return self.outcome == "passed"
+
+
+def judged(report: Mapping[str, Any]) -> tuple[Outcome, tuple[str, ...], tuple[str, ...]]:
+    """The outcome of a suite's report, read from its checks the way `Report.conformance`
+    computes it: failed when a check failed, incomplete when one was inconclusive, passed
+    otherwise. A pending check counts against nothing. Returns the outcome and the failed and
+    inconclusive checks."""
+    checks = report.get("checks")
+    if not isinstance(checks, list) or not checks:
+        raise ValueError("the report names no checks")
+    failed = tuple(sorted(c["id"] for c in checks if c.get("status") == "failed"))
+    inconclusive = tuple(sorted(c["id"] for c in checks if c.get("status") == "inconclusive"))
+    if failed:
+        return "failed", failed, inconclusive
+    if inconclusive:
+        return "incomplete", failed, inconclusive
+    return "passed", failed, inconclusive
+
+
+def difference(recorded: Configuration, current: Configuration) -> str:
+    """How two configurations of one identifier differ, in words."""
+    parts: list[str] = []
+    if recorded.adapter != current.adapter:
+        parts.append(f"adapter {recorded.adapter} then, {current.adapter} now")
+    if recorded.version != current.version:
+        parts.append(
+            f"version {recorded.version or 'undeclared'} then, "
+            f"{current.version or 'undeclared'} now"
+        )
+    if recorded.serves != current.serves:
+        parts.append(
+            f"it served {', '.join(recorded.serves) or 'nothing'} then, "
+            f"{', '.join(current.serves) or 'nothing'} now"
+        )
+    if recorded.operations != current.operations:
+        parts.append("its declared operations changed")
+    return "; ".join(parts)
+
+
 class AdapterMaturity(Value):
     """One adapter's maturity, as far as this record can show it. The repository key is the
     adapter identifier."""
@@ -131,28 +211,63 @@ class AdapterMaturity(Value):
     id: str = Field(min_length=1)
     tenant: str = Field(min_length=1)
     family: Family
-    conformance_passed_at: datetime | None = None
+    conformance: ConformanceResult | None = None
+    """The last conformance run, passed or not."""
     removal: RemovalResult | None = None
     updated_at: datetime
+
+    @property
+    def conformance_passed_at(self) -> datetime | None:
+        """When the last conformance run passed; None when it did not, or none ran."""
+        if self.conformance is None or not self.conformance.passed:
+            return None
+        return self.conformance.tested_at
 
     @property
     def removal_passed(self) -> bool:
         return self.removal is not None and self.removal.verdict is Verdict.CHANGED
 
-    @property
-    def maturity(self) -> Maturity:
-        """*verified* exactly when both halves have passed; *reference* is the project's word
-        about its own adapters and is not derived here."""
-        if self.conformance_passed_at is not None and self.removal_passed:
+    def conformance_holds(self, current: Configuration | None) -> bool:
+        """The conformance half holds for the configuration that resolves the identifier now."""
+        return (
+            self.conformance is not None
+            and self.conformance.passed
+            and current is not None
+            and self.conformance.configuration == current
+        )
+
+    def maturity(self, current: Configuration | None) -> Maturity:
+        """*verified* exactly when both halves have passed, the conformance half for the
+        configuration that resolves the identifier now (`current`; None when nothing does).
+        *reference* is the project's word about its own adapters and is not derived here."""
+        if self.conformance_holds(current) and self.removal_passed:
             return Maturity.VERIFIED
         return Maturity.EXPERIMENTAL
 
-    @property
-    def missing(self) -> tuple[str, ...]:
-        """What keeps the adapter from *verified*, in words."""
+    def missing(self, current: Configuration | None) -> tuple[str, ...]:
+        """What keeps the adapter from *verified* under `current`, in words."""
         gaps: list[str] = []
-        if self.conformance_passed_at is None:
-            gaps.append("the conformance suite has not been recorded as passed")
+        conformance = self.conformance
+        if conformance is None:
+            gaps.append(NOT_RECORDED)
+        elif not conformance.passed:
+            named = [f"failed: {', '.join(conformance.failed)}"] if conformance.failed else []
+            if conformance.inconclusive:
+                named.append(f"inconclusive: {', '.join(conformance.inconclusive)}")
+            gaps.append(
+                f"the last conformance run of {conformance.contract} ended "
+                f"{conformance.outcome} ({'; '.join(named)})"
+            )
+        elif current is None:
+            gaps.append(
+                f"the conformance suite passed for {conformance.configuration.adapter}, and no "
+                "configuration resolves the identifier now"
+            )
+        elif conformance.configuration != current:
+            gaps.append(
+                "the conformance suite passed for another configuration: "
+                + difference(conformance.configuration, current)
+            )
         if self.removal is None:
             gaps.append("the removal test has not run")
         elif self.removal.verdict is Verdict.UNTESTED:

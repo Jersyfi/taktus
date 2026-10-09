@@ -213,7 +213,9 @@ uv run taktusctl conformance run --contract connector/v1 --endpoint http://local
     --scenario scenario.json
 ```
 
-(`taktusctl` lives in the project environment, hence `uv run`.)
+(`taktusctl` lives in the project environment, hence `uv run`.) `conformance run` checks an
+endpoint the caller names and records nothing. `conformance record <identifier>` has the instance
+run the same suite against the adapter its configuration resolves, and record it (below).
 
 | Maturity | Condition |
 |---|---|
@@ -225,9 +227,9 @@ uv run taktusctl conformance run --contract connector/v1 --endpoint http://local
 The run engine holds it before a step starts (ADR-0039): a step at level 3 or above whose
 adapter is below *verified* is not run on it, and the finding names the step and the adapter. The
 engine asks the catalog's record through its maturity port; a rehearsal and the loopback
-connector, which act on nothing outside, are not held to it (NTC-0079). While nothing records the
-conformance half, no integration is *verified*, and a real run at level 3 halts at its first step
-that needs one.
+connector, which act on nothing outside, are not held to it (NTC-0079). An integration reaches
+*verified* once the instance has recorded both halves for the configuration that resolves it now;
+until then a real run at level 3 halts at its first step that needs it.
 
 The conformance suite is the real asset here — not the adapter code, but the ability to check.
 Without it, "interchangeable" is an assertion.
@@ -253,17 +255,37 @@ over. *Changed*: another adapter or a person serves the step; quality and cost c
 count towards *verified*. *Exception*: the integration cannot be removed by design — the
 database, ADR-0002. Every result names the configuration it was taken under: the adapter that
 served the identifier, what it declared and its version.
-The maturity record derives *verified* from both halves and names which is missing; nothing
-records the conformance half yet, so no adapter is *verified* through it today. The blueprint's
-README carries the same test as instructions a person follows by hand, and the record of the
-first run. What both halves share — the report, the
+
+**The conformance half is recorded by the instance that ran the suite (ADR-0044).** The instance
+runs the suite of an adapter's contract against the endpoint its own configuration resolves for
+the adapter identifier: the configured worker (or one unit started for the suite, for a launched
+kind), the connector `TAKTUS_CONNECTORS` maps the label to, with the scenario
+`conformance.connector.<label>.scenario` names, the configured model endpoint. A person starts it
+with `taktusctl conformance record <identifier>`; a process through the loopback operation
+`orchestrator.conformance.run`. Both take the identifier and nothing else. One transaction writes
+the ledger entry `conformance.tested` — its digest covers the report and the configuration — and
+the conformance half of the adapter's maturity record: the contract and its version, the Taktus
+version, the configuration, the outcome with the checks that failed or were inconclusive, the
+digest, the time and the actor. `passed` is what the report computes: no check failed, none
+inconclusive, a pending one counts against nothing. A run that did not pass is recorded too. No
+command, endpoint or operation takes a report, a verdict or a date; a report run elsewhere is
+never recorded. **A pass counts only for the configuration it names**: the run's maturity port
+compares it with the configuration the run resolves for the identifier now, and where they differ
+the adapter is *experimental* and the record says the pass was for another configuration.
+
+The maturity record derives *verified* from both halves and names which is missing. The
+blueprint's README carries the removal test as instructions a person follows by hand, and the
+record of the first run; each contract's `CONFORMANCE.md` carries the suite, run by hand against
+the same endpoint with its report kept as evidence. What both halves share — the report, the
 findings, the catalogue of checks, the schema validators — lives at the package level; the
 connector half is `src/taktus/conformance/connector/`. How a third party runs it against an
-adapter of their own: [`contracts/worker/v1/CONFORMANCE.md`](../../contracts/worker/v1/CONFORMANCE.md)
-and [`contracts/connector/v1/CONFORMANCE.md`](../../contracts/connector/v1/CONFORMANCE.md).
+adapter of their own: [`contracts/worker/v1/CONFORMANCE.md`](../../contracts/worker/v1/CONFORMANCE.md),
+[`contracts/connector/v1/CONFORMANCE.md`](../../contracts/connector/v1/CONFORMANCE.md) and
+[`contracts/model/v1/CONFORMANCE.md`](../../contracts/model/v1/CONFORMANCE.md).
 `make gate-conformance` proves the suite itself for both contracts: the reference worker passes
 it in both profiles, the reference connector passes it against a fake of its service, and for
-every fault either reference adapter can inject the suite fails on exactly that check.
+every fault either reference adapter can inject the suite fails on exactly that check — run the
+way the instance runs it, and recorded as not passed (NTC-0092).
 
 Before the suite runs against an adapter, `make gate-contracts` checks the contract itself: every
 schema is valid and carries the `$id` its path prescribes, every example validates, and every check
@@ -296,7 +318,7 @@ and that carries no flag is written as a plain file (issue #28) |
 | Connector | `http` | the generic fallback for anything with a documented API |
 | Model | `openai_compatible` | covers Ollama, vLLM and most vendors. Exists (`src/taktus/adapters/driven/models/openai_compatible/`), proven against a fake of the endpoint; the one model `llm` steps ask |
 | Model | `anthropic` | native capabilities the common denominator does not carry |
-| Connector | `loopback` | Taktus reached by Taktus. Exists (`src/taktus/adapters/driven/connectors/loopback/`): the capabilities `orchestrator.integrations`, `orchestrator.removal` and `orchestrator.maturity` behind the action side of the connector port, every operation `read` because nothing it does leaves the system, over an `Orchestrator` the composition root implements on the instance's own services (`composition/loopback.py`; ADR-0027). It is what the removal test calls, and it is never itself an integration the removal test lists. In an installation with several instances the same capabilities can be served over the HTTP surface instead |
+| Connector | `loopback` | Taktus reached by Taktus. Exists (`src/taktus/adapters/driven/connectors/loopback/`): the capabilities `orchestrator.integrations`, `orchestrator.removal`, `orchestrator.maturity` and `orchestrator.conformance` behind the action side of the connector port, every operation `read` because nothing it does leaves the system — except `orchestrator.conformance.run`, which runs a suite and is declared `write` (NTC-0091) — over an `Orchestrator` the composition root implements on the instance's own services (`composition/loopback.py`; ADR-0027). It is what the removal test calls, and what a process calls to have the instance run an adapter's conformance suite; it is never itself an integration the removal test lists. In an installation with several instances the same capabilities can be served over the HTTP surface instead |
 
 **Rule:** a second real worker of each shape exists **before** features build on worker behaviour.
 Otherwise there is a contract with one implementation, and that is not a contract.

@@ -40,6 +40,17 @@ class StaticConnectorPool:
             found.append((adapter, self._declared[adapter]))
         return found
 
+    async def member(self, adapter: str) -> Capabilities | None:
+        """The declaration of one configured connector, read as `resolve` reads it; None when
+        no connector has the identifier."""
+        for configured, connector in self._connectors:
+            if configured != adapter:
+                continue
+            if adapter not in self._declared:
+                self._declared[adapter] = await connector.capabilities()
+            return self._declared[adapter]
+        return None
+
     def without(self, adapter: str) -> StaticConnectorPool:
         """The same configuration with one connector withheld; the original is untouched."""
         pool = StaticConnectorPool([(a, c) for a, c in self._connectors if a != adapter])

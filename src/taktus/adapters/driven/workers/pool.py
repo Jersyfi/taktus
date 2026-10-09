@@ -43,6 +43,18 @@ class StaticWorkerPool:
             found.append((adapter, capabilities, version))
         return found
 
+    async def member(self, adapter: str) -> tuple[frozenset[str], str | None] | None:
+        """The capabilities and the version one configured worker declares, read as `resolve`
+        reads them; None when no worker has the identifier."""
+        for configured, worker in self._workers:
+            if configured != adapter:
+                continue
+            if adapter not in self._declared:
+                declared = await worker.capabilities()
+                self._declared[adapter] = (frozenset(declared.capabilities), declared.version)
+            return self._declared[adapter]
+        return None
+
     def without(self, adapter: str) -> StaticWorkerPool:
         """The same configuration with one worker withheld: what the removal test runs a
         process against. The original is untouched; restoring is not using this one."""

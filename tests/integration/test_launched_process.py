@@ -98,7 +98,7 @@ async def test_the_process_adapter_is_refused_at_level_3_and_the_run_escalates(
     document = bundle(with_overreach=False)
     document["autonomy"] = {"level": 3, "reason": "the test needs the level", "toward_next": "-"}
     # Verified, so that what refuses the step is the execution rule and not its maturity.
-    verified(tmp_path / "state", "worker.process")
+    await verified(tmp_path / "state", "worker.process")
     async with wiring().services(state_dir=tmp_path / "state", worker_endpoint="") as services:
         run = await start(services, document)
         assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
