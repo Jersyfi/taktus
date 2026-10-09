@@ -12,6 +12,13 @@ from taktus.components.reporting.domain.model.finding import (
     Occurrence,
     Reported,
 )
+from taktus.components.reporting.domain.model.interface import (
+    TRANSIENT,
+    UNFORESEEN,
+    BrokenInterface,
+    FailedCall,
+    InterfaceCause,
+)
 from taktus.components.reporting.domain.model.report import (
     Delivery,
     DeliveryChannel,
@@ -28,13 +35,18 @@ from taktus.components.reporting.domain.model.report import (
 
 __all__ = [
     "LACK_CAUSES",
+    "TRANSIENT",
+    "UNFORESEEN",
     "Blocked",
+    "BrokenInterface",
     "Delivery",
     "DeliveryChannel",
     "DeliveryState",
+    "FailedCall",
     "Filed",
     "Finding",
     "Happened",
+    "InterfaceCause",
     "Lack",
     "LackCause",
     "Link",

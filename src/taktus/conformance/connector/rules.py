@@ -32,7 +32,9 @@ QUANTITY_OF_KIND: Mapping[str, tuple[str, ...]] = {
 }
 
 # Causes after which the same call may never be repeated blindly.
-NOT_RETRYABLE = frozenset({"unauthenticated", "forbidden", "not_found", "invalid", "conflict"})
+NOT_RETRYABLE = frozenset(
+    {"unauthenticated", "forbidden", "not_found", "invalid", "conflict", "unexpected"}
+)
 
 CHECKS: dict[str, str] = {
     "C-01": "capabilities declares the contract, at least one capability, and every operation "
@@ -83,7 +85,8 @@ REQUIREMENTS: dict[str, str] = {
     "replayed: true, and with a new key acts again on new records with replayed: false",
     "C-06": "a call the target must refuse ends with isError true and an Error that validates: "
     "class failure, a cause from the vocabulary — the one the scenario expects — effect none or "
-    "unknown, retryable false after unauthenticated, forbidden, not_found, invalid or conflict",
+    "unknown, retryable false after unauthenticated, forbidden, not_found, invalid, conflict or "
+    "unexpected",
     "C-07": "the intake tool, given a payload signed with the intake secret under the declared "
     "scheme, returns accepted with an Intake that validates, names an event the declaration "
     "lists, a sender, a context and a reply address",

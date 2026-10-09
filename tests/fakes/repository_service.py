@@ -38,7 +38,10 @@ What it enforces, because the connector's checks depend on it:
 Test-only endpoints under `/_fake/`: `GET /_fake/state` counts what exists, `POST /_fake/reset`
 empties the store, `POST /_fake/outage` with `{"on": true}` makes every other request answer 503
 until switched off, `POST /_fake/hang` with `{"seconds": 2}` makes every other request wait
-that long before answering, so that a client's timeout can be provoked. `POST /_fake/app` with
+that long before answering, so that a client's timeout can be provoked. `POST /_fake/answer`
+with `{"status": 200, "body": …}` makes every other request answer that status and body — a
+shape or a status the connector does not foresee, as an interface that changed would — until
+`{}` switches it off (issue #100). `POST /_fake/app` with
 any of `{"installed": false, "suspended": true, "token_seconds": 120}` changes the app's
 installation — removing it revokes every token it issued — and `GET /_fake/app` lists every
 token and signed statement the fake has seen, so that a test can look for them where they must
@@ -119,6 +122,7 @@ class Store:
     expiry: dict[str, float] = field(default_factory=dict)  # an app token's value -> its end
     repositories: dict[str, Repository] = field(default_factory=dict)
     outage: bool = False
+    answer: Json | None = None  # {"status", "body"}: what every other request answers instead
     hang_seconds: float = 0.0
     ci_conclusion: str = "success"
     ci_pending: bool = False
@@ -382,6 +386,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.store.outage:
             self._send(503, {"message": "Service unavailable"})
             return False
+        if self.store.answer is not None:
+            self._send(int(self.store.answer["status"]), self.store.answer.get("body"))
+            return False
         scope = self._scope()
         if scope is None:
             self._send(401, {"message": "Bad credentials"})
@@ -427,6 +434,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.store.repositories.clear()
                 self.store.ci_conclusion = "success"
                 self.store.ci_pending = False
+                self.store.answer = None
             if self.store.app is not None:
                 self.store.app.installed, self.store.app.suspended = True, False
                 self.store.app.token_seconds = 3600
@@ -450,6 +458,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"installed": app.installed, "suspended": app.suspended})
             return
         if self._app_route("POST", url.path, body):
+            return
+        if url.path == "/_fake/answer":
+            self.store.answer = dict(body) if "status" in body else None
+            self._send(200, {"answer": self.store.answer})
             return
         if url.path == "/_fake/outage":
             self.store.outage = bool(body.get("on"))

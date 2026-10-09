@@ -50,6 +50,13 @@ class ConnectorError(Exception):
     The message names the connector's endpoint and the fault, never a credential."""
 
 
+class ContractBroken(ConnectorError):
+    """The connector answered, with something the contract does not allow: an error that is
+    not classified, a result that does not validate, no structured content. Kept apart from a
+    connector that did not answer at all, because only this one says that the interface broke
+    (ADR-0047)."""
+
+
 # --- the declaration (§3) ---------------------------------------------------------------------
 
 
@@ -257,6 +264,9 @@ class Cause(StrEnum):
     INVALID = "invalid"
     CONFLICT = "conflict"
     UNAVAILABLE = "unavailable"
+    UNEXPECTED = "unexpected"
+    """The target answered with a status or a body the connector does not foresee: the
+    interface it serves may have changed (ADR-0047)."""
     UNKNOWN = "unknown"
 
 

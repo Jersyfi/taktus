@@ -110,11 +110,15 @@ referenced name — a personal token, for a tenant that has no app.
 ## Errors
 
 The service's answers map to the contract's causes ([`api.py`](api.py)): 401 `unauthenticated`,
-403 `forbidden` (or `unavailable` when the rate limit is exhausted), 404 `not_found`, 422
+403 `forbidden` (or `unavailable` when the rate limit is exhausted), 404 `not_found`, 400 and 422
 `invalid` (or `conflict` when the message says a record already exists), 409 `conflict`, 429 and
-5xx `unavailable`. A connection that could not be made is `unavailable` with no effect; a request
-that was sent and never answered is `unknown` with effect `unknown` — the only case in which the
-connector does not know whether it acted.
+5xx `unavailable`. Every other status — a redirect, 405, 410 — is one the connector was not written
+for, and is `unexpected`: the service's interface may have changed (ADR-0047). A connection that
+could not be made is `unavailable` with no effect; a request that was sent and never answered is
+`unknown` with effect `unknown`. A success the connector cannot read — a body that is not JSON, a
+shape an operation does not foresee — is `unexpected` for a read, which acted on nothing, and
+`unknown` with effect `unknown` for a write, which may have acted. Those are the only cases in
+which the connector does not know whether it acted.
 
 ## Intake
 

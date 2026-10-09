@@ -26,6 +26,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.reporting.application.service import (
+    BrokenInterfaces,
     ChannelOf,
     ConfigureChannelHandler,
     ProductFindings,
@@ -77,6 +78,9 @@ class Services:
     findings: ProductFindings | None = None
     """The product findings the instance recorded, to show its operator (`taktusctl findings`,
     UC-6.12)."""
+    interfaces: BrokenInterfaces | None = None
+    """The broken interfaces the instance noticed from its own calls, and what became of their
+    reports, to show its operator (`taktusctl interfaces`, ADR-0047)."""
     conformance: RunConformanceHandler | None = None
     """The instance runs an adapter's conformance suite and records it (`taktusctl
     conformance record`, ADR-0044)."""

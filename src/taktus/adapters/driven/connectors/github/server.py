@@ -33,7 +33,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from taktus.adapters.driven.connectors.github import declaration, intake, operations
-from taktus.adapters.driven.connectors.github.api import Api, TargetError
+from taktus.adapters.driven.connectors.github.api import Api, TargetError, unreadable
 from taktus.adapters.driven.connectors.github.app import AppConfig, AppTokens
 from taktus.adapters.driven.connectors.github.faults import validate
 
@@ -159,7 +159,13 @@ class Connector:
         api = Api(self.config.target, self.config.repository, token, timeout=self.config.timeout)
         api.requests = minted
         try:
-            outcome = await operations.OPERATIONS[name](api, input, key)
+            try:
+                outcome = await operations.OPERATIONS[name](api, input, key)
+            except (KeyError, TypeError, IndexError, AttributeError) as unread:
+                # The service answered with a shape the operation does not foresee: a field
+                # missing, a list where a record was expected (ADR-0047).
+                method = "GET" if declaration.operation(name)["effect"] == "read" else "POST"
+                raise unreadable(method, "a shape") from unread
         except TargetError as raised:
             error = raised
             if error.status == 401 and self.app is not None and self._names_the_app(context):

@@ -3,6 +3,11 @@ from taktus.components.reporting.application.service.answer_in_channel import (
     AnswerInChannel,
     AnswerInChannelHandler,
 )
+from taktus.components.reporting.application.service.broken_interfaces import (
+    BrokenInterfaces,
+    Noticed,
+    Reported,
+)
 from taktus.components.reporting.application.service.close_task import (
     CloseTask,
     CloseTaskHandler,
@@ -38,6 +43,7 @@ __all__ = [
     "Answer",
     "AnswerInChannel",
     "AnswerInChannelHandler",
+    "BrokenInterfaces",
     "ChannelOf",
     "ChannelRefused",
     "CloseTask",
@@ -47,9 +53,11 @@ __all__ = [
     "DeliverReport",
     "NoChannel",
     "NotSent",
+    "Noticed",
     "ProductFindings",
     "RaiseReport",
     "RaiseReportHandler",
+    "Reported",
     "ReportingError",
     "Sending",
     "Sent",

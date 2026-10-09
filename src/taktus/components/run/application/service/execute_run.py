@@ -158,6 +158,7 @@ from taktus.components.run.domain.service import (
     anchoring,
     autonomy,
     blocked,
+    interfaces,
     provenance,
     rules,
     waiting,
@@ -185,6 +186,7 @@ from taktus.ports.connector import (
     CallContext,
     CallFailed,
     ConnectorError,
+    ContractBroken,
     EffectReport,
     Operation,
     ResolvedConnector,
@@ -1421,7 +1423,11 @@ class RunEngine:
                 finished_at=self._clock.now(),
             )
             run = await self._commit(
-                run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+                run.with_step_run(step_run),
+                "step.finished",
+                step=step_run,
+                outcome="failed",
+                interface=failure.interface,
             )
             return run, step_run
         run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
@@ -2020,6 +2026,7 @@ class RunEngine:
                 consumption=error.consumption,
                 adapter=resolved.adapter,
                 outcome="connector failed",
+                interface=interfaces.of_cause(error.cause),
             ) from failed
         except ConnectorError as broken:
             # The connector did not answer, or answered outside the contract: whether the
@@ -2031,12 +2038,14 @@ class RunEngine:
                     "did not retry it. Check the target system whether the effect happened "
                     "before resuming: resuming repeats the call"
                 )
+            broke = isinstance(broken, ContractBroken)
             raise _StepFailed(
                 reason=reason,
                 retryable=not operation.outward or operation.repeatable,
                 consumption=None,
                 adapter=resolved.adapter,
-                outcome="connector unreachable",
+                outcome="connector broke the contract" if broke else "connector unreachable",
+                interface=interfaces.CONTRACT if broke else interfaces.UNREACHABLE,
             ) from broken
         if result.effect.kind != operation.effect:
             raise _StepFailed(
@@ -2046,6 +2055,7 @@ class RunEngine:
                 consumption=result.consumption,
                 adapter=resolved.adapter,
                 outcome="connector broke the contract",
+                interface=interfaces.CONTRACT,
             )
         return result
 
@@ -2765,12 +2775,15 @@ class RunEngine:
         trigger: Mapping[str, Any] | None = None,
         digest: Digest | None = None,
         decision: str | None = None,
+        interface: str | None = None,
     ) -> Run:
         """One transaction: the run as it now is, and — when `kind` is given — the ledger entry
         that says what changed. Either both land or neither does. A step that finished with a
         result gets its provenance record in the same transaction, bound to that entry; a job
         to `enqueue` lands in it too. `new` refuses a run that exists already (`RunExists`);
-        `trigger` records the trigger that started the run as `run.triggered`."""
+        `trigger` records the trigger that started the run as `run.triggered`; `interface`
+        records a failed call that speaks about its interface as `interface.failed`, beside the
+        step's entry (ADR-0047)."""
         run = run.model_copy(update={"updated_at": self._clock.now()})
         async with self._work.transaction(run.tenant):
             await self._fence(run)
@@ -2789,6 +2802,8 @@ class RunEngine:
                     digest=digest,
                     decision=decision,
                 )
+                if interface is not None and step is not None:
+                    await self._record(run, interfaces.RECORD_KIND, step=step, outcome=interface)
                 if trigger is not None:
                     # The ledger is content-free (ADR-0006): the entry names the trigger's kind
                     # and carries the digest of its document; the command keeps the document.
@@ -2864,7 +2879,7 @@ class RunEngine:
             trace_id=self._telemetry.current_trace_id(),
         )
         consumption: Consumption | None = None
-        if step is not None and kind != blocked.RECORD_KIND:
+        if step is not None and kind not in (blocked.RECORD_KIND, interfaces.RECORD_KIND):
             if kind in ("step.admitted", "step.rejected") and step.estimate is not None:
                 quantities = step.estimate.quantities()
                 if quantities:
@@ -2911,6 +2926,9 @@ class _StepFailed(Exception):
     lack: tuple[str, str] | None = None
     """For a step that failed for want of an adapter: the cause token of the lack and what was
     lacking. The step then carries a block until it can start (ADR-0046)."""
+    interface: str | None = None
+    """For a call through a connector that failed in a way that speaks about its interface: the
+    token `interface.failed` records (ADR-0047)."""
 
 
 def _digest(content: bytes) -> str:

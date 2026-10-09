@@ -83,6 +83,7 @@ from taktus.composition.execution import (
     telemetry_of,
 )
 from taktus.composition.findings import RunBlocks
+from taktus.composition.interfaces import broken_interfaces
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturity import CatalogMaturities
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
@@ -288,6 +289,7 @@ class LocalWiring:
                 findings=ProductFindings(
                     RunBlocks(BlockedTime(ledger, objects, stores.work, runs))
                 ),
+                interfaces=broken_interfaces(ledger, stores.work, owner, clock),
             )
             telemetry.shutdown()
 
