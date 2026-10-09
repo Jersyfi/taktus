@@ -4,7 +4,8 @@ Two directions, governed differently (§1 of the contract). **Actions**: the cor
 operation with a call context — who acts, for which step, under which idempotency key, with
 which credential by name — and receives a result that repeats the operation's declared effect,
 or a classified failure. **Intake**: a delivery — headers, the raw body, when it arrived —
-becomes an accepted intake, the channel's half of a command, or a refusal with its reason.
+becomes an accepted intake, the channel's half of a command, or a refusal with its reason — a
+verified handshake refused with the answer its sender expects.
 
 The shapes are bound the way the worker contract's are (frozen, closed; `tests/contract` holds
 them to `Connector.json` and its examples). The core never sees a URL or a transport; the
@@ -341,9 +342,28 @@ class RefusalReason(StrEnum):
     OWN_ACTION = "own_action"
 
 
+class IntakeAnswer(Value):
+    """What the receiving endpoint answers the sender of a handshake: status 200, this media
+    type, exactly this body. The connector knows its target's handshake; the endpoint copies
+    the answer and knows no target (ADR-0024, amendment of 2026-10-09)."""
+
+    media_type: str = Field(pattern=r"^[a-z]+/[a-z0-9.+-]+$")
+    body: str = Field(max_length=4096)
+
+
 class Refusal(Value):
+    """Nothing is kept. `answer` rides only on `unsupported_event`, which a connector decides
+    after the signature verified: an unverified handshake is answered nothing."""
+
     reason: RefusalReason
     detail: str = Field(min_length=1)
+    answer: IntakeAnswer | None = None
+
+    @model_validator(mode="after")
+    def _only_a_verified_handshake_is_answered(self) -> Refusal:
+        if self.answer is not None and self.reason is not RefusalReason.UNSUPPORTED_EVENT:
+            raise ValueError("only a refusal as unsupported_event carries an answer")
+        return self
 
 
 class IntakeResult(Value):

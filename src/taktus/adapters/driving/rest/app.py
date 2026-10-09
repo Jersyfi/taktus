@@ -23,7 +23,7 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException
 
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
@@ -125,9 +125,17 @@ def _intake(services: RestServices) -> APIRouter:
         "half of a command. The sender is placed in a tenant by the identity resolver — "
         "today the provisional operator identity (DEC-0013) — and the event is kept there "
         "until it is completed into a command. A sender that cannot be placed is answered "
-        "`unknown_sender` and nothing is kept. Nothing is executed from here.",
+        "`unknown_sender` and nothing is kept. A verified delivery that is a handshake, not "
+        "an event — a sender checking the address before it sends events — is refused with "
+        "the answer the connector gives, and that answer is returned as it is, status 200; "
+        "nothing is kept. Nothing is executed from here.",
         status_code=202,
         responses={
+            200: {
+                "description": "A handshake: the body and media type the connector answered "
+                "for its sender, returned as they are.",
+                "content": {"text/plain": {}, "application/json": {}},
+            },
             202: {
                 "description": "Decided: `accepted` with the intake event, `refused`, or "
                 "`unknown_sender`."
@@ -139,7 +147,7 @@ def _intake(services: RestServices) -> APIRouter:
             **INVALID,
         },
     )
-    async def intake(channel: str, request: Request) -> JSONResponse:
+    async def intake(channel: str, request: Request) -> Response:
         body = (await request.body()).decode("utf-8", errors="replace")
         delivery = Delivery(
             headers={k: v for k, v in request.headers.items()},
@@ -156,6 +164,11 @@ def _intake(services: RestServices) -> APIRouter:
             return problem(404, str(error))
         except ConnectorError as error:
             return problem(503, str(error))
+        if outcome.refused is not None and outcome.refused.answer is not None:
+            # A verified handshake: the connector knows what its sender expects back; the
+            # surface copies it and knows no sender (ADR-0024, amendment of 2026-10-09).
+            answer = outcome.refused.answer
+            return Response(answer.body, status_code=200, media_type=answer.media_type)
         if outcome.refused is not None:
             status = REFUSAL_STATUS[outcome.refused.reason]
             if status == 202:

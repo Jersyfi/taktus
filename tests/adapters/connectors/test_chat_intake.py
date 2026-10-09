@@ -163,6 +163,51 @@ def test_what_is_not_a_new_message_is_refused_as_unsupported(name: str) -> None:
     headers, body = recorded(name)
     result = intake.normalise(signed(headers, body), body, RECEIVED, SHARED)
     assert result["refused"]["reason"] == "unsupported_event"
+    assert ("answer" in result["refused"]) == (name == "url-verification"), "only the handshake"
+
+
+def test_a_verified_url_verification_is_answered_with_its_challenge() -> None:
+    """Issue #145: the service accepts the address only when the answer carries the challenge
+    back. The connector says so; the receiving endpoint returns it as it is."""
+    headers, body = recorded("url-verification")
+    result = intake.normalise(signed(headers, body), body, RECEIVED, SHARED)
+    assert result["refused"]["answer"] == {
+        "media_type": "text/plain",
+        "body": "placeholder-challenge",
+    }
+    assert "accepted" not in result, "nothing is kept"
+    assert first_error("IntakeResult", result, "connector/v1") is None
+
+
+@pytest.mark.parametrize(
+    ("case", "reason"),
+    [("unsigned", "unsigned"), ("wrongly signed", "bad_signature"), ("stale", "bad_signature")],
+)
+def test_an_unverified_url_verification_is_refused_like_any_delivery(
+    case: str, reason: str
+) -> None:
+    headers, body = recorded("url-verification")
+    given = {
+        "unsigned": headers,
+        "wrongly signed": signed(headers, body, "another-value"),
+        "stale": signed(headers, body, moment=MOMENT - 3600),
+    }[case]
+    result = intake.normalise(given, body, RECEIVED, SHARED)
+    assert result["refused"]["reason"] == reason
+    assert "answer" not in result["refused"], "an unverified handshake is answered nothing"
+    assert "placeholder-challenge" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("challenge", [None, "", 7, "x" * 4097])
+def test_a_url_verification_without_a_usable_challenge_is_malformed(challenge: object) -> None:
+    headers, _ = recorded("url-verification")
+    payload: Json = {"type": "url_verification"}
+    if challenge is not None:
+        payload["challenge"] = challenge
+    body = json.dumps(payload)
+    result = intake.normalise(signed(headers, body), body, RECEIVED, SHARED)
+    assert result["refused"]["reason"] == "malformed"
+    assert "answer" not in result["refused"]
 
 
 def test_the_connectors_own_message_is_refused_so_that_it_never_answers_itself() -> None:

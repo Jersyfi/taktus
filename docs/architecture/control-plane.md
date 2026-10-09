@@ -53,6 +53,11 @@ replaces, never doubles — in the tenant the identity port places the sender in
 executed from it. `POST /intake-events/{id}/complete` completes it into a command
 (`complete_intake.py`), and the command is then commissioned like any other.
 
+A verified delivery that is a handshake — a source system checking the address before it sends
+events there — is no event. The connector refuses it and adds the answer the source system
+expects; the webhook intake returns that answer with status `200`, as it is, and keeps nothing
+(ADR-0024, amendment of 2026-10-09). The surface knows no source system's handshake.
+
 The identity port (`src/taktus/ports/identity.py`) is what the core asks: place a sender —
 tenant, identity, organisational path — or answer that the sender is unknown. **Until the
 identity component exists (`0.2.0`) the port is served by a provisional adapter:** one

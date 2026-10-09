@@ -51,7 +51,10 @@ paths:
         the body, then normalises the event into the channel's half of a command. The sender is placed
         in a tenant by the identity resolver — today the provisional operator identity (DEC-0013) — and
         the event is kept there until it is completed into a command. A sender that cannot be placed is
-        answered `unknown_sender` and nothing is kept. Nothing is executed from here.
+        answered `unknown_sender` and nothing is kept. A verified delivery that is a handshake, not an
+        event — a sender checking the address before it sends events — is refused with the answer the
+        connector gives, and that answer is returned as it is, status 200; nothing is kept. Nothing is
+        executed from here.
       operationId: intake_intake__channel__post
       parameters:
       - name: channel
@@ -66,6 +69,12 @@ paths:
           content:
             application/json:
               schema: {}
+        '200':
+          description: 'A handshake: the body and media type the connector answered for its sender, returned
+            as they are.'
+          content:
+            text/plain: {}
+            application/json: {}
         '400':
           description: The body cannot be read.
           content:

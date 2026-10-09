@@ -24,7 +24,7 @@ The directory name is the definition in kebab-case: `call-context` is `CallConte
 | C-05 | `effect-report/invalid/C-05-…` | an outward effect that does not say whether it was replayed |
 | C-06 | `error/invalid/C-06-…` | a bare message instead of an Error |
 | C-07 | `intake/invalid/C-07-…` | an intake command without a reply address |
-| C-08 | `intake-declaration/invalid/C-08-…`, `refusal/invalid/C-08-…` | an intake without signature verification; a refusal reason outside the vocabulary |
+| C-08 | `intake-declaration/invalid/C-08-…`, `refusal/invalid/C-08-…` | an intake without signature verification; a refusal reason outside the vocabulary; an answer on a refusal that is not `unsupported_event` — a handshake answered without its signature verified |
 | C-09 | `result/invalid/C-09-…` | a result without consumption |
 | C-10 | `capabilities/invalid/C-10-…` | a product name where a capability belongs |
 

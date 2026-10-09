@@ -49,12 +49,22 @@
       "body_file": "payloads/message-posted.body.json"
     },
     "unsupported": {
-      "headers_file": "payloads/url-verification.headers.json",
-      "body_file": "payloads/url-verification.body.json"
+      "headers_file": "payloads/message-changed.headers.json",
+      "body_file": "payloads/message-changed.body.json"
     },
     "own_action": {
       "headers_file": "payloads/message-own-action.headers.json",
       "body_file": "payloads/message-own-action.body.json"
+    },
+    "handshake": {
+      "payload": {
+        "headers_file": "payloads/url-verification.headers.json",
+        "body_file": "payloads/url-verification.body.json"
+      },
+      "answer": {
+        "media_type": "text/plain",
+        "body": "placeholder-challenge"
+      }
     }
   }
 }
