@@ -6,7 +6,7 @@ application layers inside. No component imports another; what they share is the 
 | Component | State |
 |---|---|
 | `process` | process version as a validated graph: steps, edges, triggers, service level; the bundle use case |
-| `run` | run, step run, checkpoint; the engine with step atomicity and admission control; the built-in rules |
+| `run` | run, step run, checkpoint; the engine with step atomicity and admission control; the built-in rules; the blocked-time accounts (ADR-0043) |
 | `ledger` | the content-free hash chain and its verification |
 | `command` | command → commissioned plan |
 | `governance` | whether a result has left the system (ADR-0022); the capacity report — what the platform has left and the date a person must act by (`docs/architecture/platform.md`) |

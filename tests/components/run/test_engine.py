@@ -209,6 +209,7 @@ async def test_a_run_completes_and_every_state_change_is_in_the_ledger() -> None
         "step.finished:do:succeeded",
         "step.admitted:pause",
         "step.started:pause",
+        "step.waited:pause:waiting_on_clock",
         "step.finished:pause:succeeded",
         "run.finished::succeeded",
     ]
@@ -324,10 +325,11 @@ async def test_stop_after_takes_effect_at_the_boundary_and_the_run_resumes() -> 
     assert [s.state for s in run.step_runs] == [StepState.SUCCEEDED] * 3
     kinds = await h.kinds(run)
     assert kinds.count("step.started:b") == 1, "a finished step is not run again"
-    assert kinds[-5:] == [
+    assert kinds[-6:] == [
         "run.resumed",
         "step.admitted:c",
         "step.started:c",
+        "step.waited:c:waiting_on_clock",
         "step.finished:c:succeeded",
         "run.finished::succeeded",
     ]

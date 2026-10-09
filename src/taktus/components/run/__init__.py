@@ -9,4 +9,8 @@ to the ledger through the ledger port.
 
 Consumption is raw here — tokens, compute seconds and their class, quota units, money by
 currency. The normalised Takt is derived elsewhere (docs/architecture/accounting.md).
+
+The blocked-time accounts are the run's too (ADR-0015, ADR-0043): every stretch in which a step
+could not go on is booked to one of seven accounts when it ends, and read back per account,
+process and period. The analysis over them is accounting's.
 """

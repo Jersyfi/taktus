@@ -7,7 +7,7 @@ serves: [P9, P10, P11, P14]
 state: built
 version: 0.2.0
 tests: [tests/governance/test_anchors.py::test_no_autonomy_level_overrides_an_anchor, tests/governance/test_anchors.py::test_the_halt_is_at_the_boundary_and_the_rest_of_the_run_continues, tests/governance/test_anchors.py::test_the_request_holds_every_part_of_the_one_shape, tests/governance/test_anchors.py::test_a_request_missing_a_part_is_not_raised, tests/governance/test_anchors.py::test_an_anchored_step_whose_request_is_not_raised_fails_without_its_act, tests/governance/test_anchors.py::test_a_free_text_answer_is_not_acted_on_until_its_reading_is_confirmed, tests/governance/test_anchors.py::test_an_answer_no_option_can_be_read_from_changes_nothing, tests/governance/test_anchors.py::test_an_answered_request_is_an_entry_in_the_register_linked_to_run_and_request, tests/governance/test_anchors.py::test_waiting_work_is_in_the_run_s_history_and_the_decider_s_list_overdue_shown, tests/governance/test_anchors.py::test_another_identity_cannot_read_a_decider_s_response_time_under_their_name, tests/governance/test_anchors.py::test_response_times_are_aggregated_by_role_and_department_over_two_deciders, tests/adapters/rest/test_decisions.py::test_nobody_reads_a_deciders_response_time_under_their_name]
-adrs: {ADR-0008: e6a4e033abd4, ADR-0015: 420aac4db0cc, ADR-0017: c932691e9072, ADR-0042: bfc76a4a3797}
+adrs: {ADR-0008: e6a4e033abd4, ADR-0015: 3a42705e5561, ADR-0017: c932691e9072, ADR-0042: bfc76a4a3797}
 supersedes: null
 ---
 

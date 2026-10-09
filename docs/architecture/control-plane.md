@@ -220,6 +220,15 @@ beyond the step's ceiling, one hour unless the step names one, escalates the run
 `capacity`. The ledger carries `step.waiting` for each answer and `step.waited` with the wait's
 duration (ADR-0037; `tests/integration/test_capacity_wait.py`).
 
+**A provider at its rate limit.** A model provider that answers `429` is treated the same way:
+nothing was produced, the step goes back to its boundary, the run halts with cause `capacity`,
+and the runner tries again later. Past the engine's ceiling the run escalates (ADR-0043).
+
+**Blocked time.** Every block of a run — a stretch in which a step could not go on — is booked to
+one of the seven accounts of [throughput.md](throughput.md) §1. The step run carries the block
+while it lasts; when it ends, `step.waited` names its record with the account, the cause and the
+duration (ADR-0043).
+
 ### 5.2 States
 
 ```

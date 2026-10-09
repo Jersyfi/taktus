@@ -470,6 +470,7 @@ class RunMapper:
                     "waiting_since": _at(sr.get("waiting_since")),
                     "waits": sr.get("waits", 0),
                     "confirmed_by": sr.get("confirmed_by"),
+                    "block": sr.get("block"),
                     "anchoring": sr.get("anchoring"),
                 }
                 for sr in step_runs
@@ -630,6 +631,7 @@ def _step_run_from(
             "waiting_since": _iso(row.waiting_since),
             "waits": row.waits,
             "confirmed_by": row.confirmed_by,
+            "block": row.block,
             "anchoring": row.anchoring,
         }
     )

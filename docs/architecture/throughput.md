@@ -20,6 +20,22 @@ Every run records each block with cause, duration and affected work.
 | `wait.external` | CI, partner system, supplier |
 | `wait.dependency` | another step must finish first |
 
+**How a block is recorded** (ADR-0043). A step that is blocked carries the block — its account,
+the engine's cause token and when it began — until the block ends. Then its record goes into the
+object store, and the ledger entry `step.waited` names it by digest. The record states the
+account, the cause, the run, the step and the process version it held up, when it began and
+ended, and how long it lasted. A refusal at the run's limits books to `limit.quota` when quota
+alone did not fit and to `limit.budget` otherwise; a platform that cannot hold a job books to
+`limit.compute`; every `wait` step books to `wait.external`; a step held back behind a step that
+waits for a person books to `wait.dependency`. A refusal for want of an estimate, an adapter
+below *verified*, a failure and a stop are not blocks (NTC-0090).
+
+**How the accounts are read.** The `run` component's query `BlockedTime` reads every block that
+ended, sums them per account, per process and per period — blocked seconds, blocks, runs and
+steps held up, and the share of the period's runs held up — and gives a person the waits they
+answered themselves. It reads the ledger and the records, nothing else. A wait on a person names
+no one in a block or a sum (§6).
+
 ---
 
 ## 2. Why this is measurable rather than estimated
@@ -100,3 +116,8 @@ to assess people.
 **The analysis belongs to the deciding person and is visible only to them by default.** Aggregation
 by role or department only, never by person. No ranking. The rule lives in the data model, not in a
 policy.
+
+How it lives in the data model (ADR-0043 §7): a block and a sum are closed values with no field
+that can hold a person, and a block's record carries none. Who answered a wait is the actor of the
+answer's own ledger entry. Only the read of a person's own waits joins the two, and only for the
+person who reads.

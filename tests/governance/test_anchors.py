@@ -8,6 +8,7 @@ run, the requests, the register and the ledger.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -40,6 +41,7 @@ from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import AnchorsRefused, ConfigureAnchors
 from taktus.components.governance.domain.model import AnchorConfiguration
 from taktus.components.governance.domain.service.anchors import applying, matches
+from taktus.components.run.application.query import BlockedTime
 from taktus.components.run.application.service import (
     ConfirmSteps,
     DecideSteps,
@@ -648,3 +650,44 @@ async def test_a_decision_taken_on_the_surface_hands_the_run_to_a_runner() -> No
         ResumeRun(run_id=run.id, actor="runner-a", tenant=TENANT, on_claim=True)
     )
     assert run.state is RunState.FINISHED and [c[0] for c in w.connector.calls] == [WRITE]
+
+
+# --- an anchor's halt is a block on a person (ADR-0043) ------------------------------------------
+
+
+async def test_an_anchor_s_halt_is_booked_to_wait_human_and_read_as_the_decider_s_alone() -> None:
+    w = await World(call("write", WRITE), rule("after", after=("write",))).setup()
+    run = await w.start()
+    held = run.step_run("write").block
+    assert held is not None and (held.account, held.cause) == ("wait.human", "awaiting_decision")
+    assert held.role == "finance.lead", "addressed to the role, never to a person"
+    behind = run.step_run("after").block
+    assert behind is not None and behind.account == "wait.dependency" and behind.on == "write"
+
+    w.clock.current += timedelta(hours=2)
+    (request_id,) = requests_of(run, "write")
+    await w.answer(request_id, option="A")
+    run = await w.confirm(request_id)
+    assert run.state is RunState.FINISHED
+    assert all(s.block is None for s in run.step_runs)
+
+    accounts = BlockedTime(w.ledger, w.engine._objects, w.persistence)
+    blocks = {b.account: b for b in await accounts.blocks(TENANT)}
+    assert set(blocks) == {"wait.human", "wait.dependency"}
+    decided = blocks["wait.human"]
+    assert (decided.step_id, decided.cause, decided.role) == (
+        "write",
+        "awaiting_decision",
+        "finance.lead",
+    )
+    assert decided.seconds >= timedelta(hours=2).total_seconds()
+    text = json.dumps(
+        [b.document() for b in blocks.values()]
+        + [s.document() for s in await accounts.sums(TENANT)],
+        default=str,
+    )
+    assert DECIDER not in text and COLLEAGUE not in text
+    assert await accounts.own(TENANT, COLLEAGUE) == ()
+    assert await accounts.own(TENANT, STARTER) == ()
+    (own,) = await accounts.own(TENANT, DECIDER)
+    assert own == decided

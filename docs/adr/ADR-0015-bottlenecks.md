@@ -1,6 +1,6 @@
 # ADR-0015 — Measure waiting, report the marginal value of a change
 
-**Status:** accepted
+**Status:** accepted · amended 2026-10-09 (ADR-0043): the boundary says that the accounts are kept now
 
 ## Context
 Taktus works inside limits: provider rate limits, subscription windows, configured budgets, local
@@ -45,4 +45,5 @@ measured. Marginal value is an analysis of what admission control refused, which
 tokens, quota and compute and an estimate for money reported per assignment (ADR-0005). The
 protective rule keeps a person's response times with that person; it cannot keep a person
 from computing them by hand from their own view. Blocked-time accounts and the analysis arrive
-at `0.2.0` and `0.5.0`; today the ledger records rejections and waits, and nobody sums them.
+at `0.2.0` and `0.5.0`. The accounts are kept since `0.2.0`, with the bounds ADR-0043 states;
+nothing analyses them yet.

@@ -10,13 +10,16 @@ what every step used and every running step reserved (`Run.consumed`).
 
 from __future__ import annotations
 
-from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit, TokenLimit
+from taktus.ports.worker import ComputeLimit, LimitKind, Limits, QuotaLimit, TokenLimit
 from taktus.shared.v1 import ConsumptionQuantities, Value
 
 
 class Admission(Value):
     fits: bool
     findings: tuple[str, ...] = ()
+    kinds: tuple[LimitKind, ...] = ()
+    """The consumption kinds that did not fit, each once: what the block is booked by
+    (`block.limit_account`)."""
 
 
 def remaining(budget: Limits, consumed: ConsumptionQuantities) -> Limits | None:
@@ -76,16 +79,19 @@ def _left(limit: int | None, used: int | None) -> int | None:
 def admit(demand: ConsumptionQuantities, left: Limits | None, budget: Limits) -> Admission:
     """Whether the demand fits within what is left."""
     findings: list[str] = []
+    kinds: list[LimitKind] = []
     for code, amount in (demand.currency or {}).items():
         if budget.currency is None or code not in budget.currency:
             continue
         available = 0.0 if left is None or left.currency is None else left.currency.get(code, 0.0)
         if amount > available:
             findings.append(f"{amount} {code} needed, {available} left")
+            kinds.append("currency")
     if demand.quota_units is not None and budget.quota is not None:
         available = 0.0 if left is None or left.quota is None else left.quota.units
         if demand.quota_units > available:
             findings.append(f"{demand.quota_units} quota units needed, {available} left")
+            kinds.append("quota")
     if budget.tokens is not None:
         for name, limit, needed in (
             ("input", budget.tokens.tokens_in, demand.tokens_in),
@@ -101,12 +107,14 @@ def admit(demand: ConsumptionQuantities, left: Limits | None, budget: Limits) ->
             )
             if needed > available:
                 findings.append(f"{needed} {name} tokens needed, {available} left")
+                kinds.append("tokens")
     if demand.compute_seconds is not None and budget.compute is not None:
         if demand.resource_class != budget.compute.resource_class:
             findings.append(
                 f"compute in {demand.resource_class!r} needed, the budget covers "
                 f"{budget.compute.resource_class!r} only"
             )
+            kinds.append("compute")
         else:
             available = 0.0 if left is None or left.compute is None else left.compute.seconds
             if demand.compute_seconds > available:
@@ -114,4 +122,5 @@ def admit(demand: ConsumptionQuantities, left: Limits | None, budget: Limits) ->
                     f"{demand.compute_seconds}s of {demand.resource_class} needed, "
                     f"{available:.3f}s left"
                 )
-    return Admission(fits=not findings, findings=tuple(findings))
+                kinds.append("compute")
+    return Admission(fits=not findings, findings=tuple(findings), kinds=tuple(dict.fromkeys(kinds)))

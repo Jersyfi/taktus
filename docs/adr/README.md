@@ -29,7 +29,7 @@ bounding. The section states the boundary; it does not point at it.
 | [0012](ADR-0012-licensing.md) | Licensing and repository visibility | **open — owner decides** |
 | [0013](ADR-0013-business-critical.md) | Taktus is business-critical: what follows | accepted |
 | [0014](ADR-0014-exactness.md) | Exactness classes | accepted, amended by 0018 |
-| [0015](ADR-0015-bottlenecks.md) | Measure waiting, report the marginal value of a change | accepted |
+| [0015](ADR-0015-bottlenecks.md) | Measure waiting, report the marginal value of a change | accepted, amended 2026-10-09 (ADR-0043) |
 | [0016](ADR-0016-explicit-architecture.md) | Explicit Architecture: cut by component | accepted, amended by 0029 |
 | [0017](ADR-0017-decision-requests-in-the-repository.md) | Decision requests as a repository mechanism | accepted, amended by 0021, extended by 0028, amended 2026-09-29 (§7) |
 | [0018](ADR-0018-exactness-applies-to-result-producing-steps.md) | Exactness classes apply to result-producing steps only | accepted |
@@ -53,3 +53,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0039](ADR-0039-autonomy-is-enforced-at-the-step-boundary.md) | Autonomy is enforced at the step boundary | accepted |
 | [0040](ADR-0040-a-channel-account-is-linked-by-the-person-who-holds-it.md) | A channel account is linked by the person who holds it | accepted |
 | [0042](ADR-0042-anchors-halt-at-the-step-boundary-and-raise-a-decision-request.md) | Anchors halt at the step boundary and raise a decision request | accepted |
+| [0043](ADR-0043-every-block-is-booked-to-an-account-when-it-ends.md) | Every block is booked to an account when it ends | accepted |

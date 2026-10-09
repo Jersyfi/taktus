@@ -109,7 +109,7 @@ import re
 from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from taktus.components.run.application.query.recordings import RecordedResponses
@@ -146,13 +146,22 @@ from taktus.components.run.domain.model import (
     Work,
     WorkerWork,
     artifact_references,
+    block,
     parse_work,
     referenced_values,
     references,
     resolve,
     select,
 )
-from taktus.components.run.domain.service import anchoring, autonomy, provenance, rules, waiting
+from taktus.components.run.domain.model.block import Account, OpenBlock
+from taktus.components.run.domain.service import (
+    anchoring,
+    autonomy,
+    blocked,
+    provenance,
+    rules,
+    waiting,
+)
 from taktus.components.run.domain.service import budget as budgeting
 from taktus.components.run.domain.service.admission import admit, remaining
 from taktus.components.run.domain.service.capacity import (
@@ -183,7 +192,14 @@ from taktus.ports.connector import (
     idempotency_key,
 )
 from taktus.ports.ledger import Fact, Ledger
-from taktus.ports.model import Calculability, ModelError, PriceTable, Prompt, price
+from taktus.ports.model import (
+    Calculability,
+    ModelAtLimit,
+    ModelError,
+    PriceTable,
+    Prompt,
+    price,
+)
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import (
     PersistenceError,
@@ -709,6 +725,11 @@ class RunEngine:
                 raise RunError("no queue is wired; a run is handed to a runner through one")
             answered = [self._answer(run, s, command) for s in dict.fromkeys(command.steps)]
             for _, step_run in answered:
+                # The wait on a person ends with the answer. Its record names no one; the
+                # answer's own entry names who answered (ADR-0015, protective rule).
+                run, _ = await self._close_block(run, run.step_run(step_run.step_id))
+            answered = [(k, s.model_copy(update={"block": None})) for k, s in answered]
+            for _, step_run in answered:
                 run = run.with_step_run(step_run)
             for index, (kind, step_run) in enumerate(answered):
                 job = None
@@ -810,6 +831,9 @@ class RunEngine:
             by = verdicts[-1].decided_by
             settled = held.model_copy(update={"verdict": decided, "decided_by": by})
             entries = ", ".join(v.entry or "?" for v in verdicts)
+            # The wait on the decision ends with the verdict, whichever it is (ADR-0043). A
+            # declined act is then a person's choice, not a block.
+            run, step_run = await self._close_block(run, step_run)
             if decided == PROCEED:
                 level = self._held(run, run.step(step_run.step_id)).level
                 updated = step_run.to(
@@ -876,6 +900,12 @@ class RunEngine:
     async def _steps(self, run: Run, stop_after: int | None, span: Span) -> Run:
         refused = await self._platform_refuses(None)
         if refused is not None:
+            held_up = run.runnable()
+            if held_up is not None:
+                run, held_up = await self._open_block(
+                    run, held_up, "limit.compute", block.REJECTED_BY_CAPACITY
+                )
+                run = run.with_step_run(held_up)
             return await self._end(run, RunState.HALTED, Cause.LIMIT, refused, span)
         completed_now = 0
         while (step_run := run.runnable()) is not None:
@@ -942,6 +972,9 @@ class RunEngine:
         async with self._telemetry.span(
             "step", {"run.id": run.id, "step.id": step.id, "step.method": step.method}
         ) as span:
+            if step_run.block is not None and step_run.block.cause == block.HELD_BACK:
+                # What it depended on no longer waits: the step can start (ADR-0043).
+                run, step_run = await self._close_block(run, step_run)
             work = parse_work(step, run.work.get(step.id), run.inputs)
             used = autonomy.actions_of(step, work)
             held = autonomy.held(run.autonomy_level, run.actions, used)
@@ -1001,14 +1034,24 @@ class RunEngine:
             )
             return run, failed
         waiting_on = Anchoring(requests=tuple(d.id for d in drafts), round=round)
-        addressed = ", ".join(sorted({f"the role {d.decider}" for d in drafts}))
+        roles = sorted({d.decider for d in drafts})
+        addressed = ", ".join(f"the role {r}" for r in roles)
+        # The anchored step waits for a person: a block on `wait.human`, addressed to the role
+        # where one role decides it, and the steps behind it held back (ADR-0043).
+        run, step_run = await self._open_block(
+            run,
+            step_run,
+            "wait.human",
+            block.AWAITING_DECISION,
+            role=roles[0] if len(roles) == 1 else None,
+        )
         step_run = step_run.to(
             StepState.WAITING_HUMAN,
             anchoring=waiting_on,
             reason=f"anchored ({named}): waits for the decision request(s) "
             f"{', '.join(waiting_on.requests)}, addressed to {addressed}, due {due.isoformat()}",
         )
-        run = run.with_step_run(step_run)
+        run = self._hold_back(run.with_step_run(step_run), step.id)
         for draft, anchor in zip(drafts, anchors, strict=True):
             run = await self._commit(
                 run,
@@ -1056,9 +1099,15 @@ class RunEngine:
             "work": dict(run.work.get(step.id) or {}),
         }
         digest = await self._objects.put(_canonical(proposal))
+        cause = (
+            block.AWAITING_CONFIRMATION
+            if awaited == autonomy.CONFIRMATION
+            else block.AWAITING_PERFORMANCE
+        )
+        run, step_run = await self._open_block(run, step_run, "wait.human", cause)
         step_run = step_run.to(StepState.WAITING_HUMAN, reason=reason)
         run = await self._commit(
-            run.with_step_run(step_run),
+            self._hold_back(run.with_step_run(step_run), step.id),
             "step.awaiting",
             step=step_run,
             outcome=awaited,
@@ -1105,6 +1154,149 @@ class RunEngine:
         )
         return run, step_run
 
+    # --- blocked-time accounts ------------------------------------------------------------------
+
+    async def _open_block(
+        self,
+        run: Run,
+        step_run: StepRun,
+        account: Account,
+        cause: str,
+        *,
+        since: datetime | None = None,
+        on: StepId | None = None,
+        role: str | None = None,
+    ) -> tuple[Run, StepRun]:
+        """The step is blocked from now — or from `since` — for this cause, unless it is
+        already. A block it is in for another cause ends first, with its record. The block is
+        carried by the step run the caller commits (ADR-0043)."""
+        if step_run.block is not None and step_run.block.cause == cause:
+            return run, step_run
+        if step_run.block is not None:
+            run, step_run = await self._close_block(run, step_run)
+        opened = OpenBlock(
+            account=account, cause=cause, since=since or self._clock.now(), on=on, role=role
+        )
+        return run, step_run.model_copy(update={"block": opened})
+
+    async def _close_block(self, run: Run, step_run: StepRun, **more: Any) -> tuple[Run, StepRun]:
+        """The block the step is in ended now. Its record goes into the object store, and
+        `step.waited` names it by digest with the cause as outcome, in the transaction that
+        clears it from the step run. Nothing happens for a step that is not blocked."""
+        open_block = step_run.block
+        if open_block is None and step_run.waiting_since is not None:
+            # A wait at capacity begun before a step run carried its block (migration 0018).
+            open_block = OpenBlock(
+                account=waiting.ACCOUNT, cause=block.AT_CAPACITY, since=step_run.waiting_since
+            )
+        if open_block is None:
+            return run, step_run
+        document = blocked.record(
+            open_block,
+            run_id=run.id,
+            step_id=step_run.step_id,
+            process_version=run.process_version,
+            until=self._clock.now(),
+            **more,
+        )
+        digest = await self._objects.put(_canonical(document))
+        step_run = step_run.model_copy(update={"block": None, "waiting_since": None, "waits": 0})
+        run = await self._commit(
+            run.with_step_run(step_run),
+            blocked.RECORD_KIND,
+            step=step_run,
+            outcome=open_block.cause,
+            digest=digest,
+        )
+        return run, step_run
+
+    def _hold_back(self, run: Run, waiting_on: StepId) -> Run:
+        """Every step that depends on `waiting_on`, directly or through another, cannot start
+        while it waits: each planned one not yet blocked is blocked from now, booked to
+        `wait.dependency` (ADR-0043). A step already blocked keeps its block, so that no time is
+        counted twice."""
+        now = self._clock.now()
+        behind = {waiting_on}
+        for step in run.steps:  # in execution order: a dependency comes before its dependents
+            if not any(d in behind for d in step.dependencies):
+                continue
+            behind.add(step.id)
+            step_run = run.step_run(step.id)
+            if step_run.state is StepState.PLANNED and step_run.block is None:
+                held_back = OpenBlock(
+                    account="wait.dependency", cause=block.HELD_BACK, since=now, on=waiting_on
+                )
+                run = run.with_step_run(step_run.model_copy(update={"block": held_back}))
+        return run
+
+    def _ended(self, step_run: StepRun) -> dict[str, Any]:
+        """What the end of a local step's block adds to its record: for a wait on a provider's
+        limit, that the provider answered."""
+        if step_run.block is None or step_run.block.cause != block.AT_PROVIDER_LIMIT:
+            return {}
+        return waiting.details(
+            adapter=step_run.adapter,
+            waits=step_run.waits,
+            ended="answered",
+            ceiling_seconds=self._options.capacity_ceiling_seconds,
+        )
+
+    async def _at_limit(
+        self, run: Run, step_run: StepRun, limited: _AtLimit, span: Span
+    ) -> tuple[Run, StepRun]:
+        """The model's provider answered at its rate limit. Nothing was produced: the step goes
+        back to its boundary, and the run halts there with cause `capacity` for its runner to
+        try again later, as for a worker at capacity (ADR-0037). The wait is booked to
+        `limit.provider`. Past the ceiling the step fails, and the run escalates (ADR-0043)."""
+        span.record_failure("provider at its rate limit")
+        self._at_capacity.add(run.id)
+        now = self._clock.now()
+        since = step_run.waiting_since or now
+        waits = step_run.waits + 1
+        ceiling = self._options.capacity_ceiling_seconds
+        run, step_run = await self._open_block(
+            run, step_run, "limit.provider", block.AT_PROVIDER_LIMIT, since=since
+        )
+        step_run = step_run.model_copy(
+            update={"adapter": limited.adapter, "waiting_since": since, "waits": waits}
+        )
+        if waiting.over(since, now, ceiling):
+            run, step_run = await self._close_block(
+                run,
+                step_run,
+                **waiting.details(
+                    adapter=limited.adapter, waits=waits, ended="ceiling", ceiling_seconds=ceiling
+                ),
+            )
+            step_run = step_run.to(
+                StepState.FAILED,
+                reason=f"the provider of {limited.adapter} stayed at its rate limit for "
+                f"{(now - since).total_seconds():.0f}s, {waits} times asked; the ceiling is "
+                f"{ceiling}s: {limited.reason}",
+                retryable=True,
+                finished_at=now,
+            )
+            run = await self._commit(
+                run.with_step_run(step_run),
+                "step.finished",
+                step=step_run,
+                outcome=block.AT_PROVIDER_LIMIT,
+            )
+            return run, step_run
+        step_run = step_run.to(
+            StepState.STOPPED,
+            reason=f"waiting for the provider of {limited.adapter} since {since.isoformat()} "
+            f"({waits} times asked; ceiling {ceiling}s): {limited.reason}",
+            finished_at=now,
+        )
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.waiting",
+            step=step_run,
+            outcome=block.AT_PROVIDER_LIMIT,
+        )
+        return run, step_run
+
     # --- rule and wait steps ---------------------------------------------------------------------
 
     async def _local_step(
@@ -1134,6 +1326,15 @@ class RunEngine:
         if not admitted:
             return run, step_run
         step_run = step_run.to(StepState.RUNNING, started_at=self._clock.now())
+        if isinstance(work, WaitWork):
+            # A wait step's whole time is a block on the outside (ADR-0043). A recovered wait
+            # keeps the block it began, so a restart loses none of its time.
+            run, step_run = await self._open_block(
+                run,
+                step_run,
+                "wait.external",
+                block.WAITING_ON_CLOCK if work.until is None else block.WAITING_ON_STATE,
+            )
         run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
         trace = Trace()
         consumption: Consumption | None = None
@@ -1161,8 +1362,11 @@ class RunEngine:
                         created_at=self._clock.now(),
                     ),
                 )
+        except _AtLimit as limited:
+            return await self._at_limit(run, step_run, limited, span)
         except RuleFailed as failure:
             span.record_failure("rule failed")
+            run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
             step_run = step_run.to(
                 StepState.FAILED, reason=str(failure), finished_at=self._clock.now()
             )
@@ -1172,6 +1376,7 @@ class RunEngine:
             return run, step_run
         except _StepFailed as failure:
             span.record_failure(failure.outcome)
+            run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
             step_run = step_run.to(
                 StepState.FAILED,
                 adapter=failure.adapter,
@@ -1184,6 +1389,7 @@ class RunEngine:
                 run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
             )
             return run, step_run
+        run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
         now = self._clock.now()
         checkpoint = Checkpoint(
             ref=f"ckpt/{run.id}/{step.id}",
@@ -1413,6 +1619,9 @@ class RunEngine:
         )
         if refused is not None:
             span.record_failure("rejected by the platform")
+            run, step_run = await self._open_block(
+                run, step_run, "limit.compute", block.REJECTED_BY_CAPACITY
+            )
             step_run = step_run.to(
                 StepState.REJECTED,
                 adapter=adapter,
@@ -1430,6 +1639,9 @@ class RunEngine:
             return run, step_run, False
         if not verdict.fits:
             span.record_failure("rejected by admission control")
+            run, step_run = await self._open_block(
+                run, step_run, block.limit_account(verdict.kinds), block.REJECTED_BY_ADMISSION
+            )
             step_run = step_run.to(
                 StepState.REJECTED,
                 adapter=adapter,
@@ -1445,6 +1657,9 @@ class RunEngine:
                 outcome="rejected_by_admission",
             )
             return run, step_run, False
+        if step_run.block is not None and step_run.block.cause in block.CLOSED_BY_ADMISSION:
+            # What refused the step now lets it through: the block ends here.
+            run, step_run = await self._close_block(run, step_run)
         step_run = step_run.to(
             StepState.ADMITTED,
             adapter=adapter,
@@ -1566,6 +1781,8 @@ class RunEngine:
                 completion = await resolved.model.complete(prompt)
                 call.set_attribute("model.name", completion.model)
                 call.set_attribute("model.finish", completion.finish)
+        except ModelAtLimit as error:
+            raise _AtLimit(adapter=resolved.adapter, reason=str(error)) from error
         except ModelError as error:
             raise _StepFailed(
                 reason=str(error),
@@ -2115,7 +2332,9 @@ class RunEngine:
         took it (`step.started`), or it was found handed over earlier (`step.adopted`). Either
         way the step follows it, from the last event the step run holds."""
         assignment_id = state.assignment_id
-        if step_run.waiting_since is not None:
+        if step_run.waiting_since is not None or (
+            step_run.block is not None and step_run.block.cause == block.AT_CAPACITY
+        ):
             run, step_run = await self._waited(run, step_run, work, "assigned")
         if state.status == "finished" and state.outcome is Outcome.REJECTED:
             # A rejection is a state, not an error: the worker's own check refused it.
@@ -2195,6 +2414,9 @@ class RunEngine:
         now = self._clock.now()
         since = step_run.waiting_since or now
         waits = step_run.waits + 1
+        run, step_run = await self._open_block(
+            run, step_run, waiting.ACCOUNT, block.AT_CAPACITY, since=since
+        )
         step_run = step_run.model_copy(
             update={"adapter": adapter, "waiting_since": since, "waits": waits}
         )
@@ -2235,28 +2457,17 @@ class RunEngine:
         ended: Literal["assigned", "ceiling"],
     ) -> tuple[Run, StepRun]:
         """The wait of a step ended — the worker took the assignment, or the ceiling passed:
-        `step.waited` names the document with its account, cause and duration (ADR-0015)."""
-        since = step_run.waiting_since
-        if since is None:
-            return run, step_run
-        document = waiting.record(
-            adapter=step_run.adapter,
-            since=since,
-            until=self._clock.now(),
-            waits=step_run.waits,
-            ended=ended,
-            ceiling_seconds=self._ceiling(work),
+        `step.waited` names the record with its account, cause and duration (ADR-0015)."""
+        return await self._close_block(
+            run,
+            step_run,
+            **waiting.details(
+                adapter=step_run.adapter,
+                waits=step_run.waits,
+                ended=ended,
+                ceiling_seconds=self._ceiling(work),
+            ),
         )
-        digest = await self._objects.put(_canonical(document))
-        step_run = step_run.model_copy(update={"waiting_since": None, "waits": 0})
-        run = await self._commit(
-            run.with_step_run(step_run),
-            "step.waited",
-            step=step_run,
-            outcome=waiting.AT_CAPACITY,
-            digest=digest,
-        )
-        return run, step_run
 
     def _ceiling(self, work: WorkerWork) -> int:
         if work.capacity_ceiling_seconds is not None:
@@ -2389,6 +2600,15 @@ class RunEngine:
                     artifact_ids=tuple(a.id for a in artifacts),
                 )
             )
+            if finished.limit is not None:
+                # Halted at the run's own limit: blocked until a person changes it and the step
+                # is admitted again (ADR-0043).
+                run, step_run = await self._open_block(
+                    run,
+                    step_run,
+                    block.limit_account([finished.limit]),
+                    block.HALTED_AT_LIMIT,
+                )
             step_run = step_run.to(
                 StepState.STOPPED,
                 artifacts=tuple(artifacts),
@@ -2596,7 +2816,7 @@ class RunEngine:
             trace_id=self._telemetry.current_trace_id(),
         )
         consumption: Consumption | None = None
-        if step is not None:
+        if step is not None and kind != blocked.RECORD_KIND:
             if kind in ("step.admitted", "step.rejected") and step.estimate is not None:
                 quantities = step.estimate.quantities()
                 if quantities:
@@ -2620,6 +2840,14 @@ class RunEngine:
                 rehearsal=True if run.rehearsal else None,  # ADR-0030
             ),
         )
+
+
+@dataclass(frozen=True)
+class _AtLimit(Exception):
+    """The model's provider answered at its rate limit: nothing was produced (ADR-0043)."""
+
+    adapter: str
+    reason: str
 
 
 @dataclass(frozen=True)

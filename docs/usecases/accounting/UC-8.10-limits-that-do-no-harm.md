@@ -7,7 +7,7 @@ serves: [P8, P10, P12]
 state: building
 version: 0.5.0
 tests: [tests/components/run/test_engine.py::test_a_step_that_does_not_fit_is_rejected_before_it_starts, tests/components/run/test_engine.py::test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing, tests/components/run/test_engine.py::test_a_rejected_run_resumes_with_a_raised_limit, tests/components/run/test_capacity_admission.py::test_admission_against_the_platform, tests/components/governance/test_capacity.py::test_the_owner_s_example_reads_as_a_figure_and_a_date]
-adrs: {ADR-0005: c28377b9027e, ADR-0015: 420aac4db0cc, ADR-0031: e81473d81850}
+adrs: {ADR-0005: c28377b9027e, ADR-0015: 3a42705e5561, ADR-0031: e81473d81850}
 supersedes: null
 ---
 
