@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from taktus.components.run.domain.model import ReadyRule, RuleFailed, UnsupportedWork, parse_work
-from taktus.components.run.domain.service import rules
+from taktus.components.run.domain.service import ready, rules
 from taktus.shared.v1 import ExactnessClass, Method, Step
 
 FORM = """### What must be achieved
@@ -111,3 +111,30 @@ def test_an_admission_must_read_what_is_open() -> None:
         parse_work(step, work)
     given = {**work, "open_records": {"$from": "a"}, "open_issues": {"$from": "b"}}
     assert isinstance(parse_work(step, given), ReadyRule)
+
+
+def test_a_footer_after_a_rule_is_no_blocker_and_hides_none() -> None:
+    """The form ends at a horizontal rule: a footer naming records is not read as a blocker,
+    and prose under "Blocked by" is still caught when a footer names records after it."""
+    form = (
+        "### What must be achieved\n\nA.\n\n### How it is verified\n\nB.\n\n"
+        "### Where the boundary lies\n\nC.\n\n### Component\n\nrun\n\n### Blocked by\n\n{blocked}\n"
+        "\n---\n\nWritten under DEC-0051 and #59.\n"
+    )
+    labels = {"ready", "task", "priority:normal"}
+
+    def reasons_for(blocked: str) -> list[str]:
+        return ready.reasons(
+            number=7,
+            body=form.format(blocked=blocked),
+            labels=labels,
+            milestone="0.2.0",
+            open_record_ids={"DEC-0051"},
+            open_issues={59},
+        )
+
+    assert ready.sections(form.format(blocked="nothing"))["Blocked by"] == "nothing"
+    assert reasons_for("nothing") == []
+    assert reasons_for("needs a decision request on the fallback") == [
+        "'Blocked by' names no NEED, DEC or issue, and is not 'nothing'"
+    ]
