@@ -90,6 +90,10 @@ The open needs are printed by `make status` (DEC-0026).
 | [0049](NTC-0049-a-roadmap-item-names-its-issues.md) | A roadmap item names its issues | M2.6 | `unlisted` | every item of a milestone in `docs/roadmap.md` names the issues that carry it as `#N`, so that a rule can hold the roadmap against the backlog; proposes M1.12 |
 | [0050](NTC-0050-uc-1-1-the-normalisation-is-taktuss-own.md) | UC-1.1: the normalisation is Taktus's own | M2.7 | `restoration` | brought up to definition UC-1.1 and chapter 5.4: turning an input into a command is the `command` component's, no foreign gateway or runtime product performs it |
 | [0051](NTC-0051-uc-7-1-from-level-3-only-verified-adapters.md) | UC-7.1: from level 3, only verified adapters | M2.7 | `restoration` | brought up to definition chapter 5.3, as the vision's history records it: a process at level 3 or above runs a step only on an adapter at *verified* or above |
+| [0062](NTC-0062-uc-6-1-a-workers-entries-come-from-its-event-stream.md) | UC-6.1: a worker's entries come from its event stream | M2.7 | `restoration` | brought up to definition UC-6.1: the log of a worker step is fed from the worker's event stream (UC-14.1), in the content-free shape of every entry |
+| [0063](NTC-0063-uc-6-4-views-configurable-per-role-and-per-person.md) | UC-6.4: views configurable per role and per person | M2.7 | `restoration` | brought up to definition UC-6.4: a view can be given to one person beyond their roles, never widening what they are entitled to see |
+| [0064](NTC-0064-uc-10-1-and-uc-10-2-are-use-cases-filed-by-their-data.md) | UC-10.1 and UC-10.2 are use cases, filed by their data | M2.6 | `unlisted` | UC-10.1 in `governance`, UC-10.2 in `identity`, UC-9.5 in `accounting`, by ADR-0029's rule; proposed M1.12 |
+| [0065](NTC-0065-a-pointer-in-the-visions-history-follows-a-deleted-file.md) | A pointer in the vision's history follows a deleted file | M2.6 | `unlisted` | one sentence of `docs/vision/history.md` no longer names the deleted migration file; nothing the vision states changed; proposed M1.13 |
 
 ## Decisions
 

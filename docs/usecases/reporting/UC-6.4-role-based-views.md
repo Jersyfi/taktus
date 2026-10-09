@@ -22,13 +22,16 @@ and the progress of the transformation; an investor the demonstrable value. Comp
 does not mean that everyone sees everything. It means that nobody is denied what they are entitled
 to see, and nobody sees what they are not.
 
-Which role sees what is configured by the organisation. A person can hold several roles and then
-sees each of their views.
+Which role sees what is configured by the organisation, per role and per person. A person can hold
+several views at once — a team lead's and management's, for example — and then sees each of them.
+Who sees what follows the organisation's structure.
 
 ## 2. How it is verified
 
 - A view is defined for a role. Which roles hold which view is configuration, and follows the
   organisation's structure. A person with two roles sees the union of the two, and nothing more.
+- A view can also be given to one person, beyond their roles, by configuration. What that person then
+  sees is still bounded by what they are entitled to see; giving a view never widens an entitlement.
 - For every figure a view shows, the roles entitled to it are declared. A test fails when a figure
   reaches a role that is not entitled to it, and when a role that is entitled does not find it.
 - A figure shown in two views has one definition and one value; it is read from the component that
@@ -51,4 +54,6 @@ a reader on a schedule is UC-6.2.
 
 The `reporting` component (ADR-0029), which owns views and no figure; the organisation structure
 and roles of the identity component (definition `UC-1.4`); the protective rule of ADR-0015 for
-response times. Definition `UC-6.4`; the roadmap places role-based views in `0.5.0`.
+response times. Definition `UC-6.4`, whose acceptance asks for views configurable per role and per
+person, restored in the migration's fourth step (NTC-0063); the roadmap places role-based views in
+`0.5.0`.

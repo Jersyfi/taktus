@@ -118,7 +118,7 @@ taktus/
 ├── api/openapi.yaml                 # Taktus' OWN REST interface, generated from FastAPI by `make generate`, committed, held current by a test
 ├── migrations/                      # Alembic: alembic.ini, env.py, versions/ — explicit DDL, one head
 ├── deploy/{docker,k8s,observability}/   # docker/compose.yml: Taktus and PostgreSQL, `make up`; compose.reference-worker.yml: the worker layered in for development; compose.dev.yml: the development database
-├── blueprints/{dev-orchestration,it-operations,self-operation}/   # self-operation: what Taktus runs for itself — S-01 the removal test, weekly
+├── blueprints/{dev-orchestration,it-operations,self-operation,finance}/   # README.md: the blueprints and the example domains; self-operation: what Taktus runs for itself — S-01 the removal test, weekly; finance: a description
 ├── examples/processes/              # process bundles that run as they are; each exercised by a test
 ├── web/                             # SvelteKit app, embedded into the image
 │

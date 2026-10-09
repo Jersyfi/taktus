@@ -36,7 +36,7 @@ conflict on it (CLAUDE.md §9).
 Seven cases were first written outside this format — UC-4.11, UC-4.12, UC-6.8 and UC-7.2 in
 `UC-4-result-defects.md`, UC-4.13 and UC-6.9 in `UC-4-exactness-statement.md`, and UC-4.6 as a
 state of `docs/architecture/control-plane.md` §5.2. The migration's second step moved them into
-their components' folders, and the two first files were removed (`MIGRATION.md`, NTC-0029). The
+their components' folders, and the two first files were removed (NTC-0029). The
 earlier shape had five parts — the situation, what Taktus does, what it needs, what it never does,
 and how it is proven. The format below keeps all five: the situation and what Taktus does became
 section 1, what it never does and how it is proven became section 2, and what it needs became
