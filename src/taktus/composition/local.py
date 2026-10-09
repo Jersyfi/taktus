@@ -50,7 +50,10 @@ from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.cli.wiring import CapacityServices, NotOperable, Services
 from taktus.components.accounting.application.service import CostOfRunHandler
-from taktus.components.catalog.application.service import RecordRemovalResultHandler
+from taktus.components.catalog.application.service import (
+    RecordRemovalResultHandler,
+    RunConformanceHandler,
+)
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.identity.application.service import IdentityDirectory
@@ -69,6 +72,7 @@ from taktus.components.run.application.query import (
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.composition.capacity import capacity_report, rules_of
+from taktus.composition.conformance import InstanceSuites, worker_target
 from taktus.composition.decisions import decision_wiring
 from taktus.composition.execution import (
     connector_pool,
@@ -195,7 +199,11 @@ class LocalWiring:
                     ),
                     platform=HostPlatform(clock, state_dir=state_dir),
                     recordings=recordings,
-                    maturities=CatalogMaturities(stores.of(AdapterMaturity), stores.work),
+                    maturities=CatalogMaturities(
+                        stores.of(AdapterMaturity),
+                        stores.work,
+                        Pools(workers, connectors, models),
+                    ),
                     anchors=decisions.anchors,
                     decisions=decisions.requests,
                 )
@@ -203,6 +211,25 @@ class LocalWiring:
             engine = engine_for(pools.workers, pools.connectors, pools.models)
             commission = CommissionPlanHandler(
                 stores.of(Command), stores.of(Plan), stores.work, clock, ids
+            )
+            conformance = RunConformanceHandler(
+                InstanceSuites(
+                    pools=pools,
+                    settings=self._configuration,
+                    worker=worker_target(
+                        execution,
+                        self._configuration,
+                        state_dir=state_dir,
+                        endpoint=worker_endpoint,
+                    ),
+                    connectors=connectors,
+                    model_endpoint=model.endpoint,
+                ),
+                stores.of(AdapterMaturity),
+                stores.work,
+                ledger,
+                objects,
+                clock,
             )
             loopback.bind(
                 Loopback(
@@ -217,9 +244,11 @@ class LocalWiring:
                     recordings=recordings,
                     clock=clock,
                     ids=ids,
+                    conformance=conformance,
                 )
             )
             yield Services(
+                conformance=conformance,
                 register_version=RegisterProcessVersionHandler(
                     stores.of(ProcessVersion), stores.work, stores.of(Process), ledger=ledger
                 ),

@@ -28,6 +28,7 @@ here, so that a change of wording fails this test and not a live run (issue #30)
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -44,6 +45,7 @@ import pytest
 import yaml
 from fakes import model_service
 from fakes.identity import added_by_command_line
+from fakes.maturity import configurations, write_verified
 
 from taktus.adapters.driven.configuration.environment import EnvironmentConfiguration
 from taktus.components.catalog.application.service import REMOVAL_TESTED
@@ -302,38 +304,27 @@ the state the runs read, as both halves of a real verification would record them
 is tested is the processes' own logic. A live run needs the real integrations verified."""
 
 
-def verified(state_dir: Path) -> None:
-    """Write the catalog's maturity records for `VERIFIED` into the state's snapshot."""
-    path = state_dir / "adaptermaturity.json"
-    if path.exists():
+def verified(outside: Outside, state_dir: Path) -> None:
+    """Write the catalog's maturity records for `VERIFIED` into the state's snapshot, each under
+    the configuration the fake declares now: a pass counts only for that (ADR-0044)."""
+    if (state_dir / "adaptermaturity.json").exists():
         return
-    at = "2026-10-09T12:00:00Z"
-    records = [
-        {
-            "id": adapter,
-            "tenant": "default",
-            "family": adapter.split(".", 1)[0],
-            "conformance_passed_at": at,
-            "removal": {
-                "integration": adapter,
-                "family": adapter.split(".", 1)[0],
-                "verdict": "changed",
-                "tested_at": at,
-                "run_id": "run_removal",
-            },
-            "updated_at": at,
-        }
-        for adapter in VERIFIED
-    ]
-    state_dir.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"default": records}), encoding="utf-8")
+    declared = asyncio.run(
+        configurations(
+            workers={"worker.endpoint": outside.worker_url},
+            connectors={"connector.channel.repo": outside.connector_url},
+            models={"model.endpoint": ("fake-model", ("*",))},
+        )
+    )
+    assert {c.adapter for c in declared} == set(VERIFIED)
+    write_verified(state_dir, declared, ("default",))
 
 
 def run_bundle(
     outside: Outside, state_dir: Path, bundle: str, *inputs: str, expect: int = 0
 ) -> str:
     added_by_command_line(taktusctl(), "idn_test", outside.environment(state_dir))
-    verified(state_dir)
+    verified(outside, state_dir)
     command = [taktusctl(), "run", "--process", str(BLUEPRINT / bundle)]
     for given in inputs:
         command += ["--input", given]

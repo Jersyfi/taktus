@@ -48,7 +48,9 @@ async def test_a_run_with_a_worker_step_executes_in_a_container_stops_and_resume
         "commands": ["expr 6 '*' 7", "sleep 0.5; echo two", "sleep 0.5; echo three", "echo four"]
     }
     local = wiring(engine_socket, reference_worker_image)
-    verified(tmp_path / "state", "worker.container")  # level 4 runs only on a verified adapter
+    await verified(
+        tmp_path / "state", "worker.container"
+    )  # level 4 runs only on a verified adapter
     async with local.services(state_dir=tmp_path / "state", worker_endpoint="") as services:
         running = asyncio.create_task(start(services, document))
         async with asyncio.timeout(120):

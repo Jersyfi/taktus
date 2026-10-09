@@ -167,9 +167,17 @@ suite talking to one endpoint can tell.
 It is not yet *verified*. Taktus grades adapters in three levels — `experimental`, `verified`,
 `reference` — and *verified* needs two things: this suite passed, and the *removal test* passed.
 The removal test takes the connector out of a running Taktus and shows that processes still run,
-only at different quality or cost. It needs processes that use a connector, and none does yet. The
-report states this: `removal test pending; verified: no`. Nothing in this repository marks a
-connector *verified* today.
+only at different quality or cost. A running Taktus does it as a process of its own. The report
+states this: `removal test pending; verified: no`.
+
+**A report you run does not make your connector *verified* in anybody's Taktus.** A Taktus
+instance records this suite's half only when it ran the suite itself, against the connector its
+own configuration names (`taktusctl conformance record connector.<label>`, ADR-0044), with the
+scenario its setting `TAKTUS_CONFORMANCE_CONNECTOR_<LABEL>_SCENARIO` names. It records the
+outcome with what your connector declared — its capabilities, its operations and its version.
+When any of them changes, the pass no longer counts, and the instance needs to run the suite
+again. The suite writes into the target the scenario points at, so the instance's scenario points
+at a sandbox too.
 
 ---
 
@@ -180,3 +188,36 @@ A suite that only ever passes proves nothing. The reference connector can be sta
 then fail on that check and on no other. `make gate-conformance` does this for every fault;
 `--list-faults` prints them. If you want to see the suite catch something before trusting it
 with your own connector, this is the way.
+
+---
+
+## 9. Running the suite by hand, as an instance does
+
+A person can run the same suite against the same connector without Taktus, and keep the report
+as evidence. This is the way to check a connector when no instance runs, and the way to repair
+one (ADR-0013 B and C). Nothing about it needs a database or a running Taktus.
+
+1. **Find the endpoint.** It is the URL `TAKTUS_CONNECTORS` maps the connector's label to.
+2. **Find the scenario.** It is the file `TAKTUS_CONFORMANCE_CONNECTOR_<LABEL>_SCENARIO` names.
+   Check that it points at a sandbox before you run anything (section 3).
+3. **Set the credential values** the scenario names, from the same files the instance reads
+   (`TAKTUS_CREDENTIAL_<NAME>_FILE`), into the environment of the shell that runs the suite:
+
+   ```
+   export REPOSITORY_TOKEN="$(cat "$TAKTUS_CREDENTIAL_REPOSITORY_TOKEN_FILE")"
+   ```
+
+4. **Run the suite** and keep its report:
+
+   ```
+   uv run taktusctl conformance run --contract connector/v1 \
+       --endpoint http://localhost:9100/mcp --scenario scenario.json --json report.json
+   ```
+
+5. **Keep the evidence together**: `report.json`, the scenario, the connector's version as its
+   deployment names it, the date, who ran it, and the commit of this repository the suite came
+   from (`git rev-parse HEAD`). Put them where your organisation keeps evidence. The exit code says
+   what the instance would record: `0` passed, `1` failed, `2` incomplete.
+
+The report kept this way is evidence for a person. A Taktus instance does not import it: it would
+be asserted, not measured by the instance.

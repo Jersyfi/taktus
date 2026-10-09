@@ -86,6 +86,8 @@ and sent as a bearer value; it is never printed.
 | M-04 | every price kind the declaration names is reported, and the kinds add up to the totals |
 
 A declaration that claims no hard limit gives M-03 nothing to hold, and the report says so.
+How to run it by hand and keep its report, and how an instance records it, is
+[CONFORMANCE.md](CONFORMANCE.md).
 **Fixtures.** `examples/exchange/valid/` holds calls that keep their declaration;
 `examples/exchange/invalid/M-NN-*.json` breaks exactly the check it is named after. An
 exchange fixture is schema-valid; what makes it invalid is a rule between its parts, which the
