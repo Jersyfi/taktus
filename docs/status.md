@@ -144,7 +144,7 @@ webhook secret (NEED-0010), the live connector test in CI (since superseded by T
 
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
 each with the pull request that recorded it. Each record stands in the table of its kind, and the gate checks it
-(DEC-0094). **Open:** DEC-0044, the licence, which must be settled
+(DEC-0094). The ready rule reads an issue's form up to its footer (DEC-0116). **Open:** DEC-0044, the licence, which must be settled
 by the release of `1.0.0` and is taken up only when that release is prepared, DEC-0069, the
 same question as DEC-0030 for the seventeen use cases of the migration's second step, DEC-0082,
 the same question for the twenty-seven of the third, and DEC-0087, the same question for the
