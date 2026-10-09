@@ -42,10 +42,6 @@ Taktus's own figures, and a difference is reported.
 - A self-hosted platform under an open licence meets the first tier of the integration code; a
   proprietary one only the second (`docs/architecture/contracts.md` §7).
 
-**Proven so far:** a run's steps, worker steps and connector calls are nested spans, and with no
-endpoint configured nothing is exported while the trace still exists, by the named tests. Masking,
-the evaluation backend, prompt mirroring and cost reconciliation are not built.
-
 ## 3. Where the boundary lies
 
 **Not a dependency.** Nothing in Taktus waits for or needs a platform. **Not the platform's
@@ -71,3 +67,9 @@ names no version; `0.6.0`, beside the catalogue, is the session's proposal.
   becomes a change of the process only when Taktus reads it back as a new process version, which
   passes registration and evaluation like any other. The platform can never be the leading version
   of what runs.
+
+## 5. What is proven so far
+
+A run's steps, worker steps and connector calls are nested spans, and with no
+endpoint configured nothing is exported while the trace still exists, by the named tests. Masking,
+the evaluation backend, prompt mirroring and cost reconciliation are not built.

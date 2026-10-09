@@ -47,7 +47,8 @@ section 4.
 ## The format
 
 Every function-level case is one file, `<component>/UC-<area>.<case>-<slug>.md`, with front
-matter and four sections. [TEMPLATE.md](TEMPLATE.md) is the file to copy.
+matter and four sections, and a fifth once something of it is proven. [TEMPLATE.md](TEMPLATE.md)
+is the file to copy.
 
 ```yaml
 ---
@@ -89,6 +90,14 @@ and too much, because what is not required is clear as well.
 What the use case needs from elsewhere — other use cases, ADRs, contracts, a milestone — and
 where the definition's original text said it. This section describes; it requires nothing.
 
+### 5. What is proven so far
+
+Which conditions of section 2 the named tests prove, and what is not built yet. Optional; it
+describes the state and requires nothing. It stands outside the requirement so that the pull
+request that proves more can say so: a statement of fact inside section 2 could only be updated
+by a later pull request, and stayed wrong until then (DEC-0106). The gate fails a use case that
+states what is proven so far inside sections 1 to 3.
+
 ---
 
 ## States
@@ -112,7 +121,7 @@ actually stands, and nobody has to take that on trust.
 | | Mode | Entry |
 |---|---|---|
 | What a use case **requires** — sections 1 to 3 | **3** — a session prepares, the owner decides | M3.15 |
-| How it is **described** — wording, examples, links, section 4, the front matter's state, tests and digests | **1** — a session, no notice | M1.10 |
+| How it is **described** — wording, examples, links, sections 4 and 5, the front matter's state, tests and digests | **1** — a session, no notice | M1.10 |
 
 The entries are in `docs/decisions/anchors.taktus.md`.
 
@@ -151,6 +160,7 @@ in order to become meetable.*
 `make gate-usecases` (`tools/check_usecases.py`) fails on:
 
 - a use case without a state, without a verification condition, or serving no principle
+- a use case that states what is proven so far inside sections 1 to 3
 - a use case in state `built` or `verified` naming no test, or naming a test that does not exist
 - a use case in state `verified` whose named tests are not green
 - an ADR that changed after a use case was checked against it — the ADR contradicts the use case

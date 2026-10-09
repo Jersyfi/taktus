@@ -49,12 +49,6 @@ decision.
 - What a named person's limit held is visible to that person; anyone else sees it aggregated by
   role, team or department (UC-8.5).
 
-**Proven so far:** a step that does not fit is rejected before it starts; a stop lands on the
-worker's boundary and a resume duplicates nothing; a rejected run resumes with a raised limit; a job
-the platform cannot hold is refused; the platform's capacity is reported as a figure and a date —
-by the named tests. Limits per unit and their inheritance, the view of what applies, and the reports
-on harmful limits are not built.
-
 ## 3. Where the boundary lies
 
 **Not budgets in money.** What a unit may spend is UC-8.5; this use case is about every kind of limit
@@ -81,3 +75,11 @@ recommendations come with numbers.
   by the demand its operation declares. A worker's estimate is reserved as its measured error scales
   it, and twice over while nothing has measured it (ADR-0005, third amendment, points 2, 4 and 6).
 - *A limit for a single person.* Kept, read as UC-8.5 reads a budget for a person (DEC-0069).
+
+## 5. What is proven so far
+
+A step that does not fit is rejected before it starts; a stop lands on the
+worker's boundary and a resume duplicates nothing; a rejected run resumes with a raised limit; a job
+the platform cannot hold is refused; the platform's capacity is reported as a figure and a date —
+by the named tests. Limits per unit and their inheritance, the view of what applies, and the reports
+on harmful limits are not built.

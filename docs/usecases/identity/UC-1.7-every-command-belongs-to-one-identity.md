@@ -39,11 +39,6 @@ register, never an execution.
 - A channel where Taktus rolls out an assistant (UC-12.1) is not a command channel and does not
   follow this rule.
 
-**Proven so far:** nothing executes without an identity, and an unknown sender's event is completed
-into no command, by the named tests. Every resolution is still answered by the provisional operator
-identity of DEC-0013: one configured identity per tenant. Linking, the organisation's identity
-source, the question to an unknown sender and revocation are not built.
-
 ## 3. Where the boundary lies
 
 **Not authorisation.** What an identity may do is UC-7.3; this use case establishes who it is.
@@ -57,3 +52,26 @@ The command and the identity port of `docs/architecture/control-plane.md` §2; t
 connector contract (ADR-0024); tenants (ADR-0020); the ledger (UC-6.1); the provisional identity it
 replaces (DEC-0013). Definition `UC-1.7`, new in version 2. The identity component is on the roadmap's
 `0.2.0` (#82), hence the version.
+
+## 5. What is proven so far
+
+The identity component answers every resolution; the provisional identity of DEC-0013 is removed
+(NTC-0080). By the named tests:
+
+- The command line executes nothing without an identity, nor with one the tenant does not know.
+- An unknown sender's event is kept nowhere and becomes no command; a person is answered in the
+  channel with the offer to link the account. An event placed before its link was revoked is
+  completed into no command.
+- One channel account is linked to at most one identity, and a second link for it is refused; one
+  identity holds accounts on two channels.
+- A link is made by a code from the person's Taktus account written in the channel from the
+  account, or by what the organisation's identity source answers. A matching name or address
+  links nothing.
+- Every link and every revocation is a ledger entry, without the account. The tenant's links are
+  listed with the revoked ones, and an administrator revokes one; a revoked account is from an
+  unknown sender again.
+- A command's identity and organisational path come from the link, even where the connector's
+  context names others.
+
+That a channel where Taktus rolls out an assistant follows no command rule is not tested; that
+channel (UC-12.1) is not built.

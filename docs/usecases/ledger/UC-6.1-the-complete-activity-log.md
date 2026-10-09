@@ -41,10 +41,6 @@ the stream of events the worker reports as it works.
 - For a step a worker runs, the entries of what the worker did are fed from the worker's event
   stream (UC-14.1), in the shape every other entry has: identifiers, tokens and digests, no text.
 
-**Proven so far:** the first four conditions, by the named tests. The export, a verification
-outside Taktus, and the export as a telemetry signal do not exist. That a worker's entries are fed
-from its event stream is proven by no named test.
-
 ## 3. Where the boundary lies
 
 **Not the views.** Who sees which part of the log, and how it is shown, is `reporting`'s
@@ -64,3 +60,9 @@ event stream (UC-14.1, ADR-0007). Definition `UC-6.1`; the feed from the worker'
 restored to it in the migration's fourth step (NTC-0062). The
 version is `0.5.0`, where the roadmap measures principles 6 and 13; the chain itself is `0.1.0`
 and built.
+
+## 5. What is proven so far
+
+The first four conditions, by the named tests. The export, a verification
+outside Taktus, and the export as a telemetry signal do not exist. That a worker's entries are fed
+from its event stream is proven by no named test.
