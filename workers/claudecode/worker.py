@@ -115,6 +115,7 @@ FAULTS: dict[str, str] = {
     "W-11": "a resumed assignment produces the artifacts from before its checkpoint again",
     "W-13": "a host outside allowed_hosts is reached and reported without refused: true",
     "W-14": "the limits are ignored once running: the agent goes on after the total reached them",
+    "W-15": "an assignment beyond max_concurrent_assignments is accepted instead of answered 503",
 }
 
 
@@ -323,7 +324,7 @@ class Worker:
             if assignment_id in self.assignments:
                 return 409, {"title": "assignment exists", "status": 409}
             running = sum(1 for a in self.assignments.values() if a.status != "finished")
-            if running >= MAX_CONCURRENT:
+            if running >= MAX_CONCURRENT and self.fault != "W-15":
                 return 503, {"title": "at capacity", "status": 503}
             ref = body.get("context", {}).get("checkpoint_ref")
             lineage, session_id, index = assignment_id, str(uuid.uuid4()), 0

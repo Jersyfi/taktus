@@ -80,7 +80,8 @@ worker reports `compute` with its resource classes. The control plane converts n
 holds that many answers a further `POST /v1/assignments` with `503` and a problem body, and
 records nothing (`openapi.yaml`). The control plane relies on that answer: the step waits and
 asks again later, and nothing on the control plane's side counts the worker's assignments
-(ADR-0037). The conformance suite does not check the answer yet (DEC-0085, #133).
+(ADR-0037). Check W-15 holds as many assignments as the worker declares and expects that answer
+to one more.
 
 Of the four `supports` flags only `native_pause` varies. `step_boundary_signal`, `streaming_events`
 and `estimate` are constant `true`: without them sections 4 to 6 cannot be satisfied. They are
@@ -255,12 +256,15 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 | W-12 | the adapter passes the removal test: removing it breaks no process |
 | W-13 | a host outside `allowed_hosts` is refused, not ignored |
 | W-14 | a running total that would cross `limits` halts the assignment at its next step boundary: no step starts once the reported running total of a limited kind has reached its limit, and the assignment ends `stopped` with a checkpoint and names the `limit` |
+| W-15 | a worker holding `max_concurrent_assignments` answers one more `POST /v1/assignments` with `503` and a problem body, and records nothing of it |
 
-The suite runs W-01 to W-11, W-13 and W-14 against a live worker and reports W-12 as *pending*: the removal test
+The suite runs W-01 to W-11 and W-13 to W-15 against a live worker and reports W-12 as *pending*: the removal test
 takes the adapter out of running processes, which a suite talking to one endpoint cannot do, and
 which needs processes to exist (DEC-0005). W-14 can only be provoked in a worker whose actual
 consumption exceeds its own estimate: a limit the estimate fits is otherwise never crossed, and
-the suite reports W-14 *inconclusive* with the numbers. A passed suite plus a passed removal test is maturity
+the suite reports W-14 *inconclusive* with the numbers. W-15 can only be provoked while
+the assignments it holds still run, and the suite fills at most sixteen places; otherwise the
+suite reports W-15 *inconclusive*, with what to do. A passed suite plus a passed removal test is maturity
 *verified*. Production processes at autonomy level 3 and above may only use adapters at
 *verified* or above.
 
@@ -272,7 +276,9 @@ a failure tells you to fix: [CONFORMANCE.md](CONFORMANCE.md).
 whole stream — W-03 to W-07, W-10, W-11, W-13, W-14 — use the `Transcript` shape: the assignment, the estimate
 the worker gave for it, and every event in order. The stream rules that judge them live in the
 suite (`src/taktus/conformance/rules.py`) and are applied to the fixtures by `tests/conformance`
-and to a live worker by `uv run taktusctl conformance run`. `tools/validate_contracts.py` checks that
+and to a live worker by `uv run taktusctl conformance run`. W-15 concerns no stream: its fixtures
+use the `CapacityProbe` shape — the places declared, the assignments held, the answer to one
+more — and fail the capacity rule in the same file. `tools/validate_contracts.py` checks that
 every fixture is schema-valid and that every check has one.
 
 ## 8. Two proof cases

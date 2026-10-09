@@ -1,0 +1,8 @@
+{
+  "max_concurrent_assignments": 2,
+  "held": [
+    { "assignment_id": "asg_conf_0c5d7e2f9a14", "status": "finished", "outcome": "succeeded", "last_seq": 12, "accepted_at": "2026-10-09T10:00:00Z", "started_at": "2026-10-09T10:00:00Z", "finished_at": "2026-10-09T10:00:01Z" },
+    { "assignment_id": "asg_conf_6a2b8c4d1e37", "status": "running", "last_seq": 4, "accepted_at": "2026-10-09T10:00:00Z", "started_at": "2026-10-09T10:00:00Z" }
+  ],
+  "answer": { "status": 201, "body": { "assignment_id": "asg_conf_d3e8f1a0b259", "status": "accepted", "last_seq": 0, "accepted_at": "2026-10-09T10:00:01Z" } }
+}

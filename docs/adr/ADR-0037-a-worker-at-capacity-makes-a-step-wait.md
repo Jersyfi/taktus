@@ -76,9 +76,9 @@ cause `capacity`. A person who resumes it starts a fresh wait.
 
 ## Where this promise ends
 A worker holds no more assignments than it declares only as long as it answers `503` when it
-is full. The engine trusts the answer and does not count. The conformance suite does not
-check that answer yet (DEC-0085), so a worker that takes more than it declares passes the suite
-and is not stopped by Taktus. A `503` from something in front of the worker — a proxy whose
+is full. The engine trusts the answer and does not count. Conformance check W-15 checks the
+answer once, when the suite runs (#133, after DEC-0085). A worker whose W-15 stayed
+inconclusive, or that takes more than it declares after it passed, is not stopped by Taktus. A `503` from something in front of the worker — a proxy whose
 worker is down — reads as at capacity too: the step waits instead of failing, and escalates
 at its ceiling with cause `capacity` rather than with the true cause. The ceiling is checked
 when the worker is asked, so a wait can outlast it by up to one delay, sixty seconds at most.

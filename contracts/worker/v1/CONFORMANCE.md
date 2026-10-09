@@ -5,7 +5,7 @@ and reports back over a stream of events — and wants to know whether it satisf
 You do not need to know anything else about Taktus to follow it.
 
 The *conformance suite* is a program that talks to your worker exactly as Taktus would, and
-reports, for each of fourteen numbered checks, whether your worker did what the contract requires.
+reports, for each of fifteen numbered checks, whether your worker did what the contract requires.
 The contract itself is in [README.md](README.md) in this directory; the checks are its section 7.
 
 ---
@@ -64,8 +64,9 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 
 ## 3. What the suite does to your worker
 
-It reads your capabilities, asks for an estimate, and then posts up to seven assignments. Each has
-a purpose, and the report names it:
+It reads your capabilities, asks for an estimate, posts up to seven assignments, and last fills
+your declared places to see what you answer to one more. Each of the seven has a purpose, and the
+report names it:
 
 | Assignment | What it is | What it proves |
 |---|---|---|
@@ -81,12 +82,19 @@ Every assignment references one credential by name. The suite never sends a valu
 would either. The value reaches your worker through its environment, put there by whoever started
 it.
 
-Each assignment is independent: its own id, its own stream. Your worker may run them one after
-the other; the suite never runs two at once.
+Each assignment is independent: its own id, its own stream. The suite runs the seven above one
+after the other, never two at once.
+
+Last comes the *capacity probe*, the one time the suite holds assignments side by side. It posts
+as many assignments as your `max_concurrent_assignments` declares, each the same work as
+`main`, and then one more. The report lists the first as `held`; the one more appears as
+`one-more` only if your worker accepted it. Afterwards the suite stops every assignment of the
+probe and reads its stream to the end. So start your worker idle: an assignment the suite did
+not post takes a place, and the probe cannot fill what it declares.
 
 ---
 
-## 4. The fourteen checks in plain words
+## 4. The fifteen checks in plain words
 
 | Check | In plain words | If it fails, fix this |
 |---|---|---|
@@ -104,6 +112,7 @@ the other; the suite never runs two at once.
 | **W-12** | Removing your worker from a running Taktus changes quality or cost but breaks no process. | Nothing yet: this check is not run by the suite. See section 7. |
 | **W-13** | A host the frame does not allow is refused visibly, not reached silently. `allowed_hosts` is the whole list of what you may reach; absent or empty means nothing. | Whenever a step reaches a host, emit `tool.called` with that `host`. When the host is not in `allowed_hosts`, set `refused: true` and a `reason`, and do not reach it. Never treat an absent list as "anything goes". |
 | **W-14** | The limits are your hard ceiling while you run, not only before you start. Once what you have reported so far reaches a limit, you start no further step: you end `stopped` at the boundary you are at, with its `checkpoint_ref`, and name the limit. | Keep a running total of what you report, per quantity the limits bound. Before each step, add that step's expected demand; if the sum would exceed a limit, do not start it — emit `assignment.finished` with outcome `stopped`, the last boundary's `checkpoint_ref` and `limit` set to the kind (`currency`, `quota`, `compute` or `tokens`). |
+| **W-15** | When you hold as many assignments as `max_concurrent_assignments` declares, you answer one more with `503` and a problem body, and you record nothing of it. Taktus relies on that answer: a step whose worker answers `503` waits for a free place, and Taktus does not count your assignments itself (ADR-0037). | Count the assignments you hold that have not finished. When the count has reached what you declare, answer `POST /v1/assignments` with `503` and a JSON body with `title` and `status: 503`. Keep nothing of that assignment: `GET /v1/assignments/{id}` answers `404` for it. Declare no more places than you really have. |
 
 The report attributes a malformed event to the check that owns that event type: a bad
 `arguments_digest` is a W-09 failure, a bad `consumption.reported` a W-04 failure, and so on. Base
@@ -142,6 +151,7 @@ what would make it conclusive. The common cases:
 | W-10 | your estimate is zero for every quantity, so no limit can lie below it | estimate something; a shell script still takes seconds of `cpu` |
 | W-11 | the stopped run produced no artifact before its checkpoint, so a repeat could not be observed | produce an artifact in an early step, or supply a task that does |
 | W-14 | `main` used no more of any quantity than you estimated, so no limit your estimate fits can be crossed; or the `tight` run finished its work before a step remained to be withheld | nothing is wrong with an estimate that holds. To see the halt, start your worker so that it underestimates — the reference worker has `--estimate-factor 0.5` — or give it a task that uses more than it expects |
+| W-15 | a held assignment finished before the suite had filled your places, or before you answered one more, so you may have had a free place; or you answered an assignment of the probe with something other than `201` before your places were full; or you declare more than sixteen places, the most the suite fills | make your default work last longer than posting that many assignments takes, or give a task that does (`--task`); run the suite against an idle worker; for the conformance run, start your worker so that it declares sixteen places or fewer — the reference worker has `--max-concurrent` |
 
 A check that failed can leave later checks inconclusive: without a boundary there is nothing a
 stop can land on, without a stopped run there is nothing to resume. Fix the failure first.
@@ -150,15 +160,13 @@ stop can land on, without a stopped run there is nothing to resume. Fix the fail
 
 ## 7. What a pass means
 
-A worker whose report shows thirteen `passed` and one `pending` satisfies the numbered checks. A
+A worker whose report shows fourteen `passed` and one `pending` satisfies the numbered checks. A
 W-14 that stays *inconclusive* because your worker's estimate always held is no failure; it
 means the halt was not observed.
 
-One obligation the suite could check from one endpoint, and does not yet: a worker that holds
-as many assignments as `max_concurrent_assignments` declares answers a further one with `503`
-(`openapi.yaml`). Taktus relies on that answer. A step whose worker answers `503` waits for a
-free place, and Taktus does not count your assignments itself (ADR-0037). A worker that takes
-more than it declares passes this suite today. The check is issue #133 (DEC-0085).
+The capacity answer is checked too: W-15 holds as many assignments as you declare and expects
+`503` for one more. Until W-15 existed, a worker that took more than it declared passed this
+suite (DEC-0085).
 
 It is not yet *verified*. Taktus grades adapters in three levels — `experimental`, `verified`,
 `reference` — and *verified* needs two things: this suite passed, and the *removal test* passed.

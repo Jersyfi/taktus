@@ -1,7 +1,7 @@
-"""The suite: W-01 to W-14 against a live worker.
+"""The suite: W-01 to W-15 against a live worker.
 
 The endpoint is the only required input. The suite reads the worker's capabilities, asks for an
-estimate, and then posts up to seven assignments, each for a purpose:
+estimate, and then posts up to seven assignments one after the other, each for a purpose:
 
 1. `main` — the worker's default work within a frame that admits every declared capability
    and the hosts the caller names. Proves W-03, W-04, W-05, W-09 and the artifact half of
@@ -17,6 +17,13 @@ estimate, and then posts up to seven assignments, each for a purpose:
    start (W-10); the running total must then cross the limit, so the worker must halt at a
    boundary and name the limit. Proves W-14. A worker whose actual never exceeded its estimate
    cannot be made to cross a limit its estimate fits, and W-14 is then inconclusive.
+
+Last comes the capacity probe, the one time the suite holds assignments side by side. It posts
+as many assignments as the worker declares in `max_concurrent_assignments` (purpose `held`)
+and then one more (`one-more`, recorded only when the worker accepts it). The worker must
+answer `503` with a problem body and record nothing. Proves W-15. A worker that finishes a held
+assignment before the suite has filled its places, or declares more places than the suite
+fills, leaves W-15 inconclusive.
 
 W-08 scans everything the suite saw for the value of the credential it referenced by name. W-12
 is reported as pending: the removal test needs processes, and the suite has none.
@@ -61,6 +68,7 @@ DEFAULT_TASK: Json = {
 }
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 GENEROUS = 1_000_000
+MAX_HELD = 16
 
 # Which check a schema violation in an event belongs to, by event type.
 EVENT_OWNER = {
@@ -83,6 +91,7 @@ class SuiteOptions:
     worker_log: Path | None = None
     timeout: float = 300.0  # one assignment, start to finish
     idle_timeout: float = 60.0  # between two events
+    max_held: int = MAX_HELD  # the most assignments W-15 holds at once to fill a worker
 
 
 @dataclass
@@ -164,6 +173,7 @@ async def run_suite(options: SuiteOptions) -> Report:
             await _w11(client, options, stopped, declared, fitting, estimate, findings, runs)
             await _w10(client, options, declared, estimate, findings, runs)
             await _w14(client, options, main, declared, fitting, estimate, findings, runs)
+            await _w15(client, options, capabilities, declared, fitting, findings, runs)
         except httpx.HTTPError as error:
             report.notes.append(f"the worker at {options.endpoint} stopped answering: {error!r}")
             if not findings.evidence["W-01"]:
@@ -1021,6 +1031,142 @@ async def _w14(
         f"total {reached})"
         + ("" if finished.get("limit") == kind else f"; the limit tightened was {kind!r}"),
     )
+
+
+# --- W-15 capacity ----------------------------------------------------------------------------
+
+ACCEPTED = (200, 201, 202)
+
+
+async def _w15(
+    client: WorkerClient,
+    options: SuiteOptions,
+    capabilities: Json,
+    declared: list[str],
+    limits: Json,
+    findings: Findings,
+    runs: list[Run],
+) -> None:
+    """Hold as many assignments as the worker declares, post one more, and judge the answer
+    (`rules.capacity_violations`). Every assignment posted here is stopped afterwards and its
+    stream read to the end, so that W-08 and W-09 see it and the worker is left idle."""
+    capacity = capabilities.get("max_concurrent_assignments")
+    if not isinstance(capacity, int) or isinstance(capacity, bool) or capacity < 1:
+        findings.inconclusive["W-15"] = (
+            "the capabilities declare no max_concurrent_assignments (see W-01), so there are no "
+            "places to fill"
+        )
+        return
+    if capacity > options.max_held:
+        findings.inconclusive["W-15"] = (
+            f"the worker declares {capacity} places and the suite fills at most "
+            f"{options.max_held}; for the conformance run, start the worker so that it declares "
+            f"max_concurrent_assignments of {options.max_held} or fewer"
+        )
+        return
+    posted: list[Run] = []
+    try:
+        why = await _fill(client, options, capacity, declared, limits, posted)
+        if why is not None:
+            findings.inconclusive["W-15"] = why
+            return
+        extra = _assignment(options, declared, limits)
+        answer = await client.post("/v1/assignments", extra)
+        if answer.status in ACCEPTED:
+            posted.append(Run("one-more", extra, answer, Stream(status=0)))
+        states = [await client.get(f"/v1/assignments/{run.id}") for run in posted[:capacity]]
+        probe: Json = {
+            "max_concurrent_assignments": capacity,
+            "held": [state.json or {} for state in states],
+            "answer": {"status": answer.status, "body": answer.body},
+        }
+        if answer.status == 503:
+            lookup = await client.get(f"/v1/assignments/{extra['assignment_id']}")
+            probe["lookup"] = lookup.status
+        for violation in rules.capacity_violations(probe):
+            findings.add(violation, "capacity probe")
+        if findings.violations["W-15"]:
+            return
+        still = sum(1 for state in probe["held"] if state.get("status") != "finished")
+        if answer.status != 503:
+            findings.inconclusive["W-15"] = (
+                f"the worker accepted one more, but {capacity - still} of the {capacity} held "
+                "assignment(s) had finished by then, so it may have had a free place; "
+                + _LONGER.format(n=capacity + 1)
+            )
+            return
+        findings.ok(
+            "W-15",
+            f"holding {still} of {capacity} declared assignment(s), the worker answered one more "
+            f"with 503 ({(answer.json or {}).get('title')!r}) and recorded nothing",
+        )
+    finally:
+        await _release(client, options, posted, runs)
+
+
+_LONGER = (
+    "make the worker's default work last longer than posting {n} assignments takes, or give it "
+    "a task that does (--task)"
+)
+
+
+async def _fill(
+    client: WorkerClient,
+    options: SuiteOptions,
+    capacity: int,
+    declared: list[str],
+    limits: Json,
+    posted: list[Run],
+) -> str | None:
+    """Post `capacity` assignments. None when every one was accepted and none had finished;
+    otherwise why the places could not be filled."""
+    for index in range(1, capacity + 1):
+        assignment = _assignment(options, declared, limits)
+        accepted = await client.post("/v1/assignments", assignment)
+        if accepted.status not in ACCEPTED:
+            return (
+                f"the worker answered assignment {index} of the {capacity} it declares with "
+                f"{accepted.status}, so its places could not be filled; it may hold assignments "
+                "the suite did not post: run the suite against an idle worker"
+            )
+        posted.append(Run("held", assignment, accepted, Stream(status=0)))
+        state = accepted.json or {}
+        if state.get("status") == "finished":
+            return (
+                f"the worker finished assignment {index} of {capacity} at once (outcome "
+                f"{state.get('outcome')!r}: {state.get('reason')}), so its places could not be "
+                "filled"
+            )
+    for run in posted:
+        state = (await client.get(f"/v1/assignments/{run.id}")).json or {}
+        if state.get("status") == "finished":
+            return (
+                f"a held assignment finished before all {capacity} places were filled; "
+                + _LONGER.format(n=capacity + 1)
+            )
+    return None
+
+
+async def _release(
+    client: WorkerClient, options: SuiteOptions, posted: list[Run], runs: list[Run]
+) -> None:
+    """Stop every assignment the probe posted that may still run, and read every stream to its
+    end."""
+    for run in posted:
+        if (run.accepted.json or {}).get("status") == "finished":
+            continue
+        run.stop_requested = True
+        run.stop = await client.post(
+            f"/v1/assignments/{run.id}/stop",
+            {
+                "reason": "conformance W-15: the capacity probe is over",
+                "ceiling_seconds": max(1, int(options.timeout)),
+            },
+        )
+    for run in posted:
+        run.stream = await client.stream(run.id)
+        run.final = await client.get(f"/v1/assignments/{run.id}")
+        runs.append(run)
 
 
 # --- W-08, W-09 across all runs ---------------------------------------------------------------

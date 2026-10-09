@@ -6,8 +6,8 @@ as a foreign one would be reached; the suite never imports it.
 
 | File | Proves |
 |---|---|
-| `test_worker_v1_fixtures.py` | every transcript fixture of the worker contract is known good or known bad by the stream rules |
-| `test_worker_v1_reference.py` | the reference worker passes W-01 to W-11, W-13 and W-14 in both profiles; W-12 stays pending; started to underestimate, it halts at a limit equal to its estimate; a worker that never exceeds its estimate leaves W-14 inconclusive |
+| `test_worker_v1_fixtures.py` | every transcript fixture of the worker contract is known good or known bad by the stream rules, every capacity probe by the capacity rule (W-15) |
+| `test_worker_v1_reference.py` | the reference worker passes W-01 to W-11 and W-13 to W-15 in both profiles — for W-15 the suite holds its four places and gets `503` for a fifth; W-12 stays pending; a suite that fills fewer places than it declares leaves W-15 inconclusive; started to underestimate, it halts at a limit equal to its estimate; a worker that never exceeds its estimate leaves W-14 inconclusive |
 | `test_worker_v1_faults.py` | for every fault the reference worker can inject, the suite fails on exactly that check |
 | `test_worker_v1_coding.py` | the coding worker against the fake agent passes the same checks in both authentication modes and fails exactly the check of each fault; a token limit halts it at a boundary and the resume continues; an expired session and an exhausted window halt it too |
 | `test_connector_v1_rules.py` | the connector rules on known-good and known-bad documents |

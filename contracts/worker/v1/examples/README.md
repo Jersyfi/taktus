@@ -15,7 +15,7 @@ The directory name is the definition in kebab-case: `assignment-state` is `Assig
 
 ## Transcripts
 
-Nine of the fourteen checks concern a whole stream, not one object. Their fixtures use the
+Nine of the fifteen checks concern a whole stream, not one object. Their fixtures use the
 `Transcript` shape — the assignment, the estimate the worker gave for it, and every event in order —
 and fail one of the stream rules in `src/taktus/conformance/rules.py`, which
 `tests/conformance/test_worker_v1_fixtures.py` applies to every file here:
@@ -35,6 +35,16 @@ and fail one of the stream rules in `src/taktus/conformance/rules.py`, which
 `transcript/valid/` holds both proof cases of the README — a shell script with no AI at all and a
 training run that holds a GPU and is stopped at an epoch boundary — plus a rejection, a resume,
 and a coding run halted at the boundary where its input tokens reached their limit.
+
+## Capacity probes
+
+W-15 concerns no stream either. Its fixtures use the `CapacityProbe` shape: the places the worker
+declares, the states of the assignments the suite held, the answer to one more, and what a lookup
+of that assignment returned. They fail the capacity rule in `src/taktus/conformance/rules.py`,
+which `tests/conformance/test_worker_v1_fixtures.py` applies to every file here. A worker holding
+all its places answers one more with `503` and a problem body, and records nothing of it. An
+accepted one more is no violation when a held assignment had finished by then: the worker may
+have had a free place (`valid/a-place-freed-before-the-answer.json`).
 
 ## Placeholders
 

@@ -1,0 +1,9 @@
+{
+  "max_concurrent_assignments": 2,
+  "held": [
+    { "assignment_id": "asg_conf_4b1e9a0c7d22", "status": "running", "last_seq": 3, "accepted_at": "2026-10-09T10:00:00Z", "started_at": "2026-10-09T10:00:00Z" },
+    { "assignment_id": "asg_conf_9f03c6e15a8b", "status": "running", "last_seq": 1, "accepted_at": "2026-10-09T10:00:01Z", "started_at": "2026-10-09T10:00:01Z" }
+  ],
+  "answer": { "status": 503, "body": null },
+  "lookup": 404
+}

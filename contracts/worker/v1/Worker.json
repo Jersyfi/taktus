@@ -612,6 +612,32 @@
       },
       "required": ["assignment", "estimate", "events"],
       "additionalProperties": false
+    },
+
+    "CapacityProbe": {
+      "title": "CapacityProbe",
+      "description": "Not a wire object. The fixture shape for check W-15: the places the worker declares, the states of the assignments the suite held, read after the answer, the answer to one more assignment, and the status a lookup of that assignment returned after a 503. The suite checks the capacity rule against this shape.",
+      "type": "object",
+      "properties": {
+        "max_concurrent_assignments": { "type": "integer", "minimum": 1 },
+        "held": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/AssignmentState" },
+          "minItems": 1
+        },
+        "answer": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+            "body": {}
+          },
+          "required": ["status", "body"],
+          "additionalProperties": false
+        },
+        "lookup": { "type": "integer", "minimum": 100, "maximum": 599 }
+      },
+      "required": ["max_concurrent_assignments", "held", "answer"],
+      "additionalProperties": false
     }
   }
 }

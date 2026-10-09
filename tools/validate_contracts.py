@@ -15,7 +15,7 @@ Checks, in order:
 2. every `openapi.yaml` is OpenAPI 3.1 and every `$ref` in it resolves;
 3. every example under `examples/<target>/valid/` validates against its target;
 4. every example under `examples/<target>/invalid/` fails by schema, and every conformance check
-   — W-01..W-14 of the worker contract, C-01..C-10 of the connector contract, M-01..M-04 of the
+   — W-01..W-15 of the worker contract, C-01..C-10 of the connector contract, M-01..M-04 of the
    model contract — has at least one fixture named after it;
 5. every target has at least two valid examples.
 
@@ -23,8 +23,10 @@ The target of an examples directory is its name in kebab-case: for the shared ke
 file (`exactness-class` -> `ExactnessClass.json`), for a contract the definition
 (`assignment-state` -> `Worker.json#/$defs/AssignmentState`).
 
-Two targets are different. A `transcript` fixture is a whole stream, and what makes it invalid is
-a stream rule — the order or completeness of its events — which no schema can express. An
+Three targets are different. A `transcript` fixture is a whole stream, and what makes it invalid is
+a stream rule — the order or completeness of its events — which no schema can express. A
+`capacity-probe` fixture is a worker that holds as many assignments as it declares and the answer
+it gives to one more; what makes it invalid is the answer, judged against the places held. An
 `exchange` fixture of the model contract is one call, and what makes it invalid is a rule
 between its parts — a count below the bill, output past a hard cap — which no schema expresses
 either. This tool checks that such a fixture is schema-valid, which it must be to exercise its
@@ -55,15 +57,16 @@ ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS = ROOT / "contracts"
 NAMESPACE = "https://taktus.eu/contracts/"  # ADR-0019: the $id of a schema is its path under here
 CHECKS = (
-    [f"W-{n:02d}" for n in range(1, 15)]
+    [f"W-{n:02d}" for n in range(1, 16)]
     + [f"C-{n:02d}" for n in range(1, 11)]
     + [f"M-{n:02d}" for n in range(1, 5)]
 )
-CHECK_RANGES = ("W-01..W-14", "C-01..C-10", "M-01..M-04")
+CHECK_RANGES = ("W-01..W-15", "C-01..C-10", "M-01..M-04")
 MIN_VALID_EXAMPLES = 2
-RULE_TARGETS = frozenset({"transcript", "exchange"})
+RULE_TARGETS = frozenset({"transcript", "capacity-probe", "exchange"})
 """Targets whose must-fail fixtures break a rule no schema can express — the order of a stream,
-a count against a bill — and must therefore be schema-valid (the suite judges the rule)."""
+an answer against the places held, a count against a bill — and must therefore be schema-valid
+(the suite judges the rule)."""
 
 type Json = dict[str, Any]
 type SchemaRegistry = Registry[bool | Mapping[str, Any]]

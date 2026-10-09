@@ -257,7 +257,7 @@ def test_every_worker_object_definition_is_bound() -> None:
         for name, body in WORKER_SCHEMA["$defs"].items()
         if body.get("type") == "object" and "oneOf" not in body and not hasattr(worker, name)
     ]
-    assert unbound == ["Transcript"], "Transcript is a fixture shape, not a wire object"
+    assert unbound == ["Transcript", "CapacityProbe"], "both are fixture shapes, not wire objects"
 
 
 # --- the model contract ---------------------------------------------------------------------
