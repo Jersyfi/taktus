@@ -78,6 +78,13 @@ correction*; the definition's unqualified "corrects itself" does not hold for wh
 
 ## 5. What is proven so far
 
-A process with a bare level does not register, by the named test. Levels per
-action and per risk class, the approval with a quality history, the maturity threshold from level 3,
-and level 4 itself are not built.
+A process with a bare level does not register. Levels 1 to 3 are built and proven by the named
+tests (ADR-0039): a level per process and per tool action, the lowest holding — an action at level
+2 of a level-3 process waits for approval while the rest of the run continues; at level 2 no step
+starts before a person confirmed it; at level 1 Taktus proposes and executes no act; at level 3 the
+run proceeds without confirmations, and only on adapters at *verified*, a step on any other being
+refused with a finding that names the step and the adapter. A raise needs a person's approval and
+the quality history the replaced version names; a refusal is a ledger entry, and no code path but
+registration stores a version. No level switches off the stop, the reports or the escalation, and a
+tenant of one person sets any of the three. Not built: level 4, which runs as level 3 until
+`0.6.0`; levels per risk class; result defects counted in the history (`0.5.0`).
