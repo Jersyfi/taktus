@@ -98,6 +98,29 @@ refused before its body is read.
   runtime put it, and kept nowhere. How a runtime makes per-identity credentials available to a
   long-running connector is the execution adapter's concern (`0.2.0`).
 
+## Amendment — a signature over the moment of sending (2026-10-09)
+
+The chat connector (issue #84) met a target that does not sign the raw body. Its service signs
+a base string of three parts joined by colons: a version token, the moment of sending in whole
+seconds, and the raw body. It sends the moment in a header of its own. A connector for that
+service could not pass C-07 and C-08, because the suite signed the raw body alone, and the
+contract had no word for the scheme the service uses.
+
+- **A second scheme, `hmac-sha256-timestamped`.** The declaration may name it beside
+  `hmac-sha256` (`Connector.json`, `SignatureScheme`). Signing the moment buys something the
+  first scheme lacks: a bound on replay. A delivery whose moment lies more than 300 seconds
+  from when it arrived is refused as `bad_signature`, so that a delivery captured on the way
+  cannot be sent again later. The refusal reasons do not change.
+- **The suite signs as the target does.** A scenario names, beside the signature's header and
+  prefix, the header of the moment and the version token (`Scenario`, `intake.signature.timestamp`).
+  The suite then writes the moment it says the delivery arrived and signs the base string. Under
+  this scheme C-08 also delivers the supported payload signed an hour before it arrived and
+  expects `bad_signature` (NTC-0083).
+- **Nothing that conformed stops conforming.** The change adds a value and an optional field.
+  A declaration, a scenario or a connector that was valid before is valid now, and the
+  repository connector's run of the suite is unchanged. `v1` is not yet released (ADR-0019),
+  and no published contract is broken (M3.5).
+
 ## Where this promise ends
 
 Effect and idempotency are the connector's declarations, and the run trusts them: a connector
@@ -105,5 +128,8 @@ that declares `read` for an operation that writes has broken its contract, and t
 catches only what a scenario exercises. `marked` idempotency depends on the target system
 keeping the mark; a target that strips it makes a repeat unrecognisable, and the connector
 then answers as if it were `none`. Intake verifies a signature; it cannot verify that the
-signing key was not stolen. C-10, the removal test, is proven by the process under
+signing key was not stolen. Under `hmac-sha256` a captured delivery can be sent again at any
+time and verifies; only `hmac-sha256-timestamped` bounds that, and only to 300 seconds — within
+them a replay is recognised by the event's identifier, where the store that keeps intake
+events recognises it at all. C-10, the removal test, is proven by the process under
 `blueprints/self-operation/`, not by the suite.

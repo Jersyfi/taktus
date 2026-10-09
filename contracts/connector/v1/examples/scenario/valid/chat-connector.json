@@ -1,0 +1,47 @@
+{
+  "credentials": {
+    "actions": "CHAT_TOKEN",
+    "intake": "CHAT_SIGNING_SECRET"
+  },
+  "read": {
+    "operation": "chat.threads.read",
+    "input": {
+      "address": "C0000000001",
+      "thread": "1700000000.000100"
+    }
+  },
+  "writes": [
+    {
+      "operation": "chat.threads.post",
+      "input": {
+        "address": "C0000000001",
+        "thread": "1700000000.000100",
+        "text": "Reply {{unique}} from the conformance suite."
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "chat.threads.read",
+    "input": {
+      "address": "C0000000999",
+      "thread": "1700000000.000100"
+    },
+    "expected_cause": "not_found"
+  },
+  "intake": {
+    "signature": {
+      "header": "x-signature",
+      "prefix": "v0=",
+      "timestamp": {
+        "header": "x-request-timestamp",
+        "version": "v0"
+      }
+    },
+    "supported": {
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"type\":\"event_callback\",\"event_id\":\"Ev0000000001\",\"event\":{\"type\":\"message\",\"channel\":\"D0000000001\",\"user\":\"U0000000001\",\"text\":\"Turn issue 412 into a pull request\",\"ts\":\"1700000000.000100\"}}"
+    }
+  }
+}

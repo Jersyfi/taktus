@@ -76,6 +76,60 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
+  # The chat connector against the real chat service, in a scratch conversation that exists for
+  # this test alone, with Taktus's app in the owner's workspace (#84, NEED-0018). It runs the
+  # contract's suite there and posts one reply twice across two connectors. The app's bot token
+  # is a secret of the environment; the job writes it to a file outside the evidence directory,
+  # readable by the runner's user alone, for the length of the step, and the connector reads it
+  # through TAKTUS_CREDENTIAL_CHAT_TOKEN_FILE. Nothing runs without the conversation's
+  # identifier; with it and without the token the step fails, because half a configuration is a
+  # fault and not a skip. The service charges nothing for these calls; the job's time limit
+  # bounds the run, and the test log is its evidence.
+  chat:
+    if: github.repository == 'Jersyfi/taktus' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: live
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - name: live chat connector test
+        if: ${{ vars.TAKTUS_LIVE_CHAT_CONVERSATION != '' }}
+        env:
+          TAKTUS_LIVE_CHAT_CONVERSATION: ${{ vars.TAKTUS_LIVE_CHAT_CONVERSATION }}
+          LIVE_CHAT_TOKEN: ${{ secrets.LIVE_CHAT_TOKEN }}
+        # `shell: bash` runs with pipefail, so that a failing test fails the step through `tee`.
+        shell: bash
+        run: |
+          if [ -z "$LIVE_CHAT_TOKEN" ]; then
+            echo "::error::the app's bot token is not set in the environment 'live' (NEED-0018)"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/live" "$RUNNER_TEMP/chat"
+          chmod 700 "$RUNNER_TEMP/chat"
+          token="$RUNNER_TEMP/chat/token"
+          trap 'rm -f "$token"' EXIT
+          (umask 077 && printf '%s' "$LIVE_CHAT_TOKEN" >"$token")
+          unset LIVE_CHAT_TOKEN
+          export TAKTUS_CREDENTIAL_CHAT_TOKEN_FILE="$token"
+          uv run pytest tests/adapters/connectors/test_chat_live.py -rA \
+            | tee "$RUNNER_TEMP/live/chat.log"
+          # A test that skipped proved nothing: the run fails unless it passed.
+          grep -Eq '^PASSED ' "$RUNNER_TEMP/live/chat.log" \
+            || { echo "::error::the live chat connector test did not run"; exit 1; }
+      - name: not provided yet
+        if: ${{ vars.TAKTUS_LIVE_CHAT_CONVERSATION == '' }}
+        run: echo "::notice::the scratch conversation is not configured in the environment 'live' (NEED-0018); nothing ran"
+      - name: keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-chat-${{ github.run_id }}
+          path: ${{ runner.temp }}/live
+          if-no-files-found: ignore
+          retention-days: 90
+
   # The coding worker against its real agent, on one small assignment: one file in an empty
   # workspace (#68, NEED-0012). The job spends money on the agent's key, so it does not start
   # without the cap per run. The test converts the cap into the run's budget in tokens, because
