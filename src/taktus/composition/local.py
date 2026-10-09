@@ -64,6 +64,7 @@ from taktus.components.run.application.query import ProvenanceQuery, RecordedRes
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.composition.capacity import capacity_report, rules_of
+from taktus.composition.decisions import decision_wiring
 from taktus.composition.execution import (
     connector_pool,
     memory_demand,
@@ -141,6 +142,17 @@ class LocalWiring:
         ):
             runs = stores.of(Run)
             ledger = ChainedLedger(stores.ledger_store, clock)
+            identities = IdentityDirectory(
+                tenants=tenants,
+                identities=stores.of(Identity),
+                links=stores.of(ChannelLink),
+                codes=stores.of(LinkCode),
+                work=stores.work,
+                ledger=ledger,
+                clock=clock,
+                randomness=SystemRandomness(),
+            )
+            decisions = decision_wiring(stores.of, stores.work, ledger, clock, identities)
             objects = MemoryObjectStore(state_dir / "objects")
             recordings = RecordedResponses(runs, stores.work, objects)
             # The loopback connector is in the pool the engine resolves from and needs the
@@ -178,6 +190,8 @@ class LocalWiring:
                     platform=HostPlatform(clock, state_dir=state_dir),
                     recordings=recordings,
                     maturities=CatalogMaturities(stores.of(AdapterMaturity), stores.work),
+                    anchors=decisions.anchors,
+                    decisions=decisions.requests,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -216,16 +230,9 @@ class LocalWiring:
                 cost=CostOfRunHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work
                 ),
-                identities=IdentityDirectory(
-                    tenants=tenants,
-                    identities=stores.of(Identity),
-                    links=stores.of(ChannelLink),
-                    codes=stores.of(LinkCode),
-                    work=stores.work,
-                    ledger=ledger,
-                    clock=clock,
-                    randomness=SystemRandomness(),
-                ),
+                identities=identities,
+                configure_anchors=decisions.configure,
+                anchors=decisions.anchors,
             )
             telemetry.shutdown()
 

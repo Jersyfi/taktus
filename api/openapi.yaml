@@ -180,6 +180,226 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /decisions:
+    get:
+      tags:
+      - decisions
+      summary: The decision requests addressed to you
+      description: Every request not yet applied whose deciding role your identity holds, the oldest due
+        first; `overdue` marks one past its due date. Nothing waits silently (ADR-0042).
+      operationId: addressed_decisions_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The requests.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /decisions/response-times:
+    get:
+      tags:
+      - decisions
+      summary: 'How long decisions took: yours, and the rest only aggregated'
+      description: Your own response times, each decision with its time; everyone else's only aggregated
+        by role and by department, never by person, and withheld where a group has fewer than two deciders
+        (ADR-0015).
+      operationId: response_times_decisions_response_times_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The response times you may read.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /decisions/{request_id}:
+    get:
+      tags:
+      - decisions
+      summary: One decision request addressed to you
+      operationId: one_decisions__request_id__get
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Request Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                title: Response One Decisions  Request Id  Get
+        '403':
+          description: The request is not addressed to you.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such request.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /decisions/{request_id}/answer:
+    post:
+      tags:
+      - decisions
+      summary: Answer a decision request
+      description: 'With `option`, one option by its identifier; with `text`, free text. Neither takes
+        effect: the answer is read, the reading comes back in one message, and only once you confirm it
+        does it take effect (ADR-0008). Free text from which no single option can be read changes nothing,
+        and the message says so.'
+      operationId: answer_decisions__request_id__answer_post
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Request Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerBody'
+      responses:
+        '200':
+          description: The message sent back, and the request.
+          content:
+            application/json:
+              schema: {}
+        '403':
+          description: You do not hold the role that decides it.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such request.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The request's answer already took effect.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /decisions/{request_id}/confirm:
+    post:
+      tags:
+      - decisions
+      summary: Confirm, or reject, how your answer was read
+      description: 'Confirmed, the reading takes effect: the request is applied, the decision register
+        gains its entry, and the run continues — or halts at its boundary, if the act was declined. Rejected,
+        nothing takes effect and the request is open again.'
+      operationId: confirm_decisions__request_id__confirm_post
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Request Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmBody'
+      responses:
+        '200':
+          description: Whether it was applied, and the register entry.
+          content:
+            application/json:
+              schema: {}
+        '403':
+          description: You did not give the answer that was read.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such request.
+          content:
+            application/problem+json: {}
+        '409':
+          description: There is no reading to confirm.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /runs:
     get:
       tags:
@@ -283,6 +503,35 @@ paths:
             application/problem+json: {}
 components:
   schemas:
+    AnswerBody:
+      properties:
+        option:
+          anyOf:
+          - type: string
+            pattern: ^[A-Z]$
+          - type: 'null'
+          title: Option
+          description: The identifier of one option.
+        text:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Text
+          description: Free text, as you would write it.
+      type: object
+      title: AnswerBody
+    ConfirmBody:
+      properties:
+        confirmed:
+          type: boolean
+          title: Confirmed
+          description: 'True: the reading sent back is right, and it takes effect. False: it is not; nothing
+            takes effect and the request is open again.'
+      type: object
+      required:
+      - confirmed
+      title: ConfirmBody
     LinkCodeRequest:
       properties:
         channel:

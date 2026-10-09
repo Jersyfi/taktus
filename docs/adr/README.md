@@ -52,3 +52,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0038](ADR-0038-an-assignment-is-recorded-before-it-is-handed-over.md) | An assignment is recorded before it is handed over | accepted |
 | [0039](ADR-0039-autonomy-is-enforced-at-the-step-boundary.md) | Autonomy is enforced at the step boundary | accepted |
 | [0040](ADR-0040-a-channel-account-is-linked-by-the-person-who-holds-it.md) | A channel account is linked by the person who holds it | accepted |
+| [0042](ADR-0042-anchors-halt-at-the-step-boundary-and-raise-a-decision-request.md) | Anchors halt at the step boundary and raise a decision request | accepted |

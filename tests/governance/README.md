@@ -11,6 +11,13 @@ Anchors hold, limits are never breached, least privilege throughout (`docs/archi
   version; without it the chart's tests skip, and under `TAKTUS_REQUIRE_HELM` (CI) they fail.
 - `test_image_workflow.py`: the release images are built on a tag only, pushed only where a
   registry is named, and never deployed.
+- `test_anchors.py`: anchors at the step boundary and decision requests (UC-7.4, ADR-0042) — a
+  configuration that empties the legal or the correction class is refused; an anchored act halts
+  the run before anything of its step starts at each of levels 1 to 3; a request missing a part is
+  not raised and its act is not performed; a free-text answer leaves the run waiting until its
+  reading is confirmed; an applied request is an entry in the register; a declined act halts the
+  run; waiting work is in the run's history and the decider's list, overdue shown; nobody reads a
+  decider's response time under their name.
 - `test_autonomy.py`, `test_raise.py`: autonomy levels 1 to 3 at the step boundary (UC-7.1,
   ADR-0039) — the lowest of the process's and its actions' levels holds, a step at level 2
   waits for a person's confirmation, a step that acts at level 1 is proposed and never

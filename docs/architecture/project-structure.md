@@ -17,8 +17,8 @@ boundaries, `import-linter` contracts and `tests/architecture` are not optional 
 | `command` | channel normalisation, command, plan, commissioning |
 | `process` | process, version, step, method, exactness class, bundle |
 | `run` | run, step run, checkpoint, artifact, blocked-time account |
-| `governance` | autonomy levels, policies, anchors, budgets, limits, admission control; today: whether a result has left the system (ADR-0022) |
-| `decision` | decision requests, the decision register, rules derived from it |
+| `governance` | autonomy levels, policies, anchors, budgets, limits, admission control; today: a tenant's anchors and which of them name a step's act (ADR-0042), whether a result has left the system (ADR-0022) |
+| `decision` | decision requests, the decision register, rules derived from it; today: requests raised, answered, their reading confirmed, the register, the decider's list and response times (ADR-0042) |
 | `catalog` | models, agents, skills, connectors, blueprints, maturity |
 | `accounting` | consumption capture, Takt, forecasts, marginal value |
 | `knowledge` | knowledge sources, embeddings, citations |
@@ -58,6 +58,9 @@ taktus/
 │   │       └── ports/               # ports this component alone needs (run/ports/workers.py, connectors.py, models.py, maturity.py)
 │   │   … run/domain/service/provenance.py builds and verifies the provenance chain (ADR-0021); run/domain/service/rehearsal.py chooses the recording — the last real call, never a rehearsal (ADR-0030)
 │   │   … governance/domain/service/egress.py decides whether a result has left the system (ADR-0022)
+│   │   … governance/domain/model/anchors.py a tenant's anchor configuration, never emptied, and the shipped default; domain/service/anchors.py which anchors name a step's act; application/service/configure_anchors.py stores one and answers the anchors in force (ADR-0042)
+│   │   … decision/domain/model/request.py a request as the component keeps it, and the register entry; domain/service/interpretation.py how an answer is read and reflected; domain/service/response_times.py who may read which response times; application/service raise, answer, confirm; application/query the decider's list; ports/deciders.py who holds which role (ADR-0042)
+│   │   … run/ports/anchors.py what the run asks governance and decision at the step boundary; run/domain/service/anchoring.py the request an anchored step raises and what a decision does to it (ADR-0042)
 │   │   … governance/domain/service/capacity.py turns platform observations and growth per run into findings with a figure and a date; application/service/report_capacity.py records a crossing (docs/architecture/platform.md)
 │   │   … run/domain/service/capacity.py admits a job against the platform: memory for the unit plus a reserve, storage above its refusal share
 │   │   … run/domain/service/waiting.py a step whose worker is at capacity waits: the doubling delay, the ceiling, the wait's record for blocked time (ADR-0037)
@@ -84,8 +87,8 @@ taktus/
 │   │
 │   ├── adapters/
 │   │   ├── driving/
-│   │   │   ├── cli/                 # taktusctl: conformance run, run, submit, capacity
-│   │   │   └── rest/                # the HTTP surface: health, readiness, webhook intake, the read API — under a prefix; RFC 9457 problems
+│   │   │   ├── cli/                 # taktusctl: conformance run, run, submit, capacity; identity, with the roles an identity holds; anchors set and show (ADR-0042)
+│   │   │   └── rest/                # the HTTP surface: health, readiness, webhook intake, the decision requests addressed to a decider (ADR-0042), the read API — under a prefix; RFC 9457 problems
 │   │   └── driven/
 │   │       ├── memory/              # DEVELOPMENT AND TEST ONLY: in-memory stores, queue and leadership, optional file snapshot
 │   │       ├── postgres/            # persistence, queue (claim_jobs with a lease) and leadership (advisory lock) over PostgreSQL; SQLAlchemy Core
@@ -106,7 +109,7 @@ taktus/
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
-│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); replies.py answers a sender in a channel through its connector's reply operation (ADR-0040); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under; maturity.py answers the run's maturity port from the catalog's record (ADR-0039)
+│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); replies.py answers a sender in a channel through its connector's reply operation (ADR-0040); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under; maturity.py answers the run's maturity port from the catalog's record (ADR-0039); decisions.py answers the run's anchor and decision ports from governance and decision, and decision's deciders from identity (ADR-0042)
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 │   ├── script/                      # the reference worker: shell commands, no AI
@@ -127,7 +130,7 @@ taktus/
 ├── tests/
 │   ├── architecture/                # adapter obligation, component boundaries, no product names
 │   ├── conformance/                 # the contract suite, runnable against foreign adapters
-│   ├── governance/                  # anchors hold, limits never breach, least privilege
+│   ├── governance/                  # anchors hold, limits never breach, least privilege; test_anchors.py: anchors at the step boundary and decision requests
 │   ├── exactness/                   # `exact` steps never take their final value from AI
 │   ├── contract/                    # the Python bindings match the schemas and their examples
 │   ├── components/ adapters/        # domain tables and application tests against fakes/; adapters/persistence and adapters/queue: one suite, both implementations; adapters/connectors: the reference connector against fakes/repository_service.py; adapters/rest: the surface under two prefixes; adapters/execution: the process adapter, and the container adapter checked from inside a job; adapters/telemetry: spans nested, the trace id on every entry, no person and no secret in an attribute

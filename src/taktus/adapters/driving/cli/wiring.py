@@ -15,7 +15,11 @@ from typing import Protocol
 
 from taktus.components.accounting.application.service import CostOfRunHandler
 from taktus.components.command.application.service import CommissionPlanHandler
-from taktus.components.governance.application.service import ReportCapacityHandler
+from taktus.components.governance.application.service import (
+    AnchorsInForce,
+    ConfigureAnchorsHandler,
+    ReportCapacityHandler,
+)
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
@@ -55,6 +59,10 @@ class Services:
     `taktusd` runs; false in memory, where nothing else executes."""
     cost: CostOfRunHandler | None = None
     """What a run cost, recomputed from the ledger at its price table (`taktusctl cost`)."""
+    configure_anchors: ConfigureAnchorsHandler | None = None
+    """A tenant's anchors, configured (`taktusctl anchors set`, ADR-0042)."""
+    anchors: AnchorsInForce | None = None
+    """The anchors a tenant holds now (`taktusctl anchors show`)."""
 
 
 @dataclass(frozen=True)
