@@ -62,6 +62,8 @@ jobs:
             dockerfile: deploy/docker/Dockerfile
           - name: taktus-worker-script
             dockerfile: workers/script/Dockerfile
+          # Its agent at the exact version workers/claudecode/agent-version names, read by the
+          # Dockerfile from this checkout: the tag fixes the agent too (#116).
           - name: taktus-worker-coding
             dockerfile: workers/claudecode/Dockerfile
     steps:

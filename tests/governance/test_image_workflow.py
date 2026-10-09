@@ -54,3 +54,53 @@ def test_the_control_plane_and_every_shipped_worker_get_an_image_tagged_with_the
     push = next(s for s in build["steps"] if s.get("uses", "").startswith("docker/build-push"))
     assert push["with"]["tags"].endswith(":${{ needs.registry.outputs.version }}")
     assert "latest" not in push["with"]["tags"]
+
+
+# --- the coding worker's agent, pinned (#116) ---------------------------------------------------
+
+AGENT_VERSION = ROOT / "workers" / "claudecode" / "agent-version"
+CODING_DOCKERFILE = ROOT / "workers" / "claudecode" / "Dockerfile"
+LIVE = ROOT / ".github" / "workflows" / "live.yml"
+EXACT = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
+AGENT_PACKAGE = "@anthropic-ai/claude-code"
+
+
+def test_the_agents_version_is_one_exact_version() -> None:
+    """Not `latest`, not a dist-tag, not a range: two builds of one tag carry the same agent."""
+    version = AGENT_VERSION.read_text(encoding="utf-8").strip()
+    assert EXACT.fullmatch(version), f"{AGENT_VERSION.name} names {version!r}, not one version"
+
+
+def test_the_coding_image_installs_the_pinned_version_and_nothing_else() -> None:
+    text = CODING_DOCKERFILE.read_text(encoding="utf-8")
+    instructions = [line for line in text.splitlines() if not line.lstrip().startswith("#")]
+    code = "\n".join(instructions)
+    assert "COPY workers/claudecode/agent-version" in code
+    # A build argument would let a release build install another version than the file's.
+    assert not re.search(r"^\s*ARG\b", code, re.MULTILINE), "the agent's version is no argument"
+    assert "latest" not in code
+    installs = re.findall(rf"{re.escape(AGENT_PACKAGE)}@(\S+?)\"", code)
+    assert installs == ["${version}"], installs
+    assert '"$(cat /tmp/agent-version)"' in code
+    # The build refuses a file that does not name an exact version.
+    assert "grep -Eqx '[0-9]+\\.[0-9]+\\.[0-9]+'" in code
+
+
+def test_the_release_build_passes_no_other_agent_version() -> None:
+    build = workflow()["jobs"]["build"]
+    coding = [e for e in build["strategy"]["matrix"]["include"] if "claudecode" in e["dockerfile"]]
+    assert coding, "the coding worker's image is built on a release"
+    push = next(s for s in build["steps"] if s.get("uses", "").startswith("docker/build-push"))
+    assert push["with"]["context"] == ".", "the build context holds the version file"
+    assert "build-args" not in push["with"], "a build argument would override the pin"
+
+
+def test_the_live_test_installs_the_version_the_image_carries() -> None:
+    """The live job proves what ships: it installs the agent from the same file (#116)."""
+    document: dict[Any, Any] = yaml.safe_load(LIVE.read_text(encoding="utf-8"))
+    runs = [str(step.get("run", "")) for step in document["jobs"]["coding"]["steps"]]
+    installs = [r for r in runs if "npm install" in r]
+    assert len(installs) == 1, installs
+    assert 'pinned="$(cat workers/claudecode/agent-version)"' in installs[0]
+    install = [line for line in installs[0].splitlines() if "npm install" in line]
+    assert install == [f'npm install --global "{AGENT_PACKAGE}@${{pinned}}"'], install
