@@ -3,7 +3,7 @@
 **Mode entry:** M2.2
 **Kind:** test-strategy
 **Decided:** 2026-10-09
-**Raised in:** pull request for issue #138
+**Raised in:** [#144](https://github.com/Jersyfi/taktus/pull/144), for issue #138
 
 ## 1. What was decided
 
@@ -59,10 +59,10 @@ asks the worker about that id, and acts on the answer (ADR-0038).
   a worker that answers `409`, keeps the first state and runs the work again elsewhere shows
   nothing on its endpoints. The suite cannot see it, and `CONFORMANCE.md` §7 and ADR-0038 say
   so.
-- **A fault that answers `404` without a problem body.** Not taken as the fault: it would leave
-  W-15's lookup passing, but it is not the failure the engine is exposed to. A worker that
-  answers `200` for an unknown id makes a recovering runner wait for an assignment that does not
-  exist. That fault is the one that matters. Its fixture is kept among the must-fail ones.
+- **A fault that answers `404` without a problem body.** Not taken as the fault. It is not the
+  failure the engine is exposed to. A worker that answers `200` for an unknown id makes a
+  recovering runner wait for an assignment that does not exist, and that is the fault taken.
+  The bare `404` stays a must-fail fixture.
 
 ## 4. Which entry permits it
 
