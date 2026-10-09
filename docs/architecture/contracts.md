@@ -38,7 +38,9 @@ not the bottleneck here; adapter variety is.
 Full specification: [`contracts/worker/v1/README.md`](../../contracts/worker/v1/README.md).
 The core's side of it is the worker port (`src/taktus/ports/worker.py`): the contract's shapes
 as frozen types and the protocol the run component calls. `tests/contract` holds those types to
-`Worker.json` and its examples, so that the port and the contract cannot drift apart. How a
+`Worker.json` and its examples, so that the port and the contract cannot drift apart. A worker's
+`503` to a new assignment reaches the core as `WorkerAtCapacity`, on which the step waits
+(ADR-0037). How a
 worker comes to exist for a job — as a process, as a container — is the execution port's
 business (§2.4), and a worker that is already running is reached by endpoint.
 

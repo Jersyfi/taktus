@@ -45,6 +45,10 @@ class Cause(StrEnum):
     STOP = "stop"
     FAILURE = "failure"
     CEILING = "ceiling"
+    CAPACITY = "capacity"
+    """A step's worker was at its declared capacity. A run halted with this cause waits at the
+    step's boundary and its runner tries again later; one whose step waited beyond its ceiling
+    escalates with it (ADR-0037)."""
 
 
 # Every transition the run knows. Anything not listed is illegal. `self-healed` of §5.2 is a
@@ -154,6 +158,11 @@ class StepRun(Value):
     reason: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    waiting_since: datetime | None = None
+    """When the step's worker first answered that it was at capacity, in a wait that has not
+    ended yet; None while the step is not waiting (ADR-0037)."""
+    waits: int = Field(default=0, ge=0)
+    """How many times the worker answered so in that wait: what the next delay grows with."""
 
     def to(self, state: StepState, **changes: Any) -> StepRun:
         if (self.state, state) not in STEP_TRANSITIONS:

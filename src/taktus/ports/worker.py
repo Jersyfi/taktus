@@ -435,6 +435,14 @@ class WorkerError(Exception):
     validate, a stream that broke off. The message names what happened, never a secret."""
 
 
+class WorkerAtCapacity(WorkerError):
+    """The worker holds as many assignments as it declares (`max_concurrent_assignments`) and
+    did not take this one: the contract's 503 on `POST /v1/assignments`. Nothing started, so the
+    same work may be handed over again later. The worker is the one party that sees every
+    assignment it holds, from every runner and every instance, so its answer is what decides
+    whether there is a free place (ADR-0037)."""
+
+
 class Worker(Protocol):
     """One execution unit behind the worker contract, as the core uses it."""
 
@@ -444,7 +452,8 @@ class Worker(Protocol):
 
     async def assign(self, assignment: Assignment) -> AssignmentState:
         """Hand over an assignment. A rejection is a state, not an error: the state comes back
-        finished with outcome rejected, and the stream carries one event."""
+        finished with outcome rejected, and the stream carries one event. A worker at its
+        declared capacity raises WorkerAtCapacity; nothing was recorded."""
         ...
 
     def events(self, assignment_id: AssignmentId, *, after: int = 0) -> AsyncIterator[Event]:

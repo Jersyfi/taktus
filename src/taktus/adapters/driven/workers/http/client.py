@@ -6,7 +6,8 @@ half-read object. The stream is read until `assignment.finished`; a connection t
 reopened from the last sequence number seen (`Last-Event-ID`), which the contract obliges the
 worker to honour (W-03). Two timeouts guard the read: `idle_timeout` between two events and
 `stream_timeout` for the whole stream; either becomes a WorkerError, which the run engine treats
-as a failed step.
+as a failed step. A 503 to a new assignment is the contract's "at capacity" and becomes
+WorkerAtCapacity, on which the run engine makes the step wait (ADR-0037).
 
 Credential values never pass through here: the contract carries names, and the environment of
 the worker process is the execution adapter's business.
@@ -33,6 +34,7 @@ from taktus.ports.worker import (
     EstimateRequest,
     Event,
     StopRequest,
+    WorkerAtCapacity,
     WorkerError,
 )
 from taktus.shared.v1 import Artifact, Value
@@ -82,7 +84,9 @@ class HttpWorker:
         return await self._post("/v1/estimate", request, Estimate, expected=200)
 
     async def assign(self, assignment: Assignment) -> AssignmentState:
-        return await self._post("/v1/assignments", assignment, AssignmentState, expected=201)
+        return await self._post(
+            "/v1/assignments", assignment, AssignmentState, expected=201, capacity=True
+        )
 
     async def state(self, assignment_id: AssignmentId) -> AssignmentState:
         return await self._get(f"/v1/assignments/{assignment_id}", AssignmentState)
@@ -172,11 +176,20 @@ class HttpWorker:
             raise WorkerError(f"{self.endpoint}: GET {path} failed: {error!r}") from error
         return self._read(response, path, shape, expected=200)
 
-    async def _post[T: Value](self, path: str, body: Value, shape: type[T], *, expected: int) -> T:
+    async def _post[T: Value](
+        self, path: str, body: Value, shape: type[T], *, expected: int, capacity: bool = False
+    ) -> T:
+        """`capacity`: a 503 is the contract's answer of a worker at its declared capacity."""
         try:
             response = await self._http.post(path, json=body.document())
         except httpx.HTTPError as error:
             raise WorkerError(f"{self.endpoint}: POST {path} failed: {error!r}") from error
+        if capacity and response.status_code == 503:
+            detail = _problem(response)
+            raise WorkerAtCapacity(
+                f"{self.endpoint}: {path} answered 503, at capacity"
+                + (f": {detail}" if detail else "")
+            )
         return self._read(response, path, shape, expected=expected)
 
     def _read[T: Value](

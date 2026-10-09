@@ -14,7 +14,7 @@ the database: until the transaction ends, a claim skips the job.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from pydantic import Field
@@ -33,12 +33,21 @@ class JobRow(Value):
     kind: str
     payload: dict[str, Any] = Field(default_factory=dict)
     attempts: int = 0
+    deferrals: int = 0
     created_at: datetime
+    available_at: datetime | None = None
+    """When a deferred job is claimable again; None means at once."""
     claimed_at: datetime | None = None
     claimed_by: str | None = None
 
     def job(self) -> Job:
-        return Job(id=self.id, kind=self.kind, payload=self.payload, attempts=self.attempts)
+        return Job(
+            id=self.id,
+            kind=self.kind,
+            payload=self.payload,
+            attempts=self.attempts,
+            deferrals=self.deferrals,
+        )
 
 
 class MemoryQueue:
@@ -80,7 +89,11 @@ class MemoryQueue:
         for row in sorted(table.values(), key=lambda r: (r.created_at, r.id)):
             if len(claimed) >= batch:
                 break
-            if row.attempts >= self._max_attempts or (tenant, row.id) in self._fenced:
+            if (
+                row.attempts - row.deferrals >= self._max_attempts
+                or (tenant, row.id) in self._fenced
+                or (row.available_at is not None and row.available_at > now)
+            ):
                 continue
             held = row.claimed_at is not None and (now - row.claimed_at).total_seconds() < (
                 self._lease
@@ -127,6 +140,20 @@ class MemoryQueue:
         row = table.get(job_id)
         if row is not None and row.claimed_by == claimant:
             table[job_id] = row.model_copy(update={"claimed_at": None, "claimed_by": None})
+
+    async def defer(self, tenant: Tenant, job_id: str, claimant: str, seconds: float) -> None:
+        self._persistence.current(tenant)
+        table = self._persistence.table(KIND, tenant)
+        row = table.get(job_id)
+        if row is not None and row.claimed_by == claimant:
+            table[job_id] = row.model_copy(
+                update={
+                    "claimed_at": None,
+                    "claimed_by": None,
+                    "deferrals": row.deferrals + 1,
+                    "available_at": self._clock.now() + timedelta(seconds=seconds),
+                }
+            )
 
     async def complete(self, tenant: Tenant, job_id: str, claimant: str) -> None:
         self._persistence.current(tenant)

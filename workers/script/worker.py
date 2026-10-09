@@ -316,7 +316,7 @@ class Worker:
                 "streaming_events": True,
                 "estimate": True,
             },
-            "max_concurrent_assignments": MAX_CONCURRENT,
+            "max_concurrent_assignments": self.options.max_concurrent,
         }
 
     def expected(self, step: PlannedStep) -> float:
@@ -390,7 +390,7 @@ class Worker:
             if assignment_id in self.assignments:
                 return 409, {"title": "assignment exists", "status": 409}
             running = sum(1 for a in self.assignments.values() if a.status != "finished")
-            if running >= MAX_CONCURRENT:
+            if running >= self.options.max_concurrent:
                 return 503, {"title": "at capacity", "status": 503}
             ref = body.get("context", {}).get("checkpoint_ref")
             inherited: list[Produced] = []
@@ -825,7 +825,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, self.worker.capabilities())
         elif parts == ["v1", "health"]:
             running = sum(1 for a in self.worker.assignments.values() if a.status != "finished")
-            if running < MAX_CONCURRENT:
+            if running < self.worker.options.max_concurrent:
                 self._json(200, {"status": "ready"})
             else:
                 self._json(503, {"status": "not_ready", "detail": "at capacity"})
@@ -943,6 +943,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--step-seconds", type=float, default=0.3, help="quick: seconds per step")
     parser.add_argument("--epochs", type=int, default=4, help="longrun: number of epochs")
     parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=MAX_CONCURRENT,
+        help="assignments held at once; a further one is answered 503, at capacity",
+    )
+    parser.add_argument(
         "--epoch-seconds", type=float, default=0.5, help="longrun: seconds per epoch"
     )
     parser.add_argument(
@@ -955,6 +961,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.estimate_factor <= 0:
         parser.error("--estimate-factor must be above 0")
+    if args.max_concurrent < 1:
+        parser.error("--max-concurrent must be at least 1")
     if args.state_dir is None:
         args.state_dir = str(Path.home() / ".cache" / "taktus-script-worker" / secrets.token_hex(4))
     return args

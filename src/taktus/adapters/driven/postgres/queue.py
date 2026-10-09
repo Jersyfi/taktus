@@ -1,6 +1,7 @@
 """The queue port over the `job` table: `claim_jobs` with `SELECT … FOR UPDATE SKIP LOCKED`
 and a lease (`migrations/versions/0003_lease.py`), the locking query run exactly once so that a
-claim takes at most its batch (`0010_claim_once.py`, NTC-0027).
+claim takes at most its batch (`0010_claim_once.py`, NTC-0027), and a deferral that moves
+`available_at` and is not counted as an attempt (`0012_deferral.py`, ADR-0037).
 
 Every statement runs on the open transaction's connection, as the application role, with the
 tenant set: the row-level security of the schema decides what a claim can see. Two runners
@@ -58,7 +59,7 @@ class PostgresQueue:
         connection = self._persistence.connection(tenant)
         rows = await connection.execute(
             text(
-                "SELECT id, kind, payload, attempts FROM claim_jobs(:claimant, :batch, "
+                "SELECT id, kind, payload, attempts, deferrals FROM claim_jobs(:claimant, :batch, "
                 ":lease, :max_attempts) ORDER BY created_at, id"
             ),
             {
@@ -106,6 +107,19 @@ class PostgresQueue:
             .values(claimed_at=None, claimed_by=None)
         )
 
+    async def defer(self, tenant: Tenant, job_id: str, claimant: str, seconds: float) -> None:
+        connection = self._persistence.connection(tenant)
+        await connection.execute(
+            update(s.job)
+            .where(s.job.c.tenant == tenant, s.job.c.id == job_id, s.job.c.claimed_by == claimant)
+            .values(
+                claimed_at=None,
+                claimed_by=None,
+                deferrals=s.job.c.deferrals + 1,
+                available_at=func.now() + timedelta(seconds=seconds),
+            )
+        )
+
     async def complete(self, tenant: Tenant, job_id: str, claimant: str) -> None:
         connection = self._persistence.connection(tenant)
         await connection.execute(
@@ -116,4 +130,10 @@ class PostgresQueue:
 
 
 def _job(row: Row[Any]) -> Job:
-    return Job(id=row.id, kind=row.kind, payload=row.payload, attempts=row.attempts)
+    return Job(
+        id=row.id,
+        kind=row.kind,
+        payload=row.payload,
+        attempts=row.attempts,
+        deferrals=row.deferrals,
+    )

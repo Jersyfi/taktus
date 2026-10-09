@@ -35,6 +35,14 @@ engine records no artifact twice even if it did. The worker's own step boundarie
 as they arrive, so that an instance that dies mid-step loses at most the worker's current inner
 step, not the whole step (ADR-0013 A).
 
+A worker that holds as many assignments as it declares answers a new one *at capacity*
+(ADR-0037). Nothing started, so this is no failure: the step goes back to the boundary it was
+admitted from and gives its reservation back (`step.waiting`), and the run halts there with
+cause `capacity`. The runner defers the run's job, and whoever claims it next asks the worker
+again. When the worker takes the assignment, `step.waited` records the wait with its account,
+cause and duration, and the step runs. A wait that outlasts the step's ceiling ends the step
+failed with cause `capacity`, and the run escalates.
+
 A connector step (`rule: connector`) is where ADR-0005's promise meets the outside. The call
 carries an idempotency key derived from run, step and the step's attempt — never stored, so a
 step recovered after a crash derives the same key and a `marked` connector answers with the
@@ -67,7 +75,7 @@ import re
 from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from taktus.components.run.application.query.recordings import RecordedResponses
 from taktus.components.run.domain.model import (
@@ -108,7 +116,7 @@ from taktus.components.run.domain.model import (
     select,
 )
 from taktus.components.run.domain.service import budget as budgeting
-from taktus.components.run.domain.service import provenance, rules
+from taktus.components.run.domain.service import provenance, rules, waiting
 from taktus.components.run.domain.service.admission import admit, remaining
 from taktus.components.run.domain.service.capacity import (
     CapacityDemand,
@@ -155,6 +163,7 @@ from taktus.ports.worker import (
     StopRequest,
     Task,
     Worker,
+    WorkerAtCapacity,
     WorkerError,
 )
 from taktus.shared.v1 import (
@@ -243,7 +252,7 @@ def _ended(run: Run) -> bool:
     """Whether a run has ended in a way a runner's claim does not continue."""
     if run.state in (RunState.FINISHED, RunState.ESCALATED):
         return True
-    return run.state is RunState.HALTED and run.cause is not Cause.STOP
+    return run.state is RunState.HALTED and run.cause not in (Cause.STOP, Cause.CAPACITY)
 
 
 @dataclass(frozen=True)
@@ -278,6 +287,9 @@ class EngineOptions:
     unit_memory_bytes: int | None = None
     """The memory limit of the execution unit a worker step starts on this platform; None when
     a worker step starts none here — a worker reached by endpoint runs elsewhere."""
+    capacity_ceiling_seconds: int = waiting.CAPACITY_CEILING_SECONDS
+    """How long a worker step waits for a free place at its worker when its work names no
+    ceiling (ADR-0037)."""
 
 
 @dataclass(frozen=True)
@@ -334,6 +346,9 @@ class RunEngine:
         self._inflight: dict[str, tuple[Worker, str]] = {}
         self._observed: dict[str, list[budgeting.Observation]] = {}
         self._limit_halts: set[str] = set()
+        self._at_capacity: set[str] = set()
+        """Runs whose current step met its worker at capacity: they halt, or escalate once the
+        step's ceiling passed, with cause `capacity` (ADR-0037)."""
         self._claim: ContextVar[Claim | None] = ContextVar("claim", default=None)
         """The claim the run executing in this task is written under (#107). Held per task,
         not per run: a runner that lost a claim and claimed the same job again executes the
@@ -561,6 +576,7 @@ class RunEngine:
         finally:
             self._observed.pop(run.id, None)
             self._limit_halts.discard(run.id)
+            self._at_capacity.discard(run.id)
 
     async def _steps(self, run: Run, stop_after: int | None, span: Span) -> Run:
         refused = await self._platform_refuses(None)
@@ -573,12 +589,17 @@ class RunEngine:
             if step_run.state is StepState.REJECTED:
                 cause = Cause.NO_ESTIMATE if step_run.estimate is None else Cause.LIMIT
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
+            capacity = run.id in self._at_capacity
+            self._at_capacity.discard(run.id)
             if step_run.state is StepState.FAILED:
-                return await self._end(
-                    run, RunState.ESCALATED, Cause.FAILURE, step_run.reason, span
-                )
+                cause = Cause.CAPACITY if capacity else Cause.FAILURE
+                return await self._end(run, RunState.ESCALATED, cause, step_run.reason, span)
             if step_run.state is StepState.STOPPED:
-                cause = Cause.LIMIT if run.id in self._limit_halts else Cause.STOP
+                if capacity:
+                    # Waiting at the boundary: the runner tries again after a delay (ADR-0037).
+                    cause = Cause.CAPACITY
+                else:
+                    cause = Cause.LIMIT if run.id in self._limit_halts else Cause.STOP
                 self._limit_halts.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             completed_now += 1
@@ -1477,8 +1498,12 @@ class RunEngine:
         try:
             async with self._telemetry.span("worker.assign", call):
                 state = await worker.assign(assignment)
+        except WorkerAtCapacity as error:
+            return await self._full(run, step_run, work, adapter, resuming, span, error)
         except WorkerError as error:
             return await self._unavailable(run, step_run, adapter, span, error)
+        if step_run.waiting_since is not None:
+            run, step_run = await self._waited(run, step_run, work, "assigned")
         if state.status == "finished":
             # A rejection is a state, not an error: the worker's own check refused it.
             span.record_failure("rejected by the worker")
@@ -1523,6 +1548,94 @@ class RunEngine:
             self._inflight.pop(run.id, None)
         _measured(span, step_run)
         return run, step_run
+
+    async def _full(
+        self,
+        run: Run,
+        step_run: StepRun,
+        work: WorkerWork,
+        adapter: str,
+        resuming: Checkpoint | None,
+        span: Span,
+        error: WorkerAtCapacity,
+    ) -> tuple[Run, StepRun]:
+        """The worker holds as many assignments as it declares and did not take this one.
+        Nothing started: the step goes back to the boundary it was admitted from and gives its
+        reservation back, and the run halts there with cause `capacity` for its runner to try
+        again later. Once the step's ceiling has passed, the step ends instead, failed with
+        that cause, and the run escalates (ADR-0037)."""
+        span.record_failure("worker at capacity")
+        self._at_capacity.add(run.id)
+        now = self._clock.now()
+        since = step_run.waiting_since or now
+        waits = step_run.waits + 1
+        step_run = step_run.model_copy(
+            update={"adapter": adapter, "waiting_since": since, "waits": waits}
+        )
+        ceiling = self._ceiling(work)
+        if waiting.over(since, now, ceiling):
+            run, step_run = await self._waited(run, step_run, work, "ceiling")
+            step_run = step_run.to(
+                StepState.FAILED,
+                reason=f"the worker {adapter} stayed at capacity for "
+                f"{(now - since).total_seconds():.0f}s, {waits} times asked; the step's ceiling "
+                f"is {ceiling}s: {error}",
+                finished_at=now,
+            )
+            run = await self._commit(
+                run.with_step_run(step_run),
+                "step.finished",
+                step=step_run,
+                outcome=waiting.AT_CAPACITY,
+            )
+            return run, step_run
+        step_run = step_run.to(
+            StepState.STOPPED,
+            checkpoint=resuming,
+            reason=f"waiting for a free place at the worker {adapter} since {since.isoformat()} "
+            f"({waits} times asked; ceiling {ceiling}s): {error}",
+            finished_at=now,
+        )
+        run = await self._commit(
+            run.with_step_run(step_run), "step.waiting", step=step_run, outcome=waiting.AT_CAPACITY
+        )
+        return run, step_run
+
+    async def _waited(
+        self,
+        run: Run,
+        step_run: StepRun,
+        work: WorkerWork,
+        ended: Literal["assigned", "ceiling"],
+    ) -> tuple[Run, StepRun]:
+        """The wait of a step ended — the worker took the assignment, or the ceiling passed:
+        `step.waited` names the document with its account, cause and duration (ADR-0015)."""
+        since = step_run.waiting_since
+        if since is None:
+            return run, step_run
+        document = waiting.record(
+            adapter=step_run.adapter,
+            since=since,
+            until=self._clock.now(),
+            waits=step_run.waits,
+            ended=ended,
+            ceiling_seconds=self._ceiling(work),
+        )
+        digest = await self._objects.put(_canonical(document))
+        step_run = step_run.model_copy(update={"waiting_since": None, "waits": 0})
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.waited",
+            step=step_run,
+            outcome=waiting.AT_CAPACITY,
+            digest=digest,
+        )
+        return run, step_run
+
+    def _ceiling(self, work: WorkerWork) -> int:
+        if work.capacity_ceiling_seconds is not None:
+            return work.capacity_ceiling_seconds
+        return self._options.capacity_ceiling_seconds
 
     async def _unavailable(
         self, run: Run, step_run: StepRun, adapter: str, span: Span, error: WorkerError
@@ -1731,6 +1844,7 @@ class RunEngine:
         enqueue: Job | None = None,
         new: bool = False,
         trigger: Mapping[str, Any] | None = None,
+        digest: Digest | None = None,
     ) -> Run:
         """One transaction: the run as it now is, and — when `kind` is given — the ledger entry
         that says what changed. Either both land or neither does. A step that finished with a
@@ -1746,7 +1860,9 @@ class RunEngine:
             if enqueue is not None and self._queue is not None:
                 await self._queue.enqueue(run.tenant, enqueue)
             if kind is not None:
-                entry = await self._record(run, kind, step=step, outcome=outcome, actor=actor)
+                entry = await self._record(
+                    run, kind, step=step, outcome=outcome, actor=actor, digest=digest
+                )
                 if trigger is not None:
                     # The ledger is content-free (ADR-0006): the entry names the trigger's kind
                     # and carries the digest of its document; the command keeps the document.

@@ -236,6 +236,9 @@ class WorkerWork(Value):
     credentials: tuple[CredentialReference, ...] = ()
     """The credentials the assignment references by name; the execution adapter, or whoever
     runs an endpoint worker, supplies the values."""
+    capacity_ceiling_seconds: int | None = Field(default=None, ge=1)
+    """How long the step may wait for a free place at its worker before it ends with cause
+    `capacity` and the run escalates (ADR-0037). None takes the engine's default."""
 
 
 class LlmWork(Value):

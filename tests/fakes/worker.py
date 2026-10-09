@@ -5,10 +5,17 @@ with a boundary. A stop requested before a boundary ends the assignment `stopped
 boundary with a checkpoint naming the index; an assignment that resumes from such a checkpoint
 continues after it and produces nothing it produced before. `reject_with` makes the worker
 refuse every assignment before starting, as W-10 describes.
+
+`capacity` makes the worker hold at most that many assignments at once and answer every further
+one at capacity, as the contract's 503 does; `full_for` answers the next so many at capacity
+whatever it holds. `peak` is the most it ever held, `refused` how many it turned away.
+`inner_seconds` makes every inner step take that long, in real time, so that assignments of
+several runs overlap.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
@@ -33,6 +40,7 @@ from taktus.ports.worker import (
     StepStarted,
     StopRequest,
     Supports,
+    WorkerAtCapacity,
     WorkerError,
 )
 from taktus.shared.v1 import Artifact
@@ -58,6 +66,13 @@ class FakeWorker:
     """A consumption kind: the worker halts at its first boundary as if its running total would
     cross its ceiling in that kind next (W-14)."""
     unreachable: str | None = None  # every call fails with this WorkerError, as a dead unit does
+    capacity: int | None = None
+    full_for: int = 0
+    inner_seconds: float = 0.0
+    peak: int = 0
+    refused: int = 0
+    on_assign: Callable[[Assignment], Awaitable[None]] | None = None
+    """Called before an assignment is answered, whether it is taken or not."""
     on_event: Callable[[Event], Awaitable[None]] | None = None
     assignments: list[Assignment] = field(default_factory=list)
     estimates: list[EstimateRequest] = field(default_factory=list)
@@ -65,6 +80,7 @@ class FakeWorker:
     _stop_requested: set[str] = field(default_factory=set)
     _states: dict[str, AssignmentState] = field(default_factory=dict)
     _bytes: dict[str, bytes] = field(default_factory=dict)
+    _held: set[str] = field(default_factory=set)
 
     async def capabilities(self) -> Capabilities:
         return Capabilities(
@@ -80,7 +96,7 @@ class FakeWorker:
                 streaming_events=True,
                 estimate=True,
             ),
-            max_concurrent_assignments=1,
+            max_concurrent_assignments=self.capacity or 1,
         )
 
     async def estimate(self, request: EstimateRequest) -> Estimate:
@@ -97,6 +113,12 @@ class FakeWorker:
         )
 
     async def assign(self, assignment: Assignment) -> AssignmentState:
+        if self.on_assign is not None:
+            await self.on_assign(assignment)
+        if self.full_for > 0 or (self.capacity is not None and len(self._held) >= self.capacity):
+            self.full_for = max(self.full_for - 1, 0)
+            self.refused += 1
+            raise WorkerAtCapacity(f"at capacity: {len(self._held)} held")
         self.assignments.append(assignment)
         now = datetime.now(UTC)
         if self.reject_with is not None:
@@ -116,10 +138,20 @@ class FakeWorker:
                 last_seq=0,
                 accepted_at=now,
             )
+            self._held.add(assignment.assignment_id)
+            self.peak = max(self.peak, len(self._held))
         self._states[assignment.assignment_id] = state
         return state
 
     async def events(self, assignment_id: AssignmentId, *, after: int = 0) -> AsyncIterator[Event]:
+        try:
+            async for event in self._events(assignment_id):
+                yield event
+        finally:
+            # The assignment is over, or nobody follows it any more: its place is free.
+            self._held.discard(assignment_id)
+
+    async def _events(self, assignment_id: AssignmentId) -> AsyncIterator[Event]:
         assignment = next(a for a in self.assignments if a.assignment_id == assignment_id)
         seq = 0
         ts = datetime.now(UTC)
@@ -137,6 +169,8 @@ class FakeWorker:
         start = self._start_index(assignment.context.checkpoint_ref)
         for index in range(start, len(self.script)):
             inner = self.script[index]
+            if self.inner_seconds:
+                await asyncio.sleep(self.inner_seconds)
             yield await emit(
                 StepStarted(
                     **base(),

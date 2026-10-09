@@ -42,7 +42,8 @@ works. The worker that trains, `mlbench`, arrives at `0.4.0` (`docs/roadmap.md`)
 
 Tunables: `--step-seconds` (quick, default 0.3), `--epochs` (longrun, default 4),
 `--epoch-seconds` (longrun, default 0.5), `--estimate-factor` (default 1.0, see *Limits*),
-`--resource-class`, `--state-dir` for checkpoints
+`--max-concurrent` (default 4: the assignments it holds at once; a further one is answered
+`503`, at capacity), `--resource-class`, `--state-dir` for checkpoints
 (default a fresh directory under `~/.cache/taktus-script-worker/`). When an execution adapter
 starts this worker it sets `TAKTUS_UNIT_PORT` and `TAKTUS_UNIT_STATE_DIR` — the launch
 convention of the execution port (`docs/architecture/contracts.md` §2.4) — and the worker
