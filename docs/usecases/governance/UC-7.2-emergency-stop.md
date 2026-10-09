@@ -48,9 +48,6 @@ Resuming is a person's act; the run continues at the boundary it stopped at.
   narrative afterwards, and the narrative names the rule and the facts.
 - A running step is never aborted.
 
-**Proven so far:** the first condition, for a single run stopped by a person, by the named tests.
-Stopping by scope, the criteria as tenant configuration, and the automatic trigger are not built.
-
 ## 3. Where the boundary lies
 
 **Not escalation.** Bringing a person in about a failure, with a situation package, is UC-4.5; the
@@ -70,3 +67,8 @@ migration's second step; the requirement is unchanged. Definition `UC-7.2`, esca
 intervention: its emergency stop "at any time, globally and per process" is here; its escalation
 "on uncertainty, failures or exceeding the frame" is UC-4.5, with UC-4.6, which escalates instead
 of healing where it is unsure.
+
+## 5. What is proven so far
+
+The first condition, for a single run stopped by a person, by the named tests.
+Stopping by scope, the criteria as tenant configuration, and the automatic trigger are not built.

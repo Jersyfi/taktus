@@ -38,9 +38,6 @@ and the flexibility of the dialogue with a person is kept whole.
 - Running a step's evaluation set again under an unchanged configuration stays within its
   tolerance. A drift beyond it is a finding of deviation detection (UC-4.10).
 
-**Proven so far:** an answer that fails its step's check does not leave the step, by the named test.
-Tolerances, evaluation sets and evaluation before a change are not built.
-
 ## 3. Where the boundary lies
 
 **Not identical answers.** A variable method repeats within its tolerance; replaying a run repeats
@@ -54,3 +51,8 @@ Process versions as bundles (ADR-0011); exactness classes (ADR-0014, ADR-0018); 
 (ADR-0004); step atomicity and replay (ADR-0005); deviation detection (UC-4.10). Definition `UC-8.4`.
 The version is `0.4.0`, where a step moves to a trained model on Taktus's own proposal and the move
 must be evaluated.
+
+## 5. What is proven so far
+
+An answer that fails its step's check does not leave the step, by the named test.
+Tolerances, evaluation sets and evaluation before a change are not built.

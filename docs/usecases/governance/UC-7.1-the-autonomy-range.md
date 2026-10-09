@@ -51,10 +51,6 @@ check at level 2 or 3; a corporation runs whole chains at level 4; both with the
   process that only an adapter below *verified* could serve is not run on it, and the finding
   names the step and the adapter.
 
-**Proven so far:** a process with a bare level does not register, by the named test. Levels per
-action and per risk class, the approval with a quality history, the maturity threshold from level 3,
-and level 4 itself are not built.
-
 ## 3. Where the boundary lies
 
 **Not a promise that level 4 fits every process.** The direction is always towards level 4 and never
@@ -77,3 +73,9 @@ Definition `UC-7.1`.
 the system is anchored to a person at every level (ADR-0022), and so are legal and strategic acts
 (ADR-0008). Level 4 is therefore *unattended in execution, anchored in direction and in outward
 correction*; the definition's unqualified "corrects itself" does not hold for what has left.
+
+## 5. What is proven so far
+
+A process with a bare level does not register, by the named test. Levels per
+action and per risk class, the approval with a quality history, the maturity threshold from level 3,
+and level 4 itself are not built.

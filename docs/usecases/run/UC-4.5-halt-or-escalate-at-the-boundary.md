@@ -42,9 +42,6 @@ A business-critical or business-damaging finding always brings in a person.
 - A running step is never aborted to halt or escalate: the boundary is the step's own
   (ADR-0005).
 
-**Proven so far:** the first four conditions, by the named tests. The situation package and the
-reaction targets are not built.
-
 ## 3. Where the boundary lies
 
 **Not self-healing.** Retrying or correcting within the frame, before anything is escalated, is
@@ -76,3 +73,8 @@ The definition's single escalation path for every finding is superseded by that 
 requirement — a business-critical finding always brings in a person, with everything needed to act
 — holds on both paths. That is why section 3 says *not a result defect* and section 1 still says
 *finding*.
+
+## 5. What is proven so far
+
+The first four conditions, by the named tests. The situation package and the
+reaction targets are not built.

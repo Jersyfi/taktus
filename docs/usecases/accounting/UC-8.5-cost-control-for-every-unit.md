@@ -51,11 +51,6 @@ run out, and warns early, not only at the limit.
 - What a named person consumed is visible to that person. Anyone else sees consumption aggregated
   by role, team or department; no view ranks people by what they consumed (principle 14).
 
-**Proven so far:** money recomputed from the ledger, admission against what earlier steps used,
-the margin that absorbs an overrun, money per assignment held as an estimate, and the statement of
-what a budget can promise, by the named tests — for a run's budget. Units, inheritance along the
-organisation, alerts, policies other than halting, forecasts and anomalies are not built.
-
 ## 3. Where the boundary lies
 
 **Not charging.** What the organisation pays for Taktus is the Takt's, and nothing is charged yet
@@ -98,3 +93,10 @@ that what was once wanted stays readable:
 for budgets. Principle 14 forbids any metric that appraises a named person. The condition above —
 a person's consumption visible to that person, aggregated for everyone else — is the stricter
 reading, and the owner is asked about it in DEC-0069.
+
+## 5. What is proven so far
+
+Money recomputed from the ledger, admission against what earlier steps used,
+the margin that absorbs an overrun, money per assignment held as an estimate, and the statement of
+what a budget can promise, by the named tests — for a run's budget. Units, inheritance along the
+organisation, alerts, policies other than halting, forecasts and anomalies are not built.

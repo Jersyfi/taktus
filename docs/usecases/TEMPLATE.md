@@ -13,8 +13,8 @@ supersedes: null
 <!--
 Copy this file to docs/usecases/<component>/UC-<area>.<case>-<slug>.md. The number follows
 NUMBERING.md. Replace every <placeholder>; `make gate-usecases` fails on any that remains.
-Sections 1 to 3 are the requirement (mode 3, the owner's); section 4 and the front matter are
-the description (mode 1). Every ADR the file names goes into `adrs` with its digest:
+Sections 1 to 3 are the requirement (mode 3, the owner's); sections 4 and 5 and the front matter
+are the description (mode 1). Section 5 is added once a named test proves something. Every ADR the file names goes into `adrs` with its digest:
 `uv run tools/check_usecases.py --digest ADR-NNNN` prints it. Optional: `epic: E<n>`.
 Never write or change sections 1 to 3 in the pull request that implements the use case.
 -->
@@ -40,3 +40,8 @@ and why.>
 ## 4. What it rests on
 
 <Other use cases, ADRs, contracts, the milestone; where the definition's text said it.>
+
+## 5. What is proven so far
+
+<Which conditions of section 2 the named tests prove, and what is not built. Delete this section
+while nothing is proven.>

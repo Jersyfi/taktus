@@ -37,11 +37,6 @@ that defines a process can leave Taktus in an open format.
   can be exported as one package per process, in an open format, and read without Taktus.
 - No process, bundle or blueprint names a provider; each names a capability (ADR-0003).
 
-**Proven so far:** the verdict rules, the exception, and a removal recorded in the ledger, by the
-named tests; the weekly run is started by a workflow of the repository host, not yet by Taktus's
-own scheduler. The validation run after a replacement and the export of a registered version do
-not exist.
-
 ## 3. Where the boundary lies
 
 **Not the same quality.** Removing an integration may make a process worse or dearer; the
@@ -58,3 +53,10 @@ through the connector port (ADR-0027) to run the test as the process S-01 of
 `blueprints/self-operation/`; the bundle format (ADR-0011) for the export; the evaluation of a
 replacement belongs with repeatability (definition `UC-8.4`). Definition `UC-8.9`. The version is
 `0.5.0`, where the roadmap requires principle 13 to be measured rather than asserted.
+
+## 5. What is proven so far
+
+The verdict rules, the exception, and a removal recorded in the ledger, by the
+named tests; the weekly run is started by a workflow of the repository host, not yet by Taktus's
+own scheduler. The validation run after a replacement and the export of a registered version do
+not exist.

@@ -36,10 +36,6 @@ profile can only narrow what the agent may do, never widen it.
 - Rights are granted to roles, and a person holds them through a role; a right granted to a named
   person outside any role is not possible.
 
-**Proven so far:** a credential reaches the unit it was given to and nothing else, and a unit reaches
-only the hosts its frame names, by the named tests. Rights per role, approval and the role profiles
-are not built; the identity component that holds roles is `0.2.0`.
-
 ## 3. Where the boundary lies
 
 **Not the organisation's structure itself.** Departments, teams and who belongs where are the
@@ -57,3 +53,9 @@ The worker contract's frame with its allowed tools and hosts and its injected cr
 through an egress proxy, the process and endpoint adapters declaring without enforcing
 (`docs/status.md` §5); tenants and identities (ADR-0020); the autonomy statement, whose raise is a
 right of its own (ADR-0026); `docs/architecture/governance.md` §5. Definition `UC-7.3`.
+
+## 5. What is proven so far
+
+A credential reaches the unit it was given to and nothing else, and a unit reaches
+only the hosts its frame names, by the named tests. Rights per role, approval and the role profiles
+are not built; the identity component that holds roles is `0.2.0`.
