@@ -1,10 +1,10 @@
 # NEED-0019 — A sandbox the connector suite may write to
 
 **Kind:** access
-**Raised in:** the pull request of issue #93
+**Raised in:** [#162](https://github.com/Jersyfi/taktus/pull/162), for issue #93
 **Issue:** [#161](https://github.com/Jersyfi/taktus/issues/161)
 **Needed by:** 2026-10-31
-**Foreseeable since:** the pull request of issue #93, where the instance learned to run an adapter's conformance suite itself and record it
+**Foreseeable since:** [#162](https://github.com/Jersyfi/taktus/pull/162), where the instance learned to run an adapter's conformance suite itself and record it
 
 ## 1. What is needed
 

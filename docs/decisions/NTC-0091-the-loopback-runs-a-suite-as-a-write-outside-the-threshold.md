@@ -3,7 +3,7 @@
 **Mode entry:** M2.6
 **Kind:** unlisted
 **Decided:** 2026-10-09
-**Raised in:** the pull request of issue #93
+**Raised in:** [#162](https://github.com/Jersyfi/taktus/pull/162), for issue #93
 **How it follows:** Issue #93 says a process starts the suite "through the loopback connector (ADR-0027)". The connector contract says an operation's effect states whether it leaves the system (`contracts/connector/v1` §3), and a suite's run does leave it: it posts assignments to a worker, calls a model, and writes records into a connector's target. So the operation is declared `write`, with idempotency `none`, which the run never repeats on its own (ADR-0024). NTC-0079 keeps the loopback outside the maturity threshold because the threshold guards what an integration does to the world, and the loopback is no integration. The suite's run is how an adapter earns the conformance half; requiring that half before the run would make it unreachable, as holding S-01 to the threshold would have made the removal half unreachable. Strict in substance: the effect is declared as it is, so a rehearsal answers it from a recording and level 1 proposes it to a person instead of running it; sparing in ceremony: no new exemption, the loopback stays what NTC-0079 says it is.
 
 ## 1. What was decided
@@ -46,7 +46,7 @@ this declaration. It moves no limit and no level (M3.9, M3.10). M2.6 applies.
 
 ## 5. The entry it proposes
 
-**M1.16** — *How the instance's own operations are declared*: an operation of the loopback
+**M1.17** — *How the instance's own operations are declared*: an operation of the loopback
 connector declares the effect it has, as any connector's does; one that leaves the system is a
 `write` or a `delivery`, and the loopback stays outside the maturity threshold as long as the
 operation is how an adapter earns a half of its maturity.
