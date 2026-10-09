@@ -3,7 +3,7 @@
 **Mode entry:** M2.6
 **Kind:** unlisted
 **Decided:** 2026-10-09
-**Raised in:** issue [#78](https://github.com/Jersyfi/taktus/issues/78)
+**Raised in:** [#153](https://github.com/Jersyfi/taktus/pull/153), for issue #78
 **How it follows:** `docs/architecture/contracts.md` §3 states the rule for "production processes at autonomy level 3 and above", and NTC-0051 wrote it into UC-7.1 as what a process "uses". A rehearsal is no production run: it acts on nothing outside, every outward operation answers from a recording, and every entry says so (ADR-0030). The loopback connector is no integration: contracts.md §4 says it is "never itself an integration the removal test lists", so it can never earn the removal half that *verified* needs. Holding either to the threshold would not make anything safer; it would stop the removal test, which CLAUDE.md §6 requires weekly and which is the only way any adapter earns *verified*. Strict in substance: every real step on an integration at level 3 is held to *verified*, and an engine that cannot read a maturity record runs none; sparing in ceremony: nothing is added for the two cases that act on nothing outside.
 
 ## 1. What was decided
