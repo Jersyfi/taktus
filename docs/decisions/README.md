@@ -88,6 +88,8 @@ The open needs are printed by `make status` (DEC-0026).
 | [0046](NTC-0046-the-failover-test-tells-an-admitted-step-from-a-started-one.md) | The failover test tells admitted from started | M2.2 | `test-strategy` | a step the killed runner had started is started again, one it had only admitted is started once, by the survivor; the test expected a second start for both and failed on CI whenever the kill caught a step admitted (#123) |
 | [0048](NTC-0048-p-01-reports-where-roadmap-and-backlog-disagree.md) | P-01 reports where roadmap and backlog disagree | M2.4 | `behaviour-change` | P-01 Roadmap control runs as a bundle and reports, as a comment on one issue, an item without an issue, an issue its milestone does not name and a `ready` label on failing content; the backlog's order is one function shared with `make backlog`; a label `report` marks an issue that is not work |
 | [0049](NTC-0049-a-roadmap-item-names-its-issues.md) | A roadmap item names its issues | M2.6 | `unlisted` | every item of a milestone in `docs/roadmap.md` names the issues that carry it as `#N`, so that a rule can hold the roadmap against the backlog; proposes M1.12 |
+| [0050](NTC-0050-uc-1-1-the-normalisation-is-taktuss-own.md) | UC-1.1: the normalisation is Taktus's own | M2.7 | `restoration` | brought up to definition UC-1.1 and chapter 5.4: turning an input into a command is the `command` component's, no foreign gateway or runtime product performs it |
+| [0051](NTC-0051-uc-7-1-from-level-3-only-verified-adapters.md) | UC-7.1: from level 3, only verified adapters | M2.7 | `restoration` | brought up to definition chapter 5.3, as the vision's history records it: a process at level 3 or above runs a step only on an adapter at *verified* or above |
 
 ## Decisions
 

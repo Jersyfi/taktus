@@ -21,7 +21,8 @@ phone. Taktus turns every such input into the same kind of command, so that what
 does not depend on where the task came from. The answer, or a question back, arrives in the
 channel the task came from.
 
-A new channel is added without changing the core.
+A new channel is added without changing the core. Turning an input into a command is Taktus's
+own work: no foreign gateway or agent runtime does it in Taktus's place.
 
 ## 2. How it is verified
 
@@ -35,11 +36,15 @@ A new channel is added without changing the core.
   contract (ADR-0024); a test adds a channel this way and changes nothing under
   `src/taktus/components/`.
 - A channel is referred to by its capability, never by a product name (ADR-0003).
+- The normalisation of an input into a command is part of the `command` component. No foreign
+  gateway or runtime product performs it; a library for a channel may be used only inside that
+  channel's connector.
 
 **Proven so far:** an event arriving through a channel becomes a command that carries its
 channel and the address a reply goes to, by the named test. That every command carries its
 sender's identity and its context is not checked as a condition of its own. The equality of two commands from two
-channels is not tested; a reply delivered to that address, and a chat channel, are not built.
+channels is not tested; a reply delivered to that address, and a chat channel, are not built. That the normalisation is
+Taktus's own is held only as far as the architecture tests see a foreign import in the core.
 
 ## 3. Where the boundary lies
 
@@ -53,4 +58,5 @@ guarantees** of the channel itself.
 
 The connector contract and its intake half (ADR-0024); the adapter obligation (ADR-0003);
 `taktusctl submit` and the webhook intake of `0.1.0`; the chat connector of `0.2.0`, hence the
-version. Definition `UC-1.1`.
+version. Definition `UC-1.1`, and chapter 5.4 of the definition, which keeps the normalisation in
+the core and no foreign gateway product as its base (NTC-0050).
