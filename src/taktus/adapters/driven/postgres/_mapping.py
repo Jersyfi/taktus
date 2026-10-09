@@ -15,7 +15,7 @@ inside the caller's transaction. Timestamps travel as ISO 8601 text in a documen
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Protocol
 
 from sqlalchemy import Table, delete, select
@@ -977,6 +977,63 @@ class RegisterEntryMapper:
         return [dict(row.entry) for row in rows]
 
 
+# --- the owner-facing channel ------------------------------------------------------------------
+
+
+class OwnerChannelMapper:
+    """One row per tenant; the configuration stays a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.owner_channel, tenant, id)
+        return None if row is None else dict(row.channel)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.owner_channel,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "channel": document,
+                "configured_at": _at(document["configured_at"]),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.owner_channel, tenant, s.owner_channel.c.id)
+        return [dict(row.channel) for row in rows]
+
+
+class ReportMapper:
+    """One row per report to the owner: the report as a document, and beside it the columns a
+    list of what is open is read by."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.report, tenant, id)
+        return None if row is None else dict(row.report)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.report,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "kind": document["kind"],
+                "state": document.get("state", "open"),
+                "due": date.fromisoformat(document["due"]),
+                "raised_at": _at(document["raised_at"]),
+                "report": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.report, tenant, s.report.c.raised_at, s.report.c.id)
+        return [dict(row.report) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -994,4 +1051,6 @@ MAPPERS: dict[str, Mapper] = {
     "anchor_configuration": AnchorConfigurationMapper(),
     "request": DecisionRequestMapper(),
     "register_entry": RegisterEntryMapper(),
+    "owner_channel": OwnerChannelMapper(),
+    "report": ReportMapper(),
 }

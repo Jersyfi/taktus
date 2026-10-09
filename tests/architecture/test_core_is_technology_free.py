@@ -214,6 +214,7 @@ def test_every_component_of_the_structure_exists_as_a_package() -> None:
         "knowledge",
         "value",
         "ledger",
+        "reporting",
     }
     present = {p.name for p in (SRC / "components").iterdir() if (p / "__init__.py").is_file()}
     assert present == documented

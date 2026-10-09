@@ -11,6 +11,6 @@ application layers inside. No component imports another; what they share is the 
 | `command` | command → commissioned plan |
 | `governance` | whether a result has left the system (ADR-0022); the capacity report — what the platform has left and the date a person must act by (`docs/architecture/platform.md`) |
 | every other | a package with its docstring; filled from the version that needs it (`docs/roadmap.md`) |
-| `reporting` | no package yet (ADR-0029): it is created with the first `reporting` use case that is built |
+| `reporting` | the owner-facing channel (ADR-0045): a tenant's channel and phrasebook, a report to the owner and its three renderings, the answer in the channel read, reflected and confirmed |
 
 Each package's docstring states what it owns and where its lines are drawn.

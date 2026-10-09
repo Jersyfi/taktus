@@ -73,5 +73,6 @@ confirmed; an answer from which no single option can be read changes nothing. Ev
 request is an entry in the register, linked to the run, the step and the request. Waiting work is
 in the run's reason and ledger and in the decider's list, overdue shown. A decider reads their own
 response times; anyone else reads them aggregated by role or department over at least two
-deciders, never under the decider's name. Not built: the request in a chat (#85), the decider's
-page in the web app (`0.3.0`), rules from precedent (`0.6.0`).
+deciders, never under the decider's name. A request addressed to the owner
+reaches the owner's chat and is answered there (UC-6.11). Not built: the decider's page in the
+web app (`0.3.0`), rules from precedent (`0.6.0`).

@@ -76,6 +76,7 @@ from taktus.components.process.application.service.register_version import (
 )
 from taktus.components.process.application.service.triggers import TriggersHandler
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
+from taktus.components.reporting.application.query import ReportQueries
 from taktus.components.run.application.query import ProvenanceQuery, RecordedResponses
 from taktus.components.run.application.service import (
     DecideSteps,
@@ -98,6 +99,11 @@ from taktus.composition.execution import (
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturity import CatalogMaturities
+from taktus.composition.owner_channel import (
+    OwnerChannelWiring,
+    known_secrets,
+    owner_channel_wiring,
+)
 from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.triggers import Triggers
@@ -143,6 +149,9 @@ class Wired:
     """The capacity report the scheduler runs every `TAKTUS_CAPACITY_INTERVAL_SECONDS`."""
     triggers: Triggers
     """The time triggers the scheduler fires on every tick while it leads (ADR-0035)."""
+    owner: OwnerChannelWiring
+    """The owner-facing channel: reports to the owner, their renderings and the answers
+    given in the channel (ADR-0045)."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -158,6 +167,10 @@ class Wired:
     @property
     def decision_queries(self) -> DecisionQueries:
         return self.decisions.queries
+
+    @property
+    def owner_reports(self) -> ReportQueries:
+        return self.owner.queries
 
     @property
     def answer_decision(self) -> AnswerRequestHandler:
@@ -286,6 +299,26 @@ async def wire(
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
+
+            async def decided(tenant: str, run_id: str, actor: str) -> None:
+                # A decision confirmed in the owner's channel hands the run to a runner,
+                # as one confirmed on the HTTP surface does.
+                await engine.decide(
+                    DecideSteps(run_id=run_id, actor=actor, tenant=tenant, enqueue=True)
+                )
+
+            owner = owner_channel_wiring(
+                stored,
+                persistence,
+                ledger,
+                clock,
+                pools.connectors,
+                decisions.answer,
+                decisions.confirm,
+                known_secrets(os.environ, also=[settings.database.reveal()]),
+                decided=decided,
+            )
+            decisions.requests.report_to(owner.decision_raised)
             commission = CommissionPlanHandler(
                 PostgresRepository(persistence, Command),
                 PostgresRepository(persistence, Plan),
@@ -334,9 +367,11 @@ async def wire(
                     identities,
                     telemetry,
                     ConnectorReplies(pools.connectors),
+                    owner.answers,
                 ),
                 identities=identities,
                 decisions=decisions,
+                owner=owner,
                 complete_intake=CompleteIntakeHandler(
                     PostgresRepository(persistence, IntakeEvent),
                     PostgresRepository(persistence, Command),

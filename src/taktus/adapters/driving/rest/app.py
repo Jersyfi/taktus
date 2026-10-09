@@ -10,8 +10,9 @@ The `api` role adds the rest: webhook intake for the channel a connector serves,
 of an intake event into a command by the identity the identity component places, the link code
 a person creates in their Taktus account to link a channel account (ADR-0040), the decision
 requests addressed to a decider — listed, answered, the reading confirmed — and the decider's
-own response times (ADR-0042), and a read API for runs and ledger entries. No other write, no
-UI.
+own response times (ADR-0042), the reports to the owner as their view and their repository
+text (ADR-0045), and a read API for runs and ledger entries. No other write, no UI. An answer
+the owner writes in the thread of a report arrives through the webhook intake.
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -50,6 +51,8 @@ from taktus.components.decision.application.service import (
     UnknownRequest,
 )
 from taktus.components.identity.application.service import UnknownIdentity
+from taktus.components.reporting.application.query import view as report_view
+from taktus.components.reporting.domain.service.rendering import repository_text
 from taktus.ports.connector import ConnectorError, Delivery, RefusalReason
 from taktus.ports.identity import Resolution
 from taktus.shared.v1.capability import CAPABILITY_PATTERN
@@ -97,6 +100,7 @@ def build_app(services: RestServices, *, prefix: str = "/", full: bool = True) -
         app.include_router(_intake(services), prefix=base)
         app.include_router(_identity(services), prefix=base)
         app.include_router(_decisions(services), prefix=base)
+        app.include_router(_owner(services), prefix=base)
         app.include_router(_reads(services), prefix=base)
     return app
 
@@ -156,9 +160,10 @@ def _intake(services: RestServices) -> APIRouter:
                 "content": {"text/plain": {}, "application/json": {}},
             },
             202: {
-                "description": "Decided: `accepted` with the intake event, `refused`, or "
+                "description": "Decided: `accepted` with the intake event, `refused`, "
                 "`unknown_sender` with whether the sender was answered in the channel and "
-                "whether the message linked their account."
+                "whether the message linked their account, or `answer` for a message in the "
+                "thread of a report to the owner, with what became of it."
             },
             400: {"description": "The body cannot be read.", **PROBLEM},
             401: {"description": "Unsigned, or the signature does not verify.", **PROBLEM},
@@ -198,6 +203,11 @@ def _intake(services: RestServices) -> APIRouter:
                 outcome.refused.detail,
                 title="Refused",
                 reason=outcome.refused.reason,
+            )
+        if outcome.answer is not None:
+            # An answer to a report: taken by the owner-facing channel, kept as no event.
+            return JSONResponse(
+                {"answer": outcome.answer, "replied": outcome.replied}, status_code=202
             )
         if outcome.unknown_sender is not None:
             return JSONResponse(
@@ -486,6 +496,84 @@ def _decisions(services: RestServices) -> APIRouter:
                 "request": _view(Addressed(confirmed.request, overdue=False), who.identity),
             }
         )
+
+    return router
+
+
+def _owner(services: RestServices) -> APIRouter:
+    router = APIRouter(tags=["owner"])
+    unauthenticated: dict[int | str, dict[str, Any]] = {
+        401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+        403: {
+            "description": "You are not the owner, nor someone the owner named.",
+            **PROBLEM,
+        },
+    }
+    needs_key = "an account key is needed: Authorization: Bearer <key>"
+    not_a_reader = "only the owner, and the people the owner named, read the reports"
+
+    @router.get(
+        "/owner/reports",
+        summary="What is needed from the owner",
+        description="Every report to the owner — a decision request addressed to them, a need, "
+        "a date, a failure Taktus noticed about itself — the open ones first, the earliest due "
+        "first, each as its view: what is needed, the steps, what stands still, the date, every "
+        "delivery with its outcome, and its history (ADR-0045). The history says whether you "
+        "acted, never who did.",
+        responses={200: {"description": "The reports."}, **unauthenticated, **INVALID},
+    )
+    async def reports(authorization: str | None = Header(default=None)) -> JSONResponse:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        if not await services.owner_reports.may_read(who.tenant, who.identity):
+            return problem(403, not_a_reader)
+        found = await services.owner_reports.reports(who.tenant)
+        return JSONResponse({"reports": [report_view(r, who.identity) for r in found]})
+
+    @router.get(
+        "/owner/reports/{report_id}",
+        summary="One report to the owner, with its history",
+        responses={
+            200: {"description": "The report's view."},
+            404: {"description": "No such report.", **PROBLEM},
+            **unauthenticated,
+            **INVALID,
+        },
+    )
+    async def one(report_id: str, authorization: str | None = Header(default=None)) -> Any:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        if not await services.owner_reports.may_read(who.tenant, who.identity):
+            return problem(403, not_a_reader)
+        found = await services.owner_reports.one(who.tenant, report_id)
+        if found is None:
+            return problem(404, f"no report {report_id!r}")
+        return JSONResponse(report_view(found, who.identity))
+
+    @router.get(
+        "/owner/reports/{report_id}/text",
+        summary="One report as a repository text",
+        description="The report as a record in a repository: English, minimal — what future "
+        "work needs, and where an answer was given, never what was said there.",
+        responses={
+            200: {"description": "The text.", "content": {"text/markdown": {}}},
+            404: {"description": "No such report.", **PROBLEM},
+            **unauthenticated,
+            **INVALID,
+        },
+    )
+    async def text(report_id: str, authorization: str | None = Header(default=None)) -> Any:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        if not await services.owner_reports.may_read(who.tenant, who.identity):
+            return problem(403, not_a_reader)
+        found = await services.owner_reports.one(who.tenant, report_id)
+        if found is None:
+            return problem(404, f"no report {report_id!r}")
+        return Response(repository_text(found), media_type="text/markdown")
 
     return router
 

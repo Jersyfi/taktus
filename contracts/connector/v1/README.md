@@ -351,8 +351,13 @@ carried and what to say there:
 
 It is an outward operation like any other: it declares its effect and its idempotency, and a
 repeat with the same key acts once. Taktus calls it as itself (ADR-0033), never as the sender,
-to answer a sender it cannot place (ADR-0040). A connector that declares no reply operation
-serves the channel all the same; its senders are then not answered.
+to answer a sender it cannot place (ADR-0040). It calls it too to say a report to the owner at
+the address the tenant configured for its owner-facing channel, without a thread, and to answer
+in the report's thread what the owner writes there (ADR-0045). Where the message said opens or
+continues a thread, the output names that thread as `thread`, so that a reply written there can
+be told apart from any other message; an output without it is a message no answer is matched to.
+A connector that declares no reply operation serves the channel all the same; its senders are
+then not answered, and no report reaches an owner through it.
 
 ---
 

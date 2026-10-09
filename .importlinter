@@ -32,6 +32,7 @@ modules =
     taktus.components.knowledge
     taktus.components.value
     taktus.components.ledger
+    taktus.components.reporting
 
 [importlinter:contract:core-is-technology-free]
 name = The core imports no technology

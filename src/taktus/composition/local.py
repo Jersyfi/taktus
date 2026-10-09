@@ -15,6 +15,7 @@ names, each under `connector.<label>`, resolved by the capabilities they declare
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -74,6 +75,7 @@ from taktus.composition.execution import (
 )
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturity import CatalogMaturities
+from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.settings import (
     load_budget,
     load_capacity,
@@ -195,6 +197,19 @@ class LocalWiring:
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
+            # A decision request addressed to the owner reaches the owner-facing channel
+            # (ADR-0045); a command line run that raises one says it there too.
+            owner = owner_channel_wiring(
+                stores.of,
+                stores.work,
+                ledger,
+                clock,
+                pools.connectors,
+                decisions.answer,
+                decisions.confirm,
+                known_secrets(os.environ),
+            )
+            decisions.requests.report_to(owner.decision_raised)
             commission = CommissionPlanHandler(
                 stores.of(Command), stores.of(Plan), stores.work, clock, ids
             )
@@ -233,6 +248,8 @@ class LocalWiring:
                 identities=identities,
                 configure_anchors=decisions.configure,
                 anchors=decisions.anchors,
+                configure_owner_channel=owner.configure,
+                owner_channel=owner.channel,
             )
             telemetry.shutdown()
 

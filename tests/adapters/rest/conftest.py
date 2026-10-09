@@ -10,6 +10,7 @@ import httpx
 import pytest
 from fakes import FakeClock, FakeIdentifiers
 from fakes.identity import Directory, FakeReplies, directory
+from fakes.owner_channel import RecordingDeliveries
 
 from taktus.adapters.driven.memory import (
     MemoryPersistence,
@@ -28,8 +29,10 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.ledger.application.service import ChainedLedger
+from taktus.components.reporting.application.query import ReportQueries
 from taktus.components.run.domain.model import Run
 from taktus.composition.decisions import DecisionWiring, decision_wiring
+from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
 from taktus.ports.connector import (
     ConnectorError,
     Delivery,
@@ -93,6 +96,9 @@ class Services:
     identity: Directory
     replies: FakeReplies
     decisions: DecisionWiring
+    owner: OwnerChannelWiring
+    """The owner-facing channel, delivering into `deliveries` (ADR-0045)."""
+    deliveries: RecordingDeliveries
     continued: list[tuple[str, str, str]] = field(default_factory=list)
     """The runs handed on after a decision took effect: tenant, run, actor."""
     tenants: Sequence[str] = (TENANT,)
@@ -120,6 +126,10 @@ class Services:
         return self.decisions.queries
 
     @property
+    def owner_reports(self) -> ReportQueries:
+        return self.owner.queries
+
+    @property
     def answer_decision(self) -> AnswerRequestHandler:
         return self.decisions.answer
 
@@ -141,13 +151,36 @@ def services(connector: ScriptedConnector | None = None) -> Services:
     events: Repository[IntakeEvent] = MemoryRepository(persistence, IntakeEvent)
     identity = directory((TENANT,), persistence=persistence, clock=clock)
     replies = FakeReplies()
+
+    def of(kind: Any) -> Any:
+        return MemoryRepository(persistence, kind)
+
+    decisions = decision_wiring(of, persistence, identity.ledger, clock, identity.directory)
+    deliveries = RecordingDeliveries()
+    owner = owner_channel_wiring(
+        of,
+        persistence,
+        identity.ledger,
+        clock,
+        _NoConnectors(),
+        decisions.answer,
+        decisions.confirm,
+        KnownSecrets(()),
+        deliveries=deliveries,
+    )
+    decisions.requests.report_to(owner.decision_raised)
     return Services(
         persistence=persistence,
         runs=MemoryRepository(persistence, Run),
         ledger=identity.ledger,
         events=events,
         intake=ReceiveIntakeHandler(
-            {"channel.repo": scripted}, events, persistence, identity.directory, replies=replies
+            {"channel.repo": scripted},
+            events,
+            persistence,
+            identity.directory,
+            replies=replies,
+            answers=owner.answers,
         ),
         connector=scripted,
         clock=clock,
@@ -161,14 +194,15 @@ def services(connector: ScriptedConnector | None = None) -> Services:
         ),
         identity=identity,
         replies=replies,
-        decisions=decision_wiring(
-            lambda kind: MemoryRepository(persistence, kind),
-            persistence,
-            identity.ledger,
-            clock,
-            identity.directory,
-        ),
+        decisions=decisions,
+        owner=owner,
+        deliveries=deliveries,
     )
+
+
+class _NoConnectors:
+    async def resolve(self, capability: str) -> None:
+        return None
 
 
 async def a_run(given: Services, run_id: str = "run_1") -> Run:

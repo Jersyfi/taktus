@@ -27,6 +27,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -184,6 +185,30 @@ register_entry = Table(
     Column("entry", JSONB, nullable=False),
     _at("decided_at"),
     PrimaryKeyConstraint("tenant", "id"),
+)
+
+owner_channel = Table(
+    "owner_channel",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the tenant: one channel each
+    Column("channel", JSONB, nullable=False),
+    _at("configured_at"),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
+report = Table(
+    "report",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    Column("due", Date, nullable=False),
+    _at("raised_at"),
+    Column("report", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("report_state", "tenant", "state"),
 )
 
 trigger_state = Table(

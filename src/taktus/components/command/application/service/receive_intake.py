@@ -14,6 +14,13 @@ they are offered how to link it. The answer is said in the channel, at the event
 address, as Taktus itself — to a person, never to an automation — and the outcome says
 `unknown_sender` either way. The event is not
 kept: the message that carried a code is not a command either.
+
+**An answer is not a command.** A message written in the thread of something Taktus asked — a
+report to the owner (ADR-0045) — is handed to whoever asked it (`ChannelAnswers`), from the
+identity its sender was placed as, or from nobody for a sender the identity component could not
+place. It is not kept as an intake event, and the outcome says what became of it. A sender
+nobody could place who writes there is told that the answer is not filed, not how to link an
+account.
 """
 
 from __future__ import annotations
@@ -25,6 +32,7 @@ from dataclasses import dataclass
 
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.ports.connector import (
+    ChannelAnswers,
     ChannelReplies,
     ConnectorError,
     Delivery,
@@ -57,16 +65,20 @@ class ReceiveIntake:
 
 @dataclass(frozen=True)
 class IntakeOutcome:
-    """Exactly one of the three: accepted and kept, refused by the connector, or accepted by
-    the connector and not placed because the sender is unknown. For an unknown sender,
-    `replied` says whether the answer reached the channel, and `linked` whether the message
-    linked the account."""
+    """Exactly one of four: accepted and kept, refused by the connector, accepted by the
+    connector and not placed because the sender is unknown, or taken as an answer to what
+    Taktus asked (`answer`, with `unknown_sender` too when nobody could place the sender). For
+    an unknown sender and for an answer, `replied` says whether the answer to it reached the
+    channel, and `linked` whether the message linked the account."""
 
     accepted: IntakeEvent | None = None
     refused: Refusal | None = None
     unknown_sender: Sender | None = None
     replied: bool = False
     linked: Resolution | None = None
+    answer: str | None = None
+    """For a message that answered something Taktus asked: what became of the answer. Nothing
+    is kept as an intake event then."""
 
 
 class ReceiveIntakeHandler:
@@ -78,6 +90,7 @@ class ReceiveIntakeHandler:
         identities: IdentityResolver,
         telemetry: Telemetry | None = None,
         replies: ChannelReplies | None = None,
+        answers: ChannelAnswers | None = None,
     ) -> None:
         self._connectors = connectors
         self._events = events
@@ -85,6 +98,7 @@ class ReceiveIntakeHandler:
         self._identities = identities
         self._telemetry = telemetry
         self._replies = replies
+        self._answers = answers
 
     @property
     def channels(self) -> tuple[Capability, ...]:
@@ -109,6 +123,18 @@ class ReceiveIntakeHandler:
         if accepted is None:  # unreachable: a result is exactly one of the two
             raise ConnectorError("the intake result is neither accepted nor refused")
         resolution = await self._identities.resolve(command.channel, accepted.sender.account)
+        if self._answers is not None and accepted.sender.kind is SenderKind.PERSON:
+            taken = await self._answers.take(
+                command.tenant if resolution is None else resolution.tenant,
+                accepted,
+                None if resolution is None else resolution.identity,
+            )
+            if taken is not None:
+                return IntakeOutcome(
+                    unknown_sender=accepted.sender if resolution is None else None,
+                    replied=taken.replied,
+                    answer=taken.outcome,
+                )
         if resolution is None:
             return await self._unknown(command, accepted)
         tenant = resolution.tenant

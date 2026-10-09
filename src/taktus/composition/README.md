@@ -13,7 +13,12 @@ running step reach its boundary before it exits. While the scheduler leads it fi
 triggers that are due (`triggers.py`, ADR-0035): a firing crosses the process, command and run
 components, so it is wired here. The identity component places every sender; a sender it cannot
 place is answered in the channel through the reply operation of the channel's connector
-(`replies.py`, ADR-0040), which the connector pool resolves, so that is wired here too.
+(`replies.py`, ADR-0040), which the connector pool resolves, so that is wired here too. What is
+needed from the owner reaches them through the same reply operation, and their answer in a
+report's thread comes back through the intake (`owner_channel.py`, ADR-0045): the reporting
+component keeps the report, the decision component files a decision answer, and a decision
+confirmed there hands its run on. The phrasebooks Taktus ships, one per language, are
+`phrasebooks/*.json`: the core names no language.
 
 `local.py` wires `taktusctl` for a developer's machine: PostgreSQL when `TAKTUS_DATABASE_URL`
 (or `_FILE`) is configured, otherwise the in-memory stores with a file snapshot under a state
