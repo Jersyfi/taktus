@@ -11,12 +11,14 @@ an unsigned delivery leaves no trace but a log line. A channel no connector serv
 **An unknown sender gets no execution and no row.** The identity component answers them
 instead: when what they wrote carries a valid link code, their account is linked; otherwise
 they are offered how to link it. The answer is said in the channel, at the event's reply
-address, as Taktus itself, and the outcome says `unknown_sender` either way. The event is not
+address, as Taktus itself — to a person, never to an automation — and the outcome says
+`unknown_sender` either way. The event is not
 kept: the message that carried a code is not a command either.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -30,6 +32,7 @@ from taktus.ports.connector import (
     IntakeConnector,
     Refusal,
     Sender,
+    SenderKind,
 )
 from taktus.ports.identity import IdentityResolver, Resolution
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -133,12 +136,27 @@ class ReceiveIntakeHandler:
             command.channel, accepted.sender.account, accepted.intent.raw
         )
         replied = False
-        if self._replies is not None:
+        # An automation is not answered: nobody reads the offer, and two automations answering
+        # each other would loop. Its event is kept nowhere all the same.
+        if self._replies is not None and accepted.sender.kind is SenderKind.PERSON:
             tenant = command.tenant if answer.linked is None else answer.linked.tenant
-            replied = await self._replies.reply(
-                tenant, accepted.reply_to, answer.reply, key=reply_key(accepted.event_id)
+            # An offer is made once per person and conversation: the key names both, so a
+            # second message of the same person there finds the first offer and says nothing
+            # new. That a code linked the account is said for the message that carried it.
+            to = accepted.reply_to
+            key = (
+                reply_key(accepted.event_id)
+                if answer.linked is not None
+                else offer_key(to.channel, to.address, accepted.sender.account)
             )
+            replied = await self._replies.reply(tenant, accepted.reply_to, answer.reply, key=key)
         return IntakeOutcome(unknown_sender=accepted.sender, replied=replied, linked=answer.linked)
+
+
+def offer_key(channel: str, address: str, account: str) -> str:
+    """The idempotency key of the offer to one person in one conversation."""
+    digest = hashlib.sha256(f"{channel}\n{address}\n{account}".encode()).hexdigest()[:32]
+    return f"taktus:intake:offer:{digest}"
 
 
 def reply_key(event_id: str) -> str:

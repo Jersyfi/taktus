@@ -7,7 +7,7 @@ serves: [P4, P12]
 state: built
 version: 0.2.0
 tests: [tests/integration/test_first_slice.py::test_nothing_executes_without_an_identity, tests/components/command/test_complete_intake.py::test_an_unknown_sender_is_kept_nowhere_and_completed_never, tests/components/identity/test_directory.py::test_one_account_maps_to_at_most_one_identity_and_one_identity_to_many, tests/components/identity/test_directory.py::test_a_code_from_the_persons_account_written_from_the_account_links_it, tests/components/identity/test_directory.py::test_a_matching_name_or_address_links_nothing, tests/components/identity/test_directory.py::test_the_organisations_identity_source_links_what_it_answers, tests/components/identity/test_directory.py::test_every_link_and_every_removal_is_a_ledger_entry_and_revoked_is_unknown, tests/components/command/test_complete_intake.py::test_identity_and_path_are_the_components_never_the_connectors]
-adrs: {ADR-0020: 406f1ca33b50, ADR-0024: ac6a1fe1610a, ADR-0033: eb18bea6bfb4, ADR-0040: e23b4d215dfa}
+adrs: {ADR-0020: 406f1ca33b50, ADR-0024: ac6a1fe1610a, ADR-0033: eb18bea6bfb4, ADR-0040: af5a6cdb5889}
 supersedes: null
 ---
 

@@ -22,7 +22,7 @@ from taktus.components.command.application.service import (
     UnknownSender,
 )
 from taktus.components.command.domain.model import IntakeEvent, IntakeStatus
-from taktus.ports.connector import Delivery, IntakeResult
+from taktus.ports.connector import Delivery, IntakeResult, Sender, SenderKind
 from taktus.shared.v1 import Command
 
 AT = datetime(2026, 9, 19, 8, 0, tzinfo=UTC)
@@ -134,7 +134,12 @@ async def test_an_unknown_sender_is_kept_nowhere_and_completed_never() -> None:
     ((tenant, to, text, key),) = given.replies.said
     assert tenant == "default" and to.address == "acme/product#11"
     assert "does not know this account" in text and "link code" in text
-    assert key == "taktus:intake:dlv_1:reply"
+    assert key.startswith("taktus:intake:offer:"), "once per person and conversation"
+    again = await given.receive.execute(
+        ReceiveIntake(channel="channel.repo", delivery=given.delivery, tenant="default")
+    )
+    assert again.unknown_sender is not None
+    assert given.replies.said[1][3] == key, "the same key: the connector says it once"
     async with given.persistence.transaction("default"):
         assert await given.events.list("default") == []
         assert await given.commands.list("default") == []
@@ -183,6 +188,25 @@ async def test_identity_and_path_are_the_components_never_the_connectors() -> No
     )
     command = await given.complete.execute(CompleteIntake(tenant="default", event_id="dlv_1"))
     assert command.identity == "idn_ada" and command.org_path == ("default", "product")
+
+
+async def test_an_unknown_automation_is_kept_nowhere_and_not_answered() -> None:
+    answer = accepted()
+    automation = answer.model_copy(
+        update={
+            "accepted": answer.accepted.model_copy(  # type: ignore[union-attr]
+                update={"sender": Sender(account="bot-7", kind=SenderKind.AUTOMATION)}
+            )
+        }
+    )
+    given = Setup(automation)
+    outcome = await given.receive.execute(
+        ReceiveIntake(channel="channel.repo", delivery=given.delivery, tenant="default")
+    )
+    assert outcome.unknown_sender is not None and not outcome.replied
+    assert given.replies.said == [], "an automation is never answered: answers would loop"
+    async with given.persistence.transaction("default"):
+        assert await given.events.list("default") == []
 
 
 async def test_a_channel_that_cannot_be_answered_is_reported_not_retried() -> None:

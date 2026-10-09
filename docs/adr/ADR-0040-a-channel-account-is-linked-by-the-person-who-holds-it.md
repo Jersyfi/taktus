@@ -58,9 +58,12 @@ A sender the component cannot place is offered how to link the account. When wha
 linked it, they are told so. The event is kept nowhere. The answer is said through the
 operation `<channel>.reply` that the channel's connector may declare (`contracts/connector/v1`
 §7): input `address`, `thread` and `text`. Taktus says it as itself (ADR-0033), with the
-credential the connector declares for actions. Its idempotency key is derived from the
-delivery, so a redelivered event is answered once. The reference connector declares
-`channel.repo.reply` as a comment on the issue or pull request.
+credential the connector declares for actions. An offer's idempotency key is derived from
+the channel, the conversation and the account, so a person is offered once per conversation,
+however often they write there. That a code linked the account is said once per message. The reference connector declares
+`channel.repo.reply` as a comment on the issue or pull request. A sender the connector marks as an
+automation is not answered: nobody reads the offer, and two automations answering each other
+would loop.
 
 ### 6. The command line and the scheduler name an identity the component knows
 `taktusctl run` and `submit` take `--identity` (or `TAKTUS_IDENTITY`). The identity must exist
@@ -117,6 +120,11 @@ It never carries an account, a code or a key (ADR-0006).
 - **The reply reaches the channel only where the connector declares the reply operation.**
   Elsewhere the sender is not answered, and the outcome says so. A failed reply is not retried
   by Taktus.
+- **Every unlinked person who writes is answered, once per conversation.** A channel the
+  instance listens to does not say whether a message was meant for Taktus, so a person who
+  writes anywhere in it is offered a link, in public where the channel is public. The once per
+  conversation rests on the connector finding its earlier answer by the key, as an operation
+  declared `marked` does.
 - **A code found in a message links the sender who wrote it.** Whoever reads the code before
   it is used, and writes it first from another account, links that account to the identity.
   The 30 minutes and the single use bound that window; they do not close it.

@@ -20,9 +20,9 @@ Who a command acts for now comes from the identity component, and from nothing e
   /identity/link-codes`) and write it in the channel from the account. The organisation's
   identity source, behind a port of its own, may make it too. An unknown sender's event is kept
   nowhere; the sender is answered in the channel, through the reply operation the channel's
-  connector declares, as Taktus itself. An administrator adds identities and sees and revokes
-  links with `taktusctl identity`. Every link, revocation, addition and new key is a ledger
-  entry. The command line names an identity the tenant knows (`--identity` or
+  connector declares, as Taktus itself — a person once per conversation, an automation never.
+  An administrator adds identities and sees and revokes links with `taktusctl identity`. Every
+  link, revocation, addition and new key is a ledger entry. The command line names an identity the tenant knows (`--identity` or
   `TAKTUS_IDENTITY`), and the component supplies its organisational path.
 - The variable, the provisional adapter and the field `provisional` are gone from the code, the
   configuration and the documentation. The reference connector declares `channel.repo.reply`.

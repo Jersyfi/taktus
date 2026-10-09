@@ -7,9 +7,9 @@ it as itself (ADR-0033): the call carries Taktus's own identity and references t
 the connector declares for actions, which the connector's runtime holds.
 
 A channel whose connector declares no reply operation, or a delivery that fails, is answered
-`False` and logged; the intake's outcome says the sender was not answered. Nothing retries it:
-the source system redelivers an event it wants answered, and the idempotency key derived from
-the delivery makes a second delivery say it once.
+`False` and logged; the intake's outcome says the sender was not answered. Nothing retries it.
+The caller chooses the idempotency key: an offer's names the person and the conversation, so
+that the connector says it there once.
 """
 
 from __future__ import annotations
