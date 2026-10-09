@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://taktus.eu/contracts/shared/v1/Autonomy.json",
   "title": "Autonomy",
-  "description": "The autonomy of a process with its reason (ADR-0026): the level it runs at, why it runs at that level, and what is missing to go one level higher. The direction is always towards level 4 and never forced: a process whose requirements do not allow a higher level stays where it is, and toward_next says what forbids it. At level 4 there is no next level and toward_next is absent. Shown wherever the process is shown. See docs/architecture/governance.md.",
+  "description": "The autonomy of a process with its reason (ADR-0026): the level it runs at, why it runs at that level, and what is missing to go one level higher. The direction is always towards level 4 and never forced: a process whose requirements do not allow a higher level stays where it is, and toward_next says what forbids it. At level 4 there is no next level and toward_next is absent. A tool action of the process may run at a lower level than the process, with its own reason (actions); where more than one level applies to a step, the lowest holds (ADR-0039). A raise of any of these levels needs a person's approval and the quality history that history names. Shown wherever the process is shown. See docs/architecture/governance.md.",
   "type": "object",
   "properties": {
     "level": { "$ref": "AutonomyLevel.json" },
@@ -15,11 +15,39 @@
       "description": "What is missing to go one level higher — a demonstrated quality history, a check that does not exist yet, an anchor that would have to move — or what forbids it where the process's requirements do not allow the next level. Required below level 4; absent at level 4.",
       "type": "string",
       "minLength": 1
+    },
+    "actions": {
+      "description": "Levels per tool action: a capability (repository.pullrequest) or a connector operation (repository.pullrequest.merge) that a step of the process uses, mapped to the level that action runs at, with its own reason. A step that uses an action runs at the lower of the process's level and the action's. An action's level is never above the process's, since the lower one holds; a binding that finds one, or an action no step uses, refuses the process.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$" },
+      "additionalProperties": { "$ref": "#/$defs/action" }
+    },
+    "history": {
+      "description": "The quality history a raise of this process's level, or of one of its actions, needs: how many runs in a row, the most recent ones, ended without a failure or a result defect. Absent: no raise is admitted until a version names one. A raise also needs a person's approval; Taktus may propose one, never apply it (ADR-0026, ADR-0039).",
+      "type": "integer",
+      "minimum": 1
     }
   },
   "required": ["level", "reason"],
   "additionalProperties": false,
   "if": { "properties": { "level": { "const": 4 } } },
   "then": { "not": { "required": ["toward_next"] } },
-  "else": { "required": ["toward_next"] }
+  "else": { "required": ["toward_next"] },
+  "$defs": {
+    "action": {
+      "title": "ActionAutonomy",
+      "description": "The level one tool action runs at, why, and what is missing to go higher — the same statement as the process's, for one action.",
+      "type": "object",
+      "properties": {
+        "level": { "$ref": "AutonomyLevel.json" },
+        "reason": { "type": "string", "minLength": 1 },
+        "toward_next": { "type": "string", "minLength": 1 }
+      },
+      "required": ["level", "reason"],
+      "additionalProperties": false,
+      "if": { "properties": { "level": { "const": 4 } } },
+      "then": { "not": { "required": ["toward_next"] } },
+      "else": { "required": ["toward_next"] }
+    }
+  }
 }

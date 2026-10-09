@@ -4,6 +4,9 @@ run delegates to the worker, every step lands in the ledger, and the ledger veri
 Four cases from the definition of done: a run completes; a run stops at a boundary and resumes;
 a run is rejected by admission control; and the shipped example does all of it through
 `taktusctl run`, including a resume from a later invocation.
+
+The example runs at autonomy level 2, so no step starts before a person confirmed it (ADR-0039):
+the cases confirm each step as it waits, the way its operator does.
 """
 
 from __future__ import annotations
@@ -23,7 +26,7 @@ from fakes.identity import added_by_command_line
 from taktus.adapters.driving.cli.wiring import Services
 from taktus.components.command.application.service import CommissionPlan
 from taktus.components.process.application.service.register_version import RegisterProcessVersion
-from taktus.components.run.application.service import ResumeRun, StartRun
+from taktus.components.run.application.service import ConfirmSteps, ResumeRun, StartRun
 from taktus.components.run.domain.model import Cause, Run, RunState, StepState
 from taktus.composition.local import LocalWiring
 from taktus.ports.worker import Limits
@@ -43,9 +46,53 @@ def bundle(*, budget_seconds: float = 2, with_overreach: bool = True) -> dict[st
     return document
 
 
-async def start(
-    services: Services, document: dict[str, Any], *, stop_after: int | None = None
-) -> Run:
+def verified(state_dir: Path, *adapters: str) -> None:
+    """Record both halves of *verified* for the adapters in a state directory's snapshot, as a
+    conformance run and a removal test that said `changed` would. A step at level 3 or above
+    runs only on such an adapter (ADR-0039)."""
+    at = "2026-10-09T12:00:00Z"
+    records = [
+        {
+            "id": adapter,
+            "tenant": tenant,
+            "family": adapter.split(".", 1)[0],
+            "conformance_passed_at": at,
+            "removal": {
+                "integration": adapter,
+                "family": adapter.split(".", 1)[0],
+                "verdict": "changed",
+                "tested_at": at,
+                "run_id": "run_removal",
+            },
+            "updated_at": at,
+        }
+        for adapter in adapters
+        for tenant in ("default", TENANT)
+    ]
+    by_tenant: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        by_tenant.setdefault(str(record["tenant"]), []).append(record)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "adaptermaturity.json").write_text(json.dumps(by_tenant), encoding="utf-8")
+
+
+async def confirm(services: Services, run: Run, *steps: str, stop_after: int | None = None) -> Run:
+    """A person confirms the steps, and the run continues."""
+    return await services.engine.confirm(
+        ConfirmSteps(
+            run_id=run.id, steps=steps, actor="idn_test", tenant=TENANT, stop_after=stop_after
+        )
+    )
+
+
+async def through(services: Services, run: Run) -> Run:
+    """Confirm whatever waits for a person, as the operator would, until nothing waits."""
+    while run.state is RunState.WAITING_HUMAN:
+        run = await confirm(services, run, *(s.step_id for s in run.waiting()))
+    return run
+
+
+async def start(services: Services, document: dict[str, Any], *, confirmed: bool = True) -> Run:
     version = await services.register_version.execute(
         RegisterProcessVersion(document, tenant=TENANT)
     )
@@ -67,7 +114,7 @@ async def start(
             steps=version.ordered(),
         )
     )
-    return await services.engine.start(
+    run = await services.engine.start(
         StartRun(
             plan=plan,
             work=version.work,
@@ -75,9 +122,10 @@ async def start(
             process_version=version.ref,
             actor="idn_test",
             tenant=TENANT,
-            stop_after=stop_after,
+            actions=version.autonomy.action_levels,
         )
     )
+    return await through(services, run) if confirmed else run
 
 
 async def entries_of(services: Services, run_id: str) -> list[Any]:
@@ -120,7 +168,9 @@ async def test_a_run_stops_at_a_boundary_and_resumes(worker_endpoint: str, tmp_p
     async with LocalWiring().services(
         state_dir=tmp_path / "state", worker_endpoint=worker_endpoint
     ) as services:
-        run = await start(services, bundle(with_overreach=False), stop_after=2)
+        run = await start(services, bundle(with_overreach=False), confirmed=False)
+        run = await confirm(services, run, "prepare-commands")
+        run = await confirm(services, run, "compute", stop_after=1)
         assert run.state is RunState.HALTED and run.cause is Cause.STOP
         assert [s.state for s in run.step_runs] == [
             StepState.SUCCEEDED,
@@ -136,6 +186,7 @@ async def test_a_run_stops_at_a_boundary_and_resumes(worker_endpoint: str, tmp_p
         run = await services.engine.resume(
             ResumeRun(run_id=run.id, actor="idn_test", tenant=TENANT)
         )
+        run = await through(services, run)
         assert run.state is RunState.FINISHED
         assert [s.state for s in run.step_runs] == [StepState.SUCCEEDED] * 4
         kinds = [e.kind for e in await entries_of(services, run.id)]
@@ -155,7 +206,9 @@ async def test_a_worker_step_stopped_mid_way_resumes_from_its_checkpoint_without
     async with LocalWiring().services(
         state_dir=tmp_path / "state", worker_endpoint=worker_endpoint
     ) as services:
-        running = asyncio.create_task(start(services, document))
+        run = await start(services, document, confirmed=False)
+        run = await confirm(services, run, "prepare-commands")
+        running = asyncio.create_task(confirm(services, run, "compute"))
         # Wait until the worker step has an assignment in flight, then ask for a stop.
         while True:
             async with services.work.transaction(TENANT):
@@ -173,6 +226,7 @@ async def test_a_worker_step_stopped_mid_way_resumes_from_its_checkpoint_without
         run = await services.engine.resume(
             ResumeRun(run_id=run.id, actor="idn_test", tenant=TENANT)
         )
+        run = await through(services, run)
         assert run.state is RunState.FINISHED, (run.cause, run.reason)
         resumed = run.step_run("compute")
         ids = [a.id for a in resumed.artifacts]
@@ -210,6 +264,7 @@ async def test_a_step_is_rejected_by_admission_control_before_it_starts(
                 ),
             )
         )
+        run = await through(services, run)
         assert run.state is RunState.FINISHED, (run.cause, run.reason)
         assert run.step_run("overreach").state is StepState.SUCCEEDED
         assert await verifies(services)
@@ -236,7 +291,7 @@ def test_taktusctl_run_executes_the_example_and_resumes_in_a_later_invocation(
     }
     added_by_command_line(taktusctl(), "idn_test", env)
     first = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
-        [taktusctl(), "run", "--process", str(EXAMPLE), "--stop-after", "2"],
+        [taktusctl(), "run", "--process", str(EXAMPLE)],
         capture_output=True,
         text=True,
         env=env,
@@ -244,16 +299,25 @@ def test_taktusctl_run_executes_the_example_and_resumes_in_a_later_invocation(
     )
     assert first.returncode == 3, first.stdout + first.stderr
     assert "state  memory with a snapshot under" in first.stdout, "the storage is never silent"
-    assert "state halted (stop)" in first.stdout
+    assert "state waiting_human (person)" in first.stdout, "level 2: the first step waits"
     assert "verifies" in first.stdout and "DOES NOT VERIFY" not in first.stdout
-    run_id = next(line.split()[-1] for line in first.stdout.splitlines() if "--resume" in line)
-    second = subprocess.run(  # noqa: S603
-        [taktusctl(), "run", "--process", str(EXAMPLE), "--resume", run_id],
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
-    )
+    hint = next(line for line in first.stdout.splitlines() if "waits for a person:" in line)
+    assert hint.endswith("--approve prepare-commands"), hint
+    run_id = hint.split("--resume ", 1)[1].split()[0]
+    # Each later invocation confirms the step that waits, and the run goes on to the next.
+    second = first
+    for _ in range(6):
+        waiting = [line for line in second.stdout.splitlines() if "waits for a person:" in line]
+        if not waiting:
+            break
+        step = waiting[0].split()[-1]
+        second = subprocess.run(  # noqa: S603
+            [taktusctl(), "run", "--process", str(EXAMPLE), "--resume", run_id, "--approve", step],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
     assert second.returncode == 3, second.stdout + second.stderr
     assert "state halted (limit)" in second.stdout
     assert "rejected_by_admission" in second.stdout

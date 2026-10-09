@@ -6,6 +6,12 @@ becomes a Command on the `channel.cli` capability, the bundle becomes a process 
 command becomes a commissioned plan, the plan runs. `--resume` continues a halted run at its
 step boundary; the bundle is read again, so that a changed `limits` block is a changed budget.
 `--stop-after N` requests a stop after N steps have finished, at the boundary.
+
+A run waits for a person where its autonomy level asks for one (ADR-0039): `--approve STEP`
+confirms a step at level 2, `--performed STEP` reports that the person performed a step's act
+at level 1; both name the run with `--resume` and continue it. `--approve-raise` is the invoking
+person's approval of a raise of the bundle's autonomy level; the raise is admitted only with the
+quality history the replaced version names.
 """
 
 from __future__ import annotations
@@ -25,10 +31,11 @@ from taktus.components.command.application.service import CommissionPlan
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
 )
-from taktus.components.process.domain.model import InvalidProcess, ProcessVersion
+from taktus.components.process.domain.model import InvalidProcess, ProcessVersion, RaiseRefused
 from taktus.components.run.application.query import ProvenanceOfRun
-from taktus.components.run.application.service import ResumeRun, StartRun
-from taktus.components.run.domain.model import Run, RunError, RunState
+from taktus.components.run.application.service import ConfirmSteps, ResumeRun, StartRun
+from taktus.components.run.domain.model import Run, RunError, RunState, parse_work
+from taktus.components.run.domain.service import autonomy
 from taktus.components.run.domain.service.provenance import ChainVerification
 from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Verification
@@ -100,16 +107,44 @@ def run(
             "resolve to. A value that reads as JSON is JSON, anything else is text.",
         ),
     ] = None,
+    approve: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--approve",
+            metavar="STEP",
+            help="With --resume: confirm this step, which waits for a person at level 2, and "
+            "continue the run. Repeatable.",
+        ),
+    ] = None,
+    performed: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--performed",
+            metavar="STEP",
+            help="With --resume: report that you performed this step's act, which Taktus "
+            "only proposes at level 1, and continue the run. Repeatable.",
+        ),
+    ] = None,
+    approve_raise: Annotated[
+        bool,
+        typer.Option(
+            "--approve-raise",
+            help="Approve, as the invoking person, a raise of the bundle's autonomy level over "
+            "the version it replaces. Admitted only with the quality history that version names.",
+        ),
+    ] = False,
 ) -> None:
     """Run a process bundle against a worker and print the ledger and the consumption.
 
-    Exit code 0: the run finished. Exit code 3: the run halted or escalated; the output says
-    why and how to resume. Exit code 2: the bundle or the invocation is wrong.
+    Exit code 0: the run finished. Exit code 3: the run halted, escalated or waits for a person;
+    the output says why and how to continue. Exit code 2: the bundle or the invocation is wrong,
+    or a raise of its autonomy level is refused.
     """
     wiring: Wiring = ctx.obj
     try:
         bundle = _load(process)
         inputs = parse_inputs(input or [])
+        answer = answers(resume, approve or [], performed or [])
     except (OSError, yaml.YAMLError, ValueError) as error:
         typer.echo(f"cannot read {process}: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -126,8 +161,13 @@ def run(
                 identity=identity,
                 tenant=tenant,
                 inputs=inputs,
+                answer=answer,
+                approve_raise=approve_raise,
             )
         )
+    except RaiseRefused as error:
+        refused(error)
+        raise typer.Exit(code=2) from error
     except InvalidProcess as error:
         typer.echo(f"{process} is not a valid process:", err=True)
         for finding in error.findings:
@@ -137,6 +177,27 @@ def run(
         typer.echo(f"error: {error}", err=True)
         raise typer.Exit(code=2) from error
     raise typer.Exit(code=0 if result.state is RunState.FINISHED else 3)
+
+
+def answers(
+    resume: str | None, approve: list[str], performed: list[str]
+) -> tuple[tuple[str, ...], bool] | None:
+    """The steps a person answers and whether the answer is "performed", or None for none."""
+    if not approve and not performed:
+        return None
+    if resume is None:
+        raise ValueError("--approve and --performed name a waiting run with --resume")
+    if approve and performed:
+        raise ValueError(
+            "a step is either confirmed (level 2) or performed (level 1); one at a time"
+        )
+    return (tuple(approve), False) if approve else (tuple(performed), True)
+
+
+def refused(error: RaiseRefused) -> None:
+    typer.echo(f"the raise of {error.process_version}'s autonomy is refused:", err=True)
+    for finding in error.findings:
+        typer.echo(f"  - {finding}", err=True)
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -208,17 +269,36 @@ async def _run(
     identity: str | None,
     tenant: str,
     inputs: dict[str, Any],
+    answer: tuple[tuple[str, ...], bool] | None = None,
+    approve_raise: bool = False,
 ) -> Run:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
         typer.echo(f"state  {services.storage}")
         placed = await resolve_identity(services, identity, tenant)
         version = await services.register_version.execute(
-            RegisterProcessVersion(bundle, tenant=tenant, by=placed.identity)
+            RegisterProcessVersion(
+                bundle,
+                tenant=tenant,
+                by=placed.identity,
+                approved_by=placed.identity if approve_raise else None,
+            )
         )
         budget = _budget(version)
         if resume is None:
             require_inputs(version, inputs)
             run = await _start(services, version, budget, placed, tenant, stop_after, inputs)
+        elif answer is not None:
+            steps, performed = answer
+            run = await services.engine.confirm(
+                ConfirmSteps(
+                    run_id=resume,
+                    steps=steps,
+                    actor=placed.identity,
+                    tenant=tenant,
+                    performed=performed,
+                    stop_after=stop_after,
+                )
+            )
         else:
             run = await services.engine.resume(
                 ResumeRun(
@@ -266,6 +346,7 @@ async def _start(
             tenant=tenant,
             stop_after=stop_after,
             inputs=inputs,
+            actions=version.autonomy.action_levels,
         )
     )
 
@@ -363,12 +444,21 @@ def render(
     lines.append("")
     lines.append("consumption  " + (_quantities(run.consumed()) or "nothing measured"))
     lines.append("budget       " + _limits(run.budget))
-    if run.state in (RunState.HALTED, RunState.ESCALATED):
+    tenant = "" if run.tenant == DEFAULT_TENANT else f" --tenant {run.tenant}"
+    again = f"uv run taktusctl run --process {bundle_path} --resume {run.id}{tenant}"
+    if run.state is RunState.WAITING_HUMAN:
         lines.append("")
-        lines.append(
-            f"resume with: uv run taktusctl run --process {bundle_path} --resume {run.id}"
-            + ("" if run.tenant == DEFAULT_TENANT else f" --tenant {run.tenant}")
-        )
+        for step_run in run.waiting():
+            step = run.step(step_run.step_id)
+            work = parse_work(step, run.work.get(step.id), run.inputs)
+            held = autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
+            flag = "--performed" if held.level == 1 else "--approve"
+            lines.append(
+                f"{step_run.step_id} waits for a person: {again} {flag} {step_run.step_id}"
+            )
+    elif run.state in (RunState.HALTED, RunState.ESCALATED):
+        lines.append("")
+        lines.append(f"resume with: {again}")
     return "\n".join(lines)
 
 

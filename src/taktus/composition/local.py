@@ -72,6 +72,7 @@ from taktus.composition.execution import (
     telemetry_of,
 )
 from taktus.composition.loopback import Loopback, Pools
+from taktus.composition.maturity import CatalogMaturities
 from taktus.composition.settings import (
     load_budget,
     load_capacity,
@@ -176,6 +177,7 @@ class LocalWiring:
                     ),
                     platform=HostPlatform(clock, state_dir=state_dir),
                     recordings=recordings,
+                    maturities=CatalogMaturities(stores.of(AdapterMaturity), stores.work),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -199,7 +201,7 @@ class LocalWiring:
             )
             yield Services(
                 register_version=RegisterProcessVersionHandler(
-                    stores.of(ProcessVersion), stores.work, stores.of(Process)
+                    stores.of(ProcessVersion), stores.work, stores.of(Process), ledger=ledger
                 ),
                 commission=commission,
                 engine=engine,

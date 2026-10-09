@@ -220,11 +220,16 @@ duration (ADR-0037; `tests/integration/test_capacity_wait.py`).
 ```
 planned → admitted → running → [waiting_human] → running → finished
                         │            │
-                        │            └─ decision request open (anchor, approval)
-                        ├─ halted (limit, emergency stop, user, worker at capacity) → resumed
+                        │            └─ a step waits for a person (approval, an act to perform, anchor)
+                        ├─ halted (limit, emergency stop, user, worker at capacity, maturity) → resumed
                         ├─ self-healed (retry or correction within frame) → running
                         └─ escalated (frame exceeded) → situation package to a person
 ```
+
+A run reaches `waiting_human` when every step it can still run waits for a person: a step at
+autonomy level 2 for a confirmation, a step that acts at level 1 for the person to perform it
+(ADR-0039). Such a step is in the step state `waiting_human`; the steps that do not depend on it
+run on before the run waits. A person's answer continues the run; a stop halts it at once.
 
 There are no open loops. Every execution produces a measurable result that flows back into
 monitoring and reports. Repeated self-healing of the same fault raises an improvement proposal or a

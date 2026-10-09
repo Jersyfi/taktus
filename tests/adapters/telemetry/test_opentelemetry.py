@@ -12,6 +12,7 @@ from typing import Any
 import structlog
 from fakes import FakeClock, FakeIdentifiers, FakeWorker, InnerStep
 from fakes.identity import directory
+from fakes.maturity import VERIFIED
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -88,6 +89,7 @@ async def run_once(
     ledger = ChainedLedger(MemoryLedgerStore(persistence), clock)
     fake = FakeWorker(script=(InnerStep("one", 1.0, artifacts=(("out-1", b"42\n"),)),))
     engine = RunEngine(
+        maturities=VERIFIED,
         runs=MemoryRepository(persistence, Run),
         work=persistence,
         objects=MemoryObjectStore(),
@@ -103,7 +105,7 @@ async def run_once(
         id="pln_1",
         command_id="cmd_1",
         goal=PLANTED,
-        autonomy_level=2,
+        autonomy_level=3,
         steps=tuple(step for step, _ in definitions),
         results_in=PlanResult.RUN,
         status=PlanStatus.COMMISSIONED,

@@ -13,7 +13,7 @@ from taktus.components.run.application.service import ResumeRun
 from taktus.components.run.domain.model import Cause, RunState, StepState
 from taktus.composition.local import LocalWiring
 
-from .test_first_slice import TENANT, bundle, entries_of, start, verifies
+from .test_first_slice import TENANT, bundle, entries_of, start, through, verified, verifies
 
 
 def wiring(engine_socket: str, image: str) -> LocalWiring:
@@ -48,6 +48,7 @@ async def test_a_run_with_a_worker_step_executes_in_a_container_stops_and_resume
         "commands": ["expr 6 '*' 7", "sleep 0.5; echo two", "sleep 0.5; echo three", "echo four"]
     }
     local = wiring(engine_socket, reference_worker_image)
+    verified(tmp_path / "state", "worker.container")  # level 4 runs only on a verified adapter
     async with local.services(state_dir=tmp_path / "state", worker_endpoint="") as services:
         running = asyncio.create_task(start(services, document))
         async with asyncio.timeout(120):
@@ -71,6 +72,7 @@ async def test_a_run_with_a_worker_step_executes_in_a_container_stops_and_resume
         run = await services.engine.resume(
             ResumeRun(run_id=run.id, actor="idn_test", tenant=TENANT)
         )
+        run = await through(services, run)
         assert run.state is RunState.FINISHED, (run.cause, run.reason)
         assert [s.state for s in run.step_runs] == [StepState.SUCCEEDED] * 4
         assert [a.id for a in run.step_run("compute").artifacts] == [

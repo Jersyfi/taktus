@@ -9,5 +9,10 @@ What exists today:
   `application/service/report_capacity.py`). The refusal of a job that does not fit is the
   run's admission control (`run/domain/service/capacity.py`) until admission moves here.
 
-Anchors as configuration, and the halt they cause, arrive with `0.2.0`.
+Autonomy levels 1 to 3 are enforced at the step boundary (ADR-0039). The rule that says which
+level holds for a step and what it asks of a person is the run's
+(`run/domain/service/autonomy.py`), and the rule that says when a level may rise is the
+process's (`process/domain/service/autonomy.py`), where registering a version raises it; both
+move here as admission will. Anchors as configuration, and the halt they cause, arrive with
+`0.2.0`.
 """

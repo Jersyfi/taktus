@@ -19,6 +19,7 @@ import os
 import shutil
 import time
 from asyncio.subprocess import PIPE, STDOUT
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ from taktus.adapters.driven.postgres import (
     PostgresProvenanceStore,
     PostgresRepository,
 )
+from taktus.components.catalog.domain.model import AdapterMaturity, RemovalResult, Verdict
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.components.run.domain.service import provenance
@@ -48,6 +50,9 @@ def bundle() -> dict[str, Any]:
     with EXAMPLE.open(encoding="utf-8") as handle:
         document: dict[str, Any] = yaml.safe_load(handle)
     document["id"] = "restart"
+    # Unattended at level 3, which needs a verified worker: `Database.verified` records it
+    # (ADR-0039). The example's own level 2 would wait for a person before every step.
+    document["autonomy"] = {"level": 3, "reason": "a test of the restart", "toward_next": "-"}
     document["limits"] = {"compute": {"seconds": 60, "resource_class": "cpu.small"}}
     document["steps"] = [s for s in document["steps"] if s["id"] != "overreach"]
     compute = next(s for s in document["steps"] if s["id"] == "compute")
@@ -68,6 +73,27 @@ class Database:
         self.runs = PostgresRepository(self.persistence, Run)
         self.ledger = PostgresLedgerStore(self.persistence)
         self.provenance = PostgresProvenanceStore(self.persistence)
+
+    async def verified(self, adapter: str) -> None:
+        """Record both halves of *verified* for a worker, as a conformance run and a removal
+        test that said `changed` would: a step at level 3 runs only on such an adapter."""
+        at = datetime.now(UTC)
+        record = AdapterMaturity(
+            id=adapter,
+            tenant=self.tenant,
+            family="worker",
+            conformance_passed_at=at,
+            removal=RemovalResult(
+                integration=adapter,
+                family="worker",
+                verdict=Verdict.CHANGED,
+                tested_at=at,
+                run_id="run_removal",
+            ),
+            updated_at=at,
+        )
+        async with self.persistence.transaction(self.tenant):
+            await PostgresRepository(self.persistence, AdapterMaturity).put(self.tenant, record)
 
     async def records(self, run_id: str) -> list[Provenance]:
         async with self.persistence.transaction(self.tenant):
@@ -122,6 +148,7 @@ async def test_a_run_survives_a_killed_process_and_resumes_at_its_last_boundary(
     }
     database = Database(postgres_url)
     added_by_command_line(taktusctl(), "idn_test", env)
+    await database.verified("worker.endpoint")
     first = await asyncio.create_subprocess_exec(
         taktusctl(), "run", "--process", str(process_file), stdout=PIPE, stderr=STDOUT, env=env
     )

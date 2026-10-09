@@ -3,6 +3,13 @@
 The bundle arrives as data — the parsed document, whatever the file format was — and leaves as
 a `ProcessVersion` or as `InvalidProcess` naming every finding. Field by field, the shape is the
 one docs/architecture/control-plane.md §4 describes and `examples/processes/README.md` shows.
+
+Registering is where an autonomy level can rise, because the levels live in the version's
+statement (ADR-0026). A version that raises a level over the one it replaces is stored only with
+a person's approval and the quality history the replaced version names, read from the ledger;
+otherwise it is refused with `RaiseRefused`, and the refusal is a ledger entry,
+`autonomy.refused`. An admitted raise is `autonomy.raised`, with the approving person as its
+actor (ADR-0039, `domain.service.autonomy`). This is the one code path that stores a version.
 """
 
 from __future__ import annotations
@@ -20,11 +27,14 @@ from taktus.components.process.domain.model import (
     InvalidProcess,
     Process,
     ProcessVersion,
+    RaiseRefused,
     Slo,
     Trigger,
 )
+from taktus.components.process.domain.service import autonomy
+from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
-from taktus.shared.v1 import Autonomy, Step
+from taktus.shared.v1 import Autonomy, LedgerRefs, Step
 
 type Document = Mapping[str, Any]
 
@@ -39,37 +49,114 @@ class RegisterProcessVersion:
     by: str | None = None
     """The identity that registers the version and so makes it active; its schedule triggers
     act for that identity."""
+    approved_by: str | None = None
+    """The person who approves a raise of an autonomy level this version makes. A version that
+    raises no level needs no approval. Who holds the right to approve is a right per role
+    (UC-7.3); until it exists, any identity the tenant knows may."""
 
 
 class RegisterProcessVersionHandler:
     """Stores the version. With `processes`, the version registered last becomes the process's
-    active version: the one whose schedule triggers the scheduler fires (ADR-0035)."""
+    active version: the one whose schedule triggers the scheduler fires (ADR-0035). A version
+    that raises an autonomy level is admitted as the module says, against the history in the
+    `ledger`, where the raise or its refusal is recorded."""
 
     def __init__(
         self,
         versions: Repository[ProcessVersion],
         work: UnitOfWork,
         processes: Repository[Process] | None = None,
+        *,
+        ledger: Ledger,
     ) -> None:
         self._versions = versions
         self._work = work
         self._processes = processes
+        self._ledger = ledger
 
     async def execute(self, command: RegisterProcessVersion) -> ProcessVersion:
         version = parse_bundle(command.bundle)
-        async with self._work.transaction(command.tenant):
-            await self._versions.put(command.tenant, version)
-            if self._processes is not None:
-                await self._processes.put(
-                    command.tenant,
-                    Process(
-                        id=version.process_id,
-                        name=version.name,
-                        active_version=version.version,
-                        activated_by=command.by,
-                    ),
-                )
+        tenant = command.tenant
+        refused: autonomy.RaiseVerdict | None = None
+        async with self._work.transaction(tenant):
+            replaced = await self._replaced(tenant, version)
+            raised = [
+                r for old in replaced for r in autonomy.raises(old.autonomy, version.autonomy)
+            ]
+            if raised:
+                verdict = await self._verdict(tenant, version, replaced, raised, command)
+                if verdict.admitted:
+                    await self._record(tenant, version, "autonomy.raised", "raised", command)
+                else:
+                    # The refusal is recorded and committed; the version is not stored.
+                    refused = verdict
+                    outcome = verdict.refusal or "refused"
+                    await self._record(tenant, version, "autonomy.refused", outcome, command)
+            if refused is None:
+                await self._versions.put(tenant, version)
+                if self._processes is not None:
+                    await self._processes.put(
+                        tenant,
+                        Process(
+                            id=version.process_id,
+                            name=version.name,
+                            active_version=version.version,
+                            activated_by=command.by,
+                        ),
+                    )
+        if refused is not None:
+            raise RaiseRefused(version.ref, refused.findings)
         return version
+
+    async def _replaced(self, tenant: Tenant, version: ProcessVersion) -> list[ProcessVersion]:
+        """The version the new one replaces: the process's active version where it is known;
+        otherwise every stored version of the process, so that a raise over any is one."""
+        if self._processes is not None:
+            process = await self._processes.get(tenant, version.process_id)
+            if process is not None and process.active_version is not None:
+                ref = f"{version.process_id}@{process.active_version}"
+                active = await self._versions.get(tenant, ref)
+                if active is not None:
+                    return [active]
+        return [v for v in await self._versions.list(tenant) if v.process_id == version.process_id]
+
+    async def _verdict(
+        self,
+        tenant: Tenant,
+        version: ProcessVersion,
+        replaced: list[ProcessVersion],
+        raised: list[str],
+        command: RegisterProcessVersion,
+    ) -> autonomy.RaiseVerdict:
+        named = [old.autonomy.history for old in replaced if old.autonomy.history is not None]
+        required = max(named) if len(named) == len(replaced) else None
+        entries = await self._ledger.entries(tenant)
+        quality = autonomy.history(entries, version.process_id)
+        return autonomy.verdict(
+            list(dict.fromkeys(raised)),
+            approved_by=command.approved_by,
+            required=required,
+            quality=quality,
+        )
+
+    async def _record(
+        self,
+        tenant: Tenant,
+        version: ProcessVersion,
+        kind: str,
+        outcome: str,
+        command: RegisterProcessVersion,
+    ) -> None:
+        await self._ledger.record(
+            tenant,
+            Fact(
+                kind=kind,
+                refs=LedgerRefs(
+                    tenant=tenant, process_version=version.ref, actor=command.approved_by
+                ),
+                outcome=outcome,
+            ),
+        )
 
 
 def parse_bundle(bundle: Document) -> ProcessVersion:

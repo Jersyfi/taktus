@@ -1,12 +1,23 @@
 """Use cases: start a run from a commissioned plan, submit one for a runner, resume a halted
-one, request a stop.
+one, request a stop, answer a step that waits for a person.
 
-One engine, four entry points. `start` creates the run and executes it in this process;
+One engine, five entry points. `start` creates the run and executes it in this process;
 `submit` creates the run and puts a job on the queue, so that a runner — this process or
 another — executes it (`runner.py`); `resume` continues a halted or escalated run at its
 boundary, starts a submitted one, or recovers a run whose instance stopped without halting it;
-`request_stop` asks a running run to stop at its next boundary. Execution is sequential: one
-step at a time, in the plan's order.
+`request_stop` asks a running run to stop at its next boundary; `confirm` records a person's
+answer to steps that wait for one. Execution is sequential: one step at a time, in the plan's
+order.
+
+Before a step starts, its autonomy level is applied (ADR-0039, `domain.service.autonomy`): the
+lowest of the process's level and the levels of the tool actions the step uses. At level 2 the
+step waits until a person confirmed it (`step.awaiting`, then `step.confirmed`); at level 1 a
+step that acts is never executed — its proposal is recorded, and it waits until a person
+performed the act and reported it (`step.performed`). A waiting step holds back only the steps
+that depend on it; the others run on, and the run waits in `waiting_human` once nothing else can
+run. From level 3 a step runs only on an adapter at *verified* or above; one below is not run on
+it, the step is rejected with a finding that names it and the adapter, and the run halts with
+cause `maturity` (NTC-0051). A rehearsal is asked none of this (NTC-0079).
 
 What happens around every step is the contract of ADR-0005 and is the same for every method:
 
@@ -127,8 +138,8 @@ from taktus.components.run.domain.model import (
     resolve,
     select,
 )
+from taktus.components.run.domain.service import autonomy, provenance, rules, waiting
 from taktus.components.run.domain.service import budget as budgeting
-from taktus.components.run.domain.service import provenance, rules, waiting
 from taktus.components.run.domain.service.admission import admit, remaining
 from taktus.components.run.domain.service.capacity import (
     CapacityDemand,
@@ -136,7 +147,7 @@ from taktus.components.run.domain.service.capacity import (
     admit_capacity,
 )
 from taktus.components.run.domain.service.rehearsal import REHEARSED
-from taktus.components.run.ports import ConnectorPool, ModelPool, WorkerPool
+from taktus.components.run.ports import ConnectorPool, Maturities, ModelPool, WorkerPool
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
     CallContext,
@@ -185,6 +196,7 @@ from taktus.ports.worker import (
 from taktus.shared.v1 import (
     QUANTITIES,
     Artifact,
+    AutonomyLevel,
     Consumption,
     ConsumptionQuantities,
     Digest,
@@ -229,6 +241,10 @@ class StartRun:
     trigger: Mapping[str, Any] | None = None
     """The trigger that started the run, as its document. Recorded as `run.triggered` beside
     `run.created`, in the same transaction (ADR-0035)."""
+    actions: Mapping[str, AutonomyLevel] = field(default_factory=dict)
+    """The levels of the process's tool actions (`Autonomy.action_levels`): a step that uses one
+    runs at the lowest level that applies to it (ADR-0039). Every caller that starts a run from
+    a process version passes them."""
 
     @property
     def identity(self) -> str:
@@ -264,10 +280,31 @@ class ResumeRun:
     an operator's resume, which no claim stands behind."""
 
 
+@dataclass(frozen=True)
+class ConfirmSteps:
+    """A person answers steps the run waits for (ADR-0039). At level 2 the answer confirms the
+    step, and it starts; at level 1 `performed` reports that the person performed the act
+    Taktus proposed, and the step ends without Taktus executing it. The run then continues: in
+    this process, or — with `enqueue` — on the runner that claims the job it is given."""
+
+    run_id: str
+    steps: tuple[StepId, ...]
+    actor: str
+    """The person who answers. Who may answer is a right per role (UC-7.3); until rights per role
+    exist, any identity the tenant knows may."""
+    tenant: Tenant
+    performed: bool = False
+    enqueue: bool = False
+    stop_after: int | None = None
+
+
 def _ended(run: Run) -> bool:
     """Whether a run has ended in a way a runner's claim does not continue."""
     if run.state in (RunState.FINISHED, RunState.ESCALATED):
         return True
+    if run.state is RunState.WAITING_HUMAN:
+        # What waits for a person stays with the person, unless a person has answered.
+        return run.runnable() is None
     return run.state is RunState.HALTED and run.cause not in (Cause.STOP, Cause.CAPACITY)
 
 
@@ -342,6 +379,7 @@ class RunEngine:
         models: ModelPool | None = None,
         platform: Platform | None = None,
         recordings: RecordedResponses | None = None,
+        maturities: Maturities | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -352,6 +390,9 @@ class RunEngine:
         self._connectors = connectors
         self._models = models
         self._platform = platform
+        self._maturities = maturities
+        """Where a step at level 3 learns its adapter's maturity. None: no record can be read,
+        and no step at level 3 runs on an adapter (NTC-0079)."""
         self._recordings = recordings or RecordedResponses(runs, work, objects)
         self._clock = clock
         self._ids = ids
@@ -362,6 +403,9 @@ class RunEngine:
         self._inflight: dict[str, tuple[Worker, str]] = {}
         self._observed: dict[str, list[budgeting.Observation]] = {}
         self._limit_halts: set[str] = set()
+        self._immature: set[str] = set()
+        """Runs whose current step was not run on an adapter below *verified*: they halt with
+        cause `maturity` (NTC-0051)."""
         self._at_capacity: set[str] = set()
         """Runs whose current step met its worker at capacity: they halt, or escalate once the
         step's ceiling passed, with cause `capacity` (ADR-0037)."""
@@ -436,6 +480,7 @@ class RunEngine:
             tenant=command.tenant,
             identity=command.identity,
             autonomy_level=command.plan.autonomy_level,
+            actions=dict(command.actions),
             budget=command.budget,
             margin=self._options.margin if command.margin is None else command.margin,
             steps=command.plan.steps,
@@ -561,9 +606,22 @@ class RunEngine:
             run = run.to(RunState.RUNNING)
         return await self._commit(run, "run.recovered", step=interrupted, actor=actor)
 
-    async def request_stop(self, run_id: str) -> None:
+    async def request_stop(self, run_id: str, tenant: Tenant | None = None) -> None:
         """Takes effect at the next step boundary. A running worker step is asked to stop as
-        well and may finish up to the ceiling."""
+        well and may finish up to the ceiling. With the tenant, a run that waits for a person
+        halts at once: the stop applies at every autonomy level (UC-7.1)."""
+        if tenant is not None:
+            async with self._work.transaction(tenant):
+                waiting_run = await self._runs.get(tenant, run_id)
+            if waiting_run is not None and waiting_run.state is RunState.WAITING_HUMAN:
+                await self._commit(
+                    waiting_run.to(
+                        RunState.HALTED, Cause.STOP, "stop requested while waiting for a person"
+                    ),
+                    "run.halted",
+                    outcome=str(Cause.STOP),
+                )
+                return
         self._stop_requested.add(run_id)
         inflight = self._inflight.get(run_id)
         if inflight is not None:
@@ -574,6 +632,73 @@ class RunEngine:
                     reason="stop requested", ceiling_seconds=self._options.step_ceiling_seconds
                 ),
             )
+
+    async def confirm(self, command: ConfirmSteps) -> Run:
+        """A person's answer to steps the run waits for, each recorded with the person as its
+        actor; then the run continues. Refused, changing nothing, when the run does not wait,
+        when a step does not wait, or when the answer is not the one its level asks for."""
+        async with self._telemetry.span("run", {"run.id": command.run_id}) as span:
+            async with self._work.transaction(command.tenant):
+                run = await self._runs.get(command.tenant, command.run_id)
+            if run is None:
+                raise UnknownRun(command.run_id)
+            span.set_attribute("process.version", run.process_version)
+            if run.state is not RunState.WAITING_HUMAN:
+                raise RunError(
+                    f"run {run.id!r} is {run.state}: a step is answered while its run waits "
+                    "for a person"
+                )
+            if not command.steps:
+                raise RunError("name the step(s) to answer")
+            if command.enqueue and self._queue is None:
+                raise RunError("no queue is wired; a run is handed to a runner through one")
+            answered = [self._answer(run, s, command) for s in dict.fromkeys(command.steps)]
+            for _, step_run in answered:
+                run = run.with_step_run(step_run)
+            for index, (kind, step_run) in enumerate(answered):
+                job = None
+                if command.enqueue and index == len(answered) - 1:
+                    job = Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
+                run = await self._commit(run, kind, step=step_run, actor=command.actor, enqueue=job)
+            if command.enqueue:
+                return run
+            run = await self._commit(run.to(RunState.RUNNING), "run.resumed", actor=command.actor)
+            return await self._execute(run, command.stop_after, span)
+
+    def _answer(self, run: Run, step_id: StepId, command: ConfirmSteps) -> tuple[str, StepRun]:
+        try:
+            step_run = run.step_run(step_id)
+        except KeyError:
+            raise RunError(f"run {run.id!r} has no step {step_id!r}") from None
+        if step_run.state is not StepState.WAITING_HUMAN:
+            raise RunError(f"step {step_id!r} is {step_run.state}; it does not wait for a person")
+        level = self._held(run, run.step(step_id)).level
+        if level == 1 and not command.performed:
+            raise RunError(
+                f"step {step_id!r} runs at level 1: Taktus executes no act of it. Perform it "
+                "yourself and report it performed"
+            )
+        if level != 1 and command.performed:
+            raise RunError(
+                f"step {step_id!r} runs at level {level}: it waits for a confirmation, and "
+                "Taktus runs it once confirmed"
+            )
+        if command.performed:
+            now = self._clock.now()
+            return "step.performed", step_run.to(
+                StepState.SUCCEEDED,
+                confirmed_by=command.actor,
+                reason=f"performed by {command.actor}, as Taktus proposed it (level 1)",
+                started_at=now,
+                finished_at=now,
+            )
+        return "step.confirmed", step_run.to(
+            StepState.PLANNED, confirmed_by=command.actor, reason=None
+        )
+
+    def _held(self, run: Run, step: Step) -> autonomy.Held:
+        work = parse_work(step, run.work.get(step.id), run.inputs)
+        return autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
 
     def relinquish(self, run_id: str) -> None:
         """The runner's claim on the run is lost. The run stops at its next boundary, where the
@@ -607,17 +732,29 @@ class RunEngine:
             self._observed.pop(run.id, None)
             self._limit_halts.discard(run.id)
             self._at_capacity.discard(run.id)
+            self._immature.discard(run.id)
 
     async def _steps(self, run: Run, stop_after: int | None, span: Span) -> Run:
         refused = await self._platform_refuses(None)
         if refused is not None:
             return await self._end(run, RunState.HALTED, Cause.LIMIT, refused, span)
         completed_now = 0
-        while (step_run := run.next_step_run()) is not None:
+        while (step_run := run.runnable()) is not None:
             step = run.step(step_run.step_id)
             run, step_run = await self._execute_step(run, step, step_run)
+            if step_run.state is StepState.WAITING_HUMAN:
+                # The step waits for a person; the steps that do not depend on it run on.
+                if run.id in self._stop_requested:
+                    return await self._end(
+                        run, RunState.HALTED, Cause.STOP, "stop requested at the boundary", span
+                    )
+                continue
             if step_run.state is StepState.REJECTED:
-                cause = Cause.NO_ESTIMATE if step_run.estimate is None else Cause.LIMIT
+                if run.id in self._immature:
+                    cause = Cause.MATURITY
+                else:
+                    cause = Cause.NO_ESTIMATE if step_run.estimate is None else Cause.LIMIT
+                self._immature.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             capacity = run.id in self._at_capacity
             self._at_capacity.discard(run.id)
@@ -640,6 +777,16 @@ class RunEngine:
                 return await self._end(
                     run, RunState.HALTED, Cause.STOP, "stop requested at the boundary", span
                 )
+        waiting_for = run.waiting()
+        if waiting_for:
+            return await self._end(
+                run,
+                RunState.WAITING_HUMAN,
+                Cause.PERSON,
+                "waiting for a person: "
+                + "; ".join(f"{s.step_id} — {s.reason}" for s in waiting_for),
+                span,
+            )
         return await self._end(run, RunState.FINISHED, None, None, span)
 
     async def _end(
@@ -657,14 +804,110 @@ class RunEngine:
             "step", {"run.id": run.id, "step.id": step.id, "step.method": step.method}
         ) as span:
             work = parse_work(step, run.work.get(step.id), run.inputs)
+            held = autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
+            span.set_attribute("autonomy.level", held.level)
+            if not run.rehearsal and step_run.state is StepState.PLANNED:
+                # The step boundary: what the level asks of a person, before anything starts.
+                acting = held.level == 1 and autonomy.acts(work, await self._outward(work))
+                awaited = autonomy.awaits(
+                    held.level, acting=acting, confirmed=step_run.confirmed_by is not None
+                )
+                if awaited is not None:
+                    return await self._await(run, step, step_run, held, awaited)
             if isinstance(work, WorkerWork):
-                return await self._worker_step(run, step, step_run, work, span)
-            return await self._local_step(run, step, step_run, work, span)
+                return await self._worker_step(run, step, step_run, work, span, held)
+            return await self._local_step(run, step, step_run, work, span, held)
+
+    async def _outward(self, work: Work) -> bool | None:
+        """Whether a connector call's operation is declared outward; None when it cannot be
+        read, and for any other step."""
+        if not isinstance(work, ConnectorRule) or self._connectors is None:
+            return None
+        resolved = await self._connectors.resolve(work.capability)
+        operation = None if resolved is None else resolved.declaration.operation(work.operation)
+        return None if operation is None else operation.outward
+
+    async def _await(
+        self,
+        run: Run,
+        step: Step,
+        step_run: StepRun,
+        held: autonomy.Held,
+        awaited: autonomy.Awaits,
+    ) -> tuple[Run, StepRun]:
+        """The step waits for a person before anything of it starts. What it proposes is put
+        down as a document — the step, its method, its work as declared, the level and what
+        holds it — and `step.awaiting` names it by digest, with what the step waits for."""
+        if awaited == autonomy.CONFIRMATION:
+            reason = f"waits for a person to confirm it before it starts ({held.describe()})"
+        else:
+            reason = (
+                f"Taktus proposes this act and does not execute it ({held.describe()}); a "
+                "person performs it and reports it performed"
+            )
+        proposal = {
+            "run_id": run.id,
+            "step_id": step.id,
+            "method": str(step.method),
+            "level": held.level,
+            "held_by": held.action or "process",
+            "awaits": awaited,
+            "work": dict(run.work.get(step.id) or {}),
+        }
+        digest = await self._objects.put(_canonical(proposal))
+        step_run = step_run.to(StepState.WAITING_HUMAN, reason=reason)
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.awaiting",
+            step=step_run,
+            outcome=awaited,
+            digest=digest,
+        )
+        return run, step_run
+
+    async def _unverified(
+        self, run: Run, step: Step, adapter: str | None, held: autonomy.Held
+    ) -> str | None:
+        """Why a step at level 3 or above is not run on its adapter, or None when it may be:
+        the adapter is *verified* or above, or no integration at all (NTC-0051, NTC-0079)."""
+        if run.rehearsal or adapter is None or not autonomy.needs_verified(held.level):
+            return None
+        if self._maturities is None:
+            return (
+                f"step {step.id!r} runs at {held.describe()} on {adapter}, and no maturity "
+                "record can be read here; from level 3 a step runs only on an adapter at "
+                "verified or above (NTC-0051)"
+            )
+        standing = await self._maturities.standing(run.tenant, adapter)
+        if standing.serves_from_level_three:
+            return None
+        missing = "; ".join(standing.missing) or "nothing recorded"
+        return (
+            f"step {step.id!r} runs at {held.describe()}, and its adapter {adapter} is "
+            f"{standing.maturity}, below verified: {missing}. From level 3 a step runs only "
+            "on an adapter at verified or above (NTC-0051)"
+        )
+
+    async def _refuse_unverified(
+        self, run: Run, step_run: StepRun, adapter: str, reason: str, span: Span
+    ) -> tuple[Run, StepRun]:
+        """The step is not run on the adapter: rejected before anything starts, with the
+        finding that names the step and the adapter."""
+        span.record_failure("adapter below verified")
+        self._immature.add(run.id)
+        step_run = step_run.to(StepState.REJECTED, adapter=adapter, reason=reason)
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.rejected",
+            step=step_run,
+            outcome="rejected_by_maturity",
+        )
+        return run, step_run
 
     # --- rule and wait steps ---------------------------------------------------------------------
 
     async def _local_step(
-        self, run: Run, step: Step, step_run: StepRun, work: Work, span: Span
+        self, run: Run, step: Step, step_run: StepRun, work: Work, span: Span, held: autonomy.Held
     ) -> tuple[Run, StepRun]:
         # A rule, a wait or a connector call demands nothing of any limit that could be
         # estimated: admission is a formality, recorded so that every step run reads the same
@@ -681,6 +924,9 @@ class RunEngine:
             return await self._failed_before(
                 run, step_run, span, failure.reason, failure.adapter, failure.retryable
             )
+        unverified = await self._unverified(run, step, demand.adapter, held)
+        if unverified is not None and demand.adapter is not None:
+            return await self._refuse_unverified(run, step_run, demand.adapter, unverified, span)
         run, step_run, admitted = await self._admit(
             run, step, step_run, demand, span, retryable=None, attempt=attempt
         )
@@ -1441,7 +1687,13 @@ class RunEngine:
     # --- worker steps ----------------------------------------------------------------------------
 
     async def _worker_step(
-        self, run: Run, step: Step, step_run: StepRun, work: WorkerWork, span: Span
+        self,
+        run: Run,
+        step: Step,
+        step_run: StepRun,
+        work: WorkerWork,
+        span: Span,
+        held: autonomy.Held,
     ) -> tuple[Run, StepRun]:
         resolved = await self._workers.resolve(step.required_capabilities)
         if resolved is None:
@@ -1466,9 +1718,16 @@ class RunEngine:
         if step_run.assignment_open:
             # An assignment handed over earlier and never seen to end may still be running in
             # the worker: it is asked about before another is handed over (ADR-0038).
-            reclaimed = await self._reclaim(run, step, step_run, work, resolved, trace, span, call)
+            reclaimed = await self._reclaim(
+                run, step, step_run, work, resolved, trace, span, call, held
+            )
             if reclaimed is not None:
                 return reclaimed
+        # An assignment adopted above was handed over when it was admitted; a new one is not
+        # handed to an adapter below verified from level 3 (NTC-0051).
+        unverified = await self._unverified(run, step, adapter, held)
+        if unverified is not None:
+            return await self._refuse_unverified(run, step_run, adapter, unverified, span)
         resuming = step_run.checkpoint if step_run.state is StepState.STOPPED else None
         left = remaining(self._line(run), run.consumed())
         assignment = Assignment(
@@ -1558,12 +1817,12 @@ class RunEngine:
             except WorkerError as error:
                 return await self._unavailable(run, step_run, adapter, span, error)
             return await self._handed_over(
-                run, step, step_run, work, worker, state, trace, span, call, adopted=True
+                run, step, step_run, work, worker, state, trace, span, call, held, adopted=True
             )
         except WorkerError as error:
             return await self._unavailable(run, step_run, adapter, span, error)
         return await self._handed_over(
-            run, step, step_run, work, worker, state, trace, span, call, adopted=False
+            run, step, step_run, work, worker, state, trace, span, call, held, adopted=False
         )
 
     async def _reclaim(
@@ -1576,6 +1835,7 @@ class RunEngine:
         trace: Trace,
         span: Span,
         call: dict[str, Any],
+        held: autonomy.Held,
     ) -> tuple[Run, StepRun] | None:
         """The step's assignment was handed over and its end never read: an instance died
         between handing it over and reading its end, or the stream broke. The worker is asked.
@@ -1622,7 +1882,17 @@ class RunEngine:
             )
             return run, step_run
         return await self._handed_over(
-            run, step, step_run, work, resolved.worker, state, trace, span, call, adopted=True
+            run,
+            step,
+            step_run,
+            work,
+            resolved.worker,
+            state,
+            trace,
+            span,
+            call,
+            held,
+            adopted=True,
         )
 
     async def _handed_over(
@@ -1636,6 +1906,7 @@ class RunEngine:
         trace: Trace,
         span: Span,
         call: dict[str, Any],
+        held: autonomy.Held,
         *,
         adopted: bool,
     ) -> tuple[Run, StepRun]:
@@ -1700,7 +1971,7 @@ class RunEngine:
             # Stopped at a request this runner did not make: the runner that handed it over
             # asked before it gave the run up. The run is not stopped; the step continues from
             # the checkpoint with a new assignment.
-            return await self._worker_step(run, step, step_run, work, span)
+            return await self._worker_step(run, step, step_run, work, span, held)
         return run, step_run
 
     async def _full(

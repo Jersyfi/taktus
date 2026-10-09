@@ -326,23 +326,34 @@ def run_under_cap(
         added_by_command_line(
             taktusctl(), "idn_live", run_env, "--state-dir", str(evidence / "state")
         )
-        completed = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
-            [
-                taktusctl(),
-                "run",
-                "--process",
-                str(process),
-                "--worker",
-                f"http://127.0.0.1:{port}",
-                "--state-dir",
-                str(evidence / "state"),
-            ],
-            capture_output=True,
-            text=True,
-            env=run_env,
-            timeout=budget.estimate_wall_seconds * 2,
-            check=False,
-        )
+
+        def invoke(*more: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
+                [
+                    taktusctl(),
+                    "run",
+                    "--process",
+                    str(process),
+                    "--worker",
+                    f"http://127.0.0.1:{port}",
+                    "--state-dir",
+                    str(evidence / "state"),
+                    *more,
+                ],
+                capture_output=True,
+                text=True,
+                env=run_env,
+                timeout=budget.estimate_wall_seconds * 2,
+                check=False,
+            )
+
+        # The process runs at level 2: its one step waits for a person's confirmation, which
+        # whoever starts the job gives by starting it (ADR-0039).
+        waiting = invoke()
+        hint = [line for line in waiting.stdout.splitlines() if "waits for a person:" in line]
+        assert hint, waiting.stdout + waiting.stderr
+        run_id = hint[0].split("--resume ", 1)[1].split()[0]
+        completed = invoke("--resume", run_id, "--approve", "write-file")
     finally:
         worker.terminate()
         try:

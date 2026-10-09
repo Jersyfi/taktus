@@ -432,6 +432,7 @@ class RunMapper:
                 "work": document.get("work", {}),
                 "inputs": document.get("inputs", {}),
                 "rehearsal": document.get("rehearsal", False),
+                "actions": document.get("actions", {}),
                 "state": document["state"],
                 "cause": document.get("cause"),
                 "reason": document.get("reason"),
@@ -468,6 +469,7 @@ class RunMapper:
                     "finished_at": _at(sr.get("finished_at")),
                     "waiting_since": _at(sr.get("waiting_since")),
                     "waits": sr.get("waits", 0),
+                    "confirmed_by": sr.get("confirmed_by"),
                 }
                 for sr in step_runs
             ],
@@ -561,6 +563,7 @@ class RunMapper:
                 "work": row.work,
                 "inputs": row.inputs,
                 "rehearsal": row.rehearsal,
+                "actions": row.actions,
                 "state": row.state,
                 "cause": row.cause,
                 "reason": row.reason,
@@ -625,6 +628,7 @@ def _step_run_from(
             "finished_at": _iso(row.finished_at),
             "waiting_since": _iso(row.waiting_since),
             "waits": row.waits,
+            "confirmed_by": row.confirmed_by,
         }
     )
 

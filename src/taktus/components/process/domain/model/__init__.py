@@ -1,4 +1,4 @@
-from taktus.components.process.domain.model.errors import InvalidProcess
+from taktus.components.process.domain.model.errors import InvalidProcess, RaiseRefused
 from taktus.components.process.domain.model.process import (
     Each,
     Edge,
@@ -18,6 +18,7 @@ __all__ = [
     "InvalidProcess",
     "Process",
     "ProcessVersion",
+    "RaiseRefused",
     "Slo",
     "Trigger",
     "TriggerState",

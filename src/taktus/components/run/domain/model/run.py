@@ -49,16 +49,25 @@ class Cause(StrEnum):
     """A step's worker was at its declared capacity. A run halted with this cause waits at the
     step's boundary and its runner tries again later; one whose step waited beyond its ceiling
     escalates with it (ADR-0037)."""
+    PERSON = "person"
+    """A step waits for a person: to confirm it before it starts (level 2), or to perform the act
+    Taktus only proposes and report it done (level 1). The run waits in `waiting_human` once
+    nothing else can run (ADR-0039)."""
+    MATURITY = "maturity"
+    """A step at level 3 or above would run on an adapter below *verified*, and was not run on
+    it (NTC-0051, ADR-0039)."""
 
 
 # Every transition the run knows. Anything not listed is illegal. `self-healed` of §5.2 is a
-# running → running transition and arrives with retries; `waiting_human` arrives with anchors.
+# running → running transition and arrives with retries. `waiting_human` is where a run waits
+# once nothing runs but steps that wait for a person (ADR-0039); anchors will halt there too.
 RUN_TRANSITIONS: frozenset[tuple[RunState, RunState]] = frozenset(
     {
         (RunState.PLANNED, RunState.ADMITTED),
         (RunState.ADMITTED, RunState.RUNNING),
         (RunState.RUNNING, RunState.WAITING_HUMAN),
         (RunState.WAITING_HUMAN, RunState.RUNNING),
+        (RunState.WAITING_HUMAN, RunState.HALTED),  # an emergency stop while it waits
         (RunState.RUNNING, RunState.HALTED),
         (RunState.RUNNING, RunState.ESCALATED),
         (RunState.RUNNING, RunState.FINISHED),
@@ -67,8 +76,11 @@ RUN_TRANSITIONS: frozenset[tuple[RunState, RunState]] = frozenset(
     }
 )
 
-RESUMABLE: frozenset[RunState] = frozenset({RunState.HALTED, RunState.ESCALATED})
-"""States a run leaves by `resume`: it stopped at a boundary and waits."""
+RESUMABLE: frozenset[RunState] = frozenset(
+    {RunState.HALTED, RunState.ESCALATED, RunState.WAITING_HUMAN}
+)
+"""States a run leaves by `resume`: it stopped at a boundary and waits. A run waiting for a person
+resumes into the same wait unless a step it waited for was answered (`RunEngine.confirm`)."""
 
 INTERRUPTIBLE: frozenset[RunState] = frozenset(
     {RunState.PLANNED, RunState.ADMITTED, RunState.RUNNING}
@@ -86,6 +98,9 @@ class StepState(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     STOPPED = "stopped"
+    WAITING_HUMAN = "waiting_human"
+    """The step waits for a person before anything of it starts: a confirmation at level 2, the
+    act performed by the person at level 1 (ADR-0039). Steps that do not depend on it run on."""
 
 
 STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
@@ -116,6 +131,11 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
         (StepState.STOPPED, StepState.RUNNING),
         (StepState.FAILED, StepState.RUNNING),
         (StepState.REJECTED, StepState.RUNNING),
+        # A person's answer (ADR-0039): the step waits before anything of it starts; a
+        # confirmation lets it start, a report that the person performed the act ends it.
+        (StepState.PLANNED, StepState.WAITING_HUMAN),
+        (StepState.WAITING_HUMAN, StepState.PLANNED),
+        (StepState.WAITING_HUMAN, StepState.SUCCEEDED),
     }
 )
 
@@ -177,6 +197,9 @@ class StepRun(Value):
     ended yet; None while the step is not waiting (ADR-0037)."""
     waits: int = Field(default=0, ge=0)
     """How many times the worker answered so in that wait: what the next delay grows with."""
+    confirmed_by: str | None = Field(default=None, min_length=1)
+    """The person who confirmed the step before it started (level 2), or who performed its act
+    and reported it (level 1); None for a step no person had to answer (ADR-0039)."""
 
     def to(self, state: StepState, **changes: Any) -> StepRun:
         if (self.state, state) not in STEP_TRANSITIONS:
@@ -206,6 +229,10 @@ class Run(Value):
     """On whose behalf the run acts: the identity of the command that commissioned the plan.
     Every connector call carries it, and the target system's permissions for it stand."""
     autonomy_level: AutonomyLevel
+    actions: Mapping[str, AutonomyLevel] = Field(default_factory=dict)
+    """The level of each tool action of the process that runs below the process's level: a
+    capability or a connector operation. A step that uses one runs at the lowest level that
+    applies to it (ADR-0039)."""
     budget: Limits
     margin: float = Field(default=0.0, ge=0.0, le=0.9)
     """The share of every limit held back from the first step on; the run is held to the
@@ -273,11 +300,27 @@ class Run(Value):
         )
 
     def next_step_run(self) -> StepRun | None:
-        """The first step that has not succeeded: where execution continues."""
+        """The first step that has not succeeded."""
         for step_run in self.step_runs:
             if not step_run.done:
                 return step_run
         return None
+
+    def runnable(self) -> StepRun | None:
+        """Where execution continues: the first step that has not succeeded, does not wait for
+        a person, and whose dependencies have all succeeded. A step waiting for a person holds
+        back only the steps that depend on it (ADR-0039)."""
+        done = {s.step_id for s in self.step_runs if s.done}
+        for step_run in self.step_runs:
+            if step_run.done or step_run.state is StepState.WAITING_HUMAN:
+                continue
+            if all(d in done for d in self.step(step_run.step_id).dependencies):
+                return step_run
+        return None
+
+    def waiting(self) -> tuple[StepRun, ...]:
+        """The steps that wait for a person."""
+        return tuple(s for s in self.step_runs if s.state is StepState.WAITING_HUMAN)
 
     def in_flight(self) -> StepRun | None:
         """The step run the executing instance was inside, if any: at most one, since steps

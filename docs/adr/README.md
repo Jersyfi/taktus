@@ -50,4 +50,5 @@ bounding. The section states the boundary; it does not point at it.
 | [0035](ADR-0035-a-time-trigger-fires-once-per-slot.md) | A time trigger fires once per slot, through the elected scheduler | accepted, amended by 0040 |
 | [0037](ADR-0037-a-worker-at-capacity-makes-a-step-wait.md) | A worker at capacity makes a step wait | accepted |
 | [0038](ADR-0038-an-assignment-is-recorded-before-it-is-handed-over.md) | An assignment is recorded before it is handed over | accepted |
+| [0039](ADR-0039-autonomy-is-enforced-at-the-step-boundary.md) | Autonomy is enforced at the step boundary | accepted |
 | [0040](ADR-0040-a-channel-account-is-linked-by-the-person-who-holds-it.md) | A channel account is linked by the person who holds it | accepted |
