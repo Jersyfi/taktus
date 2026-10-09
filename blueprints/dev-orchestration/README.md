@@ -81,6 +81,13 @@ the base branch: a person merges.
 
 Every step carries its method, the reason, the alternatives rejected, a fallback where the
 method can vary, and its exactness class; `tests/exactness` holds the `exact` steps to rules.
+Every step an integration serves — a connector call, the wait on the pipeline, the worker, the
+model — also names a person as its fallback, under a condition that says the integration is
+unavailable (issue #90). That is nineteen steps: the seventeen repository steps, `implement` and
+`refine`. The engine does not switch to the person on its own. The step fails or is refused, the
+run escalates or halts there, and a person does the step, or the rest of the process, by hand
+as the section below says. The removal test (S-01) reads the declaration, and its verdict for the
+repository connector, the coding worker and the model is *changed*: a person serves the step.
 `tests/integration/test_dev_orchestration.py` runs the three bundles end to end with the outside
 faked — the repository service, the model endpoint and the coding agent — and everything inside
 real: one comment with the missing section, the claim, one branch with the worker's files on
@@ -89,6 +96,10 @@ refusals — a filled issue left alone by P-02, an issue missing a section, one 
 milestone and one blocked by an open record refused by P-03 with the reason; and P-01's two
 reports — `none` for a consistent roadmap and backlog, and each kind of disagreement exactly
 once for one that is not — each with the order `tools/backlog.py` computes for the same issues.
+The same file holds the takeover (issue #90): every step of the three bundles that reaches an
+integration names `human` under a condition containing "unavailable", and S-01, run once each
+for the repository connector, the coding worker and the model with the three bundles registered,
+ends *changed* with every step finding naming a person and the removal half passed.
 
 ## Their autonomy, with the reason
 
@@ -105,6 +116,84 @@ The last condition is the deployment's, not the bundle's. `container` and `clust
 frame; `process` and `endpoint` do not, and with those two the isolation is whoever started the
 worker's. A bundle cannot check how it is run, so the condition is named here and in the bundle
 rather than assumed.
+
+## By hand — the takeover test of these processes
+
+A person runs each of the three processes without Taktus (ADR-0013 B, UC-6.3). This is also
+what a person does when a run stops at a step whose integration is unavailable: the run has
+escalated or halted there, and what the person writes produces no result a later step of that
+run can read (ADR-0039). So the person does that step and every step after it by hand, from the
+list below, and leaves the stopped run as it is.
+
+**What it needs.** An account on the repository host that may read issues and files, comment,
+set labels, push a branch and open a pull request. Taktus reaches the host with the parameter
+`REPOSITORY_TOKEN` (`CREDENTIALS.md`); a person uses their own account, in the host's web
+interface or its command-line client. For P-03, a clone of the repository and its toolchain
+(`make install`). The ready standard is the one in `docs/process/README.md`, section *Ready*;
+`make backlog` prints it applied to every open issue, and a person can check it by reading the
+issue just as well.
+
+Steps marked **person** are the ones that name a person as their fallback; the others are rules
+a person applies by reading.
+
+### P-01 Roadmap control
+
+1. **read-roadmap** (person) — open `docs/roadmap.md` on `main` and note the commit it is at.
+2. **read-issues** (person) — list every open issue, every page, with its labels and milestone.
+3. **read-open-records** (person) — list the files under `docs/decisions/open/` on `main`.
+4. **order** — sort the issues as the backlog orders them: earliest milestone, then priority
+   (`priority:high`, `priority:normal`, `priority:low`), then issue number; group them as
+   claimed (`in-progress`), ready, and not ready. Note every issue labelled `ready` that fails
+   the standard, with the reason. `make backlog` prints the same.
+5. **reconcile** — for every item of every milestone in the roadmap, note the items that name no
+   issue as `#N`; for every open issue with a milestone, note it when that milestone's items do
+   not name it.
+6. **compose-report** and **write-report** (person) — write one comment on the issue labelled
+   `report` (#129 here) with the three lists under the headings the bundle's template uses. Do
+   not change any issue, label or milestone: P-01 proposes, and so does the person running it.
+
+### P-02 Refinement
+
+1. **read-issue** and **read-comments** (person) — read the issue and its discussion.
+2. **admit** — if a comment ending "Written by Taktus, process P-02 Refinement" is already
+   there, stop: the sections were written before.
+3. **missing** — note which of the three sections of the standard — *What must be achieved*,
+   *How it is verified*, *Where the boundary lies* — are missing or empty. If none, or the issue
+   is closed or a pull request, stop.
+4. **refine** (person) — write exactly the missing sections from the issue's own words, each
+   headed `### ` and its name: the outcome, not the route; conditions a test can check; what is
+   not part of it.
+5. **compose-comment** and **write-sections** (person) — post them as one comment on the issue.
+   Do not edit the issue and do not add `ready`; whoever moves the sections into the issue does.
+
+### P-03 Implementation
+
+1. **read-issue**, **read-comments**, **read-open-issues**, **read-open-records** (person) —
+   read the issue and its discussion, the open issues, and the files under the directory of
+   open records on `main`.
+2. **admit** — the issue meets the ready standard, is open, is not a pull request and is not
+   labelled `in-progress`; anything it names under "Blocked by" is closed, or its record file
+   is gone from the open directory. If not, stop and note why.
+3. **claim** (person) — add the label `in-progress` to the issue.
+4. **implement** (person) — in a clone, on a branch from `main`, make the change the issue asks
+   for so that every condition under "How it is verified" holds, within "Where the boundary
+   lies", following the repository's own rules for a change; run its checks (`make gates`
+   here). Write the pull request description in the shape the repository asks for.
+5. **branch-name** and **create-branch** (person) — push the change as branch
+   `taktus/issue-<n>`. A branch of that name left by an earlier attempt is either the run's to
+   resume or deleted first; never push over it unseen.
+6. **wait-for-pipeline** and **read-pipeline** (person) — wait until the pipeline for the
+   branch has a verdict, and read it.
+7. **verify** — the verdict is `success`. If not, go back to step 4.
+8. **pull-request-title**, **pull-request-body** and **open-pr** (person) — open the pull
+   request against `main`, titled with the issue's title and `(#<n>)`, its description
+   starting `Closes #<n>.` and ending with the section the repository generates
+   (`make status` here).
+9. **label** (person) — add the label `taktus` when the change was made by a run that stopped
+   after `implement`, so that a reader sees where it came from; a change the person made
+   carries no label.
+
+Merging stays with the person who reviews, as it does when Taktus runs the process.
 
 ## Running them for real
 

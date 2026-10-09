@@ -41,11 +41,30 @@ from pathlib import Path
 
 import httpx
 import pytest
+import yaml
 from fakes import model_service
 from fakes.identity import added_by_command_line
 
+from taktus.adapters.driven.configuration.environment import EnvironmentConfiguration
+from taktus.components.catalog.application.service import REMOVAL_TESTED
+from taktus.components.process.application.service.register_version import (
+    RegisterProcessVersion,
+    parse_bundle,
+)
+from taktus.components.run.domain.model import (
+    ConnectorRule,
+    LlmWork,
+    RunState,
+    WaitWork,
+    WorkerWork,
+    parse_work,
+)
+from taktus.composition.local import LocalWiring
+from taktus.shared.v1 import Method
+
 from .conftest import ROOT, free_port
 from .test_first_slice import PLAIN, taktusctl
+from .test_removal_test import TENANT, result_of, run_removal
 
 BLUEPRINT = ROOT / "blueprints" / "dev-orchestration" / "processes"
 FAKE_SERVICE = ROOT / "tests" / "fakes" / "repository_service.py"
@@ -695,3 +714,123 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
     assert order_in(body) == order_of_make_backlog(outside), body
     assert outside.labels(failing) == ["priority:normal", "ready", "task"], "it only proposes"
     assert outside.state()[REPOSITORY]["comments"] == 1  # type: ignore[index]
+
+
+# --- the takeover of every integration step (issue #90) ---------------------------------------
+
+BUNDLES = {
+    "P-01-roadmap-control.yaml": "p01-roadmap-control@2",
+    "P-02-refinement.yaml": "p02-refinement@3",
+    "P-03-implementation.yaml": "p03-implementation@3",
+}
+REPOSITORY_CONNECTOR = "connector.channel.repo"
+TAKEN_OVER: dict[str, dict[str, set[str]]] = {
+    REPOSITORY_CONNECTOR: {
+        "p01-roadmap-control@2": {
+            "read-roadmap",
+            "read-issues",
+            "read-open-records",
+            "write-report",
+        },
+        "p02-refinement@3": {"read-issue", "read-comments", "write-sections"},
+        "p03-implementation@3": {
+            "read-issue",
+            "read-comments",
+            "read-open-issues",
+            "read-open-records",
+            "claim",
+            "create-branch",
+            "wait-for-pipeline",
+            "read-pipeline",
+            "open-pr",
+            "label",
+        },
+    },
+    "worker.endpoint": {"p03-implementation@3": {"implement"}},
+    "model.endpoint": {"p02-refinement@3": {"refine"}},
+}
+"""Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""
+
+
+def bundle_of(name: str) -> dict[str, object]:
+    with (BLUEPRINT / name).open(encoding="utf-8") as handle:
+        document: dict[str, object] = yaml.safe_load(handle)
+    return document
+
+
+def on_an_integration(work: object) -> bool:
+    """Whether a step's work reaches an adapter: a connector call, a wait on a connector, a
+    worker assignment or a model call — what the removal test withholds."""
+    return isinstance(work, ConnectorRule | WorkerWork | LlmWork) or (
+        isinstance(work, WaitWork) and work.until is not None
+    )
+
+
+@pytest.mark.parametrize("bundle", sorted(BUNDLES))
+def test_every_step_on_an_integration_falls_back_to_a_person_when_it_is_unavailable(
+    bundle: str,
+) -> None:
+    """Issue #90, ADR-0013 B: a person can take over every step an integration serves. Each such
+    step names `human` as its fallback, under a condition that names the integration being
+    unavailable — what the removal test relies on for *changed* (contracts.md §4)."""
+    version = parse_bundle(bundle_of(bundle))
+    examples = {name: declared.example for name, declared in version.inputs.items()}
+    found: set[str] = set()
+    for step in version.ordered():
+        if not on_an_integration(parse_work(step, version.work.get(step.id), examples)):
+            continue
+        found.add(step.id)
+        fallback = step.fallback
+        assert fallback is not None, f"{bundle}: {step.id} names no fallback"
+        assert fallback.to is Method.HUMAN, f"{bundle}: {step.id} falls back to {fallback.to}"
+        assert "unavailable" in fallback.when, (
+            f"{bundle}: the fallback of {step.id} does not name its integration unavailable"
+        )
+    expected: set[str] = set()
+    for uses in TAKEN_OVER.values():
+        expected |= uses.get(BUNDLES[bundle], set())
+    assert found == expected
+
+
+async def test_removing_each_integration_of_the_three_processes_changes_them(
+    outside: Outside, tmp_path: Path
+) -> None:
+    """Issue #90: S-01 withholds the repository connector, the coding worker and the model in
+    turn, with P-01 to P-03 registered. No step breaks: every step the integration served falls
+    back to a person, the verdict is *changed*, and the adapter's maturity record holds the
+    removal half as passed. The processes write outward and the worker reaches a host, so their
+    verdicts rest on resolution (ADR-0030); nothing is sent to the fakes."""
+    state_dir = tmp_path / "state"
+    configuration = EnvironmentConfiguration(
+        {**outside.environment(state_dir), "TAKTUS_MODEL_PURPOSES": "reasoning"}
+    )
+    async with LocalWiring(configuration).services(
+        state_dir=state_dir, worker_endpoint=outside.worker_url
+    ) as services:
+        for bundle in BUNDLES:
+            await services.register_version.execute(
+                RegisterProcessVersion(bundle_of(bundle), tenant=TENANT)
+            )
+        for integration, uses in TAKEN_OVER.items():
+            run = await run_removal(services, integration)
+            assert run.state is RunState.FINISHED, (integration, run.reason)
+
+            result = (await result_of(services, run, "exercise"))["output"]
+            assert result["verdict"] == "changed", (integration, result)
+            steps = {p["process"]: {s["step"] for s in p["steps"]} for p in result["processes"]}
+            assert steps == uses, integration
+            for process in result["processes"]:
+                for finding in process["steps"]:
+                    assert finding["verdict"] != "broke", (integration, finding)
+                    assert finding["fallback"] == "human", (integration, finding)
+                    assert finding.get("alternative") is None, "no second adapter is configured"
+
+            recorded = (await result_of(services, run, "record"))["output"]
+            assert recorded["integration"] == integration
+            assert not [gap for gap in recorded["missing"] if "removal" in gap], recorded
+
+        async with services.work.transaction(TENANT):
+            entries = list(await services.ledger.entries(TENANT))
+        tested = [(e.adapter, e.outcome) for e in entries if e.kind == REMOVAL_TESTED]
+        assert tested == [(integration, "changed") for integration in TAKEN_OVER]
+        assert not [e for e in entries if e.kind.startswith("egress.")], "nothing left the system"

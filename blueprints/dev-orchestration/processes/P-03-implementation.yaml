@@ -26,9 +26,16 @@
 # description, verbatim with its heading, or empty when it generates none. The connector
 # configured for `repository.*` and the worker configured for `code.*` are what the
 # capabilities resolve to; no product is named here.
+#
+# Every step an integration serves — a connector call, a wait on a connector, the worker, the
+# model — names a person as its fallback for when that integration is unavailable (issue #90).
+# The engine does not switch to the person: the step fails or is refused, and the run escalates
+# or halts there. A person then does the step, or continues the process, by hand, following
+# "By hand — the takeover test of these processes" in the blueprint's README.md. The removal
+# test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "2"
+version: "3"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -90,6 +97,9 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
     work:
       rule: connector
       operation: repository.issues.read
@@ -105,6 +115,9 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    fallback:
+      when: the connector serving repository.comments is unavailable
+      to: human
     depends_on: [read-issue]
     work:
       rule: connector
@@ -146,6 +159,9 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    fallback:
+      when: the connector serving repository.issues is unavailable
+      to: human
     depends_on: [read-issue]
     work:
       rule: connector
@@ -167,6 +183,9 @@ steps:
       - method: llm
         why: a read needs no language model
     exactness: sourced
+    fallback:
+      when: the connector serving repository.files is unavailable
+      to: human
     depends_on: [read-issue]
     work:
       rule: connector
@@ -207,6 +226,9 @@ steps:
       - method: worker
         why: nothing here needs a sandbox or tools
     exactness: sourced
+    fallback:
+      when: the connector serving repository.labels is unavailable
+      to: human
     depends_on: [admit]
     work:
       rule: connector
@@ -229,7 +251,10 @@ steps:
         why: the core executes no code itself; that is the adapter obligation
     exactness: tolerant
     fallback:
-      when: the assignment fails, is stopped twice, or the pipeline is red
+      when: >
+        the coding worker — the worker serving code.read, code.edit, code.test and
+        shell.sandboxed — is unavailable, or the assignment fails, is stopped twice, or the
+        pipeline is red
       to: human
     requires: [code.read, code.edit, code.test, shell.sandboxed]
     depends_on: [claim, context]
@@ -305,6 +330,9 @@ steps:
       - method: worker
         why: a worker that pushes has a credential to the repository and writes outward past the ledger
     exactness: sourced
+    fallback:
+      when: the connector serving repository.branches is unavailable
+      to: human
     depends_on: [implement, branch-name]
     work:
       rule: connector
@@ -322,6 +350,9 @@ steps:
     method: wait
     reason: the pipeline runs on its own time; the run waits for its verdict, polling the state
     rejected: []
+    fallback:
+      when: the connector serving repository.pipelines is unavailable
+      to: human
     depends_on: [create-branch]
     work:
       until:
@@ -343,6 +374,9 @@ steps:
       pipeline was re-run reads it again instead of judging the old reading (issue #31)
     rejected: []
     exactness: sourced
+    fallback:
+      when: the connector serving repository.pipelines is unavailable
+      to: human
     depends_on: [wait-for-pipeline]
     work:
       rule: connector
@@ -433,6 +467,9 @@ steps:
     reason: opening a pull request is an API call; a repeat after a restart finds the one opened
     rejected: []
     exactness: sourced
+    fallback:
+      when: the connector serving repository.pullrequests is unavailable
+      to: human
     depends_on: [pull-request-title, pull-request-body]
     work:
       rule: connector
@@ -450,6 +487,9 @@ steps:
     reason: the pull request is marked as Taktus's, so that a reader sees who opened it
     rejected: []
     exactness: sourced
+    fallback:
+      when: the connector serving repository.labels is unavailable
+      to: human
     depends_on: [open-pr]
     work:
       rule: connector
