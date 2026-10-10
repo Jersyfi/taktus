@@ -8,9 +8,10 @@ Two things are generated today, each never edited by hand:
   `tests/adapters/rest/test_openapi.py` fails when the file differs from what this script writes.
 - `web/src/lib/generated/fixtures.json`, what the web app's tests draw: the visual vocabulary
   and a run level drawn by `reporting` from example facts that use every method kind, every
-  exactness class and every motion (ADR-0063). The web app's tests hold what it draws to these
-  glyphs; `tests/components/reporting/test_run_level.py` fails when the file differs from what
-  this script writes. The web app itself reads the vocabulary and every level from the surface.
+  exactness class and every motion, and the process level of the same steps (ADR-0063,
+  ADR-0064). The web app's tests hold what it draws to these glyphs;
+  `tests/components/reporting/test_run_level.py` fails when the file differs from what this
+  script writes. The web app itself reads the vocabulary and every level from the surface.
 
 The shared kernel's Python types under src/taktus/shared/ are a hand-written binding checked
 against the schemas by tests/contract, not generated (docs/architecture/project-structure.md
@@ -41,10 +42,18 @@ def openapi_document() -> str:
 def web_fixtures() -> str:
     from datetime import UTC, datetime
 
-    from taktus.components.reporting.domain.model import RunFacts, StepFacts, Wait
+    from taktus.components.reporting.domain.model import (
+        ProcessFacts,
+        ProcessStepFacts,
+        RunAtVersion,
+        RunFacts,
+        StepFacts,
+        VersionRef,
+        Wait,
+    )
     from taktus.components.reporting.domain.model.vocabulary import VOCABULARY
-    from taktus.components.reporting.domain.service.levels import run_level
-    from taktus.shared.v1 import ConsumptionQuantities
+    from taktus.components.reporting.domain.service.levels import process_level, run_level
+    from taktus.shared.v1 import Autonomy, ConsumptionQuantities
 
     at = datetime(2026, 10, 10, 9, 0, tzinfo=UTC)
 
@@ -98,9 +107,43 @@ def web_fixtures() -> str:
         created_at=at,
         updated_at=at,
     )
+    process = ProcessFacts(
+        id="example",
+        tenant="default",
+        name="Example",
+        version="1",
+        autonomy=Autonomy.model_validate(
+            {
+                "level": 2,
+                "reason": "a person confirms each step",
+                "toward_next": "twenty runs without a result defect",
+            }
+        ),
+        steps=tuple(
+            ProcessStepFacts(
+                id=s.id,
+                method=s.method,
+                exactness=s.exactness,
+                reason=f"the {s.method} suits {s.id}",
+                depends_on=s.depends_on,
+            )
+            for s in facts.steps
+        ),
+        versions=(VersionRef(version="1", active=True),),
+        runs=(
+            RunAtVersion(
+                id="run_example",
+                tenant="default",
+                state="running",
+                running=("score", "draft", "review"),
+                created_at=at,
+            ),
+        ),
+    )
     document = {
         "vocabulary": VOCABULARY.document(),
         "run_level": run_level(facts).document(),
+        "process_level": process_level(process).document(),
     }
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 

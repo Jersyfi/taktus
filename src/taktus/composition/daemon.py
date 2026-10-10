@@ -116,7 +116,7 @@ from taktus.composition.execution import (
 )
 from taktus.composition.findings import RepositoryChannel, RunBlocks, findings_tick
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
-from taktus.composition.levels import RunLevelRecords
+from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
@@ -452,7 +452,14 @@ async def wire(
                     clock,
                     LiveOptions(max_streams=settings.live_streams),
                 ),
-                levels=LevelQueries(RunLevelRecords(persistence, runs)),
+                levels=LevelQueries(
+                    RepositoryLevelRecords(
+                        persistence,
+                        runs,
+                        PostgresRepository(persistence, Process),
+                        PostgresRepository(persistence, ProcessVersion),
+                    )
+                ),
                 complete_intake=complete_intake,
                 reactions=Reactions(
                     tenants=settings.tenants,

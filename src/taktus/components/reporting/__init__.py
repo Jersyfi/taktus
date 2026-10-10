@@ -53,7 +53,10 @@ exists: the run and each of its steps, every fact with its glyph with motion and
 text equivalent, the waits named by account, cause and role, the figures the run's own
 (`domain/model/levels.py`, `domain/service/levels.py`). It is read through the port
 `ports/levels.py`, which the composition root binds to the run's repository, and asked of the
-one predicate (`application/query/levels.py`).
+one predicate (`application/query/levels.py`). The process level exists too: the steps of a
+process version as a graph, each with how it works and the runs it is running in, at rest
+otherwise, with the autonomy statement in words and the runs of the version the reader may see;
+the predicate answers for a process as well (ADR-0064).
 
 Which connector carries a message, how a decision answer is kept and which values are secret are
 asked through `ports/`, and answered by the composition root, because components never import

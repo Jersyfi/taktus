@@ -8,6 +8,7 @@
 	import KeyForm from '../lib/KeyForm.svelte';
 	import { currentKey } from '../lib/key';
 	import { applyToRuns, type Runs } from '../lib/live';
+	import { processLink } from '../lib/links';
 	import { follow } from '../lib/stream';
 
 	let key = $state(currentKey());
@@ -55,7 +56,7 @@
 			{#each listed as run (run.id)}
 				<li>
 					<a href="#/runs/{encodeURIComponent(run.id)}">{run.id}</a>
-					<span>{run.process_version}</span>
+					{#if run.process_version}<a href={processLink(run.process_version)}>{run.process_version}</a>{/if}
 					<span class="state">{run.state.replace('_', ' ')}</span>
 				</li>
 			{/each}

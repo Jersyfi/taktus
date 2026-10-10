@@ -64,3 +64,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0055](ADR-0055-a-change-of-state-reaches-its-reader-from-the-ledger-as-it-happens.md) | A change of state reaches its reader from the ledger, as it happens | accepted |
 | [0059](ADR-0059-one-visual-vocabulary-defined-once-in-reporting.md) | One visual vocabulary, defined once in `reporting`, and every representation checked against it | accepted |
 | [0063](ADR-0063-the-web-app-draws-each-level-as-reporting-hands-it-over.md) | The web app is a static build in the image, and draws each level as `reporting` hands it over | accepted |
+| [0064](ADR-0064-a-process-version-is-drawn-as-its-graph-with-its-autonomy-statement.md) | A process version is drawn as its graph, with its autonomy statement and its runs | accepted |

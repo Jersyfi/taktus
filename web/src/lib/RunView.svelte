@@ -2,35 +2,31 @@
 	The run level of UC-6.10: where one run stands. Drawn from the level the surface hands over
 	and from nothing else: every glyph is the vocabulary's, picked with motion or without by the
 	reader's setting, and every figure is the run component's. The same states and figures are
-	written out below the drawing, as its text equivalent.
+	written out below the drawing, as its text equivalent. It leads to its process (ADR-0064).
 -->
 <script lang="ts">
 	import Glyph from './Glyph.svelte';
+	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
-	import { place } from './layout';
+	import { processLink } from './links';
 	import type { Figure, RunLevel } from './types';
 
 	let { level, motionAllowed }: { level: RunLevel; motionAllowed: boolean } = $props();
 
-	const COLUMN = 200;
-	const ROW = 132;
-	/** The middle of a step's glyph, from the top of its place, and the room around it. */
-	const MIDDLE = 28;
-	const GAP = 34;
-	const placed = $derived(place(level.steps));
-	const at = $derived(new Map(placed.map((p) => [p.id, p])));
-	const width = $derived(Math.max(1, ...placed.map((p) => p.column + 1)) * COLUMN);
-	const height = $derived(Math.max(1, ...placed.map((p) => p.row + 1)) * ROW);
-	const edges = $derived(
-		level.steps.flatMap((s) =>
-			(s.depends_on ?? [])
-				.filter((d) => at.has(d))
-				.map((d) => ({ from: at.get(d)!, to: at.get(s.id)! }))
-		)
-	);
+	const byId = $derived(new Map(level.steps.map((s) => [s.id, s])));
 
 	function figures(found: Figure[] | undefined): string {
 		return (found ?? []).map((f) => `${f.name} ${f.value}`).join(', ');
+	}
+
+	function notes(id: string): string[] {
+		const step = byId.get(id);
+		const found: string[] = [];
+		if (step?.wait) {
+			found.push(`waits: ${step.wait.account}${step.wait.role ? ` (${step.wait.role})` : ''}`);
+		}
+		if (step?.consumption?.length) found.push(figures(step.consumption));
+		return found;
 	}
 </script>
 
@@ -40,7 +36,8 @@
 		<div>
 			<h1 id="run-title">Run {level.run.id}</h1>
 			<p class="meta">
-				Process {level.run.process_version}{#if level.run.rehearsal}&#32;· a rehearsal{/if}
+				Process <a href={processLink(level.run.process_version)}>{level.run.process_version}</a
+				>{#if level.run.rehearsal}&#32;· a rehearsal{/if}
 			</p>
 		</div>
 	</header>
@@ -50,31 +47,7 @@
 		<dd data-figures="run">{figures(level.run.consumed) || 'nothing'}</dd>
 	</dl>
 
-	<div class="flow" style="width: {width}px; height: {height}px" aria-hidden="true">
-		<svg class="edges" {width} {height}>
-			{#each edges as edge (`${edge.from.id}>${edge.to.id}`)}
-				<line
-					x1={edge.from.column * COLUMN + COLUMN / 2 + GAP}
-					y1={edge.from.row * ROW + MIDDLE}
-					x2={edge.to.column * COLUMN + COLUMN / 2 - GAP}
-					y2={edge.to.row * ROW + MIDDLE}
-				/>
-			{/each}
-		</svg>
-		{#each level.steps as step (step.id)}
-			{@const p = at.get(step.id)!}
-			<div class="step" style="left: {p.column * COLUMN}px; top: {p.row * ROW}px" data-step={step.id}>
-				<Glyph glyph={chosen(step.drawn, motionAllowed)} />
-				<span class="name">{step.id}</span>
-				{#if step.wait}
-					<span class="wait">waits: {step.wait.account}{#if step.wait.role}&#32;({step.wait.role}){/if}</span>
-				{/if}
-				{#if step.consumption?.length}
-					<span class="used">{figures(step.consumption)}</span>
-				{/if}
-			</div>
-		{/each}
-	</div>
+	<Graph steps={level.steps} {motionAllowed} {notes} />
 
 	<section class="text" aria-label="The run as text">
 		<h2>As text</h2>
@@ -101,6 +74,9 @@
 		margin: 0.15rem 0 0;
 		opacity: 0.75;
 	}
+	.meta a {
+		color: inherit;
+	}
 	.consumed {
 		display: flex;
 		gap: 0.5rem;
@@ -112,38 +88,6 @@
 	.consumed dd {
 		margin: 0;
 		font-variant-numeric: tabular-nums;
-	}
-	.flow {
-		position: relative;
-		max-width: 100%;
-		overflow-x: auto;
-	}
-	.edges {
-		position: absolute;
-		inset: 0;
-	}
-	.edges line {
-		stroke: currentColor;
-		stroke-opacity: 0.35;
-		stroke-width: 1.5;
-	}
-	.step {
-		position: absolute;
-		width: 200px;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.15rem;
-		text-align: center;
-		font-size: 0.85rem;
-	}
-	.name {
-		font-weight: 600;
-	}
-	.wait,
-	.used {
-		opacity: 0.8;
-		font-size: 0.75rem;
 	}
 	.text ol {
 		padding-left: 1.25rem;

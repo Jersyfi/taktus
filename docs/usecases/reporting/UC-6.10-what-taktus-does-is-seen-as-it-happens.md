@@ -6,8 +6,8 @@ epic: E6
 serves: [P2, P7, P9, P14]
 state: building
 version: 0.3.0
-tests: [tests/components/reporting/test_visual_vocabulary.py::test_a_reproducible_kind_is_drawn_apart_from_a_variable_one, tests/components/reporting/test_visual_vocabulary.py::test_a_persons_step_and_a_waiting_step_differ_from_both_and_from_each_other, tests/components/reporting/test_visual_vocabulary.py::test_exact_is_marked_and_no_other_class_carries_its_mark, tests/components/reporting/test_visual_vocabulary.py::test_no_token_is_a_colour, tests/components/reporting/test_visual_vocabulary.py::test_an_idle_system_draws_no_motion, tests/components/reporting/test_visual_vocabulary.py::test_without_motion_nothing_moves_and_nothing_is_lost, tests/components/reporting/test_visual_vocabulary.py::test_every_element_has_a_text_equivalent_with_its_method_class_and_state, tests/components/reporting/test_visual_vocabulary.py::test_a_representation_that_draws_an_llm_step_as_reproducible_fails, tests/integration/test_live_changes.py::test_changes_recorded_through_another_process_arrive_within_5_seconds, tests/integration/test_live_changes.py::test_with_the_notification_dropped_changes_arrive_within_the_same_bound, tests/integration/test_live_changes.py::test_a_reader_that_reconnects_to_another_replica_misses_nothing_and_sees_nothing_twice, tests/components/reporting/test_run_level.py::test_every_element_hands_over_the_vocabularys_glyph_with_motion_and_without, tests/components/reporting/test_run_level.py::test_only_the_running_step_moves_and_without_motion_it_has_its_still_mark, tests/components/reporting/test_run_level.py::test_an_idle_run_draws_no_motion, tests/components/reporting/test_run_level.py::test_the_text_equivalent_carries_the_states_the_wait_and_the_figures, tests/components/reporting/test_run_level.py::test_a_run_the_predicate_withholds_is_absent_whoever_hands_it_over, tests/adapters/rest/test_levels.py::test_a_run_the_reader_may_not_see_is_answered_as_one_that_does_not_exist, tests/integration/test_run_level.py::test_a_registered_process_s_run_is_found_at_the_run_level]
-adrs: {ADR-0015: 3a42705e5561, ADR-0021: 202e0442e7ec, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a, ADR-0055: 3fe20ea459f6, ADR-0059: 77fcc243cd82, ADR-0063: 7f1f0e0f205a}
+tests: [tests/components/reporting/test_visual_vocabulary.py::test_a_reproducible_kind_is_drawn_apart_from_a_variable_one, tests/components/reporting/test_visual_vocabulary.py::test_a_persons_step_and_a_waiting_step_differ_from_both_and_from_each_other, tests/components/reporting/test_visual_vocabulary.py::test_exact_is_marked_and_no_other_class_carries_its_mark, tests/components/reporting/test_visual_vocabulary.py::test_no_token_is_a_colour, tests/components/reporting/test_visual_vocabulary.py::test_an_idle_system_draws_no_motion, tests/components/reporting/test_visual_vocabulary.py::test_without_motion_nothing_moves_and_nothing_is_lost, tests/components/reporting/test_visual_vocabulary.py::test_every_element_has_a_text_equivalent_with_its_method_class_and_state, tests/components/reporting/test_visual_vocabulary.py::test_a_representation_that_draws_an_llm_step_as_reproducible_fails, tests/integration/test_live_changes.py::test_changes_recorded_through_another_process_arrive_within_5_seconds, tests/integration/test_live_changes.py::test_with_the_notification_dropped_changes_arrive_within_the_same_bound, tests/integration/test_live_changes.py::test_a_reader_that_reconnects_to_another_replica_misses_nothing_and_sees_nothing_twice, tests/components/reporting/test_run_level.py::test_every_element_hands_over_the_vocabularys_glyph_with_motion_and_without, tests/components/reporting/test_run_level.py::test_only_the_running_step_moves_and_without_motion_it_has_its_still_mark, tests/components/reporting/test_run_level.py::test_an_idle_run_draws_no_motion, tests/components/reporting/test_run_level.py::test_the_text_equivalent_carries_the_states_the_wait_and_the_figures, tests/components/reporting/test_run_level.py::test_a_run_the_predicate_withholds_is_absent_whoever_hands_it_over, tests/adapters/rest/test_levels.py::test_a_run_the_reader_may_not_see_is_answered_as_one_that_does_not_exist, tests/integration/test_run_level.py::test_a_registered_process_s_run_is_found_at_the_run_level, tests/components/reporting/test_process_level.py::test_every_element_hands_over_the_vocabularys_glyph_with_motion_and_without, tests/components/reporting/test_process_level.py::test_a_step_moves_only_while_a_run_of_the_version_runs_it, tests/components/reporting/test_process_level.py::test_the_autonomy_statement_is_shown_with_the_process, tests/components/reporting/test_process_level.py::test_each_step_says_how_it_works, tests/components/reporting/test_process_level.py::test_a_run_the_predicate_withholds_is_neither_drawn_nor_counted, tests/adapters/rest/test_process_level.py::test_a_new_version_changes_the_graph_with_nothing_else_edited, tests/adapters/rest/test_process_level.py::test_a_process_the_reader_may_not_see_is_answered_as_one_that_does_not_exist, tests/integration/test_process_level.py::test_a_registered_process_is_found_at_the_process_level_and_moves_with_its_runs]
+adrs: {ADR-0015: 3a42705e5561, ADR-0021: 202e0442e7ec, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a, ADR-0055: 3fe20ea459f6, ADR-0059: 77fcc243cd82, ADR-0063: 7f1f0e0f205a, ADR-0064: 9dd03b64f976}
 supersedes: null
 ---
 
@@ -110,7 +110,7 @@ written the same day (DEC-0055).
 ## 5. What is proven so far
 
 The visual vocabulary is built, in the `reporting` component (ADR-0059), and so are the web app
-and the first of the four levels, the run (ADR-0063, #105). By the named tests:
+and two of the four levels, the run (ADR-0063, #105) and the process (ADR-0064, #190). By the named tests:
 
 - The four reproducible method kinds share a straight edge and a regular pulse; `llm` and
   `worker` share a wavering edge and an irregular shimmer. A person's step and a waiting step
@@ -138,7 +138,20 @@ The run level:
 - The web app draws every token it is handed and no other, follows the run's stream and reads the
   level again on every change without a reload; its tests are under `web/src/` (`make gate-web`).
 
-Not yet: the process level (#190), the overview (#191), the origin of a result (#192), and a
+The process level:
+
+- A registered process is read at the process level over HTTP: the steps of its active version
+  as a graph, each with how it works — method kind, exactness class, why that method, what was not
+  chosen, where it falls back — and every glyph passing the vocabulary's check; with its autonomy
+  statement, the level and why, and the runs of the version.
+- A new version registered changes the graph with nothing else edited; the earlier version is
+  still read by name.
+- A run of the version, followed on the process's stream, arrives within 5 seconds, and the level
+  read after it lists the run. A step moves only while a run of the version runs it.
+- A process the reader may not see is answered exactly as one that does not exist; a run the
+  predicate withholds is neither drawn nor counted.
+
+Not yet: the overview (#191), the origin of a result (#192), and a
 channel other than the web app (#193); the forms of a decision request and of a result's origin,
 which arrive with the level that draws them. The export of UC-5.7 does not exist; the run level's
 figures are held to the run's own record until it does.

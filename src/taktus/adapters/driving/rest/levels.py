@@ -3,6 +3,9 @@
 - `GET /levels/runs/{run_id}` — the run level of UC-6.10: the run and each of its steps, every
   fact with its glyph with motion and without, and its text equivalent. Read with an account
   key; a run the reader may not see is answered exactly as one that does not exist.
+- `GET /levels/processes/{process_id}` — the process level: one version's steps as a graph, each
+  with how it works and the runs it is running in, with the autonomy statement and the runs of
+  the version (ADR-0064). A process the reader may not see is answered as one that does not exist.
 - `GET /vocabulary` — the visual vocabulary as a document (ADR-0059), for a legend. It says how
   Taktus draws, nothing about any tenant, and needs no key.
 - `/app/` — the web app, the static build of `web/`, served where it was built into the image.
@@ -17,7 +20,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, Header
+from fastapi import APIRouter, FastAPI, Header, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -67,6 +70,45 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         level = await services.levels.run(reader, run_id)
         if level is None:
             return problem(404, f"no run {run_id!r} you may see")
+        return JSONResponse(level.document())
+
+    @routes.get(
+        "/levels/processes/{process_id}",
+        summary="The process level: a process version as a graph",
+        description="The steps of one version of a process — the active one, or the one "
+        "`version` names — each with how it works: method kind, exactness class, why that "
+        "method, what was not chosen, where it falls back, which steps it follows, and the "
+        "runs it is running in right now. With the process's autonomy statement — the level "
+        "it runs at and why (ADR-0026) — its registered versions, and the runs of the version "
+        "you may see. Every element carries its glyph with motion and without, and its text "
+        "equivalent. Follow `GET /changes?process=…` and read this again when a change "
+        "arrives (ADR-0064).",
+        responses={
+            200: {"description": "The process level."},
+            401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+            404: {
+                "description": "No such process or version, or one you may not see: answered "
+                "alike.",
+                **PROBLEM,
+            },
+            422: {"description": "A parameter does not validate.", **PROBLEM},
+        },
+    )
+    async def process_level(
+        process_id: str,
+        version: str | None = Query(
+            default=None, min_length=1, description="The version; the active one when absent."
+        ),
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        who = await authenticated(services, authorization)
+        if who is None:
+            return problem(401, "an account key is needed: Authorization: Bearer <key>")
+        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        level = await services.levels.process(reader, process_id, version)
+        if level is None:
+            named = process_id if version is None else f"{process_id}@{version}"
+            return problem(404, f"no process {named!r} you may see")
         return JSONResponse(level.document())
 
     @routes.get(
