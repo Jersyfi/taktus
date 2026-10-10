@@ -12,7 +12,8 @@ writes. This module answers each from the other:
 - `DecisionsOfTheChannel` files a decision answer through the decision component's own
   handlers, and hands a confirmed decision to the run, which continues from its boundary;
 - `OwnerAnswers` is the intake's `ChannelAnswers`: a message written in the thread of a report
-  goes to the reporting component and is no command;
+  goes to the reporting component and is no command, and so does a request for a live
+  representation in the owner's conversation (ADR-0069);
 - `KnownSecrets` holds the values the instance was configured with, so that no message carries
   one;
 - `ShippedPhrasebooks` reads the phrasebooks Taktus ships (`phrasebooks/`), by language.
@@ -44,7 +45,7 @@ from taktus.components.decision.application.service import (
     UnknownRequest,
 )
 from taktus.components.decision.domain.model import Request
-from taktus.components.reporting.application.query import ReportQueries
+from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     AnswerInChannel,
     AnswerInChannelHandler,
@@ -54,6 +55,8 @@ from taktus.components.reporting.application.service import (
     RaiseReport,
     RaiseReportHandler,
     ReportingError,
+    ShowInChannel,
+    ShowInChannelHandler,
 )
 from taktus.components.reporting.domain.model import OwnerChannel, Report, ReportKind
 from taktus.components.reporting.ports import (
@@ -270,10 +273,23 @@ class DecisionsOfTheChannel(DecisionAnswers):
 
 
 class OwnerAnswers(ChannelAnswers):
-    def __init__(self, answering: AnswerInChannelHandler) -> None:
-        self._answering = answering
+    """A message in the thread of a report is an answer to it; a message in the owner's
+    conversation that asks for a live representation is answered with its text equivalent and
+    a link (ADR-0069), where the wiring was given the levels to read."""
 
-    async def take(self, tenant: str, intake: Intake, identity: str | None) -> Taken | None:
+    def __init__(
+        self, answering: AnswerInChannelHandler, showing: ShowInChannelHandler | None = None
+    ) -> None:
+        self._answering = answering
+        self._showing = showing
+
+    async def take(
+        self,
+        tenant: str,
+        intake: Intake,
+        identity: str | None,
+        roles: tuple[str, ...] = (),
+    ) -> Taken | None:
         answer = await self._answering.execute(
             AnswerInChannel(
                 tenant=tenant,
@@ -285,9 +301,25 @@ class OwnerAnswers(ChannelAnswers):
                 event=intake.event_id,
             )
         )
-        if answer is None:
+        if answer is not None:
+            return Taken(outcome=answer.outcome, replied=answer.replied)
+        if self._showing is None:
             return None
-        return Taken(outcome=answer.outcome, replied=answer.replied)
+        shown = await self._showing.execute(
+            ShowInChannel(
+                tenant=tenant,
+                channel=intake.reply_to.channel,
+                address=intake.reply_to.address,
+                thread=intake.reply_to.thread,
+                identity=identity,
+                roles=roles,
+                text=intake.intent.raw,
+                event=intake.event_id,
+            )
+        )
+        if shown is None:
+            return None
+        return Taken(outcome=shown.outcome, replied=shown.replied)
 
 
 @dataclass(frozen=True)
@@ -380,7 +412,10 @@ def owner_channel_wiring(
     *,
     deliveries: Deliveries | None = None,
     decided: Decided | None = None,
+    levels: LevelQueries | None = None,
 ) -> OwnerChannelWiring:
+    """The owner-facing channel. Given `levels`, its conversation also answers a request for
+    the live representation of a run or a process (ADR-0069)."""
     reports: Repository[Report] = of(Report)
     channels: Repository[OwnerChannel] = of(OwnerChannel)
     carrier = deliveries or ConnectorDeliveries(connectors)
@@ -395,6 +430,11 @@ def owner_channel_wiring(
         answering=answering,
         close_task=CloseTaskHandler(reports, work, ledger, clock),
         queries=ReportQueries(reports, channels, work),
-        answers=OwnerAnswers(answering),
+        answers=OwnerAnswers(
+            answering,
+            None
+            if levels is None
+            else ShowInChannelHandler(channels, work, levels, carrier, secrets),
+        ),
         decisions=decisions,
     )

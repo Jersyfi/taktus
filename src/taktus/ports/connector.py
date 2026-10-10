@@ -426,19 +426,27 @@ class ChannelReplies(Protocol):
 
 
 class Taken(Value):
-    """A message that answered something Taktus asked in the thread it was written in."""
+    """A message that answered something Taktus asked in the thread it was written in, or that
+    asked the owner-facing channel for a live representation."""
 
     outcome: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
-    """What became of the answer: `filed`, `reflected`, `asked_back`, `not_filed`, …"""
+    """What became of it: `filed`, `reflected`, `asked_back`, `not_filed`, `shown`, …"""
     replied: bool
     """Whether the answer to it reached the channel."""
 
 
 class ChannelAnswers(Protocol):
-    async def take(self, tenant: str, intake: Intake, identity: str | None) -> Taken | None:
+    async def take(
+        self,
+        tenant: str,
+        intake: Intake,
+        identity: str | None,
+        roles: tuple[str, ...] = (),
+    ) -> Taken | None:
         """Take a message that answers what Taktus asked in its thread — a report to the owner
-        (ADR-0045) — from the identity the sender was placed as, or None for a sender nobody
-        could place. None when it answers nothing: it goes on as any other message."""
+        (ADR-0045) — or asks the owner's conversation for a live representation (ADR-0069),
+        from the identity the sender was placed as and the roles it holds, or None for a sender
+        nobody could place. None when it is neither: it goes on as any other message."""
         ...
 
 

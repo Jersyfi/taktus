@@ -6,7 +6,9 @@ standing alone. This module reads the rest, against the words of the owner's phr
 - the one answer a need, a date or a failure offers — that it is done — is read when the whole
   message is one of the phrasebook's `done_words`;
 - a reading sent back is confirmed when the whole message is one of its `yes_words`, and
-  rejected when it is one of its `no_words`.
+  rejected when it is one of its `no_words`;
+- a request for the live representation of a run or a process is one of its `show_run_words`
+  or `show_process_words` followed by one identifier (ADR-0069).
 
 The whole message, not a word in it: a message that negates the word, or says more than it, is
 not the word. Case and the punctuation around the word do not count. Anything else is not read,
@@ -15,7 +17,12 @@ and is asked back.
 
 from __future__ import annotations
 
+from typing import Literal
+
+from pydantic import Field
+
 from taktus.components.reporting.domain.model import Phrasebook
+from taktus.shared.v1 import Value
 
 _AROUND = " \t\r\n.,;:!?\"'„“”«»()"
 
@@ -35,4 +42,35 @@ def confirmation(text: str, book: Phrasebook) -> bool | None:
         return True
     if said in book.no_words:
         return False
+    return None
+
+
+class Asked(Value):
+    """A request for the live representation of a run or of a process (ADR-0069)."""
+
+    level: Literal["run", "process"]
+    id: str = Field(min_length=1)
+    version: str | None = Field(default=None, min_length=1)
+    """For a process: the version named after `@`; None for the active one."""
+
+
+def representation(text: str, book: Phrasebook) -> Asked | None:
+    """A message that asks for a representation: one of the phrasebook's words for a run or a
+    process, then one identifier, and nothing else. The words are matched as the other words
+    are — case and the punctuation around the message do not count; the identifier is taken
+    as written. None for anything else, and for a phrasebook that reads no such request."""
+    if book.show_run_words is None or book.show_process_words is None:
+        return None
+    tokens = text.strip(_AROUND).split()
+    if len(tokens) < 2:
+        return None
+    said, name = " ".join(tokens[:-1]).casefold(), tokens[-1]
+    if said in book.show_run_words:
+        return Asked(level="run", id=name)
+    if said in book.show_process_words:
+        process, at, version = name.rpartition("@")
+        if not at:
+            return Asked(level="process", id=name)
+        if process and version:
+            return Asked(level="process", id=process, version=version)
     return None

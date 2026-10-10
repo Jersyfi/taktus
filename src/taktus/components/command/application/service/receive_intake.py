@@ -25,7 +25,8 @@ report to the owner (ADR-0045) — is handed to whoever asked it (`ChannelAnswer
 identity its sender was placed as, or from nobody for a sender the identity component could not
 place. It is not kept as an intake event, and the outcome says what became of it. A sender
 nobody could place who writes there is told that the answer is not filed, not how to link an
-account.
+account. A message that asks the owner's conversation for a live representation goes the same
+way (ADR-0069): it is answered there and is no command.
 """
 
 from __future__ import annotations
@@ -136,6 +137,7 @@ class ReceiveIntakeHandler:
                 command.tenant if resolution is None else resolution.tenant,
                 accepted,
                 None if resolution is None else resolution.identity,
+                () if resolution is None else resolution.roles,
             )
             if taken is not None:
                 return IntakeOutcome(

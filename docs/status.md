@@ -229,6 +229,14 @@ against the fake chat service; on the installed instance it waits for NEED-0018 
 (NTC-0095, NTC-0096). Nothing raises a need or a date from a step yet; the owner's own questions
 in the chat are UC-6.4.
 
+**A run or a process asked for in the owner's chat is answered there** (#193, `0.3.0`,
+ADR-0069). The chat cannot draw a level, so `show run <run>` or `show process <process>` in
+the owner's conversation is answered with the level's text equivalent — the one the web app is
+handed, with the same states and figures — and the link to the level live in the web app. Only
+the owner and whom the owner named are shown anything, only what they may see, and no secret
+value (NTC-0147). Proven against the fake chat service; on the installed instance it waits for
+NEED-0018 and NEED-0020, like the rest of the channel.
+
 **A broken interface reaches the owner** (#100, `0.2.0`, ADR-0047). Taktus notices from its own
 calls when an interface it depends on stops behaving as its adapter expects (DEC-0058). The
 connector contract names the answer a connector does not foresee (`unexpected`), and the run

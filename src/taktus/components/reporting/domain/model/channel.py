@@ -68,6 +68,17 @@ class Phrasebook(Value):
     not_filed: str = Field(min_length=1)
     closed: str = Field(min_length=1)
     """Said to whoever answers a report that is filed already: nothing changes."""
+    show_run_words: tuple[str, ...] | None = None
+    """The words a request for the representation of a run begins with, before the run's
+    identifier (UC-6.10 *beyond the web app*, ADR-0069). None: the channel reads no such
+    request — a phrasebook configured before there were any."""
+    show_process_words: tuple[str, ...] | None = None
+    """The same for a process, before `<process>` or `<process>@<version>`."""
+    live: str | None = Field(default=None, min_length=1)
+    """The label of the link to the live representation in the web app."""
+    not_shown: str | None = Field(default=None, min_length=1)
+    """Said when nothing of that name can be shown to whoever asked: the same whether it does
+    not exist or they may not see it."""
 
     @model_validator(mode="after")
     def _readable(self) -> Phrasebook:
@@ -84,12 +95,22 @@ class Phrasebook(Value):
             "done_words": self.done_words,
             "yes_words": self.yes_words,
             "no_words": self.no_words,
+            "show_run_words": self.show_run_words or (),
+            "show_process_words": self.show_process_words or (),
         }
         for name, listed in words.items():
             if any(w != w.strip().casefold() or not w for w in listed):
                 problems.append(f"{name} are written in lower case, without spaces around them")
         if set(self.yes_words) & set(self.no_words):
             problems.append("a word cannot both confirm and reject")
+        showing = (self.show_run_words, self.show_process_words, self.live, self.not_shown)
+        if any(x is not None for x in showing) and any(not x for x in showing):
+            problems.append(
+                "a phrasebook that reads a request for a representation names show_run_words, "
+                "show_process_words, live and not_shown, all four"
+            )
+        if set(self.show_run_words or ()) & set(self.show_process_words or ()):
+            problems.append("a word cannot ask for both a run and a process")
         if problems:
             raise ValueError("; ".join(problems))
         return self

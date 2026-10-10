@@ -24,5 +24,9 @@
   "filed": "Filed: {answer}.",
   "reread": "Nothing was filed. Please answer again.",
   "not_filed": "This answer is not filed: only the owner, or someone the owner named, answers here.",
-  "closed": "This request is answered already; your message changes nothing."
+  "closed": "This request is answered already; your message changes nothing.",
+  "show_run_words": ["show run"],
+  "show_process_words": ["show process"],
+  "live": "Live",
+  "not_shown": "Nothing of that name can be shown to you here."
 }

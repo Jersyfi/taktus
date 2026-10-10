@@ -16,6 +16,7 @@ from typing import Any
 from fakes.clock import FakeClock
 from fakes.identity import Directory, directory
 from taktus.adapters.driven.memory import MemoryRepository
+from taktus.components.reporting.application.query import LevelQueries
 from taktus.components.reporting.application.service import (
     Answer,
     AnswerInChannel,
@@ -24,7 +25,7 @@ from taktus.components.reporting.application.service import (
 )
 from taktus.components.reporting.domain.model import OwnerChannel as Channel
 from taktus.components.reporting.domain.model import Report, ReportKind
-from taktus.components.reporting.ports import Deliveries, NotDelivered, Sent
+from taktus.components.reporting.ports import Deliveries, LevelRecords, NotDelivered, Sent
 from taktus.components.run.ports import Draft, DraftOption
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
@@ -239,8 +240,13 @@ class OwnerChannel:
 
 
 def owner_channel(
-    *, secrets: tuple[str, ...] = (SECRET,), environment: Mapping[str, str] | None = None
+    *,
+    secrets: tuple[str, ...] = (SECRET,),
+    environment: Mapping[str, str] | None = None,
+    levels: LevelRecords | None = None,
 ) -> OwnerChannel:
+    """With `levels`, the owner's conversation answers a request for a representation from
+    those records (ADR-0069)."""
     clock = FakeClock()
     identity = directory((TENANT,), clock=clock)
     persistence = identity.persistence
@@ -260,6 +266,7 @@ def owner_channel(
         confirm=decisions.confirm,
         secrets=KnownSecrets(secrets),
         deliveries=deliveries,
+        levels=None if levels is None else LevelQueries(levels),
     )
     decisions.requests.report_to(owner.decision_raised)
     return OwnerChannel(identity, decisions, owner, deliveries, clock)
