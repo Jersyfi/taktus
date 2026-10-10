@@ -25,13 +25,13 @@ from taktus.components.reporting.domain.model.live import (
     Scope,
     Snapshot,
 )
+from taktus.components.reporting.domain.service import visibility
 from taktus.components.reporting.domain.service.live import (
     in_scope,
     needs_snapshot,
     project,
     visible,
 )
-from taktus.components.reporting.domain.service.visibility import may_see
 from taktus.components.reporting.ports.live import LiveRecords, States
 from taktus.ports.persistence import Tenant
 
@@ -86,7 +86,9 @@ class LiveChanges:
         no trace: it is not listed, and the position is a hash."""
         state = await self._records.state(reader.tenant)
         runs = tuple(
-            shown for ref, shown in state.runs if in_scope(scope, ref) and may_see(reader, ref)
+            shown
+            for ref, shown in state.runs
+            if in_scope(scope, ref) and visibility.may_see(reader, ref)
         )
         return Opening(
             seq=state.seq,

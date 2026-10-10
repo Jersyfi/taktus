@@ -16,7 +16,7 @@ from taktus.components.reporting.domain.model.live import (
     ScopeKind,
     StateAfter,
 )
-from taktus.components.reporting.domain.service.visibility import may_see
+from taktus.components.reporting.domain.service import visibility
 from taktus.shared.v1 import LedgerEntry
 
 MAX_BEHIND = 1000
@@ -72,4 +72,8 @@ def needs_snapshot(position: int | None, head: int) -> bool:
 def visible(reader: Reader, scope: Scope, changes: Iterable[tuple[Change, RunRef]]) -> list[Change]:
     """The changes this reader receives, in order: in its scope, and of a run it may see now.
     Every other is absent — not replaced, not counted."""
-    return [change for change, run in changes if in_scope(scope, run) and may_see(reader, run)]
+    return [
+        change
+        for change, run in changes
+        if in_scope(scope, run) and visibility.may_see(reader, run)
+    ]

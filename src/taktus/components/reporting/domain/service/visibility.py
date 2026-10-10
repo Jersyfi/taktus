@@ -3,7 +3,10 @@
 Who may see what is the reporting component's (ADR-0029, UC-6.4). Every read of a
 representation and the stream of changes ask this function, so that no path is wider than
 another (ADR-0055 §5). The stream asks it for each change when the change is sent, with the
-reader's roles as they are then.
+reader's roles as they are then. The read API asks it for every run it would show (#186).
+Every caller calls it as `visibility.may_see`, through this module, and never imports the
+function by name: a path that held its own reference would no longer be the one predicate, and
+`tests/adapters/rest/test_reads.py` replaces it here to show that every path follows.
 
 Until the role-based views of UC-6.4 are built (`0.5.0`), the predicate holds the boundary that
 exists: a reader sees the runs of the tenant their identity belongs to, and no other. It knows

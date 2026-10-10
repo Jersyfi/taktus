@@ -295,6 +295,13 @@ records a change of state of a run, a step or a decision request to the streams 
 published beside the state machine: `components/run/domain/model/recorded.py` for runs and
 steps, `components/decision/domain/model/recorded.py` for decision requests.
 
+**Whether a reader may see a run is one predicate** (ADR-0055 §5):
+`components/reporting/domain/service/visibility.py`. The stream asks it for each change, and the
+read API — `GET /runs`, `GET /runs/{id}`, `GET /runs/{id}/ledger` — for each run it would show.
+Both read the account key from `Authorization: Bearer` and answer `401` without one; the tenant
+is the reader's identity's. Every caller calls the predicate through its module, so that no
+path holds a copy. Until the role-based views of UC-6.4, the predicate is the tenant boundary.
+
 ### 6.1 Provenance
 
 The ledger says *what happened*. The **provenance record** says *what a result is made of*

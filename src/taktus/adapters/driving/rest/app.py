@@ -11,9 +11,9 @@ of an intake event into a command by the identity the identity component places,
 a person creates in their Taktus account to link a channel account (ADR-0040), the decision
 requests addressed to a decider — listed, answered, the reading confirmed — and the decider's
 own response times (ADR-0042), the reports to the owner as their view and their repository
-text (ADR-0045), a read API for runs and ledger entries, and the live stream of changes of
-state as Server-Sent Events (ADR-0055). No other write, no UI. An answer the owner writes in the
-thread of a report arrives through the webhook intake.
+text (ADR-0045), a read API for the runs and ledger entries the reader may see, and the live
+stream of changes of state as Server-Sent Events (ADR-0055). No other write, no UI. An answer
+the owner writes in the thread of a report arrives through the webhook intake.
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -58,11 +58,14 @@ from taktus.components.reporting.application.query import view as report_view
 from taktus.components.reporting.domain.model import (
     Change,
     Reader,
+    RunRef,
     Scope,
     ScopeKind,
     Snapshot,
 )
+from taktus.components.reporting.domain.service import visibility
 from taktus.components.reporting.domain.service.rendering import repository_text
+from taktus.components.run.domain.model import Run
 from taktus.ports.connector import ConnectorError, Delivery, RefusalReason
 from taktus.ports.identity import Resolution
 from taktus.shared.v1.capability import CAPABILITY_PATTERN
@@ -599,62 +602,89 @@ def _refused(error: DecisionError) -> JSONResponse:
     return problem(422, str(error))
 
 
+def _shown(reader: Reader, run: Run) -> bool:
+    """Whether the reader may see the run: the one predicate the stream of changes asks too
+    (ADR-0055 §5). Called through its module, so that no path holds a copy of it."""
+    ref = RunRef(id=run.id, tenant=run.tenant, process_version=run.process_version)
+    return visibility.may_see(reader, ref)
+
+
 def _reads(services: RestServices) -> APIRouter:
     router = APIRouter(tags=["runs"])
-    tenant_query = Query(
-        default=None,
-        description="The tenant; the instance's first configured tenant when absent.",
-    )
+    needs_key = "an account key is needed: Authorization: Bearer <key>"
+    unauthenticated: dict[int | str, dict[str, Any]] = {
+        401: {"description": "No account key, or one that proves no identity.", **PROBLEM}
+    }
 
     @router.get(
         "/runs",
-        summary="The runs of a tenant, newest first",
+        summary="The runs you may see, newest first",
+        description="The account key in `Authorization: Bearer` proves the identity, and only "
+        "there: a key in the URL is not read. The answer holds the runs of your identity's "
+        "tenant that the visibility predicate lets you see — the same predicate as the stream "
+        "of changes (ADR-0055 §5).",
         responses={
             200: {"description": "A list of runs as the run component records them."},
+            **unauthenticated,
             **INVALID,
         },
     )
-    async def list_runs(tenant: str | None = tenant_query) -> JSONResponse:
-        chosen = tenant or services.tenants[0]
-        async with services.work.transaction(chosen):
-            runs = list(await services.runs.list(chosen))
+    async def list_runs(authorization: str | None = Header(default=None)) -> JSONResponse:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        reader = _reader(who)
+        async with services.work.transaction(reader.tenant):
+            runs = [r for r in await services.runs.list(reader.tenant) if _shown(reader, r)]
         runs.sort(key=lambda r: r.created_at, reverse=True)
-        return JSONResponse({"tenant": chosen, "runs": [r.document() for r in runs]})
+        return JSONResponse({"tenant": reader.tenant, "runs": [r.document() for r in runs]})
 
     @router.get(
         "/runs/{run_id}",
-        summary="One run",
+        summary="One run you may see",
+        description="The account key in `Authorization: Bearer` proves the identity. A run you "
+        "may not see is answered as one that does not exist.",
         responses={
             200: {"description": "The run."},
-            404: {"description": "No such run in the tenant.", **PROBLEM},
+            **unauthenticated,
+            404: {"description": "No such run that you may see.", **PROBLEM},
             **INVALID,
         },
     )
-    async def get_run(run_id: str, tenant: str | None = tenant_query) -> JSONResponse:
-        chosen = tenant or services.tenants[0]
-        async with services.work.transaction(chosen):
-            run = await services.runs.get(chosen, run_id)
-        if run is None:
-            return problem(404, f"tenant {chosen!r} has no run {run_id!r}")
+    async def get_run(run_id: str, authorization: str | None = Header(default=None)) -> Any:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        reader = _reader(who)
+        async with services.work.transaction(reader.tenant):
+            run = await services.runs.get(reader.tenant, run_id)
+        if run is None or not _shown(reader, run):
+            return problem(404, f"no run {run_id!r} that you may see")
         return JSONResponse(run.document())
 
     @router.get(
         "/runs/{run_id}/ledger",
-        summary="The ledger entries of one run, in sequence",
+        summary="The ledger entries of one run you may see, in sequence",
+        description="The account key in `Authorization: Bearer` proves the identity. A run you "
+        "may not see is answered as one that does not exist.",
         responses={
             200: {"description": "The entries, and whether the tenant's chain verifies."},
-            404: {"description": "No such run in the tenant.", **PROBLEM},
+            **unauthenticated,
+            404: {"description": "No such run that you may see.", **PROBLEM},
             **INVALID,
         },
     )
-    async def run_ledger(run_id: str, tenant: str | None = tenant_query) -> JSONResponse:
-        chosen = tenant or services.tenants[0]
-        async with services.work.transaction(chosen):
-            run = await services.runs.get(chosen, run_id)
-            if run is None:
-                return problem(404, f"tenant {chosen!r} has no run {run_id!r}")
-            entries = await services.ledger.entries(chosen, run_id)
-            verification = await services.ledger.verify(chosen)
+    async def run_ledger(run_id: str, authorization: str | None = Header(default=None)) -> Any:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        reader = _reader(who)
+        async with services.work.transaction(reader.tenant):
+            run = await services.runs.get(reader.tenant, run_id)
+            if run is None or not _shown(reader, run):
+                return problem(404, f"no run {run_id!r} that you may see")
+            entries = await services.ledger.entries(reader.tenant, run_id)
+            verification = await services.ledger.verify(reader.tenant)
         return JSONResponse(
             {
                 "run_id": run_id,
