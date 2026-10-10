@@ -82,7 +82,7 @@ descriptions, $3.48 of coding-step money; #36, a removal verdict that said too l
 misleading row every week. The four budget findings are the subject of the ADR-0005 amendment
 below.
 
-**Done in `0.1.0`**, checked against the tree: the Helm chart (`deploy/k8s/chart`), rendered and held to least privilege by a test, and the workflow that builds the release images on a tag (#64), the coding worker's among them with its agent pinned to one exact version that the live test installs too (#116, NTC-0072); the contracts for the worker and the connector
+**Done in `0.1.0`**, checked against the tree: the Helm chart (`deploy/k8s/chart`), rendered and held to least privilege by a test, and the workflow that builds the release images on a tag (#64), which built and pushed the first release candidate, `v0.2.0-rc.1`, on 2026-10-10 (NEED-0014), the coding worker's among them with its agent pinned to one exact version that the live test installs too (#116, NTC-0072); the contracts for the worker and the connector
 as executable schemas with conformance suites that a third party can run (`contracts/worker`,
 `contracts/connector`, `src/taktus/conformance`); the process bundle contract and the shared
 kernel (`contracts/process`, `contracts/shared`); command, plan, process version, run, ledger

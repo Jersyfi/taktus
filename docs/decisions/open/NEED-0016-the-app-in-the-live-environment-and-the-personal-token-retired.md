@@ -5,6 +5,7 @@
 **Issue:** [#109](https://github.com/Jersyfi/taktus/issues/109)
 **Needed by:** 2026-10-31
 **Owner's answer:** 2026-10-10: the session does steps 1 and 2 and tells the owner when the token can be revoked; step 3 stays the owner's.
+**Progress:** 2026-10-10: steps 1 and 2 done by the session. The environment `live` holds `LIVE_APP_ID`, `LIVE_APP_PRIVATE_KEY` and `TAKTUS_LIVE_REPOSITORY`; the dispatched run on `main` was green, and `test_a_step_retried_after_a_restart_acts_once_on_the_real_service` passed as the app. The checkout's `.env` names the app's identifier and key file and no token file. Step 3, revoking the token of NEED-0006, is the owner's and can be done now.
 **Foreseeable since:** [#108](https://github.com/Jersyfi/taktus/pull/108), where the repository connector learned to act as Taktus's own app (ADR-0033) and the live test was moved onto it
 
 ## 1. What is needed

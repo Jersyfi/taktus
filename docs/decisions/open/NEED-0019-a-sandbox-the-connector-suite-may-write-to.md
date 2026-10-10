@@ -5,6 +5,7 @@
 **Issue:** [#161](https://github.com/Jersyfi/taktus/issues/161)
 **Needed by:** 2026-10-31
 **Owner's answer:** 2026-10-10: the session creates the repository and its issue and tells the owner when the app's installation is to be extended, which stays the owner's.
+**Progress:** 2026-10-10: step 1 done by the session — the repository exists, private, with branch `main` and issue 1 open; its name is in the owner's private note (step 3). Step 2, adding it to the app's installation, is the owner's.
 **Foreseeable since:** [#162](https://github.com/Jersyfi/taktus/pull/162), where the instance learned to run an adapter's conformance suite itself and record it
 
 ## 1. What is needed
