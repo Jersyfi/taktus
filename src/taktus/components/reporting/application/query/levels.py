@@ -9,8 +9,8 @@ A run the reader may not see is answered as absent, exactly as one that does not
 from __future__ import annotations
 
 from taktus.components.reporting.domain.model.live import Reader, RunRef
+from taktus.components.reporting.domain.service import visibility
 from taktus.components.reporting.domain.service.levels import RunLevel, run_level
-from taktus.components.reporting.domain.service.visibility import may_see
 from taktus.components.reporting.ports.levels import LevelRecords
 
 
@@ -25,6 +25,6 @@ class LevelQueries:
         if facts is None:
             return None
         ref = RunRef(id=facts.id, tenant=facts.tenant, process_version=facts.process_version)
-        if not may_see(reader, ref):
+        if not visibility.may_see(reader, ref):
             return None
         return run_level(facts)

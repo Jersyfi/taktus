@@ -101,7 +101,7 @@ async def test_a_registered_process_s_run_is_found_at_the_run_level(
             assert all(s["drawn"]["moving"]["motion"] == "none" for s in level["steps"])
 
             record = RunRecord.model_validate(
-                (await http.get(f"/runs/{done.id}?tenant={chosen}")).json()
+                (await http.get(f"/runs/{done.id}", headers=headers)).json()
             )
             shown = {f["name"]: f["value"] for f in level["run"].get("consumed", [])}
             assert shown == flat(record.consumed())

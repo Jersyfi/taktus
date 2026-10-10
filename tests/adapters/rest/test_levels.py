@@ -89,7 +89,9 @@ async def test_the_figures_are_the_runs_own_as_the_read_api_gives_the_run(client
     await a_run(given)
     _, key = await given.identity.person(TENANT, "idn_ada")
     level = (await http.get(f"{base}/levels/runs/run_1", headers=bearer(key))).json()
-    record = RunRecord.model_validate((await http.get(f"{base}/runs/run_1")).json())
+    record = RunRecord.model_validate(
+        (await http.get(f"{base}/runs/run_1", headers=bearer(key))).json()
+    )
     shown = {f["name"]: f["value"] for f in level["run"].get("consumed", [])}
     expected = record.consumed()
     assert shown == _flat(expected)

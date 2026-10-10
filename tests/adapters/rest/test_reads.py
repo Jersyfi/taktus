@@ -76,7 +76,7 @@ async def test_a_reader_sees_their_own_tenant_and_naming_another_does_not_widen_
 
 
 async def seen_by_every_path(http: httpx.AsyncClient, base: str, key: str) -> dict[str, set[str]]:
-    """Which of run_1 and run_2 each of the four paths shows the reader."""
+    """Which of run_1 and run_2 each path shows the reader."""
     runs = (await http.get(f"{base}/runs", headers=bearer(key))).json()["runs"]
     seen: dict[str, set[str]] = {"GET /runs": {r["id"] for r in runs}}
     seen["GET /runs/{id}"] = {
@@ -88,6 +88,11 @@ async def seen_by_every_path(http: httpx.AsyncClient, base: str, key: str) -> di
         r
         for r in ("run_1", "run_2")
         if (await http.get(f"{base}/runs/{r}/ledger", headers=bearer(key))).status_code == 200
+    }
+    seen["GET /levels/runs/{id}"] = {
+        r
+        for r in ("run_1", "run_2")
+        if (await http.get(f"{base}/levels/runs/{r}", headers=bearer(key))).status_code == 200
     }
     return seen
 
