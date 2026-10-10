@@ -59,7 +59,9 @@ without a request. A token the service refuses for this conversation ends `forbi
 What the app needs at the service, and no more (NEED-0018): the bot scopes `chat:write`, to
 post; the history scope of each kind of conversation it reads — `im:history` for direct
 messages, `groups:history` for a private channel, `channels:history` for a public one — to read a
-thread and to find its own mark; `app_mentions:read`, to receive a mention. Events: `app_mention`
+thread and to find its own mark; `app_mentions:read`, to receive a mention. Provisionally, under
+DEC-0127, `users:read` and `users:read.email`, to read the member list with confirmed addresses
+for linking accounts; no operation of this connector uses them yet. Events: `app_mention`
 and `message.im`. Not `message.channels` or `message.groups`: a mention in a channel would then
 arrive twice, once as each event, and become two commands.
 

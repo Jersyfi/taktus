@@ -16,7 +16,9 @@ suite against the real service, and later to talk with you there, it needs an ap
 workspace that acts as Taktus: an identity of its own, not you. Concretely:
 
 1. **The app**, created from the manifest below, installed in your workspace. It may post
-   messages, read the conversations it is in, and receive a mention — nothing else.
+   messages, read the conversations it is in, and receive a mention. Provisionally, under
+   DEC-0127, it may also read the workspace's member list with each member's confirmed address,
+   so that linking a person's account need not wait for a second installation. Nothing else.
 2. **A scratch conversation** for the monthly live test: a private channel that exists for the
    test alone, with the app in it.
 3. **Its bot token** in the environment `live` of this repository, and the channel's identifier
@@ -60,7 +62,8 @@ comes with the owner-facing channel (#85). Until then it waits, and nothing else
 
 **Step 1 — create the app from a manifest.** At the service's app directory for developers
 (`https://api.slack.com/apps`), choose *Create New App → From a manifest*, pick your workspace,
-and paste this manifest. It names every permission the connector needs and no other.
+and paste this manifest. It names every permission the connector needs and no other; the last two
+are provisional, under DEC-0127.
 
 ```yaml
 display_information:
@@ -79,6 +82,8 @@ oauth_config:
       - groups:history      # read a thread in a private channel, and find its own mark there
       - im:history          # the same in a direct message with you
       - app_mentions:read   # receive a mention
+      - users:read          # provisional (DEC-0127): read the member list, to link accounts
+      - users:read.email    # provisional (DEC-0127): each member's confirmed address, to suggest links
 settings:
   org_deploy_enabled: false
   socket_mode_enabled: false
@@ -162,7 +167,12 @@ the same file and the same environment secret in one move.
   `main`, may read it (DEC-0048).
 - **Never your own user token** (`xoxp-`): Taktus acts as its app, not as you.
 - **Never more scopes than the manifest names.** A scope added "just in case" lets Taktus see
-  what no process needs.
+  what no process needs. The two member-list scopes are not "just in case": they serve the
+  proposal of DEC-0127, that an administrator links people from the member list and Taktus
+  suggests pairs by confirmed address, and its proof against the real service. They are asked now
+  only because adding them later means installing the app again. If DEC-0127 is answered with
+  Option B, both lines are removed from the manifest and the app is reinstalled; its token does
+  not change.
 - **No workspace name, channel name or identifier in this repository.** The channel's ID lives
   in the environment's variable; the files' paths in your `.env`; the instance's address on the
   app's page.
