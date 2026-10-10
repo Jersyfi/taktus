@@ -54,7 +54,7 @@ from urllib.parse import parse_qs, urlparse
 type Json = dict[str, Any]
 
 CONTRACT = "worker/v1"
-VERSION = "1.1.0"  # this worker's own version, recorded in the provenance of what it produces
+VERSION = "1.2.0"  # this worker's own version, recorded in the provenance of what it produces
 TOOL = "shell.script"
 MAX_CONCURRENT = 4
 COMMAND_TIMEOUT = 60
@@ -79,6 +79,7 @@ FAULTS: dict[str, str] = {
     "W-15": "an assignment beyond max_concurrent_assignments is accepted instead of answered 503",
     "W-16": "the state of an id never received is answered 200, accepted, instead of 404",
     "W-17": "an assignment whose id is held is accepted again as a second one instead of 409",
+    "W-18": "the task's command after the work is ignored: it never runs and nothing is published",
 }
 
 
@@ -119,6 +120,9 @@ class PlannedStep:
     seconds: float
     artifacts: tuple[ArtifactSpec, ...] = ()
     progress: tuple[int, int] | None = None  # (current, total) in epochs
+    argv: tuple[str, ...] | None = None
+    """A program and its arguments, run without a shell: the task's command after the work. Its
+    artifact is produced only when it exits with 0."""
 
 
 def quick_plan(step_seconds: float) -> list[PlannedStep]:
@@ -181,7 +185,28 @@ def longrun_plan(epochs: int, epoch_seconds: float) -> list[PlannedStep]:
 
 
 def plan_for(task: Json, profile: str, options: argparse.Namespace) -> list[PlannedStep]:
-    """The steps of an assignment: the commands the task carries, else the profile's."""
+    """The steps of an assignment: the work — the commands the task carries, else the
+    profile's — and then the task's command after the work, when it names one (W-18)."""
+    steps = work_for(task, profile, options)
+    after = task.get("after")
+    if isinstance(after, dict) and options.fault != "W-18":
+        argv = tuple(str(part) for part in after.get("command") or ())
+        steps.append(
+            PlannedStep(
+                "after",
+                "shell",
+                "the command after the work",
+                " ".join(argv),
+                0.0,
+                (ArtifactSpec(str(after.get("artifact")), "output", "text/plain"),),
+                argv=argv,
+            )
+        )
+    return steps
+
+
+def work_for(task: Json, profile: str, options: argparse.Namespace) -> list[PlannedStep]:
+    """The steps of the work: the commands the task carries, else the profile's."""
     commands = task.get("inputs", {}).get("commands")
     if isinstance(commands, list) and commands and all(isinstance(c, str) for c in commands):
         return [
@@ -558,7 +583,10 @@ class Worker:
                     "not allow"
                 )
             else:
-                output, failure = run_command(step.command)
+                if step.argv is not None:
+                    output, failure = run_program(step.argv)
+                else:
+                    output, failure = run_command(step.command)
                 if self.fault == "W-08-log" and credential:
                     log(f"credential {credential[0]}={credential[1]}")  # the W-08-log fault
             if step.progress and not refused:
@@ -587,7 +615,8 @@ class Worker:
             remaining = step.seconds - (time.monotonic() - began)
             if remaining > 0 and not refused:
                 time.sleep(remaining)
-            if not refused:
+            # The command after the work publishes its output only when it succeeded (W-18).
+            if not refused and (failure is None or step.argv is None):
                 self._produce(assignment, step, output, credential)
             consumption: Json = {
                 "type": "consumption.reported",
@@ -680,7 +709,9 @@ class Worker:
     ) -> None:
         for spec in step.artifacts:
             content = spec.content if spec.content is not None else output
-            if self.fault == "W-08-artifact" and credential:
+            # The fault leaves the output of the command after the work alone, so that it
+            # breaks W-08 and not W-18 as well.
+            if self.fault == "W-08-artifact" and credential and step.argv is None:
                 content += f"\n{credential[0]}={credential[1]}\n".encode()  # the W-08 fault
             produced = Produced(spec.artifact_id, spec.kind, spec.media_type, content)
             with assignment.lock:
@@ -750,6 +781,28 @@ def run_command(command: str) -> tuple[bytes, str | None]:
         return b"", f"command exceeded {COMMAND_TIMEOUT}s"
     if completed.returncode != 0:
         return completed.stdout, f"command exited with {completed.returncode}"
+    return completed.stdout, None
+
+
+def run_program(argv: tuple[str, ...]) -> tuple[bytes, str | None]:
+    """Run the task's command after the work: a program and its arguments, without a shell,
+    with no credential in its environment (contracts/worker/v1 §3)."""
+    keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
+    environment = {k: os.environ[k] for k in keep if k in os.environ}
+    try:
+        completed = subprocess.run(  # noqa: S603 — the task's own command, by design
+            list(argv),
+            capture_output=True,
+            timeout=COMMAND_TIMEOUT,
+            check=False,
+            env=environment,
+        )
+    except subprocess.TimeoutExpired:
+        return b"", f"the command after the work exceeded {COMMAND_TIMEOUT}s"
+    except OSError as error:
+        return b"", f"the command after the work could not be started: {error.strerror}"
+    if completed.returncode != 0:
+        return completed.stdout, f"the command after the work exited with {completed.returncode}"
     return completed.stdout, None
 
 

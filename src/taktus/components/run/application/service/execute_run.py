@@ -2248,6 +2248,7 @@ class RunEngine:
                 goal=work.task.goal,
                 acceptance=work.task.acceptance,
                 inputs=inputs,
+                after=work.task.after,
             ),
             credentials=work.credentials or None,
             context=Context(

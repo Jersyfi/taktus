@@ -34,7 +34,9 @@
 # description, `## Needed from the owner` (ADR-0028). The script generates it from the register
 # of `main` — the base P-03 branches from — with `tools/check_status.py --print`, and hands it
 # to the run as the input `closing_section`; the run appends it after the worker's summary, by
-# a template. A language model never writes it (issue #34).
+# a template. A language model never writes it (issue #34). The input is optional since #77: a
+# run started without it ends with what the worker's run of the generator printed on the
+# change's tree (ADR-0053).
 #
 # What it needs, as parameters (CREDENTIALS.md); no value is ever an argument or a line here.
 # Every credential is named the one way the repository names credentials, `credential.<name>`

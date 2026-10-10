@@ -33,6 +33,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -240,9 +241,11 @@ def outside(tmp_path: Path) -> Iterator[Outside]:
         threading.Thread(target=model.serve_forever, daemon=True).start()
         model_url = f"http://127.0.0.1:{model.server_address[1]}"
 
-        # A repository for the worker to clone: one commit on main.
+        # A repository for the worker to clone: one commit on main, which carries the
+        # generator P-03's worker runs after its change (DEC-0037).
         clone = tmp_path / "origin"
-        clone.mkdir()
+        (clone / "tools").mkdir(parents=True)
+        shutil.copy(ROOT / "tools" / "check_status.py", clone / "tools" / "check_status.py")
         git_env = {
             **os.environ,
             "GIT_AUTHOR_NAME": "t",
@@ -252,7 +255,8 @@ def outside(tmp_path: Path) -> Iterator[Outside]:
         }
         for command in (
             ["git", "init", "--quiet", "--initial-branch", "main"],
-            ["git", "commit", "--quiet", "--allow-empty", "-m", "first"],
+            ["git", "add", "-A"],
+            ["git", "commit", "--quiet", "-m", "first"],
         ):
             subprocess.run(command, cwd=clone, env=git_env, check=True, capture_output=True)  # noqa: S603
 
@@ -712,7 +716,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@3",
     "P-02-refinement.yaml": "p02-refinement@4",
-    "P-03-implementation.yaml": "p03-implementation@4",
+    "P-03-implementation.yaml": "p03-implementation@5",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -724,7 +728,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "write-report",
         },
         "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@4": {
+        "p03-implementation@5": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -737,7 +741,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "label",
         },
     },
-    "worker.endpoint": {"p03-implementation@4": {"implement"}},
+    "worker.endpoint": {"p03-implementation@5": {"implement"}},
     "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""

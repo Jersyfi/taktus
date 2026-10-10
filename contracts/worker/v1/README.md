@@ -128,6 +128,14 @@ stream from any `seq` and stop it (ADR-0038). `context.checkpoint_ref` is presen
 assignment resumes an earlier one; the worker continues after that checkpoint and produces no
 artifact it produced before it.
 
+**A command after the work.** `task.after` names a command the worker runs once the work is
+done, as the assignment's last step, in its workspace: `command` is a program and its arguments,
+run without a shell, and `artifact` the `artifact_id` under which its standard output is
+published, byte for byte, as `text/plain`. The command is the task's: no model chooses or runs it,
+and the worker gives it no credential. A command that exits with anything but 0 fails the
+assignment, and the artifact is not produced. A resumed assignment whose checkpoint lies after
+that artifact does not run it again. Check W-18 holds a worker to this (ADR-0053).
+
 **Credentials travel as names.** The execution adapter injects the value into the worker's
 environment at runtime; the value never passes through this contract, never appears in an event, an
 artifact or a log, and is never stored by the worker. A worker that violates this fails conformance.
@@ -265,8 +273,9 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 | W-15 | a worker holding `max_concurrent_assignments` answers one more `POST /v1/assignments` with `503` and a problem body, and records nothing of it |
 | W-16 | `GET /v1/assignments/{id}` of an id the worker never received answers `404` with a problem body |
 | W-17 | a `POST /v1/assignments` whose id the worker already holds, running or finished, answers `409` with a problem body and starts nothing: the assignment of that id stays the first |
+| W-18 | a task's command after the work runs as the last step, after every step of the work; its standard output is the artifact the task names, byte for byte; a command that exits with anything but 0 fails the assignment without that artifact |
 
-The suite runs W-01 to W-11 and W-13 to W-17 against a live worker and reports W-12 as *pending*: the removal test
+The suite runs W-01 to W-11 and W-13 to W-18 against a live worker and reports W-12 as *pending*: the removal test
 takes the adapter out of running processes, which a suite talking to one endpoint cannot do, and
 which needs processes to exist (DEC-0005). W-14 can only be provoked in a worker whose actual
 consumption exceeds its own estimate: a limit the estimate fits is otherwise never crossed, and
@@ -281,7 +290,7 @@ a failure tells you to fix: [CONFORMANCE.md](CONFORMANCE.md).
 
 **Fixtures.** `examples/<definition>/valid/` holds what a conforming worker produces;
 `examples/<definition>/invalid/W-NN-*.json` holds one violation per check. Checks that concern a
-whole stream — W-03 to W-07, W-10, W-11, W-13, W-14 — use the `Transcript` shape: the assignment, the estimate
+whole stream — W-03 to W-07, W-10, W-11, W-13, W-14, W-18 — use the `Transcript` shape: the assignment, the estimate
 the worker gave for it, and every event in order. The stream rules that judge them live in the
 suite (`src/taktus/conformance/rules.py`) and are applied to the fixtures by `tests/conformance`
 and to a live worker by `uv run taktusctl conformance run`. W-15 concerns no stream: its fixtures

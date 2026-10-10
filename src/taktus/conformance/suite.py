@@ -1,4 +1,4 @@
-"""The suite: W-01 to W-17 against a live worker.
+"""The suite: W-01 to W-18 against a live worker.
 
 The endpoint is the only required input. The suite reads the worker's capabilities, asks for an
 estimate, and then posts up to seven assignments one after the other, each for a purpose:
@@ -33,6 +33,11 @@ again while it runs, and `main` again after it finished. The worker must answer 
 `409` and a problem body, and still hold the first assignment of that id afterwards. Proves
 W-17. A repeat the worker accepted appears as `repeated-running` or `repeated-finished`; the
 suite stops every assignment of this probe and reads its stream to the end.
+
+Then the same work twice with a command after it (W-18): `after-command` prints a value only
+this run knows, which must come back as the artifact the task names, byte for byte, after every
+step of the work; `after-command-failing` exits with 1, which must fail the assignment without
+that artifact.
 
 W-08 scans everything the suite saw for the value of the credential it referenced by name. W-12
 is reported as pending: the removal test needs processes, and the suite has none.
@@ -78,6 +83,7 @@ DEFAULT_TASK: Json = {
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 GENEROUS = 1_000_000
 MAX_HELD = 16
+AFTER_ARTIFACT = "after-output"
 
 # Which check a schema violation in an event belongs to, by event type.
 EVENT_OWNER = {
@@ -185,6 +191,7 @@ async def run_suite(options: SuiteOptions) -> Report:
             await _w16(client, findings)
             await _w15(client, options, capabilities, declared, fitting, findings, runs)
             await _w17(client, options, main, declared, fitting, findings, runs)
+            await _w18(client, options, declared, fitting, estimate, findings, runs)
         except httpx.HTTPError as error:
             report.notes.append(f"the worker at {options.endpoint} stopped answering: {error!r}")
             if not findings.evidence["W-01"]:
@@ -290,10 +297,15 @@ def _assignment(
     *,
     hosts: Sequence[str] | None = None,
     checkpoint_ref: str | None = None,
+    after: Json | None = None,
 ) -> Json:
     """`hosts` None means the hosts the caller named; a list is exactly that list, which is how
     the narrowed run withdraws one. The list is always sent: the affirmative form is the
-    contract's, and an empty list is the explicit "nothing"."""
+    contract's, and an empty list is the explicit "nothing". `after` is the task's command
+    after the work (W-18), added to whichever task is sent."""
+    task: Json = dict(options.task or DEFAULT_TASK)
+    if after is not None:
+        task["after"] = after
     context: Json = {"workspace": {"kind": "none"}}
     if checkpoint_ref is not None:
         context["checkpoint_ref"] = checkpoint_ref
@@ -305,7 +317,7 @@ def _assignment(
     }
     return {
         "assignment_id": "asg_conf_" + secrets.token_hex(6),
-        "task": options.task or DEFAULT_TASK,
+        "task": task,
         "context": context,
         "frame": frame,
         "limits": limits,
@@ -373,10 +385,13 @@ async def _run(
     hosts: Sequence[str] | None = None,
     checkpoint_ref: str | None = None,
     stop_on_step: str | bool | None = False,
+    after: Json | None = None,
 ) -> Run:
     """Post an assignment and read its stream to the end. `stop_on_step` names the step at
     whose start a stop is requested; None means the first step; False means never."""
-    assignment = _assignment(options, allowed, limits, hosts=hosts, checkpoint_ref=checkpoint_ref)
+    assignment = _assignment(
+        options, allowed, limits, hosts=hosts, checkpoint_ref=checkpoint_ref, after=after
+    )
     accepted = await client.post("/v1/assignments", assignment)
     run = Run(purpose, assignment, accepted, Stream(status=0))
     if accepted.status != 201:
@@ -1275,6 +1290,93 @@ async def _repeat(
         f"a repeat of {assignment['assignment_id']} while it was {which} answered 409 "
         f"({(answer.json or {}).get('title')!r}); the worker still holds the first"
     )
+
+
+# --- W-18 the command after the work ----------------------------------------------------------
+
+
+async def _w18(
+    client: WorkerClient,
+    options: SuiteOptions,
+    declared: list[str],
+    limits: Json,
+    estimate: Json | None,
+    findings: Findings,
+    runs: list[Run],
+) -> None:
+    """The same work twice with a command after it. The first prints a value only this run
+    knows, which must come back as the named artifact, byte for byte, after every step of the
+    work. The second exits with 1, which must fail the assignment without the artifact. Both
+    commands are POSIX utilities a worker's host has: `printf` and `false`."""
+    nonce = "taktus-conformance-" + secrets.token_hex(8)
+    expected = f"{nonce}\n".encode()
+    printed = await _run(
+        client,
+        options,
+        "after-command",
+        declared,
+        limits,
+        after={"command": ["printf", "%s\\n", nonce], "artifact": AFTER_ARTIFACT},
+    )
+    runs.append(printed)
+    await _judge(client, printed, estimate, findings)
+    where = f"after-command run {printed.id}"
+    if printed.outcome != "succeeded":
+        finished = printed.events[-1] if printed.events else {}
+        findings.fail(
+            "W-18",
+            f"{where}: with a command after the work, the assignment ended with outcome "
+            f"{printed.outcome!r}"
+            + (f": {finished.get('reason')}" if finished.get("reason") else ""),
+        )
+        return
+    content = printed.artifact_bytes.get(AFTER_ARTIFACT)
+    if content is None:
+        if not findings.failed("W-18"):
+            findings.fail("W-18", f"{where}: the artifact {AFTER_ARTIFACT!r} could not be fetched")
+        return
+    if content != expected:
+        findings.fail(
+            "W-18",
+            f"{where}: the artifact {AFTER_ARTIFACT!r} is {content[:80]!r}, the command printed "
+            f"{expected!r}",
+        )
+        return
+
+    failing = await _run(
+        client,
+        options,
+        "after-command-failing",
+        declared,
+        limits,
+        after={"command": ["false"], "artifact": AFTER_ARTIFACT},
+    )
+    runs.append(failing)
+    await _judge(client, failing, estimate, findings)
+    where = f"after-command-failing run {failing.id}"
+    if failing.outcome != "failed":
+        findings.fail(
+            "W-18",
+            f"{where}: a command after the work that exits with 1 must fail the assignment; it "
+            f"ended with outcome {failing.outcome!r}",
+        )
+        return
+    if any(
+        e.get("type") == "artifact.produced" and e.get("artifact_id") == AFTER_ARTIFACT
+        for e in failing.events
+    ):
+        findings.fail(
+            "W-18",
+            f"{where}: the command after the work exited with 1 and its artifact "
+            f"{AFTER_ARTIFACT!r} was produced all the same",
+        )
+        return
+    if not findings.failed("W-18"):
+        findings.ok(
+            "W-18",
+            f"the command after the work ran last and its output came back as {AFTER_ARTIFACT!r} "
+            "byte for byte; a command that exited with 1 failed the assignment without it",
+        )
 
 
 # --- W-08, W-09 across all runs ---------------------------------------------------------------

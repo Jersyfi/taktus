@@ -43,6 +43,9 @@ class InputDeclaration(Value):
     description: str = Field(min_length=1)
     # An example value of whatever JSON shape the input has.
     example: Any
+    required: bool = True
+    """False: a run may start without it, and a trigger need not give it. Every reference to
+    it then names what stands in for it, under `$otherwise` (ADR-0053)."""
 
 
 class Process(Value):
@@ -213,7 +216,7 @@ class ProcessVersion(Value):
     limits: Work | None = None
     inputs: Mapping[str, InputDeclaration] = Field(default_factory=dict)
     """What a run of this version is given when it starts, by name: what `$input` references
-    in the work resolve to. A run that lacks one is refused before anything runs."""
+    in the work resolve to. A run that lacks a required one is refused before anything runs."""
     author: str | None = None
     reason: str | None = None
 
@@ -240,7 +243,7 @@ class ProcessVersion(Value):
             else:
                 named, where = f"the event trigger {trigger.event!r}", "`inputs` or `from_event`"
                 nobody = "a run started by an event has nobody to ask"
-            missing = sorted(set(self.inputs) - trigger.given)
+            missing = sorted(set(self.required_inputs) - trigger.given)
             unknown = sorted(trigger.given - set(self.inputs))
             if missing:
                 findings.append(
@@ -255,6 +258,11 @@ class ProcessVersion(Value):
         if findings:
             raise InvalidProcess(tuple(findings))
         return self
+
+    @property
+    def required_inputs(self) -> tuple[str, ...]:
+        """The inputs a run of this version cannot start without."""
+        return tuple(name for name, given in self.inputs.items() if given.required)
 
     @property
     def ref(self) -> str:

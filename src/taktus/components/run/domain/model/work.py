@@ -20,7 +20,11 @@ connector call's `input`, the values of a template, a check or a prompt — an o
 - `{"$from": "<step-id>", "$artifact": "<artifact-id>"}` — the content of that artifact of
   that step: parsed when its media type is JSON, text otherwise; `$select` applies to it;
 - `{"$input": "<name>"}` — one of the run's inputs, given when the run starts
-  (`taktusctl run --input`), optionally with `$select` as well.
+  (`taktusctl run --input`), optionally with `$select` as well;
+- `{"$input": "<name>", "$otherwise": <value>}` — that input where the run was given it, and
+  the value otherwise. The value may itself be a `$from` reference: an input the bundle
+  declares `required: false` can then stand in for what a step produces, so that whoever
+  starts the run by hand may supply it and a trigger need not (ADR-0053).
 
 A `$from` names a step that is a dependency of the step, directly or through others. `$input`
 references are resolved when the run is created — the inputs are known then — and may
@@ -42,7 +46,8 @@ FROM = "$from"
 INPUT = "$input"
 SELECT = "$select"
 ARTIFACT = "$artifact"
-REFERENCE_KEYS = frozenset({FROM, INPUT, SELECT, ARTIFACT})
+OTHERWISE = "$otherwise"
+REFERENCE_KEYS = frozenset({FROM, INPUT, SELECT, ARTIFACT, OTHERWISE})
 
 
 class ConstantRule(Value):
@@ -300,16 +305,20 @@ def is_reference(value: Any) -> bool:
         and bool(value)
         and set(value.keys()) <= REFERENCE_KEYS
         and (FROM in value) != (INPUT in value)
+        and (OTHERWISE not in value or INPUT in value)
     )
 
 
 def references(value: Any) -> set[StepId]:
-    """Every step a value refers to through `$from`, at any depth."""
+    """Every step a value refers to through `$from`, at any depth, also in what an `$input`
+    stands in for when the run was not given it."""
     found: set[StepId] = set()
     if isinstance(value, Mapping):
         if is_reference(value):
             if FROM in value and isinstance(value[FROM], str):
                 found.add(value[FROM])
+            if OTHERWISE in value:
+                found |= references(value[OTHERWISE])
         else:
             for item in value.values():
                 found |= references(item)
@@ -320,11 +329,15 @@ def references(value: Any) -> set[StepId]:
 
 
 def resolve_inputs(value: Any, inputs: Mapping[str, Any]) -> Any:
-    """The value with every `$input` reference replaced by the run's input; `$from` references
-    stay for the run to resolve. An input the run does not have is a KeyError."""
+    """The value with every `$input` reference replaced by the run's input, or by its
+    `$otherwise` where the run was not given it; `$from` references stay for the run to resolve.
+    An input the run does not have and no `$otherwise` stands in for is a KeyError."""
     if isinstance(value, Mapping):
         if is_reference(value) and INPUT in value:
-            return select(inputs[str(value[INPUT])], value.get(SELECT))
+            name = str(value[INPUT])
+            if name not in inputs and OTHERWISE in value:
+                return resolve_inputs(value[OTHERWISE], inputs)
+            return select(inputs[name], value.get(SELECT))
         return {key: resolve_inputs(item, inputs) for key, item in value.items()}
     if isinstance(value, list | tuple):
         return [resolve_inputs(item, inputs) for item in value]
@@ -353,6 +366,8 @@ def artifact_references(value: Any) -> set[tuple[StepId, str]]:
         if is_reference(value):
             if FROM in value and ARTIFACT in value:
                 found.add((str(value[FROM]), str(value[ARTIFACT])))
+            if OTHERWISE in value:
+                found |= artifact_references(value[OTHERWISE])
         else:
             for item in value.values():
                 found |= artifact_references(item)

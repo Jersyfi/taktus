@@ -62,7 +62,7 @@ ledger). P-02 never edits the issue and never adds the label `ready`: a person, 
 the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
 the same issue, it stops at the first check: nothing is written twice.
 
-**P-03 Implementation** (autonomy 4, seventeen steps): read the issue and its comments, compose
+**P-03 Implementation** (autonomy 4, eighteen steps): read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
 of open records on `main`, admit — the ready standard, and open, not a pull request, not claimed
 (`rule` `ready`, `exact`; a refusal names every reason) — claim the issue with the label
@@ -71,12 +71,14 @@ the repository, with the issue's text as its task and its section "How it is ver
 acceptance), name the branch, put the worker's changeset on it through the connector (`rule`,
 outward: one commit that carries the idempotency key), wait for the pipeline (`wait`, polling
 the pipeline's state), read the verdict, verify it is `success` (`rule`, `exact` — the pipeline's
-verdict, never the worker's opinion), compose the title and the body, open the pull request
+verdict, never the worker's opinion), compose the title, the closing section and the body, open the pull request
 (`rule`, outward), label it (`rule`, outward). The body is the worker's summary between what
 the template fixes: `Closes #N` and Taktus's own statement before it, and after it the section
-the repository generates for the end of every description, copied verbatim from the run's
-input `closing_section` — a copy is a rule, not a model's output (issue #34). Nothing writes to
-the base branch: a person merges.
+the repository generates for the end of every description — a copy is a rule, not a model's
+output (issue #34). The worker generates it: after its change it runs `tools/check_status.py
+--print` in its workspace, the tree the branch will carry, and a template puts what it printed
+under the section's heading (DEC-0037, ADR-0053). A run started by hand may hand the section in
+as the input `closing_section` instead. Nothing writes to the base branch: a person merges.
 
 Every step carries its method, the reason, the alternatives rejected, a fallback where the
 method can vary, and its exactness class; `tests/exactness` holds the `exact` steps to rules.
@@ -219,7 +221,9 @@ enforced.
 
 ## What a run needs that the blueprint does not say
 
-- **Inputs.** A bundle declares what a run is given (`inputs:` — name, description, example),
+- **Inputs.** A bundle declares what a run is given (`inputs:` — name, description, example,
+  and `required: false` for one a run may start without, whose references then name a stand-in
+  under `$otherwise`, ADR-0053),
   and `taktusctl run --input name=value` supplies it. P-01 needs `roadmap_path`
   (`docs/roadmap.md` here), `records_path`, and `report_issue`: the number of the one issue,
   labelled `report`, whose comments carry its reports — #129 in this repository; a daily run
@@ -228,14 +232,11 @@ enforced.
   (ADR-0035, NTC-0045). P-02 needs the issue number; P-03 needs
   it too, plus `records_path` — the directory of `main` that holds the open decision and needs
   records, `docs/decisions/open` here — the clone URL, the one host the worker may reach, the name of the coding
-  worker's credential, and `closing_section`: the section the repository generates for the end
-  of every pull request description, verbatim with its heading, or empty. The run cannot
-  generate it — a template composes, it does not run the repository's generator — so whoever
-  starts the run does, from the base branch; `tools/first_run.sh` runs
-  `tools/check_status.py --print` on `main` for this repository. The triggers in
-  `blueprint.yaml` will supply the other inputs from the event that starts a run, once event
-  reactions exist (`0.2.0`). An automatic start will take the section from the worker, which runs the
-  generator after its change (DEC-0037, decided); until then this input carries it.
+  worker's credential. `closing_section` is optional: the section the repository generates for
+  the end of every pull request description, verbatim with its heading. Left out, the worker
+  generates it after its change (ADR-0053); `tools/first_run.sh` still hands it in, from
+  `tools/check_status.py --print` on `main`. P-03's trigger reacts to the label `ready` and
+  gives every required input, the issue from the event (NTC-0112).
 - **The pipeline on a branch.** P-03 reads the pipeline's verdict before it opens the pull
   request, so the pipeline must run for a pushed branch; this repository's
   `.github/workflows/ci.yml` runs on pushes to `taktus/**` for that reason.

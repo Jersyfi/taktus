@@ -135,6 +135,14 @@ and every file deleted, by path: what a run hands to a repository connector to p
 on a branch (`repository.branches.create`), so that the worker never pushes and never holds a
 credential to the repository.
 
+A task that names `after` gains one last step, after the summary and the changeset: the worker —
+not the agent — runs its `command` in the workspace as the agent left it, without a shell and
+with no credential in its environment, for at most five minutes. Its standard output becomes the
+artifact `after.artifact`, of kind `output`, byte for byte. A command that exits with anything
+but 0 publishes nothing and the assignment ends `failed` with the exit status and the end of what
+it wrote to its error output (W-18). P-03 runs the repository's generator of the closing section
+this way (ADR-0053).
+
 ## What it cannot do
 
 - **Stop inside a tool call.** A boundary lies after a call's result; a shell command that runs

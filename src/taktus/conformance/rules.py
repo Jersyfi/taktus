@@ -2,7 +2,7 @@
 
 A stream rule cannot be expressed in JSON Schema because it concerns the order and the
 completeness of events, not the shape of one. These are the executable reading of the checks
-W-03 to W-07, W-10, W-11, W-13 and W-14 of contracts/worker/v1/README.md §7. They take a
+W-03 to W-07, W-10, W-11, W-13, W-14 and W-18 of contracts/worker/v1/README.md §7. They take a
 transcript — the assignment, the estimate the worker gave for it, and every event in order — and
 return every violation found, each naming its check. Three rules concern no stream. W-15 judges a
 capacity probe — the assignments the suite held, and the answer to one more
@@ -44,6 +44,8 @@ CHECKS: dict[str, str] = {
     "W-15": "a worker holding max_concurrent_assignments answers one more with 503",
     "W-16": "the state of an assignment id the worker never received answers 404",
     "W-17": "an assignment whose id the worker holds answers 409 and starts no second one",
+    "W-18": "a task's command after the work runs once the work is done, and its standard "
+    "output is the artifact it names, byte for byte",
 }
 
 # Where the README states each rule. A failure cites this so that the reader can look it up.
@@ -65,6 +67,7 @@ SECTIONS: dict[str, str] = {
     "W-15": "§2 Capabilities",
     "W-16": "§3 Assignment",
     "W-17": "§3 Assignment",
+    "W-18": "§3 Assignment",
 }
 
 REQUIREMENTS: dict[str, str] = {
@@ -112,6 +115,11 @@ REQUIREMENTS: dict[str, str] = {
     "finished, answers 409 with a problem body — a JSON object with a title and status 409 — "
     "and starts nothing: the assignment of that id is still the first, with its accepted_at, "
     "its stream not begun again and, once finished, its outcome",
+    "W-18": "an assignment whose task names a command after the work runs that command in its "
+    "workspace as its last step, after every step of the work: a succeeded assignment carries "
+    "exactly one artifact.produced with the artifact_id the task names, no step starts after "
+    "it, and its bytes are the command's standard output; a command that exits with anything "
+    "but 0 fails the assignment, and the artifact is not produced",
 }
 
 CATALOGUE = Catalogue.build(
@@ -373,7 +381,45 @@ def stream_violations(
             )
 
     out.extend(artifact_violations(events))
+    out.extend(after_violations(assignment, events, str(outcome)))
     return out
+
+
+def after_violations(assignment: Json, events: Sequence[Json], outcome: str) -> list[Violation]:
+    """W-18 within one stream: the command after the work is the assignment's last step. A
+    succeeded assignment carries the artifact the task names, and no step starts after it. A
+    resumed assignment may have produced it before its checkpoint, so a resumed stream is not
+    held to its presence. That the bytes are the command's output only a live run can show."""
+    after = (assignment.get("task") or {}).get("after")
+    if not isinstance(after, dict) or outcome != "succeeded":
+        return []
+    named = after.get("artifact")
+    produced = [
+        n
+        for n, e in enumerate(events)
+        if e.get("type") == "artifact.produced" and e.get("artifact_id") == named
+    ]
+    if not produced:
+        if (assignment.get("context") or {}).get("checkpoint_ref") is not None:
+            return []
+        return [
+            Violation(
+                "W-18",
+                f"the assignment succeeded without the artifact {named!r} that its command "
+                "after the work names",
+            )
+        ]
+    later = [e.get("step_id") for e in events[produced[0] + 1 :] if e.get("type") == "step.started"]
+    if later:
+        return [
+            Violation(
+                "W-18",
+                f"step(s) {later} started after the artifact {named!r} of the command after "
+                f"the work (seq {events[produced[0]].get('seq')}): the command ran before the "
+                "work was done",
+            )
+        ]
+    return []
 
 
 def consumption_violations(events: Sequence[Json], started: Sequence[str]) -> list[Violation]:

@@ -209,9 +209,10 @@ def _load(path: Path) -> dict[str, Any]:
 
 
 def require_inputs(version: ProcessVersion, inputs: dict[str, Any]) -> None:
-    """Every input the bundle declares is given, or the invocation is refused naming each
-    missing one with its description and an example."""
-    missing = [name for name in version.inputs if name not in inputs]
+    """Every input the bundle requires is given, or the invocation is refused naming each
+    missing one with its description and an example. An input declared `required: false` may
+    be left out."""
+    missing = [name for name in version.required_inputs if name not in inputs]
     if not missing:
         return
     lines = [
