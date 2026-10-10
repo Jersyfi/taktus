@@ -1,5 +1,5 @@
 """A live representation asked for in the owner's conversation, a chat that cannot draw it
-(UC-6.10 *beyond the web app*, ADR-0069, issue #193).
+(UC-6.10 *beyond the web app*, ADR-0069, issues #193 and #204).
 
 The answer is the level's text equivalent, element by element as the level hands it to the web
 app, and the link to the level live in the web app. It carries nothing its readers may not see:
@@ -28,15 +28,23 @@ from fakes.owner_channel import (
 )
 
 from taktus.components.reporting.domain.model import (
+    OverviewFacts,
     Phrasebook,
     ProcessFacts,
     ProcessStepFacts,
+    ProcessSummary,
+    RunActivity,
     RunAtVersion,
     RunFacts,
+    RunningStep,
     StepFacts,
     VersionRef,
 )
-from taktus.components.reporting.domain.service.levels import process_level, run_level
+from taktus.components.reporting.domain.service.levels import (
+    overview_level,
+    process_level,
+    run_level,
+)
 from taktus.components.reporting.domain.service.reading import Asked, representation
 from taktus.ports.connector import Intake, Taken
 from taktus.ports.persistence import Tenant
@@ -94,9 +102,36 @@ PROCESS = ProcessFacts(
     runs=(RunAtVersion(id="run_1", tenant=TENANT, state="running", created_at=AT),),
 )
 
+OVERVIEW = OverviewFacts(
+    tenant=TENANT,
+    processes=(
+        ProcessSummary(id="invoices", name="Invoices", active_version="2", autonomy_level=2),
+        ProcessSummary(id="orders", name="Orders", active_version="1", autonomy_level=1),
+    ),
+    runs=(
+        RunActivity(
+            id="run_1",
+            tenant=TENANT,
+            process_version="invoices@2",
+            state="running",
+            working=True,
+            waiting=False,
+            running=(RunningStep(id="draft", method=Method.LLM, exactness=ExactnessClass.FREE),),
+        ),
+        RunActivity(
+            id="run_2",
+            tenant=TENANT,
+            process_version="invoices@2",
+            state="waiting_human",
+            working=False,
+            waiting=True,
+        ),
+    ),
+)
+
 
 class Records:
-    """The run and the process of the tenant `t`, and a run of another tenant."""
+    """The run, the process and the overview of the tenant `t`, and a run of another tenant."""
 
     def __init__(self, run: RunFacts = RUN) -> None:
         self._run = run
@@ -114,6 +149,9 @@ class Records:
         if process_id == "invoices" and version in (None, "2"):
             return PROCESS
         return None
+
+    async def overview(self, tenant: Tenant) -> OverviewFacts:
+        return OVERVIEW
 
 
 def message(text: str, *, address: str = ADDRESS, event: str = "Ev1") -> Intake:
@@ -172,6 +210,54 @@ async def test_a_process_is_answered_with_its_graph_in_words_and_a_link_to_it_li
     assert said.text.endswith(f"{BASE}/app/#/processes/invoices/2")
 
 
+async def test_the_overview_is_answered_with_every_elements_text_and_a_link_to_it_live(
+    given: OwnerChannel,
+) -> None:
+    """Issue #204: the overview, asked for with the words alone, is answered with the text of
+    every area, process and running step, in the order the web app writes them, and the link
+    to the web app's root route, where the overview is drawn."""
+    taken = await ask(given, "Zeige Überblick!")
+    assert taken is not None and taken.outcome == "shown" and taken.replied
+    [said] = given.deliveries.said
+    [area] = overview_level(OVERVIEW).areas
+    invoices, orders = area.processes
+    assert said.text.splitlines() == [
+        area.text,
+        f"• {invoices.text}",
+        *(f"• {step.text}" for step in invoices.running),
+        f"• {orders.text}",
+        "",
+        f"{GERMAN.live}: {BASE}/app/#/",
+    ]
+    assert "1 run working, 1 waiting" in said.text
+    assert (said.channel, said.address, said.thread) == (CHANNEL, ADDRESS, "Ev1")
+
+
+async def test_the_overview_is_told_to_nobody_but_the_owner_and_whom_the_owner_named(
+    given: OwnerChannel,
+) -> None:
+    named = await ask(given, "zeige überblick", NAMED, event="Ev1")
+    outsider = await ask(given, "zeige überblick", OUTSIDER, event="Ev2")
+    assert named is not None and named.outcome == "shown"
+    assert outsider is not None and outsider.outcome == "not_shown"
+    assert given.deliveries.said[1].text == GERMAN.not_shown
+    assert await ask(given, "zeige überblick", address="C0000000099", event="Ev3") is None
+    assert await ask(given, "zeige überblick", None, event="Ev4") is None
+
+
+async def test_an_overview_that_would_carry_a_secret_is_not_sent() -> None:
+    class Leaking(Records):
+        async def overview(self, tenant: Tenant) -> OverviewFacts:
+            named = ProcessSummary(id="leak", name=SECRET)
+            return OVERVIEW.model_copy(update={"processes": (*OVERVIEW.processes, named)})
+
+    given = owner_channel(levels=Leaking())
+    await given.configure(view_base=BASE)
+    taken = await ask(given, "zeige überblick")
+    assert taken is not None and taken.outcome == "not_shown"
+    assert [s.text for s in given.deliveries.said] == [GERMAN.not_shown]
+
+
 async def test_someone_the_owner_named_is_shown_it_too(given: OwnerChannel) -> None:
     taken = await ask(given, "zeige lauf run_1", NAMED)
     assert taken is not None and taken.outcome == "shown"
@@ -218,9 +304,26 @@ async def test_without_the_control_plane_s_address_the_text_comes_without_a_link
 
 async def test_a_phrasebook_without_the_words_reads_no_request(given: OwnerChannel) -> None:
     older = GERMAN.model_copy(
-        update={"show_run_words": None, "show_process_words": None, "live": None, "not_shown": None}
+        update={
+            "show_run_words": None,
+            "show_process_words": None,
+            "show_overview_words": None,
+            "live": None,
+            "not_shown": None,
+        }
     )
     assert representation("zeige lauf run_1", older) is None
+    assert representation("zeige überblick", older) is None
+
+
+def test_a_phrasebook_stored_before_the_overview_reads_runs_and_processes_only() -> None:
+    """A phrasebook configured between issues #193 and #204 has the four entries and no words
+    for the overview; it stays valid and reads no request for the overview."""
+    document = GERMAN.document()
+    del document["show_overview_words"]
+    before = Phrasebook.model_validate(document)
+    assert representation("zeige lauf run_1", before) == Asked(level="run", id="run_1")
+    assert representation("zeige überblick", before) is None
 
 
 def test_a_request_is_the_words_and_one_identifier() -> None:
@@ -229,8 +332,24 @@ def test_a_request_is_the_words_and_one_identifier() -> None:
         level="process", id="p", version="3"
     )
     assert representation("zeige prozess p", GERMAN) == Asked(level="process", id="p")
-    for text in ("zeige lauf", "zeige lauf run_1 run_2", "lauf run_1", "zeige prozess @3"):
+    assert representation("  Zeige  Überblick. ", GERMAN) == Asked(level="overview")
+    for text in (
+        "zeige lauf",
+        "zeige lauf run_1 run_2",
+        "lauf run_1",
+        "zeige prozess @3",
+        "zeige überblick bitte",
+        "zeige überblick t",
+        "überblick",
+    ):
         assert representation(text, GERMAN) is None, text
+
+
+def test_a_request_for_the_overview_names_nothing_and_one_for_a_run_names_it() -> None:
+    with pytest.raises(ValueError, match="identifier"):
+        Asked(level="overview", id="run_1")
+    with pytest.raises(ValueError, match="identifier"):
+        Asked(level="run")
 
 
 def test_a_phrasebook_names_all_four_or_none() -> None:
@@ -240,10 +359,34 @@ def test_a_phrasebook_names_all_four_or_none() -> None:
         Phrasebook.model_validate(document)
 
 
+def test_the_overview_s_words_come_only_with_the_other_four_and_ask_for_one_level() -> None:
+    alone = GERMAN.document()
+    for name in ("show_run_words", "show_process_words", "live", "not_shown"):
+        del alone[name]
+    with pytest.raises(ValueError, match="show_overview_words are given with"):
+        Phrasebook.model_validate(alone)
+    empty = GERMAN.document() | {"show_overview_words": []}
+    with pytest.raises(ValueError, match="show_overview_words are given with"):
+        Phrasebook.model_validate(empty)
+    twice = GERMAN.document() | {"show_overview_words": ["zeige lauf"]}
+    with pytest.raises(ValueError, match="two levels"):
+        Phrasebook.model_validate(twice)
+
+
+def test_both_shipped_phrasebooks_read_the_overview() -> None:
+    for language in ("de", "en"):
+        book = Phrasebook.model_validate_json(
+            (ROOT / f"src/taktus/composition/phrasebooks/{language}.json").read_text("utf-8")
+        )
+        assert book.show_overview_words, language
+        assert representation(book.show_overview_words[0], book) == Asked(level="overview")
+
+
 def test_the_link_is_a_route_the_web_app_has() -> None:
     """`level_url` builds the routes `web/src/lib/links.ts` builds; the routes exist."""
     routes = ROOT / "web/src/routes"
     assert (routes / "runs/[id]/+page.svelte").is_file()
     assert (routes / "processes/[id]/[[version]]/+page.svelte").is_file()
+    assert (routes / "+page.svelte").is_file(), "the overview is the web app's root route"
     links = (ROOT / "web/src/lib/links.ts").read_text("utf-8")
     assert "`#/runs/${" in links and "`#/processes/${" in links

@@ -27,6 +27,7 @@
   "closed": "Diese Anfrage ist bereits beantwortet; deine Nachricht ändert nichts.",
   "show_run_words": ["zeige lauf"],
   "show_process_words": ["zeige prozess"],
+  "show_overview_words": ["zeige überblick"],
   "live": "Live-Ansicht",
   "not_shown": "Dazu kann ich dir hier nichts zeigen."
 }

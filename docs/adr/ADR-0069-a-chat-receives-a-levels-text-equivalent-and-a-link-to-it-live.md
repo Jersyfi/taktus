@@ -123,12 +123,19 @@ of the conversation sees what any identity of the tenant sees, so the answer is 
 the conversation. Once roles narrow it, the predicate must hold for every reader of the
 conversation, which UC-6.4 adds; this change does not.
 
-The level's text is English, as in the web app. Only the run and the process levels are
-answered. The overview (ADR-0067) is drawn in the web app and not yet answered in a channel;
-it and the origin of a result (#192) are answered once their words are added to the
-phrasebooks, the same way.
+The level's text is English, as in the web app. The run, the process and the overview
+(ADR-0067) are answered. The origin of a result (#192) is answered once its words are added to
+the phrasebooks, the same way.
 
 The request is read as a whole message: "zeige lauf run_1 bitte" is not a request and goes on
 as any other message. Where the chat's connector names no thread for a message, the answer is
 said in the conversation itself. Against the real chat
 service nothing has run: that waits for NEED-0018 and, on the installed instance, NEED-0020.
+
+*Amended 2026-10-10 (#204, NTC-0148): the overview is answered too. The phrasebook's fifth
+entry, `show_overview_words`, asks for it standing alone — `show overview`, `zeige überblick`.
+The answer is each area's text, then one line for each of its processes and each step running
+in one, as the web app writes its text equivalent; the link is the web app's root route,
+`<view_base>/app/#/`. §5 still holds for the four entries; the fifth is given only with them,
+so that a phrasebook stored with the four stays readable and reads no request for the
+overview until the channel is configured again.*

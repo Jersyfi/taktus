@@ -27,6 +27,7 @@
   "closed": "This request is answered already; your message changes nothing.",
   "show_run_words": ["show run"],
   "show_process_words": ["show process"],
+  "show_overview_words": ["show overview"],
   "live": "Live",
   "not_shown": "Nothing of that name can be shown to you here."
 }

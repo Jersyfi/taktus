@@ -28,7 +28,13 @@ from taktus.components.reporting.domain.model import (
     Report,
     ReportKind,
 )
-from taktus.components.reporting.domain.service.levels import ProcessLevel, RunLevel
+from taktus.components.reporting.domain.service.levels import (
+    OverviewLevel,
+    ProcessLevel,
+    RunLevel,
+)
+
+type Level = OverviewLevel | ProcessLevel | RunLevel
 
 KIND_IN_THE_REPOSITORY: dict[ReportKind, str] = {
     ReportKind.DECISION: "Decision request",
@@ -162,12 +168,15 @@ def filed(answer: str, book: Phrasebook) -> str:
     return book.filed.format(answer=answer)
 
 
-def level_url(channel: OwnerChannel, level: RunLevel | ProcessLevel) -> str | None:
+def level_url(channel: OwnerChannel, level: Level) -> str | None:
     """Where the web app draws the level live, when the control plane's address is configured:
-    its route is the part after `#` (ADR-0063 §1), as `web/src/lib/links.ts` builds it."""
+    its route is the part after `#` (ADR-0063 §1), as `web/src/lib/links.ts` builds it. The
+    overview is the web app's root route, where it starts (ADR-0067)."""
     if channel.view_base is None:
         return None
-    if isinstance(level, RunLevel):
+    if isinstance(level, OverviewLevel):
+        route = ""
+    elif isinstance(level, RunLevel):
         route = f"runs/{quote(level.run.id, safe='')}"
     else:
         process = level.process
@@ -175,11 +184,19 @@ def level_url(channel: OwnerChannel, level: RunLevel | ProcessLevel) -> str | No
     return f"{channel.view_base.rstrip('/')}/app/#/{route}"
 
 
-def shown(level: RunLevel | ProcessLevel, channel: OwnerChannel) -> str:
+def shown(level: Level, channel: OwnerChannel) -> str:
     """A level for a channel that cannot draw it: its text equivalent, element by element, as
     the level hands it to the web app — never composed again — and the link to it live there
-    (UC-6.10 *beyond the web app*, ADR-0069)."""
-    if isinstance(level, RunLevel):
+    (UC-6.10 *beyond the web app*, ADR-0069). The overview is written out in the order the web
+    app writes its text: each area, then each of its processes and the steps running in it."""
+    if isinstance(level, OverviewLevel):
+        lines: list[str] = []
+        for area in level.areas:
+            lines.append(area.text)
+            for process in area.processes:
+                lines.append(f"• {process.text}")
+                lines += [f"• {step.text}" for step in process.running]
+    elif isinstance(level, RunLevel):
         lines = [level.run.text, *(f"• {step.text}" for step in level.steps)]
     else:
         lines = [

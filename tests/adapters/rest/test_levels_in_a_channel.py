@@ -1,5 +1,5 @@
-"""The run level asked for in the owner-facing channel says what the web app is handed (UC-6.10
-*beyond the web app*, ADR-0069, issue #193).
+"""The run level and the overview asked for in the owner-facing channel say what the web app is
+handed (UC-6.10 *beyond the web app*, ADR-0069, issues #193 and #204).
 
 The web app draws `GET /levels/runs/{id}`. The owner's conversation, a chat that cannot draw
 it, receives the text equivalent of the same level — every element's text, with the same states
@@ -14,11 +14,12 @@ from datetime import timedelta
 import httpx
 
 from taktus.components.reporting.application.service import ConfigureChannel
-from taktus.components.run.domain.model import StepRun, StepState
+from taktus.components.run.domain.model import RunState, StepRun, StepState
 from taktus.ports.connector import Intake
 from taktus.shared.v1 import Consumption, Method
 
 from .conftest import OTHER, TENANT, Services, a_run
+from .test_process_level import bundle, register
 
 type Client = tuple[httpx.AsyncClient, Services, str]
 
@@ -114,3 +115,77 @@ async def test_the_owner_s_chat_receives_the_run_level_s_text_and_a_link_to_it_l
     assert unseen.outcome == missing.outcome == "not_shown"
     assert given.deliveries.said[1].text == given.deliveries.said[2].text
     assert "run_2" not in given.deliveries.said[1].text
+
+
+async def test_the_owner_s_chat_receives_the_overview_s_text_and_a_link_to_it_live(
+    client: Client,
+) -> None:
+    """Issue #204: `show overview` is answered with every element's text of the overview as
+    `GET /levels/overview` hands it to the web app — the same figures — and the web app's root
+    route, where the overview is drawn. Another tenant's run is neither drawn nor counted."""
+    http, given, base = client
+    await register(given, bundle("1"))
+    now = given.clock.now()
+    for run_id, state, tenant in (
+        ("run_1", RunState.RUNNING, TENANT),
+        ("run_2", RunState.WAITING_HUMAN, TENANT),
+        ("run_9", RunState.RUNNING, OTHER),
+    ):
+        run = await a_run(given, run_id, tenant=tenant)
+        moved = run.model_copy(
+            update={
+                "process_version": "invoices@1",
+                "state": state,
+                "step_runs": (
+                    StepRun(
+                        step_id="a",
+                        index=0,
+                        method=Method.RULE,
+                        state=StepState.RUNNING
+                        if state is RunState.RUNNING
+                        else StepState.SUCCEEDED,
+                        started_at=now,
+                    ),
+                ),
+            }
+        )
+        async with given.persistence.transaction(tenant):
+            await given.runs.put(tenant, moved)
+    who, key = await given.identity.person(TENANT, "idn_owner")
+    owner = who.identity
+    control_plane = f"http://taktus.test{base}"
+    await given.owner.configure.execute(
+        ConfigureChannel(
+            tenant=TENANT,
+            document={
+                "owner": owner,
+                "channel": CHAT,
+                "address": CONVERSATION,
+                "language": "en",
+                "view_base": control_plane,
+            },
+            actor="operator",
+        )
+    )
+    answer = await http.get(f"{base}/levels/overview", headers={"Authorization": f"Bearer {key}"})
+    assert answer.status_code == 200, answer.text
+    level = answer.json()
+
+    taken = await given.owner.answers.take(
+        TENANT, message("Show overview", "Ev1"), owner, who.roles
+    )
+
+    assert taken is not None and taken.outcome == "shown" and taken.replied
+    [said] = given.deliveries.said
+    [area] = level["areas"]
+    [invoices] = area["processes"]
+    assert said.text.splitlines() == [
+        area["text"],
+        f"• {invoices['text']}",
+        *(f"• {step['text']}" for step in invoices["running"]),
+        "",
+        f"Live: {control_plane}/app/#/",
+    ]
+    assert (invoices["working"], invoices["waiting"]) == (1, 1)
+    assert [s["run"] for s in invoices["running"]] == ["run_1"]
+    assert "1 run working, 1 waiting" in said.text and "run_9" not in said.text

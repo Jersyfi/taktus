@@ -235,7 +235,9 @@ the owner's conversation is answered with the level's text equivalent — the on
 handed, with the same states and figures — and the link to the level live in the web app. Only
 the owner and whom the owner named are shown anything, only what they may see, and no secret
 value (NTC-0147). Proven against the fake chat service; on the installed instance it waits for
-NEED-0018 and NEED-0020, like the rest of the channel.
+NEED-0018 and NEED-0020, like the rest of the channel. `show overview` is answered the same way
+with the overview, each area, process and running step, and a link to the web app's root route
+(#204, NTC-0148).
 
 **A broken interface reaches the owner** (#100, `0.2.0`, ADR-0047). Taktus notices from its own
 calls when an interface it depends on stops behaving as its adapter expects (DEC-0058). The
