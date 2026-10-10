@@ -102,10 +102,12 @@ paths:
       tags:
       - intake
       summary: Complete an intake event into a command
-      description: 'The event the connector accepted becomes a command: the identity component supplies
-        who acts and the organisational path, from the link of the sender''s account, and the event is
-        marked completed. Nothing is executed; the command is returned for whoever commissions a plan
-        from it.'
+      description: 'The account key in `Authorization: Bearer` proves the caller''s identity, and only
+        there: a key in the URL is not read. Only an event of that identity''s tenant is completed; one
+        of another tenant is answered as one that does not exist. The event the connector accepted becomes
+        a command: the identity component supplies who acts and the organisational path, from the link
+        of the sender''s account, and the event is marked completed. Nothing is executed; the command
+        is returned for whoever commissions a plan from it.'
       operationId: complete_intake_events__event_id__complete_post
       parameters:
       - name: event_id
@@ -114,24 +116,26 @@ paths:
         schema:
           type: string
           title: Event Id
-      - name: tenant
-        in: query
+      - name: authorization
+        in: header
         required: false
         schema:
           anyOf:
           - type: string
           - type: 'null'
-          description: The tenant; the instance's first configured tenant when absent.
-          title: Tenant
-        description: The tenant; the instance's first configured tenant when absent.
+          title: Authorization
       responses:
         '200':
           description: The command the event became.
           content:
             application/json:
               schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
         '404':
-          description: No such intake event in the tenant.
+          description: No such intake event in your tenant.
           content:
             application/problem+json: {}
         '409':

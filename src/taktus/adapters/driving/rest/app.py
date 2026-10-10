@@ -244,31 +244,34 @@ def _intake(services: RestServices) -> APIRouter:
             return problem(503, "the intake decided nothing")
         return JSONResponse({"accepted": outcome.accepted.document()}, status_code=202)
 
-    tenant_query = Query(
-        default=None,
-        description="The tenant; the instance's first configured tenant when absent.",
-    )
-
     @router.post(
         "/intake-events/{event_id}/complete",
         summary="Complete an intake event into a command",
-        description="The event the connector accepted becomes a command: the identity component "
-        "supplies who acts and the organisational path, from the link of the sender's account, "
-        "and the event is marked completed. Nothing is executed; the command is returned for "
-        "whoever commissions a plan from it.",
+        description="The account key in `Authorization: Bearer` proves the caller's identity, "
+        "and only there: a key in the URL is not read. Only an event of that identity's tenant "
+        "is completed; one of another tenant is answered as one that does not exist. The event "
+        "the connector accepted becomes a command: the identity component supplies who acts and "
+        "the organisational path, from the link of the sender's account, and the event is "
+        "marked completed. Nothing is executed; the command is returned for whoever "
+        "commissions a plan from it.",
         status_code=200,
         responses={
             200: {"description": "The command the event became."},
-            404: {"description": "No such intake event in the tenant.", **PROBLEM},
+            401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+            404: {"description": "No such intake event in your tenant.", **PROBLEM},
             409: {"description": "The event was completed before.", **PROBLEM},
             422: {"description": "The sender cannot be placed.", **PROBLEM},
         },
     )
-    async def complete(event_id: str, tenant: str | None = tenant_query) -> JSONResponse:
+    async def complete(
+        event_id: str, authorization: str | None = Header(default=None)
+    ) -> JSONResponse:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, "an account key is needed: Authorization: Bearer <key>")
         handler = services.complete_intake
-        chosen = tenant or services.tenants[0]
         try:
-            command = await handler.execute(CompleteIntake(tenant=chosen, event_id=event_id))
+            command = await handler.execute(CompleteIntake(tenant=who.tenant, event_id=event_id))
         except UnknownIntakeEvent as error:
             return problem(404, str(error))
         except AlreadyCompleted as error:

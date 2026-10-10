@@ -93,7 +93,7 @@ taktus/
 │   ├── adapters/
 │   │   ├── driving/
 │   │   │   ├── cli/                 # taktusctl: conformance run, run, submit, capacity; identity, with the roles an identity holds; anchors set and show (ADR-0042)
-│   │   │   └── rest/                # the HTTP surface: health, readiness, webhook intake, the decision requests addressed to a decider (ADR-0042), the read API for a reader with an account key, the stream of changes as Server-Sent Events (ADR-0055), the levels of the live representation and the vocabulary, the web app's static build at /app/ (levels.py, ADR-0063) — under a prefix; RFC 9457 problems
+│   │   │   └── rest/                # the HTTP surface: health, readiness, webhook intake, the completion of an intake event by a caller of its tenant with an account key, the decision requests addressed to a decider (ADR-0042), the read API for a reader with an account key, the stream of changes as Server-Sent Events (ADR-0055), the levels of the live representation and the vocabulary, the web app's static build at /app/ (levels.py, ADR-0063) — under a prefix; RFC 9457 problems
 │   │   └── driven/
 │   │       ├── memory/              # DEVELOPMENT AND TEST ONLY: in-memory stores, queue and leadership, optional file snapshot
 │   │       ├── postgres/            # persistence, queue (claim_jobs with a lease) and leadership (advisory lock) over PostgreSQL; SQLAlchemy Core; signal.py listens to the notification every ledger insert sends (ADR-0055)
