@@ -127,7 +127,7 @@ you see the domain, not the framework.
 | Architecture enforcement | `import-linter` contracts, run in CI |
 | Tooling | `uv`, `ruff`, `mypy --strict`, `pytest`, `testcontainers`; `make gates` installs its own environment; `make doctor` says what is missing. `taktusctl` lives in that environment: `uv run taktusctl …`. Docker is optional: without it the PostgreSQL tests skip and say so; CI runs them |
 | Observability | OpenTelemetry from day one: spans for run, step, worker and connector calls, exported where `TAKTUS_OTLP_*` names an endpoint; the trace identifier is on every ledger entry and log line |
-| Web | SvelteKit, embedded into the image |
+| Web | SvelteKit and TypeScript, a static build made in its own image stage and served by the `api` role at `{prefix}/app/`; each view is a level `reporting` composes, live from the stream of changes (ADR-0063) |
 | Deployment | one image for the control plane, roles via `TAKTUS_ROLES`; one image per worker, none of them in the control plane image; Docker Compose for self-hosting (`make up`), Kubernetes for scale |
 | Execution | `TAKTUS_EXECUTION`: a worker by endpoint, a unit started per job as a process (development only; refused from autonomy level 3), as a container with limits, credentials in memory and a network allowlist — over the engine's API, Docker or Podman — or as a Job in a Kubernetes cluster with limits, a `restricted` pod, credentials from a Secret for the job's lifetime and an egress proxy of its own — over the cluster's API with `httpx`, no client library (`deploy/k8s/README.md` §7) |
 

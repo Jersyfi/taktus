@@ -80,6 +80,9 @@ gate-vision: need-uv ## The vision layer holds together — the fourteen princip
 
 # The use case gate runs the named tests of a `verified` use case, so it needs the project
 # environment: `uv run python` rather than `uv run <script>`, which would isolate the script.
+gate-web: ## The web app under web/: packages from the lock file, types, tests, build; skips without Node and says so, unless TAKTUS_REQUIRE_NODE is set
+	@tools/web.sh
+
 gate-usecases: env ## Every use case has a state, a verification condition and a principle; built names tests, verified ones are green; no ADR moved under one unchecked; no requirement changed where it is implemented
 	$(UV) run python tools/check_usecases.py $(if $(BASE),--base $(BASE))
 
@@ -129,12 +132,12 @@ lint: env ## Static analysis and types, of the product and of the Python tools u
 	$(UV) run ruff format --check .
 	$(UV) run mypy
 
-generate: env ## Regenerate what is generated and committed: api/openapi.yaml from the REST interface (tools/README.md)
+generate: env ## Regenerate what is generated and committed: api/openapi.yaml from the REST interface, the web app's test fixtures from reporting (tools/README.md)
 	$(UV) run python tools/generate.py
 
 status: need-uv ## Print what is needed from the owner, from the register: the last section of every pull request description (DEC-0026)
 	@$(UV) run tools/check_status.py --print
 
-gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases test ## Everything CI runs
+gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web test ## Everything CI runs
 
-.PHONY: help doctor env install status usecases test images helm gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates
+.PHONY: help doctor env install status usecases test images helm gate-web gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates

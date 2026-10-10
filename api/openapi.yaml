@@ -726,6 +726,64 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /levels/runs/{run_id}:
+    get:
+      tags:
+      - levels
+      summary: 'The run level: where one run stands'
+      description: 'The run and each of its steps in order: method kind, exactness class, state, what
+        a waiting step waits on, what each step used and what the run consumed so far — the run component''s
+        own figures. Every element carries its glyph twice, with motion (`drawn.moving`) and without (`drawn.still`),
+        as the visual vocabulary gives it, and its text equivalent (`text`). Follow `GET /changes?run=…`
+        and read this again when a change arrives (ADR-0063).'
+      operationId: run_level_levels_runs__run_id__get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The run level.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No such run, or one you may not see: the two are answered alike.'
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /vocabulary:
+    get:
+      tags:
+      - levels
+      summary: The visual vocabulary
+      description: How every live representation draws a method kind, an exactness class and a state,
+        as tokens of form, motion, marks and text; no colour (ADR-0059).
+      operationId: vocabulary_vocabulary_get
+      responses:
+        '200':
+          description: The vocabulary.
+          content:
+            application/json:
+              schema: {}
 components:
   schemas:
     AnswerBody:

@@ -47,6 +47,14 @@ the projection, the scope, when a resume is a snapshot — are `domain/service/l
 read is the port `ports/live.py`, which the composition root binds to the ledger store and the
 run's repository; how the streams are fed is the composition root's (`composition/live.py`).
 
+The levels of the live representation (UC-6.10 §1, ADR-0063): what one representation shows at
+one of the four levels, drawn from the facts the component that owns them records. The run level
+exists: the run and each of its steps, every fact with its glyph with motion and without and its
+text equivalent, the waits named by account, cause and role, the figures the run's own
+(`domain/model/levels.py`, `domain/service/levels.py`). It is read through the port
+`ports/levels.py`, which the composition root binds to the run's repository, and asked of the
+one predicate (`application/query/levels.py`).
+
 Which connector carries a message, how a decision answer is kept and which values are secret are
 asked through `ports/`, and answered by the composition root, because components never import
 each other.

@@ -19,7 +19,7 @@ from taktus.components.decision.application.service import (
     ConfirmRequestHandler,
 )
 from taktus.components.identity.application.service import IdentityDirectory
-from taktus.components.reporting.application.query import ReportQueries
+from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.domain.model import Change, Reader, Scope, Snapshot
 from taktus.components.run.domain.model import Run
 from taktus.ports.ledger import Ledger
@@ -109,6 +109,11 @@ class RestServices(Protocol):
         """A request of the run took effect: the run continues from the boundary it waits
         at, or halts there, as the decision says. Nothing happens while another request of
         the run waits."""
+        ...
+
+    @property
+    def levels(self) -> LevelQueries:
+        """The levels of the live representation, read for one reader (ADR-0063)."""
         ...
 
     @property

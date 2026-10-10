@@ -4,7 +4,7 @@
 |---|---|
 | `compose.yml` | **the deployment shape**: Taktus and PostgreSQL, two containers for the control plane (ADR-0002). No worker: a worker is configured by endpoint, or started by the execution port (`TAKTUS_EXECUTION`) |
 | `compose.reference-worker.yml` | **development only**, layered over `compose.yml`: the reference worker in its own image, reached by endpoint, for trying a bundle out and for `verify.sh` (`make up-dev`) |
-| `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names |
+| `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011). The web app is built in a stage of its own with Node, and only its static build is carried over; the runtime holds no Node (ADR-0063). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names |
 | `secrets.sh` | writes the two secret files `compose.yml` reads, once, under `secrets/` (ignored by git) |
 | `verify.sh` | the end-to-end check: from nothing, the image checked for worker code, a run, the container killed, restarted, the run resumed |
 | `compose.dev.yml` | the development database: PostgreSQL alone, bound to `127.0.0.1`, trusting local connections, for `uv run taktusctl run` and the tests |
@@ -33,6 +33,8 @@ which gives it volumes of its own. Nothing here removes a volume. From then on:
 | `http://127.0.0.1:8080/health` | liveness: the process is alive |
 | `http://127.0.0.1:8080/ready` | readiness: the database answers and is at the schema this build needs; `503` with the reason otherwise |
 | `http://127.0.0.1:8080/runs`, `/runs/{id}`, `/runs/{id}/ledger` | the read API: a reader, with their account key in `Authorization: Bearer`, reads the runs of their identity's tenant they may see and each run's ledger entries; `401` without a key |
+| `http://127.0.0.1:8080/app/` | the web app: a reader gives their account key once per browser tab and sees the runs they may see, each run live at its level (ADR-0063) |
+| `http://127.0.0.1:8080/levels/runs/{id}` | the run level the web app draws, with an account key; `/vocabulary` is the visual vocabulary (ADR-0059) |
 | `http://127.0.0.1:8080/intake/{channel}` | webhook intake for a channel a connector serves (`TAKTUS_CONNECTORS`); the sender is placed by the link of their account, and an unknown sender is answered in the channel and nothing is kept (ADR-0040) |
 | `http://127.0.0.1:8080/intake-events/{id}/complete` | a caller, with their account key, completes an accepted delivery of their own tenant into a command that acts as the identity the sender's account is linked to; `401` without a key |
 | `http://127.0.0.1:8080/identity/link-codes` | a person, with their account key, creates the code that links an account on a channel to their identity |

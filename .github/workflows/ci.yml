@@ -64,6 +64,22 @@ jobs:
         # has no "before" (GitHub sends the null sha) and compares with main (DEC-0017).
         run: uv run tools/check_status.py --base ${{ github.ref == 'refs/heads/main' && github.event.before || 'origin/main' }}
 
+  # The web app under web/ (ADR-0063): its packages from the lock file, its types, its tests and
+  # its build. It needs Node and not the Python environment; here the gate may not skip.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: web
+        env:
+          TAKTUS_REQUIRE_NODE: "1"
+        run: make gate-web
+
   gates:
     runs-on: ubuntu-latest
     permissions:

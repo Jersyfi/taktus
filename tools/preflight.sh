@@ -21,7 +21,7 @@ purpose() {
         gitleaks) echo "scans the repository for secret values (make gate-secrets)" ;;
         git) echo "required by make gate-docs (checkdocs.py uses git diff/status) and the coding worker" ;;
         docker) echo "runs the development database (make db-up) and the PostgreSQL tests; without it those tests skip" ;;
-        node) echo "JavaScript runtime for the web app under web/; no gate needs it" ;;
+        node) echo "builds and checks the web app under web/ (make gate-web); without it that gate skips" ;;
         *) echo "unknown tool" ;;
     esac
 }
