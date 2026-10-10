@@ -3,7 +3,7 @@
 **Mode entry:** M2.4
 **Kind:** behaviour-change
 **Decided:** 2026-10-10
-**Raised in:** the pull request that builds the ML bench, for issue #89
+**Raised in:** [#215](https://github.com/Jersyfi/taktus/pull/215), for issue #89
 
 ## 1. What was decided
 

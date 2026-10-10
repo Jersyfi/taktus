@@ -1,7 +1,7 @@
 # DEC-0161 — Which library the ML bench trains with
 
 **Category:** NON-BLOCKING
-**Raised in:** the pull request that builds the ML bench, for issue #89
+**Raised in:** [#215](https://github.com/Jersyfi/taktus/pull/215), for issue #89
 **Issue:** [#212](https://github.com/Jersyfi/taktus/issues/212)
 **Needed by:** before #210 is built, which adds the bench's second family of models
 **Provisional answer:** Option A, built in `workers/mlbench/` and named in its README.

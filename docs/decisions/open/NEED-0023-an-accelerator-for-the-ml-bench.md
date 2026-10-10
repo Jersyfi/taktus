@@ -1,10 +1,10 @@
 # NEED-0023 — An accelerator for the ML bench
 
 **Kind:** access
-**Raised in:** the pull request that builds the ML bench, for issue #89
+**Raised in:** [#215](https://github.com/Jersyfi/taktus/pull/215), for issue #89
 **Issue:** [#213](https://github.com/Jersyfi/taktus/issues/213)
 **Needed by:** 2026-12-01
-**Foreseeable since:** the same pull request, where the bench's work was split into a part that runs on an ordinary processor (#89) and a part that needs an accelerator (#210)
+**Foreseeable since:** [#215](https://github.com/Jersyfi/taktus/pull/215), where the bench's work was split into a part that runs on an ordinary processor (#89) and a part that needs an accelerator (#210)
 
 ## 1. What is needed
 
