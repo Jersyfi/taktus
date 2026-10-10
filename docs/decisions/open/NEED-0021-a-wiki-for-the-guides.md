@@ -1,10 +1,10 @@
 # NEED-0021 — A wiki for the guides
 
 **Kind:** account
-**Raised in:** the pull request for issue [#88](https://github.com/Jersyfi/taktus/issues/88)
+**Raised in:** [#200](https://github.com/Jersyfi/taktus/pull/200), for issue #88
 **Issue:** [#199](https://github.com/Jersyfi/taktus/issues/199)
 **Needed by:** 2026-11-14
-**Foreseeable since:** the pull request for issue [#88](https://github.com/Jersyfi/taktus/issues/88), where the guides were first rendered and published to a directory of files
+**Foreseeable since:** [#200](https://github.com/Jersyfi/taktus/pull/200), where the guides were first rendered and published to a directory of files
 
 ## 1. What is needed
 
