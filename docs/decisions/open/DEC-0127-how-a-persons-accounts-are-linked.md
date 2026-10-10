@@ -1,7 +1,7 @@
 # DEC-0127 — How a person's accounts are linked
 
 **Category:** NON-BLOCKING
-**Raised in:** [#172](https://github.com/Jersyfi/taktus/pull/172), from the owner's direction of 2026-10-10 recorded in NEED-0017 and NEED-0020
+**Raised in:** [#173](https://github.com/Jersyfi/taktus/pull/173), from the owner's direction of 2026-10-10 recorded in NEED-0017 and NEED-0020
 **Issue:** [#171](https://github.com/Jersyfi/taktus/issues/171)
 **Needed by:** 2026-10-31
 **Provisional answer:** The requirement stands as it is (Option B in substance): no new kind of link is built before the answer, and NEED-0017 and NEED-0020 keep their link codes. One part of Option A is taken now, because it cannot wait: the chat app's manifest in NEED-0018 asks for `users:read` and `users:read.email`, marked provisional there, so that the app you install on 2026-10-11 need not be installed again if Option A or C is chosen. Under Option B the two lines are removed and the app reinstalled; its token does not change.
