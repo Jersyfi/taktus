@@ -21,7 +21,7 @@ boundaries, `import-linter` contracts and `tests/architecture` are not optional 
 | `decision` | decision requests, the decision register, rules derived from it; today: requests raised, answered, their reading confirmed, the register, the decider's list and response times (ADR-0042) |
 | `catalog` | models, agents, skills, connectors, blueprints, maturity |
 | `accounting` | consumption capture, Takt, forecasts, marginal value |
-| `knowledge` | knowledge sources, embeddings, citations |
+| `knowledge` | knowledge sources, embeddings, citations. Its package's first content is the guides beyond the repository (UC-13.6, ADR-0065): the manifest, the rendering by rule, the seven states a page in a knowledge system can be in, and the publishing through `knowledge.pages` |
 | `value` | value ledger, cost and benefit entries, revert analysis |
 | `ledger` | hash chain, verification, export |
 | `reporting` | views and who may see them, reports and their delivery, the explanation of an action on request; owns no figure — every number is read from the component that produces it (ADR-0029). Its package arrived with the product finding (UC-6.12, ADR-0046); the owner-facing channel — a tenant's configuration and phrasebook, a report to the owner in three renderings, the answer in the channel read, reflected and confirmed — is in it too (ADR-0045), and so is the broken interface noticed from the run's failed calls (ADR-0047) |
@@ -69,6 +69,7 @@ taktus/
 │   │   … run/domain/service/budget.py the budget's rules: the line less the margin, calibration and its seed, the reservation, the worker's ceiling, what a budget can promise; accounting/ meters a run from the ledger and prices it at the table its budget statement names (`taktusctl cost`, which also prints the statement's word that the uncalibrated margin was set below the floor)
 │   │   … run/domain/model/recorded.py and decision/domain/model/recorded.py which state a ledger entry's kind and outcome lead to, published beside each state machine; reporting/domain/service/visibility.py the one predicate of what a reader may see, asked by the stream and the read API through its module; reporting/domain/service/live.py and application/service/live.py the stream of changes as rules — the projection, the scope, when a resume is a snapshot — over the port reporting/ports/live.py (ADR-0055)
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
+│   │   … knowledge/domain/service/render.py renders a guide's pages from the repository at one commit by rule; domain/service/pages.py measures a page against a knowledge system — seven states, two written; application/service/publish_guides.py puts the guides through knowledge.pages and never overwrites a hand edit (ADR-0065)
 │   │     accounting/ knowledge/ value/ ledger/
 │   │
 │   ├── ports/                       # cross-cutting ports
@@ -107,6 +108,7 @@ taktus/
 │   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/mcp/      # the connector port as an MCP client: intake and actions; connectors/pool.py maps capabilities
 │   │       ├── connectors/loopback/ # Taktus reached by Taktus: the capabilities orchestrator.* behind the action side of the connector port, over an Orchestrator the composition root implements
+│   │       ├── connectors/directory/ # knowledge.pages over a directory of Markdown files: the knowledge system of an organisation that has none (ADR-0065)
 │   │       ├── connectors/slack/    # the chat connector: chat.threads and channel.chat behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/http/
 │   │       └── models/              # openai_compatible/: the model port over the chat-completions dialect; pool.py maps purposes
@@ -144,6 +146,7 @@ taktus/
 │   └── security/ resilience/
 │
 ├── docs/{architecture,adr,usecases,vision,decisions,runs,research,roadmap.md}   # research: dated, sourced evidence a decision rests on
+├── docs/guides/                     # guides.yaml declares the administration guide and the guide for users; the files beside it hold only the words no other document says (ADR-0065)
 ├── tools/                           # gates, checkdocs, preflight, generators
 ├── pyproject.toml  Makefile  .importlinter  .env.example   # .env.example lists TAKTUS_* names, never values
 └── CLAUDE.md  README.md  LICENSE  NOTICE  CONTRIBUTING.md  CREDENTIALS.md
