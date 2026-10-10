@@ -4,7 +4,6 @@
 **Raised in:** [#128](https://github.com/Jersyfi/taktus/pull/128), while implementing issue #71: the blueprint names a language model for the step a rule can now do
 **Issue:** [#126](https://github.com/Jersyfi/taktus/issues/126)
 **Needed by:** 2026-10-23
-**Provisional answer:** Option A. P-01 Roadmap control runs with its reconciliation as a rule over the issue numbers the roadmap's items name, classed `exact`; `docs/roadmap.md` names the issues of its items. Marked in the bundle's header and in the step's rejected alternative, and in `blueprint.yaml`.
 
 ## 1. What this is about
 
@@ -99,3 +98,10 @@ the step `reconcile` becomes a model step with a check, and the bundle's version
 ## 7. How to answer
 
 "DEC-0080: Option A." or "DEC-0080: Option B."
+
+## Outcome
+
+**Decided:** 2026-10-10
+**Answer:** Option A. P-01's reconciliation is a `rule` step classed `exact`, over the issue numbers the roadmap's items name.
+**Reasoning given:** none beyond accepting the recommendation, whose reason was that the rule does the same job reproducibly and without a model's cost (CLAUDE.md §3).
+**Recorded in:** this pull request

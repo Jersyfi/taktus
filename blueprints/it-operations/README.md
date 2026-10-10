@@ -35,4 +35,4 @@ nobody is asked twice.
 
 **Where it rests.** The definition numbers the escalation `UC-4.6`; this repository numbers it `UC-4.5`
 (`docs/usecases/NUMBERING.md`). Definition `UC-12.2`. The roadmap names no version for it; it belongs to
-this blueprint's `0.7.0`. What this description adds beyond the definition is asked in DEC-0087.
+this blueprint's `0.7.0`. What this description adds beyond the definition stands, by DEC-0087.

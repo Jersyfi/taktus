@@ -4,6 +4,7 @@
 **Raised in:** [#119](https://github.com/Jersyfi/taktus/pull/119)
 **Issue:** [#117](https://github.com/Jersyfi/taktus/issues/117)
 **Needed by:** 2026-10-20
+**Owner's answer:** 2026-10-10: the session provides it itself, over its access to the server, as section 4 describes; the names go into the owner's private note.
 **Foreseeable since:** [#119](https://github.com/Jersyfi/taktus/pull/119), which builds the cluster execution adapter (#65); raised the same day
 
 ## 1. What is needed

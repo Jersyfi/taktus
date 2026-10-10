@@ -4,7 +4,6 @@
 **Raised in:** [#108](https://github.com/Jersyfi/taktus/pull/108), while implementing issue #99: its fourth check cannot be shown before the instance is installed
 **Issue:** [#110](https://github.com/Jersyfi/taktus/issues/110)
 **Needed by:** 2026-10-20
-**Provisional answer:** Option A. Pull request #108 closes #99; the fourth check is carried to issue #66, which installs the instance, in a comment there; until then the live test's assertion that its pull request shows the app as author stands in. Marked here and in #66.
 
 ## 1. What this is about
 
@@ -94,3 +93,10 @@ a comment. If the answer is Option B, #99 is reopened and the comment on #66 is 
 ## 7. How to answer
 
 "DEC-0063: Option A." or "DEC-0063: Option B."
+
+## Outcome
+
+**Decided:** 2026-10-10
+**Answer:** Option A. Pull request #108 closed #99; the check that a pull request P-03 opens on the installed instance shows the app, not a person, as its author belongs to #66, which cannot close without it.
+**Reasoning given:** none beyond accepting the recommendation, whose reason was that the check stays binding and lands with the task that can make it true.
+**Recorded in:** this pull request

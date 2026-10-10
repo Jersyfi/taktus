@@ -4,7 +4,6 @@
 **Raised in:** [#120](https://github.com/Jersyfi/taktus/pull/120)
 **Issue:** [#111](https://github.com/Jersyfi/taktus/issues/111)
 **Needed by:** 2026-10-22
-**Provisional answer:** Option A. The seventeen use cases of the second migration step are in force with the conditions they add beyond version 2 of the definition, and bind any session that builds one of them before the answer. Marked here, in each use case that names this request, and in the status file.
 
 ## 1. What this is about
 
@@ -138,3 +137,10 @@ afterwards costs a request per use case instead of one edit now.
 "DEC-0069: Option A." — or "DEC-0069: Option B" followed by each use case and the change you want in
 it — in issue [#111](https://github.com/Jersyfi/taktus/issues/111). A free-text answer is read back as
 an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-10
+**Answer:** Option A. The seventeen use cases of the second migration step stand with the conditions they add beyond version 2 of the definition, including the versions the session proposed for those the roadmap does not name.
+**Reasoning given:** the owner asked for the request to be explained again and then accepted it. On the one place where the definition and the vision pull apart — what a named person consumed — the owner gave a direction of their own about measuring people's working time, decided separately in DEC-0123; it leaves this condition as it is.
+**Recorded in:** this pull request

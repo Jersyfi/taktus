@@ -63,7 +63,7 @@ chapter 9, "every friction is a product finding". The roadmap places it in `0.2.
 
 ## 5. What is proven so far
 
-Built by ADR-0046 (issue #86) and proven by the named tests, under the provisional answer of
+Built by ADR-0046 (issue #86) and proven by the named tests, under the answer of
 DEC-0087. A step that fails for want of an adapter carries a block booked to `wait.dependency`
 until it can start, and its record names what was lacking (ADR-0043, amended). A rule over the
 blocks, ended and open, makes a finding of a lack and of nothing else. Against the fake repository

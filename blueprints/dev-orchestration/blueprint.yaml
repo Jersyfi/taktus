@@ -50,8 +50,8 @@ processes:
       - schedule: daily
         inputs: { roadmap_path: docs/roadmap.md, records_path: docs/decisions/open, report_issue: 129 }
       - event: roadmap.changed
-    # The diff is a rule over the issue numbers the roadmap's items name, provisionally: the
-    # method of this step is the owner's (anchors.taktus.md M3.13), asked in DEC-0080.
+    # The diff is a rule over the issue numbers the roadmap's items name: the method of this
+    # step is the owner's (anchors.taktus.md M3.13), decided in DEC-0080.
     steps:
       - { id: read-roadmap, method: rule }
       - { id: read-state,   method: rule }                      # the open issues and the open records

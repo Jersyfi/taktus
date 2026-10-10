@@ -64,5 +64,5 @@ anchors and decision requests (ADR-0008, UC-7.4); exactness (ADR-0014); the prov
 partner interfaces and data contracts for the electronic invoices exchanged with partners (UC-15.3);
 end-to-end chains such as order-to-cash and procure-to-pay, whose last links are here (UC-15.4); the value
 balance (UC-9.3). Definition `UC-15.2`, new in version 2. Placing it here, as a deployment rather than a
-capability of the core, follows the migration of epic E15; what it adds beyond the definition is asked in
+capability of the core, follows the migration of epic E15; what it adds beyond the definition stands, by
 DEC-0087.

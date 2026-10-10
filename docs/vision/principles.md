@@ -226,5 +226,11 @@ keystroke logging, productivity scoring, location tracking — excluded outright
 them. That analysis belongs to the deciding person and is visible only to them by default.
 Aggregation by role or department only.
 
+**Permits, and asks for.** Processes are analysed in every detail — lead time, working time and
+the time lost between them, per process, step, role and department — so that wasted time is found
+and removed and processes stay economically sustainable. A person sees their own times beside
+their role's, and support starts with them. Mistakes are met openly, as something to learn from,
+never as evidence against someone (DEC-0123).
+
 **Enforced in the data model, not in a policy.** A feature that violates this is not
 misconfigurable — it is unbuildable.

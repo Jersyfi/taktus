@@ -92,7 +92,7 @@ that what was once wanted stays readable:
 **Where the definition and the vision pull apart.** The definition lists a single person as a unit
 for budgets. Principle 14 forbids any metric that appraises a named person. The condition above —
 a person's consumption visible to that person, aggregated for everyone else — is the stricter
-reading, and the owner is asked about it in DEC-0069.
+reading, and the owner kept it in DEC-0069. Comparing the working time of named persons stays excluded as well (DEC-0123).
 
 ## 5. What is proven so far
 

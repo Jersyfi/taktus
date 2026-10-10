@@ -4,7 +4,6 @@
 **Raised in:** [#132](https://github.com/Jersyfi/taktus/pull/132)
 **Issue:** [#131](https://github.com/Jersyfi/taktus/issues/131)
 **Needed by:** 2026-10-23
-**Provisional answer:** Option A. The twenty-seven use cases of the third migration step are in force with the conditions they add beyond version 2 of the definition, and bind any session that builds one of them before the answer. Marked here and in the status file; the migration's working file, which marked it too, was deleted at the migration's end (`docs/usecases/NUMBERING.md`).
 
 ## 1. What this is about
 
@@ -165,3 +164,10 @@ costs a request per use case instead of one edit now.
 "DEC-0082: Option A." — or "DEC-0082: Option B" followed by each use case and the change you want in
 it — in issue [#131](https://github.com/Jersyfi/taktus/issues/131). A free-text answer is read back as an interpretation and confirmed before it
 is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-10
+**Answer:** Option A. The twenty-seven use cases of the third migration step stand with the conditions they add beyond version 2 of the definition, the two stricter readings included: a project refers to the organisation's tickets and documents, and a configured knowledge system is the record.
+**Reasoning given:** the owner asked for the request to be explained again and then accepted it, adding what they expect of a knowledge system: Taktus reads it, writes it and uses it as its knowledge base, within the purpose its users give it. That is how UC-1.4's stricter reading is meant: Taktus keeps no second, diverging version of a document, and an index it searches is not one.
+**Recorded in:** this pull request

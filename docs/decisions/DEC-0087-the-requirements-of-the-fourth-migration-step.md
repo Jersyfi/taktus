@@ -4,7 +4,6 @@
 **Raised in:** [#137](https://github.com/Jersyfi/taktus/pull/137)
 **Issue:** [#135](https://github.com/Jersyfi/taktus/issues/135)
 **Needed by:** 2026-10-23
-**Provisional answer:** Option A. The seventeen use cases of the fourth migration step, and the two blueprint descriptions, are in force with the conditions they add beyond version 2 of the definition and beyond the text in which you stated three requirements yourself; they bind any session that builds one of them before the answer. Marked here and in the status file.
 
 ## 1. What this is about
 
@@ -149,3 +148,10 @@ afterwards costs a request per use case instead of one edit now.
 "DEC-0087: Option A." — or "DEC-0087: Option B" followed by each use case and the change you want in it —
 in issue [#135](https://github.com/Jersyfi/taktus/issues/135). A free-text answer is read
 back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-10
+**Answer:** Option A. The seventeen use cases of the fourth migration step, and the two blueprint descriptions, stand with the conditions they add beyond version 2 of the definition and beyond the owner's stated text.
+**Reasoning given:** the owner asked for the request to be explained again and then accepted it, adding that every exchange with an outside system is recorded so that analysis and reports have their data, and that an interface such as a ticket system's is built so that Taktus receives, and can demand, exactly the data it needs; which data a given process needs is settled when it is built. UC-15.3's data contract is that.
+**Recorded in:** this pull request

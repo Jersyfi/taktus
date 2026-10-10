@@ -4,6 +4,7 @@
 **Raised in:** [#162](https://github.com/Jersyfi/taktus/pull/162), for issue #93
 **Issue:** [#161](https://github.com/Jersyfi/taktus/issues/161)
 **Needed by:** 2026-10-31
+**Owner's answer:** 2026-10-10: the session creates the repository and its issue and tells the owner when the app's installation is to be extended, which stays the owner's.
 **Foreseeable since:** [#162](https://github.com/Jersyfi/taktus/pull/162), where the instance learned to run an adapter's conformance suite itself and record it
 
 ## 1. What is needed

@@ -4,6 +4,7 @@
 **Raised in:** [#118](https://github.com/Jersyfi/taktus/pull/118)
 **Issue:** [#114](https://github.com/Jersyfi/taktus/issues/114)
 **Needed by:** 2026-10-20
+**Owner's answer:** 2026-10-10: the registry is the repository service's own, under the owner's account; the images are public; the session sets the variable and cuts the first release tag, which the owner approved (M3.6).
 **Foreseeable since:** [#118](https://github.com/Jersyfi/taktus/pull/118), which adds the workflow that builds the images on a release tag and pushes them to the registry a repository setting names
 
 ## 1. What is needed

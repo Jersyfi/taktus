@@ -4,6 +4,7 @@
 **Raised in:** [#149](https://github.com/Jersyfi/taktus/pull/149), for issue #82
 **Issue:** [#147](https://github.com/Jersyfi/taktus/issues/147)
 **Needed by:** 2026-10-31
+**Owner's direction:** 2026-10-10: accounts should be linked with little effort for users and administrators — for example, Taktus reads a platform's users and an administrator links them to a Taktus identity, so that Taktus knows each person's accounts across platforms; automatic, manual and handle-only links are all to be considered, and proven technically. The session works out a proposal before this need is provided.
 **Foreseeable since:** [#149](https://github.com/Jersyfi/taktus/pull/149), where the identity component replaced the provisional operator identity (ADR-0040)
 
 ## 1. What is needed
