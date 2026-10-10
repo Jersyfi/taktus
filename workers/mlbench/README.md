@@ -88,5 +88,6 @@ none to a dataset host.
 ## What it does not do yet
 
 Embeddings, neural models and a training run on an accelerator are the second part, issue
-#210. Executing a step of method `ml` in a run from a model this bench produced is method
-maturation (`docs/roadmap.md`, `0.4.0`). The model hub is UC-8.6.
+#210. A step of method `ml` runs on the bench's `predict` (ADR-0076, #216); proposing to move a
+step to a model the bench trained, and the move itself, are #217 and #218. The model hub is
+UC-8.6.

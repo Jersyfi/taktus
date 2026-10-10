@@ -102,6 +102,7 @@ that holds the claim now.
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import hashlib
 import json
@@ -126,6 +127,7 @@ from taktus.components.run.domain.model import (
     ConnectorRule,
     ConstantRule,
     LlmWork,
+    MlWork,
     NoConnector,
     NoWorker,
     ReadyRule,
@@ -154,11 +156,13 @@ from taktus.components.run.domain.model import (
     select,
 )
 from taktus.components.run.domain.model.block import Account, OpenBlock
+from taktus.components.run.domain.model.work import PREDICT
 from taktus.components.run.domain.service import (
     anchoring,
     autonomy,
     blocked,
     interfaces,
+    prediction,
     provenance,
     rules,
     waiting,
@@ -255,6 +259,9 @@ from taktus.shared.v1 import (
     add_tokens_by_model,
 )
 from taktus.shared.v1.consumption import MODEL_NAME_PATTERN
+
+NO_RESULT = b"null"
+"""The result of a step a person performed after its model was unsure: nothing (ADR-0076)."""
 
 SOURCE_REF_LENGTH = 200
 """How much of an operation and its input a provenance source reference keeps (ADR-0021 §4
@@ -734,6 +741,9 @@ class RunEngine:
                 raise RunError("name the step(s) to answer")
             if command.enqueue and self._queue is None:
                 raise RunError("no queue is wired; a run is handed to a runner through one")
+            if command.performed:
+                # What a step a person performed hands on: nothing of Taktus's (ADR-0076).
+                await self._objects.put(NO_RESULT)
             answered = [self._answer(run, s, command) for s in dict.fromkeys(command.steps)]
             for _, step_run in answered:
                 # The wait on a person ends with the answer. Its record names no one; the
@@ -765,6 +775,8 @@ class RunEngine:
                 f"{', '.join(step_run.anchoring.requests)}: an anchored act is decided there, "
                 "by the person the anchor names, not confirmed here (ADR-0042)"
             )
+        if step_run.block is not None and step_run.block.cause == block.FELL_BACK:
+            return self._performed_after_fallback(step_run, command)
         level = self._held(run, run.step(step_id)).level
         if level == 1 and not command.performed:
             raise RunError(
@@ -787,6 +799,36 @@ class RunEngine:
             )
         return "step.confirmed", step_run.to(
             StepState.PLANNED, confirmed_by=command.actor, reason=None
+        )
+
+    def _performed_after_fallback(
+        self, step_run: StepRun, command: ConfirmSteps
+    ) -> tuple[str, StepRun]:
+        """A step whose model was unsure went to its fallback, a person, at whatever level it
+        runs (ADR-0076). The person performs it; nothing is confirmed, because confirming would
+        pass on the answer the model did not stand behind. The step ends with no result of
+        Taktus's: a dependant that reads it receives nothing, and its predictions stay an
+        artifact nobody reads."""
+        if not command.performed:
+            raise RunError(
+                f"step {step_run.step_id!r} fell back to a person because its model was unsure, "
+                "and its answer leaves the step for nothing. Perform it yourself and report it "
+                "performed"
+            )
+        now = self._clock.now()
+        return "step.performed", step_run.to(
+            StepState.SUCCEEDED,
+            confirmed_by=command.actor,
+            reason=f"performed by {command.actor}: its model was unsure, and it fell back to a "
+            "person (ADR-0076)",
+            finished_at=now,
+            checkpoint=Checkpoint(
+                ref=f"ckpt/{command.run_id}/{step_run.step_id}",
+                step_id=step_run.step_id,
+                taken_at=now,
+                artifact_ids=tuple(a.id for a in step_run.artifacts),
+                result_digest=_digest(NO_RESULT),
+            ),
         )
 
     def _held(self, run: Run, step: Step) -> autonomy.Held:
@@ -2174,7 +2216,18 @@ class RunEngine:
             raise RuleFailed(f"reference to {missing.args[0]!r} cannot be resolved") from missing
 
     async def _artifact_content(self, run: Run, step_id: StepId, artifact_id: str) -> Any:
-        artifact = run.step_run(step_id).artifact(artifact_id)
+        producer = run.step_run(step_id)
+        if (
+            producer.method is Method.ML
+            and producer.confirmed_by is not None
+            and producer.checkpoint is not None
+            and producer.checkpoint.result_digest == _digest(NO_RESULT)
+        ):
+            raise RuleFailed(
+                f"step {step_id!r} was performed by a person after its model was unsure; what "
+                "the model produced leaves the step for nothing (ADR-0076)"
+            )
+        artifact = producer.artifact(artifact_id)
         if artifact is None:
             raise RuleFailed(f"step {step_id!r} produced no artifact {artifact_id!r}")
         content = await self._objects.get(artifact.digest)
@@ -2222,6 +2275,9 @@ class RunEngine:
         span.set_attribute("adapter", adapter)
         call = {"run.id": run.id, "step.id": step.id, "adapter": adapter}
         (inputs,), read = await self._resolved(run, [work.task.inputs])
+        if isinstance(work, MlWork):
+            inputs = MlWork.worker_inputs(inputs)
+            read = (*read, *self._predicted_from(step, inputs))
         trace = Trace(inputs=read, adapter_version=resolved.version)
         if step_run.assignment_open:
             # An assignment handed over earlier and never seen to end may still be running in
@@ -2715,6 +2771,8 @@ class RunEngine:
                 finished_at=now,
             )
             outcome = "stopped"
+        elif finished.outcome is Outcome.SUCCEEDED and step_run.method is Method.ML:
+            return await self._prediction(run, step_run, tuple(artifacts), consumption, trace)
         elif finished.outcome is Outcome.SUCCEEDED:
             checkpoint = Checkpoint(
                 ref=checkpoint_ref or f"ckpt/{run.id}/{step_run.step_id}",
@@ -2745,6 +2803,140 @@ class RunEngine:
             "step.finished",
             step=step_run,
             outcome=outcome,
+            trace=trace,
+        )
+        return run, step_run
+
+    def _predicted_from(self, step: Step, inputs: Mapping[str, Any]) -> list[ProvenanceInput]:
+        """What an `ml` step reads beyond what earlier steps produced: its model, by the digest
+        it is pinned at, and rows given in the work itself or behind a URI (ADR-0021, ADR-0076).
+        Rows an earlier step produced are among the inputs `$from` already names."""
+        now = self._clock.now()
+        model = inputs.get("model") or {}
+        read = [
+            ProvenanceInput(
+                kind=InputKind.SOURCE,
+                capability=PREDICT,
+                ref=f"model {step.model or 'unnamed'}"[:SOURCE_REF_LENGTH],
+                digest=model.get("digest"),
+                observed_at=now,
+            )
+        ]
+        dataset = inputs.get("dataset") or {}
+        if "uri" in dataset or "base64" in dataset:
+            digest = dataset.get("digest")
+            if digest is None and "base64" in dataset:
+                digest = _digest(base64.b64decode(str(dataset["base64"])))
+            read.append(
+                ProvenanceInput(
+                    kind=InputKind.SOURCE,
+                    capability=PREDICT,
+                    ref=f"rows {dataset.get('uri') or 'in the work'}"[:SOURCE_REF_LENGTH],
+                    digest=digest,
+                    observed_at=now,
+                )
+            )
+        return read
+
+    async def _prediction(
+        self,
+        run: Run,
+        step_run: StepRun,
+        artifacts: tuple[Artifact, ...],
+        consumption: Consumption | None,
+        trace: Trace,
+    ) -> tuple[Run, StepRun]:
+        """An `ml` step's assignment succeeded: its predictions are read, and the step's
+        confidence decides where they go (ADR-0076). At or above its threshold the step
+        finishes with a result that names the model, every row and the confidence. Below it,
+        the step goes to its fallback: it waits for a person, the predictions stay recorded as
+        its artifact and never become its result, and the steps that depend on it are held."""
+        step = run.step(step_run.step_id)
+        work = parse_work(step, run.work.get(step.id), run.inputs)
+        if not isinstance(work, MlWork):  # unreachable: the method chose the work
+            raise UnsupportedWork(step.id, "an ml step's work is a prediction")
+        produced = next((a for a in artifacts if a.id == prediction.ARTIFACT), None)
+        content = None if produced is None else await self._objects.get(produced.digest)
+        now = self._clock.now()
+        try:
+            rows = prediction.rows(content)
+        except prediction.Unreadable as unreadable:
+            step_run = step_run.to(
+                StepState.FAILED,
+                artifacts=artifacts,
+                consumption=consumption,
+                reason=str(unreadable),
+                finished_at=now,
+            )
+            run = await self._commit(
+                run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+            )
+            return run, step_run
+        confidence = prediction.lowest(rows)
+        document: dict[str, Any] = {
+            "model": step.model,
+            "model_digest": work.model.digest,
+            "confidence": confidence,
+            "threshold": work.threshold.describe(),
+        }
+        if work.threshold.unsure(confidence) and produced is not None:  # rows() read it
+            fallback = {
+                **document,
+                "run_id": run.id,
+                "step_id": step.id,
+                "to": str(Method.HUMAN),
+                "predictions": produced.digest,
+            }
+            digest = await self._objects.put(_canonical(fallback))
+            run, step_run = await self._open_block(run, step_run, "wait.human", block.FELL_BACK)
+            step_run = step_run.to(
+                StepState.WAITING_HUMAN,
+                artifacts=artifacts,
+                consumption=consumption,
+                reason=(
+                    f"the model is unsure: confidence {confidence:g} meets the fallback "
+                    f"{work.threshold.describe()}, so its answer does not leave the step; a "
+                    "person performs the step and reports it performed"
+                ),
+            )
+            run = await self._commit(
+                self._hold_back(run.with_step_run(step_run), step.id),
+                "step.awaiting",
+                step=step_run,
+                outcome=block.FELL_BACK,
+                digest=digest,
+            )
+            return run, step_run
+        document["rows"] = [row.document() for row in rows]
+        content = _canonical(document)
+        result_digest = await self._objects.put(content)
+        result = Artifact(
+            id="result",
+            kind="result",
+            digest=result_digest,
+            media_type="application/json",
+            size_bytes=len(content),
+            created_at=now,
+        )
+        produced_now = (*artifacts, result)
+        step_run = step_run.to(
+            StepState.SUCCEEDED,
+            artifacts=produced_now,
+            consumption=consumption,
+            checkpoint=Checkpoint(
+                ref=f"ckpt/{run.id}/{step.id}",
+                step_id=step.id,
+                taken_at=now,
+                artifact_ids=tuple(a.id for a in produced_now),
+                result_digest=result_digest,
+            ),
+            finished_at=now,
+        )
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.finished",
+            step=step_run,
+            outcome="succeeded",
             trace=trace,
         )
         return run, step_run
