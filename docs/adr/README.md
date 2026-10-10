@@ -60,3 +60,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0047](ADR-0047-a-broken-interface-is-noticed-from-the-runs-own-calls.md) | A broken interface is noticed from the run's own calls | accepted |
 | [0048](ADR-0048-an-event-starts-each-process-its-triggers-name-once.md) | An event starts each process its triggers name once, through the outbox and the elected automation role | accepted |
 | [0052](ADR-0052-a-credential-declares-the-platforms-it-administers.md) | A credential declares the platforms it administers | accepted |
+| [0055](ADR-0055-a-change-of-state-reaches-its-reader-from-the-ledger-as-it-happens.md) | A change of state reaches its reader from the ledger, as it happens | accepted |

@@ -7,7 +7,7 @@ serves: [P2, P7, P9, P14]
 state: specified
 version: 0.3.0
 tests: []
-adrs: {ADR-0015: 3a42705e5561, ADR-0021: 202e0442e7ec, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a}
+adrs: {ADR-0015: 3a42705e5561, ADR-0021: 202e0442e7ec, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a, ADR-0055: 3fe20ea459f6}
 supersedes: null
 ---
 
@@ -98,8 +98,9 @@ the export and the rule that no figure exists only in a view (UC-5.7); a person'
 provenance chain (ADR-0021) as the records the run and the origin are drawn from; the process as a
 directed graph of steps with method, reason and exactness class (`docs/architecture/control-plane.md`
 §4, `docs/architecture/methods.md`); the autonomy statement (ADR-0026); the takeover test (UC-6.3).
-Live changes need a way for the control plane to send state changes to a reader as they happen;
-today the interface answers only when asked, and that way arrives with an ADR before its code.
+Live changes need a way for the control plane to send state changes to a reader as they happen:
+ADR-0055 decides it — Server-Sent Events read from the ledger, resumable by position, visible
+only where the reader is entitled — before its code.
 
 The roadmap's `0.3.0`, *visibility*, names a dashboard and a process diagram; blueprint UC-01 asks
 for "process diagrams with their data" (`AF-01-dev-orchestration.md` §5). Neither version of the
