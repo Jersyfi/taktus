@@ -34,7 +34,7 @@ which gives it volumes of its own. Nothing here removes a volume. From then on:
 | `http://127.0.0.1:8080/ready` | readiness: the database answers and is at the schema this build needs; `503` with the reason otherwise |
 | `http://127.0.0.1:8080/runs`, `/runs/{id}`, `/runs/{id}/ledger` | the read API: a reader, with their account key in `Authorization: Bearer`, reads the runs of their identity's tenant they may see and each run's ledger entries; `401` without a key |
 | `http://127.0.0.1:8080/intake/{channel}` | webhook intake for a channel a connector serves (`TAKTUS_CONNECTORS`); the sender is placed by the link of their account, and an unknown sender is answered in the channel and nothing is kept (ADR-0040) |
-| `http://127.0.0.1:8080/intake-events/{id}/complete` | completes an accepted delivery into a command that acts as the identity the sender's account is linked to |
+| `http://127.0.0.1:8080/intake-events/{id}/complete` | a caller, with their account key, completes an accepted delivery of their own tenant into a command that acts as the identity the sender's account is linked to; `401` without a key |
 | `http://127.0.0.1:8080/identity/link-codes` | a person, with their account key, creates the code that links an account on a channel to their identity |
 | `http://127.0.0.1:8080/decisions` | a decider, with their account key, lists the decision requests addressed to a role they hold, answers one, and confirms how the answer was read; `/decisions/response-times` shows them their own (ADR-0042) |
 | `http://127.0.0.1:8080/owner/reports` | the owner, or someone the owner named, with their account key, reads what is needed from the owner, each report with its deliveries and history; `/owner/reports/{id}/text` is its repository text (ADR-0045) |

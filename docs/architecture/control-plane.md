@@ -51,7 +51,9 @@ webhook intake of the HTTP surface accepts is kept as an **intake event** (`comm
 component, `awaiting_identity`) under the source system's delivery identifier — a redelivery
 replaces, never doubles — in the tenant the identity port places the sender in, and nothing is
 executed from it. `POST /intake-events/{id}/complete` completes it into a command
-(`complete_intake.py`), and the command is then commissioned like any other.
+(`complete_intake.py`), and the command is then commissioned like any other. That request reads
+the caller's account key from `Authorization: Bearer`, answers `401` without one, and completes
+only an event of the caller's identity's tenant.
 
 A verified delivery that is a handshake — a source system checking the address before it sends
 events there — is no event. The connector refuses it and adds the answer the source system
