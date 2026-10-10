@@ -35,6 +35,7 @@ from taktus.components.process.domain.model import InvalidProcess, ProcessVersio
 from taktus.components.run.application.query import ProvenanceOfRun
 from taktus.components.run.application.service import ConfirmSteps, ResumeRun, StartRun
 from taktus.components.run.domain.model import Run, RunError, RunState, parse_work
+from taktus.components.run.domain.model.block import FELL_BACK
 from taktus.components.run.domain.service import autonomy
 from taktus.components.run.domain.service.provenance import ChainVerification
 from taktus.ports.identity import Resolution
@@ -453,7 +454,8 @@ def render(
             step = run.step(step_run.step_id)
             work = parse_work(step, run.work.get(step.id), run.inputs)
             held = autonomy.held(run.autonomy_level, run.actions, autonomy.actions_of(step, work))
-            flag = "--performed" if held.level == 1 else "--approve"
+            fell_back = step_run.block is not None and step_run.block.cause == FELL_BACK
+            flag = "--performed" if held.level == 1 or fell_back else "--approve"
             lines.append(
                 f"{step_run.step_id} waits for a person: {again} {flag} {step_run.step_id}"
             )
