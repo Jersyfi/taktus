@@ -1,0 +1,13 @@
+{
+  "position": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "run": "run_02",
+  "step": "release",
+  "decision_request": "dr_4f1c",
+  "kind": "decision.raised",
+  "outcome": "legal",
+  "recorded_at": "2026-10-10T12:00:04Z",
+  "rehearsal": false,
+  "state": {
+    "decision_request": "open"
+  }
+}

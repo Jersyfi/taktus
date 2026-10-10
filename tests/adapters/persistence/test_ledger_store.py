@@ -149,3 +149,30 @@ async def test_a_summary_counts_one_kind_without_reading_the_chain(backend: Back
     assert summary.latest is not None and summary.latest.seq == 3
     assert summary.latest.outcome == "second"
     assert other.total == 0 and other.latest is None
+
+
+async def test_a_reader_finds_the_head_the_entries_after_a_position_and_a_hash_again(
+    backend: Backend,
+) -> None:
+    """What the stream of changes reads (ADR-0055): the newest sequence number without claiming
+    the chain, the entries after one in pages, and an entry's sequence number from its hash."""
+    tenant = await backend.tenant()
+    store = backend.ledger_store
+    hashes = ["sha256:" + f"{n:x}" * 64 for n in range(1, 6)]
+    async with backend.work.transaction(tenant):
+        assert await store.head(tenant) == 0
+        assert await store.after(tenant, 0, limit=10) == []
+        prev = None
+        for seq, digest in enumerate(hashes, start=1):
+            await store.append(tenant, entry(seq, prev, hash=digest))
+            prev = digest
+    async with backend.work.transaction(tenant, consistent=True):
+        assert await store.head(tenant) == 5
+        assert [e.seq for e in await store.after(tenant, 2, limit=2)] == [3, 4]
+        assert [e.seq for e in await store.after(tenant, 4, limit=10)] == [5]
+        assert await store.position(tenant, hashes[2]) == 3
+        assert await store.position(tenant, ZERO) is None
+    other = await backend.tenant()
+    async with backend.work.transaction(other):
+        assert await store.position(other, hashes[2]) is None, "a position is the tenant's own"
+        assert await store.head(other) == 0

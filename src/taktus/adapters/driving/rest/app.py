@@ -11,8 +11,9 @@ of an intake event into a command by the identity the identity component places,
 a person creates in their Taktus account to link a channel account (ADR-0040), the decision
 requests addressed to a decider — listed, answered, the reading confirmed — and the decider's
 own response times (ADR-0042), the reports to the owner as their view and their repository
-text (ADR-0045), and a read API for runs and ledger entries. No other write, no UI. An answer
-the owner writes in the thread of a report arrives through the webhook intake.
+text (ADR-0045), a read API for runs and ledger entries, and the live stream of changes of
+state as Server-Sent Events (ADR-0055). No other write, no UI. An answer the owner writes in the
+thread of a report arrives through the webhook intake.
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -22,17 +23,19 @@ generated at the root and names the prefix as a server variable.
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
-from taktus.adapters.driving.rest.wiring import RestServices
+from taktus.adapters.driving.rest.wiring import RestServices, StreamsFull
 from taktus.components.command.application.service import (
     AlreadyCompleted,
     CompleteIntake,
@@ -52,6 +55,13 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.identity.application.service import UnknownIdentity
 from taktus.components.reporting.application.query import view as report_view
+from taktus.components.reporting.domain.model import (
+    Change,
+    Reader,
+    Scope,
+    ScopeKind,
+    Snapshot,
+)
 from taktus.components.reporting.domain.service.rendering import repository_text
 from taktus.ports.connector import ConnectorError, Delivery, RefusalReason
 from taktus.ports.identity import Resolution
@@ -102,6 +112,7 @@ def build_app(services: RestServices, *, prefix: str = "/", full: bool = True) -
         app.include_router(_decisions(services), prefix=base)
         app.include_router(_owner(services), prefix=base)
         app.include_router(_reads(services), prefix=base)
+        app.include_router(_changes(services), prefix=base)
     return app
 
 
@@ -650,6 +661,109 @@ def _reads(services: RestServices) -> APIRouter:
                 "entries": [e.document() for e in entries],
                 "chain": {"intact": verification.intact, "entries": verification.entries},
             }
+        )
+
+    return router
+
+
+RECONNECT_MILLIS = 1000
+"""How long a reader waits before it reconnects, as the stream tells it (ADR-0055 §6)."""
+
+
+def _reader(who: Resolution) -> Reader:
+    return Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+
+
+def _sse(event: Snapshot | Change | None) -> str:
+    """One event in the Server-Sent Events format: its type, its position as the `id`, its
+    document as `data`. A heartbeat is a comment line."""
+    if event is None:
+        return ": heartbeat\n\n"
+    name = "snapshot" if isinstance(event, Snapshot) else "change"
+    data = json.dumps(event.document(), ensure_ascii=False, separators=(",", ":"))
+    position = "" if event.position is None else f"id: {event.position}\n"
+    return f"event: {name}\n{position}data: {data}\n\n"
+
+
+def _changes(services: RestServices) -> APIRouter:
+    router = APIRouter(tags=["changes"])
+
+    @router.get(
+        "/changes",
+        summary="The changes of state, as they happen (Server-Sent Events)",
+        description="One long-lived response, `text/event-stream`. The scope is the tenant of "
+        "your identity, one process (`process`) or one run (`run`). The first event is a "
+        "`snapshot` of the scope — every run you may see in it, with its state and the state "
+        "of each step — and then one `change` for every ledger entry that records a change of "
+        "state of a run, a step or a decision request in the scope, as it is recorded. Each "
+        "event's `id` is its position: the hash of a ledger entry. Reconnect with the last one "
+        "you received as `Last-Event-ID`, to any replica: you receive every change after it, "
+        "or a fresh `snapshot` when the position is unknown or more than 1,000 entries behind. "
+        "A comment line every 15 seconds keeps the connection open. Nothing carries content, a "
+        "figure or a person. The account key is read from `Authorization: Bearer` and nowhere "
+        "else; a stream whose key no longer proves an identity ends (ADR-0055). The contract "
+        "is `contracts/changes/v1`.",
+        responses={
+            200: {
+                "description": "The stream of `snapshot` and `change` events.",
+                "content": {"text/event-stream": {}},
+            },
+            401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+            503: {
+                "description": "This replica holds its maximum of open streams; try again "
+                "after `Retry-After` seconds, possibly on another replica.",
+                **PROBLEM,
+            },
+            **INVALID,
+        },
+    )
+    async def changes(
+        process: str | None = Query(
+            default=None, min_length=1, description="Only the runs of this process."
+        ),
+        run: str | None = Query(default=None, min_length=1, description="Only this run."),
+        authorization: str | None = Header(default=None),
+        last_event_id: str | None = Header(
+            default=None,
+            description="The position of the last event received: the stream resumes after it.",
+        ),
+    ) -> Response:
+        if process is not None and run is not None:
+            return problem(422, "name a process or a run, not both")
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, "an account key is needed: Authorization: Bearer <key>")
+        if run is not None:
+            scope = Scope(kind=ScopeKind.RUN, id=run)
+        elif process is not None:
+            scope = Scope(kind=ScopeKind.PROCESS, id=process)
+        else:
+            scope = Scope(kind=ScopeKind.TENANT)
+
+        async def again() -> Reader | None:
+            # Asked before every batch and heartbeat: the roles as they are then (ADR-0055 §5).
+            current = await _authenticated(services, authorization)
+            return None if current is None else _reader(current)
+
+        try:
+            events = await services.changes.open(
+                _reader(who), scope, (last_event_id or "").strip() or None, again
+            )
+        except StreamsFull as error:
+            response = problem(503, str(error))
+            response.headers["Retry-After"] = "1"
+            return response
+
+        async def body() -> AsyncIterator[str]:
+            yield f"retry: {RECONNECT_MILLIS}\n\n"
+            async for event in events:
+                yield _sse(event)
+
+        return StreamingResponse(
+            body(),
+            media_type="text/event-stream",
+            # A proxy that buffers delays every change until its buffer fills (ADR-0055).
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     return router

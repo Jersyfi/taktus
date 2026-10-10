@@ -1,0 +1,11 @@
+{
+  "position": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+  "run": "run_01",
+  "kind": "run.halted",
+  "outcome": "limit",
+  "recorded_at": "2026-10-10T12:00:05Z",
+  "rehearsal": false,
+  "state": {
+    "run": "halted"
+  }
+}

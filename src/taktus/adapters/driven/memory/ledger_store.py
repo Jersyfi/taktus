@@ -44,3 +44,13 @@ class MemoryLedgerStore:
             first=of_kind[0].ts if of_kind else None,
             latest=of_kind[-1] if of_kind else None,
         )
+
+    async def head(self, tenant: Tenant) -> int:
+        entries = await self.entries(tenant)
+        return entries[-1].seq if entries else 0
+
+    async def after(self, tenant: Tenant, seq: int, *, limit: int) -> Sequence[LedgerEntry]:
+        return [e for e in await self.entries(tenant) if e.seq > seq][:limit]
+
+    async def position(self, tenant: Tenant, hash: str) -> int | None:
+        return next((e.seq for e in await self.entries(tenant) if e.hash == hash), None)

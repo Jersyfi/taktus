@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from taktus.components.decision.application.service._ledger import ANSWERED, record
+from taktus.components.decision.application.service._ledger import ANSWERED, INTERPRETED, record
 from taktus.components.decision.application.service.errors import (
     NotAnswerable,
     NotTheDecider,
@@ -111,7 +111,7 @@ class AnswerRequestHandler:
                 self._ledger,
                 answered,
                 ANSWERED,
-                "interpreted" if reading is not None else "unread",
+                INTERPRETED if reading is not None else "unread",
                 actor=command.identity,
                 document={"answer_raw": raw.strip(), "reflection": message},
             )

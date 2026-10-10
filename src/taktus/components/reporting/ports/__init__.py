@@ -13,6 +13,7 @@ from taktus.components.reporting.ports.findings import (
     Held,
 )
 from taktus.components.reporting.ports.interfaces import Failures
+from taktus.components.reporting.ports.live import LiveRecords, States, TenantState
 from taktus.components.reporting.ports.phrasebooks import Phrasebooks
 from taktus.components.reporting.ports.secret_values import SecretValues
 
@@ -26,8 +27,11 @@ __all__ = [
     "Failures",
     "FindingChannel",
     "Held",
+    "LiveRecords",
     "NotDelivered",
     "Phrasebooks",
     "SecretValues",
     "Sent",
+    "States",
+    "TenantState",
 ]

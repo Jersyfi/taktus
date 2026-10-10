@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/changes/v1/Changes.json",
+  "title": "Changes",
+  "description": "The changes contract: what a reader of the live stream `GET /changes` receives, as Server-Sent Events. First a snapshot of the scope, then one change for every ledger entry that records a change of state of a run, a step or a decision request in it. Each carries a position, the hash of a ledger entry, which is also the event's id. Nothing carries content, a figure or a person. A heartbeat is a comment line and has no shape. See README.md and ADR-0055.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Snapshot"
+    },
+    {
+      "$ref": "#/$defs/Change"
+    }
+  ],
+  "$defs": {
+    "Position": {
+      "title": "Position",
+      "description": "The hash of a ledger entry. It says nothing about the entries around it, so that no reader can count what was withheld from it (ADR-0055 §4).",
+      "$ref": "../../shared/v1/Artifact.json#/$defs/digest"
+    },
+    "Scope": {
+      "title": "Scope",
+      "description": "What the stream covers: the reader's tenant, one process by its identifier, or one run.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "tenant",
+            "process",
+            "run"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "tenant"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "RunState": {
+      "title": "RunState",
+      "description": "The states of a run (docs/architecture/control-plane.md §5.2).",
+      "type": "string",
+      "enum": [
+        "planned",
+        "admitted",
+        "running",
+        "waiting_human",
+        "halted",
+        "escalated",
+        "finished"
+      ]
+    },
+    "StepState": {
+      "title": "StepState",
+      "description": "The states of a step run.",
+      "type": "string",
+      "enum": [
+        "planned",
+        "rejected",
+        "admitted",
+        "running",
+        "succeeded",
+        "failed",
+        "stopped",
+        "waiting_human"
+      ]
+    },
+    "DecisionStatus": {
+      "title": "DecisionStatus",
+      "description": "The statuses of a decision request (ADR-0042).",
+      "$ref": "../../shared/v1/DecisionRequest.json#/properties/status"
+    },
+    "Kind": {
+      "title": "Kind",
+      "description": "The ledger kinds that record a change of state of a run, a step or a decision request: the only entries sent as a change. Every other kind — a budget statement, a report delivered, a removal verdict — is not sent (ADR-0055 §3). Which state each leads to is published beside the state machine that owns it.",
+      "type": "string",
+      "enum": [
+        "decision.answered",
+        "decision.applied",
+        "decision.confirmed",
+        "decision.raised",
+        "decision.reread",
+        "run.created",
+        "run.escalated",
+        "run.finished",
+        "run.halted",
+        "run.recovered",
+        "run.resumed",
+        "run.started",
+        "run.waiting_human",
+        "step.admitted",
+        "step.adopted",
+        "step.anchored",
+        "step.awaiting",
+        "step.confirmed",
+        "step.decided",
+        "step.failed",
+        "step.finished",
+        "step.performed",
+        "step.rejected",
+        "step.started",
+        "step.waiting"
+      ]
+    },
+    "StateAfter": {
+      "title": "StateAfter",
+      "description": "The state the entry led to, as the component that owns the state machine publishes it: the run's, the step's, the decision request's, each only where the entry changed it.",
+      "type": "object",
+      "properties": {
+        "run": {
+          "$ref": "#/$defs/RunState"
+        },
+        "step": {
+          "$ref": "#/$defs/StepState"
+        },
+        "decision_request": {
+          "$ref": "#/$defs/DecisionStatus"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Change": {
+      "title": "Change",
+      "description": "One ledger entry that recorded a change of state, projected. The entry's actor, its consumption, its model, its adapter and its digest are left out.",
+      "type": "object",
+      "properties": {
+        "position": {
+          "$ref": "#/$defs/Position"
+        },
+        "run": {
+          "description": "The run the entry belongs to.",
+          "type": "string",
+          "minLength": 1
+        },
+        "step": {
+          "description": "The step, where the entry names one.",
+          "type": "string",
+          "minLength": 1
+        },
+        "decision_request": {
+          "description": "The decision request, where the entry names one.",
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "outcome": {
+          "description": "The entry's outcome token.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "method": {
+          "description": "The method kind of the step.",
+          "$ref": "../../shared/v1/Method.json"
+        },
+        "recorded_at": {
+          "description": "When the entry was recorded.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "rehearsal": {
+          "description": "Whether the entry belongs to a rehearsal, which acted on nothing (ADR-0030).",
+          "type": "boolean"
+        },
+        "state": {
+          "description": "Never empty: an entry that changed no state is no change.",
+          "$ref": "#/$defs/StateAfter",
+          "minProperties": 1
+        }
+      },
+      "required": [
+        "position",
+        "run",
+        "kind",
+        "recorded_at",
+        "rehearsal",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "SnapshotStep": {
+      "title": "SnapshotStep",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "$ref": "#/$defs/StepState"
+        },
+        "method": {
+          "$ref": "../../shared/v1/Method.json"
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "method"
+      ],
+      "additionalProperties": false
+    },
+    "SnapshotRun": {
+      "title": "SnapshotRun",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "process_version": {
+          "description": "`process@version`.",
+          "type": "string",
+          "pattern": "^[^@]+@[^@]+$"
+        },
+        "state": {
+          "$ref": "#/$defs/RunState"
+        },
+        "rehearsal": {
+          "type": "boolean"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SnapshotStep"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "process_version",
+        "state",
+        "rehearsal",
+        "steps"
+      ],
+      "additionalProperties": false
+    },
+    "Snapshot": {
+      "title": "Snapshot",
+      "description": "The state of the scope at one position: every run the reader may see in it, with its state, the state of each step and the process version it belongs to. A run withheld is not listed. The position is null for a tenant whose ledger is still empty.",
+      "type": "object",
+      "properties": {
+        "position": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Position"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SnapshotRun"
+          }
+        }
+      },
+      "required": [
+        "position",
+        "scope",
+        "runs"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

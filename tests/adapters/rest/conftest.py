@@ -13,9 +13,11 @@ from fakes.identity import Directory, FakeReplies, directory
 from fakes.owner_channel import RecordingDeliveries
 
 from taktus.adapters.driven.memory import (
+    MemoryLedgerStore,
     MemoryPersistence,
     MemoryRepository,
 )
+from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driving.rest import build_app
 from taktus.components.command.application.service import (
     CompleteIntakeHandler,
@@ -30,8 +32,10 @@ from taktus.components.decision.application.service import (
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.reporting.application.query import ReportQueries
+from taktus.components.reporting.application.service import LiveChanges
 from taktus.components.run.domain.model import Run
 from taktus.composition.decisions import DecisionWiring, decision_wiring
+from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
 from taktus.ports.connector import (
     ConnectorError,
@@ -99,6 +103,8 @@ class Services:
     owner: OwnerChannelWiring
     """The owner-facing channel, delivering into `deliveries` (ADR-0045)."""
     deliveries: RecordingDeliveries
+    changes: LiveHub
+    """The streams of changes, fed from the memory ledger at short intervals (ADR-0055)."""
     continued: list[tuple[str, str, str]] = field(default_factory=list)
     """The runs handed on after a decision took effect: tenant, run, actor."""
     tenants: Sequence[str] = (TENANT,)
@@ -169,9 +175,10 @@ def services(connector: ScriptedConnector | None = None) -> Services:
         deliveries=deliveries,
     )
     decisions.requests.report_to(owner.decision_raised)
+    runs: Repository[Run] = MemoryRepository(persistence, Run)
     return Services(
         persistence=persistence,
-        runs=MemoryRepository(persistence, Run),
+        runs=runs,
         ledger=identity.ledger,
         events=events,
         intake=ReceiveIntakeHandler(
@@ -197,7 +204,17 @@ def services(connector: ScriptedConnector | None = None) -> Services:
         decisions=decisions,
         owner=owner,
         deliveries=deliveries,
+        changes=LiveHub(
+            LiveChanges(Records(persistence, MemoryLedgerStore(persistence), runs), state_of),
+            None,
+            NoTelemetry(),
+            clock,
+            LIVE,
+        ),
     )
+
+
+LIVE = LiveOptions(max_streams=2, poll_seconds=0.05, batch_seconds=0.01, heartbeat_seconds=0.05)
 
 
 class _NoConnectors:

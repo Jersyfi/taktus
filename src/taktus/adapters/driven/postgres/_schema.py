@@ -445,7 +445,13 @@ ledger_entry = Table(
     Column("rehearsal", Boolean),  # true on every entry of a rehearsal run (ADR-0030)
     PrimaryKeyConstraint("tenant", "seq"),
     Index("ledger_entry_run", "tenant", text("(refs ->> 'run_id')")),
+    # A reader's position is an entry's hash; this finds its sequence number (ADR-0055 §4).
+    Index("ledger_entry_hash", "tenant", "hash"),
 )
+
+LEDGER_CHANNEL = "taktus_ledger"
+"""The notification channel every insert into `ledger_entry` notifies, with the tenant as its
+payload, from a statement-level trigger (migration 0027, ADR-0055 §2)."""
 
 # --- provenance (ADR-0021) ------------------------------------------------------------------------
 

@@ -630,6 +630,83 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /changes:
+    get:
+      tags:
+      - changes
+      summary: The changes of state, as they happen (Server-Sent Events)
+      description: 'One long-lived response, `text/event-stream`. The scope is the tenant of your identity,
+        one process (`process`) or one run (`run`). The first event is a `snapshot` of the scope — every
+        run you may see in it, with its state and the state of each step — and then one `change` for every
+        ledger entry that records a change of state of a run, a step or a decision request in the scope,
+        as it is recorded. Each event''s `id` is its position: the hash of a ledger entry. Reconnect with
+        the last one you received as `Last-Event-ID`, to any replica: you receive every change after it,
+        or a fresh `snapshot` when the position is unknown or more than 1,000 entries behind. A comment
+        line every 15 seconds keeps the connection open. Nothing carries content, a figure or a person.
+        The account key is read from `Authorization: Bearer` and nowhere else; a stream whose key no longer
+        proves an identity ends (ADR-0055). The contract is `contracts/changes/v1`.'
+      operationId: changes_changes_get
+      parameters:
+      - name: process
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          description: Only the runs of this process.
+          title: Process
+        description: Only the runs of this process.
+      - name: run
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          description: Only this run.
+          title: Run
+        description: Only this run.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: last-event-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'The position of the last event received: the stream resumes after it.'
+          title: Last-Event-Id
+        description: 'The position of the last event received: the stream resumes after it.'
+      responses:
+        '200':
+          description: The stream of `snapshot` and `change` events.
+          content:
+            application/json:
+              schema: {}
+            text/event-stream: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '503':
+          description: This replica holds its maximum of open streams; try again after `Retry-After` seconds,
+            possibly on another replica.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
 components:
   schemas:
     AnswerBody:

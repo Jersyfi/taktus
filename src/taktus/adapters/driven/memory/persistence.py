@@ -63,7 +63,9 @@ class MemoryPersistence:
     # --- the unit of work ----------------------------------------------------------------------
 
     @asynccontextmanager
-    async def transaction(self, tenant: Tenant) -> AsyncIterator[None]:
+    async def transaction(self, tenant: Tenant, *, consistent: bool = False) -> AsyncIterator[None]:
+        """`consistent` asks nothing more of this store: its reads never suspend, so no other
+        transaction commits between two reads that follow each other."""
         if self._current.get() is not None:
             raise NestedTransaction("a unit of work is already open; they do not nest")
         transaction = Transaction(tenant)

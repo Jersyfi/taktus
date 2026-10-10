@@ -1,0 +1,13 @@
+{
+  "position": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+  "run": "run_01",
+  "step": "classify",
+  "kind": "step.finished",
+  "outcome": "succeeded",
+  "method": "ml",
+  "recorded_at": "2026-10-10T12:00:03Z",
+  "rehearsal": false,
+  "state": {
+    "step": "succeeded"
+  }
+}
