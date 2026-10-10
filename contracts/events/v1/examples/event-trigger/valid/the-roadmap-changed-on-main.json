@@ -1,0 +1,12 @@
+{
+  "event": "branch.pushed",
+  "filter": {
+    "branch": "main",
+    "paths": "docs/roadmap.md"
+  },
+  "inputs": {
+    "roadmap_path": "docs/roadmap.md",
+    "records_path": "docs/decisions/open",
+    "report_issue": 129
+  }
+}

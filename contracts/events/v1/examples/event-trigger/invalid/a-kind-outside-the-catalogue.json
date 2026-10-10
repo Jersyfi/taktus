@@ -1,0 +1,4 @@
+{
+  "event": "issue.ready",
+  "condition": "capacity.available"
+}
