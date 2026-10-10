@@ -1,8 +1,8 @@
 # Blueprint `self-operation`
 
-The processes Taktus runs for itself, on itself: the checks of its own claims. This is the
-first blueprint whose subject is Taktus, and its first process is the check of the product's
-own central claim.
+The processes Taktus runs for itself, on itself: the checks of its own claims, and its own
+documentation beyond the repository. This is the first blueprint whose subject is Taktus, and its
+first process is the check of the product's own central claim.
 
 | Process | State | Bundle |
 |---|---|---|
@@ -10,6 +10,7 @@ own central claim.
 | S-02 Takeover test — a person runs a process by hand from its instructions | `0.5.0` | — |
 | S-03 Restore drill — an earlier version is restored without Taktus and the ledger chain verified | `1.0.0` | — |
 | S-04 Load measurement — how many concurrent runs one instance carries | `1.0.0` | — |
+| **S-05 Guides** — the administration guide and the guide for users, rendered from the repository and put into the knowledge system; a hand edit is kept and reported | **runs** daily | [`processes/S-05-guides.yaml`](processes/S-05-guides.yaml) |
 
 ## S-01 Removal test
 
@@ -183,3 +184,92 @@ verdicts to the reasons above. `tests/integration/test_dev_orchestration.py` run
 P-01 to P-03 registered, for the repository connector, the coding worker and the model they
 use: each ends *changed*, every step through a person, because every step those integrations
 serve names a person as its fallback (issue #90, `blueprints/dev-orchestration/README.md`).
+
+## S-05 Guides
+
+UC-13.6 asks for two guides beyond the repository — one for the people who administer Taktus,
+one for the people who use it — in the organisation's own knowledge system, current every day.
+They are generated from the repository and never written: a page says what the repository says
+at one commit, and names the files and the commit (ADR-0065). This process makes that daily
+(ADR-0066).
+
+**What one run does:**
+
+1. **read-manifest** — reads `docs/guides/guides.yaml` at the configured ref through
+   `repository.files.read`; the answer names the commit the ref resolved to.
+2. **sources** — lists the files the manifest's pages take parts from (`exact`).
+3. **read-sources** — reads every one of them at that commit, in one call of
+   `repository.files.read_many`, so that the pages say what the repository said at one moment
+   even when the branch moves while the run reads.
+4. **render** — renders every page of both guides by rule (`exact`): the same commit always
+   gives the same page.
+5. **read-held** — reads once what the knowledge system holds at the guides' place, through
+   `knowledge.pages.list`.
+6. **measure** — measures every page against that reading by rule (`exact`): absent, current,
+   changed, edited, out of date, foreign or retired (ADR-0065 §5).
+7. **publish** — writes the pages measured absent or changed, against the same reading, each
+   write naming the text it replaces. A page a person edited is kept, and so is a page a person
+   edits while the run writes. Every page written is an egress record in the ledger.
+8. **report-edits** — raises a report of every page kept because a person's text stands, with
+   its difference from the repository, to the person responsible for the documentation: whoever
+   the tenant's owner-facing channel reaches with the role `documentation` (ADR-0045). One edit
+   is reported once, however many daily runs find it. A tenant whose channel carries no such
+   role cannot be told: the step fails and names the role, and the page stays as the person
+   left it.
+9. **report** — one line: how many pages were created, updated, kept and withheld.
+
+Steps 2, 4, 6, 7 and 8 are calls of `orchestrator.guides`, served by the loopback connector:
+rendering, measuring and publishing are the knowledge component's, raising a report the
+reporting component's (`composition/guides.py`). The knowledge system is a wiki's connector
+(issue #197) or, where the organisation keeps none, the directory the instance serves when
+`TAKTUS_KNOWLEDGE_DIRECTORY` names one.
+
+**From its trigger.** The bundle's trigger says `daily`: on an instance that runs `taktusd`
+with the `scheduler` role and has S-05 registered, the elected scheduler starts one run every
+day at 00:00 UTC, with the trigger's inputs (ADR-0035). The runs act for the identity that
+registered the bundle. Register it once:
+
+```bash
+uv run taktusctl submit --process blueprints/self-operation/processes/S-05-guides.yaml \
+    --input manifest_path=docs/guides/guides.yaml --input ref=main \
+    --input responsible=documentation --input within_days=7
+```
+
+and let the owner-facing channel carry the role `documentation` (`taktusctl owner-channel set`,
+with `documentation` among the `roles` of the file it reads). `tests/integration/test_time_triggers.py` runs it from
+its trigger on a clock the test moves; `tests/adapters/connectors/test_guides_process.py` runs it
+end to end against a fake repository service and a fake knowledge system.
+
+**Switching it off** — `uv run taktusctl deactivate --process s05-guides` — stops the trigger.
+Nothing in the repository changes: the process never writes there, and the repository's
+documentation under `docs/` is complete without it. The guides stay as they were last
+published, until a person removes them.
+
+### Its autonomy, with the reason
+
+Level 3: every value is the repository's text, rendered and measured by rule; the one outward
+write replaces only a page that holds exactly what Taktus last wrote there; a person's edit is
+kept and reported, never overwritten. Toward level 4: a month of daily runs whose pages a person
+sampled against the repository and found to say what it says, and whose reported edits reached
+the person responsible; then Taktus proposes the raise with that evidence (M3.9).
+
+### By hand — the takeover test of this process
+
+A person does the same without Taktus (ADR-0013 B). It needs a checkout of the repository and
+`taktusctl`; for a wiki, write access to it.
+
+1. **Update the checkout** to the commit the guides are to say: `git fetch` and
+   `git switch --detach origin/main`.
+2. **Check** that every page renders: `uv run taktusctl guides check`. A page whose file or
+   section is gone, or that would carry an address or a key, is named with the reason; fix the
+   repository first.
+3. **Publish** into a directory: `uv run taktusctl guides publish --to <directory>`. It reads every
+   file at that one commit through `git`, never from the working tree, and writes only a page
+   that holds exactly what was written there last.
+4. **Read what was kept.** Exit code `1` means a page was edited by hand and kept; its
+   difference is printed. Send it to the person responsible for the documentation, who decides
+   whether the edit becomes a change to the repository or the page goes back to the
+   repository's text.
+5. **For a wiki**, until its connector exists (issue #197): copy each page that the command
+   printed as `created` or `updated` from the directory into the wiki, at the same place.
+

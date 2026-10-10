@@ -24,14 +24,16 @@ regenerated is shown as out of date where a reader of the guide looks.
 from __future__ import annotations
 
 import difflib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field
 
 from taktus.components.knowledge.domain.model.guide import (
     CONTENTS,
     Guide,
+    Manifest,
     Mark,
     Page,
     Source,
@@ -142,4 +144,68 @@ def contents(
         sources=(manifest,),
         digest=digest(body),
         content=content(said, (manifest,)),
+    )
+
+
+class Measured(Value):
+    """One page measured against what the knowledge system holds, and what that means for it:
+    written, kept as it is, or withheld because a person's text stands."""
+
+    guide: str
+    page: str
+    place: tuple[str, ...]
+    state: PageState
+    action: Literal["write", "keep", "withhold"]
+
+
+def below(
+    held: Mapping[tuple[str, ...], Held], place: tuple[str, ...]
+) -> dict[tuple[str, ...], Held]:
+    """The pages held at or below a place: what `knowledge.pages.list` answers for it."""
+    return {p: h for p, h in held.items() if p[: len(place)] == place}
+
+
+def measure(
+    manifest: Manifest,
+    manifest_source: Source,
+    pages: Sequence[Page],
+    held: Mapping[tuple[str, ...], Held],
+) -> tuple[Measured, ...]:
+    """Every rendered page, every retired page and every guide's contents page, measured
+    against one reading of the knowledge system: a rule over the two, nothing else (ADR-0066).
+    The same pages and the same reading always give the same result."""
+    measured: list[Measured] = []
+    for guide in manifest.guides:
+        own = [page for page in pages if page.guide == guide.id]
+        if not own:
+            continue
+        place = own[0].place[:-1]
+        there = below(held, place)
+        states = [state(page, there.get(page.place)) for page in own]
+        measured += [_measured(page, s) for page, s in zip(own, states, strict=True)]
+        rendered = {page.place for page in own} | {(*place, "Contents")}
+        gone = sorted(p for p, h in there.items() if retired(guide.id, h, rendered))
+        for gone_place in gone:
+            mark = Mark.decode(there[gone_place].mark)
+            measured.append(
+                Measured(
+                    guide=guide.id,
+                    page=mark.page if mark is not None else gone_place[-1],
+                    place=gone_place,
+                    state=PageState.RETIRED,
+                    action="keep",
+                )
+            )
+        commit = own[0].commit
+        index = contents(guide, place, own, states, manifest_source, commit, gone=gone)
+        measured.append(_measured(index, state(index, there.get(index.place))))
+    return tuple(measured)
+
+
+def _measured(page: Page, page_state: PageState) -> Measured:
+    action: Literal["write", "keep", "withhold"] = (
+        "write" if page_state in WRITTEN else "withhold" if page_state in WITHHELD else "keep"
+    )
+    return Measured(
+        guide=page.guide, page=page.id, place=page.place, state=page_state, action=action
     )

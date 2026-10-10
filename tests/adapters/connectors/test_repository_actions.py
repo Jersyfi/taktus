@@ -714,6 +714,60 @@ async def test_a_file_is_read_at_a_ref_and_names_the_commit_it_was_read_at(
         assert refused["effect"] == "none"
 
 
+@pytest.mark.usefixtures("credentials")
+async def test_many_files_are_read_at_the_one_commit_a_ref_resolved_to(service: Service) -> None:
+    """`repository.files.read_many` (ADR-0066): every path at the commit the ref resolved to,
+    once, so that a run that renders from them renders the repository as it was at one moment.
+    A path that names no file there is answered with content `null`, not left out."""
+    connector = Connector(config(service))
+    key = "run_01:read-many:1-0123456789"
+    error, branch = await call(
+        connector,
+        "repository.branches.create",
+        context("b", "run_01:many:1-0123456789"),
+        {
+            "name": "taktus/many",
+            "base": "main",
+            "files": [
+                {"path": "docs/a.md", "content": "# A\n"},
+                {"path": "docs/b.md", "content": "# B\n"},
+            ],
+        },
+    )
+    assert not error, branch
+    error, read = await call(
+        connector,
+        "repository.files.read_many",
+        context("read-many", key),
+        {
+            "paths": ["docs/b.md", "docs/a.md", "docs/gone.md", "docs", "docs/a.md"],
+            "ref": "taktus/many",
+        },
+    )
+    assert not error, read
+    assert read["effect"] == {"kind": "read"}
+    assert read["output"]["commit"] == branch["output"]["sha"]
+    assert read["output"]["files"] == [
+        {"path": "docs/b.md", "content": "# B\n", "encoding": "utf-8"},
+        {"path": "docs/a.md", "content": "# A\n", "encoding": "utf-8"},
+        {"path": "docs/gone.md", "content": None, "encoding": None},
+        {"path": "docs", "content": None, "encoding": None},
+    ]
+    assert read["consumption"]["quota_units"] == 5, "the ref once, then each path once"
+
+    for input, cause in [
+        ({"paths": [], "ref": "main"}, "invalid"),
+        ({"paths": ["../outside"], "ref": "main"}, "invalid"),
+        ({"paths": [f"f{n}.md" for n in range(101)], "ref": "main"}, "invalid"),
+        ({"paths": ["docs/a.md"], "ref": "taktus/nowhere"}, "not_found"),
+    ]:
+        error, refused = await call(
+            connector, "repository.files.read_many", context("r", key), input
+        )
+        assert error, input
+        assert refused["cause"] == cause, (input, refused)
+
+
 def _base_with_executable(service: Service, path: str) -> str:
     """A branch of the fake service whose tree carries `path` as an executable file, built
     through the service's own object interface, so that the connector has a real base to

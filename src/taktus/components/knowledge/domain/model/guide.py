@@ -98,6 +98,15 @@ class Manifest(Value):
                 return guide
         raise KeyError(id)
 
+    def files(self) -> tuple[str, ...]:
+        """Every file a page takes a part from, once each, sorted: what a run reads at the
+        commit it renders (ADR-0066)."""
+        return tuple(
+            sorted(
+                {part.file for guide in self.guides for page in guide.pages for part in page.parts}
+            )
+        )
+
 
 class Source(Value):
     """One part of a page as it was taken: the file, the section, and the digest of the text."""

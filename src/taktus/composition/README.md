@@ -22,7 +22,10 @@ component keeps the report, the decision component files a decision answer, and 
 confirmed there hands its run on. The phrasebooks Taktus ships, one per language, are
 `phrasebooks/*.json`: the core names no language. While it leads, the scheduler also looks for a
 broken interface in the run's failed calls and reports it to the owner through the same channel
-(`interfaces.py`, ADR-0047).
+(`interfaces.py`, ADR-0047). The guides' process, S-05, asks the instance through the loopback
+connector to render, measure and publish the guides and to report a hand edit; `guides.py`
+answers over the knowledge and reporting components, and serves `knowledge.pages` over the
+directory `TAKTUS_KNOWLEDGE_DIRECTORY` names (ADR-0066).
 
 `local.py` wires `taktusctl` for a developer's machine: PostgreSQL when `TAKTUS_DATABASE_URL`
 (or `_FILE`) is configured, otherwise the in-memory stores with a file snapshot under a state

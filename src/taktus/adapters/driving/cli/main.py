@@ -38,6 +38,7 @@ from taktus.adapters.driving.cli import (
     capacity_command,
     conformance_command,
     cost_command,
+    deactivate_command,
     findings_command,
     guides_command,
     identity_command,
@@ -68,6 +69,7 @@ app.add_typer(conformance, name="conformance")
 conformance.command("record")(conformance_command.record)
 app.command("run")(run_command.run)
 app.command("submit")(submit_command.submit)
+app.command("deactivate")(deactivate_command.deactivate)
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
 app.command("findings")(findings_command.findings)

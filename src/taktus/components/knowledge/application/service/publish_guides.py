@@ -29,6 +29,7 @@ from taktus.components.knowledge.domain.service.pages import (
     WRITTEN,
     Held,
     PageState,
+    below,
     contents,
     difference,
     retired,
@@ -42,7 +43,7 @@ from taktus.ports.connector import (
     idempotency_key,
 )
 from taktus.ports.worker import CredentialReference
-from taktus.shared.v1 import Value
+from taktus.shared.v1 import Digest, Value
 
 CAPABILITY = "knowledge.pages"
 LIST = f"{CAPABILITY}.list"
@@ -63,6 +64,11 @@ class PublishGuides:
     pages: tuple[Page, ...]
     """Every page of every guide, rendered at one commit (`domain/service/render.py`)."""
     credentials: tuple[CredentialReference, ...] = ()
+    held: tuple[Held, ...] | None = None
+    """One reading of the knowledge system, taken by the run before it measured the pages
+    (ADR-0066). The pages are then published against that reading, so that what the run
+    measured is what it acts on; a write still names the text it expects, and a page edited
+    since the reading is kept. None: the handler reads each guide's place itself."""
 
 
 class Published(Value):
@@ -73,6 +79,9 @@ class Published(Value):
     action: Literal["created", "updated", "kept", "withheld"]
     difference: str | None = None
     """For a page kept because a person's text stands: that text against the repository's."""
+    held: Digest | None = None
+    """For such a page: the digest of the text that stands, which names this edit and no
+    other."""
 
 
 class Publication(Value):
@@ -82,6 +91,11 @@ class Publication(Value):
     @property
     def withheld(self) -> tuple[Published, ...]:
         return tuple(p for p in self.pages if p.action == "withheld")
+
+    def counted(self) -> dict[str, int]:
+        """How many pages were created, updated, kept and withheld: what a run reports."""
+        actions = ("created", "updated", "kept", "withheld")
+        return {action: sum(1 for p in self.pages if p.action == action) for action in actions}
 
 
 class PublishGuidesHandler:
@@ -99,7 +113,10 @@ class PublishGuidesHandler:
             if not pages:
                 continue
             place = pages[0].place[:-1]
-            held = await self._held(command, place)
+            if command.held is not None:
+                held = below({h.place: h for h in command.held}, place)
+            else:
+                held = await self._held(command, place)
             states: list[PageState] = []
             for page in pages:
                 outcome = await self._publish(command, page, held.get(page.place))
@@ -180,6 +197,7 @@ class PublishGuidesHandler:
             page_state,
             "withheld",
             difference=difference(page, str(output["body"]), held.mark),
+            held=held.digest,
         )
 
     @staticmethod
@@ -204,6 +222,7 @@ def _published(
     action: Literal["created", "updated", "kept", "withheld"],
     *,
     difference: str | None = None,
+    held: str | None = None,
 ) -> Published:
     return Published(
         guide=page.guide,
@@ -212,6 +231,7 @@ def _published(
         state=page_state,
         action=action,
         difference=difference,
+        held=held,
     )
 
 
