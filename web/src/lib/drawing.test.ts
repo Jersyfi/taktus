@@ -52,8 +52,10 @@ function handedOver(glyph: GlyphTokens): Record<string, string> {
 	return tokens;
 }
 
+/** Every element the run level draws, in the order it draws them: the run, its steps, then the
+ * decision requests the steps raised. */
 function elements(level: RunLevel) {
-	return [level.run, ...level.steps];
+	return [level.run, ...level.steps, ...level.steps.flatMap((s) => s.decisions ?? [])];
 }
 
 describe('a glyph', () => {

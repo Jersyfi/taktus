@@ -2,7 +2,7 @@
 
 UC-6.10 names four levels, from the whole to the detail: the overview, the process, the run and
 the origin of a result. A **level** is what one representation shows at one of them. This module
-holds the overview, the process level and the run level; the origin follows with its task (#192).
+holds all four: the overview, the process level, the run level and the origin of a result.
 
 **Facts** are what the records say, read from the component that owns them: a run's state, each
 step's method kind, exactness class and state, what a waiting step waits on, what each step and
@@ -25,7 +25,15 @@ from datetime import datetime
 
 from pydantic import Field
 
-from taktus.shared.v1 import Autonomy, ConsumptionQuantities, ExactnessClass, Method, Value
+from taktus.shared.v1 import (
+    Autonomy,
+    ConsumptionQuantities,
+    DecisionStatus,
+    ExactnessClass,
+    Method,
+    Provenance,
+    Value,
+)
 
 
 class Wait(Value):
@@ -44,6 +52,13 @@ class Wait(Value):
     """The decision requests the step raised that are not applied yet (ADR-0042)."""
 
 
+class DecisionFacts(Value):
+    """A decision request a step raised: its identifier and its status. Never who decides."""
+
+    id: str = Field(min_length=1)
+    status: DecisionStatus
+
+
 class StepFacts(Value):
     """One step of a run, as the run component records it."""
 
@@ -58,6 +73,9 @@ class StepFacts(Value):
     wait: Wait | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    decisions: tuple[DecisionFacts, ...] = ()
+    """The decision requests the step raised, with their status as the decision component
+    records it (ADR-0042, ADR-0068)."""
 
 
 class RunFacts(Value):
@@ -177,3 +195,13 @@ class OverviewFacts(Value):
     tenant: str = Field(min_length=1)
     processes: tuple[ProcessSummary, ...] = ()
     runs: tuple[RunActivity, ...] = ()
+
+
+class OriginFacts(Value):
+    """The provenance records behind one step's result (ADR-0021): the record of the step that
+    produced it first, then every record its inputs lead to, as the run component keeps them."""
+
+    tenant: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    step_id: str = Field(min_length=1)
+    records: tuple[Provenance, ...] = Field(min_length=1)

@@ -8,12 +8,14 @@
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
-	import { processLink } from './links';
+	import { originLink, processLink } from './links';
 	import type { Figure, RunLevel } from './types';
 
 	let { level, motionAllowed }: { level: RunLevel; motionAllowed: boolean } = $props();
 
 	const byId = $derived(new Map(level.steps.map((s) => [s.id, s])));
+	const decided = $derived(level.steps.filter((s) => s.decisions?.length));
+	const produced = $derived(level.steps.filter((s) => s.state === 'succeeded' && s.exactness));
 
 	function figures(found: Figure[] | undefined): string {
 		return (found ?? []).map((f) => `${f.name} ${f.value}`).join(', ');
@@ -48,6 +50,19 @@
 	</dl>
 
 	<Graph steps={level.steps} {motionAllowed} {notes} />
+
+	{#if decided.length || produced.length}
+		<ul class="more">
+			{#each decided as step (step.id)}
+				{#each step.decisions ?? [] as d (d.id)}
+					<li><Glyph glyph={chosen(d.drawn, motionAllowed)} size={22} /> {step.id}: {d.id}, {d.status}</li>
+				{/each}
+			{/each}
+			{#each produced as step (step.id)}
+				<li><a href={originLink(level.run.id, step.id)}>Where the result of {step.id} came from</a></li>
+			{/each}
+		</ul>
+	{/if}
 
 	<section class="text" aria-label="The run as text">
 		<h2>As text</h2>
@@ -88,6 +103,16 @@
 	.consumed dd {
 		margin: 0;
 		font-variant-numeric: tabular-nums;
+	}
+	.more {
+		list-style: none;
+		padding: 0;
+	}
+	.more li {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+		padding: 0.15rem 0;
 	}
 	.text ol {
 		padding-left: 1.25rem;

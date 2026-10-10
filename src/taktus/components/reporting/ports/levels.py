@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from taktus.components.reporting.domain.model.levels import OverviewFacts, ProcessFacts, RunFacts
+from taktus.components.reporting.domain.model.levels import (
+    OriginFacts,
+    OverviewFacts,
+    ProcessFacts,
+    RunFacts,
+)
 from taktus.ports.persistence import Tenant
 
 
@@ -28,4 +33,9 @@ class LevelRecords(Protocol):
     async def overview(self, tenant: Tenant) -> OverviewFacts:
         """Every process of the tenant and every run of it, each run with whether it works or
         waits by the run component's own definition, and the steps it is running."""
+        ...
+
+    async def origin(self, tenant: Tenant, run_id: str, step_id: str) -> OriginFacts | None:
+        """The provenance record of the step's result first, then every record its inputs lead
+        to, across runs; None when the step has no record."""
         ...

@@ -2,7 +2,8 @@
 and a state, defined once (UC-6.10, ADR-0059).
 
 A *representation* is a graph or a flow drawn from the records (UC-6.10 §1). An *element* is one
-thing it draws: a step or a run. What an element looks like is fixed here and nowhere else, as
+thing it draws: a step, a run, a result, a source a step read, or a decision request a step
+raised (ADR-0068). What an element looks like is fixed here and nowhere else, as
 tokens: a form, a motion, marks and a text. A representation turns the tokens into pixels; it
 chooses no token itself. `domain/service/drawing.py` gives the glyph of an element and checks a
 representation against this vocabulary.
@@ -36,7 +37,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from taktus.shared.v1 import ExactnessClass, Method, Value
+from taktus.shared.v1 import DecisionStatus, ExactnessClass, Method, Value
 from taktus.shared.v1.method import VARIABLE
 
 
@@ -75,7 +76,7 @@ class Fill(StrEnum):
 
 NO_MARK = "none"
 
-type Subject = Literal["step", "run"]
+type Subject = Literal["step", "run", "result", "source", "decision_request"]
 
 
 def family_of(method: Method) -> Family:
@@ -135,6 +136,12 @@ class Vocabulary(Value):
     exactness: tuple[ExactnessForm, ...]
     states: tuple[StateForm, ...]
     run_outline: str
+    result_outline: str
+    """A step's result, at the end of the path to its origin; its exactness class is its mark."""
+    source_outline: str
+    """An external source a step read, where the path to a result's origin begins."""
+    decision_outline: str
+    """A decision request a step raised (ADR-0042); its status is its fill and mark."""
     """A run is drawn as a frame around its steps; its state is the frame's fill and mark."""
 
     def family(self, family: Family) -> FamilyForm:
@@ -178,6 +185,21 @@ RUN_STATES: frozenset[str] = frozenset(
 
 def _step(state: str, fill: Fill, mark: str, text: str, *, moves: bool = False) -> StateForm:
     return StateForm(subject="step", state=state, fill=fill, mark=mark, moves=moves, text=text)
+
+
+RESULT_STATES: frozenset[str] = frozenset({"recorded"})
+"""A result is drawn once it is recorded; one that is not recorded has no origin to draw."""
+
+SOURCE_STATES: frozenset[str] = frozenset({"read"})
+"""A source is drawn as it was read, at the moment the record names."""
+
+DECISION_STATES: frozenset[str] = frozenset(str(s) for s in DecisionStatus)
+"""The statuses of a decision request, as the shared kernel names them."""
+
+
+def _form(subject: Subject, state: str, fill: Fill, mark: str, text: str) -> StateForm:
+    # Neither a result, a source nor a decision request moves: none of them is work.
+    return StateForm(subject=subject, state=state, fill=fill, mark=mark, moves=False, text=text)
 
 
 def _run(state: str, fill: Fill, mark: str, text: str) -> StateForm:
@@ -238,7 +260,23 @@ VOCABULARY = Vocabulary(
         _run("halted", Fill.PARTIAL, "pause", "halted"),
         _run("escalated", Fill.PARTIAL, "raised", "escalated"),
         _run("finished", Fill.FULL, "check", "finished"),
+        _form("result", "recorded", Fill.FULL, "check", "recorded"),
+        _form("source", "read", Fill.EMPTY, NO_MARK, "read"),
+        _form("decision_request", "open", Fill.EMPTY, "question", "open, waiting for its decider"),
+        _form("decision_request", "answered", Fill.PARTIAL, "dot", "answered"),
+        _form(
+            "decision_request",
+            "interpreted",
+            Fill.PARTIAL,
+            "quote",
+            "answered, its reading sent back",
+        ),
+        _form("decision_request", "confirmed", Fill.PARTIAL, "check", "its reading confirmed"),
+        _form("decision_request", "applied", Fill.FULL, "check", "applied"),
     ),
     run_outline="frame",
+    result_outline="seal",
+    source_outline="page",
+    decision_outline="flag",
 )
 """The one vocabulary. Every representation draws from it (ADR-0059)."""

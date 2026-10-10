@@ -12,6 +12,8 @@
 
 	interface Node {
 		id: string;
+		/** What the node is called on the page; its id where it has no other name. */
+		name?: string;
 		depends_on?: string[];
 		drawn: Drawn;
 	}
@@ -53,7 +55,7 @@
 		{@const p = at.get(step.id)!}
 		<div class="step" style="left: {p.column * COLUMN}px; top: {p.row * ROW}px" data-step={step.id}>
 			<Glyph glyph={chosen(step.drawn, motionAllowed)} />
-			<span class="name">{step.id}</span>
+			<span class="name">{step.name ?? step.id}</span>
 			{#each notes(step.id) as note, i (i)}
 				<span class="note">{note}</span>
 			{/each}

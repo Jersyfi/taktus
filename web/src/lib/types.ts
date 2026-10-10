@@ -46,6 +46,8 @@ export interface StepElement {
 	consumption?: Figure[];
 	started_at?: string;
 	finished_at?: string;
+	/** The decision requests the step raised, with their status (ADR-0068). */
+	decisions?: { id: string; status: string; drawn: Drawn; text: string }[];
 	drawn: Drawn;
 	text: string;
 }
@@ -172,6 +174,44 @@ export interface OverviewLevel {
 		working: number;
 		waiting: number;
 		processes: ProcessSummaryElement[];
+		text: string;
+	}[];
+}
+
+/** `GET /levels/origins/{run}/{step}` (ADR-0068): the path back from a result. */
+export interface OriginLevel {
+	result: {
+		id: string;
+		run: string;
+		step: string;
+		exactness: string;
+		digest?: string;
+		outputs?: string[];
+		depends_on: string[];
+		drawn: Drawn;
+		text: string;
+	};
+	steps: {
+		id: string;
+		run: string;
+		step: string;
+		process_version: string;
+		method: string;
+		exactness?: string;
+		model?: string;
+		adapter?: string;
+		recorded_at: string;
+		depends_on?: string[];
+		drawn: Drawn;
+		text: string;
+	}[];
+	sources?: {
+		id: string;
+		capability: string;
+		ref: string;
+		digest?: string;
+		observed_at: string;
+		drawn: Drawn;
 		text: string;
 	}[];
 }

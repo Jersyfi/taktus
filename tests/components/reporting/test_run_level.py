@@ -180,3 +180,23 @@ def test_the_web_apps_fixtures_are_what_make_generate_writes() -> None:
     assert fixtures.read_text(encoding="utf-8") == module.web_fixtures(), (
         "web/src/lib/generated/fixtures.json is out of date: run `make generate` and commit it"
     )
+
+
+def test_a_decision_request_a_step_raised_is_drawn_with_its_status() -> None:
+    from taktus.components.reporting.domain.model import DecisionFacts
+    from taktus.components.reporting.domain.service.drawing import DecisionRequest
+    from taktus.shared.v1 import DecisionStatus
+
+    waiting = step(
+        "approve",
+        Method.HUMAN,
+        "waiting_human",
+        decisions=(DecisionFacts(id="dr_1", status=DecisionStatus.INTERPRETED),),
+    )
+    level = run_level(facts(waiting))
+    [decision] = level.steps[0].decisions
+    assert decision.status is DecisionStatus.INTERPRETED
+    element = DecisionRequest(name="dr_1", state="interpreted")
+    assert check([(element, decision.drawn.moving)], motion=True) == ()
+    assert decision.drawn.moving.motion is Motion.NONE
+    assert "Decision request dr_1: answered, its reading sent back." in level.steps[0].text

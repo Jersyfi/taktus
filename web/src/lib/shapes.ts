@@ -25,7 +25,8 @@ function ellipse(rx: number, ry: number): string {
 	return `M${C - rx},${C} A${rx},${ry} 0 1 0 ${C + rx},${C} A${rx},${ry} 0 1 0 ${C - rx},${C} Z`;
 }
 
-/** The outline of each method kind, and of a run, as a path at a given radius. */
+/** The outline of each method kind, of a run, of a result, of a source and of a decision
+ * request, as a path at a given radius. */
 export const OUTLINES: Record<string, (radius: number) => string> = {
 	square: (r) => rect(r * 0.85, 0),
 	triangle: (r) => polygon(3, r * 1.05, -Math.PI / 2),
@@ -35,7 +36,12 @@ export const OUTLINES: Record<string, (radius: number) => string> = {
 	rounded_square: (r) => rect(r * 0.85, r * 0.3),
 	circle: (r) => ellipse(r, r),
 	diamond: (r) => polygon(4, r),
-	frame: (r) => rect(r * 0.95, r * 0.08)
+	frame: (r) => rect(r * 0.95, r * 0.08),
+	seal: (r) => polygon(8, r, -Math.PI / 8),
+	page: (r) =>
+		`M${C - r * 0.7},${C - r} H${C + r * 0.35} L${C + r * 0.7},${C - r * 0.65} V${C + r} H${C - r * 0.7} Z`,
+	flag: (r) =>
+		`M${C - r * 0.7},${C + r} V${C - r} H${C + r * 0.8} L${C + r * 0.45},${C - r * 0.55} L${C + r * 0.8},${C - r * 0.1} H${C - r * 0.7}`
 };
 
 /** How an edge is stroked. `wavering` is displaced by the filter the glyph defines. */
@@ -62,7 +68,9 @@ export const STATE_MARKS: Record<string, string> = {
 	pause: 'M44,38 V62 M56,38 V62',
 	check: 'M38,51 L47,60 L63,40',
 	cross: 'M39,39 L61,61 M61,39 L39,61',
-	raised: 'M50,62 V38 M40,48 L50,38 L60,48'
+	raised: 'M50,62 V38 M40,48 L50,38 L60,48',
+	question: 'M43,42 Q43,34 50,34 Q57,34 57,41 Q57,47 50,49 V54 M50,61 V62',
+	quote: 'M42,40 V48 M50,40 V48 M58,40 V48'
 };
 
 /** A motion, as the CSS animation that carries it; `none` carries none. */

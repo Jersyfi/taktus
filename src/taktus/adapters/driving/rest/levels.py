@@ -8,6 +8,8 @@
 - `GET /levels/processes/{process_id}` — the process level: one version's steps as a graph, each
   with how it works and the runs it is running in, with the autonomy statement and the runs of
   the version (ADR-0064). A process the reader may not see is answered as one that does not exist.
+- `GET /levels/origins/{run_id}/{step_id}` — the origin of a result: the path back from a step's
+  result through the steps and sources that produced it, from the provenance records (ADR-0068).
 - `GET /vocabulary` — the visual vocabulary as a document (ADR-0059), for a legend. It says how
   Taktus draws, nothing about any tenant, and needs no key.
 - `/app/` — the web app, the static build of `web/`, served where it was built into the image.
@@ -134,6 +136,39 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if level is None:
             named = process_id if version is None else f"{process_id}@{version}"
             return problem(404, f"no process {named!r} you may see")
+        return JSONResponse(level.document())
+
+    @routes.get(
+        "/levels/origins/{run_id}/{step_id}",
+        summary="The origin of a result: the path back to what produced it",
+        description="The result of one step of one run, and the path back from it: the step "
+        "that produced it and every step whose result or artifact it read, across runs, each "
+        "with how it works — method kind, exactness class, model and adapter where the record "
+        "names them, when it was recorded — and every external source read, with when it was "
+        "read. Drawn from the provenance records (ADR-0021) and nothing else; a past result is "
+        "drawn as it was recorded, never replayed. Every element carries its glyph with motion "
+        "and without, and its text equivalent (ADR-0068).",
+        responses={
+            200: {"description": "The origin of the result."},
+            401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+            404: {
+                "description": "No such run or step, a step that produced no result, or one you "
+                "may not see: answered alike.",
+                **PROBLEM,
+            },
+            422: {"description": "A parameter does not validate.", **PROBLEM},
+        },
+    )
+    async def origin_level(
+        run_id: str, step_id: str, authorization: str | None = Header(default=None)
+    ) -> JSONResponse:
+        who = await authenticated(services, authorization)
+        if who is None:
+            return problem(401, "an account key is needed: Authorization: Bearer <key>")
+        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        level = await services.levels.origin(reader, run_id, step_id)
+        if level is None:
+            return problem(404, f"no result of {run_id}/{step_id} you may see")
         return JSONResponse(level.document())
 
     @routes.get(

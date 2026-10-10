@@ -1,7 +1,8 @@
 # ADR-0059 — One visual vocabulary, defined once in `reporting`, and every representation checked against it
 
 **Status:** accepted · makes UC-6.10's conditions *one visual vocabulary* and *reproducible and
-variable are told apart* buildable (issue #104, DEC-0055)
+variable are told apart* buildable (issue #104, DEC-0055) · amended 2026-10-10: a result, a
+source a step read and a decision request have their forms (ADR-0068, #192)
 
 ## Context
 UC-6.10 requires a live representation of what Taktus does: a graph or a flow drawn from the
@@ -91,6 +92,6 @@ Whether the pixels match the tokens is the representation's own test, by a pictu
 person. The vocabulary does not say how long a pulse lasts or how large a mark is, so two
 representations may draw the same tokens at different sizes and speeds. That motion
 corresponds to recorded work holds only for the state the representation is given; whether that
-state is current is ADR-0055's. Only steps and runs have a form yet. A decision request, a
-result and the origin of a result gain theirs with the level that draws them (#105), and the
-vocabulary's tests then cover them too.
+state is current is ADR-0055's. Steps, runs, results, the sources a step read and decision
+requests have a form; another kind of element has none until the change that draws it gives it
+one, with the vocabulary's tests (ADR-0068).

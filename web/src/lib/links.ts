@@ -12,3 +12,8 @@ export function processLink(ref: string): string {
 	if (at <= 0) return `#/processes/${encodeURIComponent(ref)}`;
 	return `#/processes/${encodeURIComponent(ref.slice(0, at))}/${encodeURIComponent(ref.slice(at + 1))}`;
 }
+
+/** The origin of a step's result. */
+export function originLink(runId: string, stepId: string): string {
+	return `#/origins/${encodeURIComponent(runId)}/${encodeURIComponent(stepId)}`;
+}

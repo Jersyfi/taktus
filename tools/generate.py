@@ -8,10 +8,11 @@ Two things are generated today, each never edited by hand:
   `tests/adapters/rest/test_openapi.py` fails when the file differs from what this script writes.
 - `web/src/lib/generated/fixtures.json`, what the web app's tests draw: the visual vocabulary
   and a run level drawn by `reporting` from example facts that use every method kind, every
-  exactness class and every motion, the process level of the same steps, and an overview (ADR-0063,
-  ADR-0064, ADR-0067). The web app's tests hold what it draws to these glyphs;
-  `tests/components/reporting/test_run_level.py` fails when the file differs from what this
-  script writes. The web app itself reads the vocabulary and every level from the surface.
+  exactness class and every motion, the process level of the same steps, an overview, and the
+  origin of a result (ADR-0063, ADR-0064, ADR-0067, ADR-0068). The web app's tests hold what it
+  draws to these glyphs; `tests/components/reporting/test_run_level.py` fails when the file
+  differs from what this script writes. The web app itself reads the vocabulary and every
+  level from the surface.
 
 The shared kernel's Python types under src/taktus/shared/ are a hand-written binding checked
 against the schemas by tests/contract, not generated (docs/architecture/project-structure.md
@@ -43,6 +44,8 @@ def web_fixtures() -> str:
     from datetime import UTC, datetime
 
     from taktus.components.reporting.domain.model import (
+        DecisionFacts,
+        OriginFacts,
         OverviewFacts,
         ProcessFacts,
         ProcessStepFacts,
@@ -57,11 +60,12 @@ def web_fixtures() -> str:
     )
     from taktus.components.reporting.domain.model.vocabulary import VOCABULARY
     from taktus.components.reporting.domain.service.levels import (
+        origin_level,
         overview_level,
         process_level,
         run_level,
     )
-    from taktus.shared.v1 import Autonomy, ConsumptionQuantities
+    from taktus.shared.v1 import Autonomy, ConsumptionQuantities, DecisionStatus, Provenance
 
     at = datetime(2026, 10, 10, 9, 0, tzinfo=UTC)
 
@@ -108,6 +112,7 @@ def web_fixtures() -> str:
                     role="finance.lead",
                     requests=("dr_example",),
                 ),
+                decisions=[DecisionFacts(id="dr_example", status=DecisionStatus.OPEN)],
             ),
             step("check", "rule", "exact", "admitted", depends_on=["pipeline"]),
             step("close", "rule", "exact", "planned", depends_on=["check"]),
@@ -178,11 +183,64 @@ def web_fixtures() -> str:
             ),
         ),
     )
+    digest = "sha256:" + "0" * 64
+    read = {"kind": "source", "capability": "repository.files", "ref": "main:README.md"}
+    origin = origin_level(
+        OriginFacts(
+            tenant="default",
+            run_id="run_example",
+            step_id="draft",
+            records=(
+                Provenance.model_validate(
+                    {
+                        "id": "prv_draft",
+                        "run_id": "run_example",
+                        "step_id": "draft",
+                        "process_version": "example@1",
+                        "method": "llm",
+                        "exactness": "free",
+                        "model": "model@1",
+                        "inputs": [
+                            {
+                                "kind": "result",
+                                "run_id": "run_example",
+                                "step_id": "score",
+                                "digest": digest,
+                                "observed_at": at,
+                            }
+                        ],
+                        "outputs": ["draft.md"],
+                        "result_digest": digest,
+                        "ledger_seq": 9,
+                        "recorded_at": at,
+                    }
+                ),
+                Provenance.model_validate(
+                    {
+                        "id": "prv_score",
+                        "run_id": "run_example",
+                        "step_id": "score",
+                        "process_version": "example@1",
+                        "method": "statistics",
+                        "exactness": "sourced",
+                        "inputs": [{**read, "digest": digest, "observed_at": at}],
+                        "outputs": [],
+                        "result_digest": digest,
+                        "ledger_seq": 7,
+                        "recorded_at": at,
+                    }
+                ),
+            ),
+        )
+    )
+    if origin is None:
+        raise SystemExit("the example result has no origin to draw")
     document = {
         "vocabulary": VOCABULARY.document(),
         "overview": overview_level(overview).document(),
         "run_level": run_level(facts).document(),
         "process_level": process_level(process).document(),
+        "origin": origin.document(),
     }
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 

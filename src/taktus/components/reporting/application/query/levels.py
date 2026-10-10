@@ -11,9 +11,11 @@ from __future__ import annotations
 from taktus.components.reporting.domain.model.live import ProcessRef, Reader, RunRef
 from taktus.components.reporting.domain.service import visibility
 from taktus.components.reporting.domain.service.levels import (
+    OriginLevel,
     OverviewLevel,
     ProcessLevel,
     RunLevel,
+    origin_level,
     overview_level,
     process_level,
     run_level,
@@ -73,3 +75,24 @@ class LevelQueries:
             )
         )
         return overview_level(facts.model_copy(update={"processes": processes, "runs": runs}))
+
+    async def origin(self, reader: Reader, run_id: str, step_id: str) -> OriginLevel | None:
+        """The origin of one step's result; None when there is no such result or the reader may
+        not see its run. A step or input on the path whose run the reader may not see is absent,
+        and the path ends there."""
+        facts = await self._records.origin(reader.tenant, run_id, step_id)
+        if facts is None:
+            return None
+        seen = tuple(
+            record
+            for record in facts.records
+            if visibility.may_see(
+                reader,
+                RunRef(
+                    id=record.run_id, tenant=facts.tenant, process_version=record.process_version
+                ),
+            )
+        )
+        if not seen or (seen[0].run_id, seen[0].step_id) != (run_id, step_id):
+            return None
+        return origin_level(facts.model_copy(update={"records": seen}))
