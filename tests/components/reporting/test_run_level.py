@@ -180,3 +180,58 @@ def test_the_web_apps_fixtures_are_what_make_generate_writes() -> None:
     assert fixtures.read_text(encoding="utf-8") == module.web_fixtures(), (
         "web/src/lib/generated/fixtures.json is out of date: run `make generate` and commit it"
     )
+
+
+def test_a_decision_request_a_step_raised_is_drawn_with_its_status() -> None:
+    from taktus.components.reporting.domain.model import DecisionFacts
+    from taktus.components.reporting.domain.service.drawing import DecisionRequest
+    from taktus.shared.v1 import DecisionStatus
+
+    waiting = step(
+        "approve",
+        Method.HUMAN,
+        "waiting_human",
+        decisions=(DecisionFacts(id="dr_1", status=DecisionStatus.INTERPRETED),),
+    )
+    level = run_level(facts(waiting))
+    [decision] = level.steps[0].decisions
+    assert decision.status is DecisionStatus.INTERPRETED
+    element = DecisionRequest(name="dr_1", state="interpreted")
+    assert check([(element, decision.drawn.moving)], motion=True) == ()
+    assert decision.drawn.moving.motion is Motion.NONE
+    assert "Decision request dr_1: answered, its reading sent back." in level.steps[0].text
+
+
+def test_a_channel_that_cannot_draw_receives_the_decision_requests_in_the_same_words() -> None:
+    """UC-6.10 *beyond the web app* (ADR-0069): the chat text is every element's text as the
+    level hands it to the web app, so a step's decision requests reach it word for word."""
+    from pathlib import Path
+
+    from taktus.components.reporting.domain.model import DecisionFacts, OwnerChannel, Phrasebook
+    from taktus.components.reporting.domain.service.rendering import shown
+    from taktus.shared.v1 import DecisionStatus
+
+    root = Path(__file__).resolve().parents[3]
+    book = Phrasebook.model_validate_json(
+        (root / "src/taktus/composition/phrasebooks/de.json").read_text("utf-8")
+    )
+    channel = OwnerChannel(
+        id="default",
+        tenant="default",
+        owner="idn_owner",
+        channel="channel.chat",
+        address="D1",
+        phrasebook=book,
+        configured_at=AT,
+        configured_by="operator",
+    )
+    waiting = step(
+        "approve",
+        Method.HUMAN,
+        "waiting_human",
+        decisions=(DecisionFacts(id="dr_1", status=DecisionStatus.OPEN),),
+    )
+    level = run_level(facts(waiting))
+    lines = shown(level, channel).splitlines()
+    assert lines == [level.run.text, f"• {level.steps[0].text}"]
+    assert "Decision request dr_1: open, waiting for its decider." in lines[1]

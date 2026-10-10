@@ -15,6 +15,7 @@ from fakes.owner_channel import RecordingDeliveries
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
     MemoryPersistence,
+    MemoryProvenanceStore,
     MemoryRepository,
 )
 from taktus.adapters.driven.telemetry import NoTelemetry
@@ -29,6 +30,7 @@ from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
 )
+from taktus.components.decision.domain.model import Request
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.domain.model import Process, ProcessVersion
@@ -147,6 +149,8 @@ class Services:
                 self.runs,
                 MemoryRepository(self.persistence, Process),
                 MemoryRepository(self.persistence, ProcessVersion),
+                MemoryProvenanceStore(self.persistence),
+                MemoryRepository(self.persistence, Request),
             )
         )
 
@@ -190,7 +194,14 @@ def services(connector: ScriptedConnector | None = None) -> Services:
         KnownSecrets(()),
         deliveries=deliveries,
         levels=LevelQueries(
-            RepositoryLevelRecords(persistence, runs, of(Process), of(ProcessVersion))
+            RepositoryLevelRecords(
+                persistence,
+                runs,
+                of(Process),
+                of(ProcessVersion),
+                MemoryProvenanceStore(persistence),
+                of(Request),
+            )
         ),
     )
     decisions.requests.report_to(owner.decision_raised)

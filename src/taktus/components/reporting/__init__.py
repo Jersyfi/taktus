@@ -34,7 +34,8 @@ adapter expects, one per interface and cause, read by a rule from the run's fail
 owner as a report of kind `failure` (`application/service/broken_interfaces.py`).
 
 The visual vocabulary (UC-6.10, ADR-0059): how every live representation draws a method kind,
-an exactness class and a state, as tokens of form, motion, marks and text, defined once
+an exactness class and a state — of a step, a run, a result, a source a step read and a decision
+request (ADR-0068) — as tokens of form, motion, marks and text, defined once
 (`domain/model/vocabulary.py`); the glyph of a step or a run, its text equivalent, and the check
 that fails a representation drawing an element another way (`domain/service/drawing.py`).
 
@@ -59,7 +60,8 @@ otherwise, with the autonomy statement in words and the runs of the version the 
 the predicate answers for a process as well (ADR-0064). And the overview: the areas a reader may
 look into — the tenant until the organisation's structure is recorded — the processes in each,
 how many of their runs work and wait by the run component's own definitions, and the steps
-running now (ADR-0067).
+running now (ADR-0067). And the origin of a result: the path from a step's result back through
+the steps and sources that produced it, drawn from the provenance records, across runs (ADR-0068).
 
 Which connector carries a message, how a decision answer is kept and which values are secret are
 asked through `ports/`, and answered by the composition root, because components never import

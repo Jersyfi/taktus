@@ -24,8 +24,11 @@ from collections.abc import Iterable
 from pydantic import Field, model_validator
 
 from taktus.components.reporting.domain.model.vocabulary import (
+    DECISION_STATES,
     NO_MARK,
+    RESULT_STATES,
     RUN_STATES,
+    SOURCE_STATES,
     STEP_STATES,
     VOCABULARY,
     Edge,
@@ -69,6 +72,50 @@ class Run(Value):
         return self
 
 
+class Result(Value):
+    """A step's result, named by its step, with the exactness class it was produced under."""
+
+    name: str = Field(min_length=1)
+    exactness: ExactnessClass
+    state: str = "recorded"
+
+    @model_validator(mode="after")
+    def _holds(self) -> Result:
+        if self.state not in RESULT_STATES:
+            raise ValueError(f"no result state {self.state!r}")
+        return self
+
+
+class Source(Value):
+    """An external source a step read: its capability and reference."""
+
+    name: str = Field(min_length=1)
+    state: str = "read"
+
+    @model_validator(mode="after")
+    def _holds(self) -> Source:
+        if self.state not in SOURCE_STATES:
+            raise ValueError(f"no source state {self.state!r}")
+        return self
+
+
+class DecisionRequest(Value):
+    """A decision request a step raised (ADR-0042), with its status."""
+
+    name: str = Field(min_length=1)
+    state: str
+
+    @model_validator(mode="after")
+    def _holds(self) -> DecisionRequest:
+        if self.state not in DECISION_STATES:
+            raise ValueError(f"no decision request status {self.state!r}")
+        return self
+
+
+type Element = Step | Run | Result | Source | DecisionRequest
+"""Every kind of element a representation draws."""
+
+
 class Glyph(Value):
     """What a representation draws for one element. No field carries a colour (ADR-0059)."""
 
@@ -84,8 +131,17 @@ class Glyph(Value):
     text: str = Field(min_length=1)
 
 
-def describe(element: Step | Run, vocabulary: Vocabulary = VOCABULARY) -> str:
+def describe(element: Element, vocabulary: Vocabulary = VOCABULARY) -> str:
     """The text equivalent of an element: the same method, class and state, in words."""
+    if isinstance(element, Result):
+        exactness = vocabulary.exactness_of(element.exactness).text
+        state = vocabulary.state("result", element.state).text
+        return f"result of {element.name}: {exactness}; {state}."
+    if isinstance(element, Source):
+        return f"source {element.name}: {vocabulary.state('source', element.state).text}."
+    if isinstance(element, DecisionRequest):
+        state = vocabulary.state("decision_request", element.state).text
+        return f"decision request {element.name}: {state}."
     if isinstance(element, Run):
         return f"run {element.name}: {vocabulary.state('run', element.state).text}."
     method = vocabulary.method(element.method).text
@@ -96,9 +152,34 @@ def describe(element: Step | Run, vocabulary: Vocabulary = VOCABULARY) -> str:
     return f"step {element.name}: {kind}; {exactness}; {state}."
 
 
-def glyph(element: Step | Run, *, motion: bool, vocabulary: Vocabulary = VOCABULARY) -> Glyph:
+def _still_element(
+    subject: Subject, outline: str, element: Element, mark: str, vocabulary: Vocabulary
+) -> Glyph:
+    state = vocabulary.state(subject, element.state)
+    return Glyph(
+        subject=subject,
+        outline=outline,
+        edge=None,
+        exactness_mark=mark,
+        fill=state.fill,
+        state_mark=state.mark,
+        motion=Motion.NONE,
+        still_mark=NO_MARK,
+        text=describe(element, vocabulary),
+    )
+
+
+def glyph(element: Element, *, motion: bool, vocabulary: Vocabulary = VOCABULARY) -> Glyph:
     """The glyph of an element. `motion` is False when the reader stopped motion or the system
-    asks for reduced motion."""
+    asks for reduced motion. Only a running step ever moves."""
+    if isinstance(element, Result):
+        mark = vocabulary.exactness_of(element.exactness).mark
+        return _still_element("result", vocabulary.result_outline, element, mark, vocabulary)
+    if isinstance(element, Source):
+        return _still_element("source", vocabulary.source_outline, element, NO_MARK, vocabulary)
+    if isinstance(element, DecisionRequest):
+        outline = vocabulary.decision_outline
+        return _still_element("decision_request", outline, element, NO_MARK, vocabulary)
     if isinstance(element, Run):
         state = vocabulary.state("run", element.state)
         return Glyph(
@@ -129,7 +210,7 @@ def glyph(element: Step | Run, *, motion: bool, vocabulary: Vocabulary = VOCABUL
 
 
 def check(
-    drawn: Iterable[tuple[Step | Run, Glyph]],
+    drawn: Iterable[tuple[Element, Glyph]],
     *,
     motion: bool,
     vocabulary: Vocabulary = VOCABULARY,

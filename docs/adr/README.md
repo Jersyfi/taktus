@@ -62,10 +62,11 @@ bounding. The section states the boundary; it does not point at it.
 | [0052](ADR-0052-a-credential-declares-the-platforms-it-administers.md) | A credential declares the platforms it administers | accepted |
 | [0053](ADR-0053-a-task-names-a-command-the-worker-runs-after-the-work.md) | A task names a command the worker runs after the work | accepted |
 | [0055](ADR-0055-a-change-of-state-reaches-its-reader-from-the-ledger-as-it-happens.md) | A change of state reaches its reader from the ledger, as it happens | accepted |
-| [0059](ADR-0059-one-visual-vocabulary-defined-once-in-reporting.md) | One visual vocabulary, defined once in `reporting`, and every representation checked against it | accepted |
+| [0059](ADR-0059-one-visual-vocabulary-defined-once-in-reporting.md) | One visual vocabulary, defined once in `reporting`, and every representation checked against it | accepted, amended 2026-10-10 (ADR-0068) |
 | [0063](ADR-0063-the-web-app-draws-each-level-as-reporting-hands-it-over.md) | The web app is a static build in the image, and draws each level as `reporting` hands it over | accepted |
 | [0064](ADR-0064-a-process-version-is-drawn-as-its-graph-with-its-autonomy-statement.md) | A process version is drawn as its graph, with its autonomy statement and its runs | accepted |
 | [0067](ADR-0067-the-overview-counts-runs-that-work-and-wait-by-the-run-components-definition.md) | The overview counts the runs that work and wait, by the run component's own definition | accepted |
+| [0068](ADR-0068-the-origin-of-a-result-is-drawn-from-its-provenance-records.md) | The origin of a result is drawn from its provenance records, and the vocabulary gains the forms of a result, a source and a decision request | accepted |
 | [0065](ADR-0065-the-guides-are-rendered-from-the-repository-by-rule-and-a-hand-edit-is-never-overwritten.md) | The guides are rendered from the repository by rule, and a hand edit is never overwritten | accepted |
 | [0066](ADR-0066-the-guides-run-daily-reading-every-source-at-one-commit-in-one-call.md) | The guides run daily, reading every source at one commit in one call | accepted |
 | [0069](ADR-0069-a-chat-receives-a-levels-text-equivalent-and-a-link-to-it-live.md) | A chat receives a level's text equivalent and a link to it live | accepted |

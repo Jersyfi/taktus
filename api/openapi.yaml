@@ -862,6 +862,58 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /levels/origins/{run_id}/{step_id}:
+    get:
+      tags:
+      - levels
+      summary: 'The origin of a result: the path back to what produced it'
+      description: 'The result of one step of one run, and the path back from it: the step that produced
+        it and every step whose result or artifact it read, across runs, each with how it works — method
+        kind, exactness class, model and adapter where the record names them, when it was recorded — and
+        every external source read, with when it was read. Drawn from the provenance records (ADR-0021)
+        and nothing else; a past result is drawn as it was recorded, never replayed. Every element carries
+        its glyph with motion and without, and its text equivalent (ADR-0068).'
+      operationId: origin_level_levels_origins__run_id___step_id__get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: step_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The origin of the result.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No such run or step, a step that produced no result, or one you may not see: answered
+            alike.'
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /vocabulary:
     get:
       tags:

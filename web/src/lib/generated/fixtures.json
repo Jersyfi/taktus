@@ -236,9 +236,68 @@
         "mark": "check",
         "moves": false,
         "text": "finished"
+      },
+      {
+        "subject": "result",
+        "state": "recorded",
+        "fill": "full",
+        "mark": "check",
+        "moves": false,
+        "text": "recorded"
+      },
+      {
+        "subject": "source",
+        "state": "read",
+        "fill": "empty",
+        "mark": "none",
+        "moves": false,
+        "text": "read"
+      },
+      {
+        "subject": "decision_request",
+        "state": "open",
+        "fill": "empty",
+        "mark": "question",
+        "moves": false,
+        "text": "open, waiting for its decider"
+      },
+      {
+        "subject": "decision_request",
+        "state": "answered",
+        "fill": "partial",
+        "mark": "dot",
+        "moves": false,
+        "text": "answered"
+      },
+      {
+        "subject": "decision_request",
+        "state": "interpreted",
+        "fill": "partial",
+        "mark": "quote",
+        "moves": false,
+        "text": "answered, its reading sent back"
+      },
+      {
+        "subject": "decision_request",
+        "state": "confirmed",
+        "fill": "partial",
+        "mark": "check",
+        "moves": false,
+        "text": "its reading confirmed"
+      },
+      {
+        "subject": "decision_request",
+        "state": "applied",
+        "fill": "full",
+        "mark": "check",
+        "moves": false,
+        "text": "applied"
       }
     ],
-    "run_outline": "frame"
+    "run_outline": "frame",
+    "result_outline": "seal",
+    "source_outline": "page",
+    "decision_outline": "flag"
   },
   "overview": {
     "areas": [
@@ -421,6 +480,7 @@
         "depends_on": [],
         "attempt": 1,
         "consumption": [],
+        "decisions": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -457,6 +517,7 @@
         ],
         "attempt": 1,
         "consumption": [],
+        "decisions": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -493,6 +554,7 @@
         ],
         "attempt": 1,
         "consumption": [],
+        "decisions": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -529,6 +591,7 @@
         ],
         "attempt": 1,
         "consumption": [],
+        "decisions": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -574,6 +637,7 @@
             "value": 300
           }
         ],
+        "decisions": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -610,6 +674,7 @@
         ],
         "attempt": 1,
         "consumption": [],
+        "decisions": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -645,6 +710,7 @@
         ],
         "attempt": 1,
         "consumption": [],
+        "decisions": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -689,6 +755,35 @@
           ]
         },
         "consumption": [],
+        "decisions": [
+          {
+            "id": "dr_example",
+            "status": "open",
+            "drawn": {
+              "moving": {
+                "subject": "decision_request",
+                "outline": "flag",
+                "exactness_mark": "none",
+                "fill": "empty",
+                "state_mark": "question",
+                "motion": "none",
+                "still_mark": "none",
+                "text": "decision request dr_example: open, waiting for its decider."
+              },
+              "still": {
+                "subject": "decision_request",
+                "outline": "flag",
+                "exactness_mark": "none",
+                "fill": "empty",
+                "state_mark": "question",
+                "motion": "none",
+                "still_mark": "none",
+                "text": "decision request dr_example: open, waiting for its decider."
+              }
+            },
+            "text": "decision request dr_example: open, waiting for its decider."
+          }
+        ],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -713,7 +808,7 @@
             "text": "step pipeline: wait, waiting; no result of its own; waiting for a person."
           }
         },
-        "text": "step pipeline: wait, waiting; no result of its own; waiting for a person. waits on a person (wait.human, awaiting_decision) since 2026-10-10T09:00:00+00:00; addressed to the role finance.lead; decision requests dr_example."
+        "text": "step pipeline: wait, waiting; no result of its own; waiting for a person. waits on a person (wait.human, awaiting_decision) since 2026-10-10T09:00:00+00:00; addressed to the role finance.lead; decision requests dr_example. Decision request dr_example: open, waiting for its decider."
       },
       {
         "id": "check",
@@ -725,6 +820,7 @@
         ],
         "attempt": 1,
         "consumption": [],
+        "decisions": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -761,6 +857,7 @@
         ],
         "attempt": 1,
         "consumption": [],
+        "decisions": [],
         "drawn": {
           "moving": {
             "subject": "step",
@@ -1206,6 +1303,153 @@
           }
         },
         "text": "run run_example: running. Running score, draft, review."
+      }
+    ]
+  },
+  "origin": {
+    "result": {
+      "id": "result:run_example/draft",
+      "run": "run_example",
+      "step": "draft",
+      "exactness": "free",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "outputs": [
+        "draft.md"
+      ],
+      "depends_on": [
+        "run_example/draft"
+      ],
+      "drawn": {
+        "moving": {
+          "subject": "result",
+          "outline": "seal",
+          "exactness_mark": "none",
+          "fill": "full",
+          "state_mark": "check",
+          "motion": "none",
+          "still_mark": "none",
+          "text": "result of run_example/draft: free; recorded."
+        },
+        "still": {
+          "subject": "result",
+          "outline": "seal",
+          "exactness_mark": "none",
+          "fill": "full",
+          "state_mark": "check",
+          "motion": "none",
+          "still_mark": "none",
+          "text": "result of run_example/draft: free; recorded."
+        }
+      },
+      "text": "result of run_example/draft: free; recorded, produced by draft in run run_example."
+    },
+    "steps": [
+      {
+        "id": "run_example/draft",
+        "run": "run_example",
+        "step": "draft",
+        "process_version": "example@1",
+        "method": "llm",
+        "exactness": "free",
+        "model": "model@1",
+        "recorded_at": "2026-10-10T09:00:00Z",
+        "depends_on": [
+          "run_example/score"
+        ],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "ellipse",
+            "edge": "wavering",
+            "exactness_mark": "none",
+            "fill": "full",
+            "state_mark": "check",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step draft: language model, variable; free; completed."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "ellipse",
+            "edge": "wavering",
+            "exactness_mark": "none",
+            "fill": "full",
+            "state_mark": "check",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step draft: language model, variable; free; completed."
+          }
+        },
+        "text": "step draft: language model, variable; free; completed. In run run_example, example@1. Model model@1. Recorded at 2026-10-10T09:00:00+00:00. Read run_example/score."
+      },
+      {
+        "id": "run_example/score",
+        "run": "run_example",
+        "step": "score",
+        "process_version": "example@1",
+        "method": "statistics",
+        "exactness": "sourced",
+        "recorded_at": "2026-10-10T09:00:00Z",
+        "depends_on": [
+          "source:repository.files:main:README.md"
+        ],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "triangle",
+            "edge": "straight",
+            "exactness_mark": "source_notch",
+            "fill": "full",
+            "state_mark": "check",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step score: statistics, reproducible; sourced; completed."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "triangle",
+            "edge": "straight",
+            "exactness_mark": "source_notch",
+            "fill": "full",
+            "state_mark": "check",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step score: statistics, reproducible; sourced; completed."
+          }
+        },
+        "text": "step score: statistics, reproducible; sourced; completed. In run run_example, example@1. Recorded at 2026-10-10T09:00:00+00:00. Read source:repository.files:main:README.md."
+      }
+    ],
+    "sources": [
+      {
+        "id": "source:repository.files:main:README.md",
+        "capability": "repository.files",
+        "ref": "main:README.md",
+        "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "observed_at": "2026-10-10T09:00:00Z",
+        "drawn": {
+          "moving": {
+            "subject": "source",
+            "outline": "page",
+            "exactness_mark": "none",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "source repository.files main:README.md: read."
+          },
+          "still": {
+            "subject": "source",
+            "outline": "page",
+            "exactness_mark": "none",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "source repository.files main:README.md: read."
+          }
+        },
+        "text": "source repository.files main:README.md: read, at 2026-10-10T09:00:00+00:00."
       }
     ]
   }

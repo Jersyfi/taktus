@@ -15,6 +15,10 @@ the runs of the version the reader may see.
 in it, how many of their runs work and how many wait right now — the run component's own
 definitions, counted — and the steps running right now, which are the only things that move.
 
+`origin_level` turns the provenance records behind one step's result into the path back to what
+produced it: the result, each step on the way with how it works, and each source it read and
+when — as a graph from the sources to the result. Nothing is drawn the records do not hold.
+
 Pure: facts in, elements out.
 """
 
@@ -25,7 +29,9 @@ from datetime import datetime
 from pydantic import Field
 
 from taktus.components.reporting.domain.model.levels import (
+    DecisionFacts,
     Figure,
+    OriginFacts,
     OverviewFacts,
     ProcessFacts,
     ProcessStepFacts,
@@ -38,8 +44,26 @@ from taktus.components.reporting.domain.model.levels import (
     VersionRef,
     Wait,
 )
-from taktus.components.reporting.domain.service.drawing import Glyph, Run, Step, glyph
-from taktus.shared.v1 import Autonomy, ConsumptionQuantities, ExactnessClass, Method, Value
+from taktus.components.reporting.domain.service.drawing import (
+    DecisionRequest,
+    Element,
+    Glyph,
+    Result,
+    Run,
+    Source,
+    Step,
+    glyph,
+)
+from taktus.shared.v1 import (
+    Autonomy,
+    ConsumptionQuantities,
+    DecisionStatus,
+    ExactnessClass,
+    InputKind,
+    Method,
+    Provenance,
+    Value,
+)
 
 ACCOUNTS: dict[str, str] = {
     "limit.provider": "the provider's rate limit",
@@ -61,6 +85,13 @@ class Drawn(Value):
     still: Glyph
 
 
+class DecisionElement(Value):
+    id: str
+    status: DecisionStatus
+    drawn: Drawn
+    text: str = Field(min_length=1)
+
+
 class StepElement(Value):
     id: str
     method: Method
@@ -72,6 +103,7 @@ class StepElement(Value):
     consumption: tuple[Figure, ...] = ()
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    decisions: tuple[DecisionElement, ...] = ()
     drawn: Drawn
     text: str = Field(min_length=1)
     """The text equivalent: method, family, class and state, what it waits on, what it used."""
@@ -138,7 +170,7 @@ def _wait_text(wait: Wait) -> str:
     return "; ".join(parts) + "."
 
 
-def _drawn(element: Step | Run) -> Drawn:
+def _drawn(element: Element) -> Drawn:
     return Drawn(moving=glyph(element, motion=True), still=glyph(element, motion=False))
 
 
@@ -147,9 +179,11 @@ def _step(facts: StepFacts) -> StepElement:
         Step(name=facts.id, method=facts.method, exactness=facts.exactness, state=facts.state)
     )
     used = figures(facts.consumption)
+    decisions = tuple(_decision(d) for d in facts.decisions)
     text = [drawn.moving.text]
     if facts.wait is not None:
         text.append(_wait_text(facts.wait))
+    text.extend(d.text[0].upper() + d.text[1:] for d in decisions)
     if used:
         text.append(f"Used {_figures_text(used)}.")
     return StepElement(
@@ -163,9 +197,15 @@ def _step(facts: StepFacts) -> StepElement:
         consumption=used,
         started_at=facts.started_at,
         finished_at=facts.finished_at,
+        decisions=decisions,
         drawn=drawn,
         text=" ".join(text),
     )
+
+
+def _decision(facts: DecisionFacts) -> DecisionElement:
+    drawn = _drawn(DecisionRequest(name=facts.id, state=str(facts.status)))
+    return DecisionElement(id=facts.id, status=facts.status, drawn=drawn, text=drawn.moving.text)
 
 
 def run_level(facts: RunFacts) -> RunLevel:
@@ -443,3 +483,155 @@ def overview_level(facts: OverviewFacts) -> OverviewLevel:
         f"{_counted(working, 'run')} working, {waiting} waiting.",
     )
     return OverviewLevel(areas=(area,))
+
+
+class OriginStepElement(Value):
+    """A step on the path to a result: what its record says it was and what it read."""
+
+    id: str
+    """`<run>/<step>`: a path may cross runs."""
+    run: str
+    step: str
+    process_version: str
+    method: Method
+    exactness: ExactnessClass | None = None
+    model: str | None = None
+    adapter: str | None = None
+    adapter_version: str | None = None
+    recorded_at: datetime
+    depends_on: tuple[str, ...] = ()
+    """The elements this step read: other steps on the path, and sources."""
+    drawn: Drawn
+    text: str = Field(min_length=1)
+
+
+class SourceElement(Value):
+    """An external source a step on the path read, and when."""
+
+    id: str
+    """`source:<capability>:<ref>`."""
+    capability: str
+    ref: str
+    digest: str | None = None
+    observed_at: datetime
+    drawn: Drawn
+    text: str = Field(min_length=1)
+
+
+class ResultElement(Value):
+    id: str
+    run: str
+    step: str
+    exactness: ExactnessClass
+    digest: str | None = None
+    outputs: tuple[str, ...] = ()
+    depends_on: tuple[str, ...]
+    """The step that produced it."""
+    drawn: Drawn
+    text: str = Field(min_length=1)
+
+
+class OriginLevel(Value):
+    """The origin of a result, the fourth level of UC-6.10: the path from a result back through
+    the steps and inputs that produced it (ADR-0021, ADR-0068)."""
+
+    result: ResultElement
+    steps: tuple[OriginStepElement, ...]
+    sources: tuple[SourceElement, ...] = ()
+
+
+def _source_id(capability: str, ref: str) -> str:
+    return f"source:{capability}:{ref}"
+
+
+def origin_level(facts: OriginFacts) -> OriginLevel | None:
+    """The path back from the result of `facts.step_id` in `facts.run_id`. None when that step
+    produced no result: a step of kind `human` or `wait` carries no exactness class (ADR-0018)."""
+    producing = facts.records[0]
+    if producing.exactness is None:
+        return None
+    # Only what the result's own record leads to: a record reached only through one the reader
+    # may not see is not on the path that is drawn.
+    by_key = {(r.run_id, r.step_id): r for r in facts.records}
+    reached: list[Provenance] = [producing]
+    for record in reached:
+        for key in sorted(record.reads_from()):
+            if key in by_key and by_key[key] not in reached:
+                reached.append(by_key[key])
+    present = {(r.run_id, r.step_id) for r in reached}
+    steps: list[OriginStepElement] = []
+    sources: dict[str, SourceElement] = {}
+    for record in reached:
+        reads: list[str] = []
+        for read in record.inputs:
+            if read.kind is InputKind.SOURCE and read.capability and read.ref:
+                sid = _source_id(read.capability, read.ref)
+                reads.append(sid)
+                if sid not in sources:
+                    name = f"{read.capability} {read.ref}"
+                    drawn = _drawn(Source(name=name))
+                    sources[sid] = SourceElement(
+                        id=sid,
+                        capability=read.capability,
+                        ref=read.ref,
+                        digest=read.digest,
+                        observed_at=read.observed_at,
+                        drawn=drawn,
+                        text=f"{drawn.moving.text[:-1]}, at {read.observed_at.isoformat()}.",
+                    )
+            elif (read.run_id, read.step_id) in present:
+                reads.append(f"{read.run_id}/{read.step_id}")
+        steps.append(_origin_step(record, tuple(dict.fromkeys(reads))))
+    produced = steps[0]
+    drawn = _drawn(Result(name=f"{facts.run_id}/{facts.step_id}", exactness=producing.exactness))
+    text = f"{drawn.moving.text[:-1]}, produced by {produced.step} in run {produced.run}."
+    return OriginLevel(
+        result=ResultElement(
+            id=f"result:{facts.run_id}/{facts.step_id}",
+            run=facts.run_id,
+            step=facts.step_id,
+            exactness=producing.exactness,
+            digest=producing.result_digest,
+            outputs=producing.outputs,
+            depends_on=(produced.id,),
+            drawn=drawn,
+            text=text,
+        ),
+        steps=tuple(steps),
+        sources=tuple(sources.values()),
+    )
+
+
+def _origin_step(record: Provenance, reads: tuple[str, ...]) -> OriginStepElement:
+    drawn = _drawn(
+        Step(
+            name=record.step_id,
+            method=record.method,
+            exactness=record.exactness,
+            state="succeeded",
+        )
+    )
+    text = [drawn.moving.text, f"In run {record.run_id}, {record.process_version}."]
+    if record.model is not None:
+        text.append(f"Model {record.model}.")
+    if record.adapter is not None:
+        version = f" {record.adapter_version}" if record.adapter_version else ""
+        text.append(f"Adapter {record.adapter}{version}.")
+    text.append(f"Recorded at {record.recorded_at.isoformat()}.")
+    if reads:
+        text.append(f"Read {', '.join(reads)}.")
+    return OriginStepElement(
+        id=f"{record.run_id}/{record.step_id}",
+        run=record.run_id,
+        step=record.step_id,
+        process_version=record.process_version,
+        method=record.method,
+        exactness=record.exactness,
+        model=record.model,
+        adapter=record.adapter,
+        adapter_version=record.adapter_version,
+        recorded_at=record.recorded_at,
+        depends_on=reads,
+        drawn=drawn,
+        text=" ".join(text),
+    )

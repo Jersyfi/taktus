@@ -20,7 +20,9 @@ from taktus.components.reporting.domain.model.interface import (
     InterfaceCause,
 )
 from taktus.components.reporting.domain.model.levels import (
+    DecisionFacts,
     Figure,
+    OriginFacts,
     OverviewFacts,
     ProcessFacts,
     ProcessStepFacts,
@@ -66,6 +68,7 @@ __all__ = [
     "Blocked",
     "BrokenInterface",
     "Change",
+    "DecisionFacts",
     "Delivery",
     "DeliveryChannel",
     "DeliveryState",
@@ -80,6 +83,7 @@ __all__ = [
     "Link",
     "Occurrence",
     "Offered",
+    "OriginFacts",
     "OverviewFacts",
     "OwnerChannel",
     "Phrasebook",

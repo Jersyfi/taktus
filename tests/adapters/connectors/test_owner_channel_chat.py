@@ -41,9 +41,10 @@ from fakes.identity import Directory, directory
 
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
-from taktus.adapters.driven.memory import MemoryRepository
+from taktus.adapters.driven.memory import MemoryProvenanceStore, MemoryRepository
 from taktus.components.command.application.service import ReceiveIntake, ReceiveIntakeHandler
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.decision.domain.model import Request
 from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.reporting.application.query import LevelQueries, view
 from taktus.components.reporting.application.service import ConfigureChannel, RaiseReport
@@ -182,7 +183,14 @@ class Instance:
         )
         self.runs: Repository[Run] = of(Run)
         self.levels = LevelQueries(
-            RepositoryLevelRecords(persistence, self.runs, of(Process), of(ProcessVersion))
+            RepositoryLevelRecords(
+                persistence,
+                self.runs,
+                of(Process),
+                of(ProcessVersion),
+                MemoryProvenanceStore(persistence),
+                of(Request),
+            )
         )
         self.owner: OwnerChannelWiring = owner_channel_wiring(
             of,

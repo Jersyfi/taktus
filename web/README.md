@@ -16,7 +16,12 @@ records as they are now and moving when the work moves (ADR-0063).
   and all of it again as text. It follows the run's stream of changes and reads the level again
   on every change, without a reload.
 
-Not yet: the origin of a result (#192).
+- **The origin of a result** — the path from a step's result back through the steps and sources
+  that produced it, from the provenance records, across runs; read once, since a record never
+  changes (ADR-0068).
+
+The run level also draws the decision requests a step raised, and links each result to its
+origin.
 
 ## How it is built
 
@@ -43,12 +48,13 @@ Not yet: the origin of a result (#192).
 | `src/lib/Graph.svelte` | steps as a graph, placed by their dependencies |
 | `src/lib/RunView.svelte` | the run level, and its text equivalent |
 | `src/lib/OverviewView.svelte` | the overview, and its text equivalent |
+| `src/lib/OriginView.svelte` | the origin of a result, and its text equivalent |
 | `src/lib/ProcessView.svelte` | the process level, its autonomy statement, its runs and versions, and its text equivalent |
 | `src/lib/links.ts` | where each level lives in the web app |
 | `src/lib/motion.svelte.ts` | whether motion is allowed |
 | `src/lib/key.ts`, `KeyForm.svelte` | the reader's key, for the tab's session |
 | `src/lib/generated/fixtures.json` | written by `make generate`, never by hand: what the tests draw |
-| `src/routes/` | the pages: the overview at `#/`, `#/runs/<id>`, and `#/processes/<id>` with an optional `/<version>` |
+| `src/routes/` | the pages: the overview at `#/`, `#/runs/<id>`, `#/processes/<id>` with an optional `/<version>`, and `#/origins/<run>/<step>` |
 
 ## Working on it
 

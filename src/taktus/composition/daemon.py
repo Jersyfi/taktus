@@ -70,6 +70,7 @@ from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
 )
+from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
     ReportCapacity,
     ReportCapacityHandler,
@@ -360,6 +361,8 @@ async def wire(
                     runs,
                     PostgresRepository(persistence, Process),
                     PostgresRepository(persistence, ProcessVersion),
+                    provenance_store,
+                    PostgresRepository(persistence, Request),
                 )
             )
             owner = owner_channel_wiring(
