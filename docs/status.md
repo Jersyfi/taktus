@@ -98,7 +98,7 @@ what an adapter can compute before a call, the price table, and the model port w
 over the chat-completions dialect; OpenTelemetry spans with the
 trace identifier on every ledger entry; the architecture tests and seven `import-linter`
 contracts; the command line `taktusctl`; self-hosting in two containers with `make up`, proven
-from nothing; the decision register with four anchor modes, notices and their gates, the Python tools that run those gates type-checked by `make lint` as strictly as the product (NTC-0076); every ADR
+from nothing; the decision register with four anchor modes, notices and their gates, the Python tools that run those gates type-checked by `make lint` as strictly as the product (NTC-0076), on the interpreter the image runs (NTC-0101); every ADR
 bounded by *Where this promise ends*, with a gate. `make doctor` reports `git` as a required tool, and
 `make gate-docs` checks for it before it runs (issue #11, the change Taktus itself opened as #38).
 The identity component, in place of the provisional operator identity of DEC-0013 (#82,
