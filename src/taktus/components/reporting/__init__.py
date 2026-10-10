@@ -38,6 +38,15 @@ an exactness class and a state, as tokens of form, motion, marks and text, defin
 (`domain/model/vocabulary.py`); the glyph of a step or a run, its text equivalent, and the check
 that fails a representation drawing an element another way (`domain/service/drawing.py`).
 
+The stream of changes (UC-6.10 §2 *Live*, ADR-0055): what a reader receives as Taktus works —
+a snapshot of the scope, then a change for every ledger entry that records a change of state of a
+run, a step or a decision request (`domain/model/live.py`, the contract `contracts/changes/v1`).
+Whether a reader may see a run is one predicate (`domain/service/visibility.py`), which every
+representation asks; until the views of UC-6.4 exist it holds the tenant boundary. The rules —
+the projection, the scope, when a resume is a snapshot — are `domain/service/live.py`; what they
+read is the port `ports/live.py`, which the composition root binds to the ledger store and the
+run's repository; how the streams are fed is the composition root's (`composition/live.py`).
+
 Which connector carries a message, how a decision answer is kept and which values are secret are
 asked through `ports/`, and answered by the composition root, because components never import
 each other.

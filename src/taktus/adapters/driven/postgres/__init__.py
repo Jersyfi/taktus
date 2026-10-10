@@ -16,9 +16,11 @@ from taktus.adapters.driven.postgres.persistence import PostgresPersistence
 from taktus.adapters.driven.postgres.provenance_store import PostgresProvenanceStore
 from taktus.adapters.driven.postgres.queue import PostgresQueue
 from taktus.adapters.driven.postgres.repository import PostgresRepository
+from taktus.adapters.driven.postgres.signal import PostgresLedgerSignal
 
 __all__ = [
     "PostgresLeadership",
+    "PostgresLedgerSignal",
     "PostgresLedgerStore",
     "PostgresOutbox",
     "PostgresPersistence",

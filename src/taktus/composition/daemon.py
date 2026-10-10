@@ -39,6 +39,7 @@ from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresLeadership,
+    PostgresLedgerSignal,
     PostgresLedgerStore,
     PostgresOutbox,
     PostgresPersistence,
@@ -84,6 +85,7 @@ from taktus.components.process.domain.model import Process, ProcessVersion, Trig
 from taktus.components.reporting.application.query import ReportQueries
 from taktus.components.reporting.application.service import (
     BrokenInterfaces,
+    LiveChanges,
     ProductFindings,
     Sending,
 )
@@ -113,6 +115,7 @@ from taktus.composition.execution import (
 )
 from taktus.composition.findings import RepositoryChannel, RunBlocks, findings_tick
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
+from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturity import CatalogMaturities
@@ -178,6 +181,9 @@ class Wired:
     interfaces: BrokenInterfaces
     """The broken interfaces noticed from the run's failed calls, reported to the owner by the
     scheduler (ADR-0047)."""
+    changes: LiveHub
+    """The streams of changes this process holds for its readers, fed from the ledger
+    (ADR-0055). Only the `api` role opens any."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -431,6 +437,13 @@ async def wire(
                 decisions=decisions,
                 owner=owner,
                 interfaces=broken_interfaces(ledger, persistence, owner, clock),
+                changes=LiveHub(
+                    LiveChanges(Records(persistence, ledger_store, runs), state_of),
+                    PostgresLedgerSignal(url),
+                    telemetry,
+                    clock,
+                    LiveOptions(max_streams=settings.live_streams),
+                ),
                 complete_intake=complete_intake,
                 reactions=Reactions(
                     tenants=settings.tenants,
@@ -656,6 +669,9 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
                 name="scheduler",
             )
         )
+    if Role.API in settings.roles:
+        # The streams of changes: the ledger signal wakes them, and they end with the process.
+        tasks.append(asyncio.create_task(run_listener(wired.changes, stop), name="live"))
     if Role.AUTOMATION in settings.roles:
         # The elected automation role reacts to the events the intake kept: one delivery
         # starts each process its triggers name once (ADR-0048).

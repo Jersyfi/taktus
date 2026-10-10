@@ -58,10 +58,13 @@ class PostgresPersistence:
         return self._engine
 
     @asynccontextmanager
-    async def transaction(self, tenant: Tenant) -> AsyncIterator[None]:
+    async def transaction(self, tenant: Tenant, *, consistent: bool = False) -> AsyncIterator[None]:
         if self._current.get() is not None:
             raise NestedTransaction("a unit of work is already open; they do not nest")
         async with self._engine.connect() as connection:
+            if consistent:
+                # Every statement sees the snapshot taken by the first one, not each its own.
+                await connection.execution_options(isolation_level="REPEATABLE READ")
             transaction = await connection.begin()
             await connection.execute(text(f"SET LOCAL ROLE {APPLICATION_ROLE}"))
             await connection.execute(select(func.set_config(TENANT_SETTING, tenant, True)))

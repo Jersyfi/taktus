@@ -8,14 +8,18 @@ import json
 from typing import Any
 
 from taktus.components.decision.domain.model import Request
+from taktus.components.decision.domain.model.recorded import (
+    ANSWERED,
+    APPLIED,
+    CONFIRMED,
+    INTERPRETED,
+    RAISED,
+    REREAD,
+)
 from taktus.ports.ledger import Fact, Ledger
 from taktus.shared.v1 import LedgerRefs
 
-RAISED = "decision.raised"
-ANSWERED = "decision.answered"
-REREAD = "decision.reread"
-CONFIRMED = "decision.confirmed"
-APPLIED = "decision.applied"
+__all__ = ["ANSWERED", "APPLIED", "CONFIRMED", "INTERPRETED", "RAISED", "REREAD", "record"]
 
 
 def digest(document: dict[str, Any]) -> str:

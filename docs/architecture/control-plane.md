@@ -287,6 +287,14 @@ application role may insert and read, and a trigger rejects every update, delete
 for everyone but a superuser (`migrations/`). A hash chain whose rows can be edited proves
 nothing.
 
+**A change of state reaches its reader from the ledger** (ADR-0055). Every insert notifies the
+tenant it wrote, from a trigger, when its transaction commits. The `api` role reads the
+tenant's new entries on that signal, or every 2 seconds without one, and sends each entry that
+records a change of state of a run, a step or a decision request to the streams that may see it
+(`GET /changes`, `contracts/changes/v1`). Which state an entry's kind and outcome lead to is
+published beside the state machine: `components/run/domain/model/recorded.py` for runs and
+steps, `components/decision/domain/model/recorded.py` for decision requests.
+
 ### 6.1 Provenance
 
 The ledger says *what happened*. The **provenance record** says *what a result is made of*
@@ -353,6 +361,10 @@ configuration, not part of a process definition. See [accounting.md](accounting.
 Every control-plane event and every worker event stream is emitted as an OpenTelemetry signal. That
 is the data basis for the ledger, the views, the value ledger and BI export — and the reason an
 external observability platform stays optional and never becomes a prerequisite.
+
+A figure that must hold in operation is a histogram beside the spans (`ports/telemetry.py`,
+`observe`). The first is `change.handover`: the seconds from a ledger entry's recorded moment to
+its hand-over to a reader's stream, which ADR-0055 bounds at 5.
 
 ---
 

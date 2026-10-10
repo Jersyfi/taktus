@@ -103,6 +103,33 @@ class PostgresLedgerStore:
             latest=None if row is None else _entry(row),
         )
 
+    async def head(self, tenant: Tenant) -> int:
+        connection = self._persistence.connection(tenant)
+        newest = await connection.scalar(
+            select(func.max(s.ledger_entry.c.seq)).where(s.ledger_entry.c.tenant == tenant)
+        )
+        return 0 if newest is None else int(newest)
+
+    async def after(self, tenant: Tenant, seq: int, *, limit: int) -> Sequence[LedgerEntry]:
+        connection = self._persistence.connection(tenant)
+        rows = await connection.execute(
+            select(s.ledger_entry)
+            .where((s.ledger_entry.c.tenant == tenant) & (s.ledger_entry.c.seq > seq))
+            .order_by(s.ledger_entry.c.seq)
+            .limit(limit)
+        )
+        return [_entry(row) for row in rows]
+
+    async def position(self, tenant: Tenant, hash: str) -> int | None:
+        """One indexed read: `ledger_entry_hash` (migration 0027)."""
+        connection = self._persistence.connection(tenant)
+        found = await connection.scalar(
+            select(s.ledger_entry.c.seq).where(
+                (s.ledger_entry.c.tenant == tenant) & (s.ledger_entry.c.hash == hash)
+            )
+        )
+        return None if found is None else int(found)
+
 
 def _entry(row: Row[Any]) -> LedgerEntry:
     ts: datetime = row.ts

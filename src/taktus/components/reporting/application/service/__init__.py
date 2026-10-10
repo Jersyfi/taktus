@@ -24,6 +24,12 @@ from taktus.components.reporting.application.service.errors import (
     ReportingError,
     UnknownReport,
 )
+from taktus.components.reporting.application.service.live import (
+    LiveChanges,
+    Opening,
+    Pending,
+    Read,
+)
 from taktus.components.reporting.application.service.product_findings import (
     SENT,
     ProductFindings,
@@ -51,12 +57,16 @@ __all__ = [
     "ConfigureChannel",
     "ConfigureChannelHandler",
     "DeliverReport",
+    "LiveChanges",
     "NoChannel",
     "NotSent",
     "Noticed",
+    "Opening",
+    "Pending",
     "ProductFindings",
     "RaiseReport",
     "RaiseReportHandler",
+    "Read",
     "Reported",
     "ReportingError",
     "Sending",

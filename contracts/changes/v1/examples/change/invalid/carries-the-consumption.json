@@ -1,0 +1,16 @@
+{
+  "position": "sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+  "run": "run_01",
+  "step": "classify",
+  "kind": "step.finished",
+  "outcome": "succeeded",
+  "recorded_at": "2026-10-10T12:00:03Z",
+  "rehearsal": false,
+  "state": {
+    "step": "succeeded"
+  },
+  "consumption": {
+    "compute_seconds": 1.5,
+    "resource_class": "cpu.small"
+  }
+}

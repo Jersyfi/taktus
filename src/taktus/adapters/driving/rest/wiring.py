@@ -6,7 +6,7 @@ project-structure.md §3). The composition root implements this and hands it to 
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from typing import Protocol
 
 from taktus.components.command.application.service import (
@@ -20,9 +20,35 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.reporting.application.query import ReportQueries
+from taktus.components.reporting.domain.model import Change, Reader, Scope, Snapshot
 from taktus.components.run.domain.model import Run
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
+
+
+class StreamsFull(Exception):
+    """The replica holds its maximum of open streams; the reader tries again, possibly on
+    another replica (ADR-0055 §7)."""
+
+    def __init__(self, maximum: int) -> None:
+        super().__init__(f"this replica holds its maximum of {maximum} open streams")
+
+
+class ChangeStreams(Protocol):
+    """The streams of changes this replica holds (ADR-0055)."""
+
+    async def open(
+        self,
+        reader: Reader,
+        scope: Scope,
+        position: str | None,
+        authenticate: Callable[[], Awaitable[Reader | None]],
+    ) -> AsyncIterator[Snapshot | Change | None]:
+        """The stream: its snapshot or what the reader missed, then every change as it
+        happens; None is a heartbeat. `authenticate` is asked again before every batch and
+        every heartbeat; when it answers None the stream ends. `StreamsFull` when the replica
+        holds its maximum."""
+        ...
 
 
 class RestServices(Protocol):
@@ -83,6 +109,11 @@ class RestServices(Protocol):
         """A request of the run took effect: the run continues from the boundary it waits
         at, or halts there, as the decision says. Nothing happens while another request of
         the run waits."""
+        ...
+
+    @property
+    def changes(self) -> ChangeStreams:
+        """The live stream of changes of state (ADR-0055)."""
         ...
 
     async def ready(self) -> str | None:

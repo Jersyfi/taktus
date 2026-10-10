@@ -58,6 +58,7 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/runs",
         "/runs/{run_id}",
         "/runs/{run_id}/ledger",
+        "/changes",
     }
     for path, operations in document["paths"].items():
         for method, operation in operations.items():

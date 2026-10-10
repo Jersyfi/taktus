@@ -519,6 +519,9 @@ class Settings:
     """How often an idle runner or scheduler looks again."""
     runner_concurrency: int
     """How many runs one runner process executes at a time."""
+    live_streams: int
+    """How many streams of changes one process of the `api` role holds open at most; one more
+    is refused with `503` (ADR-0055 §7)."""
     log_level: str
 
     def effective(self) -> list[tuple[str, str]]:
@@ -552,6 +555,7 @@ class Settings:
             ("TAKTUS_LEASE_SECONDS", str(self.lease_seconds)),
             ("TAKTUS_POLL_SECONDS", str(self.poll_seconds)),
             ("TAKTUS_RUNNER_CONCURRENCY", str(self.runner_concurrency)),
+            ("TAKTUS_LIVE_STREAMS", str(self.live_streams)),
             ("TAKTUS_LOG_LEVEL", self.log_level),
         ]
 
@@ -597,6 +601,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         lease_seconds=reader.integer("lease.seconds", 60, low=5),
         poll_seconds=reader.number("poll.seconds", 1.0, low=0.05),
         runner_concurrency=reader.integer("runner.concurrency", 4, low=1),
+        live_streams=reader.integer("live.streams", 500, low=1),
         log_level=reader.choice("log.level", "info", ("debug", "info", "warning", "error")),
     )
 

@@ -136,6 +136,21 @@ class LedgerStore(Protocol):
         without reading the chain: what a report over a growing ledger may ask every hour."""
         ...
 
+    async def head(self, tenant: Tenant) -> int:
+        """The sequence number of the newest entry of the tenant's chain, 0 when it has none.
+        Unlike `last`, it claims nothing: a reader asks it without waiting for a writer."""
+        ...
+
+    async def after(self, tenant: Tenant, seq: int, *, limit: int) -> Sequence[LedgerEntry]:
+        """At most `limit` entries of the tenant's chain whose sequence number is above `seq`,
+        in sequence order: what a reader resumes from (ADR-0055)."""
+        ...
+
+    async def position(self, tenant: Tenant, hash: str) -> int | None:
+        """The sequence number of the tenant's entry with this hash, or None when the chain
+        holds none: how a reader's position, a hash, is found again (ADR-0055 §4)."""
+        ...
+
 
 class KindSummary(Value):
     """The entries of one kind in one chain, counted (`LedgerStore.summary`)."""
@@ -181,8 +196,12 @@ class ProvenanceStore(Protocol):
 
 
 class UnitOfWork(Protocol):
-    def transaction(self, tenant: Tenant) -> AbstractAsyncContextManager[None]:
+    def transaction(
+        self, tenant: Tenant, *, consistent: bool = False
+    ) -> AbstractAsyncContextManager[None]:
         """One transaction for one tenant across every repository, the ledger store and the
         provenance store of the same persistence. Committed when the block ends, rolled back
-        when it raises."""
+        when it raises. `consistent`: every read inside the block sees the same committed
+        state, the one of its first read — what a snapshot read together with its position
+        needs (ADR-0055 §4)."""
         ...

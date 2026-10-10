@@ -1,0 +1,19 @@
+{
+  "position": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "scope": {
+    "kind": "run",
+    "id": "run_01"
+  },
+  "runs": [
+    {
+      "id": "run_01",
+      "process_version": "invoice-intake@3",
+      "state": "running",
+      "rehearsal": false,
+      "steps": [],
+      "consumed": {
+        "compute_seconds": 12.5
+      }
+    }
+  ]
+}

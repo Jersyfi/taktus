@@ -67,6 +67,7 @@ taktus/
 │   │   … run/domain/service/autonomy.py which autonomy level holds for a step and what it asks of a person before it starts; process/domain/service/autonomy.py what raises a level and when a raise is admitted, applied where a version is registered; process/application/service/propose_raise.py the proposal with its evidence, which never applies itself (ADR-0039)
 │   │   … catalog/domain/model/maturity.py is an adapter's maturity with its last removal result; catalog/domain/service/removal.py the rules that decide broke, changed, untested or exception, and when a process can be rehearsed; catalog/application/service/record_removal.py writes the result and the ledger entry `removal.tested`; catalog/application/service/run_conformance.py runs a contract's suite through the port catalog/ports/suites.py and writes the conformance half and `conformance.tested`, its one writer (ADR-0044); composition/conformance.py implements the port over the instance's configuration, composition/pools.py reads what stands behind an adapter identifier
 │   │   … run/domain/service/budget.py the budget's rules: the line less the margin, calibration and its seed, the reservation, the worker's ceiling, what a budget can promise; accounting/ meters a run from the ledger and prices it at the table its budget statement names (`taktusctl cost`, which also prints the statement's word that the uncalibrated margin was set below the floor)
+│   │   … run/domain/model/recorded.py and decision/domain/model/recorded.py which state a ledger entry's kind and outcome lead to, published beside each state machine; reporting/domain/service/visibility.py the one predicate of what a reader may see; reporting/domain/service/live.py and application/service/live.py the stream of changes as rules — the projection, the scope, when a resume is a snapshot — over the port reporting/ports/live.py (ADR-0055)
 │   │   … identity/ command/ process/ run/ governance/ decision/ catalog/
 │   │     accounting/ knowledge/ value/ ledger/
 │   │
@@ -75,7 +76,7 @@ taktus/
 │   │   ├── connector.py             # CONTRACT 2 — tools and channels: intake, and actions with a call context, a declared effect and a classified failure
 │   │   ├── model.py                 # CONTRACT 3 — models: a prompt in, a completion with its tokens by price kind and the answering model out; the declaration of what it can compute before a call; the price table; resolved by purpose
 │   │   ├── execution.py             # how a unit comes to exist for a job: process | container | cluster; the fail-closed refusal of no isolation from level 3
-│   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore (with `summary`: a kind counted without reading the chain), ProvenanceStore, UnitOfWork — every call names its tenant; StateSize: the state's size on disk
+│   │   ├── persistence.py           # Repository[T] per aggregate, LedgerStore (with `summary`: a kind counted without reading the chain; `head`, `after` and `position`: what a reader resumes from), ProvenanceStore, UnitOfWork — every call names its tenant, and a `consistent` one reads one state; StateSize: the state's size on disk
 │   │   ├── ledger.py                # facts in, chained entries out, verify — one chain per tenant
 │   │   ├── identity.py              # who acts: a sender on a channel placed in a tenant as an identity; served by components/identity (ADR-0040); IdentitySource is the organisation's own source
 │   │   ├── configuration.py         # what an instance is told about itself, by key; Secret; ConfigurationError
@@ -84,19 +85,21 @@ taktus/
 │   │   ├── leadership.py            # one instance leads a singular role; a dead leader is replaced
 │   │   ├── platform.py              # what the machine or container has left — CPU, memory, storage — each observed or unobserved with the reason
 │   │   ├── administration.py        # the platform this instance runs on and what each credential administers; the refusal ADR-0052 makes
-│   │   ├── objectstore.py  clock.py  telemetry.py
+│   │   ├── signal.py                # the signal that a tenant's ledger gained entries: it wakes a reader, never a record (ADR-0055)
+│   │   ├── telemetry.py             # spans around units of work, and histograms of what is measured in operation
+│   │   ├── objectstore.py  clock.py
 │   │   ├── eventbus.py  secret.py
 │   │
 │   ├── adapters/
 │   │   ├── driving/
 │   │   │   ├── cli/                 # taktusctl: conformance run, run, submit, capacity; identity, with the roles an identity holds; anchors set and show (ADR-0042)
-│   │   │   └── rest/                # the HTTP surface: health, readiness, webhook intake, the decision requests addressed to a decider (ADR-0042), the read API — under a prefix; RFC 9457 problems
+│   │   │   └── rest/                # the HTTP surface: health, readiness, webhook intake, the decision requests addressed to a decider (ADR-0042), the read API, the stream of changes as Server-Sent Events (ADR-0055) — under a prefix; RFC 9457 problems
 │   │   └── driven/
 │   │       ├── memory/              # DEVELOPMENT AND TEST ONLY: in-memory stores, queue and leadership, optional file snapshot
-│   │       ├── postgres/            # persistence, queue (claim_jobs with a lease) and leadership (advisory lock) over PostgreSQL; SQLAlchemy Core
+│   │       ├── postgres/            # persistence, queue (claim_jobs with a lease) and leadership (advisory lock) over PostgreSQL; SQLAlchemy Core; signal.py listens to the notification every ledger insert sends (ADR-0055)
 │   │       ├── configuration/       # the configuration port over TAKTUS_* variables; a secret from the file TAKTUS_<KEY>_FILE names
 │   │       ├── clock/               # the system clock, identifiers, randomness — the only place
-│   │       ├── telemetry/           # otel: real spans, exported where TAKTUS_OTLP_* says; noop for tests
+│   │       ├── telemetry/           # otel: real spans and histograms, exported where TAKTUS_OTLP_* says; noop for tests
 │   │       ├── workers/http/        # the worker port over HTTP and SSE; workers/pool.py maps capabilities; workers/launched.py puts the port over the execution port
 │   │       ├── execution/           # process.py: a unit as a child process, its memory limit enforced on Linux and refused elsewhere; container/: a unit per job in a container with limits, no swap, credentials in memory, an egress proxy; kubernetes/: a unit per job as a Job in the execution namespace, credentials from a Secret for the job's lifetime, an egress proxy Job — api.py speaks the cluster's API with httpx, only the calls of the Role (M1.3), and nothing else imports it
 │   │       ├── platform/            # host.py: the platform port for this machine or container — control group, /proc, the state directory's filesystem; standard library only
@@ -111,7 +114,7 @@ taktus/
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
-│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); reactions.py the event reactions the automation role makes, and the condition `capacity.available` (ADR-0048); replies.py answers a sender in a channel through its connector's reply operation (ADR-0040); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under; maturity.py answers the run's maturity port from the catalog's record (ADR-0039); decisions.py answers the run's anchor and decision ports from governance and decision, and decision's deciders from identity (ADR-0042); owner_channel.py joins reporting, decision, the connectors and the intake for the owner-facing channel — a report said through the channel's reply operation, an answer in its thread taken from the intake, the shipped phrasebooks under phrasebooks/ (ADR-0045); interfaces.py reads the run's failed calls for the reporting component and is the scheduler's look for a broken interface (ADR-0047)
+│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); reactions.py the event reactions the automation role makes, and the condition `capacity.available` (ADR-0048); replies.py answers a sender in a channel through its connector's reply operation (ADR-0040); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under; maturity.py answers the run's maturity port from the catalog's record (ADR-0039); decisions.py answers the run's anchor and decision ports from governance and decision, and decision's deciders from identity (ADR-0042); owner_channel.py joins reporting, decision, the connectors and the intake for the owner-facing channel — a report said through the channel's reply operation, an answer in its thread taken from the intake, the shipped phrasebooks under phrasebooks/ (ADR-0045); interfaces.py reads the run's failed calls for the reporting component and is the scheduler's look for a broken interface (ADR-0047); live.py holds the streams of changes of the `api` role and feeds them from the ledger, woken by the ledger signal and read at an interval without one (ADR-0055)
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 │   ├── script/                      # the reference worker: shell commands, no AI
@@ -120,7 +123,7 @@ taktus/
 │   └── mlbench/                     # training, evaluation, embeddings, classical ML (0.4.0)
 │
 ├── contracts/                       # what third parties implement — JSON Schema
-│   └── worker/v1/ connector/v1/ model/v1/ process/v1/ events/v1/ shared/v1/
+│   └── worker/v1/ connector/v1/ model/v1/ process/v1/ events/v1/ changes/v1/ shared/v1/
 │
 ├── api/openapi.yaml                 # Taktus' OWN REST interface, generated from FastAPI by `make generate`, committed, held current by a test
 ├── migrations/                      # Alembic: alembic.ini, env.py, versions/ — explicit DDL, one head
@@ -291,6 +294,13 @@ role it would tie the core to a model stack and the removal test would be lost.
   process and the delivery, and the entry is published only after its runs exist — with two
   automation roles and across a stop of the leader (`tests/integration/test_event_reactions.py`).
   A trigger whose condition does not hold leaves its entry for a later pass.
+- **The stream of changes** is the `api` role's (`composition/live.py`, ADR-0055). Each process
+  holds at most `TAKTUS_LIVE_STREAMS` streams and one listening connection. A notification for a
+  tenant with open streams wakes one read of its ledger, after the oldest position its streams
+  hold; a tenant that heard nothing is read every 2 seconds anyway. Each stream receives the
+  entries after its own position, filtered when they are sent by the reader's key as it is then.
+  A reader that reconnects to another process resumes from its position. Proven with two `api`
+  processes, with the notification and without it (`tests/integration/test_live_changes.py`).
 - **Shutdown** is the same for every role: on SIGTERM the HTTP surface stops, the runner claims
   nothing more, every running run is asked to stop at its next step boundary and the running
   worker step may finish up to `TAKTUS_SHUTDOWN_CEILING_SECONDS`, the claims are released, the

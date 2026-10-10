@@ -1,4 +1,5 @@
-"""Telemetry: spans around units of work, emitted as OpenTelemetry signals by the adapter.
+"""Telemetry: spans around units of work, and histograms of what is measured in operation,
+emitted as OpenTelemetry signals by the adapter.
 
 Every control-plane event is emitted from day one (docs/architecture/control-plane.md §8). A
 span carries attributes — plain names and values — and records whether the work inside it
@@ -42,4 +43,12 @@ class Telemetry(Protocol):
     def current_trace_id(self) -> str | None:
         """The identifier of the trace the innermost open span belongs to — 32 lowercase hex
         characters — or None when no span is open or the adapter keeps none."""
+        ...
+
+    def observe(
+        self, name: str, value: float, *, unit: str, attributes: Attributes | None = None
+    ) -> None:
+        """One measurement of the histogram `name`, in `unit` (`s` for seconds): how a figure
+        is observed in operation, not only in a test — the time from a ledger entry's recorded
+        moment to its hand-over to a reader, for one (ADR-0055 §7)."""
         ...

@@ -1,0 +1,44 @@
+{
+  "position": "sha256:a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "scope": {
+    "kind": "tenant"
+  },
+  "runs": [
+    {
+      "id": "run_01",
+      "process_version": "invoice-intake@3",
+      "state": "running",
+      "rehearsal": false,
+      "steps": [
+        {
+          "id": "read",
+          "state": "succeeded",
+          "method": "rule"
+        },
+        {
+          "id": "classify",
+          "state": "running",
+          "method": "ml"
+        },
+        {
+          "id": "approve",
+          "state": "planned",
+          "method": "human"
+        }
+      ]
+    },
+    {
+      "id": "run_02",
+      "process_version": "invoice-intake@3",
+      "state": "waiting_human",
+      "rehearsal": true,
+      "steps": [
+        {
+          "id": "release",
+          "state": "waiting_human",
+          "method": "rule"
+        }
+      ]
+    }
+  ]
+}

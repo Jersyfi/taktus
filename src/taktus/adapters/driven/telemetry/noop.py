@@ -21,3 +21,8 @@ class NoTelemetry:
 
     def current_trace_id(self) -> str | None:
         return None
+
+    def observe(
+        self, name: str, value: float, *, unit: str, attributes: Attributes | None = None
+    ) -> None:
+        return None

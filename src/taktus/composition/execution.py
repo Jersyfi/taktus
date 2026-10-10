@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
@@ -22,7 +23,11 @@ from taktus.adapters.driven.execution import (
     ProcessExecution,
 )
 from taktus.adapters.driven.models import OpenAiCompatibleModel, StaticModelPool
-from taktus.adapters.driven.telemetry import OpenTelemetryTelemetry, exporter_for
+from taktus.adapters.driven.telemetry import (
+    OpenTelemetryTelemetry,
+    exporter_for,
+    metric_exporter_for,
+)
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.launched import LaunchedWorker
 from taktus.composition.settings import (
@@ -162,10 +167,15 @@ async def open_worker(
 def telemetry_of(settings: TelemetrySettings) -> OpenTelemetryTelemetry:
     """Real spans always; an exporter only where an endpoint is configured."""
     exporter = None
+    metrics = None
     if settings.endpoint is not None:
+        protocol: Literal["grpc", "http"] = "grpc" if settings.protocol == "grpc" else "http"
         exporter = exporter_for(
-            settings.endpoint,
-            protocol="grpc" if settings.protocol == "grpc" else "http",
-            headers=settings.parsed_headers(),
+            settings.endpoint, protocol=protocol, headers=settings.parsed_headers()
         )
-    return OpenTelemetryTelemetry(service_name=settings.service_name, exporter=exporter)
+        metrics = metric_exporter_for(
+            settings.endpoint, protocol=protocol, headers=settings.parsed_headers()
+        )
+    return OpenTelemetryTelemetry(
+        service_name=settings.service_name, exporter=exporter, metric_exporter=metrics
+    )
