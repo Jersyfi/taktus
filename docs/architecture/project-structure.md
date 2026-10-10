@@ -122,7 +122,7 @@ taktus/
 │   ├── script/                      # the reference worker: shell commands, no AI
 │   ├── claudecode/                  # the coding worker: a coding agent behind the contract, and the fake agent the gate runs it against
 │   ├── codex/                       # the second coding worker (0.4.0)
-│   └── mlbench/                     # training, evaluation, embeddings, classical ML (0.4.0)
+│   └── mlbench/                     # the ML bench: trains, evaluates and serves classical models; embeddings next (#210)
 │
 ├── contracts/                       # what third parties implement — JSON Schema
 │   └── worker/v1/ connector/v1/ model/v1/ process/v1/ events/v1/ changes/v1/ shared/v1/

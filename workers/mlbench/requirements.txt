@@ -1,0 +1,11 @@
+# The ML bench's libraries, each at one exact version, installed without resolving anything
+# further (`pip install --no-deps`): the closure of scikit-learn, the versions uv.lock holds for
+# the extra `mlbench`, which the tests run the worker with. tests/workers/test_mlbench.py holds
+# this file to the lock.
+cloudpickle==3.1.2
+joblib==1.6.0
+narwhals==2.27.1
+numpy==2.5.4
+scikit-learn==1.9.1
+scipy==1.18.1
+threadpoolctl==3.7.0

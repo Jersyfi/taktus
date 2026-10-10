@@ -66,6 +66,9 @@ jobs:
           # Dockerfile from this checkout: the tag fixes the agent too (#116).
           - name: taktus-worker-coding
             dockerfile: workers/claudecode/Dockerfile
+          # Its libraries at the exact versions workers/mlbench/requirements.txt names.
+          - name: taktus-worker-mlbench
+            dockerfile: workers/mlbench/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

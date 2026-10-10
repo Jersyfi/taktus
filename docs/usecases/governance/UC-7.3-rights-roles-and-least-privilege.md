@@ -7,7 +7,7 @@ serves: [P11, P12, P14]
 state: building
 version: 0.2.0
 tests: [tests/adapters/execution/test_process.py::test_a_credential_reaches_the_unit_s_environment_and_nothing_else, tests/adapters/execution/test_container.py::test_an_empty_allowlist_reaches_nothing_and_a_named_host_is_reached_through_the_proxy]
-adrs: {ADR-0007: 48adf2cc7e70, ADR-0020: 406f1ca33b50, ADR-0025: cba7351885b6, ADR-0026: ccc4bd1f5423}
+adrs: {ADR-0007: 26804369941b, ADR-0020: 406f1ca33b50, ADR-0025: cba7351885b6, ADR-0026: ccc4bd1f5423}
 supersedes: null
 ---
 

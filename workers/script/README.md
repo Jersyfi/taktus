@@ -38,7 +38,7 @@ many steps, progress reported in epochs (`step.progress` with `current`, `total`
 an epoch boundary mid-run. It trains nothing. It holds no accelerator. The resource class it
 reports is whatever `--resource-class` says (default `cpu.small`), and its epochs are `printf`
 and a short sleep. It shows that the contract fits that shape; it is no evidence that training
-works. The worker that trains, `mlbench`, arrives at `0.4.0` (`docs/roadmap.md`).
+works. The worker that trains is `mlbench` (`workers/mlbench/`).
 
 Tunables: `--step-seconds` (quick, default 0.3), `--epochs` (longrun, default 4),
 `--epoch-seconds` (longrun, default 0.5), `--estimate-factor` (default 1.0, see *Limits*),

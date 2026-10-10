@@ -14,5 +14,5 @@ by endpoint, as a process it starts, or as a container it starts from that image
 |---|---|---|
 | [`script/`](script/README.md) | a shell wrapper with no AI at all — proof case 1 of the contract, and the worker the conformance suite is proven against | passes the suite in both profiles; the removal test is pending, so not *verified* |
 | [`claudecode/`](claudecode/README.md) | the first coding worker: a coding agent behind the contract, with boundaries per tool call, consumption per step, and two authentication modes | passes the suite, faults included, in both modes against its fake agent; the removal test is pending, so not *verified* |
-| `mlbench/` | training, evaluation, embeddings, classical ML — proof case 2 | `0.4.0` |
+| [`mlbench/`](mlbench/README.md) | the ML bench: trains, evaluates and serves classical models, reproducibly — proof case 2 | passes the suite, faults included; embeddings and an accelerator are #210; the removal test is pending, so not *verified* |
 | `codex/` | the second coding worker | `0.4.0` |

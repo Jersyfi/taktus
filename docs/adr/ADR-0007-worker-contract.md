@@ -32,4 +32,5 @@ boundaries (W-09) are the two obligations a wrapped foreign CLI struggles with, 
 that cannot estimate gets a rejected assignment, not a pass. The conformance suite proves W-01
 to W-11 and W-13 against a live worker; W-12, the removal test, is proven by the process under
 `blueprints/self-operation/`, per installation, not by the suite (DEC-0005). Two proof cases
-are promised; the second, `mlbench`, does not exist yet.
+are promised. The second, `mlbench`, passes the suite since 2026-10-10 as a training on a CPU
+(#89); a training that holds an accelerator for hours is still to come (#210).
