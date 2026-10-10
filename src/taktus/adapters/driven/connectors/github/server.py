@@ -64,6 +64,19 @@ def log(message: str) -> None:
     sys.stderr.flush()
 
 
+def secret_named(name: str) -> str | None:
+    """The value under a credential's name: from the file `TAKTUS_CREDENTIAL_<NAME>_FILE`
+    names, else from the variable of the name — the one pattern every secret of this repository
+    follows (`CREDENTIALS.md`). Read now, kept nowhere."""
+    path = os.environ.get(f"TAKTUS_CREDENTIAL_{name.upper()}_FILE")
+    if path:
+        try:
+            return Path(path).read_text(encoding="utf-8").strip() or None
+        except OSError:
+            return None
+    return os.environ.get(name) or None
+
+
 def credential_value(context: Json) -> str | None:
     """The first referenced credential whose value the runtime made available, or None. Read at
     the moment of the call, used for the call, kept nowhere."""
@@ -73,7 +86,7 @@ def credential_value(context: Json) -> str | None:
         name = str(reference.get("name", ""))
         value: str | None = None
         if reference.get("injected_as") == "env":
-            value = os.environ.get(name)
+            value = secret_named(name)
         elif reference.get("injected_as") == "file" and reference.get("path"):
             try:
                 value = Path(str(reference["path"])).read_text(encoding="utf-8").strip()
@@ -211,7 +224,7 @@ class Connector:
 
     async def intake(self, headers: Json, body: str, received_at: str) -> CallToolResult:
         """The secret is read at the moment of the call, like a credential of an action."""
-        secret = os.environ.get(declaration.INTAKE_CREDENTIAL)
+        secret = secret_named(declaration.INTAKE_CREDENTIAL)
         given = {str(k).lower(): str(v) for k, v in headers.items()}
         if secret and (
             ("C-08-unsigned" in self.faults and intake.SIGNATURE_HEADER not in given)

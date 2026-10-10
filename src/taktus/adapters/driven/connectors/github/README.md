@@ -70,8 +70,8 @@ describes both as parameters:
 
 | Name | Purpose | How it reaches the connector |
 |---|---|---|
-| `REPOSITORY_TOKEN` | actions: the **requesting identity's** token, with that identity's scopes — Taktus's own app's installation token when the app is configured | as the app: minted by the connector from the app's key ([`app.py`](app.py)); otherwise referenced in the call's context and read from the environment or a file at the moment of the call. Never stored |
-| `REPOSITORY_WEBHOOK_SECRET` | intake: the secret the webhook signs with — the app's webhook secret when the app delivers the events | read from the environment at the moment of the intake call |
+| `REPOSITORY_TOKEN` | actions: the **requesting identity's** token, with that identity's scopes — Taktus's own app's installation token when the app is configured | as the app: minted by the connector from the app's key ([`app.py`](app.py)); otherwise referenced in the call's context and read at the moment of the call from a file — the one the reference names, or `TAKTUS_CREDENTIAL_<NAME>_FILE` — or from the variable of its name. Never stored |
+| `REPOSITORY_WEBHOOK_SECRET` | intake: the secret the webhook signs with — the app's webhook secret when the app delivers the events | read at the moment of the intake call from the file `TAKTUS_CREDENTIAL_REPOSITORY_WEBHOOK_SECRET_FILE` names, or from the variable of that name when no file is named |
 
 The connector has no token of its own to fall back on. A call that references no credential, or
 one that is not available, ends `unauthenticated` without a request. A token the service refuses

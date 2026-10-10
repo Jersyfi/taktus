@@ -300,6 +300,7 @@ def test_one_deployment_per_role_and_migrations_with_the_same_image(
     deployments = {
         d["spec"]["template"]["spec"]["containers"][0]["env"][0]["value"]: d
         for d in of_kind(rendered, "Deployment")
+        if d["metadata"]["labels"]["app.kubernetes.io/component"] == "control-plane"
     }
     assert set(deployments) == {"api", "runner", "scheduler", "automation"}
     [job] = of_kind(rendered, "Job")
@@ -339,6 +340,53 @@ def test_the_cluster_adapter_is_wired_to_the_namespace_the_account_and_the_state
     }
     assert (EXECUTION_NAMESPACE, "unit-state") in claims
     assert {d["kind"] for d in documents} <= ALLOWED_KINDS
+
+
+def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_app(
+    rendered: list[dict[str, Any]],
+) -> None:
+    """Issue #66: the repository channel's connector is deployed with the instance, from the
+    control plane's image, as Taktus's own app (ADR-0033); the roles name it as `channel.repo`
+    and as the findings connector; it is reached from the roles alone and mounts no token."""
+    [connector] = [
+        d
+        for d in of_kind(rendered, "Deployment")
+        if d["metadata"]["labels"]["app.kubernetes.io/component"] == "connector-repository"
+    ]
+    spec = connector["spec"]["template"]["spec"]
+    assert spec["automountServiceAccountToken"] is False
+    [container] = spec["containers"]
+    roles = [
+        d
+        for d in of_kind(rendered, "Deployment")
+        if d["metadata"]["labels"]["app.kubernetes.io/component"] == "control-plane"
+    ]
+    assert {container["image"]} == {
+        d["spec"]["template"]["spec"]["containers"][0]["image"] for d in roles
+    }
+    assert container["command"][:3] == ["python", "-m", "taktus.adapters.driven.connectors.github"]
+    variables = {v["name"]: v["value"] for v in container["env"]}
+    assert set(variables) == {
+        "TAKTUS_REPOSITORY_APP_ID",
+        "TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE",
+        "TAKTUS_CREDENTIAL_REPOSITORY_WEBHOOK_SECRET_FILE",
+    }
+    [config] = of_kind(rendered, "ConfigMap")
+    url = "http://taktus-connector-repository:9100/mcp"
+    assert config["data"]["TAKTUS_CONNECTORS"] == f"channel.repo={url}"
+    assert config["data"]["TAKTUS_FINDINGS_CONNECTOR"] == url
+    [policy] = [
+        d
+        for d in of_kind(rendered, "NetworkPolicy")
+        if d["metadata"]["name"] == "taktus-connector-repository"
+    ]
+    [allowed] = policy["spec"]["ingress"]
+    [peer] = allowed["from"]
+    assert peer["podSelector"]["matchLabels"]["app.kubernetes.io/component"] == "control-plane"
+    assert "namespaceSelector" not in peer
+    off = render("connectors.repository.enabled=false")
+    assert not [d for d in off if "connector" in d["metadata"]["name"]]
+    assert "TAKTUS_CONNECTORS" not in of_kind(off, "ConfigMap")[0]["data"]
 
 
 def test_the_ingress_is_off_unless_a_host_is_given(rendered: list[dict[str, Any]]) -> None:
