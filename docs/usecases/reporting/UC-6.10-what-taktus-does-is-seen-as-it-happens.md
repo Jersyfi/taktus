@@ -4,10 +4,10 @@ title: What Taktus does is seen as it happens
 component: reporting
 epic: E6
 serves: [P2, P7, P9, P14]
-state: specified
+state: building
 version: 0.3.0
-tests: []
-adrs: {ADR-0015: 3a42705e5561, ADR-0021: 202e0442e7ec, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a, ADR-0055: 3fe20ea459f6}
+tests: [tests/components/reporting/test_visual_vocabulary.py::test_a_reproducible_kind_is_drawn_apart_from_a_variable_one, tests/components/reporting/test_visual_vocabulary.py::test_a_persons_step_and_a_waiting_step_differ_from_both_and_from_each_other, tests/components/reporting/test_visual_vocabulary.py::test_exact_is_marked_and_no_other_class_carries_its_mark, tests/components/reporting/test_visual_vocabulary.py::test_no_token_is_a_colour, tests/components/reporting/test_visual_vocabulary.py::test_an_idle_system_draws_no_motion, tests/components/reporting/test_visual_vocabulary.py::test_without_motion_nothing_moves_and_nothing_is_lost, tests/components/reporting/test_visual_vocabulary.py::test_every_element_has_a_text_equivalent_with_its_method_class_and_state, tests/components/reporting/test_visual_vocabulary.py::test_a_representation_that_draws_an_llm_step_as_reproducible_fails]
+adrs: {ADR-0015: 3a42705e5561, ADR-0021: 202e0442e7ec, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a, ADR-0055: 3fe20ea459f6, ADR-0059: 77fcc243cd82}
 supersedes: null
 ---
 
@@ -106,3 +106,22 @@ The roadmap's `0.3.0`, *visibility*, names a dashboard and a process diagram; bl
 for "process diagrams with their data" (`AF-01-dev-orchestration.md` §5). Neither version of the
 project definition has this use case. The owner stated it on 2026-10-08 and accepted it as
 written the same day (DEC-0055).
+
+## 5. What is proven so far
+
+The visual vocabulary is built, in the `reporting` component (ADR-0059). Nothing that draws is
+built yet. By the named tests:
+
+- The four reproducible method kinds share a straight edge and a regular pulse; `llm` and
+  `worker` share a wavering edge and an irregular shimmer. A person's step and a waiting step
+  each have an edge and a motion of their own. Each method kind has its own outline.
+- `exact` carries a mark no other exactness class carries. No token of the vocabulary is a
+  colour.
+- Only a running step moves; a waiting step and every run never do, so an idle system draws no
+  motion.
+- Without motion, every motion is replaced by a still mark of its own, and nothing else changes.
+- Every step and every run has a text that names its method kind, exactness class and state.
+- A representation that draws an element another way than the vocabulary fails the check.
+
+Not yet: the four levels, the live changes and the web app (#105, #183); the forms of a decision
+request and of a result's origin, which arrive with the level that draws them.

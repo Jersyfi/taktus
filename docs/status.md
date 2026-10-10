@@ -291,18 +291,19 @@ answers, for the first time, how much of the vision stands:
 
 - **Every one of the fourteen principles is served by at least one use case**; `make gate-vision`
   fails when one is not.
-- **Seventy-five use cases exist in the new format. None is verified; three are built**: UC-1.7
-  every command belongs to one identity (#82), UC-7.4 the decision request (#79), and UC-6.12
-  the product finding (#86). Fifteen
+- **Seventy-six use cases exist in the new format. None is verified; four are built**: UC-1.7
+  every command belongs to one identity (#82), UC-7.4 the decision request (#79), UC-6.12
+  the product finding (#86), and UC-4.14 a process starts on what happens in a tool (#76). Seventeen
   are *building* — part of what they require is built and named tests prove that part, which
   each states in its section 5, *What is proven so far*, outside the requirement (DEC-0106): UC-1.1
   commands from any channel, UC-4.5 halt or escalate at the boundary, UC-6.1 the complete activity
-  log, UC-8.9 changing a vendor breaks nothing, UC-7.1 the autonomy range, UC-7.2 the emergency
+  log, UC-6.10 seen as it happens, whose visual vocabulary is built (#104), UC-6.11 the owner-facing
+  channel, UC-8.9 changing a vendor breaks nothing, UC-7.1 the autonomy range, UC-7.2 the emergency
   stop, UC-7.3 least privilege down to the worker, UC-8.5 cost control; and from the third step
   UC-1.2 planning in dialogue, UC-5.8 observability
   platforms, UC-8.1 any model connected, UC-8.4 repeatability, UC-8.10 limits that do no harm,
   UC-14.1 the worker interface; and from the fourth step UC-9.5 bottleneck and waiting analysis,
-  whose blocked-time accounts are built (#80). Fifty-eight are *specified* and nothing of them is
+  whose blocked-time accounts are built (#80). Fifty-five are *specified* and nothing of them is
   built. UC-6.10
   was added on 2026-10-08 and accepted by the owner (DEC-0055); seventeen came with the migration's
   second step on the same day, twenty-seven with the third on 2026-10-09, and seventeen with the
@@ -442,6 +443,7 @@ rather than enforced, anything marked provisional.
 | `frame.allowed_hosts` names the hosts a unit may reach | DEC-0008, `contracts/worker/v1` | enforced by the `container` adapter through a per-job egress proxy, and by the `cluster` adapter through a per-job proxy Job where the cluster enforces network policies. With the `process` and `endpoint` kinds it is declared and not enforced, and `tools/first_run.sh` uses `endpoint` — so the first live run's worker reached whatever the machine could (DEC-0022) |
 | the weekly removal test runs weekly | `blueprints/self-operation/README.md` | ran by hand on 2026-09-21 and 2026-09-23, and on its schedule for the first time on 2026-09-28, against the example process and the reference worker; every verdict now names the adapter it was taken under, and an integration no process uses reads `untested` (#36); the scheduler starts it from the bundle's weekly trigger in a daemon with the `scheduler` role (#69), proven in a test, and no installed instance runs one yet, so the CI workflow stays |
 | exactness is a result, not a switch: the exactness statement | UC-4.13, UC-6.9 | specified; `0.5.0` |
+| every live representation draws a method kind, an exactness class and a state one way, by form and motion, never by colour alone | UC-6.10, ADR-0059 (#104) | the vocabulary is built in `reporting`, with the check that fails a representation drawing an element another way (`tests/components/reporting/test_visual_vocabulary.py`); nothing draws yet, so no representation runs the check. It holds the tokens a representation hands over, not the pixels; how the vocabulary reaches the web app is #105's |
 | a change of a run's state reaches every open representation within 5 seconds, resumable without a missed change, only where the reader is entitled | UC-6.10, ADR-0055 (#103) | decided, nothing built: Server-Sent Events from the `api` role, read from the ledger and woken by a database notification, a position that is the entry's hash; the stream and its contract are #183, the web app that reads it #105, both `0.3.0`. Until UC-6.4 (`0.5.0`), visibility on the stream is the tenant boundary only |
 | result defects are detected and remediated under the correction anchor | ADR-0021 to ADR-0023 | the terms and the anchor exist; detection and repair are `0.5.0` |
 | `blueprints/it-operations` | its README file | a placeholder |

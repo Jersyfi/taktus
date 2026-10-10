@@ -33,6 +33,11 @@ adapter expects, one per interface and cause, read by a rule from the run's fail
 (`domain/service/interfaces.py`, through the port `ports/interfaces.py`) and reported to the
 owner as a report of kind `failure` (`application/service/broken_interfaces.py`).
 
+The visual vocabulary (UC-6.10, ADR-0059): how every live representation draws a method kind,
+an exactness class and a state, as tokens of form, motion, marks and text, defined once
+(`domain/model/vocabulary.py`); the glyph of a step or a run, its text equivalent, and the check
+that fails a representation drawing an element another way (`domain/service/drawing.py`).
+
 Which connector carries a message, how a decision answer is kept and which values are secret are
 asked through `ports/`, and answered by the composition root, because components never import
 each other.
