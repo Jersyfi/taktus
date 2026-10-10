@@ -33,6 +33,7 @@ from taktus.components.process.domain.model import (
     ProcessVersion,
     RaiseRefused,
 )
+from taktus.ports.administration import Administration
 from taktus.ports.ledger import Fact
 from taktus.shared.v1 import LedgerEntry, LedgerRefs
 
@@ -83,7 +84,7 @@ def bundle(
 
 
 class World:
-    def __init__(self) -> None:
+    def __init__(self, administration: Administration | None = None) -> None:
         self.persistence = MemoryPersistence()
         self.ledger = ChainedLedger(
             MemoryLedgerStore(self.persistence), FakeClock(datetime(2026, 10, 9, tzinfo=UTC))
@@ -91,7 +92,11 @@ class World:
         self.versions = MemoryRepository(self.persistence, ProcessVersion)
         self.processes = MemoryRepository(self.persistence, Process)
         self.register = RegisterProcessVersionHandler(
-            self.versions, self.persistence, self.processes, ledger=self.ledger
+            self.versions,
+            self.persistence,
+            self.processes,
+            ledger=self.ledger,
+            administration=administration,
         )
         self.propose = ProposeRaiseHandler(
             self.versions, self.processes, self.persistence, self.ledger
@@ -311,3 +316,42 @@ def test_an_action_no_step_uses_is_refused() -> None:
 def test_an_action_carries_its_reason() -> None:
     with pytest.raises(InvalidProcess, match="reason"):
         parse_bundle(bundle(3, actions={"shell.script": {"level": 2, "toward_next": "t"}}))
+
+
+# --- a version that would administer the instance's own platform (ADR-0052, issue #83) ----------
+
+
+def naming(name: Any) -> dict[str, Any]:
+    document = bundle()
+    document["steps"][1]["work"]["credentials"] = [{"name": name, "injected_as": "env"}]
+    return document
+
+
+async def test_a_version_naming_a_credential_that_administers_this_platform_is_refused() -> None:
+    w = World(Administration(platform="here", declared={"KUBE": ("there", "here")}))
+    with pytest.raises(InvalidProcess) as refused:
+        await w.registered(naming("KUBE"))
+    [finding] = refused.value.findings
+    assert "'merge'" in finding and "'KUBE'" in finding and "'here'" in finding
+    async with w.persistence.transaction(TENANT):
+        assert await w.versions.list(TENANT) == []
+    assert [(e.kind, e.outcome) for e in await w.entries()] == [("process.refused", "administers")]
+
+
+async def test_an_undeclared_credential_is_refused_and_a_declared_one_registers() -> None:
+    w = World(Administration(platform="here", declared={"TOKEN": ()}))
+    with pytest.raises(InvalidProcess, match="undeclared"):
+        await w.registered(naming("OTHER"))
+    version = await w.registered(naming("TOKEN"))
+    assert version.ref == "p@1"
+
+
+async def test_a_credential_named_by_a_reference_is_left_to_admission() -> None:
+    w = World(Administration(platform="here"))
+    version = await w.registered(naming({"$input": "credential"}))
+    assert version.ref == "p@1"
+
+
+async def test_without_a_platform_nothing_is_refused() -> None:
+    w = World(Administration(declared={"KUBE": ("here",)}))
+    assert (await w.registered(naming("KUBE"))).ref == "p@1"

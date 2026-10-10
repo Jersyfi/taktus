@@ -57,6 +57,9 @@ class Cause(StrEnum):
     MATURITY = "maturity"
     """A step at level 3 or above would run on an adapter below *verified*, and was not run on
     it (NTC-0051, ADR-0039)."""
+    ADMINISTRATION = "administration"
+    """A step named a credential that administers the platform this instance runs on, or one
+    declared about nothing, and was not run (ADR-0025, ADR-0052)."""
     DECLINED = "declined"
     """The person an anchor names declined the act of a step: it was not performed, and the
     run halts at the step's boundary. A resume raises the request again (ADR-0042)."""

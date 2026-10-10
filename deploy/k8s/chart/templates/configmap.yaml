@@ -57,6 +57,16 @@ data:
   TAKTUS_CAPACITY_STORAGE_EXPANDABLE: {{ .Values.capacity.storageExpandable | quote }}
   TAKTUS_CAPACITY_STORAGE_WARN_PERCENT: {{ .Values.capacity.storageWarnPercent | quote }}
   TAKTUS_CAPACITY_ACT_WITHIN_DAYS: {{ .Values.capacity.actWithinDays | quote }}
+  {{- with .Values.administration.platform }}
+  TAKTUS_PLATFORM: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.administration.administers }}
+  {{- $entries := list }}
+  {{- range $name, $platforms := . }}
+  {{- $entries = append $entries (printf "%s=%s" $name (toString $platforms)) }}
+  {{- end }}
+  TAKTUS_ADMINISTERS: {{ join "," $entries | quote }}
+  {{- end }}
   {{- if .Values.connectors.repository.enabled }}
   {{- if hasKey .Values.env "TAKTUS_CONNECTORS" }}
   {{- fail "env.TAKTUS_CONNECTORS: the deployed repository connector sets it; add further channels there once the chart deploys them" }}

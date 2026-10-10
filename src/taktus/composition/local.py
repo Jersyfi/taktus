@@ -88,6 +88,7 @@ from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturity import CatalogMaturities
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.settings import (
+    load_administration,
     load_budget,
     load_capacity,
     load_connectors,
@@ -145,6 +146,7 @@ class LocalWiring:
             capacity = load_capacity(self._configuration)
             prices = budget.table()
             tenants = load_tenants(self._configuration)
+            administration = load_administration(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         async with (
@@ -208,6 +210,7 @@ class LocalWiring:
                         Pools(workers, connectors, models),
                     ),
                     anchors=decisions.anchors,
+                    administration=administration,
                     decisions=decisions.requests,
                 )
 
@@ -266,7 +269,11 @@ class LocalWiring:
             yield Services(
                 conformance=conformance,
                 register_version=RegisterProcessVersionHandler(
-                    stores.of(ProcessVersion), stores.work, stores.of(Process), ledger=ledger
+                    stores.of(ProcessVersion),
+                    stores.work,
+                    stores.of(Process),
+                    ledger=ledger,
+                    administration=administration,
                 ),
                 commission=commission,
                 engine=engine,

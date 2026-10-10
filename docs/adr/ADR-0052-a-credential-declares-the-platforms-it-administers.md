@@ -26,23 +26,27 @@ discovery: the operator knows where they installed the instance, and an instance
 would need the platform's API, which a well-bounded instance cannot reach.
 
 ### 2. A credential declares what it administers
-Beside each credential parameter the instance maps, the operator declares the platforms it
-administers, `TAKTUS_CREDENTIAL_<NAME>_ADMINISTERS`: a comma-separated list of platform
-identifiers, or `none`. The declaration is the operator's statement about the credential, made
-where the credential is mapped, by the person who created it. It is configuration and carries no
-secret.
+Beside the credentials the instance maps, the operator declares the platforms each administers,
+in one setting, `TAKTUS_ADMINISTERS`: entries `NAME=platform` separated by commas, several
+platforms joined by `|`, and `none` for a credential that administers no platform —
+`REPOSITORY_TOKEN=none,DEPLOY_KUBECONFIG=integration`. The declaration is the operator's
+statement about the credential, made with the mapping, by the person who created it. It is
+configuration and carries no secret. One setting rather than one per credential, because an
+instance reads its configuration by key and cannot list the keys it was not told about.
 
 ### 3. Planning refuses, and so does admission
 Registering a process version reads every credential its steps name — in a connector step's
 `credentials`, in a worker step's frame — and refuses the version when one of them declares that
 it administers the instance's own platform, naming the step, the credential and the platform. The
 run's admission checks the same again before every run, because a declaration can change after a
-version was registered; a run refused there is a failure naming the same three.
+version was registered, and a credential named by a reference is known only then; a step refused
+there is rejected before it starts, naming the same three, and the run halts with cause
+`administration`. A registration refused is the ledger entry `process.refused`.
 
 ### 4. What an undeclared credential counts as
 Whether a credential without a declaration is refused, or admitted and reported, is what the
 requirement says (UC-7.3, M3.15), and is asked in DEC-0133. The mechanism serves both: a
-credential without `_ADMINISTERS` is *undeclared*, and the check returns it as such. While
+credential `TAKTUS_ADMINISTERS` does not name is *undeclared*, and the check returns it as such. While
 `TAKTUS_PLATFORM` is unset, the instance says at start that the rule of ADR-0025 is not checked,
 and registration and admission check nothing.
 
@@ -61,7 +65,7 @@ and registration and admission check nothing.
 ## Consequences
 
 - An operator declares each credential once, where they already map it; the chart takes the
-  declaration beside the credential (`credentials[].administers`) and the platform as a value.
+  declaration and the platform as values (`administration.platform`, `administration.administers`).
 - A process that would hand an instance its own platform is refused before it runs, with the
   reason, and the refusal is in the ledger.
 - The removal test and conformance are unaffected: they read no declaration.

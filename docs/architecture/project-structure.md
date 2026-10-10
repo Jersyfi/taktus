@@ -82,6 +82,7 @@ taktus/
 │   │   ├── queue.py                 # jobs a runner claims once, as a lease it renews (ADR-0002); a deferred job waits out its delay, not counted as an attempt (ADR-0037)
 │   │   ├── leadership.py            # one instance leads a singular role; a dead leader is replaced
 │   │   ├── platform.py              # what the machine or container has left — CPU, memory, storage — each observed or unobserved with the reason
+│   │   ├── administration.py        # the platform this instance runs on and what each credential administers; the refusal ADR-0052 makes
 │   │   ├── objectstore.py  clock.py  telemetry.py
 │   │   ├── eventbus.py  secret.py
 │   │
@@ -291,3 +292,7 @@ role it would tie the core to a model stack and the removal test would be lost.
   `default`); the runner claims for each in turn. An intake lands in the tenant of the identity
   the sender's account is linked to, and nowhere when it is linked to none (ADR-0040); the
   first tenant is only where such a sender is answered from.
+- **The instance's own platform.** `TAKTUS_PLATFORM` names it and `TAKTUS_ADMINISTERS` declares,
+  per credential, the platforms it administers (`ports/administration.py`, ADR-0052). The
+  composition root reads both once and hands the one value to the process component's
+  registration and to the run engine's admission; without a platform the daemon warns at start.
