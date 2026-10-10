@@ -44,22 +44,35 @@ from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
 from taktus.adapters.driven.memory import MemoryRepository
 from taktus.components.command.application.service import ReceiveIntake, ReceiveIntakeHandler
 from taktus.components.command.domain.model import IntakeEvent
-from taktus.components.reporting.application.query import view
+from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.reporting.application.query import LevelQueries, view
 from taktus.components.reporting.application.service import ConfigureChannel, RaiseReport
-from taktus.components.reporting.domain.model import DeliveryState, Report, ReportKind, ReportState
+from taktus.components.reporting.domain.model import (
+    DeliveryState,
+    Reader,
+    Report,
+    ReportKind,
+    ReportState,
+)
 from taktus.components.reporting.domain.service.rendering import repository_text
+from taktus.components.run.domain.model import Run
 from taktus.components.run.ports import Draft, DraftOption
 from taktus.composition.decisions import decision_wiring
 from taktus.composition.execution import connector_pool
+from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
 from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import load_connectors
 from taktus.ports.connector import Delivery
+from taktus.ports.persistence import Repository
+from taktus.ports.worker import ComputeLimit, Limits
+from taktus.shared.v1 import Method, Step
 
 from .conftest import CHAT_WRITE, WRITE_CREDENTIAL, ChatService, Service
 from .test_chat_channel import free_port, wait_ready
 
 ROOT = Path(__file__).resolve().parents[3]
+CONTROL_PLANE = "https://taktus.example/instance-a"
 CHAT_PAYLOADS = ROOT / "src/taktus/adapters/driven/connectors/slack/payloads"
 GERMAN = json.loads((ROOT / "src/taktus/composition/phrasebooks/de.json").read_text("utf-8"))
 CHAT = "channel.chat"
@@ -167,6 +180,10 @@ class Instance:
         self.decisions = decision_wiring(
             of, persistence, self.identity.ledger, clock, self.identity.directory
         )
+        self.runs: Repository[Run] = of(Run)
+        self.levels = LevelQueries(
+            RepositoryLevelRecords(persistence, self.runs, of(Process), of(ProcessVersion))
+        )
         self.owner: OwnerChannelWiring = owner_channel_wiring(
             of,
             persistence,
@@ -176,6 +193,7 @@ class Instance:
             self.decisions.answer,
             self.decisions.confirm,
             KnownSecrets(running.values),
+            levels=self.levels,
         )
         self.decisions.requests.report_to(self.owner.decision_raised)
         self.events = MemoryRepository(persistence, IntakeEvent)
@@ -203,6 +221,7 @@ class Instance:
                     "channel": CHAT,
                     "address": CONVERSATION,
                     "language": "de",
+                    "view_base": CONTROL_PLANE,
                     "task": {
                         "capability": "repository.issues",
                         "operation": "repository.issues.create",
@@ -230,8 +249,9 @@ class Instance:
             )
         )
 
-    async def write(self, chat: ChatService, account: str, thread: str, text: str) -> Any:
-        """A person writes into the report's thread; the service delivers it, signed."""
+    async def write(self, chat: ChatService, account: str, thread: str | None, text: str) -> Any:
+        """A person writes into the report's thread — or, with no thread, into the
+        conversation itself; the service delivers it, signed."""
         self.sequence += 1
         headers = json.loads((CHAT_PAYLOADS / "message-posted.headers.json").read_text())
         payload = json.loads((CHAT_PAYLOADS / "message-posted.body.json").read_text())
@@ -245,8 +265,12 @@ class Instance:
                 "client_msg_id": f"placeholder-client-message-{self.sequence}",
             }
         )
+        if thread is None:
+            del event["thread_ts"]
         payload["event_id"] = f"EvOwner{self.sequence:06d}"
-        written = {k: event[k] for k in ("channel", "user", "text", "ts", "thread_ts")}
+        written = {
+            k: event[k] for k in ("channel", "user", "text", "ts", "thread_ts") if k in event
+        }
         chat.control("/_fake/messages", written)
         body = json.dumps(payload)
         moment = str(int(RECEIVED.timestamp()))
@@ -431,6 +455,59 @@ async def test_a_failure_taktus_noticed_is_said_in_the_same_channel(
     )
     [top] = [m for m in chat_service.messages(CONVERSATION) if m.get("ts") == thread_of(report)]
     assert top["text"].startswith(f"*{GERMAN['failure']}: ")
+
+
+async def test_a_run_asked_for_in_the_chat_is_answered_with_its_text_and_a_link_to_it_live(
+    connectors: Running, chat_service: ChatService
+) -> None:
+    """UC-6.10 *beyond the web app* (ADR-0069): the chat cannot draw the run level, so the
+    owner who asks for it there receives its text equivalent — the level the web app is handed,
+    element by element — and the link under which the web app draws it live."""
+    given = Instance(connectors)
+    await given.set_up()
+    run = Run(
+        id="run_1",
+        plan_id="pln_1",
+        process_version="invoices@2",
+        tenant=TENANT,
+        identity=OWNER,
+        autonomy_level=2,
+        budget=Limits(compute=ComputeLimit(seconds=10, resource_class="cpu.small")),
+        steps=(
+            Step(id="read", method=Method.RULE, reason="r", rejected=(), exactness="exact"),
+            Step(
+                id="approve",
+                method=Method.HUMAN,
+                reason="r",
+                rejected=(),
+                depends_on=("read",),
+            ),
+        ),
+        work={"read": {"rule": "constant", "value": 1}, "approve": {}},
+        created_at=RECEIVED,
+        updated_at=RECEIVED,
+    )
+    async with given.persistence.transaction(TENANT):
+        await given.runs.put(TENANT, run)
+
+    asked = await given.write(chat_service, OWNER_ACCOUNT, None, "Zeige Lauf run_1")
+    outsider = await given.write(chat_service, OUTSIDER_ACCOUNT, None, "zeige lauf run_1")
+
+    assert asked.answer == "shown" and asked.replied and asked.accepted is None
+    assert outsider.answer == "not_shown" and outsider.replied
+    reader = Reader(tenant=TENANT, identity=OWNER)
+    level = await given.levels.run(reader, "run_1")
+    assert level is not None
+    [said] = taktus_said(chat_service, "1800000000.000001")
+    assert said.splitlines() == [
+        level.run.text,
+        *(f"• {step.text}" for step in level.steps),
+        "",
+        f"{GERMAN['live']}: {CONTROL_PLANE}/app/#/runs/run_1",
+    ]
+    assert taktus_said(chat_service, "1800000000.000002") == [GERMAN["not_shown"]]
+    async with given.persistence.transaction(TENANT):
+        assert await given.events.list(TENANT) == [], "a request for a representation is no command"
 
 
 async def test_no_message_carries_a_secret_value(

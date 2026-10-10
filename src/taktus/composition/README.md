@@ -19,7 +19,9 @@ place is answered in the channel through the reply operation of the channel's co
 needed from the owner reaches them through the same reply operation, and their answer in a
 report's thread comes back through the intake (`owner_channel.py`, ADR-0045): the reporting
 component keeps the report, the decision component files a decision answer, and a decision
-confirmed there hands its run on. The phrasebooks Taktus ships, one per language, are
+confirmed there hands its run on. A request for a run or a process in the owner's conversation
+comes back the same way and is answered with the level's text equivalent and a link to it in
+the web app, read through the levels the `api` role serves (ADR-0069). The phrasebooks Taktus ships, one per language, are
 `phrasebooks/*.json`: the core names no language. While it leads, the scheduler also looks for a
 broken interface in the run's failed calls and reports it to the owner through the same channel
 (`interfaces.py`, ADR-0047). The guides' process, S-05, asks the instance through the loopback

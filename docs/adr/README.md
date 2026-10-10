@@ -68,3 +68,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0067](ADR-0067-the-overview-counts-runs-that-work-and-wait-by-the-run-components-definition.md) | The overview counts the runs that work and wait, by the run component's own definition | accepted |
 | [0065](ADR-0065-the-guides-are-rendered-from-the-repository-by-rule-and-a-hand-edit-is-never-overwritten.md) | The guides are rendered from the repository by rule, and a hand edit is never overwritten | accepted |
 | [0066](ADR-0066-the-guides-run-daily-reading-every-source-at-one-commit-in-one-call.md) | The guides run daily, reading every source at one commit in one call | accepted |
+| [0069](ADR-0069-a-chat-receives-a-levels-text-equivalent-and-a-link-to-it-live.md) | A chat receives a level's text equivalent and a link to it live | accepted |

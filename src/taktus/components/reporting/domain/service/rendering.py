@@ -11,9 +11,14 @@ and the same date. None of them adds a fact the others lack, so they cannot disa
   report concerns. It never quotes what anyone wrote in the channel.
 - the view is the read side's (`application/query/reports.py`): the report itself, with its
   deliveries and its history.
+
+`shown` lays out a level of a live representation for a channel that cannot draw it: the
+level's own text equivalent and the link to it in the web app (ADR-0069).
 """
 
 from __future__ import annotations
+
+from urllib.parse import quote
 
 from taktus.components.reporting.domain.model import (
     DeliveryState,
@@ -23,6 +28,7 @@ from taktus.components.reporting.domain.model import (
     Report,
     ReportKind,
 )
+from taktus.components.reporting.domain.service.levels import ProcessLevel, RunLevel
 
 KIND_IN_THE_REPOSITORY: dict[ReportKind, str] = {
     ReportKind.DECISION: "Decision request",
@@ -154,3 +160,34 @@ def asked_back(report: Report, book: Phrasebook) -> str:
 
 def filed(answer: str, book: Phrasebook) -> str:
     return book.filed.format(answer=answer)
+
+
+def level_url(channel: OwnerChannel, level: RunLevel | ProcessLevel) -> str | None:
+    """Where the web app draws the level live, when the control plane's address is configured:
+    its route is the part after `#` (ADR-0063 §1), as `web/src/lib/links.ts` builds it."""
+    if channel.view_base is None:
+        return None
+    if isinstance(level, RunLevel):
+        route = f"runs/{quote(level.run.id, safe='')}"
+    else:
+        process = level.process
+        route = f"processes/{quote(process.id, safe='')}/{quote(process.version, safe='')}"
+    return f"{channel.view_base.rstrip('/')}/app/#/{route}"
+
+
+def shown(level: RunLevel | ProcessLevel, channel: OwnerChannel) -> str:
+    """A level for a channel that cannot draw it: its text equivalent, element by element, as
+    the level hands it to the web app — never composed again — and the link to it live there
+    (UC-6.10 *beyond the web app*, ADR-0069)."""
+    if isinstance(level, RunLevel):
+        lines = [level.run.text, *(f"• {step.text}" for step in level.steps)]
+    else:
+        lines = [
+            level.process.text,
+            *(f"• {step.text}" for step in level.steps),
+            *(f"• {run.text}" for run in level.runs),
+        ]
+    link = level_url(channel, level)
+    if link is not None and channel.phrasebook.live is not None:
+        lines += ["", f"{channel.phrasebook.live}: {link}"]
+    return "\n".join(lines)

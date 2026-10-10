@@ -42,10 +42,19 @@ from taktus.components.reporting.application.service.raise_report import (
     RaiseReport,
     RaiseReportHandler,
 )
+from taktus.components.reporting.application.service.show_in_channel import (
+    NOT_SHOWN,
+    SHOWN,
+    ShowInChannel,
+    ShowInChannelHandler,
+    Shown,
+)
 
 __all__ = [
     "DONE",
+    "NOT_SHOWN",
     "SENT",
+    "SHOWN",
     "Answer",
     "AnswerInChannel",
     "AnswerInChannelHandler",
@@ -71,5 +80,8 @@ __all__ = [
     "ReportingError",
     "Sending",
     "Sent",
+    "ShowInChannel",
+    "ShowInChannelHandler",
+    "Shown",
     "UnknownReport",
 ]

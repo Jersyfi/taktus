@@ -178,6 +178,7 @@ def services(connector: ScriptedConnector | None = None) -> Services:
 
     decisions = decision_wiring(of, persistence, identity.ledger, clock, identity.directory)
     deliveries = RecordingDeliveries()
+    runs: Repository[Run] = MemoryRepository(persistence, Run)
     owner = owner_channel_wiring(
         of,
         persistence,
@@ -188,9 +189,11 @@ def services(connector: ScriptedConnector | None = None) -> Services:
         decisions.confirm,
         KnownSecrets(()),
         deliveries=deliveries,
+        levels=LevelQueries(
+            RepositoryLevelRecords(persistence, runs, of(Process), of(ProcessVersion))
+        ),
     )
     decisions.requests.report_to(owner.decision_raised)
-    runs: Repository[Run] = MemoryRepository(persistence, Run)
     return Services(
         persistence=persistence,
         runs=runs,

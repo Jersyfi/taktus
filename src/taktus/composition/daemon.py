@@ -354,6 +354,14 @@ async def wire(
                     DecideSteps(run_id=run_id, actor=actor, tenant=tenant, enqueue=True)
                 )
 
+            levels = LevelQueries(
+                RepositoryLevelRecords(
+                    persistence,
+                    runs,
+                    PostgresRepository(persistence, Process),
+                    PostgresRepository(persistence, ProcessVersion),
+                )
+            )
             owner = owner_channel_wiring(
                 stored,
                 persistence,
@@ -364,6 +372,9 @@ async def wire(
                 decisions.confirm,
                 known_secrets(os.environ, also=[settings.database.reveal()]),
                 decided=decided,
+                # The owner's conversation answers a request for a representation with its
+                # text equivalent and a link, read as the web app reads it (ADR-0069).
+                levels=levels,
             )
             decisions.requests.report_to(owner.decision_raised)
             commission = CommissionPlanHandler(
@@ -457,14 +468,7 @@ async def wire(
                     clock,
                     LiveOptions(max_streams=settings.live_streams),
                 ),
-                levels=LevelQueries(
-                    RepositoryLevelRecords(
-                        persistence,
-                        runs,
-                        PostgresRepository(persistence, Process),
-                        PostgresRepository(persistence, ProcessVersion),
-                    )
-                ),
+                levels=levels,
                 complete_intake=complete_intake,
                 reactions=Reactions(
                     tenants=settings.tenants,

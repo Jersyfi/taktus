@@ -24,5 +24,9 @@
   "filed": "Abgelegt: {answer}.",
   "reread": "Nichts wurde abgelegt. Bitte antworte noch einmal.",
   "not_filed": "Diese Antwort wird nicht abgelegt: Hier antwortet nur der Eigentümer oder jemand, den er dafür benannt hat.",
-  "closed": "Diese Anfrage ist bereits beantwortet; deine Nachricht ändert nichts."
+  "closed": "Diese Anfrage ist bereits beantwortet; deine Nachricht ändert nichts.",
+  "show_run_words": ["zeige lauf"],
+  "show_process_words": ["zeige prozess"],
+  "live": "Live-Ansicht",
+  "not_shown": "Dazu kann ich dir hier nichts zeigen."
 }
