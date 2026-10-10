@@ -94,7 +94,10 @@ triggers:
 **Every input the process declares is given**, by `inputs` or by `from_event`, or the version is
 refused when it is registered. A run started by an event has nobody to ask, as a run started by
 a schedule has nobody (ADR-0035 §5). `from_event` may name only a field the kind requires, so
-that a run never starts with an input missing.
+that a run never starts with an input missing. A context field is given as the event carries
+it: a string, a flag, or a list of strings. Where the input's declared example is an integer, a
+string of decimal digits is given as that integer, so that an issue's number reaches an
+operation that reads a number.
 
 Registration refuses, with every finding at once: a kind outside the catalogue, a filter field
 the kind does not carry, a condition outside §4's list, an input given twice or not at all, and
