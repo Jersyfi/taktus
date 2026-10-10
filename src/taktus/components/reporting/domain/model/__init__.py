@@ -19,6 +19,7 @@ from taktus.components.reporting.domain.model.interface import (
     FailedCall,
     InterfaceCause,
 )
+from taktus.components.reporting.domain.model.levels import Figure, RunFacts, StepFacts, Wait
 from taktus.components.reporting.domain.model.live import (
     Change,
     Reader,
@@ -55,6 +56,7 @@ __all__ = [
     "DeliveryChannel",
     "DeliveryState",
     "FailedCall",
+    "Figure",
     "Filed",
     "Finding",
     "Happened",
@@ -72,6 +74,7 @@ __all__ = [
     "ReportKind",
     "ReportState",
     "Reported",
+    "RunFacts",
     "RunRef",
     "Scope",
     "ScopeKind",
@@ -79,5 +82,7 @@ __all__ = [
     "SnapshotRun",
     "SnapshotStep",
     "StateAfter",
+    "StepFacts",
     "TaskDestination",
+    "Wait",
 ]

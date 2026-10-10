@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, Header, Query, Request
@@ -34,6 +35,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
+from taktus.adapters.driving.rest import levels
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
 from taktus.adapters.driving.rest.wiring import RestServices, StreamsFull
 from taktus.components.command.application.service import (
@@ -88,8 +90,11 @@ REFUSAL_STATUS = {
 }
 
 
-def build_app(services: RestServices, *, prefix: str = "/", full: bool = True) -> FastAPI:
-    """`full` is the `api` role: without it a process serves health and readiness only."""
+def build_app(
+    services: RestServices, *, prefix: str = "/", full: bool = True, web: Path | None = None
+) -> FastAPI:
+    """`full` is the `api` role: without it a process serves health and readiness only. `web`
+    is the web app's static build, served by the `api` role where it exists (ADR-0063)."""
     base = "" if prefix == "/" else prefix.rstrip("/")
     app = FastAPI(
         title="Taktus",
@@ -116,6 +121,9 @@ def build_app(services: RestServices, *, prefix: str = "/", full: bool = True) -
         app.include_router(_owner(services), prefix=base)
         app.include_router(_reads(services), prefix=base)
         app.include_router(_changes(services), prefix=base)
+        app.include_router(levels.router(services, _authenticated), prefix=base)
+        if web is not None and (web / "index.html").is_file():
+            levels.mount_web(app, base, web)
     return app
 
 

@@ -23,6 +23,7 @@ import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import structlog
 import uvicorn
@@ -82,7 +83,7 @@ from taktus.components.process.application.service.register_version import (
 )
 from taktus.components.process.application.service.triggers import TriggersHandler
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
-from taktus.components.reporting.application.query import ReportQueries
+from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     BrokenInterfaces,
     LiveChanges,
@@ -115,6 +116,7 @@ from taktus.composition.execution import (
 )
 from taktus.composition.findings import RepositoryChannel, RunBlocks, findings_tick
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
+from taktus.composition.levels import RunLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
@@ -139,6 +141,10 @@ EXIT_CONFIGURATION = 2
 EXIT_NOT_OPERABLE = 3
 
 log = structlog.get_logger("taktusd")
+
+WEB_BUILD = Path(__file__).resolve().parents[3] / "web" / "build"
+"""The web app's static build, beside `src/` in a checkout and in the image (ADR-0063); the
+`api` role serves it where it exists."""
 
 
 @dataclass
@@ -184,6 +190,8 @@ class Wired:
     changes: LiveHub
     """The streams of changes this process holds for its readers, fed from the ledger
     (ADR-0055). Only the `api` role opens any."""
+    levels: LevelQueries
+    """The levels of the live representation, drawn from the run's records (ADR-0063)."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -444,6 +452,7 @@ async def wire(
                     clock,
                     LiveOptions(max_streams=settings.live_streams),
                 ),
+                levels=LevelQueries(RunLevelRecords(persistence, runs)),
                 complete_intake=complete_intake,
                 reactions=Reactions(
                     tenants=settings.tenants,
@@ -591,7 +600,9 @@ async def _start_http(wired: Wired, stop: asyncio.Event) -> uvicorn.Server:
     the daemon's handlers are installed again once it has started, because the server
     installs its own on startup and would otherwise take the daemon's away."""
     settings = wired.settings
-    app = build_app(wired, prefix=settings.path_prefix, full=Role.API in settings.roles)
+    app = build_app(
+        wired, prefix=settings.path_prefix, full=Role.API in settings.roles, web=WEB_BUILD
+    )
     server = uvicorn.Server(
         uvicorn.Config(
             app,

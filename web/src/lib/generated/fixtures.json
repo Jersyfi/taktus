@@ -1,0 +1,666 @@
+{
+  "vocabulary": {
+    "families": [
+      {
+        "family": "reproducible",
+        "edge": "straight",
+        "motion": "pulse",
+        "text": "reproducible"
+      },
+      {
+        "family": "variable",
+        "edge": "wavering",
+        "motion": "shimmer",
+        "text": "variable"
+      },
+      {
+        "family": "person",
+        "edge": "round",
+        "motion": "swell",
+        "text": "a person"
+      },
+      {
+        "family": "waiting",
+        "edge": "broken",
+        "motion": "none",
+        "text": "waiting"
+      }
+    ],
+    "methods": [
+      {
+        "method": "rule",
+        "outline": "square",
+        "text": "rule"
+      },
+      {
+        "method": "statistics",
+        "outline": "triangle",
+        "text": "statistics"
+      },
+      {
+        "method": "ml",
+        "outline": "pentagon",
+        "text": "trained model"
+      },
+      {
+        "method": "neural",
+        "outline": "hexagon",
+        "text": "neural network"
+      },
+      {
+        "method": "llm",
+        "outline": "ellipse",
+        "text": "language model"
+      },
+      {
+        "method": "worker",
+        "outline": "rounded_square",
+        "text": "worker"
+      },
+      {
+        "method": "human",
+        "outline": "circle",
+        "text": "person"
+      },
+      {
+        "method": "wait",
+        "outline": "diamond",
+        "text": "wait"
+      }
+    ],
+    "motions": [
+      {
+        "motion": "none",
+        "still": "none",
+        "text": "still"
+      },
+      {
+        "motion": "pulse",
+        "still": "ring_solid",
+        "text": "working, the same every time"
+      },
+      {
+        "motion": "shimmer",
+        "still": "ring_dotted",
+        "text": "working, variably"
+      },
+      {
+        "motion": "swell",
+        "still": "ring_open",
+        "text": "with a person"
+      }
+    ],
+    "exactness": [
+      {
+        "exactness": "exact",
+        "mark": "double_outline",
+        "text": "exact"
+      },
+      {
+        "exactness": "sourced",
+        "mark": "source_notch",
+        "text": "sourced"
+      },
+      {
+        "exactness": "tolerant",
+        "mark": "tilde",
+        "text": "tolerant"
+      },
+      {
+        "exactness": "free",
+        "mark": "none",
+        "text": "free"
+      },
+      {
+        "mark": "none",
+        "text": "no result of its own"
+      }
+    ],
+    "states": [
+      {
+        "subject": "step",
+        "state": "planned",
+        "fill": "empty",
+        "mark": "none",
+        "moves": false,
+        "text": "planned"
+      },
+      {
+        "subject": "step",
+        "state": "admitted",
+        "fill": "empty",
+        "mark": "dot",
+        "moves": false,
+        "text": "admitted"
+      },
+      {
+        "subject": "step",
+        "state": "rejected",
+        "fill": "hatched",
+        "mark": "slash",
+        "moves": false,
+        "text": "not admitted"
+      },
+      {
+        "subject": "step",
+        "state": "running",
+        "fill": "partial",
+        "mark": "none",
+        "moves": true,
+        "text": "running"
+      },
+      {
+        "subject": "step",
+        "state": "waiting_human",
+        "fill": "partial",
+        "mark": "person",
+        "moves": false,
+        "text": "waiting for a person"
+      },
+      {
+        "subject": "step",
+        "state": "stopped",
+        "fill": "partial",
+        "mark": "pause",
+        "moves": false,
+        "text": "stopped"
+      },
+      {
+        "subject": "step",
+        "state": "succeeded",
+        "fill": "full",
+        "mark": "check",
+        "moves": false,
+        "text": "completed"
+      },
+      {
+        "subject": "step",
+        "state": "failed",
+        "fill": "full",
+        "mark": "cross",
+        "moves": false,
+        "text": "failed"
+      },
+      {
+        "subject": "run",
+        "state": "planned",
+        "fill": "empty",
+        "mark": "none",
+        "moves": false,
+        "text": "planned"
+      },
+      {
+        "subject": "run",
+        "state": "admitted",
+        "fill": "empty",
+        "mark": "dot",
+        "moves": false,
+        "text": "admitted"
+      },
+      {
+        "subject": "run",
+        "state": "running",
+        "fill": "partial",
+        "mark": "none",
+        "moves": false,
+        "text": "running"
+      },
+      {
+        "subject": "run",
+        "state": "waiting_human",
+        "fill": "partial",
+        "mark": "person",
+        "moves": false,
+        "text": "waiting for a person"
+      },
+      {
+        "subject": "run",
+        "state": "halted",
+        "fill": "partial",
+        "mark": "pause",
+        "moves": false,
+        "text": "halted"
+      },
+      {
+        "subject": "run",
+        "state": "escalated",
+        "fill": "partial",
+        "mark": "raised",
+        "moves": false,
+        "text": "escalated"
+      },
+      {
+        "subject": "run",
+        "state": "finished",
+        "fill": "full",
+        "mark": "check",
+        "moves": false,
+        "text": "finished"
+      }
+    ],
+    "run_outline": "frame"
+  },
+  "run_level": {
+    "run": {
+      "id": "run_example",
+      "process_version": "example@1",
+      "state": "running",
+      "rehearsal": false,
+      "consumed": [
+        {
+          "name": "tokens_in",
+          "value": 1200
+        },
+        {
+          "name": "tokens_out",
+          "value": 300
+        },
+        {
+          "name": "currency.eur",
+          "value": 0.04
+        }
+      ],
+      "created_at": "2026-10-10T09:00:00Z",
+      "updated_at": "2026-10-10T09:00:00Z",
+      "drawn": {
+        "moving": {
+          "subject": "run",
+          "outline": "frame",
+          "exactness_mark": "none",
+          "fill": "partial",
+          "state_mark": "none",
+          "motion": "none",
+          "still_mark": "none",
+          "text": "run run_example: running."
+        },
+        "still": {
+          "subject": "run",
+          "outline": "frame",
+          "exactness_mark": "none",
+          "fill": "partial",
+          "state_mark": "none",
+          "motion": "none",
+          "still_mark": "none",
+          "text": "run run_example: running."
+        }
+      },
+      "text": "run run_example: running. Process example@1. Consumed so far: tokens_in 1200, tokens_out 300, currency.eur 0.04."
+    },
+    "steps": [
+      {
+        "id": "load",
+        "method": "rule",
+        "exactness": "exact",
+        "state": "succeeded",
+        "depends_on": [],
+        "attempt": 1,
+        "consumption": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "full",
+            "state_mark": "check",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step load: rule, reproducible; exact; completed."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "full",
+            "state_mark": "check",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step load: rule, reproducible; exact; completed."
+          }
+        },
+        "text": "step load: rule, reproducible; exact; completed."
+      },
+      {
+        "id": "score",
+        "method": "statistics",
+        "exactness": "sourced",
+        "state": "running",
+        "depends_on": [
+          "load"
+        ],
+        "attempt": 1,
+        "consumption": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "triangle",
+            "edge": "straight",
+            "exactness_mark": "source_notch",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "pulse",
+            "still_mark": "none",
+            "text": "step score: statistics, reproducible; sourced; running."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "triangle",
+            "edge": "straight",
+            "exactness_mark": "source_notch",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "ring_solid",
+            "text": "step score: statistics, reproducible; sourced; running."
+          }
+        },
+        "text": "step score: statistics, reproducible; sourced; running."
+      },
+      {
+        "id": "classify",
+        "method": "ml",
+        "exactness": "tolerant",
+        "state": "failed",
+        "depends_on": [
+          "load"
+        ],
+        "attempt": 1,
+        "consumption": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "pentagon",
+            "edge": "straight",
+            "exactness_mark": "tilde",
+            "fill": "full",
+            "state_mark": "cross",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step classify: trained model, reproducible; tolerant; failed."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "pentagon",
+            "edge": "straight",
+            "exactness_mark": "tilde",
+            "fill": "full",
+            "state_mark": "cross",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step classify: trained model, reproducible; tolerant; failed."
+          }
+        },
+        "text": "step classify: trained model, reproducible; tolerant; failed."
+      },
+      {
+        "id": "embed",
+        "method": "neural",
+        "exactness": "free",
+        "state": "stopped",
+        "depends_on": [
+          "load"
+        ],
+        "attempt": 1,
+        "consumption": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "hexagon",
+            "edge": "straight",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "pause",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step embed: neural network, reproducible; free; stopped."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "hexagon",
+            "edge": "straight",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "pause",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step embed: neural network, reproducible; free; stopped."
+          }
+        },
+        "text": "step embed: neural network, reproducible; free; stopped."
+      },
+      {
+        "id": "draft",
+        "method": "llm",
+        "exactness": "free",
+        "state": "running",
+        "depends_on": [
+          "score"
+        ],
+        "attempt": 1,
+        "consumption": [
+          {
+            "name": "tokens_in",
+            "value": 1200
+          },
+          {
+            "name": "tokens_out",
+            "value": 300
+          }
+        ],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "ellipse",
+            "edge": "wavering",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "shimmer",
+            "still_mark": "none",
+            "text": "step draft: language model, variable; free; running."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "ellipse",
+            "edge": "wavering",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "ring_dotted",
+            "text": "step draft: language model, variable; free; running."
+          }
+        },
+        "text": "step draft: language model, variable; free; running. Used tokens_in 1200, tokens_out 300."
+      },
+      {
+        "id": "build",
+        "method": "worker",
+        "exactness": "tolerant",
+        "state": "rejected",
+        "depends_on": [
+          "draft"
+        ],
+        "attempt": 1,
+        "consumption": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "rounded_square",
+            "edge": "wavering",
+            "exactness_mark": "tilde",
+            "fill": "hatched",
+            "state_mark": "slash",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step build: worker, variable; tolerant; not admitted."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "rounded_square",
+            "edge": "wavering",
+            "exactness_mark": "tilde",
+            "fill": "hatched",
+            "state_mark": "slash",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step build: worker, variable; tolerant; not admitted."
+          }
+        },
+        "text": "step build: worker, variable; tolerant; not admitted."
+      },
+      {
+        "id": "review",
+        "method": "human",
+        "state": "running",
+        "depends_on": [
+          "draft"
+        ],
+        "attempt": 1,
+        "consumption": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "circle",
+            "edge": "round",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "swell",
+            "still_mark": "none",
+            "text": "step review: person, a person; no result of its own; running."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "circle",
+            "edge": "round",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "ring_open",
+            "text": "step review: person, a person; no result of its own; running."
+          }
+        },
+        "text": "step review: person, a person; no result of its own; running."
+      },
+      {
+        "id": "pipeline",
+        "method": "wait",
+        "state": "waiting_human",
+        "depends_on": [
+          "review"
+        ],
+        "attempt": 1,
+        "wait": {
+          "account": "wait.human",
+          "cause": "awaiting_decision",
+          "since": "2026-10-10T09:00:00Z",
+          "role": "finance.lead",
+          "requests": [
+            "dr_example"
+          ]
+        },
+        "consumption": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "diamond",
+            "edge": "broken",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "person",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step pipeline: wait, waiting; no result of its own; waiting for a person."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "diamond",
+            "edge": "broken",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "person",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step pipeline: wait, waiting; no result of its own; waiting for a person."
+          }
+        },
+        "text": "step pipeline: wait, waiting; no result of its own; waiting for a person. waits on a person (wait.human, awaiting_decision) since 2026-10-10T09:00:00+00:00; addressed to the role finance.lead; decision requests dr_example."
+      },
+      {
+        "id": "check",
+        "method": "rule",
+        "exactness": "exact",
+        "state": "admitted",
+        "depends_on": [
+          "pipeline"
+        ],
+        "attempt": 1,
+        "consumption": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "empty",
+            "state_mark": "dot",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step check: rule, reproducible; exact; admitted."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "empty",
+            "state_mark": "dot",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step check: rule, reproducible; exact; admitted."
+          }
+        },
+        "text": "step check: rule, reproducible; exact; admitted."
+      },
+      {
+        "id": "close",
+        "method": "rule",
+        "exactness": "exact",
+        "state": "planned",
+        "depends_on": [
+          "check"
+        ],
+        "attempt": 1,
+        "consumption": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step close: rule, reproducible; exact; planned."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step close: rule, reproducible; exact; planned."
+          }
+        },
+        "text": "step close: rule, reproducible; exact; planned."
+      }
+    ]
+  }
+}

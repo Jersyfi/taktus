@@ -31,10 +31,11 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.ledger.application.service import ChainedLedger
-from taktus.components.reporting.application.query import ReportQueries
+from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import LiveChanges
 from taktus.components.run.domain.model import Run
 from taktus.composition.decisions import DecisionWiring, decision_wiring
+from taktus.composition.levels import RunLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
 from taktus.ports.connector import (
@@ -136,6 +137,10 @@ class Services:
     @property
     def owner_reports(self) -> ReportQueries:
         return self.owner.queries
+
+    @property
+    def levels(self) -> LevelQueries:
+        return LevelQueries(RunLevelRecords(self.persistence, self.runs))
 
     @property
     def answer_decision(self) -> AnswerRequestHandler:

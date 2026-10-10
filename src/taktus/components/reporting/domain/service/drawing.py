@@ -74,7 +74,8 @@ class Glyph(Value):
 
     subject: Subject
     outline: str
-    edge: Edge | None
+    edge: Edge | None = None
+    """None for a run, which has no edge of its own; a document leaves it out."""
     exactness_mark: str
     fill: Fill
     state_mark: str

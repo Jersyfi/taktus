@@ -176,7 +176,7 @@ execution, and every block is analysable by cause and duration.
 Web app: dashboard, process diagram, run history, ledger, consumption, bottleneck overview — **seen
 as it happens**: live representations drawn from the records, from the overview down to a run and
 the origin of a result, reproducible and variable steps drawn apart (UC-6.10, DEC-0055) (#103,
-#104, #105, #183) · process bundle format · pair editing with rollback · sessions with project
+#104, #105, #183, #190, #191, #192, #193) · process bundle format · pair editing with rollback · sessions with project
 knowledge · documentation beyond the repository: administration and end-user guides generated
 from it and kept consistent with it, never a second source of truth (#88)
 
