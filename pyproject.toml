@@ -29,6 +29,9 @@ dev = [
   "pytest", "pytest-asyncio", "testcontainers[postgres]",
   "mypy", "types-jsonschema", "types-pyyaml", "ruff", "import-linter", "coverage",
 ]
+# The ML bench worker's libraries (workers/mlbench), at the exact versions its image installs, so
+# that the tests run the worker as it ships. Never part of the control plane image (DEC-0011).
+mlbench = ["scikit-learn==1.9.1", "numpy==2.5.4"]
 
 [project.scripts]
 taktusd = "taktus.composition.daemon:main"

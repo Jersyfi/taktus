@@ -12,15 +12,20 @@ here, whose private half the connector reads from a file and signs with.
 
 from __future__ import annotations
 
+import functools
+import hashlib
 import json
 import os
+import random
 import secrets
 import socket
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +66,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "script" / "worker.py"
 CODING_WORKER = ROOT / "workers" / "claudecode" / "worker.py"
 FAKE_AGENT = ROOT / "workers" / "claudecode" / "fake_agent.py"
+MLBENCH_WORKER = ROOT / "workers" / "mlbench" / "worker.py"
 CODING_CREDENTIAL = {"api-key": "CODING_AGENT_API_KEY", "session": "CODING_AGENT_SESSION"}
 CONNECTOR = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors" / "github"
 SCENARIO = CONNECTOR / "scenario.json"
@@ -86,12 +92,14 @@ class RunningWorker:
     credential_value: str
     process: subprocess.Popen[bytes]
     credential_name: str = CREDENTIAL
+    task: dict[str, object] | None = None  # None: TASK
+    hosts: tuple[str, ...] = (HOST,)
 
     def options(self) -> SuiteOptions:
         return SuiteOptions(
             endpoint=self.endpoint,
-            task=dict(TASK),
-            hosts=(HOST,),
+            task=dict(self.task or TASK),
+            hosts=self.hosts,
             credential_name=self.credential_name,
             credential_value=self.credential_value,
             worker_log=self.log,
@@ -117,6 +125,10 @@ def faults() -> list[tuple[str, str]]:
 
 def coding_faults() -> list[tuple[str, str]]:
     return _list_faults([sys.executable, str(CODING_WORKER), "--list-faults"])
+
+
+def mlbench_faults() -> list[tuple[str, str]]:
+    return _list_faults([sys.executable, str(MLBENCH_WORKER), "--list-faults"])
 
 
 def connector_faults() -> list[tuple[str, str]]:
@@ -249,6 +261,91 @@ def start_coding_worker(tmp_path: Path) -> Iterator[StartWorker]:
 
     yield start
     stop_all(started)
+
+
+@pytest.fixture
+def start_mlbench_worker(tmp_path: Path) -> Iterator[StartWorker]:
+    """The ML bench, and a file server in this process that serves it a labelled dataset. The
+    task trains on that dataset, read from the server's host, which the main run allows and
+    the narrowed run withdraws (W-13). An epoch holds its place for 0.2 s and the estimate is
+    half the expected demand, so that a stop lands mid-training (W-06) and a limit equal to the
+    estimate is crossed (W-14)."""
+    started: list[subprocess.Popen[bytes]] = []
+    served = tmp_path / "served"
+    served.mkdir()
+    data = dataset_csv(rows=600, features=6, classes=3, seed=11)
+    (served / "train.csv").write_bytes(data)
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0), functools.partial(QuietFiles, directory=str(served))
+    )
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    host = f"127.0.0.1:{server.server_port}"
+    task: dict[str, object] = {
+        "goal": "Conformance run of the ML bench: train a classifier on the served dataset.",
+        "acceptance": ["a model artifact with its metrics"],
+        "inputs": {
+            "operation": "train",
+            "dataset": {
+                "uri": f"http://{host}/train.csv",
+                "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
+                "rows": 600,
+                "features": 6,
+            },
+            "epochs": 3,
+            "seed": 7,
+        },
+    }
+
+    def start(*, fault: str | None = None) -> RunningWorker:
+        port = free_port()
+        log = tmp_path / f"mlbench-{fault or 'honest'}.log"
+        value = "conf-" + secrets.token_hex(12)
+        env = {**os.environ, CREDENTIAL: value}
+        args = [
+            sys.executable,
+            str(MLBENCH_WORKER),
+            "--port",
+            str(port),
+            "--state-dir",
+            str(tmp_path / f"mlbench-state-{fault or 'honest'}"),
+            "--epoch-floor",
+            "0.2",
+            "--estimate-factor",
+            "0.5",
+        ]
+        if fault:
+            args += ["--fault", fault]
+        with log.open("wb") as handle:
+            process = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
+                args, stdout=handle, stderr=subprocess.STDOUT, env=env
+            )
+        started.append(process)
+        endpoint = f"http://127.0.0.1:{port}"
+        wait_ready(process, f"{endpoint}/v1/health", log, "ML bench")
+        return RunningWorker(endpoint, log, value, process, task=task, hosts=(host,))
+
+    yield start
+    stop_all(started)
+    server.shutdown()
+    server.server_close()
+
+
+class QuietFiles(SimpleHTTPRequestHandler):
+    def log_message(self, format: str, *args: Any) -> None:
+        pass
+
+
+def dataset_csv(*, rows: int, features: int, classes: int, seed: int) -> bytes:
+    """A labelled dataset a linear classifier can learn: one centre per class, rows scattered
+    around it, drawn from the seed."""
+    rng = random.Random(seed)  # noqa: S311 — test data drawn from a seed, not a secret
+    centres = [[rng.uniform(-3, 3) for _ in range(features)] for _ in range(classes)]
+    lines = [",".join([*(f"f{k}" for k in range(1, features + 1)), "label"])]
+    for row in range(rows):
+        label = row % classes
+        values = [c + rng.gauss(0, 1.0) for c in centres[label]]
+        lines.append(",".join([*(f"{v:.6f}" for v in values), f"class-{label}"]))
+    return ("\n".join(lines) + "\n").encode()
 
 
 def key_pair() -> tuple[str, str]:

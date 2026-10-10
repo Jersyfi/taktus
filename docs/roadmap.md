@@ -184,7 +184,7 @@ from it and kept consistent with it, never a second source of truth (#88, #197, 
 and chat, and you can see your own share of the waiting time.
 
 ### `0.4.0` — the ML bench and the second tenant
-`mlbench` worker doing real work: training, evaluation, embeddings, classical ML (#89) · method
+`mlbench` worker doing real work: training, evaluation, embeddings, classical ML (#89, #210) · method
 maturation with change proposals · model hub for in-house models · second coding worker, so that
 the removal test can say *changed* through an adapter, not only a person (#154) · model routing ·
 `dev-orchestration` blueprint · **second tenant onboarded at level 1–2**
