@@ -1,7 +1,7 @@
 # DEC-0164 — What method maturation must achieve
 
 **Category:** NON-BLOCKING
-**Raised in:** the pull request for issue [#216](https://github.com/Jersyfi/taktus/issues/216)
+**Raised in:** [#220](https://github.com/Jersyfi/taktus/pull/220), for issue #216
 **Issue:** [#219](https://github.com/Jersyfi/taktus/issues/219)
 **Needed by:** before #217 is built, which observes steps and raises the first proposal
 **Provisional answer:** Option A. Issues #217 and #218 are written on it; #216 does not depend on it.
