@@ -57,9 +57,9 @@ GIT = {
 }
 GENERATOR = "tools/check_status.py"
 # A record the register holds open on `main`, so that the generated section lists something.
-OPEN_NEED = (
-    "docs/decisions/open/NEED-0998-a-credential-for-the-test.md",
-    "# NEED-0998 — A credential for the test\n\n**Kind:** credential\n"
+OPEN_RECORD = (
+    "docs/decisions/open/DEC-0998-a-question-for-the-test.md",
+    "# DEC-0998 — A question for the test\n\n**Category:** NON-BLOCKING\n"
     "**Needed by:** 2026-11-01\n**Issue:** [#5](https://repo.example/issues/5)\n",
 )
 
@@ -176,7 +176,7 @@ async def test_an_issue_labelled_ready_becomes_a_pull_request_that_ends_with_the
     # The clone carries the generator already (the fixture); `main` of the service gains it.
     generator = (Path(outside.clone_url) / GENERATOR).read_text(encoding="utf-8")
     outside.commit_on_main({GENERATOR: generator})
-    on_both_sides(outside, *OPEN_NEED)
+    on_both_sides(outside, *OPEN_RECORD)
     clock = ManualClock(datetime.now(UTC))
     daemon = await daemons(
         "all",
@@ -217,9 +217,9 @@ async def test_an_issue_labelled_ready_becomes_a_pull_request_that_ends_with_the
     # What the repository's generator prints on the branch the pull request carries.
     tree = tmp_path / "branch"
     checkout(outside, branch, tree)
-    assert (tree / OPEN_NEED[0]).is_file() and (tree / "hello.txt").is_file()
+    assert (tree / OPEN_RECORD[0]).is_file() and (tree / "hello.txt").is_file()
     printed = generated_on(tree)
-    assert "NEED-0998" in printed
+    assert "DEC-0998" in printed
     closing = "## Needed from the owner\n\n" + printed
     described = body.split("<!-- taktus-idempotency-key")[0]
     assert described.endswith(closing + "\n"), described[-600:]
