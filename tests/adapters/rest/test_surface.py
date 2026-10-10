@@ -13,7 +13,7 @@ import taktus.adapters.driving.rest.app as app_module
 from taktus.adapters.driving.rest import build_app
 from taktus.ports.connector import ConnectorError, IntakeResult, Refusal
 
-from .conftest import TENANT, ScriptedConnector, Services, a_run, refused, services
+from .conftest import OTHER, TENANT, ScriptedConnector, Services, a_run, refused, services
 
 type Client = tuple[httpx.AsyncClient, Services, str]
 
@@ -112,18 +112,56 @@ async def test_an_intake_event_is_completed_into_a_command_by_the_linked_identit
     client: Client,
 ) -> None:
     http, given, base = client
-    await given.linked()
+    key = await given.linked()
+    auth = {"Authorization": f"Bearer {key}"}
     accepted = await http.post(f"{base}/intake/channel.repo", content=b"{}")
     assert accepted.status_code == 202 and accepted.json()["accepted"]["tenant"] == TENANT
-    completed = await http.post(f"{base}/intake-events/dlv_1/complete")
+    completed = await http.post(f"{base}/intake-events/dlv_1/complete", headers=auth)
     assert completed.status_code == 200, completed.text
     command = completed.json()
     assert command["identity"] == "idn_ada" and command["org_path"] == [TENANT]
     assert "identity_provisional" not in command["context"]
     assert command["reply_to"]["address"] == "acme/taktus#412"
-    is_problem(await http.post(f"{base}/intake-events/dlv_1/complete"), 409)
-    is_problem(await http.post(f"{base}/intake-events/dlv_9/complete"), 404)
-    is_problem(await http.post(f"{base}/intake-events/dlv_1/complete?tenant=other"), 404)
+    is_problem(await http.post(f"{base}/intake-events/dlv_1/complete", headers=auth), 409)
+    is_problem(await http.post(f"{base}/intake-events/dlv_9/complete", headers=auth), 404)
+
+
+async def test_completing_an_event_needs_a_key_and_nothing_is_completed_without_one(
+    client: Client,
+) -> None:
+    http, given, base = client
+    key = await given.linked()
+    assert (await http.post(f"{base}/intake/channel.repo", content=b"{}")).status_code == 202
+    path = f"{base}/intake-events/dlv_1/complete"
+    for answer in (
+        await http.post(path),
+        await http.post(path, headers={"Authorization": "Bearer not-a-key"}),
+        await http.post(path, headers={"Authorization": f"Basic {key}"}),
+        await http.post(path, headers={"Authorization": key}),
+        *[await http.post(path, params={name: key}) for name in ("key", "access_token")],
+    ):
+        problem = is_problem(answer, 401)
+        assert "dlv_1" not in str(problem["detail"]), "a refusal says nothing about what exists"
+    async with given.persistence.transaction(TENANT):
+        event = await given.events.get(TENANT, "dlv_1")
+    assert event is not None and event.status == "awaiting_identity", "nothing was completed"
+
+
+async def test_an_event_of_another_tenant_is_not_completed_whatever_the_request_names(
+    client: Client,
+) -> None:
+    http, given, base = client
+    await given.linked()
+    assert (await http.post(f"{base}/intake/channel.repo", content=b"{}")).status_code == 202
+    _, theirs = await given.identity.person(OTHER, "idn_bob")
+    auth = {"Authorization": f"Bearer {theirs}"}
+    path = f"{base}/intake-events/dlv_1/complete"
+    for named in ({}, {"tenant": TENANT}):
+        problem = is_problem(await http.post(path, params=named, headers=auth), 404)
+        assert TENANT not in str(problem["detail"]).replace(OTHER, "")
+    async with given.persistence.transaction(TENANT):
+        event = await given.events.get(TENANT, "dlv_1")
+    assert event is not None and event.status == "awaiting_identity", "nothing was completed"
 
 
 async def test_an_unknown_sender_is_answered_in_the_channel_and_nothing_is_kept(
@@ -139,7 +177,9 @@ async def test_an_unknown_sender_is_answered_in_the_channel_and_nothing_is_kept(
     assert to.address == "acme/taktus#412" and "link code" in text
     async with given.persistence.transaction(TENANT):
         assert await given.events.list(TENANT) == []
-    is_problem(await http.post(f"{base}/intake-events/dlv_1/complete"), 404)
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    auth = {"Authorization": f"Bearer {key}"}
+    is_problem(await http.post(f"{base}/intake-events/dlv_1/complete", headers=auth), 404)
 
 
 async def test_a_link_code_is_made_in_the_persons_account_and_nowhere_else(
