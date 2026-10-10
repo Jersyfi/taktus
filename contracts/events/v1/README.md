@@ -118,7 +118,7 @@ same event and the same version give the same answer, every time. **Whether a ru
 never decided by a probabilistic method**, as an emergency stop is not (ADR-0023). A process
 that must judge whether there is anything to do — whether an issue lacks a section, whether a
 comment asks for something — does it in its first step, with that step's method, reason and
-fallback (CLAUDE.md §3). That step ends the run when there is nothing to do. A trigger is not a
+fallback, like any step. That step ends the run when there is nothing to do. A trigger is not a
 step, so it carries no method choice of its own: its method is `rule`, fixed by this contract.
 
 **The condition is a named state of the instance**, checked when the reaction would start the
