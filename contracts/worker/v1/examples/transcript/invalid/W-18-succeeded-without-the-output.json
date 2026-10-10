@@ -1,0 +1,193 @@
+{
+  "assignment": {
+    "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+    "task": {
+      "goal": "Implement issue 77 and report what is open in the register afterwards.",
+      "acceptance": [
+        "make gates passes"
+      ],
+      "inputs": {
+        "issue": "77"
+      },
+      "after": {
+        "command": [
+          "python3",
+          "tools/check_status.py",
+          "--print"
+        ],
+        "artifact": "closing"
+      }
+    },
+    "context": {
+      "workspace": {
+        "kind": "git",
+        "ref": "main",
+        "location": "/workspace/repo"
+      }
+    },
+    "frame": {
+      "autonomy_level": 4,
+      "allowed_tools": [
+        "code.read",
+        "code.edit",
+        "code.test",
+        "shell.sandboxed"
+      ],
+      "allowed_hosts": [
+        "repo.example"
+      ],
+      "max_steps": 40
+    },
+    "limits": {
+      "currency": {
+        "usd": 5.0
+      },
+      "tokens": {
+        "in": 600000,
+        "out": 30000
+      }
+    },
+    "credentials": [
+      {
+        "name": "CODING_AGENT_API_KEY",
+        "injected_as": "env"
+      }
+    ],
+    "callback": {
+      "events": "sse"
+    }
+  },
+  "estimate": {
+    "confidence": "low",
+    "tokens_in": 60000,
+    "tokens_out": 3000,
+    "currency": {
+      "usd": 0.5
+    },
+    "wall_seconds": 120,
+    "steps": 3
+  },
+  "events": [
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 1,
+      "ts": "2026-10-10T10:00:01Z",
+      "type": "step.started",
+      "step_id": "step-1",
+      "kind": "edit",
+      "summary": "Write: hello.txt"
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 2,
+      "ts": "2026-10-10T10:00:02Z",
+      "type": "tool.called",
+      "step_id": "step-1",
+      "tool": "code.edit",
+      "arguments_digest": "sha256:f294eb03a39f81a02d902067b834b1302779d22f0c27a40ca7e3affe5b92871b"
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 3,
+      "ts": "2026-10-10T10:00:03Z",
+      "type": "artifact.produced",
+      "step_id": "step-1",
+      "artifact_id": "change-1",
+      "kind": "patch",
+      "digest": "sha256:d78fc11e8f03047bb540bef3a121e66b5990bb2d8b83a2410699b1ef7485e2aa",
+      "media_type": "text/x-diff",
+      "size_bytes": 53,
+      "uri": "/v1/assignments/asg_01J9AF7Q2M4N6P8R0S2T4V6W8X/artifacts/change-1"
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 4,
+      "ts": "2026-10-10T10:00:03Z",
+      "type": "consumption.reported",
+      "step_id": "step-1",
+      "tokens_in": 41000,
+      "tokens_out": 120
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 5,
+      "ts": "2026-10-10T10:00:03Z",
+      "type": "step.boundary",
+      "step_id": "step-1",
+      "checkpoint_ref": "ckpt/asg_01J9AF7Q2M4N6P8R0S2T4V6W8X/step-1"
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 6,
+      "ts": "2026-10-10T10:00:04Z",
+      "type": "step.started",
+      "step_id": "step-2",
+      "kind": "report",
+      "summary": "the agent's summary of what it did"
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 7,
+      "ts": "2026-10-10T10:00:04Z",
+      "type": "artifact.produced",
+      "step_id": "step-2",
+      "artifact_id": "summary",
+      "kind": "report",
+      "digest": "sha256:06c80d190769bc4703b70cf88480a38e824a9e6ba48f542eb316903a791f8bcd",
+      "media_type": "text/plain",
+      "size_bytes": 16,
+      "uri": "/v1/assignments/asg_01J9AF7Q2M4N6P8R0S2T4V6W8X/artifacts/summary"
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 8,
+      "ts": "2026-10-10T10:00:04Z",
+      "type": "consumption.reported",
+      "step_id": "step-2",
+      "tokens_in": 3000,
+      "tokens_out": 40
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 9,
+      "ts": "2026-10-10T10:00:04Z",
+      "type": "step.boundary",
+      "step_id": "step-2",
+      "checkpoint_ref": "ckpt/asg_01J9AF7Q2M4N6P8R0S2T4V6W8X/step-2"
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 10,
+      "ts": "2026-10-10T10:00:05Z",
+      "type": "step.started",
+      "step_id": "step-3",
+      "kind": "shell",
+      "summary": "the command after the work"
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 11,
+      "ts": "2026-10-10T10:00:06Z",
+      "type": "consumption.reported",
+      "step_id": "step-3",
+      "tokens_in": 0,
+      "tokens_out": 0
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 12,
+      "ts": "2026-10-10T10:00:06Z",
+      "type": "step.boundary",
+      "step_id": "step-3",
+      "checkpoint_ref": "ckpt/asg_01J9AF7Q2M4N6P8R0S2T4V6W8X/step-3"
+    },
+    {
+      "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+      "seq": 13,
+      "ts": "2026-10-10T10:00:06Z",
+      "type": "assignment.finished",
+      "outcome": "succeeded",
+      "summary": "3 step(s)"
+    }
+  ]
+}

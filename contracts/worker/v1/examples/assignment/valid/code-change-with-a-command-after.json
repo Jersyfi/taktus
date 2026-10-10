@@ -1,0 +1,58 @@
+{
+  "assignment_id": "asg_01J9AF7Q2M4N6P8R0S2T4V6W8X",
+  "task": {
+    "goal": "Implement issue 77 and report what is open in the register afterwards.",
+    "acceptance": [
+      "make gates passes"
+    ],
+    "inputs": {
+      "issue": "77"
+    },
+    "after": {
+      "command": [
+        "python3",
+        "tools/check_status.py",
+        "--print"
+      ],
+      "artifact": "closing"
+    }
+  },
+  "context": {
+    "workspace": {
+      "kind": "git",
+      "ref": "main",
+      "location": "/workspace/repo"
+    }
+  },
+  "frame": {
+    "autonomy_level": 4,
+    "allowed_tools": [
+      "code.read",
+      "code.edit",
+      "code.test",
+      "shell.sandboxed"
+    ],
+    "allowed_hosts": [
+      "repo.example"
+    ],
+    "max_steps": 40
+  },
+  "limits": {
+    "currency": {
+      "usd": 5.0
+    },
+    "tokens": {
+      "in": 600000,
+      "out": 30000
+    }
+  },
+  "credentials": [
+    {
+      "name": "CODING_AGENT_API_KEY",
+      "injected_as": "env"
+    }
+  ],
+  "callback": {
+    "events": "sse"
+  }
+}

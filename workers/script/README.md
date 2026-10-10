@@ -75,6 +75,11 @@ few `max_steps` or a deadline before the estimated end all give `finished` / `re
 A stop request is honoured after the running step's boundary; the assignment ends `stopped` with
 that boundary's `checkpoint_ref`.
 
+**The command after the work.** A task that names `after` gains one last step, `after`, of kind
+`shell`: its `command` runs without a shell and with no credential in its environment, and its
+standard output becomes the artifact `after.artifact`, of kind `output`, byte for byte. A command
+that exits with anything but 0 publishes nothing and the assignment ends `failed` (W-18).
+
 **Limits.** The compute limit is this worker's hard ceiling while it runs, too (W-14). It keeps
 the running total of the compute seconds it has reported. After every boundary it adds the next
 step's expected seconds; if the sum would exceed `limits.compute.seconds`, the next step does
@@ -117,6 +122,7 @@ that check and only on that check.
 | `W-11` | W-11 | produces the artifacts from before a checkpoint again after resuming |
 | `W-13` | W-13 | reaches a host outside `allowed_hosts` and reports it without `refused: true` |
 | `W-14` | W-14 | ignores the limits once running: keeps starting steps after the running total reached them |
+| `W-18` | W-18 | ignores the task's command after the work: it never runs and nothing is published |
 
 W-12, the removal test, has no fault: it is not something a worker does at runtime.
 

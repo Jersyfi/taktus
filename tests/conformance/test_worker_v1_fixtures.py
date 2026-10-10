@@ -64,7 +64,7 @@ def test_invalid_transcript_breaks_its_check(path: Path) -> None:
 
 def test_every_stream_check_has_a_fixture() -> None:
     named = {p.name[:4] for p in INVALID}
-    assert named == {"W-03", "W-04", "W-05", "W-06", "W-07", "W-10", "W-11", "W-13", "W-14"}
+    assert named == {"W-03", "W-04", "W-05", "W-06", "W-07", "W-10", "W-11", "W-13", "W-14", "W-18"}
 
 
 PROBES = TRANSCRIPTS.parent / "capacity-probe"

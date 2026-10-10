@@ -21,6 +21,7 @@ from taktus.components.run.domain.model import (
     resolve_inputs,
     select,
 )
+from taktus.components.run.domain.model.work import is_reference
 from taktus.shared.v1 import ExactnessClass, Fallback, Method, Step
 
 
@@ -200,6 +201,42 @@ def test_resolve_replaces_references() -> None:
         "patch": "diff --git",
     }
     assert resolve_inputs({"x": {"$input": "a", "$select": "b"}}, {"a": {"b": 5}}) == {"x": 5}
+
+
+def test_an_input_the_run_was_not_given_is_what_otherwise_names() -> None:
+    """ADR-0053: an optional input stands in for what a step produces, or the reverse."""
+    value = {"closing": {"$input": "closing", "$otherwise": {"$from": "gen", "$artifact": "out"}}}
+    assert references(value) == {"gen"}
+    assert artifact_references(value) == {("gen", "out")}
+    given = resolve_inputs(value, {"closing": "## By hand"})
+    assert given == {"closing": "## By hand"}
+    assert references(given) == set(), "an input given reads nothing of the step"
+    left_out = resolve_inputs(value, {})
+    assert left_out == {"closing": {"$from": "gen", "$artifact": "out"}}
+    assert resolve(left_out, {}, {"gen/out": "generated"}) == {"closing": "generated"}
+    with pytest.raises(KeyError):
+        resolve_inputs({"x": {"$input": "closing"}}, {})
+    assert not is_reference({"$from": "a", "$otherwise": 1}), "only an input has an otherwise"
+
+
+def test_worker_work_carries_its_command_after_the_work() -> None:
+    work = parse_work(
+        step(Method.WORKER, requires=("code.edit",)),
+        {
+            "task": {
+                "goal": "g",
+                "acceptance": ["a"],
+                "after": {"command": ["python3", "tools/gen.py"], "artifact": "closing"},
+            }
+        },
+    )
+    assert isinstance(work, WorkerWork) and work.task.after is not None
+    assert work.task.after.command == ("python3", "tools/gen.py")
+    with pytest.raises(UnsupportedWork, match="after"):
+        parse_work(
+            step(Method.WORKER, requires=("code.edit",)),
+            {"task": {"goal": "g", "acceptance": ["a"], "after": {"command": "python3 x"}}},
+        )
 
 
 def test_select_names_what_is_missing() -> None:

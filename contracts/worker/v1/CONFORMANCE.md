@@ -65,9 +65,9 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 ## 3. What the suite does to your worker
 
 It reads your capabilities, asks for an estimate, and posts up to seven assignments. Then it asks
-about an id it never posted, fills your declared places to see what you answer to one more, and
-last posts ids you already hold a second time. Each of the seven has a purpose, and the report
-names it:
+about an id it never posted, fills your declared places to see what you answer to one more,
+posts ids you already hold a second time, and last runs your work twice with a command after
+it. Each of the seven has a purpose, and the report names it:
 
 | Assignment | What it is | What it proves |
 |---|---|---|
@@ -101,9 +101,14 @@ repeat carries an id you already hold, and the suite expects `409`. A repeat you
 accepted appears as `repeated-running` or `repeated-finished`. Afterwards the suite stops every
 assignment of the probe and reads its stream to the end.
 
+Last come two assignments with a command after the work, the task's `after`. `after-command`
+runs `printf` with a value only that run knows, and expects it back as the artifact
+`after-output`, byte for byte, after every step of your work. `after-command-failing` runs
+`false`, and expects the assignment to end `failed` without that artifact.
+
 ---
 
-## 4. The seventeen checks in plain words
+## 4. The eighteen checks in plain words
 
 | Check | In plain words | If it fails, fix this |
 |---|---|---|
@@ -124,6 +129,7 @@ assignment of the probe and reads its stream to the end.
 | **W-15** | When you hold as many assignments as `max_concurrent_assignments` declares, you answer one more with `503` and a problem body, and you record nothing of it. Taktus relies on that answer: a step whose worker answers `503` waits for a free place, and Taktus does not count your assignments itself (ADR-0037). | Count the assignments you hold that have not finished. When the count has reached what you declare, answer `POST /v1/assignments` with `503` and a JSON body with `title` and `status: 503`. Keep nothing of that assignment: `GET /v1/assignments/{id}` answers `404` for it. Declare no more places than you really have. |
 | **W-16** | When asked for the state of an assignment id you never received, you answer `404` with a problem body. Taktus relies on that answer: a runner that recovers a run asks you about an assignment it recorded before posting it, and a `404` means the post never arrived, so it posts the same id again (ADR-0038). | Look the id up among the assignments you hold. When it is not there, answer `GET /v1/assignments/{id}` with `404` and a JSON body with `title` and `status: 404`. Never invent a state for an id you do not hold. |
 | **W-17** | When a new assignment carries an id you already hold, running or finished, you answer `409` with a problem body and start nothing. The assignment of that id stays the first one: the same `accepted_at`, its stream not begun again, its outcome unchanged. Taktus relies on that answer: it may post an id a second time when it does not know whether the first post arrived, and a `409` tells it to continue the assignment you hold (ADR-0038). | Before anything else, look up the `assignment_id` of `POST /v1/assignments`. When you hold it, answer `409` with a JSON body with `title` and `status: 409`, and leave the assignment you hold as it is. A finished assignment is still held: the suite repeats `main` after it finished. |
+| **W-18** | When the task names a command after the work, you run it once your work is done, as your last step, in your workspace. What it prints on its standard output becomes the artifact the task names, byte for byte. When it exits with anything but 0, the assignment fails and that artifact does not exist. Taktus relies on it: P-03 has the repository's own generator run on the change, and appends what it printed to the pull request's description (ADR-0053). | Run `after.command` as a program with its arguments, without a shell and without any credential in its environment, after your last step of the work. Publish its standard output unchanged as `after.artifact`. Start no step after it. On a non-zero exit, end `failed` and publish nothing under that id. |
 
 The report attributes a malformed event to the check that owns that event type: a bad
 `arguments_digest` is a W-09 failure, a bad `consumption.reported` a W-04 failure, and so on. Base
@@ -172,7 +178,7 @@ stop can land on, without a stopped run there is nothing to resume. Fix the fail
 
 ## 7. What a pass means
 
-A worker whose report shows sixteen `passed` and one `pending` satisfies the numbered checks. A
+A worker whose report shows seventeen `passed` and one `pending` satisfies the numbered checks. A
 W-14 that stays *inconclusive* because your worker's estimate always held is no failure; it
 means the halt was not observed.
 

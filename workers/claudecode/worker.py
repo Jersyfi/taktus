@@ -58,10 +58,11 @@ from urllib.parse import parse_qs, urlparse, urlsplit
 type Json = dict[str, Any]
 
 CONTRACT = "worker/v1"
-VERSION = "0.1.0"  # this worker's own version, recorded in the provenance of what it produces
+VERSION = "0.2.0"  # this worker's own version, recorded in the provenance of what it produces
 MAX_CONCURRENT = 2
 AGENT_EXIT_GRACE = 10.0
 DEFAULT_CEILING = 300
+AFTER_TIMEOUT = 300  # seconds the task's command after the work may run
 
 # What the agent's tools mean in the contract's terms. `--tools` gives the agent exactly these;
 # the frame's allowed_tools chooses which of them are approved at the moment of the call.
@@ -118,6 +119,7 @@ FAULTS: dict[str, str] = {
     "W-15": "an assignment beyond max_concurrent_assignments is accepted instead of answered 503",
     "W-16": "the state of an id never received is answered 200, accepted, instead of 404",
     "W-17": "an assignment whose id is held is accepted again as a second one instead of 409",
+    "W-18": "the task's command after the work is ignored: it never runs and nothing is published",
 }
 
 
@@ -1157,9 +1159,58 @@ class _Run:
             self.worker._emit(a, settlement)
             for consumption in self.deferred:
                 self.worker._emit(a, consumption)
+        if not self._after():
+            return
         self.worker._finish(
             a, "succeeded", summary=f"{self.index - a.step_index} step(s) completed"
         )
+
+    def _after(self) -> bool:
+        """The task's command after the work (contracts/worker/v1 §3, W-18), as the last step:
+        run in the workspace as the agent left it — the tree the changeset describes, which is
+        computed before — and its standard output published as the artifact the task names.
+        The command is not the agent's: no model is involved. False when it failed the
+        assignment."""
+        a = self.a
+        after = self.body["task"].get("after")
+        if not isinstance(after, dict) or self.fault == "W-18":
+            return True
+        named = str(after["artifact"])
+        if any(p.artifact_id == named for p in a.inherited):
+            return True
+        self.index += 1
+        step = Step(
+            index=self.index,
+            step_id=f"step-{self.index}",
+            tool="after",
+            capability="shell.sandboxed",
+            kind="shell",
+            tokens_in=0,
+            tokens_out=0,
+            began=time.monotonic(),
+        )
+        with a.lock:
+            self.worker._emit(
+                a,
+                {
+                    "type": "step.started",
+                    "step_id": step.step_id,
+                    "kind": step.kind,
+                    "summary": "the command after the work",
+                },
+            )
+        output, failure = run_after(tuple(str(p) for p in after["command"]), self.workspace)
+        if failure is None:
+            produced = Produced(named, "output", "text/plain", output)
+            with a.lock:
+                a.produced.append(produced)
+                self.worker._emit(a, _artifact_event(a, produced, step.step_id))
+        self.last_step_id = step.step_id
+        self._close_step(step, "after")
+        if failure is not None:
+            self.worker._finish(a, "failed", reason=failure)
+            return False
+        return True
 
 
 # --- helpers ------------------------------------------------------------------------------------
@@ -1172,6 +1223,34 @@ def _end(process: subprocess.Popen[str], *, force: bool = False) -> None:
         os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
     except ProcessLookupError:
         pass
+
+
+def run_after(argv: tuple[str, ...], workspace: Path) -> tuple[bytes, str | None]:
+    """Run the task's command after the work in the workspace: a program and its arguments,
+    without a shell, with no credential in its environment. Its standard output, and why it
+    failed or None."""
+    keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
+    environment = {k: os.environ[k] for k in keep if k in os.environ}
+    try:
+        completed = subprocess.run(  # noqa: S603 — the task's own command, by design
+            list(argv),
+            cwd=workspace,
+            capture_output=True,
+            timeout=AFTER_TIMEOUT,
+            check=False,
+            env=environment,
+        )
+    except subprocess.TimeoutExpired:
+        return b"", f"the command after the work exceeded {AFTER_TIMEOUT}s"
+    except OSError as error:
+        return b"", f"the command after the work could not be started: {error.strerror}"
+    if completed.returncode != 0:
+        tail = completed.stderr.decode(errors="replace").strip()[-200:]
+        return completed.stdout, (
+            f"the command after the work exited with {completed.returncode}"
+            + (f": {tail}" if tail else "")
+        )
+    return completed.stdout, None
 
 
 def _artifact_event(assignment: Assignment, produced: Produced, step_id: str | None) -> Json:

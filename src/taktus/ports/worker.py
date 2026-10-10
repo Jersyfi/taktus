@@ -132,11 +132,22 @@ class Health(Value):
 # --- the assignment -----------------------------------------------------------------------------
 
 
+class AfterCommand(Value):
+    """A command the worker runs in its workspace once the work is done. Its standard output
+    becomes the artifact `artifact` names, byte for byte; an exit status other than 0 fails the
+    assignment (contracts/worker/v1 §3, W-18). A program and its arguments, run without a shell,
+    given no credential."""
+
+    command: tuple[Annotated[str, StringConstraints(min_length=1)], ...] = Field(min_length=1)
+    artifact: str = Field(pattern=r"^[a-z][a-z0-9_.-]*$")
+
+
 class Task(Value):
     goal: str = Field(min_length=1)
     acceptance: tuple[Annotated[str, StringConstraints(min_length=1)], ...] = Field(min_length=1)
     # The inputs' shape belongs to the task; the contract says `type: object` and no more.
     inputs: dict[str, Any] | None = None
+    after: AfterCommand | None = None
 
 
 class Workspace(Value):

@@ -10,7 +10,7 @@
 #         --input issue=11 --input records_path=docs/decisions/open \
 #         --input repository_url=https://host/owner/name.git \
 #         --input repository_host=host --input coding_credential=CODING_AGENT_API_KEY \
-#         --input "closing_section=$(<the repository's generator>)"
+#         [--input "closing_section=$(<the repository's generator>)"]
 #
 # Ready means the backlog's ready standard (docs/process/README.md, DEC-0051), evaluated by the
 # rule `ready` — the same code a session's `make backlog` runs — over the issue, the repository's
@@ -22,10 +22,13 @@
 # holds the open decision and needs records; `repository_url`, where the worker clones from;
 # `repository_host`, the one host the worker may reach (the clone's); `coding_credential`, the
 # name of the credential the coding worker's authentication needs (its README);
-# `closing_section`, the section the repository generates for the end of every pull request
-# description, verbatim with its heading, or empty when it generates none. The connector
-# configured for `repository.*` and the worker configured for `code.*` are what the
-# capabilities resolve to; no product is named here.
+# `closing_section`, optional, the section the repository generates for the end of every pull
+# request description, verbatim with its heading. Without it the worker generates the section:
+# after its change it runs the repository's generator in its workspace — the tree the branch
+# will carry, which is what the checks compare against — and the run appends what it printed
+# under the section's heading (DEC-0037, ADR-0053). The connector configured for
+# `repository.*` and the worker configured for `code.*` are what the capabilities resolve to;
+# no product is named here.
 #
 # Every step an integration serves — a connector call, a wait on a connector, the worker, the
 # model — names a person as its fallback for when that integration is unavailable (issue #90).
@@ -35,7 +38,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "4"
+version: "5"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -49,20 +52,22 @@ autonomy:
 author: the repository
 reason: the third process of the dev-orchestration blueprint, runnable
 
-# No trigger yet. The blueprint's `issue.ready` is the event `issue.labelled` with the filter
-# `label: ready` and the condition `capacity.available` (contracts/events/v1 §2). A run started
-# by an event has nobody to ask, so its trigger must give every input, and `closing_section`
-# cannot be given by a trigger: it is generated from the base branch. Once the worker
-# generates it inside the run (DEC-0037, issue #77), the input goes and the trigger returns:
-#
-#   - event: issue.labelled
-#     filter: { label: ready }
-#     condition: capacity.available
-#     inputs: { records_path: docs/decisions/open, ... }
-#     from_event: { issue: issue }
-#
-# Until then P-03 starts by hand, as above (ADR-0048, NTC-0103).
-triggers: []
+# The blueprint's `issue.ready`: the event `issue.labelled` with the filter `label: ready` and
+# the condition `capacity.available` (contracts/events/v1 §2). A run started by an event has
+# nobody to ask, so the trigger gives every input the process requires: this repository's
+# records, its clone and the host of the clone, and the name of the coding worker's credential;
+# the issue comes from the event. It gives no `closing_section`: the worker generates the
+# section inside the run (DEC-0037, ADR-0053, NTC-0112). P-03 still starts by hand as above.
+triggers:
+  - event: issue.labelled
+    filter: { label: ready }
+    condition: capacity.available
+    inputs:
+      records_path: docs/decisions/open
+      repository_url: https://github.com/Jersyfi/taktus.git
+      repository_host: github.com
+      coding_credential: CODING_AGENT_API_KEY
+    from_event: { issue: issue }
 
 inputs:
   issue:
@@ -84,15 +89,19 @@ inputs:
     description: the name of the credential the coding worker's authentication needs
     example: CODING_AGENT_API_KEY
   # A copy of what the repository generates is a rule, never a model's output (issue #34).
-  # The run cannot generate it: the block is derived from files of the repository by the
-  # repository's own code, and a template composes, it does not compute. So whoever starts the
-  # run generates it from the base branch and hands it in, the way a person pastes the output
-  # of the repository's command into a description they open by hand.
+  # The run itself cannot generate it: the block is derived from files of the repository by the
+  # repository's own code, and a template composes, it does not compute. So the worker runs
+  # that code after its change, as a command of its task (`after`), and the run appends what it
+  # printed. Whoever starts the run by hand may still hand the section in, generated from the
+  # base branch, the way a person pastes the output of the repository's command into a
+  # description they open by hand; given, it is what the description ends with.
   closing_section:
     description: >
       the section the repository generates for the end of every pull request description,
-      verbatim with its heading, from the base branch; empty when the repository generates none
+      verbatim with its heading, from the base branch; empty when the repository generates none.
+      Left out, the worker's generated section stands in for it
     example: "## Generated\n\nNothing is open."
+    required: false
 
 # The worker's estimate is admitted against the currency and the quota; its tokens are counted
 # per step, its money at the end (ADR-0005, amendment). Connector calls count in requests.
@@ -295,8 +304,8 @@ steps:
           # The description of a pull request Taktus opens is the summary this assignment ends
           # with, so the shape the repository asks of a description is asked of the summary.
           # The section the repository generates is not asked of it: the run appends that
-          # section itself, by a template, after the summary (issue #34). An automatic start
-          # will take it from the worker, which runs the generator after its change (DEC-0037).
+          # section itself, by a template, after the summary (issue #34), from what the command
+          # below printed (DEC-0037).
           - >
             the summary this assignment ends with is the body of the pull request that will
             carry the change: what it delivers, and what a reviewer must know. Where the
@@ -310,6 +319,12 @@ steps:
           issue: { $input: issue }
           title: { $from: read-issue, $select: output.title }
           context: { $from: context }
+        # The repository's generator of the closing section, run by the worker — not by the
+        # agent, and with no model — once the work is done, in the workspace: the tree the
+        # branch will carry. What it prints is the artifact `closing`, byte for byte (W-18).
+        after:
+          command: [python3, tools/check_status.py, --print]
+          artifact: closing
       max_steps: 40
       workspace:
         kind: git
@@ -430,11 +445,31 @@ steps:
         title: { $from: read-issue, $select: output.title }
         issue: { $input: issue }
 
+  - id: closing-section
+    method: rule
+    reason: >
+      the section the repository generates, as the worker's command printed it on the change's
+      tree, under the heading the repository's description check reads
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model, and a copy by a model is not exact (issue #34)
+    exactness: sourced
+    depends_on: [verify]
+    work:
+      rule: template
+      text: |
+        ## Needed from the owner
+
+        ${block}
+      values:
+        block: { $from: implement, $artifact: closing }
+
   - id: pull-request-body
     method: rule
     reason: >
       the body links the issue, carries the worker's own summary of what it did, and ends with
-      the section the repository generates, copied verbatim from the run's input
+      the section the repository generates: the run's input where whoever started it gave one,
+      and otherwise what the worker's command printed on the change's tree
     rejected:
       - method: llm
         why: a fixed composition needs no model; the summary is the worker's
@@ -444,7 +479,7 @@ steps:
           refused descriptions failed on deterministic parts asked of the coding worker
           (DEC-0025)
     exactness: sourced
-    depends_on: [verify]
+    depends_on: [verify, closing-section]
     work:
       rule: template
       # What Taktus says about itself comes first, not last: a repository whose checks read the
@@ -471,7 +506,7 @@ steps:
       values:
         issue: { $input: issue }
         summary: { $from: implement, $artifact: summary }
-        closing: { $input: closing_section }
+        closing: { $input: closing_section, $otherwise: { $from: closing-section } }
 
   - id: open-pr
     method: rule

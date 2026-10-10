@@ -152,9 +152,31 @@
         "inputs": {
           "description": "Structured inputs. Shape belongs to the task; never a credential.",
           "type": "object"
-        }
+        },
+        "after": { "$ref": "#/$defs/AfterCommand" }
       },
       "required": ["goal", "acceptance"],
+      "additionalProperties": false
+    },
+
+    "AfterCommand": {
+      "title": "AfterCommand",
+      "description": "A command the worker runs in its workspace once the work is done, as the last step of the assignment. Its standard output becomes the artifact named by `artifact`, byte for byte. A command that exits with anything but 0 fails the assignment, and the artifact is not produced. The command is a program and its arguments, run without a shell, and it is given no credential (README §3, check W-18).",
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "The program and its arguments, run in the workspace without a shell.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "artifact": {
+          "description": "The artifact_id under which the command's standard output is published.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        }
+      },
+      "required": ["command", "artifact"],
       "additionalProperties": false
     },
 
@@ -599,7 +621,7 @@
 
     "Transcript": {
       "title": "Transcript",
-      "description": "Not a wire object. The fixture shape for the conformance suite: one assignment, the estimate the worker gave for it, and every event of its stream in order. The suite checks the stream rules W-03 to W-07, W-10, W-11, W-13 and W-14 against this shape.",
+      "description": "Not a wire object. The fixture shape for the conformance suite: one assignment, the estimate the worker gave for it, and every event of its stream in order. The suite checks the stream rules W-03 to W-07, W-10, W-11, W-13, W-14 and W-18 against this shape.",
       "type": "object",
       "properties": {
         "assignment": { "$ref": "#/$defs/Assignment" },

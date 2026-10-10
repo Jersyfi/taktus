@@ -127,31 +127,32 @@ def test_registration_refuses_what_the_contract_refuses_with_every_finding_at_on
     assert "gives no value for the input(s) path" in findings
 
 
-def test_p03_with_its_event_trigger_is_refused_until_closing_section_is_generated() -> None:
-    """NTC-0103: a trigger cannot give `closing_section`, so P-03 carries no trigger until #77."""
-    path = Path(__file__).resolve().parents[3] / (
-        "blueprints/dev-orchestration/processes/P-03-implementation.yaml"
-    )
-    document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert document["triggers"] == []
-    document["triggers"] = [
-        {
-            "event": "issue.labelled",
-            "filter": {"label": "ready"},
-            "condition": "capacity.available",
-            "inputs": {
-                "records_path": "docs/decisions/open",
-                "repository_url": "https://repo.example/owner/name.git",
-                "repository_host": "repo.example",
-                "coding_credential": "CODING_AGENT_API_KEY",
-            },
-            "from_event": {"issue": "issue"},
-        }
-    ]
+P03 = Path(__file__).resolve().parents[3] / (
+    "blueprints/dev-orchestration/processes/P-03-implementation.yaml"
+)
+
+
+def test_p03_reacts_to_a_ready_label_and_its_trigger_needs_no_closing_section() -> None:
+    """NTC-0112: the worker generates the closing section (#77), so `closing_section` is
+    optional and the trigger of the blueprint's `issue.ready` is in place."""
+    version = parse_bundle(yaml.safe_load(P03.read_text(encoding="utf-8")))
+    assert version.inputs["closing_section"].required is False
+    assert "closing_section" not in version.required_inputs
+    trigger = version.reacting_to(event())
+    assert trigger is not None and trigger.condition == "capacity.available"
+    given = version.given_by(trigger, event())
+    assert given["issue"] == 76 and "closing_section" not in given
+    assert set(given) == set(version.required_inputs)
+    assert version.reacting_to(event(label="wontfix", repository="a/b", issue="1")) is None
+
+
+def test_a_trigger_need_not_give_an_optional_input_but_must_give_every_required_one() -> None:
+    optional = bundle({"event": "issue.labelled", "from_event": {"issue": "issue"}})
+    optional["inputs"]["path"]["required"] = False
+    assert parse_bundle(optional).required_inputs == ("issue",)
     with pytest.raises(InvalidProcess) as refused:
-        parse_bundle(document)
+        parse_bundle(bundle({"event": "issue.labelled", "from_event": {"issue": "issue"}}))
     assert refused.value.findings == (
-        "the event trigger 'issue.labelled' gives no value for the input(s) closing_section; "
-        "a run started by an event has nobody to ask, so the trigger names them in `inputs` or "
-        "`from_event`",
+        "the event trigger 'issue.labelled' gives no value for the input(s) path; a run started "
+        "by an event has nobody to ask, so the trigger names them in `inputs` or `from_event`",
     )
