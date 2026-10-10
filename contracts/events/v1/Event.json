@@ -376,7 +376,7 @@
     },
     "Condition": {
       "title": "Condition",
-      "description": "A named state of the instance that must hold when the reaction starts the run. A condition that does not hold makes the reaction wait and be tried again; it never discards the event. v1 names one: capacity.available — the instance's admission against its platform would admit the largest execution unit a step of the version starts (docs/architecture/platform.md).",
+      "description": "A named state of the instance that must hold when the reaction starts the run. A condition that does not hold makes the reaction wait and be tried again; it never discards the event. v1 names one: capacity.available — the instance's admission against its platform would admit the run's work now: the state's storage, and the memory of one execution unit where a step of the version is a worker step (docs/architecture/platform.md).",
       "enum": [
         "capacity.available"
       ]

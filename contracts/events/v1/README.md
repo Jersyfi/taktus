@@ -127,7 +127,7 @@ and the event is not discarded. v1 names one:
 
 | Condition | Holds when |
 |---|---|
-| `capacity.available` | the instance's admission against its platform would admit, now, the largest execution unit a step of the version starts (`docs/architecture/platform.md`); a quantity the platform does not observe is no refusal, as in the admission itself |
+| `capacity.available` | the instance's admission against its platform (`docs/architecture/platform.md`) would admit the run's work now: the state's storage, and, where a step of the version is a worker step, the memory of one execution unit as the instance launches it; a quantity the platform does not observe is no refusal, as in the admission itself |
 
 A filter decides whether an event is for this trigger; it is answered once. A condition decides
 when the run may start; it is answered again until it holds.
