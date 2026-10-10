@@ -30,6 +30,7 @@ The resource `taktus://connector/v1/capabilities` ([`declaration.py`](declaratio
 | Operation | Effect | Idempotency | Input | How a repeat is recognised |
 |---|---|---|---|---|
 | `chat.threads.read` | read | — | `address`, `thread` | — ; one thread, its first message and every reply, oldest first, each with its author as the service names them (`account`, `kind`); `complete` says whether every page was read (at most ten of 200) |
+| `chat.members.list` | read | — | — | — ; the workspace's members, each as `account`, `name`, `kind` (`person` or `automation`), `active`, `address` and `address_confirmed` — nothing else of a member; the address is `null` without the permission `users:read.email`. At most ten pages of 200; `complete` says whether every page was read. Nothing calls it yet: it is the proof DEC-0127 rests on (NTC-0107) |
 | `channel.chat.reply` | delivery | marked | `address`, `thread` (optional), `text` | as `chat.threads.post`: the answer Taktus gives at a reply address its intake produced, to a sender it cannot place (contract §7, ADR-0040) |
 | `chat.threads.post` | delivery | marked | `address`, `thread` (optional), `text` | the key in the message's **metadata**, a structured field the service keeps on every message. A post into a thread is looked for among every reply of the thread, up to ten pages of 200; a post at the top of a conversation among the 100 most recent messages of it. A repeat after more than that is not recognised; the bound is stated, as the repository connector states its own |
 
@@ -59,7 +60,9 @@ without a request. A token the service refuses for this conversation ends `forbi
 What the app needs at the service, and no more (NEED-0018): the bot scopes `chat:write`, to
 post; the history scope of each kind of conversation it reads — `im:history` for direct
 messages, `groups:history` for a private channel, `channels:history` for a public one — to read a
-thread and to find its own mark; `app_mentions:read`, to receive a mention. Events: `app_mention`
+thread and to find its own mark; `app_mentions:read`, to receive a mention. Provisionally, under
+DEC-0127, `users:read` and `users:read.email`, which `chat.members.list` needs to read the member
+list with confirmed addresses; without the first it ends `forbidden`. Events: `app_mention`
 and `message.im`. Not `message.channels` or `message.groups`: a mention in a channel would then
 arrive twice, once as each event, and become two commands.
 

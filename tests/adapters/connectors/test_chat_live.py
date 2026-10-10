@@ -183,3 +183,27 @@ async def test_a_reply_retried_after_a_restart_is_posted_once_on_the_real_servic
     assert len(answers) == 1, "the service holds one reply"
     token = secret_named(ACTIONS_CREDENTIAL)
     assert token is not None and token not in json.dumps([first, again, content])
+
+
+async def test_the_member_list_is_read_from_the_real_service() -> None:
+    """DEC-0127's proof on the real service: the app reads the workspace's member list, each
+    member with the fields a link needs and nothing else. Only counts are asserted, so that a
+    failure prints no member of the workspace into a public log."""
+    result = await Connector(Config(target=TARGET)).call(
+        "chat.members.list", context("members", f"live:{secrets.token_hex(6)}:members"), {}
+    )
+    content = result.structured_content
+    assert isinstance(content, dict)
+    cause = content.get("cause") if result.is_error else None
+    assert cause is None, f"the member list was refused: {cause}"
+    members = content["output"]["members"]
+    fields = {"account", "name", "kind", "active", "address", "address_confirmed"}
+    shaped = sum(1 for m in members if set(m) == fields)
+    people = sum(1 for m in members if m["kind"] == "person" and m["active"])
+    automations = sum(1 for m in members if m["kind"] == "automation")
+    addressed = sum(1 for m in members if m["kind"] == "person" and m["address"])
+    assert content["output"]["complete"] is True
+    assert shaped == len(members), "every member carries exactly the six fields"
+    assert people >= 1, "at least one active person: the owner"
+    assert automations >= 1, "at least one automation: Taktus's own app"
+    assert addressed >= 1, "the address permission is granted and names an address"

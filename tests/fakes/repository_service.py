@@ -24,8 +24,11 @@ What it enforces, because the connector's checks depend on it:
   `[bot]`. Every repository is installed until `POST /_fake/app` says otherwise.
 - **Pull request uniqueness.** A second open pull request for the same head branch is refused
   with 422, as the real service does.
-- **Paging.** Comment and issue lists page with `per_page`/`page` and a `Link: <…>; rel="next"`
-  header.
+- **Paging.** Comment, issue and collaborator lists page with `per_page`/`page` and a
+  `Link: <…>; rel="next"` header.
+- **Collaborators.** Every repository starts with two, `fake-user` (role `admin`) and
+  `fake-reviewer` (role `write`), each with its number, login, kind and role — and no address,
+  as the service answers an app on 2026-10-10.
 - **Labels and milestones on an issue.** An issue is opened with label names and a milestone's
   number (`POST …/milestones` makes one), and is read with both, as the ready standard of a
   backlog reads them (issue #70). A directory reads as its immediate entries, each a `file` or a
@@ -79,6 +82,18 @@ def now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def collaborator(login: str, number: int, role: str) -> Json:
+    """One collaborator, in the shape the service lists it: no address among the fields."""
+    return {
+        "login": login,
+        "id": number,
+        "type": "User",
+        "site_admin": False,
+        "role_name": role,
+        "permissions": {"pull": True, "push": role != "read", "admin": role == "admin"},
+    }
+
+
 @dataclass
 class Repository:
     owner: str
@@ -90,6 +105,12 @@ class Repository:
     refs: dict[str, str] = field(default_factory=dict)  # branch name -> commit sha
     objects: dict[str, Json] = field(default_factory=dict)  # sha -> blob | tree | commit
     milestones: dict[int, Json] = field(default_factory=dict)
+    collaborators: list[Json] = field(
+        default_factory=lambda: [
+            collaborator("fake-user", 1, "admin"),
+            collaborator("fake-reviewer", 2, "write"),
+        ]
+    )
     next_number: int = 1
     next_comment: int = 1
     next_run: int = 1
@@ -529,6 +550,17 @@ class Handler(BaseHTTPRequestHandler):
                     f'<{store.base_url}{path}?per_page={per_page}&page={page + 1}>; rel="next"'
                 )
             self._send(200, chunk, headers)
+            return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/collaborators", path):
+            repo = store.repository(m.group(1), m.group(2))
+            per_page = max(1, min(100, int(query.get("per_page", 30))))
+            page = max(1, int(query.get("page", 1)))
+            headers = {}
+            if page * per_page < len(repo.collaborators):
+                headers["Link"] = (
+                    f'<{store.base_url}{path}?per_page={per_page}&page={page + 1}>; rel="next"'
+                )
+            self._send(200, repo.collaborators[(page - 1) * per_page : page * per_page], headers)
             return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/issues/(\d+)", path):
             repo = store.repository(m.group(1), m.group(2))

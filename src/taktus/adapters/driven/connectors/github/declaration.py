@@ -36,6 +36,7 @@ CAPABILITIES = [
     "repository.branches",
     "repository.labels",
     "repository.files",
+    "repository.members",
 ]
 
 OPERATIONS: list[Json] = [
@@ -168,6 +169,16 @@ OPERATIONS: list[Json] = [
         "effect": "read",
         "summary": "List the entries of one directory of the repository at a ref — a branch "
         "or a commit — each with its name, path and type, with the commit the ref resolved to.",
+    },
+    {
+        "name": "repository.members.list",
+        "demand": {"quota_units": 20},
+        "capability": "repository.members",
+        "effect": "read",
+        "summary": "List the repository's collaborators: each account's number, its login "
+        "name, whether it is a person or an automation, and its role. The service names no "
+        "address here. At most twenty pages of 100; `complete` says whether every page was "
+        "read.",
     },
 ]
 
