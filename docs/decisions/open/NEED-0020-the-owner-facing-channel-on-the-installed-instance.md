@@ -21,7 +21,9 @@ or a failure Taktus noticed about itself reaches you as a message in German, and
 its thread. On the instance it cannot reach you until it knows your conversation, and it files
 no answer of yours until your chat account is linked to your identity: an answer from an account
 nobody linked is told that it is not filed. A decision request addressed to the role `owner`
-reaches you only once your identity holds that role.
+reaches you only once your identity holds that role. A page of the guides someone edited by hand
+in the wiki reaches you only once the channel carries the role `documentation`: the guides'
+daily process reports it to whoever the channel reaches with that role (ADR-0066).
 
 ## 3. By when
 
@@ -69,9 +71,13 @@ identifier in place of the placeholder, and configure it:
   "channel": "channel.chat",
   "address": "<the conversation's identifier, starting with D>",
   "language": "de",
+  "roles": ["owner", "documentation"],
   "view_base": "https://<the instance's public name><the instance's path prefix>"
 }
 ```
+
+`roles` names whose questions reach you: decision requests addressed to the role `owner`, and
+the report of a guide page edited by hand, addressed to the role `documentation`.
 
 ```sh
 taktusctl owner-channel set owner-channel.json --identity idn_owner

@@ -307,6 +307,48 @@ async def read_file(api: Api, input: Json, key: str) -> Outcome:
     return Outcome(output, read_effect())
 
 
+MAX_FILES = 100
+"""The most paths one `read_many` reads: one request each, besides the one that resolves the
+ref."""
+
+
+async def read_many(api: Api, input: Json, key: str) -> Outcome:
+    """Several files at one ref, all at the same commit: the ref is resolved to a commit once,
+    and every path is read at that commit, so that what a reader puts together from them is
+    the repository as it was at one moment, even when the branch moves while it reads
+    (ADR-0066). A path that names nothing at the commit, or no file, is answered with content
+    `null`, never left out: the reader decides what a missing file means. The output names the
+    commit and lists the files in the order of `paths`."""
+    paths = [_tree_path(path) for path in _paths(input, "paths")]
+    if not paths:
+        raise invalid("paths names at least one file")
+    if len(paths) > MAX_FILES:
+        raise invalid(f"paths names {len(paths)} files; one call reads at most {MAX_FILES}")
+    ref = _str(input, "ref")
+    commit = ref if SHA.match(ref) else await _ref(api, ref)
+    if commit is None:
+        raise TargetError("not_found", "none", False, f"ref {ref!r} is not a branch or a commit")
+    files: list[Json] = []
+    for path in dict.fromkeys(paths):
+        try:
+            found = await api.get(api.repo(f"contents/{quote(path)}"), {"ref": commit})
+        except TargetError as error:
+            if error.cause != "not_found":
+                raise
+            found = None
+        if not isinstance(found, dict) or found.get("type") != "file":
+            files.append({"path": path, "content": None, "encoding": None})
+            continue
+        raw = await _content_of(api, found)
+        try:
+            files.append({"path": path, "content": raw.decode("utf-8"), "encoding": "utf-8"})
+        except UnicodeDecodeError:
+            encoded = base64.b64encode(raw).decode()
+            files.append({"path": path, "content": encoded, "encoding": "base64"})
+    output: Json = {"ref": ref, "commit": commit, "files": files}
+    return Outcome(output, read_effect())
+
+
 async def list_files(api: Api, input: Json, key: str) -> Outcome:
     """The entries of one directory at a ref, resolved to a commit first as `read_file` does:
     each with its name, its path and its type — `file`, `dir`, `symlink` or `submodule` —
@@ -716,6 +758,7 @@ OPERATIONS: dict[str, Operation] = {
     "repository.branches.create": create_branch,
     "repository.labels.set": set_labels,
     "repository.files.read": read_file,
+    "repository.files.read_many": read_many,
     "repository.files.list": list_files,
     "repository.members.list": list_members,
 }

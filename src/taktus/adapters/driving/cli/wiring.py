@@ -23,6 +23,7 @@ from taktus.components.governance.application.service import (
 )
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.knowledge.application.service import PublishGuidesHandler
+from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
@@ -85,6 +86,8 @@ class Services:
     conformance: RunConformanceHandler | None = None
     """The instance runs an adapter's conformance suite and records it (`taktusctl
     conformance record`, ADR-0044)."""
+    deactivate: DeactivateProcessHandler | None = None
+    """A process is switched off: its triggers no longer start runs (`taktusctl deactivate`)."""
 
 
 @dataclass(frozen=True)

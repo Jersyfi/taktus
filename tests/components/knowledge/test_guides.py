@@ -7,13 +7,16 @@ import pytest
 from fakes import FakeKnowledgeSystem
 
 from taktus.components.knowledge.application.service import (
+    LIST,
     Publication,
     PublishGuides,
     PublishGuidesHandler,
 )
 from taktus.components.knowledge.domain.model import Manifest, Mark, Page, Source
-from taktus.components.knowledge.domain.service.pages import PageState
+from taktus.components.knowledge.domain.service import edits
+from taktus.components.knowledge.domain.service.pages import Held, PageState, measure
 from taktus.components.knowledge.domain.service.render import RenderRefused, digest, render
+from taktus.ports.connector import CallContext, idempotency_key
 
 COMMIT = "a" * 40
 LATER = "b" * 40
@@ -74,6 +77,15 @@ def pages_at(commit: str = COMMIT, files: dict[str, str] | None = None) -> tuple
 
 
 SOURCE = Source(file="docs/guides/guides.yaml", digest=digest("manifest"))
+CONTEXT = CallContext(
+    tenant="default",
+    identity="idn_operator",
+    run_id="guides-read",
+    step_id="read-held",
+    attempt=1,
+    idempotency_key=idempotency_key("guides-read", "read-held", 1),
+    credentials=(),
+)
 
 
 async def publish(system: FakeKnowledgeSystem, pages: tuple[Page, ...], run: str) -> Publication:
@@ -291,3 +303,93 @@ async def test_a_page_no_longer_declared_is_kept_and_named_on_the_contents() -> 
     assert ("Taktus", "Administration", "Restoring") in system.pages
     contents = system.pages[("Taktus", "Administration", "Contents")].body
     assert "- Restoring — no longer part of this guide" in contents
+
+
+# --- the daily run: one reading, measured and acted on (ADR-0066) ----------------------------
+
+
+def test_the_manifest_names_every_file_a_page_takes_from_once() -> None:
+    assert MANIFEST.files() == (
+        "README.md",
+        "docs/guides/installing.md",
+        "docs/restore.md",
+        "use.md",
+    )
+
+
+async def held_now(system: FakeKnowledgeSystem) -> tuple[Held, ...]:
+    listed = await system.call(LIST, CONTEXT, {"place": ["Taktus"]})
+    return tuple(
+        Held.model_validate({**entry, "place": tuple(entry["place"])})
+        for entry in listed.output["pages"]
+    )
+
+
+async def test_measuring_is_a_rule_over_the_pages_and_one_reading() -> None:
+    system = FakeKnowledgeSystem()
+    await publish(system, pages_at(COMMIT), "one")
+    asking = ("Taktus", "Using", "Asking")
+    system.edit(asking, lambda body: body + "\nA note.\n")
+    files = {**FILES, "docs/restore.md": "# Restore\n\nFrom the backup.\n"}
+    pages = pages_at(LATER, files)
+    reading = {h.place: h for h in await held_now(system)}
+    calls = len(system.calls)
+
+    measured = measure(MANIFEST, SOURCE, pages, reading)
+
+    assert measure(MANIFEST, SOURCE, pages, reading) == measured, "same inputs, same result"
+    assert len(system.calls) == calls, "measuring reads nothing"
+    found = {m.place[-1] + "@" + m.guide: (m.state, m.action) for m in measured}
+    assert found == {
+        "Installing@administration": ("current", "keep"),
+        "Restoring@administration": ("changed", "write"),
+        "Contents@administration": ("current", "keep"),
+        "Asking@use": ("edited", "withhold"),
+        "Contents@use": ("changed", "write"),
+    }
+
+
+async def test_a_publication_acts_on_the_reading_it_was_measured_against() -> None:
+    system = FakeKnowledgeSystem()
+    await publish(system, pages_at(COMMIT), "one")
+    files = {**FILES, "use.md": "You ask in the chat, or by mail.\n"}
+    pages = pages_at(LATER, files)
+    reading = await held_now(system)
+    before = len(system.calls)
+
+    publication = await PublishGuidesHandler(system).execute(
+        PublishGuides(
+            tenant="default",
+            identity="idn_operator",
+            run_id="guides-two",
+            manifest=MANIFEST,
+            manifest_source=SOURCE,
+            pages=pages,
+            held=reading,
+        )
+    )
+
+    operations = [operation for operation, _ in system.calls[before:]]
+    assert LIST not in operations, "the reading it was given is the one it acts on"
+    measured = measure(MANIFEST, SOURCE, pages, {h.place: h for h in reading})
+    assert [(p.place, p.state) for p in publication.pages] == [(m.place, m.state) for m in measured]
+    assert publication.counted() == {"created": 0, "updated": 1, "kept": 4, "withheld": 0}
+
+
+async def test_a_hand_edit_is_reported_once_under_a_name_derived_from_its_text() -> None:
+    system = FakeKnowledgeSystem()
+    await publish(system, pages_at(COMMIT), "one")
+    asking = ("Taktus", "Using", "Asking")
+    system.edit(asking, lambda body: body + "\nA note.\n")
+    (first,) = (await publish(system, pages_at(LATER), "two")).withheld
+    (again,) = (await publish(system, pages_at(LATER), "three")).withheld
+    assert first.held is not None and first.held == again.held
+    named = edits.report_id(first.guide, first.page, first.held)
+    assert named == edits.report_id(again.guide, again.page, str(again.held))
+    assert named.startswith("guides-use-asking-") and len(named) == len("guides-use-asking-") + 12
+    system.edit(asking, lambda body: body + "\nAnother.\n")
+    (other,) = (await publish(system, pages_at(LATER), "four")).withheld
+    assert edits.report_id(other.guide, other.page, str(other.held)) != named
+    assert first.difference is not None
+    assert "A note." in edits.steps(first.difference)[0]
+    assert "Asking" in edits.title(asking, PageState.EDITED)

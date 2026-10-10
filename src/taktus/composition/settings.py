@@ -465,6 +465,15 @@ def load_administration(configuration: Configuration) -> Administration:
     return Administration(platform=platform, declared=declared)
 
 
+def load_knowledge_directory(configuration: Configuration) -> Path | None:
+    """`TAKTUS_KNOWLEDGE_DIRECTORY`: the directory the capability `knowledge.pages` is served
+    over, one Markdown file per page, for an organisation that keeps no wiki (UC-13.6,
+    ADR-0065). None: the instance serves no directory, and a knowledge system is a connector of
+    `TAKTUS_CONNECTORS` or none. `taktusctl` reads it too."""
+    value = _Reader(configuration).text("knowledge.directory", "").strip()
+    return Path(value).expanduser() if value else None
+
+
 def load_tenants(configuration: Configuration) -> tuple[str, ...]:
     """`TAKTUS_TENANTS`: the tenants an instance serves; `taktusctl capacity` reads it too."""
     return _Reader(configuration).names("tenants", (DEFAULT_TENANT,))
@@ -497,6 +506,9 @@ class Settings:
     """Channel capability → the MCP URL of the connector that serves its intake."""
     administration: Administration
     """The platform this instance runs on and what each credential administers (ADR-0052)."""
+    knowledge_directory: Path | None
+    """The directory the instance serves `knowledge.pages` over, where the organisation keeps
+    no wiki (UC-13.6); None when it serves none."""
     findings_connector: str | None
     """The MCP URL of the connector through which product findings go to the Taktus repository
     (UC-6.12, ADR-0046). None: the operator did not enable it, and findings are only recorded
@@ -540,6 +552,7 @@ class Settings:
             *self.budget.effective(),
             *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
+            ("TAKTUS_KNOWLEDGE_DIRECTORY", str(self.knowledge_directory or "")),
             ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
             ("TAKTUS_PLATFORM", self.administration.platform or ""),
             (
@@ -593,6 +606,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         capacity=load_capacity(configuration),
         connectors=reader.connectors(),
         administration=load_administration(configuration),
+        knowledge_directory=load_knowledge_directory(configuration),
         findings_connector=reader.url("findings.connector", "") or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         tenants=load_tenants(configuration),

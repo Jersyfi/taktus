@@ -1,0 +1,268 @@
+# S-05 Guides — the administration guide and the guide for users, rendered from the repository
+# every day and put into the organisation's knowledge system; a page a person edited there is
+# kept, and its difference goes to the person responsible for the documentation (UC-13.6).
+#
+# The guides are generated, never written: a page says what the repository says at one commit,
+# and names the files and the commit (ADR-0065). This process makes that daily. It reads the
+# manifest and every file it names through the repository capability, all at the commit the
+# manifest was read at (ADR-0066); renders the pages and measures them against one reading of
+# the knowledge system, both by rule; publishes them against that reading; and raises a report
+# of every page kept because a person's text stands.
+#
+#     uv run taktusctl run --process blueprints/self-operation/processes/S-05-guides.yaml \
+#         --input manifest_path=docs/guides/guides.yaml --input ref=main \
+#         --input responsible=documentation --input within_days=7
+#
+# The capabilities `orchestrator.guides.*` are served by the loopback connector, through which
+# Taktus reaches itself: rendering, measuring and publishing are the knowledge component's, and
+# raising a report the reporting component's (docs/architecture/contracts.md §4). The repository
+# is reached through `repository.files`, the knowledge system through `knowledge.pages`: a wiki's
+# connector, or the directory the instance serves where the organisation keeps none
+# (`TAKTUS_KNOWLEDGE_DIRECTORY`).
+#
+# Switching this process off (`taktusctl deactivate --process s05-guides`) changes nothing in
+# the repository: it never writes there. The guides stay as they were last published, and
+# `taktusctl guides publish` does the same by hand (README.md beside this directory).
+
+id: s05-guides
+version: "1"
+name: S-05 Guides
+autonomy:
+  level: 3
+  reason: >
+    every value is the repository's text, rendered and measured by rule; the one outward write
+    replaces only a page that holds exactly what Taktus last wrote, and a person's edit is kept
+    and reported, never overwritten; a person reads the report of every edit
+  toward_next: >
+    a month of daily runs whose pages a person sampled against the repository and found to say
+    what it says, and whose reported edits reached the person responsible; then Taktus proposes
+    level 4 with that evidence (anchors.taktus.md M3.9)
+author: the repository
+reason: the guides current every day, as UC-13.6 asks, without a person running a command
+
+# Daily, 00:00 UTC, through the elected scheduler (ADR-0035). A scheduled run has nobody to ask,
+# so the trigger gives every input. `responsible` is the role the tenant's owner-facing channel
+# carries for the documentation (ADR-0045): for this tenant, the owner.
+triggers:
+  - schedule: daily
+    inputs:
+      manifest_path: docs/guides/guides.yaml
+      ref: main
+      responsible: documentation
+      within_days: 7
+
+inputs:
+  manifest_path:
+    description: the path of the guides' manifest in the repository
+    example: docs/guides/guides.yaml
+  ref:
+    description: >
+      the branch or commit the guides are rendered from; the run reads the manifest there, then
+      every file at the commit that read resolved to
+    example: main
+  responsible:
+    description: >
+      the role responsible for the documentation; a page edited by hand is reported to the
+      person the tenant's owner-facing channel reaches with it
+    example: documentation
+  within_days:
+    description: in how many days, from the run's day, the report of a hand edit asks for a decision
+    example: 7
+  places:
+    description: >
+      where each guide goes in the knowledge system, by its identifier, one name per level;
+      a guide not named goes where the manifest puts it
+    example: {}
+    required: false
+
+# Counted in requests: two for the manifest, one for the ref and one per file for the sources,
+# one for the reading of the knowledge system, the loopback's calls, and one per page the
+# publication reads or writes.
+limits:
+  quota: { units: 250 }
+
+steps:
+  - id: read-manifest
+    method: rule
+    reason: the manifest is read verbatim from the repository, with the commit the ref resolved to
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.files is unavailable
+      to: human
+    work:
+      rule: connector
+      operation: repository.files.read
+      input:
+        path: { $input: manifest_path }
+        ref: { $input: ref }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: sources
+    method: rule
+    reason: the files a page takes parts from are listed in the manifest; reading the list is a rule
+    rejected:
+      - method: llm
+        why: a list the manifest states needs no judgement
+    exactness: exact
+    depends_on: [read-manifest]
+    work:
+      rule: connector
+      operation: orchestrator.guides.sources
+      input:
+        manifest: { $from: read-manifest, $select: output.content }
+
+  - id: read-sources
+    method: rule
+    reason: >
+      every source is read at the commit the manifest was read at, in one call, so that the
+      pages say what the repository said at one moment even when the branch moves (ADR-0066)
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.files is unavailable
+      to: human
+    depends_on: [sources]
+    work:
+      rule: connector
+      operation: repository.files.read_many
+      input:
+        paths: { $from: sources, $select: output.paths }
+        ref: { $from: read-manifest, $select: output.commit }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - { select: commit, matches: "^[0-9a-f]{40}$" }
+
+  - id: render
+    method: rule
+    reason: >
+      a page is its parts as the repository holds them at one commit, with headings shifted
+      and links written as paths; the same commit always gives the same page, and the check is
+      to render it again (ADR-0065)
+    rejected:
+      - method: llm
+        why: >
+          a page a model wrote would say something the repository does not, which is the second
+          source of truth UC-13.6 forbids
+    exactness: exact
+    depends_on: [read-manifest, read-sources]
+    work:
+      rule: connector
+      operation: orchestrator.guides.render
+      input:
+        manifest: { $from: read-manifest, $select: output.content }
+        manifest_path: { $input: manifest_path }
+        commit: { $from: read-sources, $select: output.commit }
+        files: { $from: read-sources, $select: output.files }
+        places: { $input: places, $otherwise: {} }
+
+  - id: read-held
+    method: rule
+    reason: >
+      what the knowledge system holds at and below the guides' place is read once, with the
+      digest of each page's text and the mark Taktus keeps beside the pages it wrote
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving knowledge.pages is unavailable
+      to: human
+    depends_on: [render]
+    work:
+      rule: connector
+      operation: knowledge.pages.list
+      input:
+        place: { $from: render, $select: output.root }
+
+  - id: measure
+    method: rule
+    reason: >
+      whether a page is absent, current, changed, edited, out of date, foreign or retired is a
+      rule over the rendered page and the reading: the digest of the held text against the
+      mark, and the mark's content against the page's (ADR-0065 §5)
+    rejected:
+      - method: llm
+        why: >
+          whether a person edited a page must be answered the same way every time; a judgement
+          could overwrite an edit
+    exactness: exact
+    depends_on: [render, read-held]
+    work:
+      rule: connector
+      operation: orchestrator.guides.measure
+      input:
+        rendered: { $from: render, $select: output.rendered }
+        held: { $from: read-held, $select: output.pages }
+
+  - id: publish
+    method: rule
+    reason: >
+      the pages measured absent or changed are written, each naming the text it replaces, and
+      every other page is kept; a page edited between the reading and the write is kept too.
+      The effect leaves the system: every page written is an egress record
+    rejected:
+      - method: worker
+        why: writing pages through a capability needs no sandbox
+    exactness: sourced
+    fallback:
+      when: the connector serving knowledge.pages is unavailable
+      to: human
+    depends_on: [measure]
+    work:
+      rule: connector
+      operation: orchestrator.guides.publish
+      input:
+        rendered: { $from: render, $select: output.rendered }
+        held: { $from: read-held, $select: output.pages }
+
+  - id: report-edits
+    method: rule
+    reason: >
+      every page kept because a person's text stands is raised, once per edit, as a report to
+      the person responsible for the documentation, with its difference from the repository;
+      the reporting component delivers it through the owner-facing channel (ADR-0045)
+    rejected:
+      - method: llm
+        why: the report is the difference and fixed sentences; a model would only restate it
+    exactness: sourced
+    depends_on: [publish]
+    work:
+      rule: connector
+      operation: orchestrator.guides.report
+      input:
+        publication: { $from: publish, $select: output }
+        responsible: { $input: responsible }
+        within_days: { $input: within_days }
+
+  - id: report
+    method: rule
+    reason: one line a person reads, composed from the counts above; nothing new is said in it
+    rejected:
+      - method: llm
+        why: a narrative is not needed for one line; the values speak
+    exactness: sourced
+    depends_on: [measure, report-edits]
+    work:
+      rule: template
+      text: |
+        Guides at ${commit}: ${created} pages created, ${updated} updated, ${kept} kept, ${withheld} withheld.
+        Measured: ${write} to write, ${keep} to keep, ${withhold} to withhold.
+        Edits reported to the role ${responsible}: ${reports}.
+      values:
+        commit: { $from: publish, $select: output.commit }
+        created: { $from: publish, $select: output.created }
+        updated: { $from: publish, $select: output.updated }
+        kept: { $from: publish, $select: output.kept }
+        withheld: { $from: publish, $select: output.withheld }
+        write: { $from: measure, $select: output.write }
+        keep: { $from: measure, $select: output.keep }
+        withhold: { $from: measure, $select: output.withhold }
+        responsible: { $input: responsible }
+        reports: { $from: report-edits, $select: output.reports }

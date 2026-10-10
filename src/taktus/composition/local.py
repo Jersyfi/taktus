@@ -67,6 +67,7 @@ from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.ledger.application.service import ChainedLedger
+from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
@@ -90,6 +91,7 @@ from taktus.composition.execution import (
     telemetry_of,
 )
 from taktus.composition.findings import RunBlocks
+from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturity import CatalogMaturities
@@ -100,6 +102,7 @@ from taktus.composition.settings import (
     load_capacity,
     load_connectors,
     load_execution,
+    load_knowledge_directory,
     load_model,
     load_telemetry,
     load_tenants,
@@ -154,6 +157,7 @@ class LocalWiring:
             prices = budget.table()
             tenants = load_tenants(self._configuration)
             administration = load_administration(self._configuration)
+            knowledge_directory = load_knowledge_directory(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         async with (
@@ -182,7 +186,10 @@ class LocalWiring:
             loopback = LoopbackConnector()
             pools = Pools(
                 StaticWorkerPool([(adapter, worker)]),
-                connector_pool(connectors, also=[(LOOPBACK, loopback)]),
+                connector_pool(
+                    connectors,
+                    also=[(LOOPBACK, loopback), *served_directory(knowledge_directory)],
+                ),
                 model_pool(model),
             )
 
@@ -271,10 +278,12 @@ class LocalWiring:
                     clock=clock,
                     ids=ids,
                     conformance=conformance,
-                )
+                ),
+                guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
             )
             yield Services(
                 conformance=conformance,
+                deactivate=DeactivateProcessHandler(stores.of(Process), stores.work, ledger),
                 register_version=RegisterProcessVersionHandler(
                     stores.of(ProcessVersion),
                     stores.work,
