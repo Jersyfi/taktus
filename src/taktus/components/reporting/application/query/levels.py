@@ -11,8 +11,10 @@ from __future__ import annotations
 from taktus.components.reporting.domain.model.live import ProcessRef, Reader, RunRef
 from taktus.components.reporting.domain.service import visibility
 from taktus.components.reporting.domain.service.levels import (
+    OverviewLevel,
     ProcessLevel,
     RunLevel,
+    overview_level,
     process_level,
     run_level,
 )
@@ -52,3 +54,22 @@ class LevelQueries:
             if visibility.may_see(reader, RunRef(id=run.id, tenant=run.tenant, process_version=ref))
         )
         return process_level(facts.model_copy(update={"runs": seen}))
+
+    async def overview(self, reader: Reader) -> OverviewLevel:
+        """The overview of the reader's tenant. A process the reader may not see is absent, and
+        so is every run of it; a run the reader may not see is neither drawn nor counted."""
+        facts = await self._records.overview(reader.tenant)
+        processes = tuple(
+            p
+            for p in facts.processes
+            if visibility.may_see_process(reader, ProcessRef(id=p.id, tenant=facts.tenant))
+        )
+        runs = tuple(
+            r
+            for r in facts.runs
+            if visibility.may_see_process(reader, ProcessRef(id=r.process, tenant=r.tenant))
+            and visibility.may_see(
+                reader, RunRef(id=r.id, tenant=r.tenant, process_version=r.process_version)
+            )
+        )
+        return overview_level(facts.model_copy(update={"processes": processes, "runs": runs}))

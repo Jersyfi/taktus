@@ -5,17 +5,18 @@ records as they are now and moving when the work moves (ADR-0063).
 
 ## What it draws today
 
+- **The overview** — where the web app starts: the areas the reader may look into (today the
+  tenant), the processes in each, how many of their runs work and wait right now, and the steps
+  running now, each leading down to its process or run (ADR-0067).
+- **The process level** — the steps of a process version as a graph, each with how it works and
+  the runs it is running in right now, with the autonomy statement: the level the process runs
+  at, and why. It lists the version's runs and every registered version (ADR-0064).
 - **The run level** — where one run stands: each step with its method kind, exactness class and
   state, what a waiting step waits on, what each step used and what the run consumed so far,
   and all of it again as text. It follows the run's stream of changes and reads the level again
   on every change, without a reload.
-- **The process level** — the steps of a process version as a graph, each with how it works and
-  the runs it is running in right now, with the autonomy statement: the level the process runs
-  at, and why. It lists the version's runs and every registered version (ADR-0064).
-- **The runs** the reader may see, as the tenant's stream says they stand, each leading to its
-  run level. This is a way in, not the overview of UC-6.10.
 
-Not yet: the overview (#191), the origin of a result (#192).
+Not yet: the origin of a result (#192).
 
 ## How it is built
 
@@ -37,16 +38,17 @@ Not yet: the overview (#191), the origin of a result (#192).
 | `src/lib/types.ts` | the shapes the surface answers: a run level, a snapshot, a change |
 | `src/lib/api.ts` | the surface's address, and a read with the key |
 | `src/lib/stream.ts` | the stream of changes, read with `fetch`, resumed from its last position |
-| `src/lib/live.ts` | the runs of the tenant's stream; a level followed live, read again on every change |
+| `src/lib/live.ts` | a level followed live, read again on every change |
 | `src/lib/shapes.ts`, `Glyph.svelte` | a glyph's tokens turned into a drawing, each token kept on it as an attribute |
 | `src/lib/Graph.svelte` | steps as a graph, placed by their dependencies |
 | `src/lib/RunView.svelte` | the run level, and its text equivalent |
+| `src/lib/OverviewView.svelte` | the overview, and its text equivalent |
 | `src/lib/ProcessView.svelte` | the process level, its autonomy statement, its runs and versions, and its text equivalent |
 | `src/lib/links.ts` | where each level lives in the web app |
 | `src/lib/motion.svelte.ts` | whether motion is allowed |
 | `src/lib/key.ts`, `KeyForm.svelte` | the reader's key, for the tab's session |
 | `src/lib/generated/fixtures.json` | written by `make generate`, never by hand: what the tests draw |
-| `src/routes/` | the pages: the runs, `#/runs/<id>`, and `#/processes/<id>` with an optional `/<version>` |
+| `src/routes/` | the pages: the overview at `#/`, `#/runs/<id>`, and `#/processes/<id>` with an optional `/<version>` |
 
 ## Working on it
 

@@ -84,6 +84,16 @@ RUN_TRANSITIONS: frozenset[tuple[RunState, RunState]] = frozenset(
     }
 )
 
+WORKING: frozenset[RunState] = frozenset({RunState.PLANNED, RunState.ADMITTED, RunState.RUNNING})
+"""A run that has not ended and does not wait: it is being worked on, or about to be. With
+`WAITING` it is the one definition of how busy a process is right now (UC-6.10, ADR-0067)."""
+
+WAITING: frozenset[RunState] = frozenset(
+    {RunState.WAITING_HUMAN, RunState.HALTED, RunState.ESCALATED}
+)
+"""A run that has not ended and waits: for a person, after a halt, after an escalation. A
+finished run is in neither set."""
+
 RESUMABLE: frozenset[RunState] = frozenset(
     {RunState.HALTED, RunState.ESCALATED, RunState.WAITING_HUMAN}
 )

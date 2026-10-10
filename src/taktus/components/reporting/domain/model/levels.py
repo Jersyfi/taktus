@@ -2,7 +2,7 @@
 
 UC-6.10 names four levels, from the whole to the detail: the overview, the process, the run and
 the origin of a result. A **level** is what one representation shows at one of them. This module
-holds the run level and the process level; the others follow with their tasks (#191, #192).
+holds the overview, the process level and the run level; the origin follows with its task (#192).
 
 **Facts** are what the records say, read from the component that owns them: a run's state, each
 step's method kind, exactness class and state, what a waiting step waits on, what each step and
@@ -134,3 +134,46 @@ class ProcessFacts(Value):
     @property
     def ref(self) -> str:
         return f"{self.id}@{self.version}"
+
+
+class ProcessSummary(Value):
+    """A process as the overview lists it: its name, its active version, its autonomy level."""
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    active_version: str | None = None
+    autonomy_level: int | None = None
+
+
+class RunningStep(Value):
+    """A step a run is running right now."""
+
+    id: str = Field(min_length=1)
+    method: Method
+    exactness: ExactnessClass | None
+
+
+class RunActivity(Value):
+    """A run as the overview counts it. Whether it works or waits is the run component's own
+    definition (`WORKING`, `WAITING`), handed over as it is; a finished run does neither."""
+
+    id: str = Field(min_length=1)
+    tenant: str = Field(min_length=1)
+    process_version: str = Field(min_length=1)
+    state: str = Field(min_length=1)
+    working: bool
+    waiting: bool
+    rehearsal: bool = False
+    running: tuple[RunningStep, ...] = ()
+
+    @property
+    def process(self) -> str:
+        return self.process_version.rsplit("@", 1)[0]
+
+
+class OverviewFacts(Value):
+    """Every process of a tenant and every run of it, as their components record them."""
+
+    tenant: str = Field(min_length=1)
+    processes: tuple[ProcessSummary, ...] = ()
+    runs: tuple[RunActivity, ...] = ()

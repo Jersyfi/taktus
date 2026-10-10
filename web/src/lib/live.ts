@@ -1,4 +1,4 @@
-// What the web app keeps of the stream, and when it reads a level again (ADR-0063).
+// When the web app reads a level again (ADR-0063).
 //
 // A level is read from the surface, never assembled from the stream: the stream says that
 // something changed, and the level is read again from the component that owns it (ADR-0055
@@ -6,41 +6,7 @@
 // more, so that a burst of changes costs two reads, not one per change.
 
 import { read } from './api';
-import { follow, type StreamEvent } from './stream';
-import type { Change, Snapshot, SnapshotRun } from './types';
-
-/** The runs a reader may see, by id, as the tenant's stream says they stand. */
-export type Runs = ReadonlyMap<string, SnapshotRun>;
-
-export function applyToRuns(runs: Runs, event: StreamEvent): Runs {
-	if (event.kind === 'snapshot') return fromSnapshot(event.snapshot);
-	return withChange(runs, event.change);
-}
-
-function fromSnapshot(snapshot: Snapshot): Runs {
-	return new Map((snapshot.runs ?? []).map((run) => [run.id, run]));
-}
-
-function withChange(runs: Runs, change: Change): Runs {
-	const known = runs.get(change.run);
-	const next = new Map(runs);
-	const run: SnapshotRun = known ?? {
-		id: change.run,
-		process_version: '',
-		state: 'planned',
-		rehearsal: change.rehearsal ?? false,
-		steps: []
-	};
-	let steps = run.steps ?? [];
-	if (change.step !== undefined && change.state.step !== undefined) {
-		const step = { id: change.step, state: change.state.step, method: change.method ?? '' };
-		steps = steps.some((s) => s.id === change.step)
-			? steps.map((s) => (s.id === change.step ? { ...s, state: step.state } : s))
-			: [...steps, step];
-	}
-	next.set(change.run, { ...run, state: change.state.run ?? run.state, steps });
-	return next;
-}
+import { follow } from './stream';
 
 /** Runs `read` once now, and once more after it whenever it was asked again meanwhile. */
 export class Rereader {

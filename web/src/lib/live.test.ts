@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fixtures from './generated/fixtures.json';
 import { surface } from './api';
-import { applyToRuns, followLevel, Rereader, type Runs } from './live';
+import { followLevel, Rereader } from './live';
 import type { RunLevel } from './types';
 
 const LEVEL = fixtures.run_level as unknown as RunLevel;
@@ -21,38 +21,6 @@ describe('the surface', () => {
 	it('is the directory above the app, whatever the prefix', () => {
 		expect(String(surface('https://h.test/a/b/app/#/runs/r1'))).toBe('https://h.test/a/b/');
 		expect(String(surface('https://h.test/app/'))).toBe('https://h.test/');
-	});
-});
-
-describe('the runs of the tenant stream', () => {
-	it('start from the snapshot and move with each change', () => {
-		let runs: Runs = new Map();
-		runs = applyToRuns(runs, {
-			kind: 'snapshot',
-			snapshot: {
-				position: 'h1',
-				scope: { kind: 'tenant' },
-				runs: [{ id: 'r1', process_version: 'p@1', state: 'running', steps: [] }]
-			}
-		});
-		runs = applyToRuns(runs, {
-			kind: 'change',
-			change: {
-				position: 'h2',
-				run: 'r1',
-				step: 'a',
-				kind: 'step.finished',
-				outcome: 'succeeded',
-				recorded_at: 't',
-				state: { step: 'succeeded', run: 'finished' }
-			}
-		});
-		expect(runs.get('r1')).toEqual({
-			id: 'r1',
-			process_version: 'p@1',
-			state: 'finished',
-			steps: [{ id: 'a', state: 'succeeded', method: '' }]
-		});
 	});
 });
 
