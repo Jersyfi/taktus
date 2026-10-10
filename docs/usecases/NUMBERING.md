@@ -62,7 +62,9 @@ Numbered in conversation, in no version of the definition: `UC-1.8` a session wi
 knowledge; `UC-7.4` the decision request; `UC-9.5` bottleneck and waiting analysis. Numbered by
 the migration's fourth step, for the requirements the owner stated outside the definition, each the
 next free number of its area: `UC-6.11` the owner-facing channel; `UC-6.12` the product finding;
-`UC-13.6` readable documentation beyond the repository.
+`UC-13.6` readable documentation beyond the repository. Numbered when a task needed a requirement
+no use case stated, the next free number of its area: `UC-4.14` a process starts on what happens
+in a tool (#76, DEC-0124).
 
 ## Numbers of the definition with no file of their own
 

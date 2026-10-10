@@ -1,0 +1,13 @@
+{
+  "event": "issue.labelled",
+  "filter": {
+    "label": "ready"
+  },
+  "condition": "capacity.available",
+  "inputs": {
+    "records_path": "docs/decisions/open"
+  },
+  "from_event": {
+    "issue": "issue"
+  }
+}

@@ -49,7 +49,7 @@ connectors exist; this use case requires that any tool with a connector can.
 ## 4. What it rests on
 
 The connector contract in both directions (ADR-0024); triggers from a bundle and event reactions
-(`0.2.0`); the bundle format, where ADR-0011 applies the same coupled-or-decoupled logic to storage.
+(`0.2.0`), the latter required by UC-4.14; the bundle format, where ADR-0011 applies the same coupled-or-decoupled logic to storage.
 P-02 and P-03 of the dev-orchestration blueprint already work this way by hand — the issue tracker
 holds the state, Taktus refines and implements and writes back — without a declared mode.
 Definition `UC-5.1` (coupled) and `UC-5.2` (decoupled), filed as one use case because principle 5
