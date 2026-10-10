@@ -112,3 +112,8 @@ seccompProfile:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/* The repository connector's MCP address inside the cluster, when it is deployed. */}}
+{{- define "taktus.repositoryConnectorUrl" -}}
+{{- printf "http://%s-connector-repository:%v/mcp" (include "taktus.fullname" .) .Values.connectors.repository.port -}}
+{{- end -}}

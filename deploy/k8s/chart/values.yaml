@@ -132,6 +132,31 @@ execution:
 #     mountPath:                            # optional; /run/secrets/taktus/<parameter> by default
 credentials: []
 
+# The repository connector (README §2): a deployment of its own, from the control plane's image,
+# serving one repository's channel — its webhook intake and its actions over MCP — as Taktus's
+# own app (ADR-0033). The roles reach it as `channel.repo` (TAKTUS_CONNECTORS); with `findings`
+# the instance's product findings go through it too (TAKTUS_FINDINGS_CONNECTOR, UC-6.12). Its
+# two secrets exist before the install and are mounted as files, like every other.
+connectors:
+  repository:
+    enabled: false
+    repository: ""         # owner/name of the repository it serves
+    port: 9100
+    findings: false
+    appId: ""              # the app's identifier: not a secret, but this deployment's own
+    appKey:                # the Secret and key holding the app's private key
+      secret: ""
+      key: ""
+    webhook:               # the Secret and key holding the webhook signing secret (NEED-0010)
+      secret: ""
+      key: ""
+    # Where it may connect besides the name service: these ports, to any address outside
+    # execution.egress.exceptCidrs — the service's API is outside the cluster.
+    egressPorts: [443]
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 256Mi }
+
 ingress:
   enabled: true            # rendered only when `host` is given as well
   className: ""

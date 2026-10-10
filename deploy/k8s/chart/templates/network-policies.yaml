@@ -73,6 +73,14 @@ spec:
               taktus/role: unit
       ports:
         - { protocol: TCP, port: {{ $execution.unitPort }} }
+    {{- if .Values.connectors.repository.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "taktus.selector" (dict "root" . "component" "connector-repository") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: {{ .Values.connectors.repository.port }} }
+    {{- end }}
     {{- with $np.apiServer.cidrs }}
     - to:
         {{- range . }}

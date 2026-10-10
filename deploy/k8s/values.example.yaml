@@ -27,3 +27,16 @@ credentials:
 networkPolicy:
   ingressController:
     namespace: ingress
+
+connectors:
+  repository:
+    enabled: true
+    repository: example-owner/example-repository
+    findings: true
+    appId: "123456"
+    appKey:
+      secret: taktus-repository-app
+      key: private-key
+    webhook:
+      secret: taktus-repository-webhook
+      key: secret

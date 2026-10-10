@@ -187,3 +187,33 @@ async def test_the_intake_tool_reads_the_secret_at_the_call(
         assert isinstance(result.structured_content, dict)
         assert result.structured_content["accepted"]["event"] == "pull_request.opened"
         assert SHARED not in json.dumps(result.structured_content)
+
+
+async def test_the_intake_tool_reads_the_secret_from_its_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The one pattern every secret follows (`CREDENTIALS.md`): the file
+    `TAKTUS_CREDENTIAL_REPOSITORY_WEBHOOK_SECRET_FILE` names wins over the variable, and is read
+    at each delivery — a rotated file is used by the next one without a restart. This is how the
+    chart hands the connector its secret."""
+    headers, body = recorded("pull-request-opened")
+    secret_file = tmp_path / "webhook-secret"
+    secret_file.write_text(SHARED + "\n", encoding="utf-8")
+    monkeypatch.setenv(INTAKE_CREDENTIAL, "a-value-the-file-overrides")
+    monkeypatch.setenv(f"TAKTUS_CREDENTIAL_{INTAKE_CREDENTIAL}_FILE", str(secret_file))
+    server = build_server(
+        Config(target="http://127.0.0.1:1", repository="placeholder-owner/placeholder-repo")
+    )
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "intake", {"headers": signed(headers, body), "body": body, "received_at": RECEIVED}
+        )
+        assert isinstance(result.structured_content, dict)
+        assert result.structured_content["accepted"]["event"] == "pull_request.opened"
+
+        secret_file.write_text("rotated-" + SHARED, encoding="utf-8")
+        result = await client.call_tool(
+            "intake", {"headers": signed(headers, body), "body": body, "received_at": RECEIVED}
+        )
+        assert isinstance(result.structured_content, dict)
+        assert result.structured_content["refused"]["reason"] == "bad_signature"

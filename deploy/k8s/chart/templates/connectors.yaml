@@ -1,0 +1,182 @@
+{{- /*
+The repository connector (README §2, ADR-0033): one deployment from the control plane's image,
+serving one repository's channel over MCP. The roles reach it, nothing else does; it reaches the
+name service and the service's API outside the cluster. It acts as Taktus's own app: the app's
+key and the webhook secret are mounted files, their paths in TAKTUS_CREDENTIAL_<NAME>_FILE, and
+it mounts no service-account token — it never talks to the cluster.
+*/ -}}
+{{- $c := .Values.connectors.repository -}}
+{{- if $c.enabled }}
+{{- $name := printf "%s-connector-repository" (include "taktus.fullname" .) -}}
+{{- $repository := required "connectors.repository.repository is required: owner/name of the repository it serves" $c.repository -}}
+{{- $appId := required "connectors.repository.appId is required: the connector acts as Taktus's own app" (toString $c.appId) -}}
+{{- $keySecret := required "connectors.repository.appKey.secret is required" $c.appKey.secret -}}
+{{- $keyKey := required "connectors.repository.appKey.key is required" $c.appKey.key -}}
+{{- $hookSecret := required "connectors.repository.webhook.secret is required" $c.webhook.secret -}}
+{{- $hookKey := required "connectors.repository.webhook.key is required" $c.webhook.key -}}
+{{- $v4 := list -}}
+{{- $v6 := list -}}
+{{- range .Values.execution.egress.exceptCidrs -}}
+{{- if contains ":" . -}}{{- $v6 = append $v6 . -}}{{- else -}}{{- $v4 = append $v4 . -}}{{- end -}}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: connector-repository
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" . "component" "connector-repository") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "taktus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: connector-repository
+    spec:
+      serviceAccountName: {{ include "taktus.serviceAccount" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: connector
+          image: {{ include "taktus.image" (dict "what" "image" "image" .Values.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - taktus.adapters.driven.connectors.github
+            - --host
+            - "0.0.0.0"
+            - --port
+            - {{ $c.port | quote }}
+            - --repository
+            - {{ $repository | quote }}
+          env:
+            - name: TAKTUS_REPOSITORY_APP_ID
+              value: {{ $appId | quote }}
+            - name: TAKTUS_CREDENTIAL_REPOSITORY_APP_KEY_FILE
+              value: {{ printf "/run/secrets/taktus/repository-app-key/%s" $keyKey | quote }}
+            - name: TAKTUS_CREDENTIAL_REPOSITORY_WEBHOOK_SECRET_FILE
+              value: {{ printf "/run/secrets/taktus/repository-webhook/%s" $hookKey | quote }}
+          ports:
+            - name: mcp
+              containerPort: {{ $c.port }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: mcp
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: mcp
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          securityContext:
+            {{- include "taktus.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: repository-app-key
+              mountPath: /run/secrets/taktus/repository-app-key
+              readOnly: true
+            - name: repository-webhook
+              mountPath: /run/secrets/taktus/repository-webhook
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: repository-app-key
+          secret:
+            secretName: {{ $keySecret }}
+            defaultMode: 0440
+            items:
+              - key: {{ $keyKey }}
+                path: {{ $keyKey }}
+        - name: repository-webhook
+          secret:
+            secretName: {{ $hookSecret }}
+            defaultMode: 0440
+            items:
+              - key: {{ $hookKey }}
+                path: {{ $hookKey }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: connector-repository
+spec:
+  selector:
+    {{- include "taktus.selector" (dict "root" . "component" "connector-repository") | nindent 4 }}
+  ports:
+    - name: mcp
+      port: {{ $c.port }}
+      targetPort: mcp
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" . "component" "connector-repository") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "taktus.selector" (dict "root" . "component" "control-plane") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: {{ $c.port }} }
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dns.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.dns.podLabels | nindent 14 }}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with $v4 }}
+            except: {{ toJson . }}
+            {{- end }}
+        - ipBlock:
+            cidr: ::/0
+            {{- with $v6 }}
+            except: {{ toJson . }}
+            {{- end }}
+      ports:
+        {{- range $c.egressPorts }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+{{- end }}
