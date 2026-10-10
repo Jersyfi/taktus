@@ -1,10 +1,10 @@
 # NEED-0022 — A key for the second coding agent
 
 **Kind:** credential
-**Raised in:** [#PRNUM](https://github.com/Jersyfi/taktus/pull/PRNUM), for issue #154
-**Issue:** [#NEEDISSUE](https://github.com/Jersyfi/taktus/issues/NEEDISSUE)
+**Raised in:** [#214](https://github.com/Jersyfi/taktus/pull/214), for issue #154
+**Issue:** [#211](https://github.com/Jersyfi/taktus/issues/211)
 **Needed by:** 2026-11-06
-**Foreseeable since:** [#PRNUM](https://github.com/Jersyfi/taktus/pull/PRNUM), which built the second coding worker against a stand-in for its agent
+**Foreseeable since:** [#214](https://github.com/Jersyfi/taktus/pull/214), which built the second coding worker against a stand-in for its agent
 
 ## 1. What is needed
 
