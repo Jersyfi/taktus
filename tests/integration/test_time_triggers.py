@@ -8,8 +8,9 @@ so that no process another test registered fires here.
 What is proven: a due trigger starts exactly one run with two schedulers running, and again
 across a restart of the leader; a trigger not yet due starts none; slots missed while no
 scheduler led start one run, not one per slot; every started run carries its trigger in the
-ledger; and S-01, the removal test, runs end to end from its weekly trigger, once per
-integration the instance lists.
+ledger; S-01, the removal test, runs end to end from its weekly trigger, once per
+integration the instance lists; and S-05, the guides, is started once a day, and no more once it
+is switched off.
 """
 
 from __future__ import annotations
@@ -28,8 +29,12 @@ import yaml
 from sqlalchemy import text
 
 from taktus.adapters.driven.postgres import PostgresPersistence, PostgresRepository
+from taktus.components.process.application.service.deactivate import (
+    DeactivateProcess,
+    DeactivateProcessHandler,
+)
 from taktus.components.process.application.service.register_version import RegisterProcessVersion
-from taktus.components.process.domain.model import ProcessVersion, TriggerState
+from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
 from taktus.components.run.domain.model import Run, RunState
 from taktus.composition.daemon import Wired, serve
 from taktus.composition.settings import Settings
@@ -39,6 +44,7 @@ from .test_daemon_scaling import rule_only_bundle, settings, until
 
 ROOT = Path(__file__).resolve().parents[2]
 REMOVAL = ROOT / "blueprints" / "self-operation" / "processes" / "S-01-removal-test.yaml"
+GUIDES = ROOT / "blueprints" / "self-operation" / "processes" / "S-05-guides.yaml"
 SETTLE = 0.6  # seconds of real time: a dozen scheduler ticks at a poll of 0.05
 
 
@@ -298,6 +304,54 @@ async def test_the_removal_test_runs_weekly_from_its_trigger(
         tested = [e for e in await wired.ledger.entries(tenant) if e.kind == "removal.tested"]
         assert (await wired.ledger.verify(tenant)).intact
     assert sorted(e.outcome or "" for e in tested) == ["exception", "untested"]
+
+
+async def test_the_guides_are_started_once_a_day_until_the_process_is_switched_off(
+    daemons: Callable[..., Daemon], tenant: str
+) -> None:
+    """S-05 is registered in the morning; each midnight UTC that passes starts one run, with the
+    trigger's inputs, whichever of two schedulers leads; once the process is switched off, the
+    next midnight starts none (UC-13.6 §2, ADR-0035)."""
+    clock = ManualClock(datetime(2026, 10, 12, 9, 0, tzinfo=UTC))
+    a = await daemons("scheduler-a", clock, TAKTUS_ROLES="scheduler").start()
+    await until(lambda: a.leading)
+    assert a.wired is not None
+    wired = a.wired
+    with GUIDES.open(encoding="utf-8") as handle:
+        bundle: dict[str, Any] = yaml.safe_load(handle)
+    version = await registered(wired, tenant, bundle)
+    assert version.triggers[0].schedule == "daily"
+    b = await daemons("scheduler-b", clock, TAKTUS_ROLES="scheduler").start()
+    await eventually(lambda: _armed(wired, tenant))
+    await asyncio.sleep(SETTLE)
+    assert await runs_of(wired, tenant, version.ref) == []
+
+    for day, expected in ((13, 1), (14, 2)):
+        clock.current = datetime(2026, 10, day, 0, 0, 30, tzinfo=UTC)
+        await eventually(lambda n=expected: _count(wired, tenant, version.ref, n))
+        await asyncio.sleep(SETTLE)
+        assert len(await runs_of(wired, tenant, version.ref)) == expected
+    # Later the same day, nothing more.
+    clock.current = datetime(2026, 10, 14, 18, 0, tzinfo=UTC)
+    await asyncio.sleep(SETTLE)
+    runs = await runs_of(wired, tenant, version.ref)
+    assert len(runs) == 2
+    assert all(run.inputs["responsible"] == "documentation" for run in runs)
+    (state,) = await trigger_states(wired, tenant)
+    slots = sorted([await assert_triggered(wired, tenant, run, state) for run in runs])
+    assert [slot.day for slot in slots] == [13, 14]
+
+    deactivate = DeactivateProcessHandler(
+        PostgresRepository(wired.persistence, Process), wired.work, wired.ledger
+    )
+    off = await deactivate.execute(
+        DeactivateProcess(tenant=tenant, process_id=version.process_id, by="idn_scheduler")
+    )
+    assert off.was == version.ref
+    clock.current = datetime(2026, 10, 15, 0, 0, 30, tzinfo=UTC)
+    await asyncio.sleep(SETTLE * 2)
+    assert len(await runs_of(wired, tenant, version.ref)) == 2, "a process switched off starts none"
+    assert b.task is not None and not b.task.done()
 
 
 async def _armed(wired: Wired, tenant: str) -> bool:

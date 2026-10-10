@@ -1,7 +1,8 @@
 # Blueprint: self-operation
-# The processes Taktus runs for itself, on itself: the checks of its own claims. The first is
-# the removal test. Later ones — the takeover test, the restore drill, the load measurement —
-# arrive with the versions the roadmap names for them (docs/roadmap.md, "The road to 1.0.0").
+# The processes Taktus runs for itself, on itself: the checks of its own claims, and its own
+# documentation beyond the repository. The first is the removal test. The guides followed (S-05,
+# UC-13.6). Later ones — the takeover test, the restore drill, the load measurement — arrive with
+# the versions the roadmap names for them (docs/roadmap.md, "The road to 1.0.0").
 
 apiVersion: taktus.eu/process-bundle/v1
 kind: Blueprint
@@ -18,6 +19,9 @@ requires:
     - capability: orchestrator.integrations
     - capability: orchestrator.removal
     - capability: orchestrator.maturity
+    - capability: orchestrator.guides
+    - capability: repository.files
+    - capability: knowledge.pages
 
 anchors:
   strategic: []
@@ -43,3 +47,22 @@ processes:
       - { id: record,          method: rule, exactness: sourced }
       - { id: report,          method: rule, exactness: sourced }
     slo: { freshness: 7d }
+  - id: S-05
+    name: Guides
+    autonomy:
+      level: 3
+      reason: every value is the repository's text rendered and measured by rule; a page is written only where it holds what Taktus last wrote; a person's edit is kept and reported
+      toward_next: a month of daily runs whose pages a person sampled against the repository, and whose reported edits reached the person responsible
+    triggers:   # every day, 00:00 UTC (ADR-0035)
+      - schedule: daily
+    steps:
+      - { id: read-manifest, method: rule, exactness: sourced }
+      - { id: sources,       method: rule, exactness: exact }
+      - { id: read-sources,  method: rule, exactness: sourced }   # every source at one commit (ADR-0066)
+      - { id: render,        method: rule, exactness: exact }
+      - { id: read-held,     method: rule, exactness: sourced }
+      - { id: measure,       method: rule, exactness: exact }
+      - { id: publish,       method: rule, exactness: sourced }
+      - { id: report-edits,  method: rule, exactness: sourced }
+      - { id: report,        method: rule, exactness: sourced }
+    slo: { freshness: 1d }

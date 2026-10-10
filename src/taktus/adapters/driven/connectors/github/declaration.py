@@ -163,6 +163,16 @@ OPERATIONS: list[Json] = [
         "the commit the ref resolved to.",
     },
     {
+        "name": "repository.files.read_many",
+        "demand": {"quota_units": 101},
+        "capability": "repository.files",
+        "effect": "read",
+        "summary": "Read up to 100 files of the repository at one ref, all at the same commit: "
+        "the ref is resolved once and every path read at the commit it resolved to. A path that "
+        "names no file there is answered with content null. One request to resolve the ref and "
+        "one per path.",
+    },
+    {
         "name": "repository.files.list",
         "demand": {"quota_units": 2},
         "capability": "repository.files",

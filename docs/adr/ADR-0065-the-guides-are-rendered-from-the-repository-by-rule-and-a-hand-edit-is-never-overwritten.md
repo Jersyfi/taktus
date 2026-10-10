@@ -117,8 +117,8 @@ every file from the commit through `git`, never from the working tree.
 ### 7. What follows in other tasks
 
 The daily process — its bundle, trigger, ledger entries and the report of a difference to the
-person responsible for the documentation — is issue #198. The connector to the wiki the owner is to
-create is issue #197, after NEED-0021.
+person responsible for the documentation — is issue #198, decided in ADR-0066. The connector to the
+wiki the owner is to create is issue #197, after NEED-0021.
 
 ## Alternatives
 
@@ -169,8 +169,7 @@ create is issue #197, after NEED-0021.
 - **The directory connector checks and replaces a file in two moves.** An editor that saves the
   file between the check and the rename loses that save. The window is the length of one file
   write. A knowledge system with a server checks on its side.
-- **A difference reaches whoever runs `taktusctl guides publish`.** It reaches the person
-  responsible for the documentation once the daily process of #198 reports it. Until then nothing
-  runs on a schedule.
+- **A difference reaches whoever runs `taktusctl guides publish`.** The daily process, S-05,
+  reports it to the person responsible for the documentation (ADR-0066 §4).
 - **One language.** The guides are rendered in the repository's language. Other languages are
   configuration UC-13.6 allows and nothing here provides.

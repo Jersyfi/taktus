@@ -115,6 +115,7 @@ from taktus.composition.execution import (
     telemetry_of,
 )
 from taktus.composition.findings import RepositoryChannel, RunBlocks, findings_tick
+from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
@@ -300,7 +301,10 @@ async def wire(
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
                 StaticWorkerPool([(adapter, worker)]),
-                connector_pool(settings.connectors, also=[(LOOPBACK, loopback)]),
+                connector_pool(
+                    settings.connectors,
+                    also=[(LOOPBACK, loopback), *served_directory(settings.knowledge_directory)],
+                ),
                 model_pool(settings.model),
             )
             prices = settings.budget.table()
@@ -399,7 +403,8 @@ async def wire(
                     recordings=recordings,
                     clock=clock,
                     ids=ids,
-                )
+                ),
+                guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
             )
             outbox = PostgresOutbox(persistence)
             complete_intake = CompleteIntakeHandler(
