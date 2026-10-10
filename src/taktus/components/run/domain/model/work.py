@@ -1,13 +1,15 @@
 """What a step does when it runs, typed per method, read from the bundle's `work` data.
 
-Four kinds are executable in this version. A `rule` step evaluates one of the built-in rules
+Five kinds are executable in this version. A `rule` step evaluates one of the built-in rules
 (`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
 of a backlog task, the backlog in its order, the roadmap held against the backlog, a text
 template — or calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits
 for a duration through the clock, or for an external state read through a connector. A `worker`
-step hands a task to an execution unit behind the worker contract. An `llm` step asks a model
-through the model port. Every other method has no executor yet and is refused before the run
-starts, so that a run never stops in the middle for a reason that was known at the beginning.
+step hands a task to an execution unit behind the worker contract; an `ml` step does too, a
+prediction with its model pinned by digest, and goes to its fallback when the model is unsure
+(ADR-0076). An `llm` step asks a model through the model port. Every other method has no
+executor yet and is refused before the run starts, so that a run never stops in the middle for a
+reason that was known at the beginning.
 
 **References.** Inside the untyped parts of a step's work — a worker task's `inputs`, a
 connector call's `input`, the values of a template, a check or a prompt — an object with a
@@ -33,6 +35,11 @@ therefore stand in typed places too: a workspace location, an allowed host.
 
 from __future__ import annotations
 
+import binascii
+import hashlib
+import json
+import re
+from base64 import b64decode, b64encode
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal
 
@@ -246,6 +253,131 @@ class WorkerWork(Value):
     `capacity` and the run escalates (ADR-0037). None takes the engine's default."""
 
 
+PREDICT = "ml.predict"
+"""The capability an `ml` step requires: a worker that applies a model to rows (ADR-0076)."""
+
+THRESHOLD = re.compile(r"^\s*confidence\s*(<=?)\s*((?:0|1)(?:\.[0-9]+)?|\.[0-9]+)\s*$")
+"""The one form of an `ml` step's `fallback.when` the engine evaluates: `confidence < t` or
+`confidence <= t`, with `t` from 0 to 1 (ADR-0076 §3)."""
+
+DIGEST = r"^sha256:[0-9a-f]{64}$"
+
+
+class ModelFile(Value):
+    """A model file, pinned by the digest of its bytes: behind a URI the worker fetches, or in
+    the step's work. A model is used only as pinned (NTC-0156)."""
+
+    uri: str | None = Field(default=None, pattern=r"^https?://")
+    base64: str | None = None
+    digest: str = Field(pattern=DIGEST)
+
+    @model_validator(mode="after")
+    def _one_place(self) -> ModelFile:
+        if (self.uri is None) == (self.base64 is None):
+            raise ValueError("a model file is named by a uri or given as base64, one of them")
+        if self.base64 is not None:
+            try:
+                content = b64decode(self.base64, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise ValueError("the model's base64 is not base64") from error
+            if "sha256:" + hashlib.sha256(content).hexdigest() != self.digest:
+                raise ValueError("the bytes of the model do not match its digest")
+        return self
+
+
+class Threshold(Value):
+    """An `ml` step's fallback condition, read: below `value` — or at it, where `inclusive` —
+    the step is unsure and goes to its fallback."""
+
+    value: float = Field(ge=0, le=1)
+    inclusive: bool = False
+
+    def unsure(self, confidence: float) -> bool:
+        return confidence <= self.value if self.inclusive else confidence < self.value
+
+    def describe(self) -> str:
+        return f"confidence {'<=' if self.inclusive else '<'} {self.value:g}"
+
+
+class MlWork(WorkerWork):
+    """A prediction: the rows of `dataset`, given to a worker that offers `ml.predict`, with the
+    step's model file pinned by its digest (ADR-0076). The task the worker receives is built
+    from them; a bundle never writes it. `dataset` is `{"csv": <text>}` — the text may be a
+    reference to what an earlier step produced — or a source as the worker reads it,
+    `{"uri": ...}` or `{"base64": ...}`, with a `digest` where known."""
+
+    model: ModelFile
+    dataset: dict[str, Any]
+    label: str | None = None
+    threshold: Threshold
+
+    @model_validator(mode="before")
+    @classmethod
+    def _task_of_a_prediction(cls, given: Any) -> Any:
+        if not isinstance(given, Mapping) or "task" in given:
+            return given
+        inputs: dict[str, Any] = {
+            "operation": "predict",
+            "model": given.get("model"),
+            "dataset": given.get("dataset"),
+        }
+        if given.get("label") is not None:
+            inputs["label"] = given["label"]
+        return {
+            **given,
+            "task": {
+                "goal": "apply the step's model to the rows and give each row's class with its "
+                "confidence",
+                "acceptance": ["every row carries a class and its confidence"],
+                "inputs": inputs,
+            },
+        }
+
+    @model_validator(mode="after")
+    def _rows_in_one_place(self) -> MlWork:
+        places = {"csv", "uri", "base64"} & set(self.dataset)
+        if len(places) != 1 or not set(self.dataset) <= {"csv", "uri", "base64", "digest"}:
+            raise ValueError("dataset is {csv}, {uri} or {base64}, with a digest where known")
+        return self
+
+    @staticmethod
+    def worker_inputs(inputs: Mapping[str, Any]) -> dict[str, Any]:
+        """The task's inputs once references are resolved: rows given as text are handed to the
+        worker as the bytes of that text."""
+        dataset = inputs.get("dataset")
+        if not isinstance(dataset, Mapping) or "csv" not in dataset:
+            return dict(inputs)
+        text = dataset["csv"]
+        if not isinstance(text, str):
+            text = json.dumps(text, ensure_ascii=False)
+        rows = {k: v for k, v in dataset.items() if k != "csv"}
+        rows["base64"] = b64encode(text.encode("utf-8")).decode("ascii")
+        return {**inputs, "dataset": rows}
+
+
+def threshold(step: Step) -> Threshold:
+    """The fallback condition of an `ml` step, read, or why it cannot be (ADR-0076 §3, §4)."""
+    if step.fallback is None:
+        raise UnsupportedWork(
+            step.id,
+            "an ml step names its fallback: a model that is unsure does not guess, it asks "
+            "(docs/architecture/methods.md §2)",
+        )
+    if step.fallback.to is not Method.HUMAN:
+        raise UnsupportedWork(
+            step.id,
+            f"an ml step falls back to a person in this version, not to {step.fallback.to}",
+        )
+    matched = THRESHOLD.match(step.fallback.when)
+    if matched is None or float(matched.group(2)) > 1:
+        raise UnsupportedWork(
+            step.id,
+            f"fallback.when {step.fallback.when!r} is not a threshold the engine evaluates: "
+            "write `confidence < t` or `confidence <= t`, t from 0 to 1",
+        )
+    return Threshold(value=float(matched.group(2)), inclusive=matched.group(1) == "<=")
+
+
 class LlmWork(Value):
     """A prompt to a model of the named purpose; the result is the text the model answered,
     once it passes the check. The check is what makes the step `sourced` rather than `free`:
@@ -260,7 +392,7 @@ class LlmWork(Value):
     pattern: str | None = None
 
 
-type Work = RuleWork | WaitWork | WorkerWork | LlmWork
+type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork
 
 _RULE: TypeAdapter[RuleWork] = TypeAdapter(RuleWork)
 
@@ -284,6 +416,14 @@ def parse_work(
             if not step.required_capabilities:
                 raise UnsupportedWork(step.id, "a worker step names the capabilities it requires")
             return WorkerWork.model_validate(given)
+        if step.method is Method.ML:
+            if given is None:
+                raise UnsupportedWork(
+                    step.id, "an ml step names its rows and its model under `work`"
+                )
+            if PREDICT not in (step.required_capabilities or ()):
+                raise UnsupportedWork(step.id, f"an ml step requires {PREDICT}")
+            return MlWork.model_validate({**given, "threshold": threshold(step).model_dump()})
         if step.method is Method.LLM:
             if given is None:
                 raise UnsupportedWork(step.id, "an llm step carries its prompt under `work`")
