@@ -389,6 +389,22 @@ def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_
     assert "TAKTUS_CONNECTORS" not in of_kind(off, "ConfigMap")[0]["data"]
 
 
+def test_the_platform_and_each_credentials_declaration_are_configuration() -> None:
+    """ADR-0052: the platform and the declarations reach the roles as plain settings."""
+    documents = render(
+        "administration.platform=integration",
+        "administration.administers.REPOSITORY_TOKEN=none",
+        "administration.administers.DEPLOY_KUBECONFIG=integration",
+    )
+    [config] = of_kind(documents, "ConfigMap")
+    assert config["data"]["TAKTUS_PLATFORM"] == "integration"
+    assert config["data"]["TAKTUS_ADMINISTERS"] == (
+        "DEPLOY_KUBECONFIG=integration,REPOSITORY_TOKEN=none"
+    )
+    [plain] = of_kind(render(), "ConfigMap")
+    assert "TAKTUS_PLATFORM" not in plain["data"] and "TAKTUS_ADMINISTERS" not in plain["data"]
+
+
 def test_the_ingress_is_off_unless_a_host_is_given(rendered: list[dict[str, Any]]) -> None:
     assert of_kind(rendered, "Ingress") == []
 

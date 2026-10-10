@@ -181,6 +181,7 @@ from taktus.components.run.ports import (
     Verdict,
     WorkerPool,
 )
+from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
     CallContext,
@@ -442,6 +443,7 @@ class RunEngine:
         maturities: Maturities | None = None,
         anchors: Anchors | None = None,
         decisions: Decisions | None = None,
+        administration: Administration | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -474,6 +476,13 @@ class RunEngine:
         self._immature: set[str] = set()
         """Runs whose current step was not run on an adapter below *verified*: they halt with
         cause `maturity` (NTC-0051)."""
+        self._administration = administration or Administration()
+        """The platform this instance runs on and what each credential declares it administers;
+        a step naming a credential that administers this platform, or an undeclared one, is not
+        run (ADR-0025, ADR-0052). Without a platform named nothing is checked."""
+        self._administering: set[str] = set()
+        """Runs whose current step was refused for a credential administering this instance's
+        own platform: they halt with cause `administration`."""
         self._at_capacity: set[str] = set()
         """Runs whose current step met its worker at capacity: they halt, or escalate once the
         step's ceiling passed, with cause `capacity` (ADR-0037)."""
@@ -898,6 +907,7 @@ class RunEngine:
             self._limit_halts.discard(run.id)
             self._at_capacity.discard(run.id)
             self._immature.discard(run.id)
+            self._administering.discard(run.id)
 
     async def _steps(self, run: Run, stop_after: int | None, span: Span) -> Run:
         refused = await self._platform_refuses(None)
@@ -921,11 +931,14 @@ class RunEngine:
                     )
                 continue
             if step_run.state is StepState.REJECTED:
-                if run.id in self._immature:
+                if run.id in self._administering:
+                    cause = Cause.ADMINISTRATION
+                elif run.id in self._immature:
                     cause = Cause.MATURITY
                 else:
                     cause = Cause.NO_ESTIMATE if step_run.estimate is None else Cause.LIMIT
                 self._immature.discard(run.id)
+                self._administering.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             capacity = run.id in self._at_capacity
             self._at_capacity.discard(run.id)
@@ -978,6 +991,9 @@ class RunEngine:
                 # What it depended on no longer waits: the step can start (ADR-0043).
                 run, step_run = await self._close_block(run, step_run)
             work = parse_work(step, run.work.get(step.id), run.inputs)
+            refusal = self._administration.refusal(step.id, _credential_names(work))
+            if refusal is not None:
+                return await self._refuse_administering(run, step_run, refusal, span)
             used = autonomy.actions_of(step, work)
             held = autonomy.held(run.autonomy_level, run.actions, used)
             span.set_attribute("autonomy.level", held.level)
@@ -1153,6 +1169,22 @@ class RunEngine:
             "step.rejected",
             step=step_run,
             outcome="rejected_by_maturity",
+        )
+        return run, step_run
+
+    async def _refuse_administering(
+        self, run: Run, step_run: StepRun, reason: str, span: Span
+    ) -> tuple[Run, StepRun]:
+        """The step names a credential that administers this instance's own platform, or one
+        declared about nothing: rejected before anything starts (ADR-0052)."""
+        span.record_failure("credential administers this platform")
+        self._administering.add(run.id)
+        step_run = step_run.to(StepState.REJECTED, reason=reason)
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.rejected",
+            step=step_run,
+            outcome="rejected_by_administration",
         )
         return run, step_run
 
@@ -3004,3 +3036,13 @@ def _consumption(used: dict[str, Any]) -> Consumption | None:
     if not any(name in used for name in QUANTITIES):
         return None
     return Consumption.model_validate(used)
+
+
+def _credential_names(work: Work) -> list[str]:
+    """The credentials a step's work names, resolved: a connector call's, a wait's on one, a
+    worker's assignment's."""
+    if isinstance(work, ConnectorRule | WorkerWork):
+        return [c.name for c in work.credentials]
+    if isinstance(work, WaitWork) and work.until is not None:
+        return [c.name for c in work.until.credentials]
+    return []

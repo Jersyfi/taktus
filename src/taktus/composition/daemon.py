@@ -318,6 +318,7 @@ async def wire(
                         Pools(workers, connectors, models),
                     ),
                     anchors=decisions.anchors,
+                    administration=settings.administration,
                     decisions=decisions.requests,
                 )
 
@@ -394,6 +395,7 @@ async def wire(
                     persistence,
                     PostgresRepository(persistence, Process),
                     ledger=ledger,
+                    administration=settings.administration,
                 ),
                 commission=commission,
                 intake=ReceiveIntakeHandler(
@@ -657,6 +659,12 @@ def main() -> None:
         sys.exit(EXIT_CONFIGURATION)
     configure(settings.log_level)
     log_effective_configuration(settings)
+    if not settings.administration.checked:
+        # ADR-0052: without the platform named, ADR-0025's rule is the operator's alone.
+        log.warning(
+            "TAKTUS_PLATFORM is not set: no process is checked for a credential that "
+            "administers the platform this instance runs on (ADR-0025, ADR-0052)"
+        )
     sys.exit(asyncio.run(serve(settings, configuration=configuration)))
 
 

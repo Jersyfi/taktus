@@ -132,6 +132,14 @@ execution:
 #     mountPath:                            # optional; /run/secrets/taktus/<parameter> by default
 credentials: []
 
+# ADR-0025, ADR-0052: the platform this instance runs on (TAKTUS_PLATFORM), and, per credential
+# parameter, the platforms it administers or `none` (TAKTUS_ADMINISTERS). A process naming a
+# credential that administers this platform, or one declared about nothing, is refused. Empty
+# platform: nothing is checked, and the daemon says so at start.
+administration:
+  platform: ""
+  administers: {}          # CREDENTIAL_NAME: none | platform | a|b
+
 # The repository connector (README §2): a deployment of its own, from the control plane's image,
 # serving one repository's channel — its webhook intake and its actions over MCP — as Taktus's
 # own app (ADR-0033). The roles reach it as `channel.repo` (TAKTUS_CONNECTORS); with `findings`

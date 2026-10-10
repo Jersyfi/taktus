@@ -170,7 +170,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 57, "every setting is in the startup log"
+    assert len(effective) == 59, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -328,3 +328,26 @@ def test_findings_are_sent_only_where_the_operator_names_a_connector() -> None:
     assert enabled.findings_connector == "http://findings:9100/mcp"
     with pytest.raises(ConfigurationError, match="TAKTUS_FINDINGS_CONNECTOR"):
         settings(TAKTUS_FINDINGS_CONNECTOR="findings:9100")
+
+
+def test_the_platform_and_what_each_credential_administers_are_read() -> None:
+    """ADR-0052: one setting for the platform, one for every credential's declaration."""
+    loaded = settings(
+        TAKTUS_PLATFORM="integration",
+        TAKTUS_ADMINISTERS="REPOSITORY_TOKEN=none, DEPLOY_KUBECONFIG=integration|other",
+    ).administration
+    assert loaded.platform == "integration"
+    assert dict(loaded.declared) == {
+        "REPOSITORY_TOKEN": (),
+        "DEPLOY_KUBECONFIG": ("integration", "other"),
+    }
+    assert not settings().administration.checked
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["TOKEN", "TOKEN=", "=here", "TOKEN=a,TOKEN=b", "TOKEN=none|here", "TOKEN=a||b"],
+)
+def test_a_declaration_that_cannot_be_read_names_the_variable(value: str) -> None:
+    with pytest.raises(ConfigurationError, match="TAKTUS_ADMINISTERS"):
+        settings(TAKTUS_ADMINISTERS=value)
