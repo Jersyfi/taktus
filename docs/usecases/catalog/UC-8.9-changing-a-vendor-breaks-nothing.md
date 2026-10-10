@@ -43,8 +43,10 @@ that defines a process can leave Taktus in an open format.
 requirement is that it keeps running, and that the change is measured and reported. **Not the
 provider's data.** What a provider holds on its side — a conversation history, a fine-tuned model —
 is the provider's to return. **Not the database**, whose removal is a restore, recorded as the
-exception. **Not a guarantee that an alternative exists.** Where no second adapter for a capability
-exists, the verdict is *broke*, and saying so is the requirement.
+exception. **Not a guarantee that an alternative exists.** Where neither a second adapter for a
+capability nor a person who takes the step over exists, the verdict is *broke*, and saying so is the
+requirement. A person counts when the step declares that person's role as its fallback, with
+instructions a person can follow (DEC-0111).
 
 ## 4. What it rests on
 
@@ -65,6 +67,5 @@ For Taktus's own development processes, P-01 to P-03, the verdict is *changed* f
 three integrations they use — the repository connector, the coding worker and the model — with
 the three registered (issue #90). Every step one of them serves names a person as its fallback
 when the integration is unavailable, and no second adapter is configured for any of them. That
-*changed* rests on a person taking the step over, not on an alternative adapter. Whether a
-person counts for this requirement is the owner's open question, DEC-0111; under its other
-answer these verdicts are *broke*.
+*changed* rests on a person taking the step over, not on an alternative adapter; a person counts
+for this requirement (DEC-0111).

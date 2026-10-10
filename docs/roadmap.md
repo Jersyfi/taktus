@@ -166,7 +166,7 @@ own instance, and the standing brief retired (#70, #71, #87) · the use-case mig
 to 4, before the use cases it adds are built (`docs/usecases/NUMBERING.md`) (#61, #62, #63) ·
 **the way to *verified***, without which no step of P-01 to P-03 runs at level 3 on its own
 instance (ADR-0039): the conformance half of maturity recorded (#93), and every integration step
-of P-01 to P-03 taken over by a person when its adapter is removed, if that earns the removal half
+of P-01 to P-03 taken over by a person when its adapter is removed, which earns the removal half
 (#90, DEC-0111)
 
 **Complete when** Taktus maintains its own repository for **14 days** with no intervention in
