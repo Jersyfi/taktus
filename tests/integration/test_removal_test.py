@@ -310,10 +310,13 @@ FAKE_PROCESS: dict[str, Any] = {
 }
 
 
-def connector_services(connector: FakeConnector) -> Services:
+def connector_services(
+    connector: FakeConnector, workers: StaticWorkerPool | None = None
+) -> Services:
     """The wiring of `composition/local.py` over memory, with the fake connector configured as
     `connector.fake` beside the loopback and a scripted worker: what the removal test needs
-    to exercise a process that writes outward, without a network."""
+    to exercise a process that writes outward, without a network. `workers` replaces the
+    scripted worker with a pool of the caller's."""
     clock, ids = FakeClock(), FakeIdentifiers()
     persistence = MemoryPersistence()
     runs = MemoryRepository(persistence, Run)
@@ -323,7 +326,7 @@ def connector_services(connector: FakeConnector) -> Services:
     recordings = RecordedResponses(runs, persistence, objects)
     loopback = LoopbackConnector()
     pools = Pools(
-        StaticWorkerPool([("worker.endpoint", FakeWorker())]),
+        workers or StaticWorkerPool([("worker.endpoint", FakeWorker())]),
         StaticConnectorPool([(RECORDS, connector), (LOOPBACK, loopback)]),
         StaticModelPool(),
     )
