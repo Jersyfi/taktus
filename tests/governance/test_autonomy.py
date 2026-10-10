@@ -35,6 +35,7 @@ from taktus.components.run.application.service import (
     StartRun,
 )
 from taktus.components.run.domain.model import Cause, Run, RunError, RunState, StepState
+from taktus.ports.administration import Administration
 from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit
 from taktus.shared.v1 import (
     Autonomy,
@@ -111,6 +112,7 @@ class World:
         actions: Mapping[str, AutonomyLevel] | None = None,
         maturities: FakeMaturities | None = None,
         wired: bool = True,
+        administration: Administration | None = None,
     ) -> None:
         self.clock = FakeClock(AT)
         self.persistence = MemoryPersistence()
@@ -135,6 +137,7 @@ class World:
             options=EngineOptions(uncalibrated_margin=0.0),
             maturities=self.maturities if wired else None,
             queue=self.queue,
+            administration=administration,
         )
         self.level = level
         self.actions = dict(actions or {})
@@ -469,3 +472,64 @@ async def test_a_tenant_of_one_person_sets_any_of_the_three_levels(level: int) -
         run = await w.confirm(run, "only")
     assert run.state is RunState.FINISHED
     assert {e.refs.actor for e in await w.entries(run) if e.refs.actor} == {PERSON}
+
+
+# --- a credential that administers this instance's platform (ADR-0025, ADR-0052) -----------------
+
+
+def with_credential(
+    definition: tuple[Step, dict[str, Any]], name: str
+) -> tuple[Step, dict[str, Any]]:
+    step, work = definition
+    return step, {**work, "credentials": [{"name": name, "injected_as": "env"}]}
+
+
+@pytest.mark.parametrize("family", ["worker", "connector"])
+async def test_a_step_naming_a_credential_that_administers_this_platform_is_not_run(
+    family: str,
+) -> None:
+    """Issue #83: admission refuses the step, naming the step, the credential and the platform;
+    the run halts with cause `administration` before anything reaches an adapter."""
+    step = worker("act") if family == "worker" else call("act", READ)
+    here = Administration(platform="here", declared={"KUBE": ("here",)})
+    w = World(rule("prep"), with_credential(step, "KUBE"), administration=here)
+    run = await w.start()
+    assert run.state is RunState.HALTED and run.cause is Cause.ADMINISTRATION
+    act = run.step_run("act")
+    assert act.state is StepState.REJECTED
+    assert act.reason is not None
+    assert "'act'" in act.reason and "'KUBE'" in act.reason and "'here'" in act.reason
+    assert w.worker.assignments == [] and w.connector.calls == []
+    assert (await w.kinds(run))[-2:] == [
+        "step.rejected:act:rejected_by_administration",
+        "run.halted::administration",
+    ]
+
+
+async def test_an_undeclared_credential_is_refused_once_the_platform_is_named() -> None:
+    """DEC-0133, provisional Option A: a credential nobody declared is refused too."""
+    w = World(
+        with_credential(call("act", READ), "TOKEN"),
+        administration=Administration(platform="here"),
+    )
+    run = await w.start()
+    assert run.cause is Cause.ADMINISTRATION
+    reason = run.step_run("act").reason
+    assert reason is not None and "undeclared" in reason
+
+
+@pytest.mark.parametrize(
+    "administration",
+    [
+        Administration(platform="here", declared={"TOKEN": ()}),
+        Administration(platform="here", declared={"TOKEN": ("elsewhere",)}),
+        Administration(declared={"TOKEN": ("here",)}),
+    ],
+    ids=["declared-none", "another-platform", "no-platform-named"],
+)
+async def test_a_credential_administering_nothing_here_runs(
+    administration: Administration,
+) -> None:
+    w = World(with_credential(call("act", READ), "TOKEN"), administration=administration)
+    run = await w.start()
+    assert run.state is RunState.FINISHED

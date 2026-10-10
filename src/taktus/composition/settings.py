@@ -17,6 +17,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from taktus.components.run.domain.service import budget as budgeting
+from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.model import PriceTable
 
@@ -438,6 +439,32 @@ def load_capacity(configuration: Configuration) -> CapacitySettings:
     )
 
 
+def load_administration(configuration: Configuration) -> Administration:
+    """`TAKTUS_PLATFORM` and `TAKTUS_ADMINISTERS`: the platform this instance runs on and the
+    platforms each credential administers (ADR-0052). `taktusctl` reads them too."""
+    reader = _Reader(configuration)
+    platform = reader.text("platform", "").strip() or None
+    name, value = reader._raw("administers")
+    declared: dict[str, tuple[str, ...]] = {}
+    for entry in (value or "").split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        credential, sep, platforms = entry.partition("=")
+        credential, platforms = credential.strip(), platforms.strip()
+        if not sep or not credential or not platforms:
+            raise ConfigurationError(name, f"{entry!r} is not NAME=platform, NAME=a|b or NAME=none")
+        if credential in declared:
+            raise ConfigurationError(name, f"declares {credential!r} twice")
+        listed = tuple(p.strip() for p in platforms.split("|"))
+        if any(not p for p in listed):
+            raise ConfigurationError(name, f"{entry!r} has an empty platform")
+        if NONE in listed and len(listed) > 1:
+            raise ConfigurationError(name, f"{entry!r}: `none` stands alone")
+        declared[credential] = () if listed == (NONE,) else listed
+    return Administration(platform=platform, declared=declared)
+
+
 def load_tenants(configuration: Configuration) -> tuple[str, ...]:
     """`TAKTUS_TENANTS`: the tenants an instance serves; `taktusctl capacity` reads it too."""
     return _Reader(configuration).names("tenants", (DEFAULT_TENANT,))
@@ -468,6 +495,8 @@ class Settings:
     """What the capacity report is told: thresholds, the database's volume, the interval."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
+    administration: Administration
+    """The platform this instance runs on and what each credential administers (ADR-0052)."""
     findings_connector: str | None
     """The MCP URL of the connector through which product findings go to the Taktus repository
     (UC-6.12, ADR-0046). None: the operator did not enable it, and findings are only recorded
@@ -509,6 +538,13 @@ class Settings:
             *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
             ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
+            ("TAKTUS_PLATFORM", self.administration.platform or ""),
+            (
+                "TAKTUS_ADMINISTERS",
+                ",".join(
+                    f"{c}={'|'.join(p) or NONE}" for c, p in self.administration.declared.items()
+                ),
+            ),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
             ("TAKTUS_TENANTS", ",".join(self.tenants)),
             ("TAKTUS_INSTANCE", self.instance),
@@ -552,6 +588,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         budget=load_budget(configuration),
         capacity=load_capacity(configuration),
         connectors=reader.connectors(),
+        administration=load_administration(configuration),
         findings_connector=reader.url("findings.connector", "") or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         tenants=load_tenants(configuration),

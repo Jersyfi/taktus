@@ -13,5 +13,6 @@ never mirroring a tool (ADR-0016). Nothing here imports a component or a technol
 | `clock.py` | time, identifiers, randomness — the core never reads them by itself | `adapters/driven/clock/` |
 | `execution.py` | how an execution unit comes to exist for one job, with what isolation; the fail-closed rule that refuses an unisolated unit from autonomy level 3 (ADR-0002) | `adapters/driven/execution/` (`process`, `container`); `adapters/driven/workers/launched.py` puts the worker port over it |
 | `platform.py` | what the machine or container the instance runs on has left — CPU, memory, the state directory's storage — each observed with its source or `Unobserved` with the reason (`docs/architecture/platform.md`) | `adapters/driven/platform/` (`host`) |
+| `administration.py` | the platform this instance runs on and the platforms each credential administers, as one value; `refusal` says why a step may not use a credential here (ADR-0052) | `composition/settings.py` reads it from configuration |
 | `telemetry.py` | spans around units of work | `adapters/driven/telemetry/` (no-op) |
 | `connector.py`, `model.py`, `queue.py`, `eventbus.py`, `secret.py` | see the tree in `docs/architecture/project-structure.md`; the queue's and outbox's tables and claiming functions already exist in the schema | from later versions |
