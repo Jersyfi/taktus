@@ -1,7 +1,7 @@
 # DEC-0124 — What an event reaction must do
 
 **Category:** NON-BLOCKING
-**Raised in:** [#173](https://github.com/Jersyfi/taktus/pull/173), while making issue #76 ready: no use case says what an event reaction must do
+**Raised in:** [#175](https://github.com/Jersyfi/taktus/pull/175), while making issue #76 ready: no use case says what an event reaction must do
 **Issue:** [#172](https://github.com/Jersyfi/taktus/issues/172)
 **Needed by:** 2026-10-24
 **Provisional answer:** Option A. The new use case UC-4.14, *A process starts on what happens in a tool*, is in force as written and binds the change that builds event reactions (#76). Marked here, in UC-4.14 §4, and in issue #76.
