@@ -186,7 +186,7 @@ and chat, and you can see your own share of the waiting time.
 ### `0.4.0` — the ML bench and the second tenant
 `mlbench` worker doing real work: training, evaluation, embeddings, classical ML (#89, #210) · method
 maturation with change proposals (#216, #217, #218) · model hub for in-house models · second coding worker, so that
-the removal test can say *changed* through an adapter, not only a person (#154) · model routing ·
+the removal test can say *changed* through an adapter, not only a person (#154, #208, #209) · model routing ·
 `dev-orchestration` blueprint · **second tenant onboarded at level 1–2**
 
 **Complete when** a step moves from a language model to a trained model on Taktus's own proposal —

@@ -122,7 +122,7 @@ taktus/
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 │   ├── script/                      # the reference worker: shell commands, no AI
 │   ├── claudecode/                  # the coding worker: a coding agent behind the contract, and the fake agent the gate runs it against
-│   ├── codex/                       # the second coding worker (0.4.0)
+│   ├── codex/                       # the second coding worker: a second vendor's coding agent behind the contract, and its fake agent
 │   └── mlbench/                     # the ML bench: trains, evaluates and serves classical models; embeddings next (#210)
 │
 ├── contracts/                       # what third parties implement — JSON Schema

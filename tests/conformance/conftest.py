@@ -67,6 +67,8 @@ WORKER = ROOT / "workers" / "script" / "worker.py"
 CODING_WORKER = ROOT / "workers" / "claudecode" / "worker.py"
 FAKE_AGENT = ROOT / "workers" / "claudecode" / "fake_agent.py"
 MLBENCH_WORKER = ROOT / "workers" / "mlbench" / "worker.py"
+SECOND_CODING_WORKER = ROOT / "workers" / "codex" / "worker.py"
+SECOND_FAKE_AGENT = ROOT / "workers" / "codex" / "fake_agent.py"
 CODING_CREDENTIAL = {"api-key": "CODING_AGENT_API_KEY", "session": "CODING_AGENT_SESSION"}
 CONNECTOR = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors" / "github"
 SCENARIO = CONNECTOR / "scenario.json"
@@ -123,8 +125,8 @@ def faults() -> list[tuple[str, str]]:
     return _list_faults([sys.executable, str(WORKER), "--list-faults"])
 
 
-def coding_faults() -> list[tuple[str, str]]:
-    return _list_faults([sys.executable, str(CODING_WORKER), "--list-faults"])
+def coding_faults(worker: Path = CODING_WORKER) -> list[tuple[str, str]]:
+    return _list_faults([sys.executable, str(worker), "--list-faults"])
 
 
 def mlbench_faults() -> list[tuple[str, str]]:
@@ -221,26 +223,43 @@ def start_coding_worker(tmp_path: Path) -> Iterator[StartWorker]:
     and must appear nowhere the suite can see (W-08). `agent_env` reaches the fake agent
     through the worker: the two variables that make it misbehave on purpose."""
     started: list[subprocess.Popen[bytes]] = []
+    yield coding_starter(tmp_path, started, CODING_WORKER, FAKE_AGENT)
+    stop_all(started)
+
+
+@pytest.fixture
+def start_second_coding_worker(tmp_path: Path) -> Iterator[StartWorker]:
+    """The second coding worker (`workers/codex/`) against its own fake agent, started the
+    way the first one is (#154)."""
+    started: list[subprocess.Popen[bytes]] = []
+    yield coding_starter(tmp_path, started, SECOND_CODING_WORKER, SECOND_FAKE_AGENT)
+    stop_all(started)
+
+
+def coding_starter(
+    tmp_path: Path, started: list[subprocess.Popen[bytes]], worker: Path, agent: Path
+) -> StartWorker:
+    name_of = worker.parent.name
 
     def start(
         *, auth: str = "api-key", fault: str | None = None, agent_env: dict[str, str] | None = None
     ) -> RunningWorker:
         port = free_port()
-        log = tmp_path / f"coding-{auth}-{fault or 'honest'}.log"
+        log = tmp_path / f"{name_of}-{auth}-{fault or 'honest'}.log"
         name = CODING_CREDENTIAL[auth]
         value = "conf-" + secrets.token_hex(12)
         env = {**os.environ, name: value, **(agent_env or {})}
         args = [
             sys.executable,
-            str(CODING_WORKER),
+            str(worker),
             "--port",
             str(port),
             "--auth",
             auth,
             "--agent",
-            f"{sys.executable} {FAKE_AGENT}",
+            f"{sys.executable} {agent}",
             "--state-dir",
-            str(tmp_path / f"coding-state-{auth}-{fault or 'honest'}"),
+            str(tmp_path / f"{name_of}-state-{auth}-{fault or 'honest'}"),
             "--estimate-steps",
             "8",
             "--estimate-currency",
@@ -259,8 +278,7 @@ def start_coding_worker(tmp_path: Path) -> Iterator[StartWorker]:
         wait_ready(process, f"{endpoint}/v1/health", log, "coding worker")
         return RunningWorker(endpoint, log, value, process, credential_name=name)
 
-    yield start
-    stop_all(started)
+    return start
 
 
 @pytest.fixture
