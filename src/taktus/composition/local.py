@@ -274,6 +274,7 @@ class LocalWiring:
                     stores.of(Process),
                     ledger=ledger,
                     administration=administration,
+                    clock=clock,
                 ),
                 commission=commission,
                 engine=engine,

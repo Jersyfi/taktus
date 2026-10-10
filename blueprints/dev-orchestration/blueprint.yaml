@@ -49,7 +49,7 @@ processes:
     triggers:   # the scheduled run reports on #129, the issue labelled `report` (ADR-0035)
       - schedule: daily
         inputs: { roadmap_path: docs/roadmap.md, records_path: docs/decisions/open, report_issue: 129 }
-      - event: roadmap.changed
+      - { event: branch.pushed, filter: { branch: main, paths: docs/roadmap.md } }   # the roadmap changed (contracts/events/v1)
     # The diff is a rule over the issue numbers the roadmap's items name: the method of this
     # step is the owner's (anchors.taktus.md M3.13), decided in DEC-0080.
     steps:
@@ -66,7 +66,7 @@ processes:
       level: 3
       reason: the one outward effect is a comment a person reads before anything builds on it; the answer leaves only through a check
       toward_next: a month of criteria nobody rewrote and a stronger check on the answer's structure
-    triggers: [ { event: issue.opened, filter: "a section of the ready standard missing" } ]
+    triggers: [ { event: issue.opened } ]   # whether a section is missing is the run's to find (ADR-0048 §2)
     steps:
       - { id: gather-context, method: rule }
       - { id: refine,         method: llm, reason: "write the sections of the ready standard the issue lacks", exactness: sourced }
@@ -77,7 +77,7 @@ processes:
     autonomy:
       level: 4
       reason: nothing writes to a protected branch, the pipeline's verdict is the gate and a person merges; the worker runs in isolation
-    triggers: [ { event: issue.ready, condition: "capacity.available" } ]
+    triggers: [ { event: issue.labelled, filter: { label: ready }, condition: capacity.available } ]
     steps:
       - { id: admit,     method: rule, exactness: exact }   # the ready standard (docs/process/README.md)
       - { id: claim,     method: rule }                     # the label in-progress
@@ -95,7 +95,7 @@ processes:
       level: 3
       reason: a review is a judgement posted as a comment; the merge policy is a rule, and a person can still object before a merge
       toward_next: a history of merges under the policy that nobody had to revert; the policy's conditions checked as rules, not read from the description
-    triggers: [ { event: pullrequest.opened } ]
+    triggers: [ { event: pull_request.opened } ]
     steps:
       - { id: review, method: llm, reason: "judgement against principles and ADRs; not a rule set", exactness: sourced }
       - { id: post,   method: rule }
@@ -107,7 +107,7 @@ processes:
       level: 3
       reason: classification is a judgement with a measured error; a feature or a scope change escalates to a person by rule
       toward_next: the classifier matured from a language model to a trained model with a measured error under the tolerance
-    triggers: [ { event: issue.opened }, { event: discussion.created }, { event: chat.mention } ]
+    triggers: [ { event: issue.opened }, { event: discussion.created }, { event: message.mentioned } ]
     steps:
       # starts on an llm; the maturation loop is expected to move this to `ml`
       - { id: classify, method: llm, reason: "bug, feature, out of scope — judgement, not a rule", exactness: tolerant,

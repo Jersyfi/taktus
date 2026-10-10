@@ -60,7 +60,7 @@
   ],
   "intake": {
     "events": [
-      "issues.opened",
+      "issue.opened",
       "issue_comment.created",
       "pull_request.opened",
       "pipeline_run.completed"

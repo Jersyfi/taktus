@@ -35,7 +35,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "3"
+version: "4"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -49,9 +49,20 @@ autonomy:
 author: the repository
 reason: the third process of the dev-orchestration blueprint, runnable
 
-triggers:
-  - event: issue.ready
-    condition: capacity.available
+# No trigger yet. The blueprint's `issue.ready` is the event `issue.labelled` with the filter
+# `label: ready` and the condition `capacity.available` (contracts/events/v1 §2). A run started
+# by an event has nobody to ask, so its trigger must give every input, and `closing_section`
+# cannot be given by a trigger: it is generated from the base branch. Once the worker
+# generates it inside the run (DEC-0037, issue #77), the input goes and the trigger returns:
+#
+#   - event: issue.labelled
+#     filter: { label: ready }
+#     condition: capacity.available
+#     inputs: { records_path: docs/decisions/open, ... }
+#     from_event: { issue: issue }
+#
+# Until then P-03 starts by hand, as above (ADR-0048, NTC-0103).
+triggers: []
 
 inputs:
   issue:

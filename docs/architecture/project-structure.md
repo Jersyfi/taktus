@@ -80,6 +80,7 @@ taktus/
 │   │   ├── identity.py              # who acts: a sender on a channel placed in a tenant as an identity; served by components/identity (ADR-0040); IdentitySource is the organisation's own source
 │   │   ├── configuration.py         # what an instance is told about itself, by key; Secret; ConfigurationError
 │   │   ├── queue.py                 # jobs a runner claims once, as a lease it renews (ADR-0002); a deferred job waits out its delay, not counted as an attempt (ADR-0037)
+│   │   ├── outbox.py                # entries written with their cause, read in order and published once acted on (ADR-0002); the intake's `intake.accepted` (ADR-0048)
 │   │   ├── leadership.py            # one instance leads a singular role; a dead leader is replaced
 │   │   ├── platform.py              # what the machine or container has left — CPU, memory, storage — each observed or unobserved with the reason
 │   │   ├── administration.py        # the platform this instance runs on and what each credential administers; the refusal ADR-0052 makes
@@ -110,7 +111,7 @@ taktus/
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half
 │   │
-│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); replies.py answers a sender in a channel through its connector's reply operation (ADR-0040); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under; maturity.py answers the run's maturity port from the catalog's record (ADR-0039); decisions.py answers the run's anchor and decision ports from governance and decision, and decision's deciders from identity (ADR-0042); owner_channel.py joins reporting, decision, the connectors and the intake for the owner-facing channel — a report said through the channel's reply operation, an answer in its thread taken from the intake, the shipped phrasebooks under phrasebooks/ (ADR-0045); interfaces.py reads the run's failed calls for the reporting component and is the scheduler's look for a broken interface (ADR-0047)
+│   └── composition/                 # composition root: daemon.py wires and runs taktusd (settings.py, roles.py, logging.py); capacity.py the capacity report the scheduler runs and taktusctl prints; triggers.py the time triggers the scheduler fires (ADR-0035); reactions.py the event reactions the automation role makes, and the condition `capacity.available` (ADR-0048); replies.py answers a sender in a channel through its connector's reply operation (ADR-0040); local.py wires taktusctl; execution.py opens the worker and the telemetry both share; loopback.py is the instance behind the loopback connector — pools with one adapter withheld, rehearsal runs (ADR-0030), the removal verdict observed with the configuration it was taken under; maturity.py answers the run's maturity port from the catalog's record (ADR-0039); decisions.py answers the run's anchor and decision ports from governance and decision, and decision's deciders from identity (ADR-0042); owner_channel.py joins reporting, decision, the connectors and the intake for the owner-facing channel — a report said through the channel's reply operation, an answer in its thread taken from the intake, the shipped phrasebooks under phrasebooks/ (ADR-0045); interfaces.py reads the run's failed calls for the reporting component and is the scheduler's look for a broken interface (ADR-0047)
 │
 ├── workers/                         # separate deployables behind the worker contract, each with its own image; none in the control plane image (DEC-0011)
 │   ├── script/                      # the reference worker: shell commands, no AI
@@ -280,9 +281,16 @@ role it would tie the core to a model stack and the removal test would be lost.
   and the slot and the engine refuses a run that exists; slots missed while nobody led start
   one run (`tests/integration/test_time_triggers.py`). The tick also makes the capacity
   report; deadlines and budget windows arrive with governance.
-- **`automation`** starts, says so, and waits: nothing publishes events yet (the outbox
-  exists, nothing writes it). It is wired now so that the image and its configuration do not
-  change when reactions arrive.
+- **`automation`** leads through the leadership port under its own name, as the scheduler does,
+  and while it leads reacts to events (`composition/reactions.py`, ADR-0048). The intake writes
+  the outbox entry `intake.accepted` in the transaction that keeps an event (`ports/outbox.py`);
+  every pass reads the unpublished entries, asks the process component which active versions'
+  event triggers match (`contracts/events/v1`), completes the intake into one command acting for
+  the sender, and starts one run of each matching process. One delivery starts each process
+  once — a redelivery changes nothing, the run's identifier is derived from the tenant, the
+  process and the delivery, and the entry is published only after its runs exist — with two
+  automation roles and across a stop of the leader (`tests/integration/test_event_reactions.py`).
+  A trigger whose condition does not hold leaves its entry for a later pass.
 - **Shutdown** is the same for every role: on SIGTERM the HTTP surface stops, the runner claims
   nothing more, every running run is asked to stop at its next step boundary and the running
   worker step may finish up to `TAKTUS_SHUTDOWN_CEILING_SECONDS`, the claims are released, the

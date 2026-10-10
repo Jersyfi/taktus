@@ -74,6 +74,7 @@ process = Table(
     Column("description", Text),
     Column("active_version", Text),
     Column("activated_by", Text),
+    _at("activated_at", nullable=True),  # ADR-0048 §6
     PrimaryKeyConstraint("tenant", "id"),
 )
 

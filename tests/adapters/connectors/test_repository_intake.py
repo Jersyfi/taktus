@@ -60,7 +60,9 @@ def test_every_recorded_payload_carries_only_placeholders() -> None:
             "placeholder-owner/placeholder-repo#412",
             "3000000001",
         ),
-        ("issues-opened", "issues.opened", "placeholder-owner/placeholder-repo#413", None),
+        ("issues-opened", "issue.opened", "placeholder-owner/placeholder-repo#413", None),
+        ("issues-labeled", "issue.labelled", "placeholder-owner/placeholder-repo#413", None),
+        ("push", "branch.pushed", "placeholder-owner/placeholder-repo", None),
         (
             "pull-request-opened",
             "pull_request.opened",
@@ -217,3 +219,52 @@ async def test_the_intake_tool_reads_the_secret_from_its_file(
         )
         assert isinstance(result.structured_content, dict)
         assert result.structured_content["refused"]["reason"] == "bad_signature"
+
+
+def test_a_label_added_is_the_event_issue_labelled_with_that_label() -> None:
+    headers, body = recorded("issues-labeled")
+    accepted = intake.normalise(signed(headers, body), body, RECEIVED, SHARED)["accepted"]
+    assert accepted["context"] == {
+        "repository": "placeholder-owner/placeholder-repo",
+        "event": "issue.labelled",
+        "issue": "413",
+        "label": "ready",
+    }
+
+
+def test_a_push_names_its_branch_head_and_every_path_its_commits_changed() -> None:
+    headers, body = recorded("push")
+    accepted = intake.normalise(signed(headers, body), body, RECEIVED, SHARED)["accepted"]
+    assert accepted["context"] == {
+        "repository": "placeholder-owner/placeholder-repo",
+        "event": "branch.pushed",
+        "branch": "main",
+        "head": "c" * 40,
+        "paths": [
+            "docs/placeholder-new.md",
+            "docs/placeholder-old.md",
+            "docs/roadmap.md",
+            "docs/status.md",
+        ],
+    }
+    assert accepted["intent"]["raw"] == "docs(status): placeholder change"
+
+
+@pytest.mark.parametrize(
+    ("change", "why"),
+    [({"ref": "refs/tags/v1"}, "no push to a branch"), ({"deleted": True}, "deleted branch")],
+)
+def test_a_push_of_a_tag_or_a_deleted_branch_is_no_event(change: Json, why: str) -> None:
+    headers, body = recorded("push")
+    text = json.dumps({**json.loads(body), **change})
+    result = intake.normalise(signed(headers, text), text, RECEIVED, SHARED)
+    assert result["refused"]["reason"] == "unsupported_event"
+    assert why in result["refused"]["detail"]
+
+
+def test_every_kind_the_connector_normalises_is_in_the_events_catalogue() -> None:
+    """The kinds are the events contract's (contracts/events/v1 §2), read from its schema."""
+    schema = json.loads(
+        (Path(__file__).resolve().parents[3] / "contracts/events/v1/Event.json").read_text()
+    )
+    assert set(INTAKE_EVENTS) <= set(schema["$defs"]["Kind"]["enum"])

@@ -25,7 +25,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p02-refinement
-version: "3"
+version: "4"
 name: P-02 Refinement
 autonomy:
   level: 3
@@ -40,9 +40,13 @@ autonomy:
 author: the repository
 reason: the second process of the dev-orchestration blueprint, runnable
 
+# Every opened issue starts a run (contracts/events/v1, ADR-0048). Whether a section is missing
+# is not the trigger's to judge: a trigger reads the event alone, and the run's own steps find
+# what the issue lacks: the step `missing` refuses an issue that lacks nothing, and nothing is
+# written.
 triggers:
   - event: issue.opened
-    filter: a section of the ready standard missing
+    from_event: { issue: issue }
 
 inputs:
   issue:

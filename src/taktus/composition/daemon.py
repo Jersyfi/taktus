@@ -40,6 +40,7 @@ from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresLeadership,
     PostgresLedgerStore,
+    PostgresOutbox,
     PostgresPersistence,
     PostgresProvenanceStore,
     PostgresQueue,
@@ -74,6 +75,7 @@ from taktus.components.governance.application.service import (
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.ledger.application.service import ChainedLedger
+from taktus.components.process.application.service.reactions import ReactionsHandler
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
@@ -119,6 +121,7 @@ from taktus.composition.owner_channel import (
     known_secrets,
     owner_channel_wiring,
 )
+from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.triggers import Triggers
@@ -164,6 +167,8 @@ class Wired:
     """The capacity report the scheduler runs every `TAKTUS_CAPACITY_INTERVAL_SECONDS`."""
     triggers: Triggers
     """The time triggers the scheduler fires on every tick while it leads (ADR-0035)."""
+    reactions: Reactions
+    """The event reactions the automation role makes on every pass while it leads (ADR-0048)."""
     findings: ProductFindings
     """The product findings (UC-6.12, ADR-0046): sent by the scheduler where the operator
     enabled it with `TAKTUS_FINDINGS_CONNECTOR`, and only recorded otherwise."""
@@ -382,6 +387,15 @@ async def wire(
                     ids=ids,
                 )
             )
+            outbox = PostgresOutbox(persistence)
+            complete_intake = CompleteIntakeHandler(
+                PostgresRepository(persistence, IntakeEvent),
+                PostgresRepository(persistence, Command),
+                identities,
+                persistence,
+                clock,
+                ids,
+            )
             wired = Wired(
                 settings=settings,
                 persistence=persistence,
@@ -396,6 +410,7 @@ async def wire(
                     PostgresRepository(persistence, Process),
                     ledger=ledger,
                     administration=settings.administration,
+                    clock=clock,
                 ),
                 commission=commission,
                 intake=ReceiveIntakeHandler(
@@ -410,18 +425,33 @@ async def wire(
                     telemetry,
                     ConnectorReplies(pools.connectors),
                     owner.answers,
+                    outbox,
                 ),
                 identities=identities,
                 decisions=decisions,
                 owner=owner,
                 interfaces=broken_interfaces(ledger, persistence, owner, clock),
-                complete_intake=CompleteIntakeHandler(
-                    PostgresRepository(persistence, IntakeEvent),
-                    PostgresRepository(persistence, Command),
-                    identities,
-                    persistence,
-                    clock,
-                    ids,
+                complete_intake=complete_intake,
+                reactions=Reactions(
+                    tenants=settings.tenants,
+                    outbox=outbox,
+                    intake=complete_intake,
+                    reactions=ReactionsHandler(
+                        PostgresRepository(persistence, Process),
+                        PostgresRepository(persistence, ProcessVersion),
+                        persistence,
+                    ),
+                    commission=commission,
+                    engine=engine,
+                    runs=runs,
+                    ledger=ledger,
+                    work=persistence,
+                    clock=clock,
+                    capacity=capacity_condition(
+                        HostPlatform(clock, state_dir=settings.state_dir),
+                        rules_of(settings.capacity),
+                        memory_demand(settings.execution),
+                    ),
                 ),
                 leadership=PostgresLeadership(persistence.engine),
                 clock=clock,
@@ -627,9 +657,20 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             )
         )
     if Role.AUTOMATION in settings.roles:
+        # The elected automation role reacts to the events the intake kept: one delivery
+        # starts each process its triggers name once (ADR-0048).
+        async def react() -> None:
+            await wired.reactions.tick()
+
         tasks.append(
             asyncio.create_task(
-                roles.run_automation(wired.clock, stop, poll_seconds=settings.poll_seconds),
+                roles.run_automation(
+                    wired.leadership,
+                    wired.clock,
+                    stop,
+                    poll_seconds=settings.poll_seconds,
+                    tick=react,
+                ),
                 name="automation",
             )
         )

@@ -40,6 +40,7 @@ from taktus.components.process.domain.model import (
 )
 from taktus.components.process.domain.service import autonomy
 from taktus.ports.administration import Administration
+from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Autonomy, LedgerRefs, Step
@@ -67,7 +68,8 @@ class RegisterProcessVersionHandler:
     """Stores the version. With `processes`, the version registered last becomes the process's
     active version: the one whose schedule triggers the scheduler fires (ADR-0035). A version
     that raises an autonomy level is admitted as the module says, against the history in the
-    `ledger`, where the raise or its refusal is recorded."""
+    `ledger`, where the raise or its refusal is recorded. With `clock`, the process records when
+    its version became active: an event received before it starts nothing (ADR-0048 §6)."""
 
     def __init__(
         self,
@@ -77,12 +79,14 @@ class RegisterProcessVersionHandler:
         *,
         ledger: Ledger,
         administration: Administration | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._versions = versions
         self._work = work
         self._processes = processes
         self._ledger = ledger
         self._administration = administration or Administration()
+        self._clock = clock
 
     async def execute(self, command: RegisterProcessVersion) -> ProcessVersion:
         version = parse_bundle(command.bundle)
@@ -123,6 +127,7 @@ class RegisterProcessVersionHandler:
                             name=version.name,
                             active_version=version.version,
                             activated_by=command.by,
+                            activated_at=None if self._clock is None else self._clock.now(),
                         ),
                     )
         if refused is not None:

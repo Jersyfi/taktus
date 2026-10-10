@@ -124,9 +124,13 @@ which the connector does not know whether it acted.
 ## Intake
 
 Webhook deliveries, verified by `X-Hub-Signature-256` (HMAC-SHA256 over the raw body with the
-webhook secret) before the body is read ([`intake.py`](intake.py)). Events normalised:
-`issues.opened`, `issue_comment.created`, `pull_request.opened`, `pipeline_run.completed`
-(from `workflow_run`). A comment that carries the connector's own mark is refused as `own_action`.
+webhook secret) before the body is read ([`intake.py`](intake.py)). Events normalised, as the
+kinds of the events contract (`contracts/events/v1` §2): `issue.opened`, `issue.labelled` (one
+per label added, with the label's name), `issue_comment.created`, `pull_request.opened`,
+`pipeline_run.completed` (from `workflow_run`) and `branch.pushed` (from `push`, with the branch,
+the head commit and every path the pushed commits changed, as the service lists them; a push of
+a tag or a deleted branch is refused as `unsupported_event`). A comment that carries the
+connector's own mark is refused as `own_action`.
 The recorded payloads under [`payloads/`](payloads/) are real deliveries with every identifier,
 name and URL replaced by a placeholder.
 

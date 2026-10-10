@@ -109,6 +109,7 @@ class ProcessMapper:
                 "description": document.get("description"),
                 "active_version": document.get("active_version"),
                 "activated_by": document.get("activated_by"),
+                "activated_at": _at(document.get("activated_at")),
             },
         )
 
@@ -125,6 +126,7 @@ class ProcessMapper:
                 "description": row.description,
                 "active_version": row.active_version,
                 "activated_by": row.activated_by,
+                "activated_at": _iso(row.activated_at),
             }
         )
 

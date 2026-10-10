@@ -66,6 +66,28 @@ class CompleteIntakeHandler:
         self._clock = clock
         self._ids = ids
 
+    async def event(self, tenant: Tenant, event_id: str) -> IntakeEvent | None:
+        """The intake event kept under the identifier, or None."""
+        async with self._work.transaction(tenant):
+            return await self._events.get(tenant, event_id)
+
+    async def command_of(self, command: CompleteIntake) -> Command:
+        """The command the event became: completed now, or the one an earlier completion made.
+        What the automation role reacts with, so that a reaction repeated after a restart
+        completes nothing twice (ADR-0048 §4)."""
+        try:
+            return await self.execute(command)
+        except AlreadyCompleted as done:
+            async with self._work.transaction(command.tenant):
+                made = (
+                    None
+                    if done.command_id is None
+                    else await self._commands.get(command.tenant, done.command_id)
+                )
+            if made is None:
+                raise
+            return made
+
     async def execute(self, command: CompleteIntake) -> Command:
         async with self._work.transaction(command.tenant):
             event = await self._events.get(command.tenant, command.event_id)

@@ -4,9 +4,9 @@ title: A process starts on what happens in a tool
 component: process
 epic: E4
 serves: [P1, P4, P8, P12]
-state: specified
+state: built
 version: 0.2.0
-tests: []
+tests: [tests/composition/test_reactions.py::test_a_labelled_issue_starts_the_process_its_trigger_names_without_a_person, tests/composition/test_reactions.py::test_a_redelivery_starts_nothing_twice, tests/composition/test_reactions.py::test_a_reaction_interrupted_before_it_was_published_completes_nothing_twice, tests/composition/test_reactions.py::test_one_event_starts_each_process_once, tests/composition/test_reactions.py::test_a_condition_that_does_not_hold_makes_the_reaction_wait_not_vanish, tests/composition/test_reactions.py::test_an_event_received_before_the_version_was_registered_starts_nothing, tests/composition/test_reactions.py::test_an_unplaced_sender_starts_nothing, tests/integration/test_event_reactions.py::test_an_event_starts_exactly_one_run_whoever_reacts, tests/components/process/test_event_triggers.py::test_every_entry_must_hold_and_each_holds_for_any_of_its_values, tests/components/process/test_event_triggers.py::test_registration_refuses_what_the_contract_refuses_with_every_finding_at_once]
 adrs: {ADR-0035: 070012ed0fb2, ADR-0040: af5a6cdb5889, ADR-0048: da64f1fa1ccb}
 supersedes: null
 ---
@@ -67,3 +67,23 @@ command; this use case starts there. UC-5.2 rests on it. The roadmap's `0.2.0` n
 reactions (#76), and P-02 and P-03 of the dev-orchestration blueprint are its first users (#87).
 Not in the definition: written by the session that made #76 buildable, and put to the owner in
 DEC-0124.
+
+## 5. What is proven so far
+
+Every condition of section 2, by the named tests, over the memory stores and against PostgreSQL:
+
+- A labelled issue whose sender is placed starts one run of the process its trigger names, with
+  the declared inputs, on the automation role's next pass, acting for the sender; nobody runs a
+  command.
+- A redelivery, an entry a stopped leader left unpublished, and two automation roles start the
+  process once, and complete the intake once.
+- One event starts each of two processes once, and a process with two matching triggers once.
+- A filter is a rule over the event alone: every entry must hold, each any of its values.
+- A condition that does not hold leaves the reaction waiting; it starts once the condition holds.
+- An unplaced sender and an event older than the active version start nothing.
+- Registration refuses a kind outside the catalogue, an unknown condition and an input left
+  without a value, with every finding at once.
+- Every run an event started carries `run.triggered` with the outcome `event`.
+
+Not proven against the real repository service: the connector's kinds are held to recorded
+deliveries. No installed instance runs the automation role yet.

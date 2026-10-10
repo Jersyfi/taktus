@@ -183,10 +183,12 @@ OPERATIONS: list[Json] = [
 ]
 
 INTAKE_EVENTS = [
-    "issues.opened",
+    "issue.opened",
+    "issue.labelled",
     "issue_comment.created",
     "pull_request.opened",
     "pipeline_run.completed",
+    "branch.pushed",
 ]
 
 
