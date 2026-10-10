@@ -8,8 +8,8 @@ Two things are generated today, each never edited by hand:
   `tests/adapters/rest/test_openapi.py` fails when the file differs from what this script writes.
 - `web/src/lib/generated/fixtures.json`, what the web app's tests draw: the visual vocabulary
   and a run level drawn by `reporting` from example facts that use every method kind, every
-  exactness class and every motion, and the process level of the same steps (ADR-0063,
-  ADR-0064). The web app's tests hold what it draws to these glyphs;
+  exactness class and every motion, the process level of the same steps, and an overview (ADR-0063,
+  ADR-0064, ADR-0067). The web app's tests hold what it draws to these glyphs;
   `tests/components/reporting/test_run_level.py` fails when the file differs from what this
   script writes. The web app itself reads the vocabulary and every level from the surface.
 
@@ -43,16 +43,24 @@ def web_fixtures() -> str:
     from datetime import UTC, datetime
 
     from taktus.components.reporting.domain.model import (
+        OverviewFacts,
         ProcessFacts,
         ProcessStepFacts,
+        ProcessSummary,
+        RunActivity,
         RunAtVersion,
         RunFacts,
+        RunningStep,
         StepFacts,
         VersionRef,
         Wait,
     )
     from taktus.components.reporting.domain.model.vocabulary import VOCABULARY
-    from taktus.components.reporting.domain.service.levels import process_level, run_level
+    from taktus.components.reporting.domain.service.levels import (
+        overview_level,
+        process_level,
+        run_level,
+    )
     from taktus.shared.v1 import Autonomy, ConsumptionQuantities
 
     at = datetime(2026, 10, 10, 9, 0, tzinfo=UTC)
@@ -140,8 +148,39 @@ def web_fixtures() -> str:
             ),
         ),
     )
+    overview = OverviewFacts(
+        tenant="default",
+        processes=(
+            ProcessSummary(id="example", name="Example", active_version="1", autonomy_level=2),
+            ProcessSummary(id="quiet", name="Quiet", active_version="3", autonomy_level=4),
+        ),
+        runs=(
+            RunActivity(
+                id="run_example",
+                tenant="default",
+                process_version="example@1",
+                state="running",
+                working=True,
+                waiting=False,
+                running=tuple(
+                    RunningStep(id=s.id, method=s.method, exactness=s.exactness)
+                    for s in facts.steps
+                    if s.state == "running"
+                ),
+            ),
+            RunActivity(
+                id="run_waiting",
+                tenant="default",
+                process_version="example@1",
+                state="waiting_human",
+                working=False,
+                waiting=True,
+            ),
+        ),
+    )
     document = {
         "vocabulary": VOCABULARY.document(),
+        "overview": overview_level(overview).document(),
         "run_level": run_level(facts).document(),
         "process_level": process_level(process).document(),
     }

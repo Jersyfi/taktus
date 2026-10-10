@@ -12,15 +12,19 @@ from __future__ import annotations
 
 from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.reporting.domain.model import (
+    OverviewFacts,
     ProcessFacts,
     ProcessStepFacts,
+    ProcessSummary,
+    RunActivity,
     RunAtVersion,
     RunFacts,
+    RunningStep,
     StepFacts,
     VersionRef,
     Wait,
 )
-from taktus.components.run.domain.model import Run, StepRun, StepState
+from taktus.components.run.domain.model import WAITING, WORKING, Run, StepRun, StepState
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 
 
@@ -90,6 +94,52 @@ class RepositoryLevelRecords:
                 for r in runs
             ),
         )
+
+    async def overview(self, tenant: Tenant) -> OverviewFacts:
+        async with self._work.transaction(tenant):
+            processes = list(await self._processes.list(tenant))
+            versions = {v.ref: v for v in await self._versions.list(tenant)}
+            runs = list(await self._runs.list(tenant))
+        summaries = []
+        for process in processes:
+            active = versions.get(f"{process.id}@{process.active_version}")
+            summaries.append(
+                ProcessSummary(
+                    id=process.id,
+                    name=process.name,
+                    active_version=process.active_version,
+                    autonomy_level=None if active is None else active.autonomy.level,
+                )
+            )
+        return OverviewFacts(
+            tenant=tenant,
+            processes=tuple(summaries),
+            runs=tuple(activity_of(run) for run in runs),
+        )
+
+
+def activity_of(run: Run) -> RunActivity:
+    """A run as the overview counts it: whether it works or waits is the run component's own
+    definition, `WORKING` and `WAITING`."""
+    plan = {step.id: step for step in run.steps}
+    return RunActivity(
+        id=run.id,
+        tenant=run.tenant,
+        process_version=run.process_version,
+        state=str(run.state),
+        working=run.state in WORKING,
+        waiting=run.state in WAITING,
+        rehearsal=run.rehearsal,
+        running=tuple(
+            RunningStep(
+                id=s.step_id,
+                method=plan[s.step_id].method,
+                exactness=plan[s.step_id].exactness,
+            )
+            for s in run.step_runs
+            if s.state is StepState.RUNNING and s.step_id in plan
+        ),
+    )
 
 
 def facts_of(run: Run) -> RunFacts:

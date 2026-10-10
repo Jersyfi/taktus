@@ -11,6 +11,10 @@ method kind, exactness class, why that method, what was not chosen, where it fal
 whether a run of the version runs it right now; the autonomy statement in words (ADR-0026); and
 the runs of the version the reader may see.
 
+`overview_level` turns a tenant's processes and runs into the overview: each area, the processes
+in it, how many of their runs work and how many wait right now — the run component's own
+definitions, counted — and the steps running right now, which are the only things that move.
+
 Pure: facts in, elements out.
 """
 
@@ -22,10 +26,14 @@ from pydantic import Field
 
 from taktus.components.reporting.domain.model.levels import (
     Figure,
+    OverviewFacts,
     ProcessFacts,
     ProcessStepFacts,
+    ProcessSummary,
+    RunActivity,
     RunAtVersion,
     RunFacts,
+    RunningStep,
     StepFacts,
     VersionRef,
     Wait,
@@ -253,7 +261,9 @@ of it and is not doing work (ADR-0064)."""
 
 
 def _counted(n: int, word: str) -> str:
-    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+    if n == 1:
+        return f"{n} {word}"
+    return f"{n} {word}es" if word.endswith("s") else f"{n} {word}s"
 
 
 def autonomy_text(autonomy: Autonomy) -> str:
@@ -329,3 +339,107 @@ def process_level(facts: ProcessFacts) -> ProcessLevel:
         steps=tuple(_process_step(step, runs) for step in facts.steps),
         runs=tuple(_run_at_version(run) for run in runs),
     )
+
+
+class RunningStepElement(Value):
+    run: str
+    step: str
+    method: Method
+    exactness: ExactnessClass | None
+    drawn: Drawn
+    text: str = Field(min_length=1)
+
+
+class ProcessSummaryElement(Value):
+    id: str
+    name: str
+    active_version: str | None = None
+    autonomy_level: int | None = None
+    working: int
+    """How many of its runs work right now: the run component's `WORKING`, counted."""
+    waiting: int
+    """How many of its runs wait right now: the run component's `WAITING`, counted."""
+    running: tuple[RunningStepElement, ...] = ()
+    text: str = Field(min_length=1)
+
+
+class AreaElement(Value):
+    id: str
+    name: str
+    working: int
+    waiting: int
+    processes: tuple[ProcessSummaryElement, ...]
+    text: str = Field(min_length=1)
+
+
+class OverviewLevel(Value):
+    """The overview of UC-6.10: the areas a reader may look into, the processes in each, and
+    how busy each one is right now."""
+
+    areas: tuple[AreaElement, ...]
+
+
+def _running_step(run: RunActivity, step: RunningStep) -> RunningStepElement:
+    drawn = _drawn(
+        Step(name=step.id, method=step.method, exactness=step.exactness, state="running")
+    )
+    return RunningStepElement(
+        run=run.id,
+        step=step.id,
+        method=step.method,
+        exactness=step.exactness,
+        drawn=drawn,
+        text=f"{drawn.moving.text} In run {run.id}.",
+    )
+
+
+def _summary(process: ProcessSummary, runs: list[RunActivity]) -> ProcessSummaryElement:
+    working = sum(1 for r in runs if r.working)
+    waiting = sum(1 for r in runs if r.waiting)
+    running = tuple(_running_step(r, s) for r in runs for s in r.running)
+    version = f"@{process.active_version}" if process.active_version else ""
+    level = (
+        f" at autonomy level {process.autonomy_level}" if process.autonomy_level is not None else ""
+    )
+    busy = f"{_counted(working, 'run')} working, {waiting} waiting"
+    steps = (
+        f"; running now: {', '.join(f'{s.step} in {s.run}' for s in running)}" if running else ""
+    )
+    return ProcessSummaryElement(
+        id=process.id,
+        name=process.name,
+        active_version=process.active_version,
+        autonomy_level=process.autonomy_level,
+        working=working,
+        waiting=waiting,
+        running=running,
+        text=f"Process {process.name} ({process.id}{version}){level}: {busy}{steps}.",
+    )
+
+
+def overview_level(facts: OverviewFacts) -> OverviewLevel:
+    """The overview of one tenant, from its processes and the runs handed with them. The runs
+    and processes are the ones the reader may see; which those are is the query's. Until the
+    organisation's structure is recorded (UC-1.4), the tenant is the one area (ADR-0067)."""
+    by_process: dict[str, list[RunActivity]] = {}
+    for run in facts.runs:
+        by_process.setdefault(run.process, []).append(run)
+    known = {p.id for p in facts.processes}
+    processes = list(facts.processes) + [
+        ProcessSummary(id=pid, name=pid) for pid in sorted(by_process) if pid not in known
+    ]
+    summaries = tuple(
+        _summary(p, by_process.get(p.id, [])) for p in sorted(processes, key=lambda p: p.id)
+    )
+    working = sum(s.working for s in summaries)
+    waiting = sum(s.waiting for s in summaries)
+    area = AreaElement(
+        id=facts.tenant,
+        name=facts.tenant,
+        working=working,
+        waiting=waiting,
+        processes=summaries,
+        text=f"Area {facts.tenant}: {_counted(len(summaries), 'process')}, "
+        f"{_counted(working, 'run')} working, {waiting} waiting.",
+    )
+    return OverviewLevel(areas=(area,))

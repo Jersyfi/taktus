@@ -3,6 +3,8 @@
 - `GET /levels/runs/{run_id}` — the run level of UC-6.10: the run and each of its steps, every
   fact with its glyph with motion and without, and its text equivalent. Read with an account
   key; a run the reader may not see is answered exactly as one that does not exist.
+- `GET /levels/overview` — the overview: the areas the reader may look into, their processes,
+  how many runs of each work and wait right now, the steps running now (ADR-0067).
 - `GET /levels/processes/{process_id}` — the process level: one version's steps as a graph, each
   with how it works and the runs it is running in, with the autonomy statement and the runs of
   the version (ADR-0064). A process the reader may not see is answered as one that does not exist.
@@ -71,6 +73,29 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         if level is None:
             return problem(404, f"no run {run_id!r} you may see")
         return JSONResponse(level.document())
+
+    @routes.get(
+        "/levels/overview",
+        summary="The overview: the areas you may look into, their processes, how busy each is",
+        description="Every area you may look into — until the organisation's structure is "
+        "recorded, your tenant is the one area — with every process in it you may see: its "
+        "name, its active version and autonomy level, how many of its runs work right now "
+        "and how many wait (the run component's own definitions, counted over the runs you "
+        "may see), and the steps running right now, each with its glyph with motion and "
+        "without. Follow `GET /changes` and read this again when a change arrives "
+        "(ADR-0067).",
+        responses={
+            200: {"description": "The overview."},
+            401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+            422: {"description": "A parameter does not validate.", **PROBLEM},
+        },
+    )
+    async def overview(authorization: str | None = Header(default=None)) -> JSONResponse:
+        who = await authenticated(services, authorization)
+        if who is None:
+            return problem(401, "an account key is needed: Authorization: Bearer <key>")
+        reader = Reader(tenant=who.tenant, identity=who.identity, roles=who.roles)
+        return JSONResponse((await services.levels.overview(reader)).document())
 
     @routes.get(
         "/levels/processes/{process_id}",

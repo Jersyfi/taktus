@@ -65,5 +65,6 @@ bounding. The section states the boundary; it does not point at it.
 | [0059](ADR-0059-one-visual-vocabulary-defined-once-in-reporting.md) | One visual vocabulary, defined once in `reporting`, and every representation checked against it | accepted |
 | [0063](ADR-0063-the-web-app-draws-each-level-as-reporting-hands-it-over.md) | The web app is a static build in the image, and draws each level as `reporting` hands it over | accepted |
 | [0064](ADR-0064-a-process-version-is-drawn-as-its-graph-with-its-autonomy-statement.md) | A process version is drawn as its graph, with its autonomy statement and its runs | accepted |
+| [0067](ADR-0067-the-overview-counts-runs-that-work-and-wait-by-the-run-components-definition.md) | The overview counts the runs that work and wait, by the run component's own definition | accepted |
 | [0065](ADR-0065-the-guides-are-rendered-from-the-repository-by-rule-and-a-hand-edit-is-never-overwritten.md) | The guides are rendered from the repository by rule, and a hand edit is never overwritten | accepted |
 | [0066](ADR-0066-the-guides-run-daily-reading-every-source-at-one-commit-in-one-call.md) | The guides run daily, reading every source at one commit in one call | accepted |

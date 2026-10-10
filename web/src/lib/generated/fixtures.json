@@ -240,6 +240,132 @@
     ],
     "run_outline": "frame"
   },
+  "overview": {
+    "areas": [
+      {
+        "id": "default",
+        "name": "default",
+        "working": 1,
+        "waiting": 1,
+        "processes": [
+          {
+            "id": "example",
+            "name": "Example",
+            "active_version": "1",
+            "autonomy_level": 2,
+            "working": 1,
+            "waiting": 1,
+            "running": [
+              {
+                "run": "run_example",
+                "step": "score",
+                "method": "statistics",
+                "exactness": "sourced",
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "outline": "triangle",
+                    "edge": "straight",
+                    "exactness_mark": "source_notch",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "pulse",
+                    "still_mark": "none",
+                    "text": "step score: statistics, reproducible; sourced; running."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "outline": "triangle",
+                    "edge": "straight",
+                    "exactness_mark": "source_notch",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "ring_solid",
+                    "text": "step score: statistics, reproducible; sourced; running."
+                  }
+                },
+                "text": "step score: statistics, reproducible; sourced; running. In run run_example."
+              },
+              {
+                "run": "run_example",
+                "step": "draft",
+                "method": "llm",
+                "exactness": "free",
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "outline": "ellipse",
+                    "edge": "wavering",
+                    "exactness_mark": "none",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "shimmer",
+                    "still_mark": "none",
+                    "text": "step draft: language model, variable; free; running."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "outline": "ellipse",
+                    "edge": "wavering",
+                    "exactness_mark": "none",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "ring_dotted",
+                    "text": "step draft: language model, variable; free; running."
+                  }
+                },
+                "text": "step draft: language model, variable; free; running. In run run_example."
+              },
+              {
+                "run": "run_example",
+                "step": "review",
+                "method": "human",
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "outline": "circle",
+                    "edge": "round",
+                    "exactness_mark": "none",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "swell",
+                    "still_mark": "none",
+                    "text": "step review: person, a person; no result of its own; running."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "outline": "circle",
+                    "edge": "round",
+                    "exactness_mark": "none",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "ring_open",
+                    "text": "step review: person, a person; no result of its own; running."
+                  }
+                },
+                "text": "step review: person, a person; no result of its own; running. In run run_example."
+              }
+            ],
+            "text": "Process Example (example@1) at autonomy level 2: 1 run working, 1 waiting; running now: score in run_example, draft in run_example, review in run_example."
+          },
+          {
+            "id": "quiet",
+            "name": "Quiet",
+            "active_version": "3",
+            "autonomy_level": 4,
+            "working": 0,
+            "waiting": 0,
+            "running": [],
+            "text": "Process Quiet (quiet@3) at autonomy level 4: 0 runs working, 0 waiting."
+          }
+        ],
+        "text": "Area default: 2 processes, 1 run working, 1 waiting."
+      }
+    ]
+  },
   "run_level": {
     "run": {
       "id": "run_example",

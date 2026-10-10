@@ -142,6 +142,40 @@ export interface ProcessLevel {
 	runs?: RunAtVersionElement[];
 }
 
+export interface RunningStepElement {
+	run: string;
+	step: string;
+	method: string;
+	exactness?: string;
+	drawn: Drawn;
+	text: string;
+}
+
+export interface ProcessSummaryElement {
+	id: string;
+	name: string;
+	active_version?: string;
+	autonomy_level?: number;
+	/** How many of its runs work right now, by the run component's own definition. */
+	working: number;
+	/** How many of its runs wait right now, by the run component's own definition. */
+	waiting: number;
+	running?: RunningStepElement[];
+	text: string;
+}
+
+/** `GET /levels/overview` (ADR-0067). */
+export interface OverviewLevel {
+	areas: {
+		id: string;
+		name: string;
+		working: number;
+		waiting: number;
+		processes: ProcessSummaryElement[];
+		text: string;
+	}[];
+}
+
 /** An RFC 9457 problem, as every refusal of the surface is answered. */
 export interface Problem {
 	status: number;
