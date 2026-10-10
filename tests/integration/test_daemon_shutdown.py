@@ -82,6 +82,9 @@ async def test_sigterm_mid_run_lands_on_a_boundary_and_the_next_daemon_resumes(
     configured = settings(postgres_url, tmp_path, TAKTUS_WORKER=worker_endpoint)
     async with wire(configured, EnvironmentConfiguration({})) as wired:
         run = await submit(wired, bundle(1))
+        # The reader of the read API proves an identity with its account key (#186).
+        _, key = await wired.identities.add(TENANT, "idn_reader", (TENANT,))
+    reader = {"Authorization": f"Bearer {key}"}
     database = Database(postgres_url)
     await database.verified(
         "worker.endpoint", worker_endpoint
@@ -163,11 +166,12 @@ async def test_sigterm_mid_run_lands_on_a_boundary_and_the_next_daemon_resumes(
             assert (await client.get("/health")).status_code == 404
             assert (await client.get(f"/runs/{run.id}")).status_code == 404
             assert (await client.get(f"{prefix}/health")).json() == {"status": "alive"}
-            seen = await client.get(f"{prefix}/runs/{run.id}")
+            assert (await client.get(f"{prefix}/runs/{run.id}")).status_code == 401
+            seen = await client.get(f"{prefix}/runs/{run.id}", headers=reader)
             assert seen.status_code == 200 and seen.json()["id"] == run.id
-            listed = await client.get(f"{prefix}/runs")
+            listed = await client.get(f"{prefix}/runs", headers=reader)
             assert run.id in [r["id"] for r in listed.json()["runs"]]
-            problem = await client.get(f"{prefix}/runs/run_nope")
+            problem = await client.get(f"{prefix}/runs/run_nope", headers=reader)
             assert problem.status_code == 404
             assert problem.headers["content-type"] == "application/problem+json"
         async with asyncio.timeout(60):
@@ -178,7 +182,7 @@ async def test_sigterm_mid_run_lands_on_a_boundary_and_the_next_daemon_resumes(
                     break
                 await asyncio.sleep(0.1)
         async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
-            ledger = (await client.get(f"{prefix}/runs/{run.id}/ledger")).json()
+            ledger = (await client.get(f"{prefix}/runs/{run.id}/ledger", headers=reader)).json()
             assert ledger["chain"]["intact"] and ledger["entries"][-1]["kind"] == "run.finished"
         second.send_signal(signal.SIGTERM)
         assert await asyncio.wait_for(second.wait(), timeout=25) == 0, log.read_text()

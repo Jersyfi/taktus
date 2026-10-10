@@ -33,6 +33,15 @@ found="$(grep -rl "separate deployable, as every worker is" /app 2>/dev/null || 
 [ -z "$found" ] || { echo "worker code in the control plane image: $found"; exit 1; }
 echo "no worker code in the image"'
 
+say "1c. a reader of the read API: an identity and its account key, read from the header only (#186)"
+compose exec -T taktus taktusctl identity add idn_verify >/dev/null
+key="$(compose exec -T taktus taktusctl identity key idn_verify | sed -n 's/.*hand it to the person: //p')"
+[ -n "$key" ] || { echo "no account key was issued"; exit 1; }
+reader=(-H "Authorization: Bearer ${key}")
+code="$(curl -s -o /dev/null -w '%{http_code}' "${api}/runs")"
+[ "$code" = 401 ] || { echo "GET /runs answered ${code} without an account key"; exit 1; }
+echo "the read API refuses a reader without a key"
+
 say "2. a run is queued from inside the container and executed by the daemon"
 bundle=/tmp/verify-bundle.yaml
 compose exec -T taktus python3 - <<'PY' > "$bundle"
@@ -52,11 +61,11 @@ compose cp "$bundle" taktus:/tmp/verify-bundle.yaml
 run_id="$(compose exec -T taktus taktusctl submit --process /tmp/verify-bundle.yaml 2>/dev/null | tail -1)"
 echo "run ${run_id}"
 
-state() { curl -fsS "${api}/runs/${run_id}" | python3 -c 'import json,sys; r=json.load(sys.stdin); c=[s for s in r["step_runs"] if s["step_id"]=="compute"][0]; print(r["state"], c["state"], len(c.get("artifacts",[])))'; }
+state() { curl -fsS "${reader[@]}" "${api}/runs/${run_id}" | python3 -c 'import json,sys; r=json.load(sys.stdin); c=[s for s in r["step_runs"] if s["step_id"]=="compute"][0]; print(r["state"], c["state"], len(c.get("artifacts",[])))'; }
 # The example runs at autonomy level 2: no step starts before a person confirmed it (ADR-0039).
 # Whatever waits is confirmed here, as the operator would, and the run goes back to the daemon.
 confirm_waiting() {
-    for step in $(curl -fsS "${api}/runs/${run_id}" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(" ".join(s["step_id"] for s in r["step_runs"] if s["state"]=="waiting_human"))'); do
+    for step in $(curl -fsS "${reader[@]}" "${api}/runs/${run_id}" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(" ".join(s["step_id"] for s in r["step_runs"] if s["state"]=="waiting_human"))'); do
         compose exec -T taktus taktusctl submit --process /tmp/verify-bundle.yaml --resume "$run_id" --approve "$step" >/dev/null 2>&1
         echo "confirmed ${step}"
     done
@@ -88,7 +97,7 @@ echo "run ${run_state}, compute ${step_state}, ${artifacts} artifact(s)"
 [ "$run_state" = "finished" ] || { echo "the run did not finish after the restart"; exit 1; }
 
 say "6. every artifact once, the ledger recovered and intact"
-curl -fsS "${api}/runs/${run_id}/ledger" | python3 -c '
+curl -fsS "${reader[@]}" "${api}/runs/${run_id}/ledger" | python3 -c '
 import json, sys
 ledger = json.load(sys.stdin)
 kinds = [e["kind"] for e in ledger["entries"]]
@@ -99,7 +108,7 @@ started = [e for e in ledger["entries"] if e["kind"] == "step.started" and e["re
 assert len(started) == 2, "the interrupted step ran twice: once before the kill, once after"
 print("ledger:", len(kinds), "entries, chain intact, run.recovered present, compute started twice")
 '
-curl -fsS "${api}/runs/${run_id}" | python3 -c '
+curl -fsS "${reader[@]}" "${api}/runs/${run_id}" | python3 -c '
 import json, sys
 run = json.load(sys.stdin)
 compute = [s for s in run["step_runs"] if s["step_id"] == "compute"][0]

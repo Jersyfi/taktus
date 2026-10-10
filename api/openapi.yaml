@@ -533,25 +533,30 @@ paths:
     get:
       tags:
       - runs
-      summary: The runs of a tenant, newest first
+      summary: The runs you may see, newest first
+      description: 'The account key in `Authorization: Bearer` proves the identity, and only there: a
+        key in the URL is not read. The answer holds the runs of your identity''s tenant that the visibility
+        predicate lets you see — the same predicate as the stream of changes (ADR-0055 §5).'
       operationId: list_runs_runs_get
       parameters:
-      - name: tenant
-        in: query
+      - name: authorization
+        in: header
         required: false
         schema:
           anyOf:
           - type: string
           - type: 'null'
-          description: The tenant; the instance's first configured tenant when absent.
-          title: Tenant
-        description: The tenant; the instance's first configured tenant when absent.
+          title: Authorization
       responses:
         '200':
           description: A list of runs as the run component records them.
           content:
             application/json:
               schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
         '422':
           description: A parameter does not validate.
           content:
@@ -560,7 +565,9 @@ paths:
     get:
       tags:
       - runs
-      summary: One run
+      summary: One run you may see
+      description: 'The account key in `Authorization: Bearer` proves the identity. A run you may not
+        see is answered as one that does not exist.'
       operationId: get_run_runs__run_id__get
       parameters:
       - name: run_id
@@ -569,24 +576,27 @@ paths:
         schema:
           type: string
           title: Run Id
-      - name: tenant
-        in: query
+      - name: authorization
+        in: header
         required: false
         schema:
           anyOf:
           - type: string
           - type: 'null'
-          description: The tenant; the instance's first configured tenant when absent.
-          title: Tenant
-        description: The tenant; the instance's first configured tenant when absent.
+          title: Authorization
       responses:
         '200':
           description: The run.
           content:
             application/json:
-              schema: {}
+              schema:
+                title: Response Get Run Runs  Run Id  Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
         '404':
-          description: No such run in the tenant.
+          description: No such run that you may see.
           content:
             application/problem+json: {}
         '422':
@@ -597,7 +607,9 @@ paths:
     get:
       tags:
       - runs
-      summary: The ledger entries of one run, in sequence
+      summary: The ledger entries of one run you may see, in sequence
+      description: 'The account key in `Authorization: Bearer` proves the identity. A run you may not
+        see is answered as one that does not exist.'
       operationId: run_ledger_runs__run_id__ledger_get
       parameters:
       - name: run_id
@@ -606,24 +618,27 @@ paths:
         schema:
           type: string
           title: Run Id
-      - name: tenant
-        in: query
+      - name: authorization
+        in: header
         required: false
         schema:
           anyOf:
           - type: string
           - type: 'null'
-          description: The tenant; the instance's first configured tenant when absent.
-          title: Tenant
-        description: The tenant; the instance's first configured tenant when absent.
+          title: Authorization
       responses:
         '200':
           description: The entries, and whether the tenant's chain verifies.
           content:
             application/json:
-              schema: {}
+              schema:
+                title: Response Run Ledger Runs  Run Id  Ledger Get
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
         '404':
-          description: No such run in the tenant.
+          description: No such run that you may see.
           content:
             application/problem+json: {}
         '422':

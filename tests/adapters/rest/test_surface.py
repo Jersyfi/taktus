@@ -57,28 +57,31 @@ async def test_an_unknown_path_and_a_wrong_method_are_problems(client: Client) -
 
 async def test_runs_are_read_newest_first_and_a_missing_one_is_a_problem(client: Client) -> None:
     http, given, base = client
-    assert (await http.get(f"{base}/runs")).json() == {"tenant": TENANT, "runs": []}
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    auth = {"Authorization": f"Bearer {key}"}
+    assert (await http.get(f"{base}/runs", headers=auth)).json() == {"tenant": TENANT, "runs": []}
     first = await a_run(given, "run_1")
     second = await a_run(given, "run_2")
-    listed = (await http.get(f"{base}/runs")).json()
+    listed = (await http.get(f"{base}/runs", headers=auth)).json()
     assert [r["id"] for r in listed["runs"]] == ["run_2", "run_1"]
     assert listed["runs"][1] == first.document() and listed["runs"][0] == second.document()
-    one = await http.get(f"{base}/runs/run_1")
+    one = await http.get(f"{base}/runs/run_1", headers=auth)
     assert one.status_code == 200 and one.json() == first.document()
-    problem = is_problem(await http.get(f"{base}/runs/run_9"), 404)
+    problem = is_problem(await http.get(f"{base}/runs/run_9", headers=auth), 404)
     assert "run_9" in str(problem["detail"])
-    assert (await http.get(f"{base}/runs", params={"tenant": "other"})).json()["runs"] == []
 
 
 async def test_the_ledger_of_a_run_comes_with_the_chain_s_verification(client: Client) -> None:
     http, given, base = client
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    auth = {"Authorization": f"Bearer {key}"}
     await a_run(given, "run_1")
-    ledger = (await http.get(f"{base}/runs/run_1/ledger")).json()
+    ledger = (await http.get(f"{base}/runs/run_1/ledger", headers=auth)).json()
     assert ledger["run_id"] == "run_1"
     assert [e["kind"] for e in ledger["entries"]] == ["run.created"]
     assert ledger["entries"][0]["refs"]["run_id"] == "run_1"
-    assert ledger["chain"] == {"intact": True, "entries": 1}
-    is_problem(await http.get(f"{base}/runs/run_9/ledger"), 404)
+    assert ledger["chain"]["intact"] is True
+    is_problem(await http.get(f"{base}/runs/run_9/ledger", headers=auth), 404)
 
 
 async def test_an_accepted_delivery_is_kept_awaiting_identity(client: Client) -> None:

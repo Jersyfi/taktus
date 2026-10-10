@@ -51,6 +51,8 @@ from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import Command, ExactnessClass, LedgerRefs, Method, Step
 
 TENANT = "default"
+OTHER = "other"
+"""A second tenant the instance serves: what a reader of `TENANT` must never see."""
 
 
 @dataclass
@@ -107,7 +109,7 @@ class Services:
     """The streams of changes, fed from the memory ledger at short intervals (ADR-0055)."""
     continued: list[tuple[str, str, str]] = field(default_factory=list)
     """The runs handed on after a decision took effect: tenant, run, actor."""
-    tenants: Sequence[str] = (TENANT,)
+    tenants: Sequence[str] = (TENANT, OTHER)
     roles: Sequence[str] = ("api", "runner")
     leading: bool = False
     not_ready_reason: str | None = None
@@ -155,7 +157,7 @@ def services(connector: ScriptedConnector | None = None) -> Services:
     clock = FakeClock()
     scripted = connector or ScriptedConnector(ACCEPTED)
     events: Repository[IntakeEvent] = MemoryRepository(persistence, IntakeEvent)
-    identity = directory((TENANT,), persistence=persistence, clock=clock)
+    identity = directory((TENANT, OTHER), persistence=persistence, clock=clock)
     replies = FakeReplies()
 
     def of(kind: Any) -> Any:
@@ -222,14 +224,14 @@ class _NoConnectors:
         return None
 
 
-async def a_run(given: Services, run_id: str = "run_1") -> Run:
+async def a_run(given: Services, run_id: str = "run_1", tenant: str = TENANT) -> Run:
     """One run stored with one ledger entry about it, as the engine would leave them."""
     clock = given.clock
     run = Run(
         id=run_id,
         plan_id="pln_1",
         process_version="p@1",
-        tenant=TENANT,
+        tenant=tenant,
         identity="idn_t",
         autonomy_level=2,
         budget=Limits(compute=ComputeLimit(seconds=10, resource_class="cpu.small")),
@@ -246,14 +248,14 @@ async def a_run(given: Services, run_id: str = "run_1") -> Run:
         created_at=clock.now(),
         updated_at=clock.now(),
     )
-    async with given.persistence.transaction(TENANT):
-        await given.runs.put(TENANT, run)
+    async with given.persistence.transaction(tenant):
+        await given.runs.put(tenant, run)
         await given.ledger.record(
-            TENANT,
+            tenant,
             Fact(
                 kind="run.created",
                 refs=LedgerRefs(
-                    tenant=TENANT, plan_id="pln_1", process_version="p@1", run_id=run_id
+                    tenant=tenant, plan_id="pln_1", process_version="p@1", run_id=run_id
                 ),
             ),
         )
