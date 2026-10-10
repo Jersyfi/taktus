@@ -58,4 +58,5 @@ bounding. The section states the boundary; it does not point at it.
 | [0045](ADR-0045-what-is-needed-from-the-owner-reaches-them-as-one-report-in-three-renderings.md) | What is needed from the owner reaches them as one report in three renderings | accepted |
 | [0046](ADR-0046-a-lack-of-the-product-is-a-block-and-becomes-a-finding.md) | A lack of the product is a block, and becomes a finding | accepted |
 | [0047](ADR-0047-a-broken-interface-is-noticed-from-the-runs-own-calls.md) | A broken interface is noticed from the run's own calls | accepted |
+| [0048](ADR-0048-an-event-starts-each-process-its-triggers-name-once.md) | An event starts each process its triggers name once, through the outbox and the elected automation role | accepted |
 | [0052](ADR-0052-a-credential-declares-the-platforms-it-administers.md) | A credential declares the platforms it administers | accepted |

@@ -1,0 +1,14 @@
+{
+  "id": "dlv_5e2a9c71-0d4b-4f8a-b6e3-1a9c7d2e8f44",
+  "kind": "pipeline_run.completed",
+  "channel": "channel.repo",
+  "occurred_at": "2026-10-10T09:12:00Z",
+  "received_at": "2026-10-10T09:12:01Z",
+  "context": {
+    "repository": "acme/taktus",
+    "run": "18234",
+    "conclusion": "success",
+    "head": "feature/events",
+    "pull_request": "170"
+  }
+}

@@ -1,0 +1,422 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/events/v1/Event.json",
+  "title": "Event",
+  "description": "The events contract: an event as a trigger sees it, the catalogue of event kinds with the context each carries, and the event trigger of a process version — its filter, its condition and the inputs it gives a run. An event is derived from an intake a connector accepted and the identity component placed (contracts/connector/v1 §7); it carries no sender, no text and no credential. See README.md and ADR-0048.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "description": "The source system's identifier for the delivery: the intake's event_id. A redelivery carries the same identifier, so that one delivery starts nothing twice.",
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "$ref": "#/$defs/Kind"
+    },
+    "channel": {
+      "description": "The capability of the channel the event arrived on.",
+      "$ref": "../../shared/v1/Capability.json"
+    },
+    "occurred_at": {
+      "description": "When the source says it happened.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "received_at": {
+      "description": "When the intake received the delivery.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "context": {
+      "description": "What the event concerns, as identifiers the source gave: never a name, an address, a text or a credential. Every kind requires the fields the catalogue names for it; a connector may add others.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/FieldName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Value"
+      }
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "channel",
+    "occurred_at",
+    "received_at",
+    "context"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "issue.opened"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "$ref": "#/$defs/IssueContext"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "issue.labelled"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/IssueContext"
+              },
+              {
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "label"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "issue_comment.created"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/IssueContext"
+              },
+              {
+                "properties": {
+                  "comment": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "is_pull_request": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "comment",
+                  "is_pull_request"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "pull_request.opened"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "repository": {
+                "type": "string",
+                "minLength": 1
+              },
+              "pull_request": {
+                "type": "string",
+                "minLength": 1
+              },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
+              "base": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "repository",
+              "pull_request",
+              "head",
+              "base"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "pipeline_run.completed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "repository": {
+                "type": "string",
+                "minLength": 1
+              },
+              "run": {
+                "type": "string",
+                "minLength": 1
+              },
+              "conclusion": {
+                "type": "string"
+              },
+              "head": {
+                "type": "string"
+              },
+              "pull_request": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "repository",
+              "run",
+              "conclusion",
+              "head"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "branch.pushed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "repository": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "repository",
+              "branch",
+              "head",
+              "paths"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "message.posted",
+              "message.mentioned"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "conversation": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "thread": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "conversation",
+              "message"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Kind": {
+      "title": "Kind",
+      "description": "The catalogue of event kinds of v1: the subject, singular, a dot, and what happened to it. A kind is added in a later version of this contract, never by a connector alone; a trigger that names a kind outside the catalogue is refused when its process version is registered.",
+      "enum": [
+        "issue.opened",
+        "issue.labelled",
+        "issue_comment.created",
+        "pull_request.opened",
+        "pipeline_run.completed",
+        "branch.pushed",
+        "message.posted",
+        "message.mentioned"
+      ]
+    },
+    "FieldName": {
+      "title": "FieldName",
+      "description": "The name of a field of an event's context.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "Value": {
+      "title": "Value",
+      "description": "The value of a context field: an identifier as a string, a flag, or a list of strings.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "IssueContext": {
+      "title": "IssueContext",
+      "description": "The fields every event about an issue carries.",
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issue": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "repository",
+        "issue"
+      ]
+    },
+    "Filter": {
+      "title": "Filter",
+      "description": "Which events of the trigger's kind start a run, as a rule over the event's context alone. Every entry must hold. An entry names a context field and a value or a list of values; it holds when the field's value equals one of them, or, for a field whose value is a list, when any element does. A field the event does not carry makes the entry fail. Nothing but the event is read: no source system, no clock, no model (ADR-0048 §2).",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/FieldName"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        ]
+      },
+      "minProperties": 1
+    },
+    "Condition": {
+      "title": "Condition",
+      "description": "A named state of the instance that must hold when the reaction starts the run. A condition that does not hold makes the reaction wait and be tried again; it never discards the event. v1 names one: capacity.available — the instance's admission against its platform would admit the run's work now: the state's storage, and the memory of one execution unit where a step of the version is a worker step (docs/architecture/platform.md).",
+      "enum": [
+        "capacity.available"
+      ]
+    },
+    "EventTrigger": {
+      "title": "EventTrigger",
+      "description": "A trigger of a process version that starts a run when an event of its kind arrives. filter decides by rule which events of the kind it takes; condition, when given, says what must hold before the run starts. A run is given its inputs by the trigger: fixed values in inputs, and context fields of the event in from_event. Together they give every input the process declares, or the version is refused when it is registered: a run started by an event has nobody to ask.",
+      "type": "object",
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/Kind"
+        },
+        "filter": {
+          "$ref": "#/$defs/Filter"
+        },
+        "condition": {
+          "$ref": "#/$defs/Condition"
+        },
+        "inputs": {
+          "description": "Fixed values, by input name.",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        },
+        "from_event": {
+          "description": "Inputs taken from the event, as input name to context field name. A field the kind does not require is refused at registration, so that a run never starts without a value.",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldName"
+          }
+        }
+      },
+      "required": [
+        "event"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

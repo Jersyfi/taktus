@@ -1,0 +1,6 @@
+{
+  "event": "pull_request.opened",
+  "from_event": {
+    "number": "pull_request"
+  }
+}

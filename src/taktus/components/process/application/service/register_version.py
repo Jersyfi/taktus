@@ -10,6 +10,13 @@ a person's approval and the quality history the replaced version names, read fro
 otherwise it is refused with `RaiseRefused`, and the refusal is a ledger entry,
 `autonomy.refused`. An admitted raise is `autonomy.raised`, with the approving person as its
 actor (ADR-0039, `domain.service.autonomy`). This is the one code path that stores a version.
+
+Registering is also where a version that would hand the instance its own platform is refused:
+a step naming a credential declared to administer the platform the instance runs on, or one
+declared about nothing, once the instance names its platform (ADR-0025, ADR-0052, DEC-0133).
+The refusal is a ledger entry, `process.refused`, and the version is not stored. A credential
+named by a reference — `{ $input: ... }` — is known only when a run resolves it; admission
+checks it then.
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ from taktus.components.process.domain.model import (
     Trigger,
 )
 from taktus.components.process.domain.service import autonomy
+from taktus.ports.administration import Administration
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Autonomy, LedgerRefs, Step
@@ -68,15 +76,28 @@ class RegisterProcessVersionHandler:
         processes: Repository[Process] | None = None,
         *,
         ledger: Ledger,
+        administration: Administration | None = None,
     ) -> None:
         self._versions = versions
         self._work = work
         self._processes = processes
         self._ledger = ledger
+        self._administration = administration or Administration()
 
     async def execute(self, command: RegisterProcessVersion) -> ProcessVersion:
         version = parse_bundle(command.bundle)
         tenant = command.tenant
+        refusals = [
+            r
+            for step_id, names in credentials_named(version).items()
+            if (r := self._administration.refusal(step_id, names)) is not None
+        ]
+        if refusals:
+            async with self._work.transaction(tenant):
+                await self._record(
+                    tenant, version, "process.refused", "administers", command, actor=command.by
+                )
+            raise InvalidProcess(tuple(refusals))
         refused: autonomy.RaiseVerdict | None = None
         async with self._work.transaction(tenant):
             replaced = await self._replaced(tenant, version)
@@ -146,17 +167,51 @@ class RegisterProcessVersionHandler:
         kind: str,
         outcome: str,
         command: RegisterProcessVersion,
+        *,
+        actor: str | None = None,
     ) -> None:
         await self._ledger.record(
             tenant,
             Fact(
                 kind=kind,
                 refs=LedgerRefs(
-                    tenant=tenant, process_version=version.ref, actor=command.approved_by
+                    tenant=tenant,
+                    process_version=version.ref,
+                    actor=actor if actor is not None else command.approved_by,
                 ),
                 outcome=outcome,
             ),
         )
+
+
+def credentials_named(version: ProcessVersion) -> dict[str, list[str]]:
+    """Per step, the credentials its work names literally: under `credentials`, wherever the
+    work carries it — a connector call, a wait on one, a worker's assignment. A name given by a
+    reference is not known before a run resolves it, and is left to admission."""
+    named: dict[str, list[str]] = {}
+    for step_id, work in version.work.items():
+        names = _names(work)
+        if names:
+            named[str(step_id)] = names
+    return named
+
+
+def _names(node: Any) -> list[str]:
+    found: list[str] = []
+    if isinstance(node, Mapping):
+        for key, value in node.items():
+            if key == "credentials" and isinstance(value, list):
+                found.extend(
+                    item["name"]
+                    for item in value
+                    if isinstance(item, Mapping) and isinstance(item.get("name"), str)
+                )
+            else:
+                found.extend(_names(value))
+    elif isinstance(node, list):
+        for item in node:
+            found.extend(_names(item))
+    return found
 
 
 def parse_bundle(bundle: Document) -> ProcessVersion:

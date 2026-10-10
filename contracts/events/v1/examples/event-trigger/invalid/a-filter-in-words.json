@@ -1,0 +1,4 @@
+{
+  "event": "issue.opened",
+  "filter": "a section of the ready standard missing"
+}

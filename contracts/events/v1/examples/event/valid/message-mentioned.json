@@ -1,0 +1,12 @@
+{
+  "id": "Ev08A1B2C3D4",
+  "kind": "message.mentioned",
+  "channel": "channel.chat",
+  "occurred_at": "2026-10-10T09:12:00Z",
+  "received_at": "2026-10-10T09:12:01Z",
+  "context": {
+    "conversation": "C0123456",
+    "message": "1760095800.000100",
+    "thread": "1760095700.000200"
+  }
+}

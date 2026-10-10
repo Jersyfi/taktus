@@ -1,0 +1,15 @@
+{
+  "id": "dlv_4",
+  "kind": "issue.opened",
+  "channel": "channel.repo",
+  "occurred_at": "2026-10-10T09:12:00Z",
+  "received_at": "2026-10-10T09:12:01Z",
+  "context": {
+    "repository": "acme/taktus",
+    "issue": "76"
+  },
+  "sender": {
+    "account": "100200",
+    "kind": "person"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "event": "issue.labelled",
+  "filter": {
+    "label": "ready"
+  },
+  "condition": "the issue looks finished"
+}
