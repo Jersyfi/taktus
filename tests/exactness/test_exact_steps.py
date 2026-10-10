@@ -155,7 +155,7 @@ def test_the_ready_standard_is_read_by_an_exact_rule(
 def test_p01s_order_and_reconciliation_are_exact_rules(step_id: str, kind: type) -> None:
     """Issue #71: P-01's order and its reconciliation of the roadmap with the issues are each
     a `rule` step classed `exact`, so that neither verdict can come from a model, and no step
-    of P-01 asks one (DEC-0080 carries the method provisionally)."""
+    of P-01 asks one (the owner chose the rule in DEC-0080)."""
     path = ROOT / "blueprints" / "dev-orchestration" / "processes" / "P-01-roadmap-control.yaml"
     with path.open(encoding="utf-8") as handle:
         version = parse_bundle(yaml.safe_load(handle))

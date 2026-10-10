@@ -76,5 +76,5 @@ any process (ADR-0021); the takeover test's shape (ADR-0013 B, UC-6.3). Written 
 `UC-4-result-defects.md` on 2026-09-17, moved into this format in the migration's second step. The
 requirement is unchanged except in one place: the first text recorded "who" executed a step by
 hand in the incident, while UC-6.8 says an incident never names a person. The incident now names
-the role, and the identity stays in the activity log; that change is the owner's and is asked in
+the role, and the identity stays in the activity log; that change is the owner's and stands, by
 DEC-0069. No version of the definition has this use case.

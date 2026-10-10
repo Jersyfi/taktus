@@ -19,7 +19,7 @@
 #
 # The reconciliation is a rule over the issue numbers the roadmap's items name, not a model's
 # matching of the items' words to the issues' titles. That choice of method is the owner's
-# (anchors.taktus.md M3.13); this bundle carries it provisionally, as DEC-0080 recommends.
+# (anchors.taktus.md M3.13), and the owner chose the rule in DEC-0080.
 #
 # Every step an integration serves — a connector call, a wait on a connector, the worker, the
 # model — names a person as its fallback for when that integration is unavailable (issue #90).
@@ -170,8 +170,8 @@ steps:
         why: >
           matching the items' words to the issues' titles is a judgement that can differ from
           one daily run to the next, and the report would then change with nothing changed;
-          the blueprint first described this step that way, and DEC-0080 asks the owner
-          which method it keeps
+          the blueprint first described this step that way, and the owner chose the rule
+          in DEC-0080
     exactness: exact
     depends_on: [read-roadmap, read-issues]
     work:

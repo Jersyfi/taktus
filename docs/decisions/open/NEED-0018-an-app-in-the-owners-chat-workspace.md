@@ -4,6 +4,7 @@
 **Raised in:** [#148](https://github.com/Jersyfi/taktus/pull/148)
 **Issue:** [#146](https://github.com/Jersyfi/taktus/issues/146)
 **Needed by:** 2026-10-31
+**Owner's answer:** 2026-10-10: the owner takes it up on 2026-10-11; it stays open until then.
 **Foreseeable since:** [#148](https://github.com/Jersyfi/taktus/pull/148), where the chat connector was built (issue #84)
 
 ## 1. What is needed

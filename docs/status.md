@@ -145,10 +145,11 @@ webhook secret (NEED-0010), the live connector test in CI (since superseded by T
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
 each with the pull request that recorded it. Each record stands in the table of its kind, and the gate checks it
 (DEC-0094). The ready rule reads an issue's form up to its footer (DEC-0116). **Open:** DEC-0044, the licence, which must be settled
-by the release of `1.0.0` and is taken up only when that release is prepared, DEC-0069, the
-same question as DEC-0030 for the seventeen use cases of the migration's second step, DEC-0082,
-the same question for the twenty-seven of the third, and DEC-0087, the same question for the
-seventeen of the fourth and the two blueprint descriptions. DEC-0028,
+by the release of `1.0.0` and is taken up only when that release is prepared. On 2026-10-10 the
+owner answered DEC-0069, DEC-0082 and DEC-0087 with Option A — what the seventeen, twenty-seven
+and seventeen use cases of the migration's second to fourth steps add beyond the definition
+stands — and DEC-0123: no figure compares the working time of named persons; processes are
+analysed in detail by step, role and department. DEC-0028,
 DEC-0029 and DEC-0030, raised by the pull request that brought in the vision layer, were answered on
 2026-10-08, each with the recommended option: a floor for automatic skill approval set from data,
 qualified reviewers for the legal-anchor catalogue before a finance or personnel blueprint, and
@@ -180,9 +181,9 @@ sections an issue lacks, as a comment (issue #70, NTC-0040). P-01 Roadmap contro
 bundle too: it holds the roadmap against the open issues by the issue numbers each roadmap item
 now names, and reports every item without an issue, every issue its milestone does not name and
 every `ready` label on content that fails the standard, with the backlog's order computed by
-the code `make backlog` runs (issue #71, NTC-0048, NTC-0049). Its daily trigger carries its inputs, and its reports go to #129, so an instance's scheduler can run it every day (NTC-0045). It changes nothing. Whether that
-reconciliation stays a rule or becomes a model's, as the blueprint first described it, is the
-owner's (DEC-0080).
+the code `make backlog` runs (issue #71, NTC-0048, NTC-0049). Its daily trigger carries its inputs, and its reports go to #129, so an instance's scheduler can run it every day (NTC-0045). It changes nothing. The owner chose the
+rule for that reconciliation over a model's matching, as the blueprint first described it
+(DEC-0080).
 
 **A budget is a budget, built** (ADR-0005, third amendment; DEC-0035). Every step is estimated
 before it is admitted, or refused: a worker by its estimate, an `llm` step by the input its model
@@ -320,13 +321,13 @@ answers, for the first time, how much of the vision stands:
   are in the format (NTC-0029). What the definition said that accepted decisions moved past is marked
   as superseded in the use case it concerns, never deleted: escalation and self-healing (ADR-0021,
   ADR-0022), level 4 (ADR-0008, ADR-0022), cost control (ADR-0005, ADR-0010). What the seventeen add
-  beyond the definition is asked as DEC-0069, in force provisionally; one gap the split of failures
+  beyond the definition stands, by DEC-0069; one gap the split of failures
   from wrong results left was restored without asking (NTC-0030).
 - **The third step of the migration is done** (2026-10-09): `command`, `identity`, `catalog` and
   `accounting` — the rest of E1, E8, E12 and E13 that is filed there, UC-5.8, UC-10.3, the whole of
   E14 (the worker interface, the skill lifecycle, the skill hub) and UC-15.1 domain blueprints.
   What accepted decisions moved past is marked as superseded in seven of them, never deleted. What
-  the twenty-seven add beyond the definition is asked as DEC-0082, in force provisionally. UC-1.1 and
+  the twenty-seven add beyond the definition stands, by DEC-0082. UC-1.1 and
   UC-7.1 were brought up to the definition without asking (NTC-0050, NTC-0051). The skill format
   still needs an ADR before UC-14.2 is built.
 - **The fourth step of the migration is done** (2026-10-09), and with it the migration: `knowledge`,
@@ -337,7 +338,7 @@ answers, for the first time, how much of the vision stands:
   domain (UC-15.2) and the IT service chat (UC-12.2) are described as deployments in `blueprints/`,
   and the definition's example domains are `blueprints/README.md`. What accepted decisions moved past
   is marked as superseded in three of them, never deleted. What the fourth step adds beyond the
-  definition and the owner's stated text is asked as DEC-0087, in force provisionally. UC-6.1 and
+  definition and the owner's stated text stands, by DEC-0087. UC-6.1 and
   UC-6.4 were brought up to the definition without asking (NTC-0062, NTC-0063). The working file of
   the migration is deleted, as it said; `docs/usecases/NUMBERING.md` keeps where every number of the
   definition went.

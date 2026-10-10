@@ -4,6 +4,7 @@
 **Raised in:** [#108](https://github.com/Jersyfi/taktus/pull/108)
 **Issue:** [#109](https://github.com/Jersyfi/taktus/issues/109)
 **Needed by:** 2026-10-31
+**Owner's answer:** 2026-10-10: the session does steps 1 and 2 and tells the owner when the token can be revoked; step 3 stays the owner's.
 **Foreseeable since:** [#108](https://github.com/Jersyfi/taktus/pull/108), where the repository connector learned to act as Taktus's own app (ADR-0033) and the live test was moved onto it
 
 ## 1. What is needed

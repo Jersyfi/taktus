@@ -50,8 +50,7 @@ do not name it, read from the issue numbers each item names, `#N`), compose the 
 (`rule`), write it as a comment on one issue labelled `report` (`rule`, outward effect: an
 `egress.write` entry). P-01 proposes: it creates no issue, sets no milestone or label and closes
 nothing, until its autonomy is raised (M3.9). The blueprint first described the reconciliation
-as a model's judgement; the rule is the provisional answer to DEC-0080, which asks the owner
-which method it keeps (M3.13).
+as a model's judgement; the owner chose the rule in DEC-0080 (M3.13).
 
 **P-02 Refinement** (autonomy 3, seven steps): read the issue and its comments (`rule`, connector
 reads), check that P-02 has not commented on it already (`rule`, `exact`), find the sections of

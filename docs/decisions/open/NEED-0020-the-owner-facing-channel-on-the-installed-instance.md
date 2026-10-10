@@ -4,6 +4,7 @@
 **Raised in:** [#165](https://github.com/Jersyfi/taktus/pull/165), for issue #85
 **Issue:** [#164](https://github.com/Jersyfi/taktus/issues/164)
 **Needed by:** 2026-11-07
+**Owner's direction:** 2026-10-10: as in NEED-0017 — how accounts are linked is to be redesigned for little effort, and proven against the platforms Taktus itself uses, before this need is provided.
 **Foreseeable since:** [#165](https://github.com/Jersyfi/taktus/pull/165), where the owner-facing channel was built
 
 ## 1. What is needed
