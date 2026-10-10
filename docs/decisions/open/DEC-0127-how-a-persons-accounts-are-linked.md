@@ -43,6 +43,11 @@ What was attempted, and what was found:
   belongs to a person, not an organisation, so it has none.
 - So on the chat service a link can be **suggested** from a confirmed address; on the
   repository service it cannot, and an administrator picks the account by its login name.
+- Both member lists are now read through Taktus's own connectors, as a read that changes
+  nothing (NTC-0107). Against stand-ins of both services that answer in the services' shapes,
+  tests show each list, and that only an active person's confirmed address could suggest a
+  link. The live tests read both lists from the real services at their next run; for the chat
+  service that is the first run after you install the app. Nothing links an account yet.
 
 ## 2. Why you are being asked
 

@@ -135,6 +135,46 @@ async def read_thread(api: Api, input: Json, key: str) -> Outcome:
     return Outcome(output, {"kind": "read"})
 
 
+def member_output(member: Json) -> Json:
+    """What a member list yields of one member, and nothing more: the account, as the intake
+    names a sender; its display name; person or automation; active or deactivated; and its
+    address with whether the service confirmed it. The address is None where the app may not
+    read addresses. Presence, time zone, title, picture and the rest are left at the service."""
+    found = member.get("profile")
+    profile: Json = found if isinstance(found, dict) else {}
+    automation = bool(member.get("is_bot")) or member.get("id") == "USLACKBOT"
+    address = profile.get("email")
+    name = profile.get("display_name") or profile.get("real_name") or member.get("name") or ""
+    return {
+        "account": str(member.get("id", "")),
+        "name": str(name),
+        "kind": "automation" if automation else "person",
+        "active": not bool(member.get("deleted")),
+        "address": str(address) if isinstance(address, str) and address else None,
+        "address_confirmed": bool(member.get("is_email_confirmed")) and bool(address),
+    }
+
+
+async def list_members(api: Api, input: Json, key: str) -> Outcome:
+    """The workspace's members, page by page up to MAX_PAGES pages of PAGE. Read only when a
+    process asks for it; nothing of the list is kept here (DEC-0127)."""
+    found: list[Json] = []
+    cursor = ""
+    complete = False
+    for _ in range(MAX_PAGES):
+        params: Json = {"limit": PAGE}
+        if cursor:
+            params["cursor"] = cursor
+        page = await api.read("users.list", params)
+        found.extend(m for m in page.get("members") or [] if isinstance(m, dict))
+        cursor = str((page.get("response_metadata") or {}).get("next_cursor") or "")
+        if not cursor:
+            complete = True
+            break
+    output = {"members": [member_output(m) for m in found], "complete": complete}
+    return Outcome(output, {"kind": "read"})
+
+
 # --- deliveries: marked -----------------------------------------------------------------------
 
 
@@ -193,5 +233,6 @@ type Operation = Callable[[Api, Json, str], Awaitable[Outcome]]
 OPERATIONS: dict[str, Operation] = {
     "chat.threads.read": read_thread,
     "chat.threads.post": post_message,
+    "chat.members.list": list_members,
     "channel.chat.reply": post_message,
 }

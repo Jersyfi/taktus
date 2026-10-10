@@ -1,11 +1,13 @@
 """What the chat connector declares about itself: the document served as the resource
 `taktus://connector/v1/capabilities`, in the shape of `Connector.json#/$defs/Capabilities`.
 
-Two operations of one capability, `chat.threads`, and an intake of two event kinds. Each
+Two operations of the capability `chat.threads`, one of `chat.members`, and an intake of two
+event kinds. Each
 operation declares its `demand`: the most requests to the service one call makes, which is what
 a run reserves before calling it (ADR-0005). A read pages through a thread, at most `MAX_PAGES`
 pages; a post looks for its mark first — in the thread, page by page, or among the most recent
-messages of the conversation — and then posts once.
+messages of the conversation — and then posts once. The member list is read page by page, at
+most `MAX_PAGES` pages.
 
 The effect of a post is `delivery`: a message reaches a person through a channel (ADR-0022). Its
 idempotency is `marked`: the service keeps a structured field on every message, its metadata,
@@ -28,7 +30,7 @@ INTAKE_CREDENTIAL = "CHAT_SIGNING_SECRET"
 MAX_PAGES = 10
 """How many pages of a thread a read or a lookup reads, at most."""
 
-CAPABILITIES = ["chat.threads", CHANNEL]
+CAPABILITIES = ["chat.threads", "chat.members", CHANNEL]
 
 OPERATIONS: list[Json] = [
     {
@@ -49,6 +51,16 @@ OPERATIONS: list[Json] = [
         "summary": "Post a message into a conversation, into a thread when one is named. The "
         "message carries the idempotency key in its metadata; a repeat finds it there and "
         "posts nothing.",
+    },
+    {
+        "name": "chat.members.list",
+        "demand": {"quota_units": MAX_PAGES},
+        "capability": "chat.members",
+        "effect": "read",
+        "summary": "List the members of the workspace: each account's identifier, its display "
+        "name, whether it is a person or an automation and whether it is active, and its "
+        "address with whether the service confirmed it — the address only where the app may "
+        "read it. Nothing else of a member. `complete` says whether every page was read.",
     },
     {
         "name": "channel.chat.reply",

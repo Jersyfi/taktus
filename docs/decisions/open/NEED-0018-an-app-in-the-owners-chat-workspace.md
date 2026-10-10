@@ -198,8 +198,10 @@ test -s "<the token's file>" && test -s "<the signing secret's file>" && echo "b
 ```
 
 The dispatched run of the job `chat` is green, and its log carries `PASSED` for
-`test_the_suite_passes_against_the_real_service` and for
-`test_a_reply_retried_after_a_restart_is_posted_once_on_the_real_service`. The scratch channel
+`test_the_suite_passes_against_the_real_service`, for
+`test_a_reply_retried_after_a_restart_is_posted_once_on_the_real_service`, and for
+`test_the_member_list_is_read_from_the_real_service` — the proof DEC-0127 rests on, which
+asserts counts only and prints no member of your workspace. The scratch channel
 shows a message from Taktus that begins *Conformance run*, with its replies in one thread, and
 exactly one answer in the thread of the message that begins *Restart test*.
 

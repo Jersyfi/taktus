@@ -2,11 +2,11 @@
 """A fake of the chat service the chat connector talks to.
 
 The connector under `src/taktus/adapters/driven/connectors/slack/` speaks the web interface of
-that service. This fake answers the three methods the connector uses — `chat.postMessage`,
-`conversations.replies`, `conversations.history` — in the same shapes, with the same error codes
-for the same faults, and keeps everything in memory. It exists so that the connector can be
-exercised in CI without a network, an account or a secret: the conformance gate starts it as a
-process, the adapter tests start it in a thread.
+that service. This fake answers the four methods the connector uses — `chat.postMessage`,
+`conversations.replies`, `conversations.history`, `users.list` — in the same shapes, with the
+same error codes for the same faults, and keeps everything in memory. It exists so that the
+connector can be exercised in CI without a network, an account or a secret: the conformance
+gate starts it as a process, the adapter tests start it in a thread.
 
 What it enforces, because the connector's checks depend on it:
 
@@ -21,11 +21,19 @@ What it enforces, because the connector's checks depend on it:
 - **Metadata.** A posted message keeps the `metadata` it was posted with, and a read returns it
   only when asked with `include_all_metadata=true`, as the service does.
 - **Paging.** `conversations.replies` and `conversations.history` page by `limit` and `cursor`,
-  with `has_more` and `response_metadata.next_cursor`.
+  with `has_more` and `response_metadata.next_cursor`; `users.list` by the same two, with
+  `response_metadata.next_cursor` alone, as the service does.
+- **The member list and its two permissions.** `users.list` needs the app's `users:read`; without
+  it the answer is `missing_scope`. A member's `profile.email` is there only with
+  `users:read.email`, and `is_email_confirmed` says whether the service confirmed it. Four members
+  exist from the start: a person with a confirmed address, a person whose address is not
+  confirmed, a deactivated person, and the app's own bot user.
 
 Test-only endpoints under `/_fake/`: `GET /_fake/state` counts the messages of every
 conversation, `GET /_fake/messages?channel=…` lists them with their thread, `POST /_fake/reset`
-empties the store back to its seed, `POST /_fake/conversations` adds one, `POST /_fake/messages`
+empties the store back to its seed, `POST /_fake/conversations` adds one, `POST /_fake/members`
+with a member object adds a member, `POST /_fake/scopes` with `{"users:read": …,
+"users:read.email": …}` grants or withdraws either permission, `POST /_fake/messages`
 with `{"channel": …, "ts": …, "user": …, "text": …}` (and `thread_ts` for a reply) puts in a
 message a person wrote, `POST /_fake/outage`
 with `{"on": true}` makes every other request answer 503 until switched off. Standard library
@@ -55,6 +63,36 @@ BOT_USER = "U0000000BOT"
 BOT_ID = "B0000000BOT"
 APP_ID = "A0000000APP"
 MAX_LIMIT = 1000
+MEMBER_SCOPES = ("users:read", "users:read.email")
+
+
+def seed_members() -> list[Json]:
+    """The workspace's members at the start, in the shape the service answers them."""
+
+    def person(account: str, name: str, email: str, *, confirmed: bool, deleted: bool) -> Json:
+        return {
+            "id": account,
+            "team_id": "T0000000001",
+            "name": name.lower(),
+            "deleted": deleted,
+            "is_bot": False,
+            "is_email_confirmed": confirmed,
+            "profile": {"real_name": name, "display_name": name, "email": email},
+        }
+
+    return [
+        person(SEED_USER, "Ada", "ada@example.org", confirmed=True, deleted=False),
+        person("U0000000002", "Ben", "ben@example.org", confirmed=False, deleted=False),
+        person("U0000000003", "Cleo", "cleo@example.org", confirmed=True, deleted=True),
+        {
+            "id": BOT_USER,
+            "team_id": "T0000000001",
+            "name": "taktus",
+            "deleted": False,
+            "is_bot": True,
+            "profile": {"real_name": "Taktus", "display_name": "Taktus", "bot_id": BOT_ID},
+        },
+    ]
 
 
 def now() -> str:
@@ -65,6 +103,8 @@ def now() -> str:
 class Store:
     tokens: dict[str, str]  # value -> scope
     conversations: dict[str, list[Json]] = field(default_factory=dict)
+    members: list[Json] = field(default_factory=list)
+    granted: set[str] = field(default_factory=set)
     sequence: int = 1
     outage: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -74,6 +114,8 @@ class Store:
 
     def reset(self) -> None:
         self.conversations = {}
+        self.members = seed_members()
+        self.granted = set(MEMBER_SCOPES)
         self.sequence = 1
         for conversation in SEEDED:
             self.conversations[conversation] = [
@@ -95,7 +137,7 @@ def visible(message: Json, metadata: bool) -> Json:
     return shown
 
 
-def page_of(items: list[Json], query: Json) -> Json:
+def page_of(items: list[Json], query: Json, key: str = "messages") -> Json:
     try:
         limit = max(1, min(int(query.get("limit", "100")), MAX_LIMIT))
         start = int(query.get("cursor") or "0")
@@ -105,7 +147,7 @@ def page_of(items: list[Json], query: Json) -> Json:
     more = start + limit < len(items)
     return {
         "ok": True,
-        "messages": chunk,
+        key: chunk,
         "has_more": more,
         "response_metadata": {"next_cursor": str(start + limit) if more else ""},
     }
@@ -173,6 +215,15 @@ class Handler(BaseHTTPRequestHandler):
                     store.outage = bool(body.get("on"))
                 elif url.path == "/_fake/conversations":
                     store.conversations.setdefault(str(body.get("id", "")), [])
+                elif url.path == "/_fake/members":
+                    store.members.append(body)
+                elif url.path == "/_fake/scopes":
+                    for scope in MEMBER_SCOPES:
+                        if scope in body:
+                            if body[scope]:
+                                store.granted.add(scope)
+                            else:
+                                store.granted.discard(scope)
                 elif url.path == "/_fake/messages":
                     # A message a person wrote, as the service would hold it.
                     conversation = store.conversations.setdefault(str(body.pop("channel")), [])
@@ -200,6 +251,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, self._replies(args))
             elif method == "conversations.history":
                 self._send(200, self._history(args))
+            elif method == "users.list":
+                self._send(200, self._users(args))
             else:
                 self._send(404, {"ok": False, "error": "unknown_method"})
 
@@ -262,6 +315,21 @@ class Handler(BaseHTTPRequestHandler):
         metadata = str(args.get("include_all_metadata", "")).lower() == "true"
         top = sorted((m for m in messages if "thread_ts" not in m), key=lambda m: m["ts"])
         return page_of([visible(m, metadata) for m in reversed(top)], args)
+
+    def _users(self, args: Json) -> Json:
+        store = self.store
+        if "users:read" not in store.granted:
+            return {"ok": False, "error": "missing_scope", "needed": "users:read"}
+        email = "users:read.email" in store.granted
+        shown = []
+        for member in store.members:
+            copy = json.loads(json.dumps(member))
+            if not email:
+                copy.get("profile", {}).pop("email", None)
+            shown.append(copy)
+        page = page_of(shown, args, key="members")
+        page.pop("has_more", None)
+        return page
 
 
 def tokens_from_environment() -> dict[str, str]:

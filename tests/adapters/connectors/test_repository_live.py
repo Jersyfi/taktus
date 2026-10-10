@@ -209,3 +209,26 @@ async def test_a_step_retried_after_a_restart_acts_once_on_the_real_service(
 
     for document in (first, again, read, opened, replayed, first_comment, labelled, status):
         assert token not in str(document)
+
+
+async def test_the_member_list_is_read_from_the_real_service() -> None:
+    """DEC-0127's proof on the real service: with the permissions it holds, the app reads the
+    repository's collaborators — account, login name, kind, role — and the service names no
+    address. Only counts are asserted, so that a failure prints no member."""
+    repository = os.environ["TAKTUS_LIVE_REPOSITORY"]
+    connector = Connector(Config(target=TARGET, repository=repository, timeout=60.0, app=APP))
+    result = await connector.call(
+        "repository.members.list",
+        context("members", f"run_live:members-{secrets.token_hex(4)}"),
+        {},
+    )
+    content = result.structured_content
+    assert isinstance(content, dict)
+    cause = content.get("cause") if result.is_error else None
+    assert cause is None, f"the member list was refused: {cause}"
+    members = content["output"]["members"]
+    shaped = sum(1 for m in members if set(m) == {"account", "kind", "name", "role"})
+    admins = sum(1 for m in members if m["kind"] == "person" and m["role"] == "admin")
+    assert content["output"]["complete"] is True
+    assert shaped == len(members), "every member carries exactly the four fields"
+    assert admins >= 1, "at least one person administers the repository: its owner"

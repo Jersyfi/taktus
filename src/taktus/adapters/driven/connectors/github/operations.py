@@ -190,6 +190,30 @@ async def list_issues(api: Api, input: Json, key: str) -> Outcome:
     return Outcome(output, read_effect())
 
 
+def member_output(member: Json) -> Json:
+    """What a collaborator list yields of one member: the account as the intake names a sender
+    (its number), its login name, person or automation, and its role. Nothing else is kept."""
+    return {
+        **_account(member),
+        "name": str(member.get("login", "")),
+        "role": str(member.get("role_name", "")),
+    }
+
+
+async def list_members(api: Api, input: Json, key: str) -> Outcome:
+    """The repository's collaborators, page by page up to MAX_PAGES pages of 100. The service
+    asks the app for read access to the repository's metadata, nothing more (DEC-0127)."""
+    page, next_url = await api.get_page(api.repo("collaborators"), {"per_page": 100})
+    found: list[Json] = list(page)
+    pages = 1
+    while next_url and pages < MAX_PAGES:
+        page, next_url = await api.get_url(next_url)
+        found.extend(page)
+        pages += 1
+    output = {"members": [member_output(m) for m in found], "complete": next_url is None}
+    return Outcome(output, read_effect())
+
+
 async def read_pull_request(api: Api, input: Json, key: str) -> Outcome:
     number = _int(input, "number")
     pull = await api.get(api.repo(f"pulls/{number}"))
@@ -693,4 +717,5 @@ OPERATIONS: dict[str, Operation] = {
     "repository.labels.set": set_labels,
     "repository.files.read": read_file,
     "repository.files.list": list_files,
+    "repository.members.list": list_members,
 }
