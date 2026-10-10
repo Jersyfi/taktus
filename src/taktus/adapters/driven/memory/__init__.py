@@ -14,6 +14,7 @@ behind when it fails.
 from taktus.adapters.driven.memory.leadership import MemoryLeadership
 from taktus.adapters.driven.memory.ledger_store import MemoryLedgerStore
 from taktus.adapters.driven.memory.object_store import MemoryObjectStore
+from taktus.adapters.driven.memory.outbox import MemoryOutbox
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
 from taktus.adapters.driven.memory.provenance_store import MemoryProvenanceStore
 from taktus.adapters.driven.memory.queue import MemoryQueue
@@ -23,6 +24,7 @@ __all__ = [
     "MemoryLeadership",
     "MemoryLedgerStore",
     "MemoryObjectStore",
+    "MemoryOutbox",
     "MemoryPersistence",
     "MemoryProvenanceStore",
     "MemoryQueue",

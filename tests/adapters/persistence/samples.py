@@ -78,12 +78,15 @@ def bundle() -> dict[str, Any]:
 def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
     document = bundle()
     document["version"] = version
-    document["triggers"] = [{"schedule": "0 6 * * 1-5"}, {"event": "repo.push", "filter": "x"}]
+    document["triggers"] = [
+        {"schedule": "0 6 * * 1-5"},
+        {"event": "issue.labelled", "filter": {"label": ["ready", "now"]}},
+    ]
     document["slo"] = {"freshness": "24h", "latency": "90s"}
     parsed = parse_bundle(document)
     assert parsed.triggers == (
         Trigger(schedule="0 6 * * 1-5"),
-        Trigger(event="repo.push", filter="x"),
+        Trigger(event="issue.labelled", filter={"label": ("ready", "now")}),
     )
     assert parsed.slo == Slo(freshness=timedelta(hours=24), latency=timedelta(seconds=90))
     return parsed
@@ -91,7 +94,11 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
 
 def process(tenant: str = "t") -> Process:
     return Process(
-        id="six-times-seven", name="Six times seven", active_version="1", activated_by="idn_ada"
+        id="six-times-seven",
+        name="Six times seven",
+        active_version="1",
+        activated_by="idn_ada",
+        activated_at=datetime(2026, 10, 10, 9, 0, tzinfo=UTC),
     )
 
 

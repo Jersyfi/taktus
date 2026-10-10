@@ -1,6 +1,6 @@
 {
   "events": [
-    "issues.opened"
+    "issue.opened"
   ],
   "signature": {
     "scheme": "none"

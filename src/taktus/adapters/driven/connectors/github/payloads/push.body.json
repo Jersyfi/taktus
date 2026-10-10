@@ -1,0 +1,120 @@
+{
+  "ref": "refs/heads/main",
+  "before": "0000000000000000000000000000000000000001",
+  "after": "cccccccccccccccccccccccccccccccccccccccc",
+  "created": false,
+  "deleted": false,
+  "forced": false,
+  "compare": "https://repo.example/placeholder-owner/placeholder-repo/compare/placeholder",
+  "commits": [
+    {
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "tree_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "distinct": true,
+      "message": "docs(roadmap): placeholder change",
+      "timestamp": "2000-01-03T00:00:00Z",
+      "url": "https://repo.example/placeholder-owner/placeholder-repo/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "author": {
+        "name": "placeholder-user-1",
+        "email": "placeholder@example.invalid",
+        "username": "placeholder-user-1"
+      },
+      "committer": {
+        "name": "placeholder-user-1",
+        "email": "placeholder@example.invalid",
+        "username": "placeholder-user-1"
+      },
+      "added": [
+        "docs/placeholder-new.md"
+      ],
+      "removed": [],
+      "modified": [
+        "docs/roadmap.md"
+      ]
+    },
+    {
+      "id": "cccccccccccccccccccccccccccccccccccccccc",
+      "tree_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "distinct": true,
+      "message": "docs(status): placeholder change",
+      "timestamp": "2000-01-03T00:00:00Z",
+      "url": "https://repo.example/placeholder-owner/placeholder-repo/commit/cccccccccccccccccccccccccccccccccccccccc",
+      "author": {
+        "name": "placeholder-user-1",
+        "email": "placeholder@example.invalid",
+        "username": "placeholder-user-1"
+      },
+      "committer": {
+        "name": "placeholder-user-1",
+        "email": "placeholder@example.invalid",
+        "username": "placeholder-user-1"
+      },
+      "added": [],
+      "removed": [
+        "docs/placeholder-old.md"
+      ],
+      "modified": [
+        "docs/roadmap.md",
+        "docs/status.md"
+      ]
+    }
+  ],
+  "head_commit": {
+    "id": "cccccccccccccccccccccccccccccccccccccccc",
+    "tree_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "distinct": true,
+    "message": "docs(status): placeholder change",
+    "timestamp": "2000-01-03T00:00:00Z",
+    "url": "https://repo.example/placeholder-owner/placeholder-repo/commit/cccccccccccccccccccccccccccccccccccccccc",
+    "author": {
+      "name": "placeholder-user-1",
+      "email": "placeholder@example.invalid",
+      "username": "placeholder-user-1"
+    },
+    "committer": {
+      "name": "placeholder-user-1",
+      "email": "placeholder@example.invalid",
+      "username": "placeholder-user-1"
+    },
+    "added": [],
+    "removed": [
+      "docs/placeholder-old.md"
+    ],
+    "modified": [
+      "docs/roadmap.md",
+      "docs/status.md"
+    ]
+  },
+  "repository": {
+    "id": 900000001,
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "name": "placeholder-repo",
+    "full_name": "placeholder-owner/placeholder-repo",
+    "private": false,
+    "owner": {
+      "login": "placeholder-user-0",
+      "id": 100000000,
+      "node_id": "PLACEHOLDER_NODE_ID",
+      "avatar_url": "https://avatars.example/placeholder",
+      "html_url": "https://repo.example/placeholder-user-0",
+      "type": "User",
+      "site_admin": false
+    },
+    "html_url": "https://repo.example/placeholder-owner/placeholder-repo",
+    "url": "https://api.example/repos/placeholder-owner/placeholder-repo",
+    "default_branch": "main"
+  },
+  "pusher": {
+    "name": "placeholder-user-1",
+    "email": "placeholder@example.invalid"
+  },
+  "sender": {
+    "login": "placeholder-user-1",
+    "id": 100000001,
+    "node_id": "PLACEHOLDER_NODE_ID",
+    "avatar_url": "https://avatars.example/placeholder",
+    "html_url": "https://repo.example/placeholder-user-1",
+    "type": "User",
+    "site_admin": false
+  }
+}

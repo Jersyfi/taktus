@@ -74,7 +74,7 @@ capability to a concrete connector is configuration.
       "summary": "Start a pipeline. The target offers no way to recognise a repeat." }
   ],
   "intake": {
-    "events": ["issues.opened", "issue_comment.created", "pull_request.opened"],
+    "events": ["issue.opened", "issue_comment.created", "pull_request.opened"],
     "signature": { "scheme": "hmac-sha256" }
   },
   "credentials": [
@@ -314,7 +314,9 @@ into the same channel — and who caused it, **as the target system names them**
 identifier, never a name or an address. The connector cannot know the Taktus identity behind that
 account; the identity component maps it and completes the command, and an account it cannot map
 gets no execution (`docs/architecture/control-plane.md` §2). `event_id` is the target system's
-identifier for the delivery, so that a redelivery is recognised there too.
+identifier for the delivery, so that a redelivery is recognised there too. `event` names a kind
+of the events contract's catalogue (`contracts/events/v1` §2) where one fits, with the context
+that kind requires: only such an intake can start a process by a trigger (ADR-0048).
 
 A refusal says why, in one token, and is not an error of the tool call — the call succeeded in
 deciding:

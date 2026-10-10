@@ -29,7 +29,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p01-roadmap-control
-version: "2"
+version: "3"
 name: P-01 Roadmap control
 autonomy:
   level: 3
@@ -53,7 +53,14 @@ triggers:
       roadmap_path: docs/roadmap.md
       records_path: docs/decisions/open
       report_issue: 129
-  - event: roadmap.changed
+  # And whenever a push to the base branch changes the roadmap (contracts/events/v1, ADR-0048):
+  # the blueprint's `roadmap.changed`, as a rule over the event.
+  - event: branch.pushed
+    filter: { branch: main, paths: docs/roadmap.md }
+    inputs:
+      roadmap_path: docs/roadmap.md
+      records_path: docs/decisions/open
+      report_issue: 129
 
 inputs:
   roadmap_path:

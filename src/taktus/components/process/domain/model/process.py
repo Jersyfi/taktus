@@ -5,12 +5,19 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from pydantic import Field, model_validator
 
 from taktus.components.process.domain.model.errors import InvalidProcess
+from taktus.components.process.domain.model.event import (
+    KINDS,
+    Condition,
+    Event,
+    FilterValue,
+    holds,
+)
 from taktus.components.process.domain.service import schedule
 from taktus.components.process.domain.service.autonomy import actions_used
 from taktus.components.process.domain.service.validation import topological_order, validate_graph
@@ -48,6 +55,10 @@ class Process(Value):
     activated_by: str | None = Field(default=None, min_length=1)
     """The identity that registered the active version: whom its schedule triggers act for
     (ADR-0040). None for a version registered without one, whose triggers do not fire."""
+    activated_at: datetime | None = None
+    """When the active version was registered. An event received before it starts nothing
+    (ADR-0048 §6); None for a version registered before this was recorded, whose event
+    triggers start nothing until it is registered again."""
 
 
 class Edge(Value):
@@ -79,14 +90,20 @@ class Trigger(Value):
 
     A schedule trigger gives its runs their inputs: fixed values in `inputs`, and one run per
     item of a list in `each`. Together they give every input the process declares, or the
-    version is refused: a scheduled run has nobody to ask (ADR-0035)."""
+    version is refused: a scheduled run has nobody to ask (ADR-0035).
+
+    An event trigger (`contracts/events/v1` §3) names a kind of the catalogue, a `filter` over
+    the event's context, a `condition` on the instance, and gives its run fixed values in
+    `inputs` and context fields of the event in `from_event`. What it names is checked against
+    the catalogue when the version is registered, with every finding at once (ADR-0048 §7)."""
 
     schedule: str | None = Field(default=None, min_length=1)
     event: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_.-]*$")
-    filter: str | None = Field(default=None, min_length=1)
+    filter: Mapping[str, FilterValue] | None = None
     condition: str | None = Field(default=None, min_length=1)
     inputs: Mapping[str, Any] | None = None
     each: Each | None = None
+    from_event: Mapping[str, str] | None = None
 
     @model_validator(mode="after")
     def _one_source(self) -> Trigger:
@@ -94,18 +111,70 @@ class Trigger(Value):
             raise ValueError("a trigger names either a schedule or an event")
         if self.schedule is not None:
             schedule.parse(self.schedule)  # an InvalidSchedule is a ValueError and says why
-        elif self.inputs is not None or self.each is not None:
-            raise ValueError("`inputs` and `each` belong to a schedule trigger")
+            if self.filter is not None or self.condition is not None:
+                raise ValueError("`filter` and `condition` belong to an event trigger")
+            if self.from_event is not None:
+                raise ValueError("`from_event` belongs to an event trigger")
+        elif self.each is not None:
+            raise ValueError("`each` belongs to a schedule trigger")
         if self.each is not None and self.each.input in (self.inputs or {}):
             raise ValueError(
                 f"the input {self.each.input!r} is given twice: in `inputs` and `each`"
             )
+        twice = sorted(set(self.inputs or {}) & set(self.from_event or {}))
+        if twice:
+            raise ValueError(
+                f"the input(s) {', '.join(twice)} given twice: in `inputs` and `from_event`"
+            )
+        if self.filter is not None:
+            if not self.filter:
+                raise ValueError("an empty `filter` filters nothing; leave it out")
+            empty = sorted(k for k, v in self.filter.items() if isinstance(v, tuple) and not v)
+            if empty:
+                raise ValueError(f"the filter names no value for {', '.join(empty)}")
         return self
+
+    def findings(self) -> list[str]:
+        """What the events contract refuses in this event trigger: a kind outside the
+        catalogue, a filter field its kind does not carry, a condition outside the list, an
+        input taken from a field its kind does not require. Empty for a schedule trigger."""
+        if self.event is None:
+            return []
+        kind = Event.of(self.event)
+        if kind is None:
+            return [
+                f"the event trigger names {self.event!r}, which is not a kind of the events "
+                "contract's catalogue (contracts/events/v1 §2)"
+            ]
+        fields = KINDS[kind]
+        found: list[str] = []
+        unknown = sorted(set(self.filter or {}) - fields.known)
+        if unknown:
+            found.append(
+                f"the event trigger {self.event!r} filters on {', '.join(unknown)}, which an "
+                "event of that kind does not carry"
+            )
+        if self.condition is not None and self.condition not in {c.value for c in Condition}:
+            found.append(
+                f"the event trigger {self.event!r} names the condition {self.condition!r}, "
+                "which is not one of the events contract's (contracts/events/v1 §4)"
+            )
+        loose = sorted(
+            f"{name} <- {field}"
+            for name, field in (self.from_event or {}).items()
+            if field not in fields.required
+        )
+        if loose:
+            found.append(
+                f"the event trigger {self.event!r} takes {', '.join(loose)}, a field an event "
+                "of that kind does not always carry; a run would start without the input"
+            )
+        return found
 
     @property
     def given(self) -> frozenset[str]:
         """The names of the inputs a run started by this trigger is given."""
-        names = set(self.inputs or {})
+        names = set(self.inputs or {}) | set(self.from_event or {})
         if self.each is not None:
             names.add(self.each.input)
         return frozenset(names)
@@ -164,20 +233,24 @@ class ProcessVersion(Value):
             for action in sorted(set(self.autonomy.action_levels) - used)
         )
         for trigger in self.triggers:
-            if trigger.schedule is None:
-                continue
+            findings.extend(trigger.findings())
+            if trigger.schedule is not None:
+                named, where = f"the schedule trigger {trigger.schedule!r}", "`inputs` or `each`"
+                nobody = "a scheduled run has nobody to ask"
+            else:
+                named, where = f"the event trigger {trigger.event!r}", "`inputs` or `from_event`"
+                nobody = "a run started by an event has nobody to ask"
             missing = sorted(set(self.inputs) - trigger.given)
             unknown = sorted(trigger.given - set(self.inputs))
             if missing:
                 findings.append(
-                    f"the schedule trigger {trigger.schedule!r} gives no value for the input(s) "
-                    f"{', '.join(missing)}; a scheduled run has nobody to ask, so the trigger "
-                    "names them in `inputs` or `each`"
+                    f"{named} gives no value for the input(s) {', '.join(missing)}; {nobody}, "
+                    f"so the trigger names them in {where}"
                 )
             if unknown:
                 findings.append(
-                    f"the schedule trigger {trigger.schedule!r} gives {', '.join(unknown)}, "
-                    "which the process does not declare under `inputs`"
+                    f"{named} gives {', '.join(unknown)}, which the process does not declare "
+                    "under `inputs`"
                 )
         if findings:
             raise InvalidProcess(tuple(findings))
@@ -223,3 +296,36 @@ class ProcessVersion(Value):
     def ordered(self) -> tuple[Step, ...]:
         """The steps in execution order: every dependency first, ties in declared order."""
         return topological_order(self.steps)
+
+    def reacting_to(self, event: Event) -> Trigger | None:
+        """The first event trigger, in declared order, whose kind is the event's and whose
+        filter holds for it; None when none does. A process starts once per event, with the
+        inputs of this trigger (ADR-0048 §5). A rule over the event alone (§2)."""
+        for trigger in self.triggers:
+            if trigger.event == event.kind.value and holds(trigger.filter, event):
+                return trigger
+        return None
+
+    def given_by(self, trigger: Trigger, event: Event) -> dict[str, Any]:
+        """The inputs a run this event trigger starts is given: the fixed values, and the
+        event's context fields named in `from_event`. An event carries identifiers as strings;
+        where the input's declared example is an integer, a string of decimal digits is given
+        as that integer (`contracts/events/v1` §3)."""
+        inputs = dict(trigger.inputs or {})
+        for name, field in (trigger.from_event or {}).items():
+            value = event.context[field]
+            declared = self.inputs.get(name)
+            example = None if declared is None else declared.example
+            if isinstance(value, tuple):
+                inputs[name] = list(value)
+            elif (
+                isinstance(value, str)
+                and isinstance(example, int)
+                and not isinstance(example, bool)
+                and value.isascii()
+                and value.isdigit()
+            ):
+                inputs[name] = int(value)
+            else:
+                inputs[name] = value
+        return inputs

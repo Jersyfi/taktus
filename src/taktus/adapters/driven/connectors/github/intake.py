@@ -31,17 +31,26 @@ SIGNATURE_PREFIX = "sha256="
 EVENT_HEADER = "x-github-event"
 DELIVERY_HEADER = "x-github-delivery"
 
-# (service event, action) -> the event kind the declaration lists.
+# (service event, action) -> the event kind the declaration lists: the kinds of the events
+# contract's catalogue (contracts/events/v1 §2). A push carries no action.
 EVENTS: Mapping[tuple[str, str], str] = {
-    ("issues", "opened"): "issues.opened",
+    ("issues", "opened"): "issue.opened",
+    ("issues", "labeled"): "issue.labelled",
     ("issue_comment", "created"): "issue_comment.created",
     ("pull_request", "opened"): "pull_request.opened",
     ("workflow_run", "completed"): "pipeline_run.completed",
+    ("push", ""): "branch.pushed",
 }
+
+BRANCH_REF = "refs/heads/"
 
 
 class Malformed(Exception):
     """The body is not a delivery this connector can read."""
+
+
+class Unsupported(Exception):
+    """A delivery of a listed kind that is no event of it: a push of a tag, a deleted branch."""
 
 
 def refused(reason: str, detail: str) -> Json:
@@ -94,6 +103,8 @@ def normalise(headers: Mapping[str, str], body: str, received_at: str, secret: s
         intake = _intake(kind, delivery, payload, received_at)
     except Malformed as error:
         return refused("malformed", str(error))
+    except Unsupported as error:
+        return refused("unsupported_event", str(error))
     if intake is None:
         return refused("own_action", "the record carries this connector's own mark")
     return {"accepted": intake}
@@ -142,7 +153,7 @@ def _intake(kind: str, delivery: str, payload: Json, received_at: str) -> Json |
             "thread": context["comment"],
         }
         occurred = str(comment.get("created_at") or received_at)
-    elif kind == "issues.opened":
+    elif kind == "issue.opened":
         issue = _field(payload, "issue")
         text = _text(issue)
         if mark_of(str(issue.get("body") or "")) is not None:
@@ -151,6 +162,43 @@ def _intake(kind: str, delivery: str, payload: Json, received_at: str) -> Json |
         context["issue"] = number
         reply_to = {"channel": CHANNEL, "address": f"{repository}#{number}"}
         occurred = str(issue.get("created_at") or received_at)
+    elif kind == "issue.labelled":
+        # One event per label added; the label is the one this delivery added, not the
+        # issue's whole set. A label carries no mark: a label Taktus added comes from its
+        # app's account, an automation the identity component places nowhere unless linked.
+        issue = _field(payload, "issue")
+        text = _text(issue)
+        number = str(_field(issue, "number"))
+        label = str(_field(payload, "label", "name"))
+        context.update({"issue": number, "label": label})
+        reply_to = {"channel": CHANNEL, "address": f"{repository}#{number}"}
+        occurred = str(issue.get("updated_at") or received_at)
+    elif kind == "branch.pushed":
+        ref = str(_field(payload, "ref"))
+        if not ref.startswith(BRANCH_REF):
+            raise Unsupported(f"a push to {ref!r} is no push to a branch")
+        if payload.get("deleted"):
+            raise Unsupported("a deleted branch is no push of commits")
+        commits = payload.get("commits") or []
+        paths: set[str] = set()
+        for commit in commits if isinstance(commits, list) else []:
+            for change in ("added", "removed", "modified"):
+                listed = commit.get(change) if isinstance(commit, dict) else None
+                paths.update(str(p) for p in listed or [] if isinstance(p, str))
+        head = payload.get("head_commit") or {}
+        text = str(head.get("message") or "") if isinstance(head, dict) else ""
+        context.update(
+            {
+                "branch": ref[len(BRANCH_REF) :],
+                "head": str(_field(payload, "after")),
+                "paths": sorted(paths),
+            }
+        )
+        reply_to = {"channel": CHANNEL, "address": repository}
+        occurred = (
+            str(head.get("timestamp") or received_at) if isinstance(head, dict) else received_at
+        )
+        text = text or f"pushed to {context['branch']}"
     elif kind == "pull_request.opened":
         pull = _field(payload, "pull_request")
         text = _text(pull)

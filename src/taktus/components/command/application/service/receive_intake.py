@@ -1,5 +1,10 @@
 """Use case: a delivery on a channel becomes an intake event, or is refused.
 
+**What is kept is announced.** With an outbox, keeping an event writes the entry
+`intake.accepted` in the same transaction, which the automation role reacts to (ADR-0048 §3).
+A delivery whose identifier the tenant already holds is a redelivery: nothing is written, and
+the event kept first is answered (§4).
+
 The connector that serves the channel decides — signature first, then normalisation
 (`contracts/connector/v1` §7) — and this handler keeps what it accepted as an `IntakeEvent`,
 awaiting completion into a command. Where it is kept is the identity port's answer: the
@@ -43,6 +48,7 @@ from taktus.ports.connector import (
     SenderKind,
 )
 from taktus.ports.identity import IdentityResolver, Resolution
+from taktus.ports.outbox import INTAKE_ACCEPTED, Outbox
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.telemetry import Telemetry
 from taktus.shared.v1 import Capability
@@ -91,6 +97,7 @@ class ReceiveIntakeHandler:
         telemetry: Telemetry | None = None,
         replies: ChannelReplies | None = None,
         answers: ChannelAnswers | None = None,
+        outbox: Outbox | None = None,
     ) -> None:
         self._connectors = connectors
         self._events = events
@@ -99,6 +106,7 @@ class ReceiveIntakeHandler:
         self._telemetry = telemetry
         self._replies = replies
         self._answers = answers
+        self._outbox = outbox
 
     @property
     def channels(self) -> tuple[Capability, ...]:
@@ -154,7 +162,14 @@ class ReceiveIntakeHandler:
             received_at=command.delivery.received_at,
         )
         async with self._work.transaction(tenant):
+            kept = await self._events.get(tenant, event.id)
+            if kept is not None:
+                # A redelivery changes nothing: an event already completed stays completed,
+                # and nothing reacts to it twice (ADR-0048 §4).
+                return IntakeOutcome(accepted=kept)
             await self._events.put(tenant, event)
+            if self._outbox is not None:
+                await self._outbox.write(tenant, INTAKE_ACCEPTED, {"event_id": event.id})
         return IntakeOutcome(accepted=event)
 
     async def _unknown(self, command: ReceiveIntake, accepted: Intake) -> IntakeOutcome:

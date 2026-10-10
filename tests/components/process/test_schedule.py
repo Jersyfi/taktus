@@ -127,9 +127,15 @@ def test_each_gives_its_input_one_item_at_a_time() -> None:
     assert trigger.given == {"target"}
 
 
-def test_inputs_and_each_belong_to_a_schedule() -> None:
-    with pytest.raises(ValidationError, match="belong to a schedule"):
-        Trigger(event="issue.opened", inputs={"a": 1})
+def test_each_belongs_to_a_schedule_and_from_event_to_an_event() -> None:
+    each = {"input": "a", "operation": "repository.issues.list", "select": "output.issues"}
+    with pytest.raises(ValidationError, match="belongs to a schedule"):
+        Trigger.model_validate({"event": "issue.opened", "each": each})
+    with pytest.raises(ValidationError, match="belongs to an event"):
+        Trigger(schedule="daily", from_event={"a": "issue"})
+    with pytest.raises(ValidationError, match="belong to an event"):
+        Trigger.model_validate({"schedule": "daily", "filter": {"label": "ready"}})
+    assert Trigger(event="issue.opened", inputs={"a": 1}).inputs == {"a": 1}
 
 
 def test_a_trigger_keeps_its_key_across_versions_and_changes_it_with_its_content() -> None:

@@ -177,7 +177,7 @@ def test_trigger_names_a_schedule_or_an_event_not_both() -> None:
         Trigger(schedule="daily", event="issue.opened")
     with pytest.raises(ValueError):
         Trigger()
-    assert Trigger(event="issue.opened", filter="label:ready").event == "issue.opened"
+    assert Trigger(event="issue.labelled", filter={"label": "ready"}).event == "issue.labelled"
 
 
 STEP_RULE_CASES = [

@@ -710,21 +710,21 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 # --- the takeover of every integration step (issue #90) ---------------------------------------
 
 BUNDLES = {
-    "P-01-roadmap-control.yaml": "p01-roadmap-control@2",
-    "P-02-refinement.yaml": "p02-refinement@3",
-    "P-03-implementation.yaml": "p03-implementation@3",
+    "P-01-roadmap-control.yaml": "p01-roadmap-control@3",
+    "P-02-refinement.yaml": "p02-refinement@4",
+    "P-03-implementation.yaml": "p03-implementation@4",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
     REPOSITORY_CONNECTOR: {
-        "p01-roadmap-control@2": {
+        "p01-roadmap-control@3": {
             "read-roadmap",
             "read-issues",
             "read-open-records",
             "write-report",
         },
-        "p02-refinement@3": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@3": {
+        "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
+        "p03-implementation@4": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -737,8 +737,8 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "label",
         },
     },
-    "worker.endpoint": {"p03-implementation@3": {"implement"}},
-    "model.endpoint": {"p02-refinement@3": {"refine"}},
+    "worker.endpoint": {"p03-implementation@4": {"implement"}},
+    "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""
 
