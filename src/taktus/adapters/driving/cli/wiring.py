@@ -22,6 +22,7 @@ from taktus.components.governance.application.service import (
     ReportCapacityHandler,
 )
 from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
@@ -97,6 +98,13 @@ class CapacityServices:
     """The memory limit of the unit a worker step starts on this platform, if any."""
 
 
+@dataclass(frozen=True)
+class GuidesServices:
+    """What `taktusctl guides publish` needs: the guides put into a knowledge system."""
+
+    publish: PublishGuidesHandler
+
+
 class Wiring(Protocol):
     def services(
         self, *, state_dir: Path, worker_endpoint: str
@@ -109,4 +117,10 @@ class Wiring(Protocol):
         """Open the capacity report against the state where it is configured — no worker, no
         connector: looking at the platform starts nothing. Raises `NotOperable` as
         `services` does."""
+        ...
+
+    def guides(self, *, directory: Path) -> AbstractAsyncContextManager[GuidesServices]:
+        """Open the publishing of the guides into a directory of files, the knowledge system
+        of an organisation that has none (UC-13.6). No state, no database: the directory is
+        the record."""
         ...

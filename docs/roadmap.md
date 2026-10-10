@@ -178,7 +178,7 @@ as it happens**: live representations drawn from the records, from the overview 
 the origin of a result, reproducible and variable steps drawn apart (UC-6.10, DEC-0055) (#103,
 #104, #105, #183, #190, #191, #192, #193) · process bundle format · pair editing with rollback · sessions with project
 knowledge · documentation beyond the repository: administration and end-user guides generated
-from it and kept consistent with it, never a second source of truth (#88)
+from it and kept consistent with it, never a second source of truth (#88, #197, #198)
 
 **Complete when** a process can be created, viewed, changed and rolled back entirely from the web app
 and chat, and you can see your own share of the waiting time.

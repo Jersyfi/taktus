@@ -10,6 +10,7 @@ application layers inside. No component imports another; what they share is the 
 | `ledger` | the content-free hash chain and its verification |
 | `command` | command → commissioned plan |
 | `governance` | whether a result has left the system (ADR-0022); the capacity report — what the platform has left and the date a person must act by (`docs/architecture/platform.md`) |
+| `knowledge` | the guides beyond the repository (UC-13.6, ADR-0065): the manifest, the rendering by rule, the seven states a page in a knowledge system can be in, and the publishing through `knowledge.pages`, which never overwrites a hand edit |
 | every other | a package with its docstring; filled from the version that needs it (`docs/roadmap.md`) |
 | `reporting` | the product finding: one finding per lack of the product, read from the run's blocked-time accounts by a rule, shown to the operator and sent where enabled (UC-6.12, ADR-0046); the owner-facing channel (ADR-0045): a tenant's channel and phrasebook, a report to the owner and its three renderings, the answer in the channel read, reflected and confirmed; a broken interface: one per interface and cause, read by a rule from the run's failed calls and reported to the owner through that channel (ADR-0047); the visual vocabulary of every live representation — how a method kind, an exactness class and a state are drawn — and the check that holds a representation to it (UC-6.10, ADR-0059) |
 
