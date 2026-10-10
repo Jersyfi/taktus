@@ -77,3 +77,17 @@ the install (#66) names the control plane's in the chart.
 `gh variable list` lists `IMAGE_REGISTRY` (and `IMAGE_PLATFORMS` where set). After the next
 release tag, the run of the workflow `images` shows three build jobs, each green, and the
 registry lists `taktus`, `taktus-worker-script` and `taktus-worker-coding` with that version.
+
+## Outcome
+
+**Provided:** 2026-10-10
+**Confirmed by:** section 7, run by the session on 2026-10-10. The repository variable is set;
+`IMAGE_PLATFORMS` is not, because the node is `x86_64`. The release tag `v0.2.0-rc.1`, which the
+owner approved, ran the workflow `images`: three build jobs, each green. All three images are
+public: their manifests at that version are served to an anonymous pull.
+**How it was provided:** by the session, on the owner's answer: the repository service's own
+container registry under the owner's account, public images, pushed with the workflow's own
+token, so no credential was created. The registry's name is in the repository's settings and
+the owner's private note, not here.
+**Recorded in:** this pull request
+
