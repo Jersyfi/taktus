@@ -94,6 +94,54 @@ export interface Change {
 	state: { run?: string; step?: string; decision_request?: string };
 }
 
+/** The autonomy statement of a process version (ADR-0026). */
+export interface AutonomyStatement {
+	level: number;
+	reason: string;
+	toward_next?: string;
+	actions?: Record<string, { level: number; reason: string; toward_next?: string }>;
+	history?: number;
+}
+
+export interface ProcessStepElement {
+	id: string;
+	method: string;
+	exactness?: string;
+	reason: string;
+	rejected?: string[];
+	fallback?: string;
+	depends_on?: string[];
+	/** The runs this step is running in right now; absent at rest. */
+	running_in?: string[];
+	drawn: Drawn;
+	text: string;
+}
+
+export interface RunAtVersionElement {
+	id: string;
+	state: string;
+	rehearsal: boolean;
+	running?: string[];
+	created_at: string;
+	drawn: Drawn;
+	text: string;
+}
+
+/** `GET /levels/processes/{id}` (ADR-0064). */
+export interface ProcessLevel {
+	process: {
+		id: string;
+		name: string;
+		version: string;
+		versions: { version: string; active?: boolean }[];
+		autonomy: AutonomyStatement;
+		autonomy_text: string;
+		text: string;
+	};
+	steps: ProcessStepElement[];
+	runs?: RunAtVersionElement[];
+}
+
 /** An RFC 9457 problem, as every refusal of the surface is answered. */
 export interface Problem {
 	status: number;

@@ -2,7 +2,7 @@
 
 UC-6.10 names four levels, from the whole to the detail: the overview, the process, the run and
 the origin of a result. A **level** is what one representation shows at one of them. This module
-holds the run level; the others follow with their tasks (#190, #191, #192).
+holds the run level and the process level; the others follow with their tasks (#191, #192).
 
 **Facts** are what the records say, read from the component that owns them: a run's state, each
 step's method kind, exactness class and state, what a waiting step waits on, what each step and
@@ -25,7 +25,7 @@ from datetime import datetime
 
 from pydantic import Field
 
-from taktus.shared.v1 import ConsumptionQuantities, ExactnessClass, Method, Value
+from taktus.shared.v1 import Autonomy, ConsumptionQuantities, ExactnessClass, Method, Value
 
 
 class Wait(Value):
@@ -83,3 +83,54 @@ class Figure(Value):
     """The quantity's name in the record: `tokens_in`, `currency.eur`,
     `tokens_by_model.<model>.output`."""
     value: float | int
+
+
+class VersionRef(Value):
+    """One registered version of a process, and whether it is the active one."""
+
+    version: str = Field(min_length=1)
+    active: bool = False
+
+
+class ProcessStepFacts(Value):
+    """One step of a process version, as the process component records it: how it works and
+    why that way (ADR-0004)."""
+
+    id: str = Field(min_length=1)
+    method: Method
+    exactness: ExactnessClass | None
+    reason: str = Field(min_length=1)
+    rejected: tuple[Method, ...] = ()
+    """The method kinds considered and not chosen."""
+    fallback: Method | None = None
+    """Where the step goes when its method is not good enough."""
+    depends_on: tuple[str, ...] = ()
+
+
+class RunAtVersion(Value):
+    """A run of the version: its state, and the steps running in it right now."""
+
+    id: str = Field(min_length=1)
+    tenant: str = Field(min_length=1)
+    state: str = Field(min_length=1)
+    rehearsal: bool = False
+    running: tuple[str, ...] = ()
+    created_at: datetime
+
+
+class ProcessFacts(Value):
+    """One version of a process, its autonomy statement, its other versions, and its runs."""
+
+    id: str = Field(min_length=1)
+    tenant: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    autonomy: Autonomy
+    """The level the process runs at, and why (ADR-0026)."""
+    steps: tuple[ProcessStepFacts, ...] = Field(min_length=1)
+    versions: tuple[VersionRef, ...] = Field(min_length=1)
+    runs: tuple[RunAtVersion, ...] = ()
+
+    @property
+    def ref(self) -> str:
+        return f"{self.id}@{self.version}"

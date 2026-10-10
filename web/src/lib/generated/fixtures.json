@@ -662,5 +662,425 @@
         "text": "step close: rule, reproducible; exact; planned."
       }
     ]
+  },
+  "process_level": {
+    "process": {
+      "id": "example",
+      "name": "Example",
+      "version": "1",
+      "versions": [
+        {
+          "version": "1",
+          "active": true
+        }
+      ],
+      "autonomy": {
+        "level": 2,
+        "reason": "a person confirms each step",
+        "toward_next": "twenty runs without a result defect"
+      },
+      "autonomy_text": "Runs at autonomy level 2: a person confirms each step. Toward level 3: twenty runs without a result defect.",
+      "text": "Process Example (example@1), the active version, with 10 steps and 1 run. Runs at autonomy level 2: a person confirms each step. Toward level 3: twenty runs without a result defect."
+    },
+    "steps": [
+      {
+        "id": "load",
+        "method": "rule",
+        "exactness": "exact",
+        "reason": "the rule suits load",
+        "rejected": [],
+        "depends_on": [],
+        "running_in": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step load: rule, reproducible; exact; planned."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step load: rule, reproducible; exact; planned."
+          }
+        },
+        "text": "step load: rule, reproducible; exact; planned. Why this method: the rule suits load. At rest."
+      },
+      {
+        "id": "score",
+        "method": "statistics",
+        "exactness": "sourced",
+        "reason": "the statistics suits score",
+        "rejected": [],
+        "depends_on": [
+          "load"
+        ],
+        "running_in": [
+          "run_example"
+        ],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "triangle",
+            "edge": "straight",
+            "exactness_mark": "source_notch",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "pulse",
+            "still_mark": "none",
+            "text": "step score: statistics, reproducible; sourced; running."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "triangle",
+            "edge": "straight",
+            "exactness_mark": "source_notch",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "ring_solid",
+            "text": "step score: statistics, reproducible; sourced; running."
+          }
+        },
+        "text": "step score: statistics, reproducible; sourced; running. Why this method: the statistics suits score. After load. Running in run_example."
+      },
+      {
+        "id": "classify",
+        "method": "ml",
+        "exactness": "tolerant",
+        "reason": "the ml suits classify",
+        "rejected": [],
+        "depends_on": [
+          "load"
+        ],
+        "running_in": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "pentagon",
+            "edge": "straight",
+            "exactness_mark": "tilde",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step classify: trained model, reproducible; tolerant; planned."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "pentagon",
+            "edge": "straight",
+            "exactness_mark": "tilde",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step classify: trained model, reproducible; tolerant; planned."
+          }
+        },
+        "text": "step classify: trained model, reproducible; tolerant; planned. Why this method: the ml suits classify. After load. At rest."
+      },
+      {
+        "id": "embed",
+        "method": "neural",
+        "exactness": "free",
+        "reason": "the neural suits embed",
+        "rejected": [],
+        "depends_on": [
+          "load"
+        ],
+        "running_in": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "hexagon",
+            "edge": "straight",
+            "exactness_mark": "none",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step embed: neural network, reproducible; free; planned."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "hexagon",
+            "edge": "straight",
+            "exactness_mark": "none",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step embed: neural network, reproducible; free; planned."
+          }
+        },
+        "text": "step embed: neural network, reproducible; free; planned. Why this method: the neural suits embed. After load. At rest."
+      },
+      {
+        "id": "draft",
+        "method": "llm",
+        "exactness": "free",
+        "reason": "the llm suits draft",
+        "rejected": [],
+        "depends_on": [
+          "score"
+        ],
+        "running_in": [
+          "run_example"
+        ],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "ellipse",
+            "edge": "wavering",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "shimmer",
+            "still_mark": "none",
+            "text": "step draft: language model, variable; free; running."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "ellipse",
+            "edge": "wavering",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "ring_dotted",
+            "text": "step draft: language model, variable; free; running."
+          }
+        },
+        "text": "step draft: language model, variable; free; running. Why this method: the llm suits draft. After score. Running in run_example."
+      },
+      {
+        "id": "build",
+        "method": "worker",
+        "exactness": "tolerant",
+        "reason": "the worker suits build",
+        "rejected": [],
+        "depends_on": [
+          "draft"
+        ],
+        "running_in": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "rounded_square",
+            "edge": "wavering",
+            "exactness_mark": "tilde",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step build: worker, variable; tolerant; planned."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "rounded_square",
+            "edge": "wavering",
+            "exactness_mark": "tilde",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step build: worker, variable; tolerant; planned."
+          }
+        },
+        "text": "step build: worker, variable; tolerant; planned. Why this method: the worker suits build. After draft. At rest."
+      },
+      {
+        "id": "review",
+        "method": "human",
+        "reason": "the human suits review",
+        "rejected": [],
+        "depends_on": [
+          "draft"
+        ],
+        "running_in": [
+          "run_example"
+        ],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "circle",
+            "edge": "round",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "swell",
+            "still_mark": "none",
+            "text": "step review: person, a person; no result of its own; running."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "circle",
+            "edge": "round",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "ring_open",
+            "text": "step review: person, a person; no result of its own; running."
+          }
+        },
+        "text": "step review: person, a person; no result of its own; running. Why this method: the human suits review. After draft. Running in run_example."
+      },
+      {
+        "id": "pipeline",
+        "method": "wait",
+        "reason": "the wait suits pipeline",
+        "rejected": [],
+        "depends_on": [
+          "review"
+        ],
+        "running_in": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "diamond",
+            "edge": "broken",
+            "exactness_mark": "none",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step pipeline: wait, waiting; no result of its own; planned."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "diamond",
+            "edge": "broken",
+            "exactness_mark": "none",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step pipeline: wait, waiting; no result of its own; planned."
+          }
+        },
+        "text": "step pipeline: wait, waiting; no result of its own; planned. Why this method: the wait suits pipeline. After review. At rest."
+      },
+      {
+        "id": "check",
+        "method": "rule",
+        "exactness": "exact",
+        "reason": "the rule suits check",
+        "rejected": [],
+        "depends_on": [
+          "pipeline"
+        ],
+        "running_in": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step check: rule, reproducible; exact; planned."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step check: rule, reproducible; exact; planned."
+          }
+        },
+        "text": "step check: rule, reproducible; exact; planned. Why this method: the rule suits check. After pipeline. At rest."
+      },
+      {
+        "id": "close",
+        "method": "rule",
+        "exactness": "exact",
+        "reason": "the rule suits close",
+        "rejected": [],
+        "depends_on": [
+          "check"
+        ],
+        "running_in": [],
+        "drawn": {
+          "moving": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step close: rule, reproducible; exact; planned."
+          },
+          "still": {
+            "subject": "step",
+            "outline": "square",
+            "edge": "straight",
+            "exactness_mark": "double_outline",
+            "fill": "empty",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "step close: rule, reproducible; exact; planned."
+          }
+        },
+        "text": "step close: rule, reproducible; exact; planned. Why this method: the rule suits close. After check. At rest."
+      }
+    ],
+    "runs": [
+      {
+        "id": "run_example",
+        "state": "running",
+        "rehearsal": false,
+        "running": [
+          "score",
+          "draft",
+          "review"
+        ],
+        "created_at": "2026-10-10T09:00:00Z",
+        "drawn": {
+          "moving": {
+            "subject": "run",
+            "outline": "frame",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "run run_example: running."
+          },
+          "still": {
+            "subject": "run",
+            "outline": "frame",
+            "exactness_mark": "none",
+            "fill": "partial",
+            "state_mark": "none",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "run run_example: running."
+          }
+        },
+        "text": "run run_example: running. Running score, draft, review."
+      }
+    ]
   }
 }

@@ -63,6 +63,13 @@ class RunRef(Value):
         return self.process_version.rsplit("@", 1)[0]
 
 
+class ProcessRef(Value):
+    """What the predicate needs of a process: its identity and where it belongs."""
+
+    id: str = Field(min_length=1)
+    tenant: str = Field(min_length=1)
+
+
 class StateAfter(Value):
     """Which state the entry led to, as the component that owns the state machine publishes
     it: the run's, the step's, the decision request's. Each only where the entry changed it."""

@@ -1,9 +1,15 @@
-"""The run level of a live representation, drawn from the run's facts (UC-6.10 §1, ADR-0063).
+"""The run level and the process level of a live representation, drawn from their facts (UC-6.10
+§1, ADR-0063, ADR-0064).
 
 `run_level` turns the facts of one run into what a representation draws: the run and each of
 its steps, every fact again, each with its glyph with motion and without, and its text
 equivalent (ADR-0059). The figures are the run component's, flattened into named numbers and
 never computed again here (ADR-0029).
+
+`process_level` turns one version of a process into its graph: each step with how it works — its
+method kind, exactness class, why that method, what was not chosen, where it falls back — and
+whether a run of the version runs it right now; the autonomy statement in words (ADR-0026); and
+the runs of the version the reader may see.
 
 Pure: facts in, elements out.
 """
@@ -14,9 +20,18 @@ from datetime import datetime
 
 from pydantic import Field
 
-from taktus.components.reporting.domain.model.levels import Figure, RunFacts, StepFacts, Wait
+from taktus.components.reporting.domain.model.levels import (
+    Figure,
+    ProcessFacts,
+    ProcessStepFacts,
+    RunAtVersion,
+    RunFacts,
+    StepFacts,
+    VersionRef,
+    Wait,
+)
 from taktus.components.reporting.domain.service.drawing import Glyph, Run, Step, glyph
-from taktus.shared.v1 import ConsumptionQuantities, ExactnessClass, Method, Value
+from taktus.shared.v1 import Autonomy, ConsumptionQuantities, ExactnessClass, Method, Value
 
 ACCOUNTS: dict[str, str] = {
     "limit.provider": "the provider's rate limit",
@@ -185,3 +200,132 @@ def drawn_glyphs(level: RunLevel, *, motion: bool) -> list[tuple[Step | Run, Gly
         for s in level.steps
     )
     return drawn
+
+
+class ProcessStepElement(Value):
+    id: str
+    method: Method
+    exactness: ExactnessClass | None
+    reason: str
+    rejected: tuple[Method, ...] = ()
+    fallback: Method | None = None
+    depends_on: tuple[str, ...] = ()
+    running_in: tuple[str, ...] = ()
+    """The runs this step is running in right now; empty at rest."""
+    drawn: Drawn
+    text: str = Field(min_length=1)
+
+
+class RunAtVersionElement(Value):
+    id: str
+    state: str
+    rehearsal: bool
+    running: tuple[str, ...] = ()
+    created_at: datetime
+    drawn: Drawn
+    text: str = Field(min_length=1)
+
+
+class ProcessElement(Value):
+    id: str
+    name: str
+    version: str
+    versions: tuple[VersionRef, ...]
+    autonomy: Autonomy
+    """The autonomy statement, as the version states it (ADR-0026)."""
+    autonomy_text: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+
+
+class ProcessLevel(Value):
+    """The process level of UC-6.10: the steps of a process version as a graph, each showing how
+    it works, with the autonomy statement and the runs of the version."""
+
+    process: ProcessElement
+    steps: tuple[ProcessStepElement, ...]
+    runs: tuple[RunAtVersionElement, ...]
+
+
+AT_REST = "planned"
+"""The state a step of a process version is drawn in while no run of the version runs it. The
+graph is the version's plan; the vocabulary's `planned` is the still form of a step that is part
+of it and is not doing work (ADR-0064)."""
+
+
+def _counted(n: int, word: str) -> str:
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+def autonomy_text(autonomy: Autonomy) -> str:
+    """The autonomy statement in words: the level, why, and what is missing to go higher."""
+    parts = [f"Runs at autonomy level {autonomy.level}: {autonomy.reason}."]
+    if autonomy.toward_next is not None:
+        parts.append(f"Toward level {autonomy.level + 1}: {autonomy.toward_next}.")
+    for action, statement in sorted((autonomy.actions or {}).items()):
+        parts.append(f"The action {action} runs at level {statement.level}: {statement.reason}.")
+    return " ".join(parts)
+
+
+def _process_step(step: ProcessStepFacts, runs: tuple[RunAtVersion, ...]) -> ProcessStepElement:
+    running_in = tuple(r.id for r in runs if step.id in r.running)
+    state = "running" if running_in else AT_REST
+    drawn = _drawn(Step(name=step.id, method=step.method, exactness=step.exactness, state=state))
+    text = [drawn.moving.text, f"Why this method: {step.reason}."]
+    if step.rejected:
+        text.append(f"Considered and not chosen: {', '.join(str(m) for m in step.rejected)}.")
+    if step.fallback is not None:
+        text.append(f"Falls back to {step.fallback}.")
+    if step.depends_on:
+        text.append(f"After {', '.join(step.depends_on)}.")
+    text.append(f"Running in {', '.join(running_in)}." if running_in else "At rest.")
+    return ProcessStepElement(
+        id=step.id,
+        method=step.method,
+        exactness=step.exactness,
+        reason=step.reason,
+        rejected=step.rejected,
+        fallback=step.fallback,
+        depends_on=step.depends_on,
+        running_in=running_in,
+        drawn=drawn,
+        text=" ".join(text),
+    )
+
+
+def _run_at_version(run: RunAtVersion) -> RunAtVersionElement:
+    drawn = _drawn(Run(name=run.id, state=run.state))
+    text = drawn.moving.text
+    if run.running:
+        text += f" Running {', '.join(run.running)}."
+    return RunAtVersionElement(
+        id=run.id,
+        state=run.state,
+        rehearsal=run.rehearsal,
+        running=run.running,
+        created_at=run.created_at,
+        drawn=drawn,
+        text=text,
+    )
+
+
+def process_level(facts: ProcessFacts) -> ProcessLevel:
+    """The process level of one version, from its facts and the runs handed with them. The runs
+    are the ones the reader may see; which those are is the query's (`may_see`)."""
+    runs = tuple(sorted(facts.runs, key=lambda r: r.created_at, reverse=True))
+    statement = autonomy_text(facts.autonomy)
+    active = next((v.version for v in facts.versions if v.active), None)
+    standing = "the active version" if active == facts.version else "not the active version"
+    return ProcessLevel(
+        process=ProcessElement(
+            id=facts.id,
+            name=facts.name,
+            version=facts.version,
+            versions=facts.versions,
+            autonomy=facts.autonomy,
+            autonomy_text=statement,
+            text=f"Process {facts.name} ({facts.ref}), {standing}, with "
+            f"{_counted(len(facts.steps), 'step')} and {_counted(len(runs), 'run')}. {statement}",
+        ),
+        steps=tuple(_process_step(step, runs) for step in facts.steps),
+        runs=tuple(_run_at_version(run) for run in runs),
+    )

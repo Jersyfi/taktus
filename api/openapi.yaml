@@ -770,6 +770,63 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /levels/processes/{process_id}:
+    get:
+      tags:
+      - levels
+      summary: 'The process level: a process version as a graph'
+      description: 'The steps of one version of a process — the active one, or the one `version` names
+        — each with how it works: method kind, exactness class, why that method, what was not chosen,
+        where it falls back, which steps it follows, and the runs it is running in right now. With the
+        process''s autonomy statement — the level it runs at and why (ADR-0026) — its registered versions,
+        and the runs of the version you may see. Every element carries its glyph with motion and without,
+        and its text equivalent. Follow `GET /changes?process=…` and read this again when a change arrives
+        (ADR-0064).'
+      operationId: process_level_levels_processes__process_id__get
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: version
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          description: The version; the active one when absent.
+          title: Version
+        description: The version; the active one when absent.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The process level.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No such process or version, or one you may not see: answered alike.'
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /vocabulary:
     get:
       tags:

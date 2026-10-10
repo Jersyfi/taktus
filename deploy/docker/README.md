@@ -34,7 +34,7 @@ which gives it volumes of its own. Nothing here removes a volume. From then on:
 | `http://127.0.0.1:8080/ready` | readiness: the database answers and is at the schema this build needs; `503` with the reason otherwise |
 | `http://127.0.0.1:8080/runs`, `/runs/{id}`, `/runs/{id}/ledger` | the read API: a reader, with their account key in `Authorization: Bearer`, reads the runs of their identity's tenant they may see and each run's ledger entries; `401` without a key |
 | `http://127.0.0.1:8080/app/` | the web app: a reader gives their account key once per browser tab and sees the runs they may see, each run live at its level (ADR-0063) |
-| `http://127.0.0.1:8080/levels/runs/{id}` | the run level the web app draws, with an account key; `/vocabulary` is the visual vocabulary (ADR-0059) |
+| `http://127.0.0.1:8080/levels/runs/{id}` | the run level the web app draws, with an account key; `/levels/processes/{id}` the process level (ADR-0064); `/vocabulary` is the visual vocabulary (ADR-0059) |
 | `http://127.0.0.1:8080/intake/{channel}` | webhook intake for a channel a connector serves (`TAKTUS_CONNECTORS`); the sender is placed by the link of their account, and an unknown sender is answered in the channel and nothing is kept (ADR-0040) |
 | `http://127.0.0.1:8080/intake-events/{id}/complete` | a caller, with their account key, completes an accepted delivery of their own tenant into a command that acts as the identity the sender's account is linked to; `401` without a key |
 | `http://127.0.0.1:8080/identity/link-codes` | a person, with their account key, creates the code that links an account on a channel to their identity |
