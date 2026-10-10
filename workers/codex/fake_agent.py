@@ -231,6 +231,9 @@ def main(argv: list[str] | None = None) -> int:
             emit({"type": "error", "message": "You've hit your usage limit. Try again later."})
             time.sleep(5)  # the real agent would wait; the worker ends it
             return 1
+        # The next response takes the model a round trip. Without it, the response after an
+        # item could be in the session file before the worker has read the item.
+        time.sleep(pace)
     turn = added(turn, session.respond(99))
     emit(
         {

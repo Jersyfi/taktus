@@ -52,7 +52,10 @@ the worker reads that total and reports the difference to the total it read befo
 of the response that started the step. The closing message's tokens go to the `report` step,
 and so does anything the session file did not show: the `report` step settles the difference
 to the agent's own total for the turn. The sum over the steps is therefore never less than what
-the agent says it used.
+the agent says it used. The split between steps rests on timing: the worker reads the total when
+an item appears, and the agent's next response takes a model's round trip. A response written
+before the worker read the item would be counted with that item's step, and the total would
+still be right.
 
 Every report carries `tokens_in` and `tokens_out`, and `tokens_by_model` by price kind —
 uncached input, cache read, cache write, output — for the model the session file names (or
