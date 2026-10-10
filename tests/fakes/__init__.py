@@ -5,6 +5,7 @@ implementation of its port."""
 from fakes.clock import FakeClock, FakeIdentifiers
 from fakes.connector import FakeConnector, failure
 from fakes.held import HeldObjects
+from fakes.knowledge_system import FakeKnowledgeSystem
 from fakes.maturity import VERIFIED, FakeMaturities
 from fakes.model import FakeModel
 from fakes.platform import FakePlatform, FakeStateSize
@@ -15,6 +16,7 @@ __all__ = [
     "FakeClock",
     "FakeConnector",
     "FakeIdentifiers",
+    "FakeKnowledgeSystem",
     "FakeMaturities",
     "FakeModel",
     "FakePlatform",

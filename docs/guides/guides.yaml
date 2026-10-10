@@ -1,0 +1,91 @@
+# The guides beyond the repository (UC-13.6, ADR-0065).
+#
+# Two guides, each a list of pages, each page a list of parts. A part is a file of this
+# repository, or one section of it named by its heading exactly as the file writes it; `heading`
+# gives the section another heading in the page, where its own would mislead there. A page
+# says what its parts say and nothing more: the repository is the source, the guides are
+# rendered from it (`taktusctl guides check`, `taktusctl guides publish`).
+#
+# `place` is where a guide goes in the organisation's knowledge system, one name per level,
+# unless the organisation configures another (`--place GUIDE=LEVEL/LEVEL`). Every guide also
+# gets a page `Contents`, which lists its pages and says which of them is out of date.
+#
+# The files under docs/guides/ hold only what no other document of the repository says: the
+# words a reader of a guide needs between the parts. Everything else is taken from where it is
+# kept, so that it is written once.
+
+guides:
+  - id: administration
+    title: Administering Taktus
+    reader: the people who install, configure, operate and restore Taktus
+    place: [Taktus, Administration]
+    pages:
+      - id: installing
+        title: Installing
+        parts:
+          - file: docs/guides/administration/installing.md
+          - file: README.md
+            section: Operating it
+            heading: What an instance is made of
+          - file: deploy/docker/README.md
+            section: Operating it
+            heading: On one machine
+          - file: deploy/k8s/README.md
+            section: 1. The shape
+            heading: On a cluster
+      - id: configuring
+        title: Configuring
+        parts:
+          - file: docs/guides/administration/configuring.md
+          - file: CREDENTIALS.md
+            section: The parameters
+          - file: CREDENTIALS.md
+            section: When a credential expires anyway
+      - id: operating
+        title: Operating
+        parts:
+          - file: docs/guides/administration/operating.md
+          - file: deploy/docker/README.md
+            section: Verifying the promise
+            heading: Checking that a restart loses nothing
+          - file: docs/architecture/platform.md
+            section: "3. The report: a figure and a date"
+            heading: Watching the machine
+          - file: blueprints/self-operation/README.md
+            section: Running it
+            heading: The removal test
+      - id: restoring
+        title: Restoring
+        parts:
+          - file: docs/guides/administration/restoring.md
+          - file: deploy/k8s/README.md
+            section: 9. What this plan does not cover
+            heading: What the cluster deployment does not cover yet
+
+  - id: use
+    title: Using Taktus
+    reader: the people who work with Taktus, whatever their job; no technical knowledge is assumed
+    place: [Taktus, Using Taktus]
+    pages:
+      - id: what-taktus-is
+        title: What Taktus is
+        parts:
+          - file: docs/vision/vision.md
+            section: What Taktus is
+          - file: docs/vision/vision.md
+            section: What it is not, said first
+      - id: asking
+        title: Asking Taktus for something
+        parts:
+          - file: docs/guides/use/asking.md
+      - id: deciding
+        title: When Taktus asks you to decide
+        parts:
+          - file: docs/guides/use/deciding.md
+      - id: people
+        title: What Taktus never does with people
+        parts:
+          - file: docs/guides/use/people.md
+          - file: docs/vision/principles.md
+            section: 14 — People at the centre
+            heading: People at the centre

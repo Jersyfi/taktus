@@ -5,7 +5,7 @@ Driving adapters call into the core; driven adapters are called by it through po
 
 | Adapter | Kind | Status |
 |---|---|---|
-| `driving/cli` | `taktusctl`: `conformance run` drives the conformance suite; `run` executes a bundle in this process and `submit` queues it for the daemon, both through the services the composition root hands it (`cli/wiring.py`) | exists |
+| `driving/cli` | `taktusctl`: `conformance run` drives the conformance suite; `guides check` and `guides publish` render the guides from the repository and put them into a directory (ADR-0065); `run` executes a bundle in this process and `submit` queues it for the daemon, both through the services the composition root hands it (`cli/wiring.py`) | exists |
 | `driving/rest` | the HTTP surface of `taktusd`: `/health` and `/ready` on every process, and with the `api` role `/intake/{channel}` (webhook intake through the connector port), `/runs`, `/runs/{id}`, `/runs/{id}/ledger` for a reader whose account key proves an identity; everything under `TAKTUS_PATH_PREFIX`, every error an RFC 9457 problem; `api/openapi.yaml` is generated from it | exists; no write beyond intake, no UI |
 | `driven/workers/http` | the worker port over HTTP and SSE, the client side of `contracts/worker/v1`; `workers/pool.py` maps required capabilities to a configured worker | exists |
 | `driven/memory` | repositories, ledger store, object store, queue and leadership in memory with an optional file snapshot — **development and test only**; answers the same suites as the database | exists |
@@ -15,4 +15,5 @@ Driving adapters call into the core; driven adapters are called by it through po
 | `driven/clock` | system time, identifiers, randomness: the one place the control plane reads them | exists |
 | `driven/telemetry` | no-op spans; an OpenTelemetry exporter later | exists |
 | `driven/connectors/github` | the reference connector behind `contracts/connector/v1`: an MCP server against a repository hosting service — issues, pull requests, pipelines, comments as actions with a declared effect and a marked idempotency key; webhook intake verified and normalised into commands; fault injection for the suite. Named by capability everywhere but in its own directory | exists; reached by the daemon's webhook intake; its operations are not yet called from a process (the run's binding is `0.2.0`) |
+| `driven/connectors/directory` | `knowledge.pages` over a directory of Markdown files, one per page, the mark kept in a comment on the file's last line: the knowledge system of an organisation that has none (ADR-0065) | exists; in process, used by `taktusctl guides publish` |
 | everything else | see the tree in the project structure | from later versions |

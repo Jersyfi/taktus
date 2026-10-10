@@ -26,6 +26,7 @@ from sqlalchemy.exc import DBAPIError
 
 from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers, SystemRandomness
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
+from taktus.adapters.driven.connectors.directory import DirectoryConnector
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
@@ -49,7 +50,12 @@ from taktus.adapters.driven.postgres import (
 )
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
-from taktus.adapters.driving.cli.wiring import CapacityServices, NotOperable, Services
+from taktus.adapters.driving.cli.wiring import (
+    CapacityServices,
+    GuidesServices,
+    NotOperable,
+    Services,
+)
 from taktus.components.accounting.application.service import CostOfRunHandler
 from taktus.components.catalog.application.service import (
     RecordRemovalResultHandler,
@@ -59,6 +65,7 @@ from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
+from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
@@ -324,6 +331,10 @@ class LocalWiring:
                 tenants=tenants,
                 job_memory_bytes=memory_demand(execution),
             )
+
+    @asynccontextmanager
+    async def guides(self, *, directory: Path) -> AsyncIterator[GuidesServices]:
+        yield GuidesServices(publish=PublishGuidesHandler(DirectoryConnector(directory)))
 
     @asynccontextmanager
     async def _stores(self, state_dir: Path) -> AsyncIterator[Stores]:
