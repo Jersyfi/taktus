@@ -56,7 +56,7 @@ from taktus.components.reporting.domain.model import (
     ReportState,
 )
 from taktus.components.reporting.domain.service.rendering import repository_text
-from taktus.components.run.domain.model import Run
+from taktus.components.run.domain.model import Run, RunState
 from taktus.components.run.ports import Draft, DraftOption
 from taktus.composition.decisions import decision_wiring
 from taktus.composition.execution import connector_pool
@@ -512,6 +512,52 @@ async def test_a_run_asked_for_in_the_chat_is_answered_with_its_text_and_a_link_
         *(f"• {step.text}" for step in level.steps),
         "",
         f"{GERMAN['live']}: {CONTROL_PLANE}/app/#/runs/run_1",
+    ]
+    assert taktus_said(chat_service, "1800000000.000002") == [GERMAN["not_shown"]]
+    async with given.persistence.transaction(TENANT):
+        assert await given.events.list(TENANT) == [], "a request for a representation is no command"
+
+
+async def test_the_overview_asked_for_in_the_chat_is_answered_with_its_text_and_a_link_to_it_live(
+    connectors: Running, chat_service: ChatService
+) -> None:
+    """Issue #204: the owner who asks the chat for the overview receives every element's text
+    of the overview level as the web app is handed it, and the link to the web app's root
+    route, where the overview is drawn live. An outsider is told the phrasebook's sentence."""
+    given = Instance(connectors)
+    await given.set_up()
+    run = Run(
+        id="run_1",
+        plan_id="pln_1",
+        process_version="invoices@2",
+        tenant=TENANT,
+        identity=OWNER,
+        autonomy_level=2,
+        budget=Limits(compute=ComputeLimit(seconds=10, resource_class="cpu.small")),
+        steps=(Step(id="read", method=Method.RULE, reason="r", rejected=(), exactness="exact"),),
+        work={"read": {"rule": "constant", "value": 1}},
+        state=RunState.RUNNING,
+        created_at=RECEIVED,
+        updated_at=RECEIVED,
+    )
+    async with given.persistence.transaction(TENANT):
+        await given.runs.put(TENANT, run)
+
+    asked = await given.write(chat_service, OWNER_ACCOUNT, None, "Zeige Überblick")
+    outsider = await given.write(chat_service, OUTSIDER_ACCOUNT, None, "zeige überblick")
+
+    assert asked.answer == "shown" and asked.replied and asked.accepted is None
+    assert outsider.answer == "not_shown" and outsider.replied
+    level = await given.levels.overview(Reader(tenant=TENANT, identity=OWNER))
+    [area] = level.areas
+    [invoices] = area.processes
+    assert invoices.working == 1
+    [said] = taktus_said(chat_service, "1800000000.000001")
+    assert said.splitlines() == [
+        area.text,
+        f"• {invoices.text}",
+        "",
+        f"{GERMAN['live']}: {CONTROL_PLANE}/app/#/",
     ]
     assert taktus_said(chat_service, "1800000000.000002") == [GERMAN["not_shown"]]
     async with given.persistence.transaction(TENANT):

@@ -2,9 +2,10 @@
 *beyond the web app*, ADR-0069).
 
 The owner-facing channel (ADR-0045) is a chat: it shows text and links, never a moving
-picture. A message there that asks for a run or a process — one of the phrasebook's words and
-one identifier — is answered in the same conversation with the level's text equivalent, exactly
-as the level hands it to the web app, and the link to the level live in the web app.
+picture. A message there that asks for the overview — one of the phrasebook's words standing
+alone — or for a run or a process — one of its words and one identifier — is answered in the
+same conversation with the level's text equivalent, exactly as the level hands it to the web
+app, and the link to the level live in the web app.
 
 What the answer may carry is what its readers may see:
 
@@ -33,7 +34,7 @@ from dataclasses import dataclass
 from taktus.components.reporting.application.query.levels import LevelQueries
 from taktus.components.reporting.domain.model import OwnerChannel, Reader
 from taktus.components.reporting.domain.service import reading as rules
-from taktus.components.reporting.domain.service.rendering import shown
+from taktus.components.reporting.domain.service.rendering import Level, shown
 from taktus.components.reporting.ports import Deliveries, SecretValues, Sent
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Capability
@@ -99,11 +100,13 @@ class ShowInChannelHandler:
         said: str | None = None
         if channel.may_answer(command.identity):
             reader = Reader(tenant=command.tenant, identity=command.identity, roles=command.roles)
-            level = (
-                await self._levels.run(reader, asked.id)
-                if asked.level == "run"
-                else await self._levels.process(reader, asked.id, asked.version)
-            )
+            level: Level | None
+            if asked.level == "overview":
+                level = await self._levels.overview(reader)
+            elif asked.level == "run":
+                level = await self._levels.run(reader, asked.id)
+            else:
+                level = await self._levels.process(reader, asked.id, asked.version)
             if level is not None:
                 said = shown(level, channel)
         outcome = SHOWN

@@ -74,6 +74,10 @@ class Phrasebook(Value):
     request — a phrasebook configured before there were any."""
     show_process_words: tuple[str, ...] | None = None
     """The same for a process, before `<process>` or `<process>@<version>`."""
+    show_overview_words: tuple[str, ...] | None = None
+    """The words that, standing alone, ask for the overview. None: the channel reads no such
+    request — a phrasebook configured before there were any. Given only with the four entries
+    of a run and a process (ADR-0069 §5)."""
     live: str | None = Field(default=None, min_length=1)
     """The label of the link to the live representation in the web app."""
     not_shown: str | None = Field(default=None, min_length=1)
@@ -97,6 +101,7 @@ class Phrasebook(Value):
             "no_words": self.no_words,
             "show_run_words": self.show_run_words or (),
             "show_process_words": self.show_process_words or (),
+            "show_overview_words": self.show_overview_words or (),
         }
         for name, listed in words.items():
             if any(w != w.strip().casefold() or not w for w in listed):
@@ -109,8 +114,18 @@ class Phrasebook(Value):
                 "a phrasebook that reads a request for a representation names show_run_words, "
                 "show_process_words, live and not_shown, all four"
             )
-        if set(self.show_run_words or ()) & set(self.show_process_words or ()):
-            problems.append("a word cannot ask for both a run and a process")
+        if self.show_overview_words is not None and not (self.show_overview_words and all(showing)):
+            problems.append(
+                "show_overview_words are given with show_run_words, show_process_words, live "
+                "and not_shown, and name at least one word"
+            )
+        asking = (
+            set(self.show_run_words or ()),
+            set(self.show_process_words or ()),
+            set(self.show_overview_words or ()),
+        )
+        if any(a & b for i, a in enumerate(asking) for b in asking[i + 1 :]):
+            problems.append("a word cannot ask for two levels")
         if problems:
             raise ValueError("; ".join(problems))
         return self

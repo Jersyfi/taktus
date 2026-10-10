@@ -415,7 +415,7 @@ def owner_channel_wiring(
     levels: LevelQueries | None = None,
 ) -> OwnerChannelWiring:
     """The owner-facing channel. Given `levels`, its conversation also answers a request for
-    the live representation of a run or a process (ADR-0069)."""
+    the live representation of the overview, a run or a process (ADR-0069)."""
     reports: Repository[Report] = of(Report)
     channels: Repository[OwnerChannel] = of(OwnerChannel)
     carrier = deliveries or ConnectorDeliveries(connectors)
