@@ -38,6 +38,7 @@ from __future__ import annotations
 import binascii
 import hashlib
 import json
+import math
 import re
 from base64 import b64decode, b64encode
 from collections.abc import Mapping
@@ -299,17 +300,85 @@ class Threshold(Value):
         return f"confidence {'<=' if self.inclusive else '<'} {self.value:g}"
 
 
+class LlmWork(Value):
+    """A prompt to a model of the named purpose; the result is the text the model answered,
+    once it passes the check. The check is what makes the step `sourced` rather than `free`:
+    a pattern the answer must match, so that a model that answered beside the point fails the
+    step instead of passing its answer on."""
+
+    purpose: str = Field(pattern=r"^[a-z][a-z0-9_-]*$")
+    system: str | None = None
+    prompt: str = Field(min_length=1)
+    values: dict[str, Any] = Field(default_factory=dict)
+    max_output_tokens: int = Field(default=2048, ge=1)
+    pattern: str | None = None
+
+
+LABEL = "label"
+"""The label column of the rows a training reads. A feature of that name is renamed."""
+
+
+def column(name: str) -> str:
+    """A feature's column name: never the label's."""
+    return f"{name}_" if name == LABEL else name
+
+
+def row_of(values: Any, features: Any) -> str:
+    """One case as the rows an `ml` step predicts: a CSV with a header row and one row, a
+    number in every feature column (ADR-0092). `features` are dotted paths into `values`, the
+    values a step on a language model rendered its prompt from. A feature that is not there, or
+    not a finite number, is a ValueError naming it: the case cannot be predicted."""
+    if not isinstance(features, list | tuple) or not features:
+        raise ValueError("dataset.features names the numbers to predict from")
+    cells: list[str] = []
+    for path in features:
+        try:
+            value = select(values, str(path))
+        except KeyError:
+            raise ValueError(f"the case gives no value for the feature {path!r}") from None
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(value)
+        ):
+            raise ValueError(f"the feature {path!r} is not a finite number: {value!r}")
+        cells.append(repr(float(value)))
+    header = ",".join(column(str(path)) for path in features)
+    return f"{header}\n{','.join(cells)}\n"
+
+
+class Evaluation(Value):
+    """How a step's model did on cases held out from its training, carried by the process
+    version the model is pinned in (UC-8.4 §2, ADR-0092). The run reads none of it; the
+    registration refuses an `ml` step without it."""
+
+    model_digest: str = Field(pattern=DIGEST)
+    held_out: int = Field(ge=1)
+    agreement: float = Field(ge=0, le=1)
+    below_threshold: float = Field(ge=0, le=1)
+    trial_run: str = Field(min_length=1)
+    training_run: str | None = Field(default=None, min_length=1)
+
+
 class MlWork(WorkerWork):
     """A prediction: the rows of `dataset`, given to a worker that offers `ml.predict`, with the
     step's model file pinned by its digest (ADR-0076). The task the worker receives is built
     from them; a bundle never writes it. `dataset` is `{"csv": <text>}` — the text may be a
     reference to what an earlier step produced — or a source as the worker reads it,
-    `{"uri": ...}` or `{"base64": ...}`, with a `digest` where known."""
+    `{"uri": ...}` or `{"base64": ...}`, with a `digest` where known. A step moved from a
+    language model names its one case as `{"values": ..., "features": [...]}`: the values its
+    prompt was rendered from, and the paths of the numbers it predicts from (ADR-0092).
+
+    `fallback` is the language model's work a moved step hands an unsure case back to; the
+    step's `fallback.to` names `llm` then. `evaluation` is the model's evaluation on held-out
+    cases, which the version carries (UC-8.4 §2); the worker receives neither."""
 
     model: ModelFile
     dataset: dict[str, Any]
     label: str | None = None
     threshold: Threshold
+    fallback: LlmWork | None = None
+    evaluation: Evaluation | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -335,16 +404,29 @@ class MlWork(WorkerWork):
 
     @model_validator(mode="after")
     def _rows_in_one_place(self) -> MlWork:
+        if set(self.dataset) == {"values", "features"}:
+            features = self.dataset["features"]
+            if not isinstance(features, list | tuple) or not features:
+                raise ValueError("dataset.features names the numbers to predict from")
+            return self
         places = {"csv", "uri", "base64"} & set(self.dataset)
         if len(places) != 1 or not set(self.dataset) <= {"csv", "uri", "base64", "digest"}:
-            raise ValueError("dataset is {csv}, {uri} or {base64}, with a digest where known")
+            raise ValueError(
+                "dataset is {csv}, {uri} or {base64}, with a digest where known, or "
+                "{values, features}"
+            )
         return self
 
     @staticmethod
     def worker_inputs(inputs: Mapping[str, Any]) -> dict[str, Any]:
         """The task's inputs once references are resolved: rows given as text are handed to the
-        worker as the bytes of that text."""
+        worker as the bytes of that text, and one case given as values and features as the
+        bytes of its one row. A case without one of its features is a ValueError naming it."""
         dataset = inputs.get("dataset")
+        if isinstance(dataset, Mapping) and set(dataset) == {"values", "features"}:
+            text = row_of(dataset["values"], dataset["features"])
+            rows = {"base64": b64encode(text.encode("utf-8")).decode("ascii")}
+            return {**inputs, "dataset": rows}
         if not isinstance(dataset, Mapping) or "csv" not in dataset:
             return dict(inputs)
         text = dataset["csv"]
@@ -363,10 +445,11 @@ def threshold(step: Step) -> Threshold:
             "an ml step names its fallback: a model that is unsure does not guess, it asks "
             "(docs/architecture/methods.md §2)",
         )
-    if step.fallback.to is not Method.HUMAN:
+    if step.fallback.to not in (Method.HUMAN, Method.LLM):
         raise UnsupportedWork(
             step.id,
-            f"an ml step falls back to a person in this version, not to {step.fallback.to}",
+            "an ml step falls back to a person, or to the language model it was moved from "
+            f"(ADR-0092); not to {step.fallback.to}",
         )
     matched = THRESHOLD.match(step.fallback.when)
     if matched is None or float(matched.group(2)) > 1:
@@ -376,20 +459,6 @@ def threshold(step: Step) -> Threshold:
             "write `confidence < t` or `confidence <= t`, t from 0 to 1",
         )
     return Threshold(value=float(matched.group(2)), inclusive=matched.group(1) == "<=")
-
-
-class LlmWork(Value):
-    """A prompt to a model of the named purpose; the result is the text the model answered,
-    once it passes the check. The check is what makes the step `sourced` rather than `free`:
-    a pattern the answer must match, so that a model that answered beside the point fails the
-    step instead of passing its answer on."""
-
-    purpose: str = Field(pattern=r"^[a-z][a-z0-9_-]*$")
-    system: str | None = None
-    prompt: str = Field(min_length=1)
-    values: dict[str, Any] = Field(default_factory=dict)
-    max_output_tokens: int = Field(default=2048, ge=1)
-    pattern: str | None = None
 
 
 type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork
@@ -423,7 +492,21 @@ def parse_work(
                 )
             if PREDICT not in (step.required_capabilities or ()):
                 raise UnsupportedWork(step.id, f"an ml step requires {PREDICT}")
-            return MlWork.model_validate({**given, "threshold": threshold(step).model_dump()})
+            read = MlWork.model_validate({**given, "threshold": threshold(step).model_dump()})
+            to = None if step.fallback is None else step.fallback.to
+            if to is Method.LLM and read.fallback is None:
+                raise UnsupportedWork(
+                    step.id,
+                    "the step falls back to llm, and its work names no language model's work "
+                    "under `fallback` to hand an unsure case to",
+                )
+            if to is not Method.LLM and read.fallback is not None:
+                raise UnsupportedWork(
+                    step.id,
+                    f"the work names a language model's work under `fallback`, and the step "
+                    f"falls back to {to}",
+                )
+            return read
         if step.method is Method.LLM:
             if given is None:
                 raise UnsupportedWork(step.id, "an llm step carries its prompt under `work`")
@@ -538,6 +621,8 @@ def select(value: Any, path: Any) -> Any:
 
 def referenced_values(work: Work) -> list[Any]:
     """The untyped parts of a work that may carry `$from` references."""
+    if isinstance(work, MlWork) and work.fallback is not None:
+        return [work.task.inputs, work.fallback.values]
     if isinstance(work, WorkerWork):
         return [work.task.inputs]
     if isinstance(work, ConnectorRule):

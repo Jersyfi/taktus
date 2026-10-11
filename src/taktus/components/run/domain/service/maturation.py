@@ -30,10 +30,13 @@ import io
 import math
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any
 
 from pydantic import Field
 
+from taktus.components.run.domain.model.work import LABEL as LABEL
+from taktus.components.run.domain.model.work import column
 from taktus.shared.v1 import ExactnessClass, Method, Value
 
 MAX_CLASSES = 50
@@ -46,8 +49,6 @@ FALLBACK_AT = 0.9
 """The confidence below which the moved step would hand a case back to the language model it
 runs on now: the threshold `docs/architecture/methods.md` §2 shows. The person who accepts the
 proposal accepts it with this number or changes it."""
-LABEL = "label"
-"""The label column of the cases a training reads. A feature of that name is renamed."""
 CORRECTED = "step.corrected"
 """The ledger kind of a person's correction of a step's result."""
 ALLOWED = ExactnessClass.SOURCED
@@ -76,6 +77,11 @@ class Case(Value):
     """What could not be priced, and why."""
     seconds: float | None = Field(default=None, ge=0)
     """How long the step ran."""
+    started_at: datetime | None = None
+    """When the step started: the order cases are counted in after a move."""
+    fell_back: bool = False
+    """The case went from the trained model to the language model it was moved from, because
+    the model was unsure (ADR-0092)."""
 
 
 class Measures(Value):
@@ -220,11 +226,6 @@ def split(cases: Sequence[Case], seed: int = 0) -> tuple[tuple[Case, ...], tuple
         train.extend(ordered[cut:])
     key = lambda c: c.run_id  # noqa: E731 — the order a dataset is written in
     return tuple(sorted(train, key=key)), tuple(sorted(held, key=key))
-
-
-def column(name: str) -> str:
-    """A feature's column name: never the label's."""
-    return f"{name}_" if name == LABEL else name
 
 
 def dataset(cases: Sequence[Case], features: Sequence[str], *, labelled: bool) -> bytes:

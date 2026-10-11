@@ -117,6 +117,15 @@ class StepMeasures:
         result = checkpoint.result_digest
         features: dict[str, float] = {}
         left_out: tuple[str, ...] = ()
+        fell_back = False
+        if step.method is Method.ML and step.fallback is not None:
+            # A moved step's result says whether the case went to the language model it was
+            # moved from (ADR-0092); its text is the answer, whichever method gave it.
+            content = await self._objects.get(checkpoint.result_digest)
+            produced = None if content is None else json.loads(content)
+            if isinstance(produced, Mapping) and isinstance(produced.get("text"), str):
+                result = produced["text"].strip()
+                fell_back = produced.get("fell_back") is True
         if step.method is Method.LLM:
             content = await self._objects.get(checkpoint.result_digest)
             produced = None if content is None else json.loads(content)
@@ -146,6 +155,8 @@ class StepMeasures:
             cost=cost,
             unpriced=unpriced,
             seconds=seconds,
+            started_at=step_run.started_at,
+            fell_back=fell_back,
         )
 
     async def _read(self, run: Run, step_id: str) -> tuple[dict[str, float], tuple[str, ...]]:
