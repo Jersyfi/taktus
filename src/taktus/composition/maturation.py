@@ -103,6 +103,7 @@ class InstanceMaturation:
             "outcomes": [o.document() for o in outcomes],
             "looked_at": len(outcomes),
             "proposed": sum(1 for o in outcomes if o.proposed),
+            "applied": sum(1 for o in outcomes if o.applied),
         }
 
 

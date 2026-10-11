@@ -83,7 +83,7 @@ async def test_s06_measures_and_has_a_candidate_proposed_through_the_decision_po
     assert measured["count"] == len(measured["steps"]) and measured["unpriced"] == 0
 
     proposed = await call(loopback, MATURATION_PROPOSE, {"budget": BUDGET, "scope": {}})
-    assert proposed["looked_at"] == 1 and proposed["proposed"] == 1
+    assert proposed["looked_at"] == 1 and proposed["proposed"] == 1 and proposed["applied"] == 0
     (outcome,) = proposed["outcomes"]
     assert outcome["proposed"] is True and outcome["applied"] is False
     (request,) = await w.proposals()

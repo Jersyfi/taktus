@@ -77,6 +77,7 @@ processes:
       - schedule: weekly
     steps:
       - { id: measure, method: rule, exactness: sourced }
-      - { id: propose, method: rule, exactness: sourced }   # trains and tries in runs of their own (ADR-0084)
-      - { id: report,  method: rule, exactness: sourced }
+      - { id: propose,         method: rule, exactness: sourced }   # trains and tries in runs of their own (ADR-0084)
+      - { id: nothing-applied, method: rule, exactness: exact }     # a proposal is never a change
+      - { id: report,          method: rule, exactness: sourced }
     slo: { freshness: 7d }

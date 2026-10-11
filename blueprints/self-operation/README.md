@@ -297,7 +297,9 @@ instance, so that no person has to start them (ADR-0086, issue #229).
    under `method-maturation@1`, each held to the budget the trigger names. Where the evidence
    holds, it raises a proposal as a decision request to the role `owner`. Where it does not,
    the outcome says why. Without a price table, nothing is trained: no cost can be compared.
-3. **report** — one line: how many steps were measured, how many could not be priced, how many
+3. **nothing-applied** — checks by rule that no outcome was applied and that the count of
+   proposals is a whole number (`exact`).
+4. **report** — one line: how many steps were measured, how many could not be priced, how many
    were looked at and how many proposals were raised.
 
 Steps 1 and 2 are calls of `orchestrator.maturation`, served by the loopback connector over
