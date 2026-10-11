@@ -1,8 +1,8 @@
 # Blueprint: self-operation
 # The processes Taktus runs for itself, on itself: the checks of its own claims, and its own
 # documentation beyond the repository. The first is the removal test. The guides followed (S-05,
-# UC-13.6). Later ones — the takeover test, the restore drill, the load measurement — arrive with
-# the versions the roadmap names for them (docs/roadmap.md, "The road to 1.0.0").
+# UC-13.6), then maturation (S-06, ADR-0086). Later ones — the takeover test, the restore drill,
+# the load measurement — arrive with the versions the roadmap names for them (docs/roadmap.md, "The road to 1.0.0").
 
 apiVersion: taktus.eu/process-bundle/v1
 kind: Blueprint
@@ -20,6 +20,7 @@ requires:
     - capability: orchestrator.removal
     - capability: orchestrator.maturity
     - capability: orchestrator.guides
+    - capability: orchestrator.maturation
     - capability: repository.files
     - capability: knowledge.pages
 
@@ -66,3 +67,16 @@ processes:
       - { id: report-edits,  method: rule, exactness: sourced }
       - { id: report,        method: rule, exactness: sourced }
     slo: { freshness: 1d }
+  - id: S-06
+    name: Maturation
+    autonomy:
+      level: 3
+      reason: every step reads the instance's own records or applies the rules of ADR-0084; a proposal is a decision request a person answers; nothing is applied
+      toward_next: a quarter of weekly runs whose proposals a person checked against the training and trial runs and found sound
+    triggers:   # every Monday, 00:00 UTC (ADR-0035), with the budget each training and trial may use
+      - schedule: weekly
+    steps:
+      - { id: measure, method: rule, exactness: sourced }
+      - { id: propose, method: rule, exactness: sourced }   # trains and tries in runs of their own (ADR-0084)
+      - { id: report,  method: rule, exactness: sourced }
+    slo: { freshness: 7d }

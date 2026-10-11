@@ -122,6 +122,7 @@ from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
+from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities
 from taktus.composition.owner_channel import (
     OwnerChannelWiring,
@@ -418,6 +419,19 @@ async def wire(
                     ids=ids,
                 ),
                 guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
+                # Method maturation, which S-06 runs on its schedule (ADR-0086).
+                maturation=InstanceMaturation(
+                    maturation_wiring(
+                        engine=engine,
+                        runs=runs,
+                        ledger=ledger,
+                        objects=objects,
+                        work=persistence,
+                        clock=clock,
+                        decisions=decisions.requests,
+                        prices=prices,
+                    )
+                ),
             )
             outbox = PostgresOutbox(persistence)
             complete_intake = CompleteIntakeHandler(
