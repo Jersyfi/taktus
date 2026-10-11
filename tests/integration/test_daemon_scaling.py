@@ -119,6 +119,7 @@ def rule_only_bundle(n: int) -> dict[str, Any]:
             "reason": "r",
             "rejected": [],
             "exactness": "exact",
+            "checks": [{"kind": "recomputation"}],
             "work": {"rule": "constant", "value": {"n": n}},
         },
         {
@@ -127,6 +128,7 @@ def rule_only_bundle(n: int) -> dict[str, Any]:
             "reason": "r",
             "rejected": [],
             "exactness": "exact",
+            "checks": [{"kind": "recomputation"}],
             "depends_on": ["one"],
             "work": {"rule": "constant", "value": {"m": n}},
         },

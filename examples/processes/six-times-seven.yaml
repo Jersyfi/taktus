@@ -39,6 +39,8 @@ steps:
       - method: llm
         why: a fixed list needs no language model
     exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the list of commands }
     work:
       rule: constant
       value:
@@ -82,6 +84,8 @@ steps:
       - method: worker
         why: a variable method never produces an exact result (ADR-0014)
     exactness: exact
+    checks:
+      - { kind: bounds, subject: the answer, pattern: "^42$" }
     depends_on: [settle]
     work:
       rule: verify_artifact

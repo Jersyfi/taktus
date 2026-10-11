@@ -1,0 +1,11 @@
+{
+  "id": "confirm",
+  "method": "human",
+  "reason": "a person confirms",
+  "rejected": [],
+  "checks": [
+    {
+      "kind": "recomputation"
+    }
+  ]
+}

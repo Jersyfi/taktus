@@ -1,0 +1,6 @@
+{
+  "kind": "agreement",
+  "subject": "the payment amount",
+  "source": "bank.statements.read",
+  "reference": "source"
+}

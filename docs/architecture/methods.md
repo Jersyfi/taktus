@@ -127,6 +127,14 @@ residual risk remains, visible in the dashboard and part of every report. Taktus
 through (`docs/usecases/process/UC-4.13-working-out-how-a-step-becomes-exact.md`,
 `docs/usecases/process/UC-6.9-the-exactness-statement.md`).
 
+**Built so far** (ADR-0082). A step declares its checks under `checks`, beside its class, from the
+catalogue in the shared kernel (`contracts/shared/v1/Check.json`). A bundle whose `exact` step
+declares none does not register, and the finding names the catalogue. The statement is generated
+from the process version whenever it is read, and `taktusctl exactness --process <bundle>` prints
+it. A sixth row, *recomputation* — the value is computed again from its recorded inputs — is
+provisional under DEC-0173. The checks are declared, not yet run (#223), and the statement is not
+yet shown in the web app or a report (#224).
+
 ---
 
 ## 5. Why this is not a workflow tool

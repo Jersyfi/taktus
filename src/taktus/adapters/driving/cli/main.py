@@ -16,7 +16,9 @@ configures and shows where what is needed from the owner reaches them (ADR-0045)
 shows every interface the instance noticed had stopped behaving as its adapter expects, and
 whether the owner heard of it (ADR-0047). `guides` renders the administration guide and the
 guide for users from the repository, and puts them into a directory of files without
-overwriting a page edited there (UC-13.6, ADR-0065). They need
+overwriting a page edited there (UC-13.6, ADR-0065). `exactness` prints the exactness statement
+of a bundle: which checks apply, what they cover, what they do not, and what would slip through
+(UC-6.9, ADR-0082); like `conformance run` it needs no wiring. The others need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -39,6 +41,7 @@ from taktus.adapters.driving.cli import (
     conformance_command,
     cost_command,
     deactivate_command,
+    exactness_command,
     findings_command,
     guides_command,
     identity_command,
@@ -70,6 +73,7 @@ conformance.command("record")(conformance_command.record)
 app.command("run")(run_command.run)
 app.command("submit")(submit_command.submit)
 app.command("deactivate")(deactivate_command.deactivate)
+app.command("exactness")(exactness_command.exactness)
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
 app.command("findings")(findings_command.findings)
