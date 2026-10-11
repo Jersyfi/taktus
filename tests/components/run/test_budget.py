@@ -4,10 +4,12 @@ budget can promise for each billing basis. No I/O; every rule is a function of v
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from taktus.components.run.domain.service import budget as b
-from taktus.ports.model import Calculability
+from taktus.ports.model import Calculability, PriceTable
 from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit, TokenLimit
 from taktus.shared.v1 import ConsumptionQuantities as Q
 from taktus.shared.v1 import Method, PriceKinds
@@ -196,3 +198,62 @@ def test_the_margin_absorbs_an_overrun_and_nothing_beyond_it() -> None:
     budget = Limits(compute=ComputeLimit(seconds=9.5, resource_class="cpu.small"))
     capped = b.ceiling(grown, budget, budget)
     assert capped.compute is not None and capped.compute.seconds == 9.5, "never past the budget"
+
+
+# --- what a currency budget holds of compute (ADR-0005, fourth amendment) ----------------------
+
+PRICED = PriceTable(
+    version="compute-1",
+    valid_from=datetime(2026, 10, 11, tzinfo=UTC),
+    currency="usd",
+    unit_tokens=1_000_000,
+    source="a test",
+    prices={"model-a-1": {"input": 3.0}},
+    compute={"cpu.small": 0.25},
+)
+
+
+@pytest.mark.parametrize(
+    ("table", "how", "said"),
+    [
+        (PRICED, b.HELD, "priced at the table compute-1 per resource class (cpu.small)"),
+        (None, b.UNPRICED, "no price table is configured"),
+        (PRICED.model_copy(update={"compute": None}), b.UNPRICED, "prices no compute"),
+        (PRICED.model_copy(update={"currency": "eur"}), b.UNPRICED, "prices in eur"),
+    ],
+)
+def test_a_currency_budget_says_how_it_holds_the_money_of_compute(
+    table: PriceTable | None, how: str, said: str
+) -> None:
+    budget = Limits(currency={"usd": 1.0})
+    currency, compute = b.promise(budget, [], [], ["do"], table)
+    assert currency.kind == "currency"
+    assert compute.kind == b.COMPUTE_MONEY and compute.how == how
+    assert said in compute.reason and "never admitted as free" in compute.reason
+
+
+def test_no_compute_money_is_promised_without_a_currency_budget_or_a_step_that_computes() -> None:
+    assert (
+        b.compute_money(Limits(compute=ComputeLimit(seconds=1, resource_class="x")), None) is None
+    )
+    assert [p.kind for p in b.promise(Limits(currency={"usd": 1.0}), [], [], [], PRICED)] == [
+        "currency"
+    ]
+
+
+def test_compute_money_is_added_to_the_currency_and_an_unpriced_class_is_named() -> None:
+    held, unpriced = b.with_money(Q(currency={"usd": 0.5}), {"cpu.small": 4.0}, PRICED)
+    assert held.currency == {"usd": 1.5} and unpriced == ()
+    same, missing = b.with_money(Q(), {"gpu.large": 4.0}, PRICED)
+    assert same == Q() and missing == ("compute gpu.large",), "unpriced, never free"
+
+
+def test_a_worker_whose_compute_money_is_held_is_given_the_seconds_its_money_buys() -> None:
+    budget = Limits(currency={"usd": 2.0})
+    reservation = Q(compute_seconds=4.0, resource_class="cpu.small")
+    roomy = b.ceiling(reservation, Limits(currency={"usd": 2.0}), budget, ("usd", 0.25))
+    assert roomy.compute is not None and roomy.compute.seconds == 4.0, "its reservation"
+    tight = b.ceiling(reservation, Limits(currency={"usd": 0.5}), budget, ("usd", 0.25))
+    assert tight.compute is not None and tight.compute.seconds == 2.0, "0.5 usd at 0.25 a second"
+    unheld = b.ceiling(reservation, Limits(currency={"usd": 2.0}), budget)
+    assert unheld.compute is None, "no price: no ceiling bought with money"

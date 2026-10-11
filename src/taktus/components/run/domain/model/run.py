@@ -421,6 +421,20 @@ class Run(Value):
             }
         )
 
+    def compute_by_class(self) -> dict[str, float]:
+        """Compute seconds per resource class, counted as `consumed` counts them: what every
+        step so far used, and every running step reserved. The money of compute is priced
+        from these at the run's table, never stored (ADR-0005, fourth amendment)."""
+        seconds: dict[str, float] = {}
+        for step_run in self.step_runs:
+            used = _counted(step_run)
+            if used is None or not used.compute_seconds or used.resource_class is None:
+                continue
+            seconds[used.resource_class] = (
+                seconds.get(used.resource_class, 0.0) + used.compute_seconds
+            )
+        return seconds
+
 
 def _counted(step_run: StepRun) -> ConsumptionQuantities | None:
     """What a step counts against the budget: its actual once it ended; the larger of its

@@ -116,4 +116,5 @@ step on a worker costs, so that a trained model's cost per case can be compared 
 model's at the same table (ADR-0084). A class without a price is unpriced, never free. The field
 is optional. `taktusctl cost` prices a run's compute seconds at it beside its tokens, and names
 a class the table does not price, or a table without `compute`, as unpriced (ADR-0010, second
-amendment).
+amendment). A currency budget holds that money during the run, and refuses compute the table
+does not price (ADR-0005, fourth amendment).

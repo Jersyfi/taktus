@@ -7,7 +7,7 @@ serves: [P8]
 state: building
 version: 0.4.0
 tests: [tests/components/run/test_llm_steps.py::test_an_answer_that_fails_the_check_does_not_leave_the_step]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: c28377b9027e, ADR-0011: f25413d512b9, ADR-0014: 6611f7833deb, ADR-0018: 17c99e0eaa3c}
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: c1a4c3f4cfb5, ADR-0011: f25413d512b9, ADR-0014: 6611f7833deb, ADR-0018: 17c99e0eaa3c}
 supersedes: null
 ---
 
