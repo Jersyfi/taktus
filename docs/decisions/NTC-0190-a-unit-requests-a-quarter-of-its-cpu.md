@@ -1,4 +1,4 @@
-# NTC-0189 — A unit requests a quarter of its CPU
+# NTC-0190 — A unit requests a quarter of its CPU
 
 **Mode entry:** M2.4
 **Kind:** behaviour-change

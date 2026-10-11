@@ -316,7 +316,7 @@ with `httpx` alone, through the calls of the Role of section 1 and no other. It:
 **CPU is shared; memory is not.** A request is what the cluster's scheduler reserves for a
 pod on a node; a limit is what the pod may use. A unit requests
 `execution.defaults.cpuRequestShare` of its CPU limit — a quarter by default
-(`TAKTUS_EXECUTION_CPU_REQUEST_SHARE`, NTC-0189) — and its whole memory limit:
+(`TAKTUS_EXECUTION_CPU_REQUEST_SHARE`, NTC-0190) — and its whole memory limit:
 
 - **CPU is compressible.** A unit that wants more CPU than the node has free is slowed down, not
   stopped. Units mostly wait — for a model, for the network — so a request of the whole limit

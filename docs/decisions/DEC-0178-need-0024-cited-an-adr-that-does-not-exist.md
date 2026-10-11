@@ -1,4 +1,4 @@
-# DEC-0174 — NEED-0024 cited an ADR that does not exist
+# DEC-0178 — NEED-0024 cited an ADR that does not exist
 
 **Category:** DEFECT
 **Raised in:** the pull request for issue #244
@@ -36,7 +36,7 @@ Nothing.
 
 ## 7. How to answer
 
-Nothing to answer. To object: "Reopen DEC-0174" in an issue.
+Nothing to answer. To object: "Reopen DEC-0178" in an issue.
 
 ## Outcome
 

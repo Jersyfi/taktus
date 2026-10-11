@@ -98,7 +98,7 @@ class ExecutionSettings:
     """`TAKTUS_EXECUTION_CPU_REQUEST_SHARE` (cluster): the share of its CPU limit a unit requests
     from the cluster's scheduler, between 0.01 and 1. A unit may still use its whole limit while
     the node has CPU to spare. 1 requests the whole limit. The memory request is always the
-    memory limit, because the node has no swap (deploy/k8s/README.md §7, NTC-0189)."""
+    memory limit, because the node has no swap (deploy/k8s/README.md §7, NTC-0190)."""
 
     def effective(self) -> list[tuple[str, str]]:
         return [
