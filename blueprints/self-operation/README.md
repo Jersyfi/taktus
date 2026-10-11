@@ -62,6 +62,8 @@ the integration, so nothing was exercised and nothing learned; it does not count
 be removed by design; the database is the one (ADR-0002), and its removal test is the restore
 drill. The verdict is a rule over what was observed (`components/catalog`,
 `domain/service/removal.py`), never a judgement, which is why the `verdict` step is `exact`.
+Every `exact` step of S-01 and S-05 declares its check: a recomputation from the inputs its
+provenance record names, provisional under DEC-0173 (ADR-0082).
 
 **What a verdict was taken under.** Every result carries `configuration`: the adapter that
 served the identifier, the capabilities, purposes or operations it declared, and its version

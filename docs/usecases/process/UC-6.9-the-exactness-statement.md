@@ -4,10 +4,10 @@ title: The exactness statement
 component: process
 epic: E6
 serves: [P7, P8, P12]
-state: specified
+state: building
 version: 0.5.0
-tests: []
-adrs: {ADR-0014: 6611f7833deb, ADR-0023: 949c6f4e13af, ADR-0029: 37c061ef032a}
+tests: [tests/exactness/test_exactness_statement.py::test_the_statement_of_every_bundle_renders_with_all_four_parts, tests/exactness/test_exactness_statement.py::test_a_statement_without_what_it_does_not_cover_does_not_render, tests/exactness/test_exactness_statement.py::test_a_changed_check_changes_the_statement, tests/exactness/test_exactness_statement.py::test_a_bundle_whose_statement_would_say_guaranteed_is_refused, tests/exactness/test_exactness_statement.py::test_no_model_writes_the_statement]
+adrs: {ADR-0014: 6611f7833deb, ADR-0023: 949c6f4e13af, ADR-0029: 37c061ef032a, ADR-0082: c64fba9bd04a}
 supersedes: null
 ---
 
@@ -65,3 +65,13 @@ the boundary of ADR-0014, which this statement makes visible per process. Filed 
 because it is generated from the process version (ADR-0029). Written first in
 `UC-4-exactness-statement.md` on 2026-09-21, moved into this format in the migration's second step;
 the requirement is unchanged. No version of the definition has this use case.
+
+## 5. What is proven so far
+
+Every process version carries its statement, generated from its steps' classes and checks when it
+is read, in four parts; the statement of every example and blueprint bundle renders with all four.
+One without what its checks do not cover is refused, and so is a bundle whose statement would say
+"guaranteed". A changed check changes the statement. The modules that write it reach no model.
+`taktusctl exactness` prints it (ADR-0082) — by the named tests. Not built: the statement in the
+dashboard, on the process page, in a run and in every report, the measured rate, and a model's
+explanation that names it (#224).

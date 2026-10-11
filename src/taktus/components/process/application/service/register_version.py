@@ -17,6 +17,11 @@ declared about nothing, once the instance names its platform (ADR-0025, ADR-0052
 The refusal is a ledger entry, `process.refused`, and the version is not stored. A credential
 named by a reference — `{ $input: ... }` — is known only when a run resolves it; admission
 checks it then.
+
+Registering is where an `exact` step must say how it becomes exact: one that declares no check
+from the catalogue is refused, with the catalogue in the finding, and so is a version whose
+exactness statement could not be complete (UC-4.13, UC-6.9, ADR-0082). Versions stored before
+are read as they are.
 """
 
 from __future__ import annotations
@@ -38,7 +43,11 @@ from taktus.components.process.domain.model import (
     Slo,
     Trigger,
 )
-from taktus.components.process.domain.service import autonomy
+from taktus.components.process.domain.model.exactness import (
+    ExactnessStatement,
+    InvalidStatement,
+)
+from taktus.components.process.domain.service import autonomy, exactness
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
@@ -247,7 +256,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
     if findings:
         raise InvalidProcess(tuple(findings))
     try:
-        return ProcessVersion(
+        version = ProcessVersion(
             process_id=bundle.get("id", ""),
             version=str(bundle.get("version", "")),
             name=bundle.get("name", ""),
@@ -263,6 +272,21 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
         )
     except ValidationError as error:
         raise InvalidProcess(tuple(_describe("bundle", error))) from error
+    refused = exactness.findings(version.steps)
+    try:
+        exactness.statement(version.ref, version.name, version.steps)
+    except InvalidStatement as error:
+        refused.append(str(error))
+    if refused:
+        raise InvalidProcess(tuple(refused))
+    return version
+
+
+def statement_of(bundle: Document) -> ExactnessStatement:
+    """The exactness statement of the version a bundle registers as, or InvalidProcess with
+    every finding that refuses the bundle (UC-6.9)."""
+    version = parse_bundle(bundle)
+    return exactness.statement(version.ref, version.name, version.steps)
 
 
 def _autonomy(raw: Any) -> Autonomy:

@@ -9,6 +9,20 @@
     }
   ],
   "exactness": "exact",
+  "checks": [
+    {
+      "kind": "reconciliation",
+      "subject": "the booked amount",
+      "total": "the invoice total",
+      "source": "documents.read"
+    },
+    {
+      "kind": "approval",
+      "subject": "the booked amount",
+      "threshold": 10000,
+      "role": "accounting-lead"
+    }
+  ],
   "depends_on": [
     "propose-amount",
     "assign-cost-centre"

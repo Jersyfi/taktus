@@ -46,6 +46,7 @@ def bundle(*triggers: dict[str, Any]) -> dict[str, Any]:
                 "reason": "r",
                 "rejected": [],
                 "exactness": "exact",
+                "checks": [{"kind": "recomputation"}],
                 "work": {"rule": "constant", "value": 1},
             }
         ],

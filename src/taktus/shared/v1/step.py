@@ -7,6 +7,7 @@ from typing import Annotated
 from pydantic import Field, StringConstraints, model_validator
 
 from taktus.shared.v1.capability import Capability
+from taktus.shared.v1.check import Check
 from taktus.shared.v1.exactness_class import ExactnessClass
 from taktus.shared.v1.method import (
     EXACT_ADMISSIBLE,
@@ -44,6 +45,7 @@ class Step(Value):
     reason: str = Field(min_length=1)
     rejected: tuple[Rejected, ...]
     exactness: ExactnessClass | None = None
+    checks: tuple[Check, ...] | None = Field(default=None, min_length=1)
     fallback: Fallback | None = None
     model: str | None = Field(default=None, pattern=MODEL_PATTERN)
     requires: tuple[Capability, ...] | None = None
@@ -51,7 +53,8 @@ class Step(Value):
 
     @model_validator(mode="after")
     def _rules(self) -> Step:
-        # The five rules of Step.json's allOf, in the same order; every violation is reported.
+        # The five rules of Step.json's allOf, in the same order, the second keeping checks off a
+        # step that produces no result as well; every violation is reported.
         findings: list[str] = []
         if self.method in PRODUCING and self.exactness is None:
             findings.append(
@@ -61,6 +64,8 @@ class Step(Value):
             findings.append(
                 f"a {self.method} step produces no result and carries no exactness class"
             )
+        if self.method in NON_PRODUCING and self.checks is not None:
+            findings.append(f"a {self.method} step produces no result and declares no check")
         if self.method in VARIABLE and self.fallback is None:
             findings.append(f"a {self.method} step can vary and names a fallback")
         if self.method in PINNED and self.model is None:
@@ -70,7 +75,7 @@ class Step(Value):
             findings.append(
                 f"an exact result comes from {admissible} only, never from {self.method}"
             )
-        for field in ("requires", "depends_on"):
+        for field in ("checks", "requires", "depends_on"):
             values = getattr(self, field)
             if values is not None and len(set(values)) != len(values):
                 findings.append(f"{field} lists an item twice")

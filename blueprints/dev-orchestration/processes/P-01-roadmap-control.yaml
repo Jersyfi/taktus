@@ -158,6 +158,8 @@ steps:
       - method: llm
         why: an order fixed by a rule needs no judgement, and a judgement could differ from it
     exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the backlog's order }
     depends_on: [read-issues, read-open-records]
     work:
       rule: backlog
@@ -180,6 +182,8 @@ steps:
           the blueprint first described this step that way, and the owner chose the rule
           in DEC-0080
     exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the list of roadmap items and issues that do not name each other }
     depends_on: [read-roadmap, read-issues]
     work:
       rule: roadmap

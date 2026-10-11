@@ -101,6 +101,7 @@ def bundle(**trigger: Any) -> dict[str, Any]:
                 "reason": "r",
                 "rejected": [],
                 "exactness": "exact",
+                "checks": [{"kind": "recomputation"}],
                 "work": {"rule": "constant", "value": {"$input": "target"}},
             }
         ],
