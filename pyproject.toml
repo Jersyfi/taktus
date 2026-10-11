@@ -60,8 +60,9 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "RUF"]
 
 [tool.mypy]
 strict = true
-# The product and the repository's own tools, held to the same check (`make lint`, #142).
-files = ["src/taktus", "tools"]
+# The product, the repository's own tools and the backup program, held to the same check
+# (`make lint`, #142).
+files = ["src/taktus", "tools", "deploy/backup"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -40,7 +40,8 @@ administers the cluster nor reaches into it (ADR-0025 §1, DEC-0023).
 
 - **The deployment identity** installs Taktus. In the two namespaces, and nowhere else, it may
   create, change and delete secrets, config maps, services, service accounts, volume claims,
-  deployments, stateful sets, jobs, roles, role bindings, network policies and ingresses, and
+  deployments, stateful sets, jobs, roles, role bindings, network policies and ingresses — in
+  the control plane's namespace cron jobs too, for the backup (section 11) — and
   read pods, their logs and events. It may not create a namespace or any object of the cluster
   as a whole (NEED-0007). It belongs to the person running `helm`. It is **never** given to
   Taktus. The chart renders no kind outside that list, and a test holds it to that.
@@ -89,6 +90,7 @@ operator's. The parts that carry a decision:
 | `connectors.repository.*` | the repository channel's connector as a deployment of its own, from the control plane's image, acting as Taktus's own app (ADR-0033): the repository it serves, the app's identifier, the Secrets holding the app's key and the webhook secret — mounted as files — and `findings`, which makes it the connector product findings go through. Enabled, it sets `TAKTUS_CONNECTORS` (`channel.repo`) and, with `findings`, `TAKTUS_FINDINGS_CONNECTOR`; it is reached from the roles alone and reaches the name service and the service's API outside the cluster (#66) |
 | `connectors.chat.*` | the chat channel's connector as a deployment of its own, from the control plane's image, as Taktus's own app in the owner's chat workspace (NEED-0018): the Secret holding its bot token and signing secret, mounted as files. Enabled, it adds `channel.chat` to `TAKTUS_CONNECTORS`; it is reached from the roles alone and reaches the name service and the chat service's API outside the cluster (#239) |
 | `ingress.*` | off unless `host` is given; `tls.secretName` names an existing certificate Secret, and then nothing is requested; only without it does `tls.issuer` ask the platform's certificate manager, by an annotation on the ingress. The stream of changes, `/changes`, is a long-lived `text/event-stream` response (ADR-0055): an ingress controller that buffers responses holds every change back until its buffer fills, and one that closes idle connections sooner than 15 seconds ends streams between heartbeats. Taktus sends `X-Accel-Buffering: no`; a controller that ignores it is told through `ingress.annotations`. Taktus cannot detect either |
+| `backup.*` | the database's scheduled backup (section 11, ADR-0087): off unless `enabled`; the backup image, released with the instance; the `schedule`, daily by default; `retentionDays`, 30 by default (DEC-0058); `recipient`, an `age` public key, empty for no encryption; the store's `endpoint`, `region`, `bucket`, `prefix`, and the Secret holding its credential with the key of its identifier and of its secret, mounted as files. It reaches the name service, the database and the store on `egressPorts` outside the excluded ranges; the database admits it |
 | `networkPolicy.*` | the name service, the API server's addresses, the ingress controller's namespace, and further egress rules for the hosts the control plane needs (section 5) |
 | `telemetry.otlp.*`, `model.*`, `capacity.*` | as their `TAKTUS_*` variables; `model.outputCap: hard` because this tenant's endpoint holds the limit (research [A4]; M-03 passed against it on 2026-10-01) — for another endpoint, run M-03 and set what it shows |
 | `env` | further non-secret `TAKTUS_*` settings — tenants, connectors; a `_FILE` variable here fails the render, because a secret goes through `credentials` |
@@ -388,10 +390,9 @@ the names they gave are in the owner's private note.
   (DEC-0023), and the three situations that would bring it back are named in that record.
 - **Autoscaling and load.** The scaling claims of ADR-0002 are proven for two daemons on one
   database, not for a cluster under load.
-- **Backups.** A database deployed by this chart has no backup in it. That is its own pull
-  request, and its destination off the node is NEED-0009; ADR-0013 C — a manual restore path,
-  documented and exercised — is not satisfied by a volume snapshot nobody has restored. Until
-  NEED-0009 is provided and the restore has been exercised, the instance holds no real work.
+- **A backup of anything but the database.** The artifact volume (`state`) and the execution
+  state claim are not backed up (section 11). Neither is the work of the hours since the last
+  backup: the schedule is daily by default.
 
 ## 10. What is built, and what still waits
 
@@ -421,4 +422,107 @@ and all of its memory (section 7), so memory decides how many fit.
 - **a pull request P-03 opens on the installed instance**, showing Taktus's own app as its author
   (#66, DEC-0063). It needs the coding agents' keys on the instance (NEED-0024) and the owner's
   linked identity (NEED-0017).
-- **backups** (section 9, #67).
+- **the backup on the installed instance** (section 11, #67): the chart renders it and the
+  restore was exercised against a database of its own; on the instance it waits for the
+  deployment identity's right to manage cron jobs, the backup image in a release, and its first
+  run (NEED-0025).
+
+## 11. Backup and restore
+
+The database is backed up by a CronJob of the chart, `backup.enabled` (ADR-0087). Each run dumps
+the whole database with `pg_dump`, encrypts the dump to an `age` public key where `backup.recipient`
+names one, writes it to the store off the node, and then deletes every backup older than
+`backup.retentionDays` (30 by default, DEC-0058). The newest backup is never deleted, and an
+object the backup did not write is never touched. A run whose backup failed deletes nothing; its
+Job stays for its log.
+
+A backup is two objects under one name, `taktus-<UTC time>`:
+
+| Object | What it holds |
+|---|---|
+| `<name>.dump` (`.dump.age` encrypted) | the database, `pg_dump --format=custom` |
+| `<name>.json` (`.json.age` encrypted) | when, the dump's SHA-256 and size, whether it is encrypted, the schema revision, and every tenant's ledger head — `seq` and `hash` of its last entry — read before the dump |
+
+**What the backup needs.** The database URL the roles read (`database.urlSecret`), as a login
+that reads every row: every tenant's table forces row-level security, so the login is the
+database's superuser or holds `BYPASSRLS`. With `database.deploy: true` it is the superuser. The
+store's credential, one Secret with two keys (`CREDENTIALS.md`). Where encryption is wanted, an
+`age` key pair made by the operator off the instance (`age-keygen -o key.txt`): its public key
+(`age1…`) goes into `backup.recipient`, the file with its private key into the operator's own
+secret store. The instance never holds the private key, and cannot read its own backups.
+
+**Run one now.** `kubectl create job --from=cronjob/<release>-backup <release>-backup-now` in the
+control plane's namespace, then read its log.
+
+### The restore, by hand
+
+Nothing here needs Taktus. It needs `rclone` (or any client of the store), `age` where the backup
+is encrypted, and `psql` and `pg_restore` of the database's major version — all four are in the
+backup image, which may be run for the purpose. `tests/deploy/test_backup_restore.py` runs these
+steps against a fresh database.
+
+1. **Stop everything that writes.** Scale the four roles and the connectors to zero, or uninstall
+   the release; the database volume stays (section 2).
+2. **Choose the backup.** List the store with the store's credential (the variables are
+   `rclone`'s own; the values come from the operator's secret store, never from a file in a
+   repository):
+
+   ```bash
+   export RCLONE_S3_PROVIDER=Other RCLONE_S3_ENDPOINT=<endpoint> \
+          RCLONE_S3_ACCESS_KEY_ID=<identifier> RCLONE_S3_SECRET_ACCESS_KEY=<secret>
+   rclone --config /dev/null lsf :s3:<bucket>/<prefix>
+   ```
+
+   and copy the chosen backup's two objects out:
+
+   ```bash
+   rclone --config /dev/null copyto :s3:<bucket>/<prefix>/<name>.dump ./<name>.dump
+   rclone --config /dev/null copyto :s3:<bucket>/<prefix>/<name>.json ./<name>.json
+   ```
+
+   Compare the dump's SHA-256 (`sha256sum <name>.dump`) with the manifest's `sha256`.
+3. **Decrypt, where the names end in `.age`**, with the private key from the operator's secret
+   store:
+
+   ```bash
+   age --decrypt --identity key.txt --output <name>.dump <name>.dump.age
+   age --decrypt --identity key.txt --output <name>.json <name>.json.age
+   ```
+
+   The manifest's `sha256` is that of the encrypted object.
+4. **Prepare an empty database.** A new server, or the instance's own after its volume was
+   replaced, with the login the instance will use. The application role is not in the dump,
+   because roles belong to the server; create it and grant it to the login:
+
+   ```bash
+   psql --dbname "$URL" -v ON_ERROR_STOP=1 \
+     -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taktus_app') THEN CREATE ROLE taktus_app NOLOGIN; END IF; END \$\$" \
+     -c "GRANT taktus_app TO CURRENT_USER"
+   ```
+
+   `$URL` is the database's URL without the password; the password goes into `PGPASSWORD`.
+5. **Restore**, in one transaction, as that login:
+
+   ```bash
+   pg_restore --no-owner --exit-on-error --single-transaction --dbname "$URL" <name>.dump
+   ```
+
+6. **Check every tenant's chain** against the manifest's heads. The heads, as the database now
+   holds them, as the superuser:
+
+   ```bash
+   psql --dbname "$URL" --tuples-only --no-align -c "SELECT tenant, seq, hash FROM (SELECT DISTINCT ON (tenant) tenant, seq, hash FROM ledger_entry ORDER BY tenant, seq DESC) AS head ORDER BY tenant"
+   ```
+
+   Every tenant of the manifest must appear with the same `seq` and `hash`; a tenant may have
+   more entries only if the dump was taken after the manifest's heads were read. Whether an
+   entry was changed is the chain's own proof: the head's hash covers every entry before it, and
+   Taktus verifies a tenant's whole chain from its first entry whenever `taktusctl run` reports
+   a run (ADR-0006).
+7. **Start Taktus again** with the same chart values. The schema revision of the manifest must
+   be one the released version migrates from; an older backup is migrated forward by the
+   release's own migration Job.
+
+The restore of an encrypted backup without its private key is impossible, by design. Keep the
+key where a failure of the instance does not reach it.
+
