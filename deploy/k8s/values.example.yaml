@@ -45,3 +45,15 @@ connectors:
     secret: taktus-chat
     tokenKey: bot-token
     signingKey: signing-secret
+
+backup:
+  enabled: true
+  image:
+    repository: taktus-backup
+    tag: "0.1.0"
+  store:
+    endpoint: "<the store's address: the operator's, in their private values>"
+    bucket: taktus-backup
+    secret: taktus-backup-store
+    accessKeyIdKey: access_key
+    secretKey: secret_key

@@ -46,11 +46,11 @@ def test_it_has_no_deploy_step() -> None:
             assert not re.search(r"deploy|k8s|helm|kube", uses, re.IGNORECASE), f"{name}: {uses}"
 
 
-def test_the_control_plane_and_every_shipped_worker_get_an_image_tagged_with_the_version() -> None:
+def test_the_control_plane_the_backup_and_each_worker_get_an_image_tagged_with_a_version() -> None:
     build = workflow()["jobs"]["build"]
     dockerfiles = {entry["dockerfile"] for entry in build["strategy"]["matrix"]["include"]}
     shipped = {str(p.relative_to(ROOT)) for p in (ROOT / "workers").glob("*/Dockerfile")}
-    assert dockerfiles == {"deploy/docker/Dockerfile", *shipped}
+    assert dockerfiles == {"deploy/docker/Dockerfile", "deploy/backup/Dockerfile", *shipped}
     push = next(s for s in build["steps"] if s.get("uses", "").startswith("docker/build-push"))
     assert push["with"]["tags"].endswith(":${{ needs.registry.outputs.version }}")
     assert "latest" not in push["with"]["tags"]

@@ -43,6 +43,7 @@ ALLOWED_KINDS = {
     "Deployment",
     "StatefulSet",
     "Job",
+    "CronJob",
     "Role",
     "RoleBinding",
     "NetworkPolicy",
@@ -99,6 +100,9 @@ def pod_specs(documents: list[dict[str, Any]]) -> Iterator[tuple[str, dict[str, 
     for document in documents:
         if document["kind"] in ("Deployment", "StatefulSet", "Job"):
             yield document["metadata"]["name"], document["spec"]["template"]["spec"]
+        elif document["kind"] == "CronJob":
+            template = document["spec"]["jobTemplate"]["spec"]["template"]
+            yield document["metadata"]["name"], template["spec"]
 
 
 def containers(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -585,3 +589,78 @@ def test_no_values_file_carries_a_value_a_hostname_or_an_address(path: Path) -> 
             assert a_range_not_an_address(match), f"{path.name} {where}: an address"
         if SECRET_KEY.search(where.rsplit(".", 1)[-1]):
             assert value == "", f"{path.name} {where}: a secret's value; name its Secret instead"
+
+
+# --- the database's backup (ADR-0087, #67) -----------------------------------------------------
+
+
+def test_the_backup_is_a_daily_cronjob_that_never_overlaps_and_reads_its_secrets_as_files(
+    rendered: list[dict[str, Any]],
+) -> None:
+    [cron] = of_kind(rendered, "CronJob")
+    assert cron["metadata"]["namespace"] == RELEASE_NAMESPACE
+    assert cron["spec"]["concurrencyPolicy"] == "Forbid"
+    assert cron["spec"]["timeZone"] == "Etc/UTC"
+    pod = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    assert pod["automountServiceAccountToken"] is False
+    assert pod["securityContext"]["runAsUser"] == 70
+    [container] = pod["containers"]
+    assert container["image"] == "taktus-backup:0.1.0"
+    env = {v["name"]: v["value"] for v in container["env"]}
+    assert env["TAKTUS_BACKUP_RETENTION_DAYS"] == "30"
+    assert env["TAKTUS_BACKUP_RECIPIENT"] == ""
+    assert env["TAKTUS_DATABASE_URL_FILE"] == "/run/secrets/taktus/database-url/url"
+    assert (
+        env["TAKTUS_CREDENTIAL_BACKUP_STORE_FILE"] == "/run/secrets/taktus/backup-store/secret_key"
+    )
+    assert env["TAKTUS_CREDENTIAL_BACKUP_STORE_ACCESS_KEY_ID_FILE"] == (
+        "/run/secrets/taktus/backup-store/access_key"
+    )
+
+
+def test_the_retention_and_the_recipient_are_configuration() -> None:
+    documents = render("backup.retentionDays=7", "backup.recipient=age1example")
+    [cron] = of_kind(documents, "CronJob")
+    [container] = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+    env = {v["name"]: v["value"] for v in container["env"]}
+    assert (env["TAKTUS_BACKUP_RETENTION_DAYS"], env["TAKTUS_BACKUP_RECIPIENT"]) == (
+        "7",
+        "age1example",
+    )
+
+
+def test_the_backup_reaches_the_database_and_the_store_and_nothing_else(
+    rendered: list[dict[str, Any]],
+) -> None:
+    policies = {p["metadata"]["name"]: p["spec"] for p in of_kind(rendered, "NetworkPolicy")}
+    backup = policies["taktus-backup"]
+    assert backup["policyTypes"] == ["Ingress", "Egress"]
+    assert "ingress" not in backup, "nothing reaches the backup"
+    dns, database, outside = backup["egress"]
+    assert {p["port"] for p in dns["ports"]} == {53}
+    assert database["to"][0]["podSelector"]["matchLabels"]["app.kubernetes.io/component"] == (
+        "database"
+    )
+    assert [p["port"] for p in outside["ports"]] == [443]
+    assert "10.0.0.0/8" in outside["to"][0]["ipBlock"]["except"]
+    admitted = [
+        peer["podSelector"]["matchLabels"]["app.kubernetes.io/component"]
+        for peer in policies["taktus-database"]["ingress"][0]["from"]
+    ]
+    assert admitted == ["control-plane", "migrate", "backup"]
+
+
+def test_without_the_backup_nothing_of_it_is_rendered() -> None:
+    documents = render("backup.enabled=false")
+    assert of_kind(documents, "CronJob") == []
+    policies = {p["metadata"]["name"]: p["spec"] for p in of_kind(documents, "NetworkPolicy")}
+    assert "taktus-backup" not in policies
+    assert len(policies["taktus-database"]["ingress"][0]["from"]) == 2
+
+
+@pytest.mark.parametrize(
+    "setting",
+    ["backup.store.secret=", "backup.store.endpoint=", "backup.store.bucket=", "backup.image.tag="],
+)
+def test_a_backup_without_its_store_or_its_version_is_refused(setting: str) -> None:
+    assert "backup." in render_fails(setting)
