@@ -115,3 +115,10 @@ taktusctl owner-channel show        # owner idn_owner, channel channel.chat, lan
 
 The instance's ledger holds an `identity.linked` entry for `channel.chat` with actor `idn_owner`,
 an `identity.roles_set` entry for `idn_owner`, and an `owner_channel.configured` entry.
+
+## Outcome
+
+**Provided:** 2026-10-11
+**Confirmed by:** the owner wrote the link code for `channel.chat` in the direct conversation with Taktus's app and the app answered that the account is linked; then a Job on the instance, run by the session with the deployment identity on the owner's permission, printed `identity idn_owner in default holds owner` and `owner-facing channel of default configured: channel.chat, in de, 0 named`.
+**How it was provided:** steps 1 and 3 by the session in one Job (`taktusctl identity roles idn_owner --role owner`, then `taktusctl owner-channel set` with the conversation's identifier the owner gave, language `de`, roles `owner` and `documentation`, the view base the instance's public name); step 2 by the owner. The conversation's identifier is a deployment's own name and is kept in the private values, not here.
+**Recorded in:** the pull request that records the owner's answers of 2026-10-11, evening
