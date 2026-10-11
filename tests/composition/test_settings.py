@@ -75,6 +75,7 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
                 "TAKTUS_POLL_SECONDS": "0.2",
                 "TAKTUS_RUNNER_CONCURRENCY": "2",
                 "TAKTUS_LIVE_STREAMS": "7",
+                "TAKTUS_OFFER_WINDOW_SECONDS": "600",
                 "TAKTUS_LOG_LEVEL": "DEBUG",
             }
         ),
@@ -100,6 +101,7 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
     assert loaded.shutdown_ceiling_seconds == 30 and loaded.lease_seconds == 10
     assert loaded.poll_seconds == 0.2 and loaded.runner_concurrency == 2
     assert loaded.live_streams == 7
+    assert loaded.offer_window_seconds == 600
     assert loaded.log_level == "debug"
 
 
@@ -135,6 +137,7 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
         ("TAKTUS_POLL_SECONDS", "fast", "not a number"),
         ("TAKTUS_RUNNER_CONCURRENCY", "-1", "at least 1"),
         ("TAKTUS_LIVE_STREAMS", "0", "at least 1"),
+        ("TAKTUS_OFFER_WINDOW_SECONDS", "0", "at least 1"),
         ("TAKTUS_LOG_LEVEL", "loud", "not one of"),
     ],
 )

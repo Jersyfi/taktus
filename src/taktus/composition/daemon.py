@@ -23,6 +23,7 @@ import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 
 import structlog
@@ -472,6 +473,8 @@ async def wire(
                     ConnectorReplies(pools.connectors),
                     owner.answers,
                     outbox,
+                    clock=clock,
+                    offer_window=timedelta(seconds=settings.offer_window_seconds),
                 ),
                 identities=identities,
                 decisions=decisions,

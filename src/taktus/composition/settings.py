@@ -665,6 +665,9 @@ class Settings:
     live_streams: int
     """How many streams of changes one process of the `api` role holds open at most; one more
     is refused with `503` (ADR-0055 §7)."""
+    offer_window_seconds: int
+    """How long one offer to link an account answers every event of its person in its
+    conversation (ADR-0040 §5); a later event may be offered again."""
     log_level: str
 
     def effective(self) -> list[tuple[str, str]]:
@@ -705,6 +708,7 @@ class Settings:
             ("TAKTUS_POLL_SECONDS", str(self.poll_seconds)),
             ("TAKTUS_RUNNER_CONCURRENCY", str(self.runner_concurrency)),
             ("TAKTUS_LIVE_STREAMS", str(self.live_streams)),
+            ("TAKTUS_OFFER_WINDOW_SECONDS", str(self.offer_window_seconds)),
             ("TAKTUS_LOG_LEVEL", self.log_level),
         ]
 
@@ -752,6 +756,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         poll_seconds=reader.number("poll.seconds", 1.0, low=0.05),
         runner_concurrency=reader.integer("runner.concurrency", 4, low=1),
         live_streams=reader.integer("live.streams", 500, low=1),
+        offer_window_seconds=reader.integer("offer.window.seconds", 86400, low=1),
         log_level=reader.choice("log.level", "info", ("debug", "info", "warning", "error")),
     )
 

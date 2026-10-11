@@ -5,7 +5,8 @@ answered in the channel (UC-1.7)."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import asyncio
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fakes import FakeClock, FakeIdentifiers
@@ -22,29 +23,49 @@ from taktus.components.command.application.service import (
     UnknownSender,
 )
 from taktus.components.command.domain.model import IntakeEvent, IntakeStatus
-from taktus.ports.connector import Delivery, IntakeResult, Sender, SenderKind
+from taktus.ports.connector import Delivery, IntakeReplyTo, IntakeResult, Sender, SenderKind
 from taktus.shared.v1 import Command
 
 AT = datetime(2026, 9, 19, 8, 0, tzinfo=UTC)
 
 
+WINDOW = timedelta(hours=1)
+
+
 def accepted(
-    raw: str = "@taktus refine this", context: dict[str, object] | None = None
+    raw: str = "@taktus refine this",
+    context: dict[str, object] | None = None,
+    *,
+    authored: bool | None = None,
+    event: str = "issue_comment.created",
+    address: str = "acme/product#11",
 ) -> IntakeResult:
+    intent: dict[str, object] = {"raw": raw}
+    if authored is not None:
+        intent["authored"] = authored
     return IntakeResult.model_validate(
         {
             "accepted": {
                 "event_id": "dlv_1",
-                "event": "issue_comment.created",
+                "event": event,
                 "channel": "channel.repo",
                 "sender": {"account": "100200", "kind": "person"},
-                "intent": {"raw": raw},
+                "intent": intent,
                 "context": context or {"repository": "acme/product", "issue": "11"},
-                "reply_to": {"channel": "channel.repo", "address": "acme/product#11"},
+                "reply_to": {"channel": "channel.repo", "address": address},
                 "occurred_at": "2026-09-19T07:59:00Z",
             }
         }
     )
+
+
+class SlowReplies(FakeReplies):
+    """A channel that takes its time to answer, as a service over the network does: another
+    delivery runs while the reply is on its way."""
+
+    async def reply(self, tenant: str, to: IntakeReplyTo, text: str, *, key: str) -> bool:
+        await asyncio.sleep(0)
+        return await super().reply(tenant, to, text, key=key)
 
 
 class Connector:
@@ -61,14 +82,17 @@ class Setup:
         self.persistence = self.identity.persistence
         self.events = MemoryRepository(self.persistence, IntakeEvent)
         self.commands = MemoryRepository(self.persistence, Command)
-        self.replies = FakeReplies()
+        self.replies = SlowReplies()
         self.connector = Connector(answer or accepted())
+        self.clock = FakeClock(AT)
         self.receive = ReceiveIntakeHandler(
             {"channel.repo": self.connector},
             self.events,
             self.persistence,
             self.identity.directory,
             replies=self.replies,
+            clock=self.clock,
+            offer_window=WINDOW,
         )
         self.complete = CompleteIntakeHandler(
             self.events,
@@ -138,8 +162,8 @@ async def test_an_unknown_sender_is_kept_nowhere_and_completed_never() -> None:
     again = await given.receive.execute(
         ReceiveIntake(channel="channel.repo", delivery=given.delivery, tenant="default")
     )
-    assert again.unknown_sender is not None
-    assert given.replies.said[1][3] == key, "the same key: the connector says it once"
+    assert again.unknown_sender is not None and not again.replied
+    assert len(given.replies.said) == 1, "within the window the offer is not made again"
     async with given.persistence.transaction("default"):
         assert await given.events.list("default") == []
         assert await given.commands.list("default") == []
@@ -217,3 +241,58 @@ async def test_a_channel_that_cannot_be_answered_is_reported_not_retried() -> No
     )
     assert outcome.unknown_sender is not None and not outcome.replied
     assert len(given.replies.said) == 1
+
+
+async def test_several_events_within_the_window_get_one_offer_and_a_later_one_another() -> None:
+    """Issue #247: events of one unknown person in one conversation that arrive together wait
+    for each other, and one offer answers them all; after the window a new event may be
+    offered again, under a key of its own, so that the connector does not take it for the
+    first."""
+    given = Setup()
+    receive = ReceiveIntake(channel="channel.repo", delivery=given.delivery, tenant="default")
+    outcomes = await asyncio.gather(*(given.receive.execute(receive) for _ in range(4)))
+    assert [o.replied for o in outcomes].count(True) == 1
+    assert all(o.unknown_sender is not None for o in outcomes)
+    ((_, _, _, first),) = given.replies.said
+
+    given.clock.current += WINDOW - timedelta(minutes=5)
+    assert not (await given.receive.execute(receive)).replied, "still within the window"
+    given.clock.current += timedelta(minutes=10)
+    later = await given.receive.execute(receive)
+    assert later.replied, "after the window the person may be offered again"
+    assert len(given.replies.said) == 2 and given.replies.said[1][3] != first
+
+    # Another conversation, or another person, has a window of its own.
+    given.connector.answer = accepted(
+        context={"repository": "acme/product", "issue": "12"}, address="acme/product#12"
+    )
+    assert (await given.receive.execute(receive)).replied
+    assert len(given.replies.said) == 3
+
+
+async def test_an_event_without_the_senders_text_is_never_answered_nor_read_for_a_code() -> None:
+    """A label added carries the issue's text, which somebody else wrote: the unknown person who
+    added it is not answered, and a code in that text links nobody (issue #247)."""
+    given = Setup()
+    who, _ = await given.identity.person("default", "idn_ada")
+    code = await given.identity.code(who)
+    given.connector.answer = accepted(
+        f"Pin the model\n\n{code}", authored=False, event="issue.labelled"
+    )
+    outcome = await given.receive.execute(
+        ReceiveIntake(channel="channel.repo", delivery=given.delivery, tenant="default")
+    )
+    assert outcome.unknown_sender is not None and outcome.accepted is None
+    assert not outcome.replied and outcome.linked is None
+    assert given.replies.said == [], "nothing the sender wrote, nothing said to them"
+    assert await given.identity.directory.links("default") == [], "the code linked nobody"
+    async with given.persistence.transaction("default"):
+        assert await given.events.list("default") == []
+
+    # The same person, writing: answered as before.
+    given.connector.answer = accepted()
+    assert (
+        await given.receive.execute(
+            ReceiveIntake(channel="channel.repo", delivery=given.delivery, tenant="default")
+        )
+    ).replied

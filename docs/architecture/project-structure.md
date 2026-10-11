@@ -315,7 +315,12 @@ role it would tie the core to a model stack and the removal test would be lost.
 - **Tenants.** An instance is told which tenants it serves (`TAKTUS_TENANTS`, default
   `default`); the runner claims for each in turn. An intake lands in the tenant of the identity
   the sender's account is linked to, and nowhere when it is linked to none (ADR-0040); the
-  first tenant is only where such a sender is answered from.
+  first tenant is only where such a sender is answered from. Such a sender is answered only
+  for what they wrote — an intake whose `intent.authored` is `false`, such as a label added, is
+  answered nothing — and once per conversation within `TAKTUS_OFFER_WINDOW_SECONDS`, a day by
+  default. The `api` role makes the offers of one conversation one at a time, and keeps when it
+  made each in memory; the offer's key names the stretch of the window, so that another
+  process finds an offer made in the same stretch (ADR-0040, amended).
 - **The instance's own platform.** `TAKTUS_PLATFORM` names it and `TAKTUS_ADMINISTERS` declares,
   per credential, the platforms it administers (`ports/administration.py`, ADR-0052). The
   composition root reads both once and hands the one value to the process component's
