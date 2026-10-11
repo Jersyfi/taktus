@@ -210,3 +210,11 @@ For step 6: the app's *Event Subscriptions* page shows **Verified** beside the r
 lists `app_mention` and `message.im` under the bot events. *Verified* is the instance's answer
 to the service's check: it can appear only when the instance verified the check's signature with
 the signing secret of step 5.
+
+## Outcome
+
+**Provided:** 2026-10-11
+**Confirmed by:** section 7, run by the session on 2026-10-11. The workflow `live`, dispatched on `main` (run 38148792212, attempt 3), passed its job `chat`: the suite against the real service, a reply retried after a restart posted once, and the member list read. The two files of step 5 exist, readable by the owner alone, and the instance's secret was created from them without printing them. The app's *Event Subscriptions* page showed **Verified** for the instance's chat intake, with `app_mention` and `message.im`.
+**How it was provided:** steps 1 to 6 by the owner, with the session on step 5's files and the instance. The chart had to deploy the chat connector first (#239). The first live runs found two gaps in step 3 and closed them in the workspace: the app was not yet a member of the scratch channel (`not_in_channel`), and the channel was public, which `groups:history` does not cover (`missing_scope`); the owner invited the app and made the channel private, as step 3 asks.
+**Recorded in:** this pull request
+

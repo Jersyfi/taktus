@@ -209,8 +209,9 @@ the repository channel in every field but the channel and the identity of the me
 (NTC-0082); a reply lands in the thread the command arrived in, once across a restart. It passes
 the conformance suite, fault for fault, against a fake of its service. The service signs the
 moment of sending with the body, so the connector contract gained a second signature scheme that
-bounds a replay to 300 seconds (ADR-0024, amendment; NTC-0083). Against the real service it waits
-for Taktus's app in the owner's workspace (NEED-0018). The webhook intake answers the URL check
+bounds a replay to 300 seconds (ADR-0024, amendment; NTC-0083). Against the real service it passes
+since 2026-10-11, as Taktus's app in the owner's workspace (NEED-0018), and the instance serves
+the chat channel with its event subscription verified (#239). The webhook intake answers the URL check
 the service makes before it sends events to an instance (#145): the connector verifies it,
 refuses it as no event and says what to answer, and the surface returns that answer as it is —
 a refusal may now carry an answer (ADR-0024, amendment; NTC-0084, NTC-0085).
@@ -227,7 +228,7 @@ answers in the message's thread: the answer is read by a rule, reflected without
 and filed only once the same person confirmed it, and only from the owner or someone the owner
 named; a decision is filed in the register and its run continues. A delivery that fails stays
 with the report and is shown. No message carries a secret value the instance holds. Proven
-against the fake chat service; on the installed instance it waits for NEED-0018 and NEED-0020
+against the fake chat service; on the installed instance it waits for NEED-0020
 (NTC-0095, NTC-0096). Nothing raises a need or a date from a step yet; the owner's own questions
 in the chat are UC-6.4.
 
