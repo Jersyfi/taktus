@@ -55,7 +55,9 @@ class Draft:
     blocking: tuple[str, ...]
     due: date
     decider: str
-    anchor: str
+    anchor: str | None = None
+    """The anchor that raised it; None for a request no anchor raised, such as a proposal to
+    move a step to another method (ADR-0084)."""
 
 
 class NotRaised(Exception):
