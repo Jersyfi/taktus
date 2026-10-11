@@ -11,6 +11,7 @@ first process is the check of the product's own central claim.
 | S-03 Restore drill — an earlier version is restored without Taktus and the ledger chain verified | `1.0.0` | — |
 | S-04 Load measurement — how many concurrent runs one instance carries | `1.0.0` | — |
 | **S-05 Guides** — the administration guide and the guide for users, rendered from the repository and put into the knowledge system; a hand edit is kept and reported | **runs** daily | [`processes/S-05-guides.yaml`](processes/S-05-guides.yaml) |
+| **S-06 Maturation** — every step measured, and a step on a language model proposed a trained model where the evidence holds; never applied | **runs** weekly | [`processes/S-06-maturation.yaml`](processes/S-06-maturation.yaml) |
 
 ## S-01 Removal test
 
@@ -279,3 +280,76 @@ A person does the same without Taktus (ADR-0013 B). It needs a checkout of the r
 5. **For a wiki**, until its connector exists (issue #197): copy each page that the command
    printed as `created` or `updated` from the directory into the wiki, at the same place.
 
+## S-06 Maturation
+
+ADR-0004 says that Taktus measures every step and proposes a cheaper method where the evidence
+allows. ADR-0084 built the rules: what a step's measures are, when a step is a candidate, how
+the evidence is made and when a proposal is raised. This process runs them weekly on the
+instance, so that no person has to start them (ADR-0086, issue #229).
+
+**What one run does:**
+
+1. **measure** — reads every step's measures from the instance's own records: cost per case at
+   the instance's price table (`TAKTUS_PRICE_TABLE`), duration, how many cases a person
+   corrected, how far the results spread. No measure names a person.
+2. **propose** — for every step on a language model whose cases reach the floor, trains a
+   classifier on the ML bench twice and tries it on cases held out, in two runs of their own
+   under `method-maturation@1`, each held to the budget the trigger names. Where the evidence
+   holds, it raises a proposal as a decision request to the role `owner`. Where it does not,
+   the outcome says why. Without a price table, nothing is trained: no cost can be compared.
+3. **nothing-applied** — checks by rule that no outcome was applied and that the count of
+   proposals is a whole number (`exact`, its check a recomputation, provisional under
+   DEC-0173, ADR-0082).
+4. **report** — one line: how many steps were measured, how many could not be priced, how many
+   were looked at and how many proposals were raised.
+
+Steps 1 and 2 are calls of `orchestrator.maturation`, served by the loopback connector over
+`composition/maturation.py`. The training and the trial act for the identity that registered
+the bundle, and a step at level 3 runs only on a worker that is at least *verified*
+(ADR-0039): the ML bench must have passed its conformance suite and the removal test on the
+instance before a candidate can be trained.
+
+**From its trigger.** The bundle's trigger says `weekly` — Mondays 00:00 UTC — with the budget
+each training and each trial may use. On an instance that runs `taktusd` with the `scheduler`
+role and has S-06 registered, the elected scheduler starts one run per week, whichever
+scheduler leads (ADR-0035). A different schedule or budget is a version of the bundle with a
+different trigger. Register it once:
+
+```bash
+uv run taktusctl submit --process blueprints/self-operation/processes/S-06-maturation.yaml \
+    --input 'budget={"compute": {"seconds": 1800, "resource_class": "cpu.small"}}'
+```
+
+`tests/integration/test_time_triggers.py` runs it from its trigger with two schedulers on a
+clock the test moves; `tests/composition/test_maturation_wiring.py` has it raise a proposal
+through the loopback connector against a scripted bench.
+
+**Switching it off** — `uv run taktusctl deactivate --process s06-maturation` — stops the
+trigger. Proposals already raised stay open until a person answers them.
+
+### Its autonomy, with the reason
+
+Level 3: every step reads the instance's own records or applies the rules of ADR-0084; the
+training and the trial act on nothing outside the bench; a proposal is a decision request, and
+nothing is ever applied. Toward level 4: a quarter of weekly runs whose proposals a person
+checked against the training and trial runs in the ledger and found sound; then Taktus
+proposes the raise with that evidence (M3.9).
+
+### By hand — the takeover test of this process
+
+A person does the same without the schedule (ADR-0013 B). It needs the instance's
+configuration and `taktusctl`.
+
+1. **Measure**: `uv run taktusctl maturation measures`. Exit code `1` means a cost could not be
+   priced; the line says why.
+2. **Correct** a result found wrong, as yourself:
+   `uv run taktusctl maturation correct <run> <step> --value <right result> --identity <you>`.
+   The correction is the label a training learns from.
+3. **Ask for proposals**, with a budget:
+   `uv run taktusctl maturation propose --compute-seconds 1800 --identity <you>`. Every step
+   looked at is printed, with the request raised or why none was.
+4. **Without Taktus**, the rules are ADR-0084's and are written as numbers: at least 500
+   labelled cases, at least 20 in every class, at most 50 classes; a fifth of every class held
+   out; at least 95 % agreement on the held-out cases, a lower cost per case, and the same model
+   from two trainings. A person can collect the step's cases from its runs, train a classifier
+   on the bench by hand (`workers/mlbench/README.md`), and hold the result to those numbers.

@@ -27,7 +27,9 @@ broken interface in the run's failed calls and reports it to the owner through t
 (`interfaces.py`, ADR-0047). The guides' process, S-05, asks the instance through the loopback
 connector to render, measure and publish the guides and to report a hand edit; `guides.py`
 answers over the knowledge and reporting components, and serves `knowledge.pages` over the
-directory `TAKTUS_KNOWLEDGE_DIRECTORY` names (ADR-0066).
+directory `TAKTUS_KNOWLEDGE_DIRECTORY` names (ADR-0066). Method maturation is built once in
+`maturation.py`, with the instance's price table and its decision port: `taktusctl maturation`
+uses the handlers, and S-06 reaches them through the loopback connector (ADR-0086).
 
 `local.py` wires `taktusctl` for a developer's machine: PostgreSQL when `TAKTUS_DATABASE_URL`
 (or `_FILE`) is configured, otherwise the in-memory stores with a file snapshot under a state

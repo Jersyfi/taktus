@@ -9,8 +9,9 @@ What is proven: a due trigger starts exactly one run with two schedulers running
 across a restart of the leader; a trigger not yet due starts none; slots missed while no
 scheduler led start one run, not one per slot; every started run carries its trigger in the
 ledger; S-01, the removal test, runs end to end from its weekly trigger, once per
-integration the instance lists; and S-05, the guides, is started once a day, and no more once it
-is switched off.
+integration the instance lists; S-05, the guides, is started once a day, and no more once it
+is switched off; and S-06, maturation, runs once a week to its report, whichever of two
+schedulers leads.
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ from .test_daemon_scaling import rule_only_bundle, settings, until
 ROOT = Path(__file__).resolve().parents[2]
 REMOVAL = ROOT / "blueprints" / "self-operation" / "processes" / "S-01-removal-test.yaml"
 GUIDES = ROOT / "blueprints" / "self-operation" / "processes" / "S-05-guides.yaml"
+MATURATION = ROOT / "blueprints" / "self-operation" / "processes" / "S-06-maturation.yaml"
 SETTLE = 0.6  # seconds of real time: a dozen scheduler ticks at a poll of 0.05
 
 
@@ -351,6 +353,71 @@ async def test_the_guides_are_started_once_a_day_until_the_process_is_switched_o
     clock.current = datetime(2026, 10, 15, 0, 0, 30, tzinfo=UTC)
     await asyncio.sleep(SETTLE * 2)
     assert len(await runs_of(wired, tenant, version.ref)) == 2, "a process switched off starts none"
+    assert b.task is not None and not b.task.done()
+
+
+async def test_maturation_runs_once_a_week_whichever_of_two_schedulers_leads(
+    daemons: Callable[..., Daemon], tenant: str, tmp_path: Path
+) -> None:
+    """S-06 is registered on a Sunday; each Monday 00:00 UTC that passes starts one run, with
+    the trigger's budget, whichever of two schedulers leads; each run measures the steps at the
+    instance's price table and asks for proposals (issue #229, ADR-0086)."""
+    prices = tmp_path / "prices.json"
+    prices.write_text(
+        json.dumps(
+            {
+                "version": "test-1",
+                "valid_from": "2026-10-01T00:00:00Z",
+                "currency": "eur",
+                "unit_tokens": 1000000,
+                "source": "a test: no provider's prices",
+                "prices": {"fake-model@1": {"input": 3.0, "output": 15.0}},
+                "compute": {"cpu.small": 0.00002},
+            }
+        ),
+        encoding="utf-8",
+    )
+    clock = ManualClock(datetime(2026, 10, 11, 9, 0, tzinfo=UTC))  # a Sunday
+    a = await daemons("maturation-a", clock, TAKTUS_PRICE_TABLE=str(prices)).start()
+    await until(lambda: a.leading)
+    assert a.wired is not None
+    wired = a.wired
+    with MATURATION.open(encoding="utf-8") as handle:
+        bundle: dict[str, Any] = yaml.safe_load(handle)
+    version = await registered(wired, tenant, bundle)
+    assert version.triggers[0].schedule == "weekly"
+    b = await daemons("maturation-b", clock, TAKTUS_PRICE_TABLE=str(prices)).start()
+    await eventually(lambda: _armed(wired, tenant))
+    await asyncio.sleep(SETTLE)
+    assert await runs_of(wired, tenant, version.ref) == []
+
+    for day, expected in ((12, 1), (19, 2)):  # two Mondays
+        clock.current = datetime(2026, 10, day, 0, 0, 30, tzinfo=UTC)
+
+        async def finished(n: int = expected) -> bool:
+            runs = await runs_of(wired, tenant, version.ref)
+            return len(runs) >= n and all(run.state is RunState.FINISHED for run in runs)
+
+        await eventually(finished, seconds=60)
+        await asyncio.sleep(SETTLE)
+        assert len(await runs_of(wired, tenant, version.ref)) == expected
+    # Later the same week, nothing more.
+    clock.current = datetime(2026, 10, 22, 18, 0, tzinfo=UTC)
+    await asyncio.sleep(SETTLE)
+    runs = await runs_of(wired, tenant, version.ref)
+    assert len(runs) == 2
+    assert all(run.inputs["budget"]["compute"]["resource_class"] == "cpu.small" for run in runs)
+    (state,) = await trigger_states(wired, tenant)
+    slots = sorted([await assert_triggered(wired, tenant, run, state) for run in runs])
+    assert [slot.day for slot in slots] == [12, 19]
+    # Each run measured the steps and asked for proposals, and its ledger chain holds.
+    second = max(runs, key=lambda run: run.created_at)
+    measured = second.step_run("measure").checkpoint
+    assert measured is not None and measured.result_digest is not None
+    async with wired.work.transaction(tenant):
+        kinds = [e.kind for e in await wired.ledger.entries(tenant)]
+        assert (await wired.ledger.verify(tenant)).intact
+    assert "method.proposed" not in kinds, "no step on a language model, nothing trained"
     assert b.task is not None and not b.task.done()
 
 

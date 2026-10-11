@@ -21,6 +21,16 @@ reading, and a report of every page a person edited there. The instance answers 
 `Guides` protocol below, which the composition root implements over the knowledge and reporting
 components (`composition/guides.py`, ADR-0066).
 
+Method maturation (ADR-0084) runs as a process too, S-06 of `blueprints/self-operation/`. It
+asks the instance for the capability `orchestrator.maturation`: every step's measures, and the
+proposals maturation makes for the steps whose cases reach the floor. The instance answers
+through the `Maturation` protocol below, which the composition root implements over the run
+component's maturation (`composition/maturation.py`, ADR-0086). Asking for proposals trains and
+tries a candidate in runs of their own, each in the ledger, and raises a proposal as a decision
+request. Both operations are a `read`: what the training and the trial do is recorded by those
+runs, and a decision request is a record of the decision component, which delivers it and
+records the delivery itself, as for the removal test's rehearsals and the guides' reports.
+
 Every operation but two declares effect `read`. The effect field says whether an operation's
 effect leaves Taktus (contracts/connector/v1 §3); a rehearsal run inside Taktus and a record in
 the catalog do not leave it, so no egress entry is written for them (ADR-0022). Running a
@@ -63,6 +73,7 @@ REMOVAL = "orchestrator.removal"
 MATURITY = "orchestrator.maturity"
 CONFORMANCE = "orchestrator.conformance"
 GUIDES = "orchestrator.guides"
+MATURATION = "orchestrator.maturation"
 
 LIST = f"{INTEGRATIONS}.list"
 DESCRIBE = f"{INTEGRATIONS}.describe"
@@ -74,6 +85,8 @@ GUIDE_RENDER = f"{GUIDES}.render"
 GUIDE_MEASURE = f"{GUIDES}.measure"
 GUIDE_PUBLISH = f"{GUIDES}.publish"
 GUIDE_REPORT = f"{GUIDES}.report"
+MATURATION_MEASURES = f"{MATURATION}.measures"
+MATURATION_PROPOSE = f"{MATURATION}.propose"
 
 
 class UnknownIntegration(LookupError):
@@ -161,11 +174,30 @@ class Guides(Protocol):
         ...
 
 
+class Maturation(Protocol):
+    """What the connector needs from the instance for method maturation (ADR-0084, ADR-0086).
+    Every document is JSON-shaped and passed through; the instance validates it and raises
+    `ValueError`, naming what is wrong."""
+
+    async def measures(self, tenant: str) -> dict[str, Any]:
+        """Every step's measures: `steps`, each naming its process version and step, never a
+        person; and `unpriced`, true when any cost could not be priced."""
+        ...
+
+    async def propose(
+        self, tenant: str, *, identity: str, budget: dict[str, Any], scope: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Proposals for every step on a language model whose cases reach the floor, each run
+        held to `budget` and acting for `identity`: `outcomes`, one per step looked at, with
+        the request raised or why none was; `proposed`, how many were raised."""
+        ...
+
+
 DECLARATION = Capabilities.model_validate(
     {
         "contract": "connector/v1",
         "version": "1",
-        "capabilities": [INTEGRATIONS, REMOVAL, MATURITY, CONFORMANCE, GUIDES],
+        "capabilities": [INTEGRATIONS, REMOVAL, MATURITY, CONFORMANCE, GUIDES, MATURATION],
         "operations": [
             {
                 "name": LIST,
@@ -248,6 +280,23 @@ DECLARATION = Capabilities.model_validate(
                 "summary": "A report of every page kept because a person's text stands, raised "
                 "to whoever the owner-facing channel reaches with the role named.",
             },
+            {
+                "name": MATURATION_MEASURES,
+                "capability": MATURATION,
+                "effect": "read",
+                "demand": {"quota_units": 1},
+                "summary": "Every step's measures — cost per case, duration, corrections, "
+                "spread — read from the instance's own records; none names a person.",
+            },
+            {
+                "name": MATURATION_PROPOSE,
+                "capability": MATURATION,
+                "effect": "read",
+                "demand": {"quota_units": 1},
+                "summary": "For every step on a language model whose cases reach the floor, a "
+                "candidate trained and tried in runs held to the budget named, and a proposal "
+                "raised as a decision request where the evidence holds; never applied.",
+            },
         ],
         "credentials": [],
         "consumption": {"kinds": ["quota"], "unit": "calls", "window_seconds": 3600},
@@ -262,16 +311,27 @@ class LoopbackConnector:
     creates the connector first, the engine second, and binds the orchestrator last."""
 
     def __init__(
-        self, orchestrator: Orchestrator | None = None, guides: Guides | None = None
+        self,
+        orchestrator: Orchestrator | None = None,
+        guides: Guides | None = None,
+        maturation: Maturation | None = None,
     ) -> None:
         self._orchestrator = orchestrator
         self._guides = guides
+        self._maturation = maturation
 
-    def bind(self, orchestrator: Orchestrator | None = None, guides: Guides | None = None) -> None:
+    def bind(
+        self,
+        orchestrator: Orchestrator | None = None,
+        guides: Guides | None = None,
+        maturation: Maturation | None = None,
+    ) -> None:
         if orchestrator is not None:
             self._orchestrator = orchestrator
         if guides is not None:
             self._guides = guides
+        if maturation is not None:
+            self._maturation = maturation
 
     async def capabilities(self) -> Capabilities:
         return DECLARATION
@@ -280,6 +340,13 @@ class LoopbackConnector:
         try:
             if operation.startswith(f"{GUIDES}."):
                 return await self._guide(operation, context, dict(input))
+            if operation.startswith(f"{MATURATION}."):
+                output = await self._mature(operation, context, dict(input))
+                return Result(
+                    output=output,
+                    effect=EffectReport(kind=Effect.READ),
+                    consumption=Consumption(quota_units=1),
+                )
             if self._orchestrator is None:
                 raise ConnectorError("the loopback connector is not bound to an instance")
             output = await self._dispatch(self._orchestrator, operation, context, dict(input))
@@ -366,6 +433,25 @@ class LoopbackConnector:
             effect=EffectReport(kind=Effect.READ),
             consumption=Consumption(quota_units=1),
         )
+
+    async def _mature(
+        self, operation: str, context: CallContext, input: dict[str, Any]
+    ) -> dict[str, Any]:
+        maturation = self._maturation
+        if maturation is None:
+            raise CallFailed(
+                operation, _failure(Cause.NOT_FOUND, "this instance runs no maturation")
+            )
+        if operation == MATURATION_MEASURES:
+            return await maturation.measures(context.tenant)
+        if operation == MATURATION_PROPOSE:
+            return await maturation.propose(
+                context.tenant,
+                identity=context.identity,
+                budget=_mapping(input, "budget"),
+                scope=_mapping(input, "scope"),
+            )
+        raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
 
 
 def _published(output: Mapping[str, Any]) -> EffectReport:

@@ -33,8 +33,12 @@ from taktus.components.reporting.application.service import (
     ConfigureChannelHandler,
     ProductFindings,
 )
-from taktus.components.run.application.query import ProvenanceQuery
-from taktus.components.run.application.service import RunEngine
+from taktus.components.run.application.query import ProvenanceQuery, StepMeasures
+from taktus.components.run.application.service import (
+    CorrectResultHandler,
+    ProposeMovesHandler,
+    RunEngine,
+)
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
@@ -88,6 +92,14 @@ class Services:
     conformance record`, ADR-0044)."""
     deactivate: DeactivateProcessHandler | None = None
     """A process is switched off: its triggers no longer start runs (`taktusctl deactivate`)."""
+    measures: StepMeasures | None = None
+    """Every step's measures, at the instance's price table (`taktusctl maturation measures`,
+    ADR-0084)."""
+    correct_result: CorrectResultHandler | None = None
+    """A person's correction of a step's result, recorded (`taktusctl maturation correct`)."""
+    propose_moves: ProposeMovesHandler | None = None
+    """Proposals to move a step to a trained model, on evidence, through the instance's
+    decision port (`taktusctl maturation propose`)."""
 
 
 @dataclass(frozen=True)
