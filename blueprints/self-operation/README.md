@@ -228,8 +228,10 @@ at one commit, and names the files and the commit (ADR-0065). This process makes
 Steps 2, 4, 6, 7 and 8 are calls of `orchestrator.guides`, served by the loopback connector:
 rendering, measuring and publishing are the knowledge component's, raising a report the
 reporting component's (`composition/guides.py`). The knowledge system is a wiki's connector
-(issue #197) or, where the organisation keeps none, the directory the instance serves when
-`TAKTUS_KNOWLEDGE_DIRECTORY` names one.
+(issue #197, NTC-0193) or, where the organisation keeps none, the directory the instance serves
+when `TAKTUS_KNOWLEDGE_DIRECTORY` names one. Steps 5 and 7 name the credential
+`KNOWLEDGE_TOKEN`, which a wiki's connector acts with and the directory ignores; version 2 of the
+bundle added it (`CREDENTIALS.md`).
 
 **From its trigger.** The bundle's trigger says `daily`: on an instance that runs `taktusd`
 with the `scheduler` role and has S-05 registered, the elected scheduler starts one run every
