@@ -1,0 +1,29 @@
+{
+  "credentials": {
+    "actions": "KNOWLEDGE_TOKEN"
+  },
+  "read": {
+    "operation": "knowledge.pages.read",
+    "input": {
+      "place": ["Scratch", "Conformance", "Seeded page"]
+    }
+  },
+  "writes": [
+    {
+      "operation": "knowledge.pages.write",
+      "input": {
+        "place": ["Scratch", "Conformance", "Page {{unique}}"],
+        "body": "Written {{unique}} by the conformance suite.  \r\nIts text ends with spaces, a carriage return and a newline.\n",
+        "mark": "{\"by\":\"the conformance suite\",\"run\":\"{{unique}}\"}",
+        "expected": null
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "knowledge.pages.read",
+    "input": {
+      "place": ["Scratch", "Conformance", "No such page"]
+    },
+    "expected_cause": "not_found"
+  }
+}

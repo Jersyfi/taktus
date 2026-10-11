@@ -19,12 +19,20 @@ import yaml
 WORKFLOWS = Path(__file__).resolve().parents[2] / ".github" / "workflows"
 LIVE = WORKFLOWS / "live.yml"
 ENVIRONMENT = "live"
-LIVE_SECRETS = {"LIVE_APP_ID", "LIVE_APP_PRIVATE_KEY", "CODING_AGENT_API_KEY", "LIVE_CHAT_TOKEN"}
+LIVE_SECRETS = {
+    "LIVE_APP_ID",
+    "LIVE_APP_PRIVATE_KEY",
+    "CODING_AGENT_API_KEY",
+    "LIVE_CHAT_TOKEN",
+    "LIVE_KNOWLEDGE_TARGET",
+    "LIVE_KNOWLEDGE_TOKEN",
+}
 """The secrets of the live tests: the coding agent's key (NEED-0012), the identifier and the
 private key of Taktus's own app, through which the connector reaches its scratch repository
 (NEED-0013, NEED-0016, ADR-0033), and the bot token of Taktus's app in the owner's chat
-workspace (NEED-0018). The identifier is not secret; it is held as one so that it is masked in
-the public log."""
+workspace (NEED-0018), and the address of the wiki for the guides with the token of Taktus's
+user in it (NEED-0021). The identifier and the address are not secret; each is held as one so
+that it is masked in the public log."""
 SPENDING_SECRETS = {"CODING_AGENT_API_KEY"}
 """Secrets whose use costs money: a job that reads one carries the cap."""
 CAP = "vars.LIVE_SPEND_CAP_USD"
@@ -166,3 +174,29 @@ def test_the_chat_token_is_written_nowhere_the_evidence_is_kept() -> None:
         )
     assert 'rm -f "$token"' in runs, "the token file is removed when the step ends"
     assert 'TAKTUS_CREDENTIAL_CHAT_TOKEN_FILE="$token"' in runs
+
+
+def test_the_wiki_token_is_written_nowhere_the_evidence_is_kept() -> None:
+    """The knowledge job writes the wiki's token to a file for the length of its step
+    (NEED-0021). That file lies outside every path the job uploads as evidence, the step
+    removes it, and the connector reads it through the one variable every credential has. The
+    wiki's address is a secret too, so that this public log masks it."""
+    job = load(LIVE)["jobs"]["knowledge"]
+    uploaded = [
+        str(step["with"]["path"]).replace("${{ runner.temp }}", "$RUNNER_TEMP")
+        for step in job["steps"]
+        if str(step.get("uses", "")).startswith("actions/upload-artifact")
+    ]
+    runs = "\n".join(str(step.get("run", "")) for step in job["steps"])
+    dumped = yaml.safe_dump(job)
+    assert "secrets.LIVE_KNOWLEDGE_TOKEN" in dumped
+    assert "secrets.LIVE_KNOWLEDGE_TARGET" in dumped and "vars." not in dumped
+    assert "tests/adapters/connectors/test_knowledge_live.py" in runs
+    token = re.search(r'token="([^"]+)"', runs)
+    assert token, "the knowledge job names the file it writes the token to"
+    for path in uploaded:
+        assert not token.group(1).startswith(path.rstrip("/") + "/"), (
+            f"the token file {token.group(1)} lies inside the evidence {path}"
+        )
+    assert 'rm -f "$token"' in runs, "the token file is removed when the step ends"
+    assert 'TAKTUS_CREDENTIAL_KNOWLEDGE_TOKEN_FILE="$token"' in runs

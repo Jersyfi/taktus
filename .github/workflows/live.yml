@@ -130,6 +130,62 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
+  # The wiki connector against the wiki the guides are read in (#197, NEED-0021). It runs the
+  # contract's suite and the edit test in a scratch book on a shelf of its own, and then publishes
+  # the guides into their two books as `taktusctl guides publish` would. The wiki's address and
+  # the token of Taktus's user in it are secrets of the environment: the address is the
+  # deployment's own name, never a line of this repository, and a secret is masked in this public
+  # log where a variable is not. The job writes the token to a file outside the evidence
+  # directory, readable by the runner's user alone, for the length of the step, and the
+  # connector reads it through TAKTUS_CREDENTIAL_KNOWLEDGE_TOKEN_FILE. Nothing runs without the
+  # address; with it and without the token the step fails, because half a configuration is a
+  # fault and not a skip. The owner runs the wiki, which charges nothing per call; the job's time
+  # limit bounds the run, and the test log is its evidence.
+  knowledge:
+    if: github.repository == 'Jersyfi/taktus' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: live
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - name: live wiki connector test
+        env:
+          TAKTUS_LIVE_KNOWLEDGE_TARGET: ${{ secrets.LIVE_KNOWLEDGE_TARGET }}
+          LIVE_KNOWLEDGE_TOKEN: ${{ secrets.LIVE_KNOWLEDGE_TOKEN }}
+        # `shell: bash` runs with pipefail, so that a failing test fails the step through `tee`.
+        shell: bash
+        run: |
+          if [ -z "$TAKTUS_LIVE_KNOWLEDGE_TARGET" ]; then
+            echo "::notice::the wiki's address is not set in the environment 'live' (NEED-0021); nothing ran"
+            exit 0
+          fi
+          if [ -z "$LIVE_KNOWLEDGE_TOKEN" ]; then
+            echo "::error::the wiki's token is not set in the environment 'live' (NEED-0021)"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/live" "$RUNNER_TEMP/knowledge"
+          chmod 700 "$RUNNER_TEMP/knowledge"
+          token="$RUNNER_TEMP/knowledge/token"
+          trap 'rm -f "$token"' EXIT
+          (umask 077 && printf '%s' "$LIVE_KNOWLEDGE_TOKEN" >"$token")
+          unset LIVE_KNOWLEDGE_TOKEN
+          export TAKTUS_CREDENTIAL_KNOWLEDGE_TOKEN_FILE="$token"
+          uv run pytest tests/adapters/connectors/test_knowledge_live.py -rA -s \
+            | tee "$RUNNER_TEMP/live/knowledge.log"
+          # A test that skipped proved nothing: the run fails unless it passed.
+          grep -Eq '^PASSED ' "$RUNNER_TEMP/live/knowledge.log" \
+            || { echo "::error::the live wiki connector test did not run"; exit 1; }
+      - name: keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-knowledge-${{ github.run_id }}
+          path: ${{ runner.temp }}/live
+          if-no-files-found: ignore
+          retention-days: 90
+
   # The coding worker against its real agent, on one small assignment: one file in an empty
   # workspace (#68, NEED-0012). The job spends money on the agent's key, so it does not start
   # without the cap per run. The test converts the cap into the run's budget in tokens, because

@@ -16,9 +16,11 @@ session says what you are to create (DEC-0057). This is it:
 1. **A wiki of the product BookStack**, run by you, reachable over HTTPS from Taktus's instance, and
    readable only after signing in. It is not public.
 2. **One shelf and two books in it**, where the guides go: the shelf `Taktus`, with the books
-   `Administration` and `Using Taktus`.
+   `Administration` and `Using Taktus`. Beside it, **a second shelf with one book** for the
+   monthly live test of the connector: the shelf `Taktus live test` with the book `Live test`, so
+   that the test's pages never stand among the guides.
 3. **An account for Taktus in it**, with a role that may use the wiki's interface for programs and
-   create, change and read pages in those two books, and nothing else.
+   create, change and read pages in those three books, and nothing else.
 4. **A token of that account** for the interface, put where the instance reads its secrets.
 5. **The wiki's address**, in the private note where the platform's names are kept.
 
@@ -55,14 +57,16 @@ Under *Settings → Features & Security*, leave *Public access* off. Taktus does
 an instance does not administer the platform it runs on (ADR-0025).
 
 **Step 2 — the place.** Signed in as an administrator, create the shelf `Taktus` and, on it, the
-books `Administration` and `Using Taktus`. Taktus creates the pages in them.
+books `Administration` and `Using Taktus`. Create the shelf `Taktus live test` and, on it, the book
+`Live test`. Taktus creates the pages in them. The live test leaves a handful of pages in `Live
+test` every month, because Taktus may delete nothing; delete them whenever you like.
 
 **Step 3 — the account.** Under *Settings → Roles*, create the role `Taktus guides` with:
 
 - *System permissions*: only *Access system API*;
 - *Asset permissions*: none at all;
-- on each of the two books, under the book's *Permissions*: for `Taktus guides`, *View*, *Create*
-  and *Update*; never *Delete*.
+- on each of the three books, under the book's *Permissions*: for `Taktus guides`, *View*,
+  *Create* and *Update*; never *Delete*.
 
 Under *Settings → Users*, create the user `Taktus` with that role and no other, and an address you
 read. Nobody signs in as it.
@@ -72,15 +76,23 @@ read. Nobody signs in as it.
 Secret* once. Join them as `<id>:<secret>` and write that into a file only you can read, then into
 the instance's secret store under the parameter `KNOWLEDGE_TOKEN`: on the cluster, a Secret in the
 control plane's namespace, named in the chart's `credentials` (`deploy/k8s/README.md` §2). The
-parameter is described in `CREDENTIALS.md` when #197 brings the code that reads it.
+parameter is described in `CREDENTIALS.md`, row *Knowledge token of the requesting identity*.
+Where the instance names its platform (`administration.platform`), declare the parameter as
+administering none, `KNOWLEDGE_TOKEN: none` under `administration.administers`; otherwise the
+guides' process, which names it, is refused (ADR-0052).
 
 ```sh
 kubectl --namespace "<control-plane namespace>" create secret generic "<secret name>" \
   --from-file=token="<path of the file with id:secret>"
 ```
 
-Renew it before it expires: create a new token, replace the Secret, delete the old token in the
-wiki.
+For the monthly live test, put the same `<id>:<secret>` into the secret `LIVE_KNOWLEDGE_TOKEN`
+of the repository's environment `live`, and the wiki's base address into its secret
+`LIVE_KNOWLEDGE_TARGET` — a secret, not a variable, so that the public log masks it
+(*Settings → Environments → live*).
+
+Renew it before it expires: create a new token, replace the Secret and `LIVE_KNOWLEDGE_TOKEN`,
+delete the old token in the wiki.
 
 **Step 5 — the address.** Write the wiki's base address into the private note, under "wiki for the
 guides".

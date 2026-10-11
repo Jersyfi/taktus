@@ -62,6 +62,7 @@ from taktus.components.reporting.domain.model import ReportKind
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.composition.guides import InstanceGuides
+from taktus.ports.connector import ActionConnector
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import Command, Intent, Plan, ReplyTo
 
@@ -156,10 +157,18 @@ class Hosted:
 class World:
     """One instance of Taktus over memory, with S-05 registered for the owner channel's tenant."""
 
-    def __init__(self, service: Service, given: OwnerChannel) -> None:
+    def __init__(
+        self,
+        service: Service,
+        given: OwnerChannel,
+        knowledge: list[tuple[str, ActionConnector]] | None = None,
+    ) -> None:
+        """`knowledge`: the connectors that serve `knowledge.pages`; by default the fake
+        knowledge system alone, and none at all where an empty list is given."""
         self.given = given
         self.hosted = Hosted(service)
         self.knowledge = FakeKnowledgeSystem()
+        served = [("connector.knowledge", self.knowledge)] if knowledge is None else knowledge
         persistence = given.persistence
         ledger = given.identity.ledger
         clock = given.clock
@@ -169,7 +178,7 @@ class World:
         connectors = StaticConnectorPool(
             [
                 ("connector.repo", McpActionConnector(build_server(config), timeout=5.0)),
-                ("connector.knowledge", self.knowledge),
+                *served,
                 (LOOPBACK, loopback),
             ]
         )

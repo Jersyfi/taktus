@@ -575,6 +575,82 @@ def start_chat_connector(tmp_path: Path) -> Iterator[StartConnector]:
     stop_all(started)
 
 
+KNOWLEDGE_CONNECTOR = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors" / "bookstack"
+KNOWLEDGE_SCENARIO = KNOWLEDGE_CONNECTOR / "scenario.json"
+FAKE_WIKI = ROOT / "tests" / "fakes" / "wiki_service.py"
+KNOWLEDGE_ACTIONS = "KNOWLEDGE_TOKEN"
+
+
+def knowledge_connector_faults() -> list[tuple[str, str]]:
+    """Every fault the wiki connector offers, with the check it breaks, from the connector."""
+    return _list_faults(
+        [sys.executable, "-m", "taktus.adapters.driven.connectors.bookstack", "--list-faults"]
+    )
+
+
+@pytest.fixture
+def start_knowledge_connector(tmp_path: Path) -> Iterator[StartConnector]:
+    """The fake wiki and the wiki connector, each a process of its own. The token reaches the
+    connector only through the file `TAKTUS_CREDENTIAL_KNOWLEDGE_TOKEN_FILE` names — the
+    connector reads no credential from its environment — and the suite searches for the same
+    value."""
+    started: list[subprocess.Popen[bytes]] = []
+
+    def start(*, fault: str | None = None) -> RunningConnector:
+        token = f"{secrets.token_hex(8)}:{secrets.token_hex(16)}"
+        name = fault or "honest"
+        token_file = tmp_path / f"knowledge-token-{name}"
+        token_file.write_text(token, encoding="utf-8")
+        token_file.chmod(0o600)
+        service_env = {**os.environ, "FAKE_WIKI_TOKENS": f"{token}|write"}
+        connector_env = {**os.environ, "TAKTUS_CREDENTIAL_KNOWLEDGE_TOKEN_FILE": str(token_file)}
+        connector_env.pop(KNOWLEDGE_ACTIONS, None)
+        service_port = free_port()
+        service_log = tmp_path / f"wiki-{name}.log"
+        with service_log.open("wb") as handle:
+            service = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
+                [sys.executable, str(FAKE_WIKI), "--port", str(service_port)],
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                env=service_env,
+            )
+        started.append(service)
+        service_url = f"http://127.0.0.1:{service_port}"
+        wait_ready(service, f"{service_url}/_fake/state", service_log, "fake wiki")
+
+        port = free_port()
+        log = tmp_path / f"knowledge-connector-{name}.log"
+        args = [
+            sys.executable,
+            "-m",
+            "taktus.adapters.driven.connectors.bookstack",
+            "--port",
+            str(port),
+            "--target",
+            service_url,
+        ]
+        if fault:
+            args += ["--fault", fault]
+        with log.open("wb") as handle:
+            process = subprocess.Popen(  # noqa: S603 — our own module, fixed arguments
+                args, stdout=handle, stderr=subprocess.STDOUT, env=connector_env
+            )
+        started.append(process)
+        endpoint = f"http://127.0.0.1:{port}"
+        wait_ready(process, f"{endpoint}/health", log, "wiki connector")
+        return RunningConnector(
+            f"{endpoint}/mcp",
+            log,
+            service_url,
+            {KNOWLEDGE_ACTIONS: token},
+            process,
+            scenario=KNOWLEDGE_SCENARIO,
+        )
+
+    yield start
+    stop_all(started)
+
+
 # --- the instance runs the suite and records it (ADR-0044) ----------------------------------------
 
 
