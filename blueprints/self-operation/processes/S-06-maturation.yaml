@@ -1,0 +1,131 @@
+# S-06 Maturation — every step measured, and a cheaper method proposed for a step on a language
+# model where the evidence holds; never applied (ADR-0084, ADR-0086, issue #229).
+#
+# Taktus measures every step it runs: cost per case, duration, how often a person corrected
+# the result, how far the results spread. For a step on a language model whose cases reach the
+# floor, it trains a classifier on the ML bench, tries it on cases held out, and raises a
+# proposal to move the step as a decision request to whoever owns the process. A person decides
+# the move. This process runs that weekly, through the elected scheduler.
+#
+#     uv run taktusctl run --process blueprints/self-operation/processes/S-06-maturation.yaml \
+#         --input 'budget={"compute": {"seconds": 1800, "resource_class": "cpu.small"}}'
+#
+# The capability `orchestrator.maturation` is served by the loopback connector, through which
+# Taktus reaches itself (docs/architecture/contracts.md §4). The training and the trial are runs
+# of their own, under `method-maturation@1`, each held to the budget below and in the ledger.
+#
+# Switching this process off (`taktusctl deactivate --process s06-maturation`) stops the
+# schedule. `taktusctl maturation measures` and `taktusctl maturation propose` do the same by
+# hand (README.md beside this directory).
+
+id: s06-maturation
+version: "1"
+name: S-06 Maturation
+autonomy:
+  level: 3
+  reason: >
+    every step reads the instance's own records or applies the rules of ADR-0084; a training
+    and a trial act on nothing outside the bench; a proposal is a decision request a person
+    answers, and nothing is ever applied
+  toward_next: >
+    a quarter of weekly runs whose proposals a person checked against the training and trial
+    runs in the ledger and found sound; then Taktus proposes level 4 with that evidence
+    (anchors.taktus.md M3.9)
+author: the repository
+reason: method maturation runs on the instance without a person starting it (issue #229)
+
+# Weekly, Mondays 00:00 UTC, through the elected scheduler (ADR-0035). A scheduled run has
+# nobody to ask, so the trigger names the budget: what each training and each trial may use.
+triggers:
+  - schedule: weekly
+    inputs:
+      budget:
+        compute: { seconds: 1800, resource_class: cpu.small }
+
+inputs:
+  budget:
+    description: >
+      what each training run and each trial run may use, in the shape of the worker contract's
+      limits; a candidate whose runs exceed it is not proposed, and the outcome says so
+    example:
+      compute: { seconds: 1800, resource_class: cpu.small }
+
+# Counted in calls of the loopback connector. The training and the trial are held to `budget`,
+# not to this.
+limits:
+  quota: { units: 10 }
+
+steps:
+  - id: measure
+    method: rule
+    reason: >
+      every step's measures are read from the instance's own records — the runs, the results,
+      the ledger — at the instance's price table; none names a person
+    rejected:
+      - method: llm
+        why: a measure is arithmetic over records; a model would only restate it, less exactly
+    exactness: sourced
+    work:
+      rule: connector
+      operation: orchestrator.maturation.measures
+      input: {}
+
+  - id: propose
+    method: rule
+    reason: >
+      the floor, the split, the verdict and the proposal are the rules of ADR-0084; the
+      training and the trial are runs of their own, of method worker and ml, each with its own
+      reason; a proposal is a decision request, never a change
+    rejected:
+      - method: llm
+        why: >
+          whether the evidence holds must be decided the same way every time, by numbers a
+          person can check; a judgement could propose on weaker evidence
+    exactness: sourced
+    depends_on: [measure]
+    work:
+      rule: connector
+      operation: orchestrator.maturation.propose
+      input:
+        budget: { $input: budget }
+        scope: {}
+
+  - id: nothing-applied
+    method: rule
+    reason: >
+      a proposal is a decision request and never a change (UC-4.3 §2, ADR-0084): the count of
+      outcomes applied is zero, and the count of proposals a whole number; a machine check over
+      what the propose step answered
+    rejected:
+      - method: llm
+        why: a fixed condition needs no model, and a judgement could be wrong
+    exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the verdict that no proposal was applied }
+    depends_on: [propose]
+    work:
+      rule: check
+      conditions:
+        - value: { $from: propose, $select: output.applied }
+          equals: 0
+        - value: { $from: propose, $select: output.proposed }
+          matches: "^[0-9]+$"
+
+  - id: report
+    method: rule
+    reason: one line a person reads, composed from the counts above; nothing new is said in it
+    rejected:
+      - method: llm
+        why: a narrative is not needed for one line; the values speak
+    exactness: sourced
+    depends_on: [measure, nothing-applied]
+    work:
+      rule: template
+      text: |
+        Maturation: ${steps} step(s) measured, ${unpriced} with a cost that could not be priced.
+        ${looked_at} step(s) on a language model looked at, ${proposed} proposal(s) raised.
+      values:
+        steps: { $from: measure, $select: output.count }
+        unpriced: { $from: measure, $select: output.unpriced }
+        looked_at: { $from: propose, $select: output.looked_at }
+        proposed: { $from: propose, $select: output.proposed }

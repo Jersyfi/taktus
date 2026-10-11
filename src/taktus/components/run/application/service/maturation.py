@@ -77,6 +77,10 @@ NEVER_UNSURE = "confidence < 0"
 BENCH_HOLDOUT = 0.05
 """What the bench holds out of the training cases for its own metrics: the least it allows. The
 evidence is measured on the cases Taktus held out, which the bench never sees."""
+NO_TABLE = (
+    "no price table is configured: the cost of the two methods cannot be compared, so no "
+    "candidate is trained and nothing is proposed"
+)
 WITHIN_FRAME = (
     "a change of a step's method kind is always outside the frame: it is proposed, never made "
     "(UC-4.3 §2, ADR-0004)"
@@ -162,6 +166,9 @@ class ProposeMovesHandler:
         )
         if not candidacy.candidate:
             return outcome.model_copy(update={"findings": candidacy.findings})
+        if self._prices is None:
+            # No cost can be compared, so no proposal could rest on one: nothing is trained.
+            return outcome.model_copy(update={"findings": (NO_TABLE,)})
         decisions = self._decisions
         if decisions is None:
             # Nobody could be asked, so nothing is trained to ask with.

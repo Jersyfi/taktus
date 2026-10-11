@@ -95,6 +95,7 @@ from taktus.composition.findings import RunBlocks
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
 from taktus.composition.loopback import Loopback, Pools
+from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.settings import (
@@ -265,6 +266,16 @@ class LocalWiring:
                 objects,
                 clock,
             )
+            maturation = maturation_wiring(
+                engine=engine,
+                runs=runs,
+                ledger=ledger,
+                objects=objects,
+                work=stores.work,
+                clock=clock,
+                decisions=decisions.requests,
+                prices=prices,
+            )
             loopback.bind(
                 Loopback(
                     pools=pools,
@@ -281,6 +292,7 @@ class LocalWiring:
                     conformance=conformance,
                 ),
                 guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
+                maturation=InstanceMaturation(maturation),
             )
             yield Services(
                 conformance=conformance,
@@ -315,6 +327,9 @@ class LocalWiring:
                     RunBlocks(BlockedTime(ledger, objects, stores.work, runs))
                 ),
                 interfaces=broken_interfaces(ledger, stores.work, owner, clock),
+                measures=maturation.measures,
+                correct_result=maturation.correct,
+                propose_moves=maturation.propose,
             )
             telemetry.shutdown()
 

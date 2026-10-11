@@ -18,7 +18,9 @@ whether the owner heard of it (ADR-0047). `guides` renders the administration gu
 guide for users from the repository, and puts them into a directory of files without
 overwriting a page edited there (UC-13.6, ADR-0065). `exactness` prints the exactness statement
 of a bundle: which checks apply, what they cover, what they do not, and what would slip through
-(UC-6.9, ADR-0082); like `conformance run` it needs no wiring. The others need
+(UC-6.9, ADR-0082); like `conformance run` it needs no wiring. `maturation` prints every step's
+measures, records a person's correction of a step's result, and asks for proposals to move a
+step to a trained model (ADR-0084, ADR-0086). The others need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -46,6 +48,7 @@ from taktus.adapters.driving.cli import (
     guides_command,
     identity_command,
     interfaces_command,
+    maturation_command,
     owner_channel_command,
     run_command,
     submit_command,
@@ -82,6 +85,7 @@ app.add_typer(identity_command.identity, name="identity")
 app.add_typer(anchors_command.anchors, name="anchors")
 app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 app.add_typer(guides_command.guides, name="guides")
+app.add_typer(maturation_command.maturation, name="maturation")
 
 CONTRACTS = {"worker/v1", "connector/v1", "model/v1"}
 
