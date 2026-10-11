@@ -20,6 +20,15 @@ address, as Taktus itself — to a person, never to an automation — and the ou
 `unknown_sender` either way. The event is not
 kept: the message that carried a code is not a command either.
 
+**Only what the sender wrote is answered, and an offer once per window.** An event that
+carries no text its sender wrote — a label added carries the issue's — is neither answered nor
+read for a code (`intent.authored`, ADR-0040 §5). Several events of one person in one
+conversation within the offer window get one offer there: the offers of one conversation are
+made one at a time, and one made within the window is not made again. A later event may get
+another. The window's start is part of the offer's idempotency key, so that a redelivery, a
+restart or a second instance within the same stretch of the window finds the offer already
+made in the channel.
+
 **An answer is not a command.** A message written in the thread of something Taktus asked — a
 report to the owner (ADR-0045) — is handed to whoever asked it (`ChannelAnswers`), from the
 identity its sender was placed as, or from nobody for a sender the identity component could not
@@ -31,12 +40,16 @@ way (ADR-0069): it is answered there and is no command.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from taktus.components.command.domain.model import IntakeEvent
+from taktus.ports.clock import Clock
 from taktus.ports.connector import (
     ChannelAnswers,
     ChannelReplies,
@@ -53,6 +66,10 @@ from taktus.ports.outbox import INTAKE_ACCEPTED, Outbox
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.telemetry import Telemetry
 from taktus.shared.v1 import Capability
+
+OFFER_WINDOW = timedelta(days=1)
+"""How long one offer to link an account answers every event of its person in its
+conversation, unless configured otherwise (`TAKTUS_OFFER_WINDOW_SECONDS`)."""
 
 
 class UnknownChannel(Exception):
@@ -99,6 +116,9 @@ class ReceiveIntakeHandler:
         replies: ChannelReplies | None = None,
         answers: ChannelAnswers | None = None,
         outbox: Outbox | None = None,
+        *,
+        clock: Clock | None = None,
+        offer_window: timedelta = OFFER_WINDOW,
     ) -> None:
         self._connectors = connectors
         self._events = events
@@ -108,6 +128,7 @@ class ReceiveIntakeHandler:
         self._replies = replies
         self._answers = answers
         self._outbox = outbox
+        self._offers = Offers(clock, offer_window)
 
     @property
     def channels(self) -> tuple[Capability, ...]:
@@ -132,7 +153,8 @@ class ReceiveIntakeHandler:
         if accepted is None:  # unreachable: a result is exactly one of the two
             raise ConnectorError("the intake result is neither accepted nor refused")
         resolution = await self._identities.resolve(command.channel, accepted.sender.account)
-        if self._answers is not None and accepted.sender.kind is SenderKind.PERSON:
+        authored = accepted.intent.by_sender
+        if self._answers is not None and accepted.sender.kind is SenderKind.PERSON and authored:
             taken = await self._answers.take(
                 command.tenant if resolution is None else resolution.tenant,
                 accepted,
@@ -175,6 +197,10 @@ class ReceiveIntakeHandler:
         return IntakeOutcome(accepted=event)
 
     async def _unknown(self, command: ReceiveIntake, accepted: Intake) -> IntakeOutcome:
+        if not accepted.intent.by_sender:
+            # A label added, an assignment: nothing the sender wrote, so nothing to answer and
+            # no code to look for. A code in the issue's text is its author's, not theirs.
+            return IntakeOutcome(unknown_sender=accepted.sender)
         answer = await self._identities.unknown_sender(
             command.channel, accepted.sender.account, accepted.intent.raw
         )
@@ -183,17 +209,93 @@ class ReceiveIntakeHandler:
         # each other would loop. Its event is kept nowhere all the same.
         if self._replies is not None and accepted.sender.kind is SenderKind.PERSON:
             tenant = command.tenant if answer.linked is None else answer.linked.tenant
-            # An offer is made once per person and conversation: the key names both, so a
-            # second message of the same person there finds the first offer and says nothing
-            # new. That a code linked the account is said for the message that carried it.
-            to = accepted.reply_to
-            key = (
-                reply_key(accepted.event_id)
-                if answer.linked is not None
-                else offer_key(to.channel, to.address, accepted.sender.account)
-            )
-            replied = await self._replies.reply(tenant, accepted.reply_to, answer.reply, key=key)
+            if answer.linked is not None:
+                # That a code linked the account is said for the message that carried it.
+                replied = await self._replies.reply(
+                    tenant, accepted.reply_to, answer.reply, key=reply_key(accepted.event_id)
+                )
+            else:
+                replied = await self._offer(tenant, accepted, answer.reply)
         return IntakeOutcome(unknown_sender=accepted.sender, replied=replied, linked=answer.linked)
+
+    async def _offer(self, tenant: Tenant, accepted: Intake, text: str) -> bool:
+        """The offer to link the account, made at most once per window in a conversation."""
+        if self._replies is None:  # unreachable: the caller checked
+            return False
+        to = accepted.reply_to
+        conversation = offer_key(to.channel, to.address, accepted.sender.account)
+        async with self._offers.turn(conversation) as turn:
+            if turn.made:
+                return False
+            replied = await self._replies.reply(tenant, to, text, key=turn.key)
+            if replied:
+                turn.done()
+        return replied
+
+
+class Offers:
+    """The offers this instance made, by conversation and person, for one window each.
+
+    An offer is made under its conversation's lock: deliveries that arrive together — an issue
+    opened and labelled three times in one second — wait for each other instead of each finding
+    no offer yet and each making one. What one instance holds here, another does not; the key
+    of the offer names the stretch of the window it falls in, so that the connector finds an
+    offer another instance made in the same stretch. Without a clock there is no window: an
+    offer is made once per conversation, as its key never changes."""
+
+    def __init__(self, clock: Clock | None, window: timedelta) -> None:
+        if window <= timedelta(0):
+            raise ValueError("the offer window is longer than nothing")
+        self._clock = clock
+        self._window = window
+        self._made: dict[str, datetime] = {}
+        self._locks: dict[str, tuple[asyncio.Lock, int]] = {}
+
+    @asynccontextmanager
+    async def turn(self, conversation: str) -> AsyncIterator[OfferTurn]:
+        """One event's turn at the offer of its conversation; the next waits for it."""
+        lock, users = self._locks.get(conversation, (asyncio.Lock(), 0))
+        self._locks[conversation] = (lock, users + 1)
+        try:
+            async with lock:
+                yield self._state(conversation)
+        finally:
+            lock, users = self._locks[conversation]
+            if users == 1:
+                del self._locks[conversation]
+            else:
+                self._locks[conversation] = (lock, users - 1)
+
+    def _state(self, conversation: str) -> OfferTurn:
+        if self._clock is None:
+            return OfferTurn(self, conversation, made=False, key=conversation)
+        now = self._clock.now()
+        for earlier, at in list(self._made.items()):
+            if now - at >= self._window:
+                del self._made[earlier]
+        stretch = int(now.timestamp() // self._window.total_seconds())
+        return OfferTurn(
+            self, conversation, made=conversation in self._made, key=f"{conversation}:{stretch}"
+        )
+
+    def _done(self, conversation: str) -> None:
+        if self._clock is not None:
+            self._made[conversation] = self._clock.now()
+
+
+@dataclass
+class OfferTurn:
+    """What one event's turn finds: whether an offer was made within the window, and the
+    idempotency key a new one is made under."""
+
+    offers: Offers
+    conversation: str
+    made: bool
+    key: str
+
+    def done(self) -> None:
+        """The offer reached the channel; the window starts now."""
+        self.offers._done(self.conversation)
 
 
 def offer_key(channel: str, address: str, account: str) -> str:

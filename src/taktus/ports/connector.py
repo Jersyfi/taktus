@@ -322,6 +322,14 @@ class Sender(Value):
 
 class IntakeIntent(Value):
     raw: str
+    authored: bool | None = None
+    """Whether `raw` is text the sender wrote in this event; None, as the connector left it
+    unsaid, means it is. A label added carries the issue's text, which somebody else wrote:
+    such an event is never answered and never read for a link code (ADR-0040 §5)."""
+
+    @property
+    def by_sender(self) -> bool:
+        return self.authored is not False
 
 
 class IntakeReplyTo(Value):

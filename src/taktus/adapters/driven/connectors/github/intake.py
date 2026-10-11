@@ -42,6 +42,11 @@ EVENTS: Mapping[tuple[str, str], str] = {
     ("push", ""): "branch.pushed",
 }
 
+# The kinds whose text is what the sender wrote in the event. Every other kind carries text
+# somebody else wrote — the issue's, under a label added — or the service's, and says so with
+# `intent.authored: false` (`contracts/connector/v1` §7).
+AUTHORED = frozenset({"issue.opened", "issue_comment.created", "pull_request.opened"})
+
 BRANCH_REF = "refs/heads/"
 
 
@@ -231,12 +236,15 @@ def _intake(kind: str, delivery: str, payload: Json, received_at: str) -> Json |
             address = f"{repository}#{pulls[0]['number']}"
         reply_to = {"channel": CHANNEL, "address": address}
         occurred = str(run.get("updated_at") or received_at)
+    intent: Json = {"raw": text}
+    if kind not in AUTHORED:
+        intent["authored"] = False
     return {
         "event_id": delivery,
         "event": kind,
         "channel": CHANNEL,
         "sender": sender,
-        "intent": {"raw": text},
+        "intent": intent,
         "context": context,
         "reply_to": reply_to,
         "occurred_at": occurred,

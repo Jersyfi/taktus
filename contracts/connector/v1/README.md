@@ -318,6 +318,13 @@ identifier for the delivery, so that a redelivery is recognised there too. `even
 of the events contract's catalogue (`contracts/events/v1` §2) where one fits, with the context
 that kind requires: only such an intake can start a process by a trigger (ADR-0048).
 
+**What the sender wrote.** `intent.raw` is what the event says, and not every event says
+something its sender wrote. A label added carries the issue's title and body, which somebody
+else wrote; an assignment carries nothing of the person who assigned. Such an intake sets
+`intent.authored` to `false`. Taktus then neither answers an unknown sender for it nor looks in
+it for a link code (ADR-0040 §5). Absent, `authored` means `true`: a message, a comment, an
+issue or pull request opened is the sender's own text.
+
 A refusal says why, in one token, and is not an error of the tool call — the call succeeded in
 deciding:
 

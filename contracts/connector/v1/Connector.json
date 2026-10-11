@@ -693,6 +693,10 @@
           "properties": {
             "raw": {
               "type": "string"
+            },
+            "authored": {
+              "description": "Whether raw is text the sender wrote in this event. false where the event carries no text of the sender's own: a label added or an assignment carries what somebody else wrote, or nothing. Taktus answers an unknown sender, and looks for a link code, only in what they wrote (ADR-0040 §5). Absent means true.",
+              "type": "boolean"
             }
           },
           "required": [
