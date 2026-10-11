@@ -95,3 +95,10 @@ gh issue view 1 --repo "<owner>/<name>" --json state --jq .state
 
 The first prints `PRIVATE` and `main`; the second prints `OPEN`. In the app's settings, the
 installation lists three repositories.
+
+## Outcome
+
+**Provided:** 2026-10-11
+**Confirmed by:** the repository exists, private, with branch `main` and issue 1 open (a second issue opened by accident the same evening was closed as a duplicate); the owner added it to the installation of Taktus's app. Its name is in the private note under "conformance sandbox". The first pass of the connector suite against it is #87's.
+**How it was provided:** the repository was created on 2026-10-10; the app's installation was extended to it by the owner on 2026-10-11.
+**Recorded in:** the pull request that records the owner's answers of 2026-10-11, evening
