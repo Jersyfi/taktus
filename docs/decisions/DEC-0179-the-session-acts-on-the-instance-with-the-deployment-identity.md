@@ -10,7 +10,7 @@
 ## 1. What this is about
 
 Several tasks of the milestones need acts on the installed instance: an upgrade to a release that
-carries the backup (NEED-0025), a Job that configures the owner's channel (NEED-0020), the first
+carries the backup (#67, #251), a Job that configures the owner's channel (NEED-0020), the first
 backup started at once, the checks of #66, #75 and #87. Until now every act on the cluster was the
 owner's: the session's tool refused them, and the owner ran each command by hand. Working
 unattended overnight is then impossible.
@@ -52,7 +52,7 @@ script, start and remove Jobs, read what runs?
 
 ## 6. What is blocked
 
-NEED-0025's upgrade and first backup, the last check of #66, #75 and #87.
+The upgrade that switches the backup on and its first backup (#251), the last check of #66, #75 and #87.
 
 ## 7. How to answer
 
