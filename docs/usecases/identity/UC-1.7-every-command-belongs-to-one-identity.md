@@ -50,7 +50,8 @@ connector's intake, which verifies the signature first (ADR-0024).
 
 The command and the identity port of `docs/architecture/control-plane.md` §2; the intake half of the
 connector contract (ADR-0024); tenants (ADR-0020); the ledger (UC-6.1); the provisional identity it
-replaces (DEC-0013). Definition `UC-1.7`, new in version 2. The identity component is on the roadmap's
+replaces (DEC-0013). An issue or pull request an unknown sender opens on a public channel is
+also triaged for the organisation, with the sender as data only: UC-1.9 (DEC-0175). Definition `UC-1.7`, new in version 2. The identity component is on the roadmap's
 `0.2.0` (#82), hence the version.
 
 ## 5. What is proven so far
