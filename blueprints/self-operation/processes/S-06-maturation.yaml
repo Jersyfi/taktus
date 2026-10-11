@@ -100,6 +100,8 @@ steps:
       - method: llm
         why: a fixed condition needs no model, and a judgement could be wrong
     exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the verdict that no proposal was applied }
     depends_on: [propose]
     work:
       rule: check
