@@ -1,7 +1,7 @@
 # DEC-0173 — How a rule's own result becomes exact
 
 **Category:** NON-BLOCKING
-**Raised in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR), for issue #91
+**Raised in:** [#228](https://github.com/Jersyfi/taktus/pull/228), for issue #91
 **Issue:** [#225](https://github.com/Jersyfi/taktus/issues/225)
 **Needed by:** before #223 is built, which runs the checks
 **Provisional answer:** Option A. The catalogue carries a sixth row, `recomputation`, marked provisional in `contracts/shared/v1/Check.json`, in ADR-0082 and in the fifteen steps that declare it.
