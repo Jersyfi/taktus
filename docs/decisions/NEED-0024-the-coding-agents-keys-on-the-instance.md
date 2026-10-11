@@ -73,3 +73,11 @@ and the budget you set. On the cluster, the secret `taktus-coding-agents` in the
 namespace lists its key names — read with `-o jsonpath='{.data}'` and only the names printed — and
 no value is shown. After the first P-03 run on the instance, the project shows
 that run's usage and nothing else.
+
+## Outcome
+
+**Provided:** 2026-10-11
+**Confirmed by:** the install script created the secret `taktus-coding-agents` in the control plane's namespace from the owner's key file without printing it, the chart mounts it under `TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE` (Helm revision 5), and every role started with it. The first P-03 run on the instance (#66, #87) is the use that shows the key works.
+**How it was provided:** for the first coding agent; the owner created a project of its own with a monthly limit, saved its key to a file on the workstation; the session's script did the rest. The second agent's key follows #208, as section 4 says; it is added to the same secret then.
+**Recorded in:** this pull request
+

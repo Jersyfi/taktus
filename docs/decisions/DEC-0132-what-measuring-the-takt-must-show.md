@@ -4,7 +4,6 @@
 **Raised in:** the pull request that raises the requests issue #81 needs, while checking #81 again as P-02 would
 **Issue:** [#177](https://github.com/Jersyfi/taktus/issues/177)
 **Needed by:** before #81 is built; the roadmap places it in `0.2.0`
-**Provisional answer:** Option A, which binds any session that builds #81 before the answer. It takes effect only with a weighting table from DEC-0131; under its Option C this request lapses.
 
 ## 1. What this is about
 
@@ -78,3 +77,10 @@ built, Option A binds it.
 
 "DEC-0132: Option A." or "DEC-0132: Option B." in the issue. A free-text answer is read back as an
 interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-11
+**Answer:** Option A. UC-8.5 gains the condition section 4 quotes.
+**Reasoning given:** none beyond accepting the recommendation.
+**Recorded in:** this pull request

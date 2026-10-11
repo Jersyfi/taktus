@@ -4,7 +4,6 @@
 **Raised in:** the pull request that brings ADR-0052, while checking issue #83 again as P-02 would
 **Issue:** [#179](https://github.com/Jersyfi/taktus/issues/179)
 **Needed by:** before #83 is built; the roadmap places it in `0.2.0`
-**Provisional answer:** Option A, which binds any session that builds #83 before the answer. Marked here and in #83.
 
 ## 1. What this is about
 
@@ -92,3 +91,10 @@ built, Option A binds it; under Option B later, one check is relaxed.
 
 "DEC-0133: Option A.", "DEC-0133: Option B." or "DEC-0133: Option C." in the issue. A free-text
 answer is read back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-11
+**Answer:** Option A. UC-7.3 requires the refusal, and a credential without a declaration is refused once the instance names its platform.
+**Reasoning given:** none beyond accepting the recommendation.
+**Recorded in:** this pull request

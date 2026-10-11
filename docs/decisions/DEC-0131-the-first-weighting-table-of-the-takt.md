@@ -5,7 +5,6 @@
 **Raised in:** the pull request that raises the requests issue #81 needs, while checking #81 again as P-02 would
 **Issue:** [#176](https://github.com/Jersyfi/taktus/issues/176)
 **Needed by:** before #81 is built; the roadmap places it in `0.2.0`
-**Provisional answer:** none is chosen for you: this is your own question (mode 4). Until you answer, #81 is not ready, and the Takt is not measured; money and the consumption breakdown are measured as today.
 
 ## 1. What this is about
 
@@ -105,3 +104,10 @@ With which first weighting table, if any, does Taktus measure the Takt from `0.2
 
 "DEC-0131: Option A.", "DEC-0131: Option B." with the numbers, or "DEC-0131: Option C." in the
 issue. A free-text answer is read back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-11
+**Answer:** Option A. Taktus measures the Takt from `0.2.0` with the candidate table of section 5, version 0, marked uncalibrated wherever a figure appears, with a 30-day moving average for the rate.
+**Reasoning given:** the owner accepted the table as offered (mode 4).
+**Recorded in:** this pull request
