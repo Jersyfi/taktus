@@ -152,6 +152,6 @@ measures read every run of the tenant on each call, which is a cost that grows w
 The candidate learns from numbers only: a step whose prompt reads text is no candidate until
 embeddings exist (#210). A step is its process version, so a new version starts its cases from
 nothing. The cost per case is the trial's single case once; it is not a distribution. `taktusctl
-cost` still prices tokens only and leaves compute seconds out (#230). The proposal reaches the control
+cost` prices compute seconds at the same table since #230 (ADR-0010, second amendment). The proposal reaches the control
 plane's own surface; nothing runs it unasked (#229), and no web page shows the measures. Applying an
 accepted proposal and measuring the move afterwards is #218.

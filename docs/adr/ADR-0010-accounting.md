@@ -1,6 +1,6 @@
 # ADR-0010 — The Takt as a unit of orchestrated work
 
-**Status:** **proposed**, amended 2026-09-30 (one breakdown, two tables) — measured from `0.2.0`; how long data is collected before anything is
+**Status:** **proposed**, amended 2026-09-30 (one breakdown, two tables) and 2026-10-11 (compute seconds have a price too) — measured from `0.2.0`; how long data is collected before anything is
 charged is decided later, based on real runs from both reference use cases
 
 ## Context
@@ -74,6 +74,20 @@ the tokens recorded, because caching and the mix of models inside a worker decid
 `taktusctl cost <run>` prints the breakdown and the money at the run's own table, or at another
 table to compare.
 
+## Second amendment — compute seconds have a price too (2026-10-11)
+
+A price table may price a second of compute per resource class since ADR-0084, so that
+maturation can compare a trained model with a language model. The cost of a run still priced
+tokens only. The same table therefore gave two answers to "what did this cost". What follows is
+built (#230, NTC-0184).
+
+- **Money is the whole breakdown at the table.** The cost of a run is its tokens per model and
+  kind plus its compute seconds per resource class, both at the one table the budget statement
+  names. The report shows the two parts beside the total.
+- **Nothing unpriced counts as free, compute included.** A resource class the table does not
+  price is named. A table without `compute` gives the token amount and says that the compute
+  seconds were not priced. A run held without a table names that when it used compute.
+
 ## Where this promise ends
 
 The Takt is proposed, not accepted: nothing is charged, the weights are a first draft, and the
@@ -86,3 +100,10 @@ Takte is enforced only once the Takt is measured (`0.2.0`).
 The breakdown holds what workers and models report. A worker that reports tokens without the
 model that used them leaves them unpriced, and says so; a worker that reports money only when
 an assignment ends reports it beside the computed figure, and the two may differ.
+
+Compute money is computed after the run, not held during it. A budget in a currency is held
+against what workers estimate and report in that currency and against tokens at the table
+(ADR-0005); compute seconds priced at the table are not part of that running total. A run can
+therefore cost more at its table than its currency budget held it to, and only a compute budget
+holds its compute (#232). Quota units and storage have no price yet; they stay outside the
+amount.

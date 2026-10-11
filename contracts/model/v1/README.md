@@ -114,4 +114,6 @@ change without notice.
 A table may also price a second of compute per resource class, under `compute`. That is what a
 step on a worker costs, so that a trained model's cost per case can be compared with a language
 model's at the same table (ADR-0084). A class without a price is unpriced, never free. The field
-is optional; `taktusctl cost` prices tokens only.
+is optional. `taktusctl cost` prices a run's compute seconds at it beside its tokens, and names
+a class the table does not price, or a table without `compute`, as unpriced (ADR-0010, second
+amendment).
