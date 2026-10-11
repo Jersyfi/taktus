@@ -105,4 +105,5 @@ Compute money is computed after the run, not held during it. A budget in a curre
 against what workers estimate and report in that currency and against tokens at the table
 (ADR-0005); compute seconds priced at the table are not part of that running total. A run can
 therefore cost more at its table than its currency budget held it to, and only a compute budget
-holds its compute. Quota units and storage have no price yet; they stay outside the amount.
+holds its compute (#232). Quota units and storage have no price yet; they stay outside the
+amount.
