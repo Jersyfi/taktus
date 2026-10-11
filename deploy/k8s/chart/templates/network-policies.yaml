@@ -9,7 +9,8 @@ The cluster execution adapter labels its pods `taktus/role: unit` and `taktus/ro
 
 The control plane's namespace: the roles reach the name service, their database, the execution
 units and, where given, the API server and the hosts the operator lists; the api role is reached
-from the ingress controller's namespace alone.
+from the ingress controller's namespace alone. The database is reached by the roles, the
+migrations and the backup (backup.yaml, which carries the backup's own egress).
 */ -}}
 {{- $root := . -}}
 {{- $cp := include "taktus.controlPlaneNamespace" . -}}
@@ -194,6 +195,12 @@ spec:
             matchLabels:
               app.kubernetes.io/instance: {{ .Release.Name }}
               app.kubernetes.io/component: migrate
+        {{- if .Values.backup.enabled }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: backup
+        {{- end }}
       ports:
         - { protocol: TCP, port: 5432 }
 {{- end }}

@@ -115,3 +115,9 @@ def control_plane_image(engine_socket: str) -> str:
 def hog_image(engine_socket: str) -> str:
     """A unit that takes more memory than its limit, from tests/adapters/execution/hog/."""
     return built(images.HOG)
+
+
+@pytest.fixture
+def backup_image(engine_socket: str) -> str:
+    """The database backup's image, from deploy/backup/Dockerfile (ADR-0087)."""
+    return built(images.BACKUP)
