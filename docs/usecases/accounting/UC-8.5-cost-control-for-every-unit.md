@@ -48,13 +48,22 @@ run out, and warns early, not only at the limit.
   by a language model.
 - Consumption and cost per unit are shown as they are recorded; money a worker reports only when an
   assignment ends is shown as an estimate until it is reported.
+- The Takt consumption of every completed run is computed from its consumption breakdown at the
+  weighting table in force when the run started, named by the digest of its document. The table
+  is in the repository, versioned, and never changed once used. `taktusctl cost <run>` prints
+  the Takte beside the money, and recomputes them from the ledger at another table on request.
+  A quantity the table does not weigh is named, never counted as zero. A table marked
+  uncalibrated says so beside every figure (DEC-0132).
+- The Takt rate of a tenant — Takte per hour over the table's window — is shown beside its
+  consumption (DEC-0132).
 - What a named person consumed is visible to that person. Anyone else sees consumption aggregated
   by role, team or department; no view ranks people by what they consumed (principle 14).
 
 ## 3. Where the boundary lies
 
 **Not charging.** What the organisation pays for Taktus is the Takt's, and nothing is charged yet
-(ADR-0010, the owner's question M4.3). **Not the provider's bill.** Taktus holds its own record and
+(ADR-0010, the owner's question M4.3). **Not a price.** A Takt figure charges no one until a
+price exists (M4.2, DEC-0132). **Not the provider's bill.** Taktus holds its own record and
 names where it may differ from a provider's invoice; it does not reconcile the invoice. **Not limits
 on resources other than consumption.** Compute capacity, rate limits and their health are
 definition `UC-8.10`. **Not an assessment of anyone.** A budget for a person limits what is run for
@@ -99,4 +108,5 @@ reading, and the owner kept it in DEC-0069. Comparing the working time of named 
 Money recomputed from the ledger, admission against what earlier steps used,
 the margin that absorbs an overrun, money per assignment held as an estimate, and the statement of
 what a budget can promise, by the named tests — for a run's budget. Units, inheritance along the
-organisation, alerts, policies other than halting, forecasts and anomalies are not built.
+organisation, alerts, policies other than halting, forecasts and anomalies are not built. The
+Takt is not measured yet (#81).
