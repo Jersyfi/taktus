@@ -101,6 +101,8 @@ processes:
       - { id: post,   method: rule }
       - { id: merge,  method: rule, policy: "ci_green && no_contract_change && no_principle_violation" }
 
+  # The part for contributions from people Taktus does not know runs as a bundle of its own,
+  # processes/P-05-triage.yaml (UC-1.9, ADR-0088): started by the intake, not by these triggers.
   - id: P-05
     name: Intake and triage
     autonomy:

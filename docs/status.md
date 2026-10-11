@@ -243,6 +243,17 @@ NEED-0018 and NEED-0020, like the rest of the channel. `show overview` is answer
 with the overview, each area, process and running step, and a link to the web app's root route
 (#204, NTC-0148).
 
+**A contribution from a person Taktus does not know is triaged for the owner** (#245, `0.3.0`,
+UC-1.9, ADR-0088). On a channel `TAKTUS_TRIAGE` names, an issue or pull request an unknown sender
+opens is kept as data, without their account or text, and starts P-05 Triage of contributions
+once, acting for whoever registered it. Spam is closed by a fixed pattern or the model's verdict,
+nobody asked; a defect or a feature waits for the owner's decision request and is put in its
+version, or closed with the owner's answer; nothing is merged and nobody is blocked. Steps may now
+run under a condition (`when`) and ask before they act (`ask`). Proven against the fake
+repository service and a fake model. The methods are provisional under DEC-0180; the contributing
+guide's notice is DEC-0181, and until it is answered the triage is not switched on for this
+repository.
+
 **A broken interface reaches the owner** (#100, `0.2.0`, ADR-0047). Taktus notices from its own
 calls when an interface it depends on stops behaving as its adapter expects (DEC-0058). The
 connector contract names the answer a connector does not foresee (`unexpected`), and the run

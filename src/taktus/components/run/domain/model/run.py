@@ -163,6 +163,11 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
         (StepState.WAITING_HUMAN, StepState.REJECTED),
         # A resume after a decline raises the anchor's request again (ADR-0042).
         (StepState.REJECTED, StepState.WAITING_HUMAN),
+        # The step's `when` does not hold: it is skipped at its boundary, with a result that
+        # says so; a declined act the process continues after ends the same way, from its
+        # wait (ADR-0088).
+        (StepState.PLANNED, StepState.SUCCEEDED),
+        (StepState.REJECTED, StepState.SUCCEEDED),
     }
 )
 

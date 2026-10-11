@@ -21,6 +21,14 @@ nothing.
 the processes whose triggers need no condition, or whose condition holds, start now, and the
 rest on a later pass (§2). Every pass says in the log what waits.
 
+**A contribution starts its triage** (UC-1.9, ADR-0088). The entries `intake.contribution`
+are read on the same pass. Each names a kept contribution and the process its channel's triage
+is. No trigger is matched: the process's active version starts once for the contribution, acting
+for the identity that registered it, as a time trigger acts (ADR-0035 §6), with the item's
+number as its one input. The command records the contribution's event, never its sender. An
+entry waits while no version is active or its registrant is not known; one received before the
+version became active starts nothing.
+
 This is wiring, because a reaction crosses three components — command, process and run — and
 only the composition root may hold them all (`composition/README.md`).
 """
@@ -45,6 +53,7 @@ from taktus.components.command.application.service import (
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.process.application.service.reactions import (
     FindReactions,
+    FindTriage,
     Reaction,
     ReactionsHandler,
 )
@@ -56,13 +65,14 @@ from taktus.components.run.domain.service.capacity import (
     CapacityRules,
     admit_capacity,
 )
-from taktus.ports.clock import Clock
+from taktus.ports.clock import Clock, Identifiers
+from taktus.ports.identity import IdentityResolver
 from taktus.ports.ledger import Fact, Ledger
-from taktus.ports.outbox import INTAKE_ACCEPTED, Outbox, OutboxEntry
+from taktus.ports.outbox import INTAKE_ACCEPTED, INTAKE_CONTRIBUTION, Outbox, OutboxEntry
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.platform import Platform
 from taktus.ports.worker import Limits
-from taktus.shared.v1 import Command, LedgerRefs, Method
+from taktus.shared.v1 import Command, Intent, LedgerRefs, Method, ReplyTo
 
 REFUSED = "trigger.refused"
 BATCH = 50
@@ -146,7 +156,11 @@ class Reactions:
         work: UnitOfWork,
         clock: Clock,
         capacity: ConditionCheck | None = None,
+        identities: IdentityResolver | None = None,
+        ids: Identifiers | None = None,
     ) -> None:
+        """`identities` and `ids` let a contribution start its triage (ADR-0088); without
+        them, the entries `intake.contribution` wait."""
         self._tenants = tuple(tenants)
         self._outbox = outbox
         self._intake = intake
@@ -158,6 +172,8 @@ class Reactions:
         self._work = work
         self._clock = clock
         self._capacity = capacity
+        self._identities = identities
+        self._ids = ids
 
     async def tick(self) -> list[str]:
         """The runs this pass started, by identifier."""
@@ -176,6 +192,21 @@ class Reactions:
                             entry=entry.id,
                             error=f"{type(error).__name__}: {error}",
                         )
+                if self._identities is not None and self._ids is not None:
+                    async with self._work.transaction(tenant):
+                        contributions = await self._outbox.unpublished(
+                            tenant, INTAKE_CONTRIBUTION, BATCH
+                        )
+                    for entry in contributions:
+                        try:
+                            started.extend(await self._triage(tenant, entry))
+                        except Exception as error:  # one entry never stops the others
+                            log.error(
+                                "a contribution's triage failed; the next pass tries again",
+                                tenant=tenant,
+                                entry=entry.id,
+                                error=f"{type(error).__name__}: {error}",
+                            )
             except Exception as error:  # a pass must never take the role down
                 log.error(
                     "event reactions failed; the next pass tries again",
@@ -261,6 +292,114 @@ class Reactions:
         if not waiting:
             await self._publish(tenant, entry)
         return started
+
+    async def _triage(self, tenant: Tenant, entry: OutboxEntry) -> list[str]:
+        """Start the triage of one contribution for whoever registered it (ADR-0088)."""
+        event_id = str(entry.payload.get("event_id", ""))
+        process = str(entry.payload.get("process", ""))
+        kept = await self._intake.event(tenant, event_id) if event_id else None
+        if kept is None or not process:
+            log.warning("an outbox entry names no contribution", tenant=tenant, entry=entry.id)
+            await self._publish(tenant, entry)
+            return []
+        found = await self._reactions.triage(
+            FindTriage(tenant=tenant, process=process, received_at=kept.received_at)
+        )
+        if found.passed_over is not None:
+            log.info("a contribution starts no triage", tenant=tenant, reason=found.passed_over)
+            await self._publish(tenant, entry)
+            return []
+        placed = None
+        if found.version is not None and found.by is not None and self._identities is not None:
+            placed = await self._identities.identity(tenant, found.by)
+        if found.version is None or placed is None:
+            log.info(
+                "a contribution's triage waits",
+                tenant=tenant,
+                process=process,
+                reason=found.waits or f"{found.by!r} is not an identity the tenant knows",
+            )
+            return []
+        version = found.version
+        number = kept.context.get("issue", kept.context.get("pull_request"))
+        if number is None or not str(number).isdigit():
+            log.warning("a contribution names no item", tenant=tenant, entry=entry.id)
+            await self._publish(tenant, entry)
+            return []
+        run_id = run_id_of(tenant, version.process_id, kept.id)
+        trigger = {
+            "kind": "contribution",
+            "process": version.process_id,
+            "event": kept.event,
+            "event_id": kept.id,
+        }
+        inputs = {"number": int(str(number))}
+        if self._ids is None:  # unreachable: the pass reads contributions only with ids
+            return []
+        command = Command(
+            id=self._ids.new("cmd"),
+            channel=kept.channel,
+            identity=placed.identity,
+            org_path=placed.org_path,
+            intent=Intent(raw=f"triage {kept.event} {number}", recognised="process.run"),
+            context={"inputs": inputs, "trigger": trigger},
+            reply_to=ReplyTo(channel=kept.reply_channel, address=kept.reply_address),
+            received_at=kept.received_at,
+        )
+        try:
+            await self._start_version(tenant, command, version, inputs, run_id, trigger)
+        except RunExists:
+            await self._publish(tenant, entry)
+            return []
+        except RunError as error:
+            log.error(
+                "a contribution's triage was refused", tenant=tenant, run=run_id, reason=str(error)
+            )
+            await self._publish(tenant, entry)
+            return []
+        await self._publish(tenant, entry)
+        log.info("a contribution started its triage", tenant=tenant, run=run_id)
+        return [run_id]
+
+    async def _start_version(
+        self,
+        tenant: Tenant,
+        command: Command,
+        version: ProcessVersion,
+        inputs: dict[str, Any],
+        run_id: str,
+        trigger: dict[str, Any],
+    ) -> None:
+        if version.limits is None:
+            raise RunError(f"{version.ref} names no `limits`; a run needs a budget")
+        try:
+            budget = Limits.model_validate(dict(version.limits))
+        except ValueError as error:
+            raise RunError(f"{version.ref}: `limits`: {error}") from error
+        plan = await self._commission.execute(
+            CommissionPlan(
+                command=command,
+                tenant=tenant,
+                goal=f"run process {version.name} ({version.ref}) on the contribution "
+                f"{trigger['event']} {trigger['event_id']}",
+                autonomy_level=version.autonomy_level,
+                steps=version.ordered(),
+            )
+        )
+        await self._engine.submit(
+            StartRun(
+                plan=plan,
+                work=version.work,
+                budget=budget,
+                process_version=version.ref,
+                actor=command.identity,
+                tenant=tenant,
+                inputs=inputs,
+                run_id=run_id,
+                trigger=trigger,
+                actions=version.autonomy.action_levels,
+            )
+        )
 
     async def _waits(self, reaction: Reaction) -> str | None:
         condition = reaction.trigger.condition

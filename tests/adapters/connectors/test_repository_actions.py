@@ -903,3 +903,77 @@ async def test_the_pipeline_state_of_a_branch_is_the_pipelines_verdict(service: 
     )
     assert error
     assert gone["cause"] == "not_found"
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_an_item_is_closed_once_after_the_comment_that_says_why(service: Service) -> None:
+    """UC-1.9: what is not accepted is closed with its reason. A retried step finds its comment
+    and the item closed, and writes nothing twice; a pull request is closed, never merged."""
+    pull = _service_post(
+        service,
+        f"/repos/{REPOSITORY}/pulls",
+        {"title": "An outside change", "head": "outside/branch", "base": "main", "body": "b"},
+    )
+    number = int(pull["number"])
+    key = "run_01:close:1-0123456789"
+    reason = "Closed as spam by the triage of contributions."
+    error, first = await call(
+        Connector(config(service)),
+        "repository.issues.close",
+        context("close", key),
+        {"number": number, "reason": reason},
+    )
+    assert not error, first
+    assert first["effect"]["replayed"] is False
+    assert first["output"]["state"] == "closed"
+    assert [r["kind"] for r in first["effect"]["records"]] == ["comment", "issue"]
+    error, again = await call(
+        Connector(config(service)),
+        "repository.issues.close",
+        context("close", key),
+        {"number": number, "reason": reason},
+    )
+    assert not error and again["effect"]["replayed"] is True
+    comments = _service_get_list(service, f"/repos/{REPOSITORY}/issues/{number}/comments")
+    assert len(comments) == 1 and comments[0]["body"].startswith(reason)
+    read = _service_get(service, f"/repos/{REPOSITORY}/pulls/{number}")
+    assert read["state"] == "closed" and read["merged"] is False
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_an_item_is_put_in_an_open_milestone_by_its_title(service: Service) -> None:
+    _service_post(service, f"/repos/{REPOSITORY}/milestones", {"title": "0.4.0"})
+    key = "run_01:place:1-0123456789"
+    error, first = await call(
+        Connector(config(service)),
+        "repository.issues.milestone",
+        context("place", key),
+        {"number": 1, "milestone": "0.4.0"},
+    )
+    assert not error, first
+    assert first["output"]["milestone"] == "0.4.0" and first["effect"]["replayed"] is False
+    error, again = await call(
+        Connector(config(service)),
+        "repository.issues.milestone",
+        context("place", key),
+        {"number": 1, "milestone": "0.4.0"},
+    )
+    assert not error and again["effect"]["replayed"] is True
+    error, missing = await call(
+        Connector(config(service)),
+        "repository.issues.milestone",
+        context("place", key),
+        {"number": 1, "milestone": "9.9.9"},
+    )
+    assert error and missing["cause"] == "not_found"
+
+
+def _service_get_list(service: Service, path: str) -> list[Json]:
+    answer = httpx.get(
+        f"{service.url}{path}",
+        headers={"Authorization": f"Bearer {service.write_value}"},
+        timeout=5.0,
+    )
+    answer.raise_for_status()
+    result: list[Json] = answer.json()
+    return result

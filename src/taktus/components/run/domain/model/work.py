@@ -2,9 +2,10 @@
 
 Five kinds are executable in this version. A `rule` step evaluates one of the built-in rules
 (`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
-of a backlog task, the backlog in its order, the roadmap held against the backlog, a text
-template — or calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits
-for a duration through the clock, or for an external state read through a connector. A `worker`
+of a backlog task, the backlog in its order, the roadmap held against the backlog, spam by
+fixed patterns, a contribution's class held to what may be answered, a text template — or
+calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits for a duration
+through the clock, or for an external state read through a connector. A `worker`
 step hands a task to an execution unit behind the worker contract; an `ml` step does too, a
 prediction with its model pinned by digest, and goes to its fallback when the model is unsure
 (ADR-0076). An `llm` step asks a model through the model port. Every other method has no
@@ -31,6 +32,17 @@ connector call's `input`, the values of a template, a check or a prompt — an o
 A `$from` names a step that is a dependency of the step, directly or through others. `$input`
 references are resolved when the run is created — the inputs are known then — and may
 therefore stand in typed places too: a workspace location, an allowed host.
+
+**When a step runs, and whom it asks first** (ADR-0088). Beside what it does, a step's work may
+carry two keys of its own, read by `control_of` and never part of the typed work:
+
+- `when` — conditions in the shape of a `check` rule's, over earlier results. A step whose
+  conditions do not all hold is skipped: it succeeds with the result
+  `{"skipped": true, "because": …}`, performs nothing and asks nobody;
+- `ask` — the step's act is put to a person as a decision request before it starts, at every
+  level, as an anchor would put it: the process declares it, and no tenant configuration
+  removes it. `on_decline: continue` makes a declined act a result instead of a halt: the step
+  succeeds with `{"declined": true, "by": …, "answer": …}`, and the steps after it read that.
 """
 
 from __future__ import annotations
@@ -158,6 +170,51 @@ class RoadmapRule(Value):
     issues: Any
 
 
+class SpamRule(Value):
+    """Whether a text is spam by fixed patterns (UC-1.9, ADR-0088): `text` is a string or a
+    list of strings, read as one; `patterns` are regular expressions, searched case-blind.
+
+    The result is `{"spam", "matched"}`: true with the patterns that matched, or false with
+    none. It never fails on what it finds: finding is its result. The same text and patterns
+    give the same verdict every time: admissible for `exact`. What no pattern names is not
+    spam by this rule, and is left to whoever judges next."""
+
+    rule: Literal["spam"]
+    text: Any
+    patterns: tuple[str, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _patterns_compile(self) -> SpamRule:
+        for pattern in self.patterns:
+            try:
+                re.compile(pattern)
+            except re.error as error:
+                raise ValueError(f"pattern {pattern!r} does not compile: {error}") from error
+        return self
+
+
+CLASSES = ("defect", "feature", "spam")
+
+
+class ClassificationRule(Value):
+    """A contribution's class, read from a judgement and held to what may be answered
+    (UC-1.9, ADR-0088). `answer` is a text of lines `class: …`, `version: …`, `summary: …`, or
+    an llm step's whole result, whose `text` is read — and which a skipped step does not have;
+    `screened` is a `spam` rule's result; `versions` the versions a contribution may be
+    proposed for.
+
+    Screened as spam, the class is `spam` whatever the answer says. Otherwise the answer
+    names exactly one of `defect`, `feature`, `spam`; a defect or a feature names one of the
+    versions and a summary. Anything else fails the step, so that a judgement beside the
+    point never leaves it. The result is `{"class", "version", "summary"}`. The class is the
+    judgement's, so the step carries the judgement's exactness class, never `exact`."""
+
+    rule: Literal["classification"]
+    answer: Any
+    screened: Any
+    versions: Any
+
+
 class TemplateRule(Value):
     """The result is `text` with every `${name}` replaced by the named value; a value that is
     not a string is inserted as its JSON text. A name the values do not carry fails the step."""
@@ -209,6 +266,8 @@ type RuleWork = Annotated[
     | ReadyRule
     | BacklogRule
     | RoadmapRule
+    | SpamRule
+    | ClassificationRule
     | TemplateRule
     | ConnectorRule,
     Field(discriminator="rule"),
@@ -394,6 +453,57 @@ class LlmWork(Value):
 
 type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork
 
+WHEN = "when"
+ASK = "ask"
+CONTROL_KEYS = frozenset({WHEN, ASK})
+
+
+class Ask(Value):
+    """The step's act, put to a person before it starts (ADR-0088). `question`, `situation`
+    and `proposal` are templates over `values`, as a `template` rule's text is; `role` is the
+    role that decides, `owner` unless named."""
+
+    question: str = Field(min_length=1)
+    situation: str | None = None
+    proposal: str | None = None
+    """What option A performs, in a reader's words."""
+    values: dict[str, Any] = Field(default_factory=dict)
+    role: str = Field(default="owner", min_length=1)
+    on_decline: Literal["halt", "continue"] = "halt"
+
+
+class Control(Value):
+    """When a step runs and whom it asks first: the two keys of a step's work that are not
+    what the step does (ADR-0088)."""
+
+    when: tuple[Condition, ...] = ()
+    ask: Ask | None = None
+
+    def referenced(self) -> list[Any]:
+        """The untyped parts that may carry `$from` references."""
+        found: list[Any] = [condition.value for condition in self.when]
+        if self.ask is not None:
+            found.append(self.ask.values)
+        return found
+
+
+def control_of(
+    step: Step, work: Mapping[str, Any] | None, inputs: Mapping[str, Any] | None = None
+) -> Control:
+    """The step's `when` and `ask`, with `$input` references resolved, or UnsupportedWork."""
+    given = {key: work[key] for key in CONTROL_KEYS if key in work} if work else {}
+    if not given:
+        return Control()
+    try:
+        return Control.model_validate(resolve_inputs(given, inputs or {}))
+    except ValidationError as error:
+        first = error.errors()[0]
+        where = ".".join(str(p) for p in first["loc"])
+        raise UnsupportedWork(step.id, f"work.{where}: {first['msg']}") from error
+    except KeyError as error:
+        raise UnsupportedWork(step.id, f"work: the run has no input {error.args[0]!r}") from error
+
+
 _RULE: TypeAdapter[RuleWork] = TypeAdapter(RuleWork)
 
 
@@ -403,7 +513,14 @@ def parse_work(
     """The typed work of a step, with `$input` references resolved, or UnsupportedWork naming
     what is wrong."""
     try:
-        given = None if work is None else resolve_inputs(dict(work), inputs or {})
+        given = (
+            None
+            if work is None
+            else resolve_inputs(
+                {key: value for key, value in work.items() if key not in CONTROL_KEYS},
+                inputs or {},
+            )
+        )
         if step.method is Method.RULE:
             if given is None:
                 raise UnsupportedWork(step.id, "a rule step names its rule under `work`")
@@ -550,6 +667,10 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.issues, work.open_records]
     if isinstance(work, RoadmapRule):
         return [work.roadmap, work.issues]
+    if isinstance(work, SpamRule):
+        return [work.text]
+    if isinstance(work, ClassificationRule):
+        return [work.answer, work.screened, work.versions]
     if isinstance(work, TemplateRule | LlmWork):
         return [work.values]
     if isinstance(work, WaitWork) and work.until is not None:

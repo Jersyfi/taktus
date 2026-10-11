@@ -179,7 +179,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 64, "every setting is in the startup log"
+    assert len(effective) == 65, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -373,6 +373,17 @@ def test_findings_are_sent_only_where_the_operator_names_a_connector() -> None:
     assert enabled.findings_connector == "http://findings:9100/mcp"
     with pytest.raises(ConfigurationError, match="TAKTUS_FINDINGS_CONNECTOR"):
         settings(TAKTUS_FINDINGS_CONNECTOR="findings:9100")
+
+
+def test_a_channel_is_public_only_where_the_operator_names_its_triage() -> None:
+    """UC-1.9, ADR-0088: `TAKTUS_TRIAGE` names a channel's triage process; nothing else does."""
+    assert settings().triage == {}
+    assert settings(TAKTUS_TRIAGE="channel.repo=p05-triage").triage == {
+        "channel.repo": "p05-triage"
+    }
+    for wrong in ("channel.repo", "Repo=p05", "channel.repo=P 05", "a.b=x,a.b=y"):
+        with pytest.raises(ConfigurationError, match="TAKTUS_TRIAGE"):
+            settings(TAKTUS_TRIAGE=wrong)
 
 
 def test_the_platform_and_what_each_credential_administers_are_read() -> None:

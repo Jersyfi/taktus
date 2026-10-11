@@ -85,7 +85,7 @@ taktus/
 │   │   ├── identity.py              # who acts: a sender on a channel placed in a tenant as an identity; served by components/identity (ADR-0040); IdentitySource is the organisation's own source
 │   │   ├── configuration.py         # what an instance is told about itself, by key; Secret; ConfigurationError
 │   │   ├── queue.py                 # jobs a runner claims once, as a lease it renews (ADR-0002); a deferred job waits out its delay, not counted as an attempt (ADR-0037)
-│   │   ├── outbox.py                # entries written with their cause, read in order and published once acted on (ADR-0002); the intake's `intake.accepted` (ADR-0048)
+│   │   ├── outbox.py                # entries written with their cause, read in order and published once acted on (ADR-0002); the intake's `intake.accepted` (ADR-0048) and `intake.contribution` (ADR-0088)
 │   │   ├── leadership.py            # one instance leads a singular role; a dead leader is replaced
 │   │   ├── platform.py              # what the machine or container has left — CPU, memory, storage — each observed or unobserved with the reason
 │   │   ├── administration.py        # the platform this instance runs on and what each credential administers; the refusal ADR-0052 makes
@@ -301,6 +301,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   process and the delivery, and the entry is published only after its runs exist — with two
   automation roles and across a stop of the leader (`tests/integration/test_event_reactions.py`).
   A trigger whose condition does not hold leaves its entry for a later pass.
+  The same pass reads `intake.contribution`: an unknown sender's contribution on a channel
+  `TAKTUS_TRIAGE` names starts that channel's triage process once, acting for whoever registered
+  its active version, with no trigger matched (UC-1.9, ADR-0088).
 - **The stream of changes** is the `api` role's (`composition/live.py`, ADR-0055). Each process
   holds at most `TAKTUS_LIVE_STREAMS` streams and one listening connection. A notification for a
   tenant with open streams wakes one read of its ledger, after the oldest position its streams

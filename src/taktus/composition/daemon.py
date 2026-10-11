@@ -478,6 +478,8 @@ async def wire(
                     outbox,
                     clock=clock,
                     offer_window=timedelta(seconds=settings.offer_window_seconds),
+                    # A public channel's triage of contributions (ADR-0088): TAKTUS_TRIAGE.
+                    triage=settings.triage,
                 ),
                 identities=identities,
                 decisions=decisions,
@@ -512,6 +514,8 @@ async def wire(
                         rules_of(settings.capacity),
                         memory_demand(settings.workers),
                     ),
+                    identities=identities,
+                    ids=ids,
                 ),
                 leadership=PostgresLeadership(persistence.engine),
                 clock=clock,
