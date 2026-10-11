@@ -686,6 +686,9 @@ class Settings:
     """What the capacity report is told: thresholds, the database's volume, the interval."""
     connectors: Mapping[str, str]
     """Channel capability → the MCP URL of the connector that serves its intake."""
+    triage: Mapping[str, str]
+    """Public channel → the process that triages an unknown sender's contribution there
+    (`TAKTUS_TRIAGE`, UC-1.9, ADR-0088). A channel it does not name has no triage."""
     administration: Administration
     """The platform this instance runs on and what each credential administers (ADR-0052)."""
     knowledge_directory: Path | None
@@ -742,6 +745,7 @@ class Settings:
             *self.budget.effective(),
             *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
+            ("TAKTUS_TRIAGE", ",".join(f"{c}={p}" for c, p in self.triage.items())),
             ("TAKTUS_KNOWLEDGE_DIRECTORY", str(self.knowledge_directory or "")),
             ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
             ("TAKTUS_PLATFORM", self.administration.platform or ""),
@@ -796,6 +800,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         budget=load_budget(configuration),
         capacity=load_capacity(configuration),
         connectors=reader.connectors(),
+        triage=reader.triage(),
         administration=load_administration(configuration),
         knowledge_directory=load_knowledge_directory(configuration),
         findings_connector=reader.url("findings.connector", "") or None,
@@ -923,6 +928,31 @@ class _Reader:
                     f"{item!r} is not a role; roles are {', '.join(r.value for r in Role)}, or all",
                 ) from None
         return frozenset(chosen)
+
+    def triage(self) -> Mapping[str, str]:
+        """`channel.repo=p05-triage`: a channel capability, an equals sign, the identifier of
+        the process that triages an unknown sender's contribution on it (ADR-0088)."""
+        name, value = self._raw("triage")
+        if value is None:
+            return {}
+        mapping: dict[str, str] = {}
+        for entry in (e.strip() for e in value.split(",") if e.strip()):
+            capability, separator, process = (part.strip() for part in entry.partition("="))
+            if not separator or not capability or not process:
+                raise ConfigurationError(
+                    name,
+                    f"{entry!r} is not capability=process (for example channel.repo=p05-triage)",
+                )
+            if "." not in capability or capability != capability.lower():
+                raise ConfigurationError(
+                    name, f"{capability!r} is not a capability (lowercase, dotted)"
+                )
+            if re.fullmatch(r"[a-z][a-z0-9-]*", process) is None:
+                raise ConfigurationError(name, f"{process!r} is not a process identifier")
+            if capability in mapping:
+                raise ConfigurationError(name, f"{capability!r} is mapped twice")
+            mapping[capability] = process
+        return mapping
 
     def connectors(self) -> Mapping[str, str]:
         """`channel.repo=http://connector:9100/mcp,channel.chat=…`: a capability, an equals

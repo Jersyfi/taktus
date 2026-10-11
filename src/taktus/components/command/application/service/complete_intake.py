@@ -95,6 +95,9 @@ class CompleteIntakeHandler:
             raise UnknownIntakeEvent(command.tenant, command.event_id)
         if event.status is IntakeStatus.COMPLETED:
             raise AlreadyCompleted(event)
+        if event.status is IntakeStatus.CONTRIBUTION:
+            # Data of a triage, from a sender nobody placed: never a command (ADR-0088).
+            raise UnknownSender(event)
         resolution = await self._identities.resolve(
             event.channel, event.sender_account, tenant=event.tenant
         )

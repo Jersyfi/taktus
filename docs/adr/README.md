@@ -76,3 +76,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0084](ADR-0084-a-step-is-measured-and-a-cheaper-method-is-proposed-on-evidence-never-applied.md) | A step is measured, and a cheaper method is proposed on evidence, never applied | accepted, made reachable by 0086 |
 | [0086](ADR-0086-maturation-runs-on-the-instance-from-the-command-line-and-on-a-schedule.md) | Maturation runs on the instance, from the command line and on a schedule | accepted |
 | [0087](ADR-0087-the-database-is-backed-up-by-a-job-of-the-chart-and-restored-by-hand.md) | The database is backed up by a job of the chart, and restored by hand | accepted |
+| [0088](ADR-0088-an-unknown-senders-contribution-starts-the-triage-for-its-owner-and-a-process-holds-its-own-steps.md) | An unknown sender's contribution starts the triage for its owner, and a process holds its own steps | accepted |

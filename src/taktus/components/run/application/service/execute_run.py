@@ -20,6 +20,12 @@ with cause `declined`. A request that cannot be raised — a part missing — is
 step fails without its act, and the run escalates. A rehearsal acts on nothing outside and is
 asked no anchor (NTC-0079). A step confirmed with `confirm` is never an anchored one.
 
+A process may hold a step itself (ADR-0088). A step whose `when` does not hold is skipped:
+it succeeds with a result that says so, performs nothing and asks nobody. A step that
+declares `ask` raises its own decision request beside any anchor's, at every level; with
+`on_decline: continue`, a declined act is not performed and the step succeeds with a result
+that says who declined it and what they answered, so that the steps after it act on it.
+
 Before a step starts, its autonomy level is applied (ADR-0039, `domain.service.autonomy`): the
 lowest of the process's level and the levels of the tool actions the step uses. At level 2 the
 step waits until a person confirmed it (`step.awaiting`, then `step.confirmed`); at level 1 a
@@ -121,13 +127,16 @@ from taktus.components.run.domain.model import (
     PROCEED,
     RESUMABLE,
     Anchoring,
+    Ask,
     BacklogRule,
     Cause,
     Checkpoint,
     CheckRule,
     ClaimLost,
+    ClassificationRule,
     ConnectorRule,
     ConstantRule,
+    Control,
     LlmWork,
     MlWork,
     NoConnector,
@@ -139,6 +148,7 @@ from taktus.components.run.domain.model import (
     RunError,
     RunExists,
     RunState,
+    SpamRule,
     StepRun,
     StepState,
     TemplateRule,
@@ -151,6 +161,7 @@ from taktus.components.run.domain.model import (
     WorkerWork,
     artifact_references,
     block,
+    control_of,
     parse_work,
     referenced_values,
     references,
@@ -919,6 +930,28 @@ class RunEngine:
                     # at level 1 the person still performs the act.
                     confirmed_by=by if level >= 2 else step_run.confirmed_by,
                 )
+            elif self._continues(run, step_run.step_id):
+                # The process acts on a decline itself (ADR-0088): the act is not performed,
+                # and the step ends with what the person decided and answered.
+                answers = [v.answer for v in verdicts if v.option != anchoring.PERFORM and v.answer]
+                updated = step_run.model_copy(update={"anchoring": settled})
+                run = run.with_step_run(updated)
+                run, updated = await self._settle(
+                    run,
+                    updated,
+                    {"declined": True, "by": by, "answer": "\n".join(answers) or None},
+                    "declined",
+                )
+                for request, verdict in zip(held.requests, verdicts, strict=True):
+                    run = await self._commit(
+                        run,
+                        "step.decided",
+                        step=updated,
+                        outcome=decided,
+                        actor=verdict.decided_by,
+                        decision=request,
+                    )
+                continue
             else:
                 reason = (
                     f"declined by {by} ({entries}): the act of step {step_run.step_id} was "
@@ -938,6 +971,28 @@ class RunEngine:
                 )
         return run, "; ".join(declined) or None
 
+    async def _conditions(
+        self, run: Run, control: Control
+    ) -> tuple[list[Any], tuple[ProvenanceInput, ...]]:
+        """The values a step's `when` tests. A part the referenced result does not carry is
+        null: a skipped or an approved step's result has no `declined`, and a condition over it
+        then does not hold rather than fail the step (ADR-0088)."""
+        values: list[Any] = []
+        read: list[ProvenanceInput] = []
+        for condition in control.when:
+            try:
+                (value,), inputs = await self._resolved(run, [condition.value])
+            except RuleFailed:
+                value, inputs = None, ()
+            values.append(value)
+            read.extend(i for i in inputs if i not in read)
+        return values, tuple(read)
+
+    def _continues(self, run: Run, step_id: StepId) -> bool:
+        """Whether the step asks with `on_decline: continue` (ADR-0088)."""
+        control = control_of(run.step(step_id), run.work.get(step_id), run.inputs)
+        return control.ask is not None and control.ask.on_decline == "continue"
+
     def relinquish(self, run_id: str) -> None:
         """The runner's claim on the run is lost. The run stops at its next boundary, where the
         fence refuses whatever it would still write. The worker's assignment is not stopped:
@@ -955,7 +1010,8 @@ class RunEngine:
             for dependency in step.dependencies:
                 ancestors[step.id] |= {dependency, *ancestors[dependency]}
             work = parse_work(step, run.work.get(step.id), run.inputs)
-            for value in referenced_values(work):
+            control = control_of(step, run.work.get(step.id), run.inputs)
+            for value in [*referenced_values(work), *control.referenced()]:
                 for referenced in references(value):
                     if referenced not in ancestors[step.id]:
                         raise UnsupportedWork(
@@ -1061,12 +1117,23 @@ class RunEngine:
             used = autonomy.actions_of(step, work)
             held = autonomy.held(run.autonomy_level, run.actions, used)
             span.set_attribute("autonomy.level", held.level)
+            control = control_of(step, run.work.get(step.id), run.inputs)
+            if control.when and step_run.state in (StepState.PLANNED, StepState.REJECTED):
+                # Whether the step runs at all, before anything asks about it (ADR-0088).
+                values, read = await self._conditions(run, control)
+                because = rules.unheld(control.when, values)
+                if because is not None:
+                    return await self._settle(
+                        run, step_run, {"skipped": True, "because": because}, "skipped", read
+                    )
             if not run.rehearsal and step_run.state in (StepState.PLANNED, StepState.REJECTED):
-                # The step boundary, first: an anchor holds at every level (ADR-0042).
+                # The step boundary, first: an anchor holds at every level (ADR-0042), and so
+                # does what the process itself asks (ADR-0088).
                 decided = step_run.anchoring is not None and step_run.anchoring.proceeds
                 anchors = () if decided else await self._applying(run, used)
-                if anchors:
-                    return await self._anchor(run, step, step_run, held, anchors)
+                asked = None if decided else control.ask
+                if anchors or asked is not None:
+                    return await self._anchor(run, step, step_run, held, anchors, asked)
             if not run.rehearsal and step_run.state is StepState.PLANNED:
                 # The step boundary: what the level asks of a person, before anything starts.
                 acting = held.level == 1 and autonomy.acts(work, await self._outward(work))
@@ -1091,10 +1158,12 @@ class RunEngine:
         step_run: StepRun,
         held: autonomy.Held,
         anchors: tuple[Anchor, ...],
+        asked: Ask | None = None,
     ) -> tuple[Run, StepRun]:
-        """The step's act is anchored: one decision request per anchor, and the step waits
-        before anything of it starts. A request that cannot be raised fails the step, without
-        its act: the run escalates rather than run an anchored act or wait on nothing."""
+        """The step's act is anchored: one decision request per anchor, and one more where the
+        process asks itself (ADR-0088), and the step waits before anything of it starts. A
+        request that cannot be raised fails the step, without its act: the run escalates
+        rather than run an anchored act or wait on nothing."""
         round = 1 if step_run.anchoring is None else step_run.anchoring.round + 1
         due = self._clock.now().date() + timedelta(days=self._options.decision_days)
         drafts = [anchoring.draft(run, step, held, a, round=round, due=due) for a in anchors]
@@ -1102,6 +1171,17 @@ class RunEngine:
         try:
             if self._decisions is None:
                 raise NotRaised("no decision requests can be raised here")
+            if asked is not None:
+                (values,), _ = await self._resolved(run, [asked.values])
+                try:
+                    drafts.append(
+                        anchoring.asked(run, step, held, asked, values, round=round, due=due)
+                    )
+                except RuleFailed as error:
+                    raise NotRaised(f"what the step asks cannot be put: {error}") from error
+                named = "; ".join(
+                    filter(None, [named, f"asked by the process of the role {asked.role}"])
+                )
             for draft in drafts:
                 await self._decisions.raise_request(run.tenant, draft)
         except NotRaised as error:
@@ -1134,15 +1214,60 @@ class RunEngine:
             f"{', '.join(waiting_on.requests)}, addressed to {addressed}, due {due.isoformat()}",
         )
         run = self._hold_back(run.with_step_run(step_run), step.id)
-        for draft, anchor in zip(drafts, anchors, strict=True):
+        for draft in drafts:
             run = await self._commit(
                 run,
                 "step.anchored",
                 step=step_run,
-                outcome=str(anchor.class_),
+                outcome=draft.class_,
                 decision=draft.id,
             )
         return run, step_run
+
+    async def _settle(
+        self,
+        run: Run,
+        step_run: StepRun,
+        value: dict[str, Any],
+        outcome: str,
+        read: tuple[ProvenanceInput, ...] = (),
+    ) -> tuple[Run, StepRun]:
+        """The step ends without its act, with a result that says why (ADR-0088): skipped
+        because its `when` did not hold, or declined by the person it asked. The result is
+        stored as any result is, so that the steps after it read it through `$from`."""
+        content = json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        digest = await self._objects.put(content)
+        now = self._clock.now()
+        result = Artifact(
+            id="result",
+            kind="result",
+            digest=digest,
+            media_type="application/json",
+            size_bytes=len(content),
+            created_at=now,
+        )
+        settled = step_run.to(
+            StepState.SUCCEEDED,
+            artifacts=(result,),
+            checkpoint=Checkpoint(
+                ref=f"ckpt/{run.id}/{step_run.step_id}",
+                step_id=step_run.step_id,
+                taken_at=now,
+                artifact_ids=(result.id,),
+                result_digest=digest,
+            ),
+            reason=str(value.get("because") or value.get("answer") or outcome),
+            started_at=step_run.started_at or now,
+            finished_at=now,
+        )
+        run = await self._commit(
+            run.with_step_run(settled),
+            "step.finished",
+            step=settled,
+            outcome=outcome,
+            trace=Trace(inputs=read),
+        )
+        return run, settled
 
     async def _outward(self, work: Work) -> bool | None:
         """Whether a connector call's operation is declared outward; None when it cannot be
@@ -1592,6 +1717,15 @@ class RunEngine:
         if isinstance(work, RoadmapRule):
             (text, issues), read = await self._resolved(run, [work.roadmap, work.issues])
             return rules.roadmap(work, text, issues), Trace(inputs=read), None, None
+        if isinstance(work, SpamRule):
+            (text,), read = await self._resolved(run, [work.text])
+            return rules.spam(work, text), Trace(inputs=read), None, None
+        if isinstance(work, ClassificationRule):
+            (answer, screened, versions), read = await self._resolved(
+                run, [work.answer, work.screened, work.versions]
+            )
+            classified = rules.classification(work, answer, screened, versions)
+            return classified, Trace(inputs=read), None, None
         if isinstance(work, TemplateRule):
             (values,), read = await self._resolved(run, [work.values])
             return rules.template(work, values), Trace(inputs=read), None, None

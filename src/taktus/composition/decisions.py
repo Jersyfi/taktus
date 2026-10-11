@@ -123,6 +123,7 @@ class RequestsOfTheRun:
             option=shaped.answer_interpreted.option,
             decided_by=request.decided_by,
             entry=shaped.outcome,
+            answer=shaped.answer_raw,
         )
 
 

@@ -29,6 +29,13 @@ another. The window's start is part of the offer's idempotency key, so that a re
 restart or a second instance within the same stretch of the window finds the offer already
 made in the channel.
 
+**A contribution is kept as data of its triage** (UC-1.9, ADR-0088). On a channel the instance
+names a triage for (`TAKTUS_TRIAGE`), an issue or a pull request that an unknown sender opened
+is kept as an intake event of status `contribution`, in the tenant the surface receives for,
+without the sender's account and without their text, and the outbox entry
+`intake.contribution` names it and the triage process in the same transaction. Nothing makes it
+a command of the sender. The sender is answered as any unknown sender is.
+
 **An answer is not a command.** A message written in the thread of something Taktus asked — a
 report to the owner (ADR-0045) — is handed to whoever asked it (`ChannelAnswers`), from the
 identity its sender was placed as, or from nobody for a sender the identity component could not
@@ -48,7 +55,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from taktus.components.command.domain.model import IntakeEvent
+from taktus.components.command.domain.model import IntakeEvent, IntakeStatus
+from taktus.components.command.domain.model.intake import UNKNOWN_ACCOUNT
 from taktus.ports.clock import Clock
 from taktus.ports.connector import (
     ChannelAnswers,
@@ -62,7 +70,7 @@ from taktus.ports.connector import (
     SenderKind,
 )
 from taktus.ports.identity import IdentityResolver, Resolution
-from taktus.ports.outbox import INTAKE_ACCEPTED, Outbox
+from taktus.ports.outbox import INTAKE_ACCEPTED, INTAKE_CONTRIBUTION, Outbox
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.telemetry import Telemetry
 from taktus.shared.v1 import Capability
@@ -70,6 +78,9 @@ from taktus.shared.v1 import Capability
 OFFER_WINDOW = timedelta(days=1)
 """How long one offer to link an account answers every event of its person in its
 conversation, unless configured otherwise (`TAKTUS_OFFER_WINDOW_SECONDS`)."""
+
+CONTRIBUTIONS = frozenset({"issue.opened", "pull_request.opened"})
+"""The kinds of event that open a contribution (UC-1.9): an item opened, nothing else."""
 
 
 class UnknownChannel(Exception):
@@ -103,6 +114,9 @@ class IntakeOutcome:
     answer: str | None = None
     """For a message that answered something Taktus asked: what became of the answer. Nothing
     is kept as an intake event then."""
+    contribution: IntakeEvent | None = None
+    """For an unknown sender's contribution on a public channel: the event kept as data of
+    its triage (ADR-0088), beside `unknown_sender`."""
 
 
 class ReceiveIntakeHandler:
@@ -119,7 +133,10 @@ class ReceiveIntakeHandler:
         *,
         clock: Clock | None = None,
         offer_window: timedelta = OFFER_WINDOW,
+        triage: Mapping[Capability, str] | None = None,
     ) -> None:
+        """`triage` maps a public channel to the process that triages its contributions
+        (`TAKTUS_TRIAGE`, ADR-0088); a channel it does not name has none."""
         self._connectors = connectors
         self._events = events
         self._work = work
@@ -129,6 +146,7 @@ class ReceiveIntakeHandler:
         self._answers = answers
         self._outbox = outbox
         self._offers = Offers(clock, offer_window)
+        self._triage = dict(triage or {})
 
     @property
     def channels(self) -> tuple[Capability, ...]:
@@ -168,7 +186,16 @@ class ReceiveIntakeHandler:
                     answer=taken.outcome,
                 )
         if resolution is None:
-            return await self._unknown(command, accepted)
+            contribution = await self._contribution(command, accepted)
+            outcome = await self._unknown(command, accepted)
+            if contribution is None:
+                return outcome
+            return IntakeOutcome(
+                unknown_sender=outcome.unknown_sender,
+                replied=outcome.replied,
+                linked=outcome.linked,
+                contribution=contribution,
+            )
         tenant = resolution.tenant
         event = IntakeEvent(
             id=accepted.event_id,
@@ -195,6 +222,39 @@ class ReceiveIntakeHandler:
             if self._outbox is not None:
                 await self._outbox.write(tenant, INTAKE_ACCEPTED, {"event_id": event.id})
         return IntakeOutcome(accepted=event)
+
+    async def _contribution(self, command: ReceiveIntake, accepted: Intake) -> IntakeEvent | None:
+        """Keep an unknown sender's contribution on a public channel as data of its triage, or
+        None when the event is none. A redelivery keeps nothing and writes nothing again."""
+        process = self._triage.get(command.channel)
+        if process is None or accepted.event not in CONTRIBUTIONS or self._outbox is None:
+            return None
+        tenant = command.tenant
+        event = IntakeEvent(
+            id=accepted.event_id,
+            tenant=tenant,
+            channel=accepted.channel,
+            event=accepted.event,
+            sender_account=UNKNOWN_ACCOUNT,
+            sender_kind=accepted.sender.kind,
+            intent="",
+            context=dict(accepted.context),
+            reply_channel=accepted.reply_to.channel,
+            reply_address=accepted.reply_to.address,
+            reply_thread=accepted.reply_to.thread,
+            occurred_at=accepted.occurred_at,
+            received_at=command.delivery.received_at,
+            status=IntakeStatus.CONTRIBUTION,
+        )
+        async with self._work.transaction(tenant):
+            kept = await self._events.get(tenant, event.id)
+            if kept is not None:
+                return kept
+            await self._events.put(tenant, event)
+            await self._outbox.write(
+                tenant, INTAKE_CONTRIBUTION, {"event_id": event.id, "process": process}
+            )
+        return event
 
     async def _unknown(self, command: ReceiveIntake, accepted: Intake) -> IntakeOutcome:
         if not accepted.intent.by_sender:

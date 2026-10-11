@@ -4,8 +4,9 @@ An entry names a topic and carries a payload of identifiers. It is written insid
 work that makes the change it reports, so that the change and the entry exist together or not
 at all (ADR-0002: the event bus is an outbox in the database). A reader takes the unpublished
 entries of a topic in the order they were written and marks each published once it has acted
-on it. An entry it leaves unpublished is read again on its next pass. The one topic today is
-`intake.accepted`, written by the intake and read by the automation role (ADR-0048).
+on it. An entry it leaves unpublished is read again on its next pass. The two topics today are
+`intake.accepted` (ADR-0048) and `intake.contribution` (ADR-0088), both written by the intake and
+read by the automation role.
 
 Every call happens inside a unit of work of the same persistence and names its tenant
 (`ports/persistence.py`). Keeping two readers apart is not the outbox's: the automation role
@@ -25,6 +26,10 @@ from taktus.shared.v1 import Value
 
 INTAKE_ACCEPTED = "intake.accepted"
 """An intake event was kept; the payload is `{"event_id": …}`."""
+
+INTAKE_CONTRIBUTION = "intake.contribution"
+"""An unknown sender's contribution on a public channel was kept as data of its triage; the
+payload is `{"event_id": …, "process": …}`, the process the channel's triage is (ADR-0088)."""
 
 
 class OutboxEntry(Value):

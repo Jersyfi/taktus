@@ -5,7 +5,7 @@ that drive a software product from its roadmap. `blueprint.yaml` describes all e
 triggers, autonomy levels, steps and guardrails — as a curated template, in the shape the bundle
 format of `0.3.0` will make binding.
 
-Three of the eleven exist as bundles that run today, under `processes/`, in the shape
+Four of the eleven exist as bundles that run today, under `processes/`, in the shape
 `examples/README.md` documents. The rest remain descriptions.
 
 | Process | State | Bundle |
@@ -14,7 +14,7 @@ Three of the eleven exist as bundles that run today, under `processes/`, in the 
 | **P-02 Refinement** — an issue that lacks a section of the ready standard gains it as a comment | **runs** | [`processes/P-02-refinement.yaml`](processes/P-02-refinement.yaml) |
 | **P-03 Implementation** — an issue that is ready becomes a pull request | **runs** | [`processes/P-03-implementation.yaml`](processes/P-03-implementation.yaml) |
 | P-04 Review | description | — |
-| P-05 Intake and triage | description | — |
+| **P-05 Triage of contributions** — an issue or pull request a person Taktus does not know opens is classified, put to the owner, kept or closed; the rest of *Intake and triage* remains a description | **runs** | [`processes/P-05-triage.yaml`](processes/P-05-triage.yaml) |
 | P-06 Consistency check | description | — |
 | P-07 Quality reports | description | — |
 | P-08 Decision request | description; the mechanism for this repository is ADR-0017 | — |
@@ -105,6 +105,30 @@ integration names `human` under a condition containing "unavailable", and S-01, 
 for the repository connector, the coding worker and the model with the three bundles registered,
 ends *changed* with every step finding naming a person and the removal half passed.
 
+## P-05, the triage of contributions
+
+**P-05 Triage of contributions** (autonomy 3, ten steps; UC-1.9, ADR-0088) handles an issue or
+a pull request opened by a person Taktus does not know. It is the part of the blueprint's
+*Intake and triage* that concerns contributions from outside, and it lives here because its
+channel is this blueprint's repository and its outcome is the backlog P-01 to P-03 work from.
+It is started by no trigger: the instance names it as the triage of a public channel
+(`TAKTUS_TRIAGE=channel.repo=p05-triage`), and the intake starts it for each contribution,
+acting for whoever registered its version. The sender is its data: no step reads their account,
+answers them as themselves, blocks them or counts what they wrote.
+
+Read the item and the roadmap (`rule`, connector reads); the planned versions are the roadmap's
+milestones (`rule` `roadmap`, `exact`); screen for spam by fixed patterns (`rule` `spam`,
+`exact`); where none matched, a model classifies — defect, feature or spam, with a version and a
+summary (`llm`, `tolerant`); the class leaves only through a check (`rule` `classification`,
+`tolerant`). Then, by the class (`when`): spam is closed with a fixed reason, nobody asked
+(`rule`, outward); a defect or a feature is put in its version only after the owner approved it
+(`ask`, at every level), and declined, it is closed with the owner's answer (`rule`, outward).
+Nothing merges: an outside pull request stays open whatever the answer (ADR-0012, DEC-0044).
+The methods of the screen and the classification are provisional under DEC-0180; the notice
+the contributing guide carries about it is DEC-0181, and the triage stays off for this
+repository until it is published. `tests/integration/test_triage.py` runs the bundle against
+the fake repository service and a fake model.
+
 ## Their autonomy, with the reason
 
 Every process carries its level with its reason and what is missing to go higher (ADR-0026);
@@ -115,6 +139,7 @@ the bundles state it in full, and this is the short form.
 | P-01 Roadmap control | 3 | the one outward effect is a report a person reads; every verdict in it is a rule's over what was read, and a person carries out what it proposes | a history of reports whose proposals a person carried out unchanged, over a month of daily runs; then applying them itself — a milestone set, a label removed — is proposed (M3.9) |
 | P-02 Refinement | 3 | the one outward effect is a comment a person reads before anything builds on it; the model's answer leaves only through a check; a second run writes nothing | a quality history — sections a person did not rewrite, over a month — and a stronger check on the answer's structure; then the raise is proposed (M3.9) |
 | P-03 Implementation | 4 | nothing writes to a protected branch, the pipeline's verdict is the gate, a person merges, every outward effect is reversible until the merge; the worker runs in isolation with exactly the hosts and credentials the frame names **where the execution kind provides it** (DEC-0022) | — |
+| P-05 Triage of contributions | 3 | the acts on a contribution that is not spam wait for the owner's decision at every level; the one act without it closes spam, which a person reopens with one click, and says why | not raised: what the owner approves stays the owner's; the spam verdict may move to a trained model on a month of closings nobody reopened (M3.13) |
 
 The last condition is the deployment's, not the bundle's. `container` and `cluster` enforce the
 frame; `process` and `endpoint` do not, and with those two the isolation is whoever started the
@@ -123,7 +148,7 @@ rather than assumed.
 
 ## By hand — the takeover test of these processes
 
-A person runs each of the three processes without Taktus (ADR-0013 B, UC-6.3). This is also
+A person runs each of the processes that run without Taktus (ADR-0013 B, UC-6.3). This is also
 what a person does when a run stops at a step whose integration is unavailable: the run has
 escalated or halted there, and what the person writes produces no result a later step of that
 run can read (ADR-0039). So the person does that step and every step after it by hand, from the
@@ -198,6 +223,28 @@ a person applies by reading.
    carries no label.
 
 Merging stays with the person who reviews, as it does when Taktus runs the process.
+
+### P-05 Triage of contributions
+
+What it needs besides the above: rights to close issues and pull requests and to set
+milestones. The person is the maintainer, or someone they named; they decide what the decision
+request would have asked them.
+
+1. **read-contribution** (person) — open the issue or pull request. If it is closed, stop.
+2. **read-roadmap** and **versions** (person) — note the versions `docs/roadmap.md` names
+   (`` ### `X.Y.Z` ``).
+3. **screen** — if the title or text matches one of the bundle's spam patterns, it is spam.
+4. **classify** and **classification** (person) — otherwise decide: a defect, a feature, or
+   spam; for a defect or a feature, the earliest planned version it belongs to and one
+   sentence of what it asks for.
+5. **close-spam** (person) — for spam: comment the fixed reason the bundle names and close the
+   item as not planned. Do not block the sender here: blocking is a separate act of a person.
+6. **accept** (person) — for a defect or a feature: decide whether it is taken. Taken, put it
+   in the milestone of its version and leave it open; a pull request is not merged.
+7. **compose-decline** and **close-declined** (person) — not taken: comment why, after the
+   fixed words the bundle names, and close it as not planned.
+
+Nothing about the sender is written down anywhere: not their account, not a count.
 
 ## Running them for real
 
