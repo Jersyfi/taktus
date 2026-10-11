@@ -6,8 +6,8 @@ epic: E9
 serves: [P8, P14]
 state: building
 version: 0.5.0
-tests: [tests/components/run/test_blocked_time.py::test_a_block_of_each_cause_is_recorded_with_its_cause_and_its_duration, tests/components/run/test_blocked_time.py::test_blocked_time_and_share_sum_per_cause_process_and_period, tests/components/run/test_blocked_time.py::test_a_wait_on_a_person_is_readable_under_their_name_by_that_person_alone, tests/components/run/test_blocked_time.py::test_no_block_and_no_sum_has_a_field_that_can_hold_a_person]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: c28377b9027e, ADR-0010: 6b161e3f6831, ADR-0015: 3a42705e5561, ADR-0029: 37c061ef032a, ADR-0043: fe6020be8643}
+tests: [tests/components/run/test_blocked_time.py::test_a_block_of_each_cause_is_recorded_with_its_cause_and_its_duration, tests/components/run/test_blocked_time.py::test_blocked_time_and_share_sum_per_cause_process_and_period, tests/components/run/test_blocked_time.py::test_a_wait_on_a_person_is_readable_under_their_name_by_that_person_alone, tests/components/run/test_blocked_time.py::test_no_block_and_no_sum_has_a_field_that_can_hold_a_person, tests/components/run/test_blocked_time.py::test_a_sum_of_waits_answered_by_one_person_is_withheld_count_and_all]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: c28377b9027e, ADR-0010: 6b161e3f6831, ADR-0015: 3a42705e5561, ADR-0029: 37c061ef032a, ADR-0043: 385bf8e3673a}
 supersedes: null
 ---
 
@@ -75,6 +75,9 @@ over them is not. By the named tests:
   sums by hand from the blocks it produced.
 - A wait on a person is in every block and every sum without the person's name, and readable
   under the name by that person alone; no block and no sum has a field that can hold a person.
+- A sum of waits on a person that fewer than two persons answered is withheld, count and all:
+  summed over one person, it would be that person's response time under the name of a process
+  (NTC-0168).
 
 Not yet: the marginal value of a higher limit, the recommendations and the check for a change of
 method, and the four ways to wait less on people (`0.5.0`). A wait on an anchor's decision carries

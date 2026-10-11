@@ -1,6 +1,6 @@
 # ADR-0043 — Every block is booked to an account when it ends
 
-**Status:** accepted · amended 2026-10-09 (ADR-0046): a failure for want of an adapter is a block
+**Status:** accepted · amended 2026-10-09 (ADR-0046): a failure for want of an adapter is a block · amended 2026-10-11 (NTC-0168): a sum of waits answered by one person is withheld
 
 ## Context
 ADR-0015 §1 requires every run to record each block with its cause, its duration and the work it
@@ -100,6 +100,13 @@ The query `BlockedTime` of the `run` component has three reads:
   in. The order is by account, process and period, never by a figure;
 - `own` — the waits on a person that `reader` ended by answering.
 
+*Amended 2026-10-11 (NTC-0168):* a sum of `wait.human` that fewer than two distinct persons
+answered is withheld. It keeps its account, process, period and the runs active, and says why;
+it carries no seconds, no count of blocks, no runs or steps held up and no share. Summed over one
+person, it is that person's response time under the name of a process, and ADR-0042 withholds
+exactly that number for decisions. Who answered is counted from the ledger entries of the answers
+and kept nowhere.
+
 A rehearsal's blocks are left out of all three: a rehearsal acts on nothing outside (ADR-0030).
 
 ### 7. Principle 14 in the data model
@@ -107,7 +114,8 @@ A block names no person, and neither does a sum: `Block` and `BlockedSum` are cl
 with no field that can hold one, and a record carries none. Who answered a wait is the audit's:
 the actor of the `step.confirmed` or `step.performed` entry after the record. Only `own` joins
 the two, and only for the reader it is given. Anyone else reads a wait on a person only summed
-over every person, and never ranked (ADR-0015, protective rule).
+over every person, never ranked, and not at all where fewer than two persons answered (ADR-0015,
+protective rule; NTC-0168).
 
 ## Alternatives
 - **A table of blocks of its own.** It is a second store of the same facts beside the ledger,
@@ -157,4 +165,7 @@ sums here are per account, process and period: they are never per person, and a 
 department is the analysis's (`0.5.0`), beside the decision component's own aggregate of
 response times by role and department (ADR-0042). The ledger entry of an answer names the person and
 its time, as the audit requires, so whoever reads the ledger can compute a person's response
-time by hand; the accounts and their sums never do it for them.
+time by hand; the accounts and their sums never do it for them. A sum of `wait.human` is
+withheld below two persons in its process and period; the `wait.dependency` sum of the steps
+held back behind such a wait is the process's and is shown, and its length follows the
+person's wait.

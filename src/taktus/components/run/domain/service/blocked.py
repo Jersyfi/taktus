@@ -11,8 +11,10 @@ in the period that were held up at all.
 
 A person is in neither. A block on a person carries no name: the account `wait.human` holds the
 time, and anyone reads it summed over every person, never per person and never in an order
-by value (ADR-0015, protective rule; principle 14). Who answered which wait is answered by the
-ledger entry of the answer, and only the person who answered reads it joined to the block
+by value (ADR-0015, protective rule; principle 14). A sum of `wait.human` that fewer than two
+persons answered is withheld, count and all: summed over one person, it is that person's
+number under the name of a process (ADR-0042, NTC-0168). Who answered which wait is answered by
+the ledger entry of the answer, and only the person who answered reads it joined to the block
 (`application/query/blocked_time.py`).
 
 Pure: records and entries in, documents and sums out.
@@ -25,7 +27,7 @@ from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from taktus.components.run.domain.model.block import CAUSE_PATTERN, Account, OpenBlock
 from taktus.shared.v1 import StepId, Value
@@ -157,46 +159,85 @@ def period_of(at: datetime, period: Period) -> str:
     return f"{at.year:04d}-{at.month:02d}"
 
 
+MINIMUM_PERSONS = 2
+"""A sum of waits on a person stands only over this many distinct persons who answered them. A
+sum over one person is that person's response time under the name of a process: it is withheld,
+count and all, as an aggregate of response times is (ADR-0042, NTC-0088, NTC-0168)."""
+
+PERSON_ACCOUNT = "wait.human"
+"""The account whose time is time a person took to answer."""
+
+
 class BlockedSum(Value):
-    """The blocked time of one account, in one process, in one period. No person is a key."""
+    """The blocked time of one account, in one process, in one period. No person is a key.
+
+    A sum of `wait.human` that fewer than `MINIMUM_PERSONS` persons answered carries its key,
+    the runs active and why it is withheld, and no figure of the wait."""
 
     account: Account
     process: str = Field(min_length=1)
     period: str = Field(min_length=1)
-    seconds: float = Field(ge=0)
+    seconds: float | None = Field(default=None, ge=0)
     """How long work stood still: the blocks' durations added up."""
-    blocks: int = Field(ge=1)
-    runs_held_up: int = Field(ge=1)
-    steps_held_up: int = Field(ge=1)
+    blocks: int | None = Field(default=None, ge=1)
+    runs_held_up: int | None = Field(default=None, ge=1)
+    steps_held_up: int | None = Field(default=None, ge=1)
     runs: int = Field(ge=1)
     """The runs of the process active in the period: every run with an entry in it."""
-    share: float = Field(ge=0, le=1)
+    share: float | None = Field(default=None, ge=0, le=1)
     """The share of the work blocked: runs held up by this account, of the runs active."""
+    withheld: str | None = Field(default=None, min_length=1)
+    """Why the figures are not shown, when they are not."""
+
+    @model_validator(mode="after")
+    def _figures_or_the_reason(self) -> BlockedSum:
+        figures = (self.seconds, self.blocks, self.runs_held_up, self.steps_held_up, self.share)
+        if self.withheld is None and any(f is None for f in figures):
+            raise ValueError("a sum shown carries every figure")
+        if self.withheld is not None and any(f is not None for f in figures):
+            raise ValueError("a sum withheld carries no figure of the wait")
+        return self
 
 
 def sums(
-    blocks: Iterable[Block],
+    blocks: Iterable[tuple[Block, str | None]],
     active: Mapping[tuple[str, str], frozenset[str]],
     period: Period,
 ) -> tuple[BlockedSum, ...]:
-    """Blocked time per account, per process and per period. A block falls in the period it
-    ended in. `active` names, per process and period, the runs with an entry in it; every run
-    a block held up has its record there, so the share never exceeds one. The order is by
-    account, process and period, never by a figure."""
+    """Blocked time per account, per process and per period. Each block comes with the person
+    who ended it by answering, or None where no person did; the person is counted, never
+    kept. A block falls in the period it ended in. `active` names, per process and period, the
+    runs with an entry in it; every run a block held up has its record there, so the share
+    never exceeds one. The order is by account, process and period, never by a figure."""
     seconds: dict[tuple[Account, str, str], float] = defaultdict(float)
     count: dict[tuple[Account, str, str], int] = defaultdict(int)
     runs: dict[tuple[Account, str, str], set[str]] = defaultdict(set)
     steps: dict[tuple[Account, str, str], set[tuple[str, str]]] = defaultdict(set)
-    for block in blocks:
+    persons: dict[tuple[Account, str, str], set[str]] = defaultdict(set)
+    for block, person in blocks:
         key = (block.account, block.process, period_of(block.until, period))
         seconds[key] += block.seconds
         count[key] += 1
         runs[key].add(block.run_id)
         steps[key].add((block.run_id, block.step_id))
+        if person is not None:
+            persons[key].add(person)
     result: list[BlockedSum] = []
     for key in sorted(seconds):
         account, process, at = key
         active_runs = len(active.get((process, at), frozenset()) | runs[key])
+        if account == PERSON_ACCOUNT and len(persons[key]) < MINIMUM_PERSONS:
+            result.append(
+                BlockedSum(
+                    account=account,
+                    process=process,
+                    period=at,
+                    runs=active_runs,
+                    withheld=f"fewer than {MINIMUM_PERSONS} persons answered: the figure "
+                    "would be one person's (ADR-0015)",
+                )
+            )
+            continue
         result.append(
             BlockedSum(
                 account=account,

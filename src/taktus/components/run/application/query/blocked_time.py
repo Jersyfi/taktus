@@ -10,7 +10,8 @@ Three reads of what ended, and one of what has not:
 - `blocks` — every block, with its account, its cause, the run, the step and the process
   version it held up, and how long it lasted. A block on a person names no one;
 - `sums` — blocked time per account, per process and per period, with the share of the work it
-  held up. No person is a key, and the order is by key, never by a figure;
+  held up. No person is a key, and the order is by key, never by a figure. A sum of waits on a
+  person that fewer than two persons answered is withheld: it would be one person's number;
 - `own` — the waits on a person that `reader` ended by answering. The reader is the identity
   the caller authenticated; a figure of waiting on a person is joined to a name only for the
   person it names (ADR-0015, protective rule; principle 14);
@@ -93,23 +94,15 @@ class BlockedTime:
                 continue
             key = (process_of(entry.refs.process_version), period_of(entry.ts, period))
             active[key].add(entry.refs.run_id)
-        recorded = [block for _, block in await self._recorded(entries)]
+        answered = _answerers(entries)
+        recorded = [(block, answered.get(e.seq)) for e, block in await self._recorded(entries)]
         return sums(recorded, {k: frozenset(v) for k, v in active.items()}, period)
 
     async def own(self, tenant: Tenant, reader: str) -> tuple[Block, ...]:
         """The waits on a person that `reader` ended: each block of `wait.human` whose step the
         reader answered, in the entry right after the block's record."""
         entries = await self._entries(tenant)
-        answered_by: dict[int, str | None] = {}
-        pending: dict[tuple[str, str], int] = {}
-        for entry in entries:
-            run_id, step_id = entry.refs.run_id, entry.refs.step_id
-            if run_id is None or step_id is None:
-                continue
-            if entry.kind == RECORD_KIND:
-                pending[(run_id, step_id)] = entry.seq
-            elif entry.kind in ANSWERS and (run_id, step_id) in pending:
-                answered_by[pending.pop((run_id, step_id))] = entry.refs.actor
+        answered_by = _answerers(entries)
         return tuple(
             block
             for entry, block in await self._recorded(entries)
@@ -132,3 +125,19 @@ class BlockedTime:
                 continue
             found.append((entry, parse(json.loads(content))))
         return found
+
+
+def _answerers(entries: Sequence[LedgerEntry]) -> dict[int, str | None]:
+    """Who ended each wait on a person, by the sequence number of the block's record: the actor
+    of the answer right after it. A record no answer follows is not in the result."""
+    answered_by: dict[int, str | None] = {}
+    pending: dict[tuple[str, str], int] = {}
+    for entry in entries:
+        run_id, step_id = entry.refs.run_id, entry.refs.step_id
+        if run_id is None or step_id is None:
+            continue
+        if entry.kind == RECORD_KIND:
+            pending[(run_id, step_id)] = entry.seq
+        elif entry.kind in ANSWERS and (run_id, step_id) in pending:
+            answered_by[pending.pop((run_id, step_id))] = entry.refs.actor
+    return answered_by

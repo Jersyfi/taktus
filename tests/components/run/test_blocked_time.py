@@ -200,9 +200,9 @@ class World:
             ResumeRun(run_id=run.id, actor=PERSON, tenant=TENANT, budget=budget)
         )
 
-    async def answer(self, run: Run, *steps: str) -> Run:
+    async def answer(self, run: Run, *steps: str, by: str = PERSON) -> Run:
         return await self.engine.confirm(
-            ConfirmSteps(run_id=run.id, steps=steps, actor=PERSON, tenant=TENANT)
+            ConfirmSteps(run_id=run.id, steps=steps, actor=by, tenant=TENANT)
         )
 
     def later(self, by: timedelta = GAP) -> None:
@@ -470,6 +470,8 @@ async def test_blocked_time_and_share_sum_per_cause_process_and_period() -> None
         expected[(block.account, block.process, block.until.date().isoformat())].append(block)
     assert {(s.account, s.process, s.period) for s in sums} == set(expected)
     for s in sums:
+        if s.withheld is not None:
+            continue
         held = expected[(s.account, s.process, s.period)]
         assert s.seconds == sum(b.seconds for b in held)
         assert s.blocks == len(held)
@@ -482,8 +484,10 @@ async def test_blocked_time_and_share_sum_per_cause_process_and_period() -> None
     assert budget[day_one].runs == 1 and budget[day_one].share == 1.0
     assert budget[day_two].runs == 2, "two runs of the process were active that day"
     assert budget[day_two].share == 0.5, "one of the two was held up"
-    human = [s for s in sums if s.process == "human"]
-    assert {s.account for s in human} == {"wait.human", "wait.dependency"}
+    human = {s.account: s for s in sums if s.process == "human"}
+    assert set(human) == {"wait.human", "wait.dependency"}
+    assert human["wait.human"].withheld, "one person answered: their number, withheld"
+    assert human["wait.dependency"].withheld is None, "the work held back is the process's"
 
     month = await w.accounts.sums(TENANT, "month")
     (budget_month,) = [s for s in month if s.account == "limit.budget"]
@@ -501,6 +505,46 @@ async def test_the_sums_are_ordered_by_their_keys_never_by_a_figure() -> None:
 
 
 # --- a figure of waiting on a person is that person's ---------------------------------------------
+
+
+async def asked(w: World, by: str) -> None:
+    """One run of the process `asking` whose read waits for a person, answered by `by`."""
+    run = await w.start("asking", read("ask"), actions={READ: 2})
+    assert run.state is RunState.WAITING_HUMAN
+    w.later()
+    await w.answer(run, "ask", by=by)
+
+
+async def test_a_sum_of_waits_answered_by_one_person_is_withheld_count_and_all() -> None:
+    w = World()
+    await asked(w, PERSON)
+    await asked(w, PERSON)
+    (one,) = [s for s in await w.accounts.sums(TENANT, "day") if s.account == "wait.human"]
+    assert one.withheld and "fewer than 2 persons" in one.withheld
+    assert (one.seconds, one.blocks, one.runs_held_up, one.steps_held_up, one.share) == (
+        None,
+        None,
+        None,
+        None,
+        None,
+    ), "summed over one person, every figure is that person's"
+    assert one.runs == 2, "how many runs the process had is the process's"
+    assert len(await w.accounts.own(TENANT, PERSON)) == 2, "the person reads their own"
+
+    await asked(w, OTHER)
+    (two,) = [s for s in await w.accounts.sums(TENANT, "day") if s.account == "wait.human"]
+    assert two.withheld is None, "two persons answered: the sum is the process's"
+    assert two.blocks == 3 and two.seconds is not None and two.seconds >= 3 * GAP.total_seconds()
+    assert PERSON not in two.model_dump_json() and OTHER not in two.model_dump_json()
+
+
+def test_a_sum_is_shown_with_every_figure_or_withheld_with_none() -> None:
+    key = {"account": "wait.human", "process": "p", "period": "2026-10-09", "runs": 1}
+    with pytest.raises(ValidationError):
+        BlockedSum.model_validate({**key, "seconds": 1.0})
+    with pytest.raises(ValidationError):
+        BlockedSum.model_validate({**key, "withheld": "x", "seconds": 1.0})
+    assert BlockedSum.model_validate({**key, "withheld": "x"}).seconds is None
 
 
 PERSONAL = {"actor", "person", "identity", "decider", "confirmed_by", "answered_by", "by", "who"}
