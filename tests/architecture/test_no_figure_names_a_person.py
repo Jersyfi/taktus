@@ -125,6 +125,9 @@ ACTS: dict[str, str] = {
     "taktus.components.run.application.service.execute_run.DecideSteps": (
         f"{ACT}: the command that applies a verdict, with who applies it"
     ),
+    "taktus.components.run.application.service.maturation.ProposeMoves": (
+        f"{ACT}: the command that asks for proposals, with on whose behalf the training runs"
+    ),
     "taktus.components.run.application.service.runner.RunnerOptions": (
         f"{ACT}: the identity a runner acts as, and how many runs it carries"
     ),

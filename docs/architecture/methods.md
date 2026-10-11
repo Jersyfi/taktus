@@ -70,6 +70,13 @@ An example of a proposal Taktus produces on its own:
 > the same job reproducibly, roughly 300× cheaper, and the exactness class could rise from *tolerant*
 > to *sourced*. Training: about two hours on existing hardware. Shall I set it up?
 
+**As built (ADR-0084).** Every step is measured from Taktus's own records, never per person. A
+step on a language model is a candidate when its labels fall into at most 50 classes, with at
+least 500 cases and at least 20 in every class. Taktus trains a classifier on the ML bench twice,
+tries it on a fifth of the cases held out, and proposes the move only at 95 % agreement, a lower
+cost per case and the same model from both trainings. The proposal is a decision request; Taktus
+never applies it. The numbers are DEC-0164's provisional answer.
+
 **Operating time becomes an asset.** The organisation collects the training data for its own models
 while it works, and Taktus notices when there is enough.
 

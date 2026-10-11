@@ -125,6 +125,18 @@
               }
             }
           }
+        },
+        "compute": {
+          "description": "The price of one second of compute per resource class, in the table's currency: what a step on a worker costs, so that it can be compared with a step on a model (ADR-0084). A class without a price is unpriced, never free.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "../../shared/v1/Consumption.json#/$defs/resourceClass"
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
         }
       },
       "required": [

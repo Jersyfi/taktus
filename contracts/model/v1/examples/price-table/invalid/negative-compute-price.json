@@ -1,0 +1,13 @@
+{
+  "version": "example-3",
+  "valid_from": "2026-10-01T00:00:00Z",
+  "currency": "eur",
+  "unit_tokens": 1000000,
+  "source": "an example: a second of compute priced below zero",
+  "prices": {
+    "example-model": { "input": 3, "output": 15 }
+  },
+  "compute": {
+    "cpu.small": -0.00002
+  }
+}
