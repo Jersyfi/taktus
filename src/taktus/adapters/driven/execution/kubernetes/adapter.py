@@ -6,10 +6,12 @@ The third implementation of the execution port (ADR-0002), specified in
 - **a Job of its own** from the unit's image: `backoffLimit: 0`, because the run retries a step
   and the cluster does not retry a job behind its back; a deadline (`activeDeadlineSeconds`,
   the wall clock plus the start timeout, as the cluster's own backstop) and a time to live
-  after it finished (`ttlSecondsAfterFinished`); requests equal to limits for CPU and memory;
-  and a pod that satisfies the Pod Security level `restricted` — not root, no privilege
-  escalation, every capability dropped, the runtime's default seccomp profile, a read-only
-  root filesystem with writable empty directories for `/tmp` and the workspace;
+  after it finished (`ttlSecondsAfterFinished`); a memory request equal to the memory limit,
+  and a CPU request of a share of the CPU limit (`cpu_request_share`, README §7), because CPU is
+  compressible and memory is not; and a pod that satisfies the Pod Security level
+  `restricted` — not root, no privilege escalation, every capability dropped, the runtime's
+  default seccomp profile, a read-only root filesystem with writable empty directories for
+  `/tmp` and the workspace;
 - **no service-account token**: `automountServiceAccountToken: false` on the pod, so a unit
   holds no credential for the API server that runs it;
 - **credentials from a Secret created for the job**: a variable from a key of the Secret for
@@ -95,6 +97,13 @@ MANAGED_BY = {"app.kubernetes.io/managed-by": "taktus"}
 NOBODY = 65534
 
 log = structlog.get_logger("taktus.execution.cluster")
+
+
+def cpu_resources(cpus: float, share: float) -> tuple[str, str]:
+    """The CPU a unit requests and the CPU it is limited to, in millicores: the request is
+    `share` of the limit, never below one millicore. A share of 1 requests the whole limit."""
+    limit = int(cpus * 1000)
+    return f"{max(1, int(limit * share))}m", f"{limit}m"
 
 
 def limits_refusal(request: JobRequest) -> str | None:
@@ -237,14 +246,20 @@ class KubernetesExecution:
         state_claim: str | None = None,
         run_as_user: int = NOBODY,
         ttl_seconds: int = 600,
+        cpu_request_share: float = 1.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         """`namespace` is the execution namespace. `connection` defaults to the pod's own
         service account. `enforce_egress` is the operator's statement that the cluster enforces
         network policies (`execution.egress.enforce`). `state_claim` names an existing volume
         claim for the unit's state, which outlives jobs; without one the state directory is an
-        empty directory that dies with the job, and the startup log says so. `transport`
-        replaces the network to the API server, for the tests."""
+        empty directory that dies with the job, and the startup log says so.
+        `cpu_request_share` is the share of its CPU limit a unit requests from the cluster's
+        scheduler (`execution.cpu.request.share`, more than 0 and at most 1); its memory request
+        is always its memory limit. `transport` replaces the network to the API server, for the
+        tests."""
+        if not 0 < cpu_request_share <= 1:
+            raise ValueError(f"a CPU request share of {cpu_request_share} is not in (0, 1]")
         self._configuration = configuration
         self._namespace = namespace
         self._state_dir = state_dir
@@ -255,6 +270,7 @@ class KubernetesExecution:
         self._state_claim = state_claim
         self._run_as_user = run_as_user
         self._ttl_seconds = ttl_seconds
+        self._cpu_request_share = cpu_request_share
         self._transport = transport
         if state_claim is None:
             log.warning(
@@ -486,15 +502,17 @@ class KubernetesExecution:
             volumes.append(
                 {"name": "credentials", "secret": {"secretName": names.secret, "items": files}}
             )
-        cpu = f"{int(unit.limits.cpus * 1000)}m"
+        cpu_request, cpu_limit = cpu_resources(unit.limits.cpus, self._cpu_request_share)
         memory = str(unit.limits.memory_bytes)
-        resources = {"cpu": cpu, "memory": memory}
         unit_container: Json = {
             "name": UNIT_CONTAINER,
             "image": unit.program,
             "env": environment,
             "ports": [{"name": "contract", "containerPort": unit.port, "protocol": "TCP"}],
-            "resources": {"requests": dict(resources), "limits": dict(resources)},
+            "resources": {
+                "requests": {"cpu": cpu_request, "memory": memory},
+                "limits": {"cpu": cpu_limit, "memory": memory},
+            },
             "securityContext": self._container_security(),
             "volumeMounts": mounts,
         }

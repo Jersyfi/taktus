@@ -176,7 +176,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 62, "every setting is in the startup log"
+    assert len(effective) == 63, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -323,6 +323,7 @@ def test_the_cluster_kind_needs_its_namespace_and_reads_its_settings() -> None:
     assert execution.kind is ExecutionKind.CLUSTER and execution.namespace == "jobs"
     assert execution.egress_enforced is True, "network policies are enforced unless told not"
     assert execution.state_claim == "unit-state" and execution.service_account is None
+    assert execution.cpu_request_share == 0.25, "a unit requests a quarter of its CPU limit"
     off = (
         settings(
             TAKTUS_EXECUTION="cluster",
@@ -334,6 +335,32 @@ def test_the_cluster_kind_needs_its_namespace_and_reads_its_settings() -> None:
         .execution
     )
     assert off.egress_enforced is False
+
+
+@pytest.mark.parametrize(("value", "share"), [("1", 1.0), ("0.5", 0.5), ("0.01", 0.01)])
+def test_the_cpu_request_share_is_read_from_a_hundredth_to_one(value: str, share: float) -> None:
+    execution = (
+        settings(
+            TAKTUS_EXECUTION="cluster",
+            TAKTUS_EXECUTION_UNIT="worker:1",
+            TAKTUS_EXECUTION_NAMESPACE="jobs",
+            TAKTUS_EXECUTION_CPU_REQUEST_SHARE=value,
+        )
+        .workers[0]
+        .execution
+    )
+    assert execution.cpu_request_share == share
+
+
+@pytest.mark.parametrize("value", ["0", "1.5", "a quarter"])
+def test_a_cpu_request_share_outside_a_hundredth_to_one_is_refused(value: str) -> None:
+    with pytest.raises(ConfigurationError, match="TAKTUS_EXECUTION_CPU_REQUEST_SHARE"):
+        settings(
+            TAKTUS_EXECUTION="cluster",
+            TAKTUS_EXECUTION_UNIT="worker:1",
+            TAKTUS_EXECUTION_NAMESPACE="jobs",
+            TAKTUS_EXECUTION_CPU_REQUEST_SHARE=value,
+        )
 
 
 def test_findings_are_sent_only_where_the_operator_names_a_connector() -> None:

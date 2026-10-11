@@ -140,11 +140,16 @@ execution:
   #     image: <registry>/<image>:<version>   # its unit, for kind `cluster`
   #     kind: cluster                # optional; `kind` above by default
   #     endpoint: ""                 # required for kind `endpoint`
-  #     memoryMb: 2048               # optional: unitPort, cpus, memoryMb, wallSeconds,
-  #                                  # startTimeoutSeconds, stateClaim (an existing claim)
+  #     memoryMb: 2048               # optional: unitPort, cpus, cpuRequestShare, memoryMb,
+  #                                  # wallSeconds, startTimeoutSeconds, stateClaim (an existing claim)
   workers: []
   defaults:
-    cpus: 1
+    cpus: 1                # a unit's CPU limit
+    # The share of `cpus` a unit requests from the scheduler, between 0.01 and 1
+    # (TAKTUS_EXECUTION_CPU_REQUEST_SHARE, README §7). CPU is compressible: a unit may use its
+    # whole limit while the node has CPU to spare. 1 requests the whole limit. The memory request
+    # is always `memoryMb`, because the node has no swap.
+    cpuRequestShare: 0.25
     memoryMb: 1024
     wallSeconds: 3600
     startTimeoutSeconds: 120

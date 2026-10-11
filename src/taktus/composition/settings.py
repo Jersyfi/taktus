@@ -95,6 +95,11 @@ class ExecutionSettings:
     state_claim: str | None = None
     """`TAKTUS_EXECUTION_STATE_CLAIM` (cluster): an existing volume claim in the execution
     namespace for the unit's state. Unset, the state dies with each job."""
+    cpu_request_share: float = 0.25
+    """`TAKTUS_EXECUTION_CPU_REQUEST_SHARE` (cluster): the share of its CPU limit a unit requests
+    from the cluster's scheduler, between 0.01 and 1. A unit may still use its whole limit while
+    the node has CPU to spare. 1 requests the whole limit. The memory request is always the
+    memory limit, because the node has no swap (deploy/k8s/README.md §7, NTC-0190)."""
 
     def effective(self) -> list[tuple[str, str]]:
         return [
@@ -115,6 +120,7 @@ class ExecutionSettings:
             ("TAKTUS_EXECUTION_EGRESS_ENFORCE", str(self.egress_enforced).lower()),
             ("TAKTUS_EXECUTION_SERVICE_ACCOUNT", self.service_account or ""),
             ("TAKTUS_EXECUTION_STATE_CLAIM", self.state_claim or ""),
+            ("TAKTUS_EXECUTION_CPU_REQUEST_SHARE", str(self.cpu_request_share)),
         ]
 
 
@@ -500,6 +506,7 @@ def load_execution(configuration: Configuration) -> ExecutionSettings:
         egress_enforced=reader.flag("execution.egress.enforce", True),
         service_account=reader.text("execution.service.account", "") or None,
         state_claim=reader.text("execution.state.claim", "") or None,
+        cpu_request_share=reader.number("execution.cpu.request.share", 0.25, low=0.01, high=1.0),
     )
 
 
