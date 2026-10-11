@@ -112,6 +112,7 @@ taktus/
 │   │       ├── connectors/mcp/      # the connector port as an MCP client: intake and actions; connectors/pool.py maps capabilities
 │   │       ├── connectors/loopback/ # Taktus reached by Taktus: the capabilities orchestrator.* behind the action side of the connector port, over an Orchestrator the composition root implements
 │   │       ├── connectors/directory/ # knowledge.pages over a directory of Markdown files: the knowledge system of an organisation that has none (ADR-0065)
+│   │       ├── connectors/bookstack/ # knowledge.pages against the wiki the guides are read in, behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/slack/    # the chat connector: chat.threads and channel.chat behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/http/
 │   │       └── models/              # openai_compatible/: the model port over the chat-completions dialect; pool.py maps purposes
@@ -191,7 +192,7 @@ connector is a driven adapter and the suite its client, and neither imports the 
 `tests/architecture` fails on:
 
 - the core importing `httpx`, `sqlalchemy`, `psycopg`, `fastapi` or any driver
-- **a product name in `components/**` or `ports/**`** (`claude`, `slack`, `github`, `jira`,
+- **a product name in `components/**` or `ports/**`** (`claude`, `slack`, `github`, `jira`, `bookstack`,
   `ollama`, …) — the sharpest test in the project — and in `contracts/**`, where a connector is
   named by what it can do and never by what it is
 - a direct import between two components

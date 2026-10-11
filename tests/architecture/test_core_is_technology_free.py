@@ -47,6 +47,7 @@ PRODUCT_NAMES = (
     "bitbucket",
     "jira",
     "confluence",
+    "bookstack",
     "notion",
     "postgres",
     "postgresql",

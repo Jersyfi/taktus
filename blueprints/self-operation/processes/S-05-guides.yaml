@@ -18,14 +18,15 @@
 # raising a report the reporting component's (docs/architecture/contracts.md §4). The repository
 # is reached through `repository.files`, the knowledge system through `knowledge.pages`: a wiki's
 # connector, or the directory the instance serves where the organisation keeps none
-# (`TAKTUS_KNOWLEDGE_DIRECTORY`).
+# (`TAKTUS_KNOWLEDGE_DIRECTORY`). Both steps that reach the knowledge system name its credential,
+# `KNOWLEDGE_TOKEN`: a wiki's connector acts with it, and the directory needs none and ignores it.
 #
 # Switching this process off (`taktusctl deactivate --process s05-guides`) changes nothing in
 # the repository: it never writes there. The guides stay as they were last published, and
 # `taktusctl guides publish` does the same by hand (README.md beside this directory).
 
 id: s05-guides
-version: "1"
+version: "2"
 name: S-05 Guides
 autonomy:
   level: 3
@@ -184,6 +185,8 @@ steps:
       operation: knowledge.pages.list
       input:
         place: { $from: render, $select: output.root }
+      credentials:
+        - { name: KNOWLEDGE_TOKEN, injected_as: env }
 
   - id: measure
     method: rule
@@ -227,6 +230,8 @@ steps:
       input:
         rendered: { $from: render, $select: output.rendered }
         held: { $from: read-held, $select: output.pages }
+      credentials:
+        - { name: KNOWLEDGE_TOKEN, injected_as: env }
 
   - id: report-edits
     method: rule

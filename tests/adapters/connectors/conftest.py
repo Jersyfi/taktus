@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fakes import chat_service as chat_fake
 from fakes import repository_service
+from fakes import wiki_service as wiki_fake
 
 type Json = dict[str, Any]
 
@@ -156,3 +157,62 @@ def chat_credentials(chat_service: ChatService, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv(CHAT_WRITE, chat_service.write_value)
     monkeypatch.setenv(CHAT_READ, chat_service.read_value)
     chat_service.reset()
+
+
+# --- the wiki ---------------------------------------------------------------------------------
+
+KNOWLEDGE_WRITE = "KNOWLEDGE_TOKEN"
+KNOWLEDGE_READ = "KNOWLEDGE_TOKEN_READONLY"
+
+
+@dataclass(frozen=True)
+class Wiki:
+    url: str
+    write_value: str
+    read_value: str
+
+    def state(self) -> Json:
+        result: Json = httpx.get(f"{self.url}/_fake/state", timeout=5.0).json()
+        return result
+
+    def pages(self) -> list[Json]:
+        result: list[Json] = httpx.get(f"{self.url}/_fake/pages", timeout=5.0).json()["pages"]
+        return result
+
+    def page(self, name: str) -> Json:
+        (found,) = [p for p in self.pages() if p["name"] == name]
+        return found
+
+    def control(self, path: str, body: Json) -> None:
+        httpx.post(f"{self.url}{path}", json=body, timeout=5.0).raise_for_status()
+
+    def reset(self) -> None:
+        self.control("/_fake/reset", {})
+
+
+@pytest.fixture(scope="session")
+def wiki() -> Iterator[Wiki]:
+    write_value = f"{secrets.token_hex(8)}:{secrets.token_hex(16)}"
+    read_value = f"{secrets.token_hex(8)}:{secrets.token_hex(16)}"
+    server = wiki_fake.make_server("127.0.0.1", 0, {write_value: "write", read_value: "read"})
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    try:
+        yield Wiki(f"http://{host!s}:{port}", write_value, read_value)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.fixture
+def wiki_credentials(wiki: Wiki, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The two tokens in files the variables name, as the connector's runtime would put them
+    there; never a variable holding a value, which the connector does not read."""
+    for name, value in ((KNOWLEDGE_WRITE, wiki.write_value), (KNOWLEDGE_READ, wiki.read_value)):
+        path = tmp_path / name.lower()
+        path.write_text(value, encoding="utf-8")
+        path.chmod(0o600)
+        monkeypatch.setenv(f"TAKTUS_CREDENTIAL_{name}_FILE", str(path))
+        monkeypatch.delenv(name, raising=False)
+    wiki.reset()
