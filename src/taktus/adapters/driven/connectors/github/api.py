@@ -81,6 +81,9 @@ class Api:
     async def post(self, path: str, body: Json) -> Any:
         return await self._request("POST", path, body=body)
 
+    async def patch(self, path: str, body: Json) -> Any:
+        return await self._request("PATCH", path, body=body)
+
     async def get_page(self, path: str, params: Json) -> tuple[Any, str | None]:
         """One page and the URL of the next, from the `Link` header."""
         response = await self._send("GET", path, params=params, body=None)

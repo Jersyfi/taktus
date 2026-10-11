@@ -717,6 +717,48 @@ async def set_labels(api: Api, input: Json, key: str) -> Outcome:
     )
 
 
+async def close_issue(api: Api, input: Json, key: str) -> Outcome:
+    """Lookup: the comment that says why, among every comment of the item, by mark — exactly as
+    `repository.comments.create` finds one — and the item's state. The comment is written
+    first and the item closed after it, so a call that stopped between the two finds its
+    comment on the next attempt and only closes. A pull request is closed as an issue is: the
+    service's issue interface serves both, and nothing here can merge one."""
+    number = _int(input, "number")
+    reason = _str(input, "reason")
+    request: Json = {"number": number, "reason": reason, "state": "closed"}
+    digest = digest_of(request)
+    commented = await create_comment(api, {"number": number, "body": reason}, key)
+    issue = await api.get(api.repo(f"issues/{number}"))
+    records = [*commented.effect["records"], *_issue_records(issue)]
+    if str(issue.get("state", "")) == "closed" and commented.effect["replayed"]:
+        return Outcome(issue_output(issue), write_effect(records, digest, replayed=True))
+    closed = await api.patch(
+        api.repo(f"issues/{number}"), {"state": "closed", "state_reason": "not_planned"}
+    )
+    return Outcome(issue_output(closed), write_effect(records, digest, replayed=False))
+
+
+async def set_milestone(api: Api, input: Json, key: str) -> Outcome:
+    """Lookup: the item's milestone, which is the record this operation writes into. The mark
+    is the milestone itself, as a label is for `repository.labels.set`: a repeat that finds it
+    set changes nothing and reports `replayed`. The milestone is found by its title among the
+    open ones; a title no open milestone has is `not_found`, and nothing is changed."""
+    number = _int(input, "number")
+    title = _str(input, "milestone")
+    request: Json = {"number": number, "milestone": title}
+    digest = digest_of(request)
+    issue = await api.get(api.repo(f"issues/{number}"))
+    records = _issue_records(issue)
+    if issue_output(issue)["milestone"] == title:
+        return Outcome(issue_output(issue), write_effect(records, digest, replayed=True))
+    milestones = await api.get(api.repo("milestones"), {"state": "open", "per_page": 100})
+    found = next((m for m in milestones or [] if str(m.get("title", "")) == title), None)
+    if found is None:
+        raise TargetError("not_found", "none", False, f"no open milestone is titled {title!r}")
+    updated = await api.patch(api.repo(f"issues/{number}"), {"milestone": int(found["number"])})
+    return Outcome(issue_output(updated), write_effect(records, digest, replayed=False))
+
+
 # --- writes: none -----------------------------------------------------------------------------
 
 
@@ -747,6 +789,8 @@ OPERATIONS: dict[str, Operation] = {
     "repository.issues.read": read_issue,
     "repository.issues.list": list_issues,
     "repository.issues.create": create_issue,
+    "repository.issues.close": close_issue,
+    "repository.issues.milestone": set_milestone,
     "repository.pullrequests.read": read_pull_request,
     "repository.pullrequests.open": open_pull_request,
     "repository.pipelines.read": read_pipeline_run,

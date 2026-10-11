@@ -74,6 +74,11 @@ provisional operator identity of DEC-0013 in `0.2.0`:
 - **An unknown sender is answered, not executed.** The event is kept nowhere; the sender is
   told in the channel how to link the account, through the reply operation the channel's
   connector declares (`contracts/connector/v1` §7), as Taktus itself (ADR-0033).
+- **A contribution on a public channel is triaged for its owner** (UC-1.9, ADR-0088). On a
+  channel `TAKTUS_TRIAGE` names, an issue or pull request an unknown sender opens is kept as data
+  of the channel's triage process, without the sender's account or text, and starts that
+  process once, acting for whoever registered its active version. The sender is offered the
+  link all the same, and never acts.
 - **Every link and every revocation is a ledger entry** (`identity.linked`,
   `identity.unlinked`). An administrator sees every link of a tenant and revokes one with
   `taktusctl identity links` and `revoke`; the next event from that account is from an

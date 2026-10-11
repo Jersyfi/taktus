@@ -512,6 +512,11 @@ class Handler(BaseHTTPRequestHandler):
         if not self._guard(write=True):
             return
         with self.store.lock:
+            if i := re.fullmatch(r"/repos/([^/]+)/([^/]+)/issues/(\d+)", url.path):
+                self._patch_issue(
+                    self.store.repository(i.group(1), i.group(2)), int(i.group(3)), body
+                )
+                return
             m = re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/refs/heads/(.+)", url.path)
             if m is None:
                 self._send(404, {"message": "Not Found"})
@@ -532,8 +537,40 @@ class Handler(BaseHTTPRequestHandler):
             repo.refs[name] = str(sha)
             self._send(200, {"ref": f"refs/heads/{name}", "object": {"type": "commit", "sha": sha}})
 
+    def _patch_issue(self, repo: Repository, number: int, body: Json) -> None:
+        """An issue or a pull request changed as the issue interface changes it: its state
+        (closed with a reason, or open) and its milestone by number. A pull request closed so
+        is closed, never merged."""
+        issue = repo.issues.get(number)
+        if issue is None:
+            self._send(404, {"message": "Not Found"})
+            return
+        changes: Json = {}
+        if "state" in body:
+            if body["state"] not in ("open", "closed"):
+                self._send(422, {"message": "Validation Failed: state"})
+                return
+            changes["state"] = body["state"]
+            changes["state_reason"] = body.get("state_reason")
+        if "milestone" in body:
+            milestone = body["milestone"]
+            if milestone is not None and milestone not in repo.milestones:
+                self._send(422, {"message": "Validation Failed: no such milestone"})
+                return
+            changes["milestone"] = None if milestone is None else repo.milestones[milestone]
+        issue.update(changes, updated_at=now())
+        if number in repo.pulls:
+            repo.pulls[number].update(changes, updated_at=now())
+        self._send(200, issue)
+
     def _get(self, path: str, query: Json) -> None:
         store = self.store
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/milestones", path):
+            repo = store.repository(m.group(1), m.group(2))
+            state = query.get("state", "open")
+            listed = [x for x in repo.milestones.values() if state == "all" or x["state"] == state]
+            self._send(200, sorted(listed, key=lambda x: int(x["number"])))
+            return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/issues/(\d+)/comments", path):
             repo = store.repository(m.group(1), m.group(2))
             number = int(m.group(3))

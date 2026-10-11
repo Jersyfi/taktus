@@ -11,13 +11,16 @@ from typing import Any
 
 from taktus.components.run.domain.model.errors import RuleFailed
 from taktus.components.run.domain.model.work import (
+    CLASSES,
     BacklogRule,
     CheckRule,
+    ClassificationRule,
     Condition,
     ConstantRule,
     Expectation,
     ReadyRule,
     RoadmapRule,
+    SpamRule,
     TemplateRule,
     VerifyArtifactRule,
     select,
@@ -59,6 +62,16 @@ def check(rule: CheckRule, values: list[Any]) -> list[Any]:
         if (why := _violated(condition, value)) is not None:
             raise RuleFailed(f"condition {position + 1} does not hold: {why}")
     return values
+
+
+def unheld(conditions: tuple[Condition, ...], values: list[Any]) -> str | None:
+    """Why a step's `when` does not hold — the first condition that does not, by its position
+    and what was found — or None when every one holds (ADR-0088). Not a failure: a step whose
+    condition does not hold is skipped."""
+    for position, (condition, value) in enumerate(zip(conditions, values, strict=True)):
+        if (why := _violated(condition, value)) is not None:
+            return f"condition {position + 1} does not hold: {why}"
+    return None
 
 
 def ready(rule: ReadyRule, issue: Any, open_records: Any, open_issues: Any) -> dict[str, Any]:
@@ -200,6 +213,62 @@ def _violated(condition: Condition, value: Any) -> str | None:
     if condition.not_matches is not None and re.search(condition.not_matches, text) is not None:
         return f"{_short(value)} matches {condition.not_matches!r}, which it must not"
     return None
+
+
+def spam(rule: SpamRule, text: Any) -> dict[str, Any]:
+    """Whether the text matches any of the rule's patterns, searched case-blind, and which."""
+    if isinstance(text, str):
+        whole = text
+    elif isinstance(text, list | tuple) and all(isinstance(part, str) for part in text):
+        whole = "\n".join(text)
+    else:
+        raise RuleFailed(f"the text to screen is not a text or a list of texts: {_short(text)}")
+    matched = [p for p in rule.patterns if re.search(p, whole, re.IGNORECASE) is not None]
+    return {"spam": bool(matched), "matched": matched}
+
+
+ANSWER_LINE = re.compile(r"^\s*(class|version|summary)\s*:\s*(.*?)\s*$", re.IGNORECASE)
+
+
+def classification(
+    rule: ClassificationRule, answer: Any, screened: Any, versions: Any
+) -> dict[str, Any]:
+    """The contribution's class: `spam` where the screen found it, otherwise what the answer
+    names, held to the classes and the versions that may be answered."""
+    if not isinstance(screened, Mapping) or not isinstance(screened.get("spam"), bool):
+        raise RuleFailed(f"the screen is not a spam rule's result: {_short(screened)}")
+    if screened["spam"]:
+        matched = ", ".join(str(p) for p in screened.get("matched") or [])
+        return {"class": "spam", "version": None, "summary": f"matched by rule: {matched}"}
+    if isinstance(answer, Mapping) and isinstance(answer.get("text"), str):
+        answer = answer["text"]  # an llm step's whole result
+    if not isinstance(answer, str):
+        raise RuleFailed(f"the answer is not a text: {_short(answer)}")
+    fields: dict[str, str] = {}
+    for line in answer.splitlines():
+        if (match := ANSWER_LINE.match(line)) is not None:
+            name = match.group(1).lower()
+            if name in fields:
+                raise RuleFailed(f"the answer names {name!r} twice")
+            fields[name] = match.group(2)
+    kind = fields.get("class", "").lower()
+    if kind not in CLASSES:
+        raise RuleFailed(
+            f"the answer names no class of {', '.join(CLASSES)}: {_short(fields.get('class'))}"
+        )
+    if kind == "spam":
+        return {"class": "spam", "version": None, "summary": fields.get("summary") or "spam"}
+    allowed = [str(v) for v in _names(versions, "milestone")]
+    version = fields.get("version", "").strip("`")
+    if version not in allowed:
+        raise RuleFailed(
+            f"a {kind} names one of the versions {', '.join(allowed) or '(none)'}, "
+            f"not {_short(version)}"
+        )
+    summary = fields.get("summary", "")
+    if not summary:
+        raise RuleFailed(f"a {kind} carries a summary")
+    return {"class": kind, "version": version, "summary": summary}
 
 
 def template(rule: TemplateRule, values: dict[str, Any]) -> str:

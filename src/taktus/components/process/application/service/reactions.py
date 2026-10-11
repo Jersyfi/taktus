@@ -12,6 +12,7 @@ component's: the composition root hands each reaction to the command and run com
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from taktus.components.process.domain.model import Event, Process, ProcessVersion, Trigger
@@ -40,6 +41,28 @@ class Reactions:
     passed_over: list[str] = field(default_factory=list)
     """Processes whose trigger matched and which the event does not start, each with why: for
     whoever reads the log."""
+
+
+@dataclass(frozen=True)
+class FindTriage:
+    """The triage a channel names, asked for one contribution received at `received_at`
+    (ADR-0088)."""
+
+    tenant: Tenant
+    process: str
+    received_at: datetime
+
+
+@dataclass(frozen=True)
+class Triage:
+    """The triage's active version and the identity that registered it, whom the run acts for;
+    or, in `waits`, why it does not start now, and in `passed_over`, why it never starts for
+    this contribution."""
+
+    version: ProcessVersion | None = None
+    by: str | None = None
+    waits: str | None = None
+    passed_over: str | None = None
 
 
 class ReactionsHandler:
@@ -84,3 +107,22 @@ class ReactionsHandler:
                     )
                 )
         return found
+
+    async def triage(self, query: FindTriage) -> Triage:
+        """The version a contribution starts, by the process the channel names — no trigger
+        is matched (UC-4.14 stands) — and whom it acts for. A process without an active
+        version, or registered by nobody, makes the contribution wait; a contribution received
+        before the version became active starts nothing (ADR-0048 §6)."""
+        async with self._work.transaction(query.tenant):
+            process = await self._processes.get(query.tenant, query.process)
+            if process is None or process.active_version is None:
+                return Triage(waits=f"no version of {query.process!r} is active")
+            ref = f"{process.id}@{process.active_version}"
+            version = await self._versions.get(query.tenant, ref)
+        if version is None:
+            return Triage(waits=f"{ref} is not registered")
+        if process.activated_by is None:
+            return Triage(waits=f"{ref} was registered by no identity; nothing acts without one")
+        if process.activated_at is None or query.received_at < process.activated_at:
+            return Triage(passed_over=f"{ref}: the contribution was received before it was active")
+        return Triage(version=version, by=process.activated_by)

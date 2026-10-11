@@ -145,6 +145,25 @@ OPERATIONS: list[Json] = [
         "trailer; a repeat finds the branch and the mark at its head.",
     },
     {
+        "name": "repository.issues.close",
+        "demand": {"quota_units": 24},
+        "capability": "repository.issues",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Close an issue or a pull request as not planned, after a comment that says "
+        "why. The comment carries the mark: a repeat finds it and the item closed, and does "
+        "nothing; one that finds the comment and the item open closes it. Never merges.",
+    },
+    {
+        "name": "repository.issues.milestone",
+        "demand": {"quota_units": 4},
+        "capability": "repository.issues",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Put an issue or a pull request in the milestone of the given title, an open "
+        "one. The mark is the milestone itself: a repeat finds it set and changes nothing.",
+    },
+    {
         "name": "repository.labels.set",
         "demand": {"quota_units": 3},
         "capability": "repository.labels",
