@@ -110,3 +110,8 @@ that `taktusctl cost <run>` recomputes the money at the prices the run was held 
 table does not price is unpriced, never free. The operator configures the table
 (`TAKTUS_PRICE_TABLE`); the repository ships no prices, because they are a provider's and
 change without notice.
+
+A table may also price a second of compute per resource class, under `compute`. That is what a
+step on a worker costs, so that a trained model's cost per case can be compared with a language
+model's at the same table (ADR-0084). A class without a price is unpriced, never free. The field
+is optional; `taktusctl cost` prices tokens only.

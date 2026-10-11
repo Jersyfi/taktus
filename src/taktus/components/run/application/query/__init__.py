@@ -2,6 +2,7 @@
 
 from taktus.components.run.application.query.blocked_time import BlockedTime
 from taktus.components.run.application.query.interfaces import FailedCall, InterfaceFailures
+from taktus.components.run.application.query.measures import StepCases, StepMeasures
 from taktus.components.run.application.query.provenance import (
     ChainOf,
     ProvenanceOfRun,
@@ -17,4 +18,6 @@ __all__ = [
     "ProvenanceOfRun",
     "ProvenanceQuery",
     "RecordedResponses",
+    "StepCases",
+    "StepMeasures",
 ]

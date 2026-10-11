@@ -32,6 +32,7 @@ from typing import Literal, Protocol
 from pydantic import Field, model_validator
 
 from taktus.shared.v1 import ModelName, PriceKinds, Value
+from taktus.shared.v1.consumption import ResourceClass
 
 type InputCount = Literal["exact", "upper_bound", "estimate", "none"]
 type OutputCap = Literal["hard", "soft", "none"]
@@ -131,6 +132,10 @@ class PriceTable(Value):
     unit_tokens: int = Field(ge=1)
     source: str = Field(min_length=1)
     prices: dict[ModelName, dict[PriceKindName, float]] = Field(min_length=1)
+    compute: dict[ResourceClass, float] | None = Field(default=None, min_length=1)
+    """The price of one second of compute per resource class: what a step on a worker costs,
+    so that it can be compared with a step on a model (ADR-0084). A class without a price is
+    unpriced, never free."""
 
     @model_validator(mode="after")
     def _prices_are_not_negative(self) -> PriceTable:
@@ -140,6 +145,9 @@ class PriceTable(Value):
             for kind, price in kinds.items():
                 if price < 0:
                     raise ValueError(f"{model!r} {kind} is priced below zero")
+        for resource_class, per_second in (self.compute or {}).items():
+            if per_second < 0:
+                raise ValueError(f"a second of {resource_class!r} is priced below zero")
         return self
 
 
@@ -173,6 +181,27 @@ def price(tokens: Mapping[str, PriceKinds], table: PriceTable) -> Priced:
                 unpriced.append(f"{model} {kind}")
                 continue
             amount += count * per_unit / table.unit_tokens
+    return Priced(
+        amount=round(amount, 9),
+        currency=table.currency,
+        table=table.version,
+        unpriced=tuple(unpriced),
+    )
+
+
+def price_compute(seconds: Mapping[str, float], table: PriceTable) -> Priced:
+    """The money these compute seconds cost at the table, per resource class. A class the
+    table does not price is named in `unpriced`, never counted as free (ADR-0084)."""
+    amount = 0.0
+    unpriced: list[str] = []
+    for resource_class, used in sorted(seconds.items()):
+        if not used:
+            continue
+        per_second = None if table.compute is None else table.compute.get(resource_class)
+        if per_second is None:
+            unpriced.append(f"compute {resource_class}")
+            continue
+        amount += used * per_second
     return Priced(
         amount=round(amount, 9),
         currency=table.currency,
