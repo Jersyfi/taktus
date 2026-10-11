@@ -149,6 +149,118 @@
       ],
       "additionalProperties": false
     },
+    "WeightingTable": {
+      "title": "WeightingTable",
+      "description": "One version of the weights the Takt is computed with (ADR-0010): how many Takte one unit of each quantity of the consumption breakdown is worth. A version is never changed once used: a new weight is a new version. A run's budget statement names the table in force when the run started by the digest of its document, so that the Takt stays recomputable from the ledger. A quantity the table does not weigh is named beside the figure, never counted as zero. The tables in force are in the repository, under weighting-tables/.",
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "calibrated": {
+          "description": "False until the weights are fixed from data of real operation (ADR-0010, Consequences). Every figure of an uncalibrated table says so.",
+          "type": "boolean"
+        },
+        "source": {
+          "description": "Where the weights were decided.",
+          "type": "string",
+          "minLength": 1
+        },
+        "unit_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tokens": {
+          "description": "Takte per unit_tokens tokens of each price kind, before the model's class factor.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "input": {
+              "type": "number",
+              "minimum": 0
+            },
+            "output": {
+              "type": "number",
+              "minimum": 0
+            },
+            "cache_read": {
+              "type": "number",
+              "minimum": 0
+            },
+            "cache_write": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "model_classes": {
+          "description": "The factor of each model class. Which class a model is in is the operator's, and is recorded with the run (TAKTUS_TAKT_MODEL_CLASSES).",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]{0,31}$"
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "compute_per_minute": {
+          "description": "Takte per minute of compute, per resource class.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "../../shared/v1/Consumption.json#/$defs/resourceClass"
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "steps": {
+          "description": "Takte per finished step of a method whose work no other row weighs.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "../../shared/v1/Method.json"
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "storage_per_mib": {
+          "description": "Takte per MiB of state written. The ledger records bytes written, not how long they are kept.",
+          "type": "number",
+          "minimum": 0
+        },
+        "rate_window_days": {
+          "description": "The window of the Takt rate: Takte per hour, as a moving average over this many days.",
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "version",
+        "valid_from",
+        "calibrated",
+        "source",
+        "unit_tokens",
+        "tokens",
+        "model_classes",
+        "compute_per_minute",
+        "steps",
+        "storage_per_mib",
+        "rate_window_days"
+      ],
+      "additionalProperties": false
+    },
     "Exchange": {
       "title": "Exchange",
       "description": "One call as the conformance suite observed it: the declaration, what the adapter counted before the call, the output limit the call set, and the usage the provider reported after it. The checks M-02 to M-04 are rules over an exchange (src/taktus/conformance/model/rules.py); a schema cannot express them, so their must-fail fixtures are schema-valid.",
