@@ -75,3 +75,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0082](ADR-0082-an-exact-step-declares-its-checks-from-a-fixed-catalogue-and-every-process-version-carries-its-exactness-statement.md) | An exact step declares its checks from a fixed catalogue, and every process version carries its exactness statement | accepted |
 | [0084](ADR-0084-a-step-is-measured-and-a-cheaper-method-is-proposed-on-evidence-never-applied.md) | A step is measured, and a cheaper method is proposed on evidence, never applied | accepted, made reachable by 0086 |
 | [0086](ADR-0086-maturation-runs-on-the-instance-from-the-command-line-and-on-a-schedule.md) | Maturation runs on the instance, from the command line and on a schedule | accepted |
+| [0087](ADR-0087-the-database-is-backed-up-by-a-job-of-the-chart-and-restored-by-hand.md) | The database is backed up by a job of the chart, and restored by hand | accepted |

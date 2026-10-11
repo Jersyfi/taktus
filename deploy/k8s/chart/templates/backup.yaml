@@ -82,7 +82,7 @@ spec:
                   value: {{ required "backup.store.bucket is required" $store.bucket | quote }}
                 - name: TAKTUS_BACKUP_STORE_PREFIX
                   value: {{ $store.prefix | quote }}
-                - name: TAKTUS_BACKUP_STORE_ACCESS_KEY_ID_FILE
+                - name: TAKTUS_CREDENTIAL_BACKUP_STORE_ACCESS_KEY_ID_FILE
                   value: {{ printf "/run/secrets/taktus/backup-store/%s" $idKey | quote }}
                 - name: TAKTUS_CREDENTIAL_BACKUP_STORE_FILE
                   value: {{ printf "/run/secrets/taktus/backup-store/%s" $secretKey | quote }}

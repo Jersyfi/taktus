@@ -609,7 +609,7 @@ def test_the_backup_is_a_daily_cronjob_that_never_overlaps_and_reads_its_secrets
     assert (
         env["TAKTUS_CREDENTIAL_BACKUP_STORE_FILE"] == "/run/secrets/taktus/backup-store/secret_key"
     )
-    assert env["TAKTUS_BACKUP_STORE_ACCESS_KEY_ID_FILE"] == (
+    assert env["TAKTUS_CREDENTIAL_BACKUP_STORE_ACCESS_KEY_ID_FILE"] == (
         "/run/secrets/taktus/backup-store/access_key"
     )
 

@@ -297,7 +297,7 @@ async def test_against_an_object_store_with_its_credential_read_from_files(
             TAKTUS_BACKUP_STORE_ENDPOINT="http://127.0.0.1:8333",
             TAKTUS_BACKUP_STORE_BUCKET="bucket",
             TAKTUS_BACKUP_STORE_PREFIX="instance",
-            TAKTUS_BACKUP_STORE_ACCESS_KEY_ID_FILE="/run/secrets/id",
+            TAKTUS_CREDENTIAL_BACKUP_STORE_ACCESS_KEY_ID_FILE="/run/secrets/id",
             TAKTUS_CREDENTIAL_BACKUP_STORE_FILE="/run/secrets/key",
         )  # fmt: skip
         wrong = run_backup(
@@ -305,7 +305,7 @@ async def test_against_an_object_store_with_its_credential_read_from_files(
             TAKTUS_BACKUP_STORE_DIRECTORY="",
             TAKTUS_BACKUP_STORE_ENDPOINT="http://127.0.0.1:8333",
             TAKTUS_BACKUP_STORE_BUCKET="bucket",
-            TAKTUS_BACKUP_STORE_ACCESS_KEY_ID_FILE="/run/secrets/id",
+            TAKTUS_CREDENTIAL_BACKUP_STORE_ACCESS_KEY_ID_FILE="/run/secrets/id",
             TAKTUS_CREDENTIAL_BACKUP_STORE_FILE="/run/secrets/url",
         )  # fmt: skip
     finally:

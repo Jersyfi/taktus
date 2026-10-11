@@ -2,8 +2,8 @@
 
 **Kind:** action
 **Raised in:** the pull request for issue #67, which adds the backup to the chart
-**Issue:** [#0](https://github.com/Jersyfi/taktus/issues/0)
-**Needed by:** 2026-10-20, and before #87 lets the instance hold real work
+**Issue:** [#251](https://github.com/Jersyfi/taktus/issues/251)
+**Needed by:** 2026-10-20
 **Foreseeable since:** #67, whose backup is a CronJob the deployment identity may not yet create
 
 ## 1. What is needed

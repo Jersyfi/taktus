@@ -30,7 +30,7 @@ Configuration, all from the environment; a secret only from a file (CREDENTIALS.
 | `TAKTUS_BACKUP_STORE_REGION` | its region, where it needs one |
 | `TAKTUS_BACKUP_STORE_BUCKET` | the bucket |
 | `TAKTUS_BACKUP_STORE_PREFIX` | a path inside it, may be empty |
-| `TAKTUS_BACKUP_STORE_ACCESS_KEY_ID_FILE` | the credential's identifier |
+| `TAKTUS_CREDENTIAL_BACKUP_STORE_ACCESS_KEY_ID_FILE` | the credential's identifier |
 | `TAKTUS_CREDENTIAL_BACKUP_STORE_FILE` | the credential's secret |
 | `TAKTUS_BACKUP_STORE_DIRECTORY` | instead of a store: a directory, mounted from off the node |
 | `TAKTUS_BACKUP_RETENTION_DAYS` | days a backup is kept; 30 by default (DEC-0058) |
@@ -170,7 +170,9 @@ def settings(env: Mapping[str, str]) -> Settings:
             "RCLONE_S3_PROVIDER": "Other",
             "RCLONE_S3_ENDPOINT": endpoint,
             "RCLONE_S3_REGION": env.get("TAKTUS_BACKUP_STORE_REGION", ""),
-            "RCLONE_S3_ACCESS_KEY_ID": read_secret(env, "TAKTUS_BACKUP_STORE_ACCESS_KEY_ID_FILE"),
+            "RCLONE_S3_ACCESS_KEY_ID": read_secret(
+                env, "TAKTUS_CREDENTIAL_BACKUP_STORE_ACCESS_KEY_ID_FILE"
+            ),
             "RCLONE_S3_SECRET_ACCESS_KEY": read_secret(env, "TAKTUS_CREDENTIAL_BACKUP_STORE_FILE"),
             "RCLONE_S3_NO_CHECK_BUCKET": "true",
         }

@@ -104,7 +104,7 @@ def base(tmp_path: Path) -> dict[str, str]:
         ),
         "TAKTUS_BACKUP_STORE_ENDPOINT": "https://store.invalid",
         "TAKTUS_BACKUP_STORE_BUCKET": "bucket",
-        "TAKTUS_BACKUP_STORE_ACCESS_KEY_ID_FILE": secret(tmp_path, "id", "identifier"),
+        "TAKTUS_CREDENTIAL_BACKUP_STORE_ACCESS_KEY_ID_FILE": secret(tmp_path, "id", "identifier"),
         "TAKTUS_CREDENTIAL_BACKUP_STORE_FILE": secret(tmp_path, "key", SECRET),
     }
 
