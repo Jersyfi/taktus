@@ -82,6 +82,9 @@ as the input `closing_section` instead. Nothing writes to the base branch: a per
 
 Every step carries its method, the reason, the alternatives rejected, a fallback where the
 method can vary, and its exactness class; `tests/exactness` holds the `exact` steps to rules.
+Every `exact` step declares its check: a recomputation from the inputs its provenance record
+names, provisional under DEC-0173 (ADR-0082); `uv run taktusctl exactness --process <bundle>`
+prints what each process's checks cover and what would slip through.
 Every step an integration serves — a connector call, the wait on the pipeline, the worker, the
 model — also names a person as its fallback, under a condition that says the integration is
 unavailable (issue #90). That is nineteen steps: the seventeen repository steps, `implement` and

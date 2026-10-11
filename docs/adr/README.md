@@ -72,3 +72,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0069](ADR-0069-a-chat-receives-a-levels-text-equivalent-and-a-link-to-it-live.md) | A chat receives a level's text equivalent and a link to it live | accepted |
 | [0076](ADR-0076-a-step-of-method-ml-is-a-prediction-on-a-worker-and-an-unsure-one-goes-to-its-fallback.md) | A step of method `ml` is a prediction on a worker, and an unsure one goes to its fallback | accepted |
 | [0078](ADR-0078-an-instance-is-configured-with-several-workers-each-an-adapter-of-its-own.md) | An instance is configured with several workers, each an adapter of its own | accepted |
+| [0082](ADR-0082-an-exact-step-declares-its-checks-from-a-fixed-catalogue-and-every-process-version-carries-its-exactness-statement.md) | An exact step declares its checks from a fixed catalogue, and every process version carries its exactness statement | accepted |

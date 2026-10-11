@@ -1,0 +1,5 @@
+{
+  "kind": "approval",
+  "threshold": 10000,
+  "role": "Jane Doe"
+}

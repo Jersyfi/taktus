@@ -76,6 +76,8 @@ steps:
       - method: llm
         why: a fixed condition needs no model, and a judgement could be wrong
     exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the verdict whether the integration may be tested }
     depends_on: [describe]
     work:
       rule: check
@@ -132,6 +134,8 @@ steps:
       - method: llm
         why: a comparison of two reads needs no model
     exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the verdict that the configuration was restored }
     depends_on: [describe-after]
     work:
       rule: check
@@ -150,6 +154,8 @@ steps:
       - method: llm
         why: the verdict is a token the rules produced; a model would only restate it, or misstate it
     exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the removal test's verdict }
     depends_on: [exercise, verify-restored]
     work:
       rule: check

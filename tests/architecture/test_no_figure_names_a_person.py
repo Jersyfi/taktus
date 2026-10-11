@@ -18,6 +18,10 @@ listed below with its reason:
   requires (ADR-0006, ADR-0043 §7), with that act's own quantities. It holds no total over
   several acts: a field named for a count, a sum, a median, a share, a rate, a rank or a score
   is refused in it.
+- **A declaration** (`DECLARED`): the parameters a process version declares — a bound, a
+  threshold, a share a check uses — set by whoever writes the process and never measured of
+  anyone. It names no person itself, or it is refused, and the type around it is not read as
+  holding its numbers (NTC-0173).
 - **One's own** (`OWN`): a read computed for the person reading it. Its only person field is
   `reader`, and the test named beside it proves that nobody else reads it under that name
   (ADR-0015, protective rule).
@@ -166,6 +170,14 @@ ACT_TABLES: dict[str, str] = {
 }
 """Every table that names a person beside a quantity, as one act."""
 
+DECLARED: dict[str, str] = {
+    "taktus.shared.v1.check.Check": (
+        "a check from the catalogue: the bounds, the threshold and the share a process version "
+        "declares for a step's result, set by whoever writes it (ADR-0082)"
+    ),
+}
+"""Every type whose numbers are declared parameters of a process, not figures of anyone."""
+
 OWN: dict[str, str] = {
     "taktus.components.decision.domain.service.response_times.ResponseTimes": (
         "tests/governance/test_anchors.py::"
@@ -266,7 +278,7 @@ def nested(kind: type, seen: set[type] | None = None) -> Iterator[type]:
         for leaf in leaves(annotation):
             if is_value(leaf):
                 assert isinstance(leaf, type)
-                if qualified(leaf) not in ACTS:
+                if qualified(leaf) not in ACTS and qualified(leaf) not in DECLARED:
                     yield from nested(leaf, seen)
 
 
@@ -298,6 +310,10 @@ def verdict(name: str, kind: type) -> str | None:
             return f"{inner.__qualname__} groups by person: {grouped}"
     who = persons(kind)
     held = quantities(kind)
+    if name in DECLARED:
+        if who:
+            return f"a declaration names no person; it names {who}"
+        return None
     if name in OWN:
         if who != [f"{kind.__qualname__}.reader"]:
             return f"a read of one's own names only its reader; it names {who}"
@@ -353,6 +369,9 @@ def test_every_listed_type_still_names_a_person() -> None:
         assert persons(TYPES[name]), f"{name} is listed and names no person"
     for name in OWN:
         assert quantities(TYPES[name]), f"{name} is listed and holds no figure"
+    for name in DECLARED:
+        assert name in TYPES, f"{name} is listed and no longer exists"
+        assert quantities(TYPES[name]), f"{name} is listed and declares no number"
     for table in ACT_TABLES:
         assert table in metadata.tables, f"table {table} is listed and no longer exists"
         columns = metadata.tables[table].columns
@@ -416,3 +435,38 @@ def test_a_listing_admits_one_act_without_a_total_and_ones_own_without_another_p
         assert verdict("x._Mine", _Mine) is not None, "its lines name another person"
     finally:
         del ACTS["x._Tally"], OWN["x._Mine"]
+
+
+class _Rule(Value):
+    threshold: float
+
+
+class _Signed(Value):
+    threshold: float
+    author: str
+
+
+class _Declared(Value):
+    by: str
+    rule: _Rule
+
+
+class _DeclaredAndTimed(Value):
+    by: str
+    rule: _Rule
+    seconds: float
+
+
+def test_a_declaration_admits_numbers_but_names_no_person() -> None:
+    """A listed declaration is not read as a figure of the person beside it; the type around it
+    still is held to its own numbers, and a declaration that names a person is refused
+    (NTC-0173)."""
+    assert verdict("x._Declared", _Declared) is not None, "unlisted, the rule's number counts"
+    DECLARED[qualified(_Rule)] = "a test declaration"
+    DECLARED[qualified(_Signed)] = "a test declaration"
+    try:
+        assert verdict("x._Declared", _Declared) is None
+        assert verdict("x._DeclaredAndTimed", _DeclaredAndTimed) is not None
+        assert verdict(qualified(_Signed), _Signed) is not None, "it names a person"
+    finally:
+        del DECLARED[qualified(_Rule)], DECLARED[qualified(_Signed)]

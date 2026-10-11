@@ -1,0 +1,6 @@
+{
+  "kind": "approval",
+  "threshold": 10000,
+  "role": "accounting-lead",
+  "share": 0.1
+}

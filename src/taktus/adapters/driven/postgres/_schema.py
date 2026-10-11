@@ -237,6 +237,7 @@ step = Table(
     Column("reason", Text, nullable=False),
     Column("rejected", JSONB, nullable=False),
     Column("exactness", Text),
+    Column("checks", JSONB),
     Column("fallback", JSONB),
     Column("model", Text),
     Column("requires", JSONB),

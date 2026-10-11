@@ -4,10 +4,10 @@ title: Working out how a step becomes exact
 component: process
 epic: E4
 serves: [P2, P8, P12]
-state: specified
+state: building
 version: 0.5.0
-tests: []
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0014: 6611f7833deb, ADR-0018: 17c99e0eaa3c}
+tests: [tests/exactness/test_exactness_statement.py::test_an_exact_step_without_a_check_does_not_register_and_the_finding_names_the_catalogue, tests/exactness/test_exactness_statement.py::test_only_exact_must_declare_a_check, tests/exactness/test_exactness_statement.py::test_every_sentence_about_a_check_is_its_rows_filled_in_with_its_parameters, tests/exactness/test_exactness_statement.py::test_every_exact_step_of_every_bundle_declares_a_check]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0014: 6611f7833deb, ADR-0018: 17c99e0eaa3c, ADR-0082: c64fba9bd04a}
 supersedes: null
 ---
 
@@ -72,3 +72,14 @@ agreement; the decision request mechanism (UC-7.4, `0.2.0`); the catalogue as a 
 the shared kernel. Written first in `UC-4-exactness-statement.md` on 2026-09-21, moved into this
 format in the migration's second step; the requirement is unchanged. No version of the definition
 has this use case. An earlier proposal called it `UC-4.8` (`NUMBERING.md`).
+
+## 5. What is proven so far
+
+The catalogue is a schema of the shared kernel, with a sixth row, recomputation, provisional under
+DEC-0173. A bundle with an `exact` step and no check does not register, and the finding names the
+catalogue; a step of another class may declare none. A check is never presented as covering more
+than its row says: every sentence about it is its row's, filled in with its parameters. Every
+`exact` step of the example and blueprint bundles declares a check (ADR-0082) — by the named
+tests. Not built: a fixture that passes and one that fails per check, a wrong value slipped
+through each, and a check run as a `rule` or `statistics` step (#223); the conversation when
+Taktus proposes a process (UC-4.4).

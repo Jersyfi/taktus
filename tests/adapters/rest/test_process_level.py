@@ -36,6 +36,7 @@ def bundle(version: str, *, review: bool = False) -> dict[str, Any]:
             "reason": "fixed fields",
             "rejected": [],
             "exactness": "exact",
+            "checks": [{"kind": "recomputation"}],
         },
         {
             "id": "draft",

@@ -1,0 +1,6 @@
+{
+  "kind": "reconciliation",
+  "subject": "the booked amount",
+  "total": "the invoice total",
+  "source": "documents.read"
+}

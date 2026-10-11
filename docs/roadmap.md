@@ -199,7 +199,7 @@ no metric assesses a named person (#94) · takeover test automated (the removal 
 marginal-value recommendations · BI export · **exactness is a result, not a switch**: Taktus
 works out with the user how a step becomes exact, and every process carries an exactness
 statement — what was checked against what, what was not, what would slip through — in the
-dashboard and in every report (UC-4.13, UC-6.9) (#91) · **result defects handled**: deviation
+dashboard and in every report (UC-4.13, UC-6.9) (#91, #223, #224) · **result defects handled**: deviation
 detection, error window and impact analysis over the provenance chain, remediation plans under
 the correction anchor, incidents delivered into the organisation's own tracking (UC-4.10 to
 UC-4.12, UC-6.8; ADR-0021 to ADR-0023) (#92)

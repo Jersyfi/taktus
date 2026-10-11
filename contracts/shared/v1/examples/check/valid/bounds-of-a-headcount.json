@@ -1,0 +1,6 @@
+{
+  "kind": "bounds",
+  "subject": "the headcount",
+  "minimum": 0,
+  "maximum": 5000
+}

@@ -97,6 +97,7 @@ async def test_a_registered_process_is_found_at_the_process_level_and_moves_with
                     "reason": "r",
                     "rejected": [],
                     "exactness": "exact",
+                    "checks": [{"kind": "recomputation"}],
                     "depends_on": ["two"],
                     "work": {"rule": "constant", "value": {"k": 1}},
                 }
