@@ -230,3 +230,9 @@ Taktus data steers processes and cost, never people.
 
 This is a data-model property, not a policy. A feature that violates it is not misconfigurable — it
 is unbuildable.
+
+`tests/architecture/test_no_figure_names_a_person.py` holds it: a value type of the core or a
+table that holds a quantity beside a field naming a person fails, unless it is a record of one
+act without a total, or a read of one's own with the test that proves nobody else reads it
+(NTC-0169). An aggregate of the time persons took to answer is withheld where fewer than two
+persons answered within it (ADR-0042, NTC-0168).
