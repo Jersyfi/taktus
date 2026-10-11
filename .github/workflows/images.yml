@@ -1,9 +1,9 @@
 name: images
 
-# The release images: on a version tag, the control plane image and one image per worker that
-# ships with the project (workers/*/Dockerfile; DEC-0011), pushed to the registry the repository
-# variable IMAGE_REGISTRY names, tagged with the version. Without the variable nothing is built
-# and nothing is pushed; the run says so.
+# The release images: on a version tag, the control plane image, one image per worker that
+# ships with the project (workers/*/Dockerfile; DEC-0011) and the backup's (ADR-0087), pushed
+# to the registry the repository variable IMAGE_REGISTRY names, tagged with the version. Without
+# the variable nothing is built and nothing is pushed; the run says so.
 #
 # CI never deploys. Putting a version into operation is `helm upgrade --install`, run by a person
 # or by another instance (ADR-0013 D, deploy/k8s/README.md §3).
@@ -69,6 +69,9 @@ jobs:
           # Its libraries at the exact versions workers/mlbench/requirements.txt names.
           - name: taktus-worker-mlbench
             dockerfile: workers/mlbench/Dockerfile
+          # The database's scheduled backup (ADR-0087): the database's image and three tools.
+          - name: taktus-backup
+            dockerfile: deploy/backup/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

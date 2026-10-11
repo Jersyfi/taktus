@@ -1,0 +1,176 @@
+{{- /*
+The database's scheduled backup (ADR-0087, README §11): a CronJob from the backup image, which
+dumps the database, encrypts the dump when a recipient is given, writes it to the store off the
+node and deletes what is older than the retention. It reads the database URL the roles read and
+the store's credential, both as mounted files; it runs as the database's own user and mounts no
+service-account token. It reaches the name service, the database and the store, nothing else;
+the database admits it.
+
+A run that fails leaves its Job and pod, so that its log can be read; the next run does not wait
+for it. Two runs never overlap.
+*/ -}}
+{{- $b := .Values.backup -}}
+{{- if $b.enabled }}
+{{- $name := printf "%s-backup" (include "taktus.fullname" .) -}}
+{{- $store := $b.store -}}
+{{- $secret := required "backup.store.secret is required: the Secret holding the store's credential" $store.secret -}}
+{{- $idKey := required "backup.store.accessKeyIdKey is required" $store.accessKeyIdKey -}}
+{{- $secretKey := required "backup.store.secretKey is required" $store.secretKey -}}
+{{- $url := index (include "taktus.secretFiles" . | fromJsonArray) 0 -}}
+{{- $v4 := list -}}
+{{- $v6 := list -}}
+{{- range .Values.execution.egress.exceptCidrs -}}
+{{- if contains ":" . -}}{{- $v6 = append $v6 . -}}{{- else -}}{{- $v4 = append $v4 . -}}{{- end -}}
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ required "backup.schedule is required" $b.schedule | quote }}
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ $b.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "taktus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: backup
+    spec:
+      backoffLimit: {{ $b.backoffLimit }}
+      activeDeadlineSeconds: {{ $b.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "taktus.labels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          {{- with .Values.image.pullSecret }}
+          imagePullSecrets:
+            - name: {{ . }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            # The postgres user of the image's Alpine variant, as the database runs.
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: {{ include "taktus.image" (dict "what" "backup.image" "image" $b.image) }}
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: {{ $url.variable }}
+                  value: {{ printf "%s/%s" $url.dir $url.key | quote }}
+                - name: TAKTUS_BACKUP_STORE_ENDPOINT
+                  value: {{ required "backup.store.endpoint is required" $store.endpoint | quote }}
+                - name: TAKTUS_BACKUP_STORE_REGION
+                  value: {{ $store.region | quote }}
+                - name: TAKTUS_BACKUP_STORE_BUCKET
+                  value: {{ required "backup.store.bucket is required" $store.bucket | quote }}
+                - name: TAKTUS_BACKUP_STORE_PREFIX
+                  value: {{ $store.prefix | quote }}
+                - name: TAKTUS_BACKUP_STORE_ACCESS_KEY_ID_FILE
+                  value: {{ printf "/run/secrets/taktus/backup-store/%s" $idKey | quote }}
+                - name: TAKTUS_CREDENTIAL_BACKUP_STORE_FILE
+                  value: {{ printf "/run/secrets/taktus/backup-store/%s" $secretKey | quote }}
+                - name: TAKTUS_BACKUP_RETENTION_DAYS
+                  value: {{ $b.retentionDays | quote }}
+                - name: TAKTUS_BACKUP_RECIPIENT
+                  value: {{ $b.recipient | quote }}
+                - name: TAKTUS_BACKUP_WORK_DIR
+                  value: /work
+              resources:
+                {{- toYaml $b.resources | nindent 16 }}
+              securityContext:
+                {{- include "taktus.containerSecurity" . | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: work
+                  mountPath: /work
+                - name: {{ $url.volume }}
+                  mountPath: {{ $url.dir }}
+                  readOnly: true
+                - name: backup-store
+                  mountPath: /run/secrets/taktus/backup-store
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            # The dump waits here before it leaves; it is as large as the database compressed.
+            - name: work
+              emptyDir:
+                sizeLimit: {{ $b.workSize }}
+            - name: {{ $url.volume }}
+              secret:
+                secretName: {{ $url.secret }}
+                defaultMode: 0440
+                items:
+                  - key: {{ $url.key }}
+                    path: {{ $url.key }}
+            - name: backup-store
+              secret:
+                secretName: {{ $secret }}
+                defaultMode: 0440
+                items:
+                  - key: {{ $idKey }}
+                    path: {{ $idKey }}
+                  - key: {{ $secretKey }}
+                    path: {{ $secretKey }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: backup
+  policyTypes: [Ingress, Egress]
+  egress:
+    {{- include "taktus.dnsPeer" .Values.networkPolicy | nindent 4 }}
+    {{- if .Values.database.deploy }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "taktus.selector" (dict "root" . "component" "database") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 5432 }
+    {{- else }}
+    {{- with .Values.networkPolicy.controlPlaneEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- end }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with $v4 }}
+            except: {{ toJson . }}
+            {{- end }}
+        - ipBlock:
+            cidr: ::/0
+            {{- with $v6 }}
+            except: {{ toJson . }}
+            {{- end }}
+      ports:
+        {{- range $b.egressPorts }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+{{- end }}

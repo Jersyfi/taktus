@@ -63,7 +63,8 @@ REFERENCE_WORKER = Image("taktus-worker-script:test", ROOT / "workers/script/Doc
 CONTROL_PLANE = Image("taktus:test", ROOT / "deploy/docker/Dockerfile", ROOT, timeout=900.0)
 HOG_CONTEXT = ROOT / "tests/adapters/execution/hog"
 HOG = Image("taktus-test-unit:hog", HOG_CONTEXT / "Dockerfile", HOG_CONTEXT)
-ALL = (REFERENCE_WORKER, CONTROL_PLANE, HOG)
+BACKUP = Image("taktus-backup:test", ROOT / "deploy/backup/Dockerfile", ROOT)
+ALL = (REFERENCE_WORKER, CONTROL_PLANE, HOG, BACKUP)
 
 
 class ImageBuildError(Exception):

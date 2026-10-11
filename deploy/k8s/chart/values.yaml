@@ -79,6 +79,34 @@ database:
   urlSecret: ""            # the Secret holding the connection URL; mounted, read through TAKTUS_DATABASE_URL_FILE
   urlKey: ""
 
+# The database's scheduled backup (ADR-0087, README §11): a CronJob from the backup image, writing
+# to an object store off the node. Taktus keeps the retention itself; encryption is an option,
+# off by default (DEC-0058). The store's credential is one existing Secret with two keys.
+backup:
+  enabled: false
+  image:
+    repository: ""         # the backup image (deploy/backup/Dockerfile), released with the instance
+    tag: ""
+  schedule: "17 3 * * *"   # daily, 03:17 UTC
+  retentionDays: 30        # a backup older than this is deleted; the newest never is
+  recipient: ""            # an age public key (age1…); empty: not encrypted. The private key stays off the instance
+  store:
+    endpoint: ""           # the object store's address
+    region: ""
+    bucket: ""
+    prefix: ""             # a path inside the bucket; empty: its top
+    secret: ""             # the Secret holding the store's credential
+    accessKeyIdKey: ""     # the key of the credential's identifier in it
+    secretKey: ""          # the key of the credential's secret in it
+  egressPorts: [443]       # where it may connect outside the cluster, beyond execution.egress.exceptCidrs
+  workSize: 4Gi            # the dump waits here before it leaves
+  backoffLimit: 1
+  activeDeadlineSeconds: 3600
+  startingDeadlineSeconds: 3600
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+
 # The migrations: a Job with the control plane's own image, run by the install and by every
 # upgrade before the new version starts. With `database.deploy: true` the first install runs it
 # after the database is created, because before that there is nothing to migrate (DEC-0060).
