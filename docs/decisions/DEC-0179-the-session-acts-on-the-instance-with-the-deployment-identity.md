@@ -1,4 +1,4 @@
-# DEC-0178 — The session acts on the instance with the deployment identity
+# DEC-0179 — The session acts on the instance with the deployment identity
 
 **Category:** NON-BLOCKING
 **Mode entry:** M3.6
@@ -56,7 +56,7 @@ NEED-0025's upgrade and first backup, the last check of #66, #75 and #87.
 
 ## 7. How to answer
 
-"DEC-0178: Option A.", "DEC-0178: Option B." or the owner's own wording.
+"DEC-0179: Option A.", "DEC-0179: Option B." or the owner's own wording.
 
 ## Outcome
 
