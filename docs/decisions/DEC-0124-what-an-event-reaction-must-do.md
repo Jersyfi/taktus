@@ -4,7 +4,6 @@
 **Raised in:** [#175](https://github.com/Jersyfi/taktus/pull/175), while making issue #76 ready: no use case says what an event reaction must do
 **Issue:** [#172](https://github.com/Jersyfi/taktus/issues/172)
 **Needed by:** 2026-10-24
-**Provisional answer:** Option A. The new use case UC-4.14, *A process starts on what happens in a tool*, is in force as written and binds the change that builds event reactions (#76). Marked here, in UC-4.14 §4, and in issue #76.
 
 ## 1. What this is about
 
@@ -136,3 +135,10 @@ afterwards costs a request for that use case instead of one edit now.
 "DEC-0124: Option A." — or "DEC-0124: Option B." — or "DEC-0124: Option C" followed by each
 condition and the change you want, in issue [#172](https://github.com/Jersyfi/taktus/issues/172).
 A free-text answer is read back as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-11
+**Answer:** Option A. UC-4.14, *A process starts on what happens in a tool*, stands as proposed.
+**Reasoning given:** none beyond accepting the recommendation.
+**Recorded in:** this pull request

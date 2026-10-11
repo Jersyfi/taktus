@@ -51,6 +51,7 @@ printed by `make status` and carried by every pull request description (DEC-0026
 | [0014](NEED-0014-the-registry-the-images-are-pushed-to.md) | The registry the images are pushed to | `action` | provided 2026-10-10 by the session on the owner's answer: the repository service's registry, public images, built by the release candidate `v0.2.0-rc.1` |
 | [0016](NEED-0016-the-app-in-the-live-environment-and-the-personal-token-retired.md) | The app in the live environment, and the personal token retired | `action` | provided 2026-10-11: the app's secrets in `live` and the local `.env` by the session, the personal token revoked by the owner |
 | [0018](NEED-0018-an-app-in-the-owners-chat-workspace.md) | An app in the owner's chat workspace | `account` | provided 2026-10-11: the app, the private scratch channel, the live secrets, the instance's secret and its verified event subscription; live test green |
+| [0024](NEED-0024-the-coding-agents-keys-on-the-instance.md) | The coding agents' keys on the instance | `credential` | provided 2026-10-11 for the first agent; the second follows #208 |
 
 The open needs are printed by `make status` (DEC-0026).
 
@@ -233,5 +234,10 @@ The open needs are printed by `make status` (DEC-0026).
 | [0111](DEC-0111-does-a-person-standing-by-count-as-an-alternative.md) | Does a person standing by count as an alternative? | NON-BLOCKING | answered: Option A — a declared person fallback earns the removal half of *verified* |
 | [0116](DEC-0116-a-footer-was-read-as-part-of-blocked-by.md) | A footer was read as part of "Blocked by" | DEFECT | corrected: a section ends at a horizontal rule; a footer is no blocker and hides none |
 | [0123](DEC-0123-no-figure-compares-the-working-time-of-named-persons.md) | No figure compares the working time of named persons | NON-BLOCKING | answered: Option A — principle 14 stands; processes analysed in detail by step, role and department |
+| [0124](DEC-0124-what-an-event-reaction-must-do.md) | What an event reaction must do | NON-BLOCKING | answered: Option A — UC-4.14 stands |
+| [0127](DEC-0127-how-a-persons-accounts-are-linked.md) | How a person's accounts are linked | NON-BLOCKING | answered: Option A — four kinds of link; the owner's direction on outside contributors carried by #245 |
 | [0130](DEC-0130-the-repository-connector-read-its-webhook-secret-only-from-the-environment.md) | The repository connector read its webhook secret only from the environment | DEFECT | corrected: the file `TAKTUS_CREDENTIAL_<NAME>_FILE` names comes first, as for the chat connector |
+| [0131](DEC-0131-the-first-weighting-table-of-the-takt.md) | The first weighting table of the Takt | NON-BLOCKING | answered: Option A — the candidate table, version 0, uncalibrated |
+| [0132](DEC-0132-what-measuring-the-takt-must-show.md) | What measuring the Takt must show | NON-BLOCKING | answered: Option A — UC-8.5 gains the condition |
+| [0133](DEC-0133-taktus-refuses-a-process-that-would-administer-its-own-platform.md) | Taktus refuses a process that would administer its own platform | NON-BLOCKING | answered: Option A — refused, undeclared credentials too |
 | [0143](DEC-0143-the-status-file-counted-fifteen-use-cases-in-building.md) | The status file counted fifteen use cases in building | DEFECT | corrected: seventy-six use cases — four *built* with UC-4.14 named, seventeen *building* with UC-6.11 named, fifty-five *specified* |

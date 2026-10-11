@@ -4,7 +4,6 @@
 **Raised in:** [#173](https://github.com/Jersyfi/taktus/pull/173), from the owner's direction of 2026-10-10 recorded in NEED-0017 and NEED-0020
 **Issue:** [#171](https://github.com/Jersyfi/taktus/issues/171)
 **Needed by:** 2026-10-31
-**Provisional answer:** The requirement stands as it is (Option B in substance): no new kind of link is built before the answer, and NEED-0017 and NEED-0020 keep their link codes. One part of Option A is taken now, because it cannot wait: the chat app's manifest in NEED-0018 asks for `users:read` and `users:read.email`, marked provisional there, so that the app you install on 2026-10-11 need not be installed again if Option A or C is chosen. Under Option B the two lines are removed and the app reinstalled; its token does not change.
 
 ## 1. What this is about
 
@@ -212,3 +211,10 @@ app holds two permissions nothing uses yet. Removing them later costs one reinst
 
 A free-text answer — for instance Option A with the strong-link default changed — is read back
 as an interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-11
+**Answer:** Option A: four kinds of link — `self`, `source`, `admin`, `handle` — with UC-1.7 §2 worded as the request proposes. The owner added a direction: people Taktus does not know — outside contributors to the public repository — must be able to open issues and pull requests that Taktus handles through processes of its own without the person registering, presenting a problem or a feature to the owner and asking approval to take it into a planned version, closing what is not accepted and, for spam, blocking the sender; whether such a person registers once or gives a consent is left to the session.
+**Reasoning given:** the recommendation, and the owner's wish that the project stays open to its community. The direction is not part of this request's question: it needs a use case of its own (M3.15), a stated basis for processing an outside person's data, and the licence before outside code is merged (ADR-0012, DEC-0044). It is carried by issue #245, where the next session raises the request with a worked proposal.
+**Recorded in:** this pull request
