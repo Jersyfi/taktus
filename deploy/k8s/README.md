@@ -370,13 +370,22 @@ mounted file. `helm lint` and `helm template` run in CI against `values.example.
 `tests/governance/test_chart.py` reads the rendered manifests back. The image workflow of
 section 3.
 
+**Installed** (#66, 2026-10-11), from the chart and the images of `v0.2.0-rc.3`, by the
+deployment identity: the four roles, the database, both connectors and the ingress under the
+public name with its existing certificate; the cluster execution adapter (`execution.kind:
+cluster`) runs every worker step. Shown on the platform: readiness and health on the public name;
+the capacity report with the node's figures; a signed delivery from Taktus's app accepted and
+answered as the app, an unsigned or wrongly signed one refused; the chat service's verification of
+the chat intake; a job started by the instance in the execution namespace with its limits; and the
+egress proxy refusing a host outside the unit's frame while the named host answered. On a first
+install with `database.deploy: true` the roles start only after the post-install migration, so an
+install that waits for readiness (`helm --wait`) never finishes: install without it and wait for
+the migrations' job. A unit claims its CPU and memory on the node; on a small node two units do
+not fit at once, and the second waits until the first ends.
+
 **Waits:**
 
-- **the cluster execution adapter on a real cluster** (section 7). It is built (#65) and the
-  chart wires it: `execution.kind: cluster` sets `TAKTUS_EXECUTION=cluster` with the namespace,
-  the jobs' account, `execution.egress.enforce` and `execution.stateClaim`. The default stays
-  `endpoint` until the install has run it on the target. The Role is the one of section 1
-  (DEC-0061).
-- **the install** on the target, with its ingress and webhook intake (#66), and the registry the
-  images go to (NEED-0014).
+- **a pull request P-03 opens on the installed instance**, showing Taktus's own app as its author
+  (#66, DEC-0063). It needs the coding agents' keys on the instance (NEED-0024) and the owner's
+  linked identity (NEED-0017).
 - **backups** (section 9, #67).
