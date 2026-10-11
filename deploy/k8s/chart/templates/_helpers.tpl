@@ -20,6 +20,17 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- end -}}
 
+{{/*
+The labels of a pod whose restart costs availability — the database's. Nothing in them changes
+with a release: a label on a pod template that changes replaces the pod (issue #237).
+*/}}
+{{- define "taktus.stableLabels" -}}
+app.kubernetes.io/name: {{ .Chart.Name }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/part-of: taktus
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+
 {{/* The labels a selector uses: stable across upgrades. Call with (dict "root" $ "component" "x"). */}}
 {{- define "taktus.selector" -}}
 app.kubernetes.io/name: {{ .root.Chart.Name }}

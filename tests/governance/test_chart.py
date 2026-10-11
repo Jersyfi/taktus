@@ -325,6 +325,22 @@ def test_the_database_is_its_own_with_a_twenty_gibibyte_volume_that_is_watched(
     assert config["data"]["TAKTUS_MIGRATE_ON_START"] == "false"
 
 
+def test_a_new_release_leaves_the_database_pod_as_it_is() -> None:
+    """Issue #237: an upgrade that changes only the image tag does not change the database's
+    pod template, so the StatefulSet does not replace its pod and the roles keep their
+    database. A change of the database's own image does."""
+
+    def database_template(*sets: str) -> dict[str, Any]:
+        [database] = of_kind(render(*sets), "StatefulSet")
+        template: dict[str, Any] = database["spec"]["template"]
+        return template
+
+    assert database_template("image.tag=0.2.0") == database_template("image.tag=0.3.0")
+    assert database_template("database.image.tag=16-alpine") != database_template(
+        "database.image.tag=17-alpine"
+    )
+
+
 def test_the_cluster_adapter_is_wired_to_the_namespace_the_account_and_the_state_claim() -> None:
     documents = render("execution.kind=cluster", "execution.stateClaim=unit-state")
     [config] = of_kind(documents, "ConfigMap")
