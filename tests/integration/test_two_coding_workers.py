@@ -9,8 +9,12 @@ finding names as its `alternative`, and the process rehearsed without the withhe
 finishes: its step ran on the other worker for real, with the other's fake agent writing the
 files. The verdict is *changed* through an adapter, not through a person.
 
-What is not proven here: an instance configured with both, which reads one worker today
-(`TAKTUS_WORKER`, #209), and either worker against its real agent (#68, #208).
+An instance configured with both (#209, ADR-0078) is the last test: the configuration names
+the two workers in `TAKTUS_WORKERS`, in one order, and S-01 run for each of them on that
+instance gives *changed* with the other as the alternative. The worker configured second stands
+behind the first, so the removal test's baseline puts the withheld worker first.
+
+What is not proven here: either worker against its real agent (#68, #208).
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from typing import Any
 import pytest
 from fakes import FakeConnector
 
+from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.catalog.application.service import REMOVAL_TESTED
@@ -33,6 +38,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
 )
 from taktus.components.run.domain.model import RunState
+from taktus.composition.local import LocalWiring
 
 from .conftest import ROOT, free_port
 from .test_dev_orchestration import wait_ready
@@ -165,3 +171,43 @@ async def test_withholding_either_coding_worker_changes_the_step_to_the_other(
             entries = list(await services.ledger.entries(TENANT))
         tested = [(e.adapter, e.outcome) for e in entries if e.kind == REMOVAL_TESTED]
         assert tested == [(withheld, "changed")]
+
+
+async def test_an_instance_configured_with_both_says_changed_for_each(
+    coding_workers: dict[str, str], tmp_path: Path
+) -> None:
+    """Issue #209: the instance's configuration names both coding workers, each with its own
+    identifier and endpoint, in one order. S-01 run for each of them on that instance gives
+    *changed* with the other named as the alternative, and the maturity record of each holds
+    the removal half as passed."""
+    configuration = EnvironmentConfiguration(
+        {
+            "TAKTUS_WORKERS": "coding,coding-second",
+            "TAKTUS_WORKER_CODING_ENDPOINT": coding_workers[FIRST],
+            "TAKTUS_WORKER_CODING_SECOND_ENDPOINT": coding_workers[SECOND],
+        }
+    )
+    async with LocalWiring(configuration).services(
+        state_dir=tmp_path / "state", worker_endpoint="http://127.0.0.1:1"
+    ) as services:
+        await services.register_version.execute(RegisterProcessVersion(CODING, tenant=TENANT))
+        for withheld, other in ((FIRST, SECOND), (SECOND, FIRST)):
+            run = await run_removal(services, withheld)
+            assert run.state is RunState.FINISHED, (withheld, run.reason)
+            result = (await result_of(services, run, "exercise"))["output"]
+            assert result["verdict"] == "changed", (withheld, result)
+            assert result["configuration"]["adapter"] == withheld
+            (process,) = result["processes"]
+            (finding,) = process["steps"]
+            assert finding["alternative"] == other, (withheld, finding)
+            assert process["exercised"] == "run", process.get("note")
+            assert process["baseline"]["state"] == "finished", process["baseline"]
+            assert process["withheld"]["state"] == "finished", process["withheld"]
+            recorded = (await result_of(services, run, "record"))["output"]
+            assert recorded["integration"] == withheld
+            assert not [gap for gap in recorded["missing"] if "removal" in gap], recorded
+
+        async with services.work.transaction(TENANT):
+            entries = list(await services.ledger.entries(TENANT))
+        tested = sorted((e.adapter, e.outcome) for e in entries if e.kind == REMOVAL_TESTED)
+        assert tested == [(FIRST, "changed"), (SECOND, "changed")]

@@ -112,7 +112,7 @@ class Instance:
             InstanceSuites(
                 pools=pools,
                 settings=EnvironmentConfiguration({}),
-                worker=None,
+                workers={},
                 connectors={},
                 model_endpoint=url,
             ),
@@ -251,7 +251,7 @@ async def test_a_process_starts_the_suite_through_the_loopback(endpoint: str) ->
         InstanceSuites(
             pools=configured,
             settings=EnvironmentConfiguration({}),
-            worker=None,
+            workers={},
             connectors={},
             model_endpoint=endpoint,
         ),

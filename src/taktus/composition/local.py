@@ -1,4 +1,4 @@
-"""Wiring for a developer's machine: one HTTP worker, and the state where it is configured.
+"""Wiring for a developer's machine: the configured workers, and the state where it is configured.
 
 With `TAKTUS_DATABASE_URL` set, the state lives in PostgreSQL and survives the process: runs
 resume after a restart (ADR-0013 A). Without it, the state lives in memory with a file
@@ -7,9 +7,10 @@ bytes go to the filesystem under `state_dir` either way (the object store's defa
 ADR-0002). Neither choice is silent: `Services.storage` states it, and `taktusctl run` prints
 it first.
 
-The worker is what `TAKTUS_EXECUTION` says (`composition/execution.py`): the endpoint
-`--worker` names, or a unit started per job; it is registered under the adapter identifier
-`worker.<kind>` for every capability it declares. The connectors are what `TAKTUS_CONNECTORS`
+The workers are what `TAKTUS_WORKERS` names, or the one `TAKTUS_EXECUTION` says
+(`composition/execution.py`): for the unnamed worker the endpoint `--worker` names, or a unit
+started per job; each is registered under its adapter identifier, `worker.<name>` or
+`worker.<kind>`, for every capability it declares. The connectors are what `TAKTUS_CONNECTORS`
 names, each under `connector.<label>`, resolved by the capabilities they declare.
 """
 
@@ -81,13 +82,13 @@ from taktus.components.run.application.query import (
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
 from taktus.composition.capacity import capacity_report, rules_of
-from taktus.composition.conformance import InstanceSuites, worker_target
+from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
 from taktus.composition.execution import (
     connector_pool,
     memory_demand,
     model_pool,
-    open_worker,
+    open_workers,
     telemetry_of,
 )
 from taktus.composition.findings import RunBlocks
@@ -101,11 +102,11 @@ from taktus.composition.settings import (
     load_budget,
     load_capacity,
     load_connectors,
-    load_execution,
     load_knowledge_directory,
     load_model,
     load_telemetry,
     load_tenants,
+    load_workers,
 )
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
@@ -148,7 +149,7 @@ class LocalWiring:
         clock = SystemClock()
         ids = SystemIdentifiers()
         try:
-            execution = load_execution(self._configuration)
+            configured = load_workers(self._configuration)
             telemetry = telemetry_of(load_telemetry(self._configuration))
             connectors = load_connectors(self._configuration)
             model = load_model(self._configuration)
@@ -162,9 +163,9 @@ class LocalWiring:
             raise NotOperable(str(error)) from error
         async with (
             self._stores(state_dir) as stores,
-            open_worker(
-                execution, self._configuration, state_dir=state_dir, endpoint=worker_endpoint
-            ) as (adapter, worker),
+            open_workers(
+                configured, self._configuration, state_dir=state_dir, endpoint=worker_endpoint
+            ) as opened,
         ):
             runs = stores.of(Run)
             ledger = ChainedLedger(stores.ledger_store, clock)
@@ -185,7 +186,7 @@ class LocalWiring:
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
             pools = Pools(
-                StaticWorkerPool([(adapter, worker)]),
+                StaticWorkerPool(opened),
                 connector_pool(
                     connectors,
                     also=[(LOOPBACK, loopback), *served_directory(knowledge_directory)],
@@ -214,7 +215,7 @@ class LocalWiring:
                         margin=budget.margin,
                         uncalibrated_margin=budget.uncalibrated_margin,
                         capacity=rules_of(capacity),
-                        unit_memory_bytes=memory_demand(execution),
+                        unit_memory_bytes=memory_demand(configured),
                     ),
                     platform=HostPlatform(clock, state_dir=state_dir),
                     recordings=recordings,
@@ -249,8 +250,8 @@ class LocalWiring:
                 InstanceSuites(
                     pools=pools,
                     settings=self._configuration,
-                    worker=worker_target(
-                        execution,
+                    workers=worker_suites(
+                        configured,
                         self._configuration,
                         state_dir=state_dir,
                         endpoint=worker_endpoint,
@@ -322,7 +323,7 @@ class LocalWiring:
         try:
             settings = load_capacity(self._configuration)
             tenants = load_tenants(self._configuration)
-            execution = load_execution(self._configuration)
+            configured = load_workers(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         clock = SystemClock()
@@ -338,7 +339,7 @@ class LocalWiring:
                     database=stores.size,
                 ),
                 tenants=tenants,
-                job_memory_bytes=memory_demand(execution),
+                job_memory_bytes=memory_demand(configured),
             )
 
     @asynccontextmanager

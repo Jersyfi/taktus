@@ -61,3 +61,12 @@ class StaticWorkerPool:
         pool = StaticWorkerPool([(a, w) for a, w in self._workers if a != adapter])
         pool._declared = {a: d for a, d in self._declared.items() if a != adapter}
         return pool
+
+    def first(self, adapter: str) -> StaticWorkerPool:
+        """The same configuration with one worker moved to the front: what the removal test
+        runs its baseline against, so that a worker standing behind another one serves every
+        step it can serve (ADR-0078). The original is untouched."""
+        ordered = sorted(self._workers, key=lambda entry: entry[0] != adapter)
+        pool = StaticWorkerPool(ordered)
+        pool._declared = dict(self._declared)
+        return pool

@@ -40,3 +40,8 @@ class StaticModelPool:
     def without(self, adapter: str) -> StaticModelPool:
         """The same configuration with one model withheld; the original is untouched."""
         return StaticModelPool([m for m in self._models if m[0] != adapter])
+
+    def first(self, adapter: str) -> StaticModelPool:
+        """The same configuration with one model moved to the front, for the removal test's
+        baseline (ADR-0078); the original is untouched."""
+        return StaticModelPool(sorted(self._models, key=lambda entry: entry[0] != adapter))

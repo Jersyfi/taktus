@@ -1,17 +1,19 @@
-"""The one worker the control plane is configured with, opened the way `TAKTUS_EXECUTION` says;
-and the telemetry, opened the way `TAKTUS_OTLP_*` says.
+"""The workers the control plane is configured with, each opened the way its execution
+settings say; and the telemetry, opened the way `TAKTUS_OTLP_*` says.
 
 Four kinds (ADR-0002): a worker that is already running, reached by endpoint; a unit started
 per job as a process of this machine; a unit started per job in a container; a unit started per
-job as a Job in the cluster the control plane runs in. The daemon and
+job as a Job in the cluster the control plane runs in. An instance names several workers in
+`TAKTUS_WORKERS`, each of any kind, or configures one as before (ADR-0078). The daemon and
 `taktusctl` share this so that neither has a wiring of its own. The adapter identifier the
-ledger records is `worker.<kind>` — never a product name (ADR-0003).
+ledger records is `worker.<name>`, or `worker.<kind>` for the one unnamed worker — never a
+product name (ADR-0003).
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -35,6 +37,7 @@ from taktus.composition.settings import (
     ExecutionSettings,
     ModelSettings,
     TelemetrySettings,
+    WorkerSettings,
 )
 from taktus.ports.configuration import Configuration
 from taktus.ports.connector import ActionConnector
@@ -84,16 +87,14 @@ def connector_pool(
     )
 
 
-def adapter_identifier(kind: ExecutionKind) -> str:
-    return f"worker.{kind.value}"
-
-
-def unit_of(settings: ExecutionSettings) -> ExecutionUnit:
-    """The execution unit as configured, for the launching kinds."""
+def unit_of(settings: ExecutionSettings, name: str = UNIT_NAME) -> ExecutionUnit:
+    """The execution unit as configured, for the launching kinds. `name` is the worker's, so
+    that two launched workers keep their state and logs apart; the unnamed worker's unit is
+    `unit`, as before."""
     if settings.unit is None:  # unreachable: load_execution refuses a launching kind without it
         raise ValueError("a launching execution kind names its unit")
     return ExecutionUnit(
-        name=UNIT_NAME,
+        name=name,
         program=settings.unit,
         port=settings.unit_port,
         state_dir=settings.unit_state_dir,
@@ -106,19 +107,30 @@ def unit_of(settings: ExecutionSettings) -> ExecutionUnit:
     )
 
 
-def memory_demand(settings: ExecutionSettings) -> int | None:
-    """The memory a worker step's unit takes on this platform — its limit, which every
-    launched unit carries — or None for a worker reached by endpoint and for a Job in the
-    cluster, which run outside what this platform observes.
-    What admission against the platform asks for (`run/domain/service/capacity.py`)."""
-    if settings.kind in (ExecutionKind.ENDPOINT, ExecutionKind.CLUSTER):
-        return None
-    return unit_of(settings).limits.memory_bytes
+def worker_unit(worker: WorkerSettings) -> ExecutionUnit:
+    """The unit one configured worker launches, named after the worker."""
+    return unit_of(worker.execution, worker.name or UNIT_NAME)
+
+
+def memory_demand(workers: Sequence[WorkerSettings]) -> int | None:
+    """The memory a worker step's unit takes on this platform — the largest limit among the
+    launched units, since admission does not know yet which worker will serve the step — or
+    None when every worker is reached by endpoint or runs as a Job in the cluster, outside what
+    this platform observes. What admission against the platform asks for
+    (`run/domain/service/capacity.py`)."""
+    demands = [
+        worker_unit(worker).limits.memory_bytes
+        for worker in workers
+        if worker.execution.kind not in (ExecutionKind.ENDPOINT, ExecutionKind.CLUSTER)
+    ]
+    return max(demands) if demands else None
 
 
 def execution_of(
     settings: ExecutionSettings, configuration: Configuration, *, state_dir: Path
 ) -> Execution:
+    """The execution adapter for one worker. `configuration` is the worker's own
+    (`WorkerSettings.configuration`): the credentials it resolves are that worker's."""
     if settings.kind is ExecutionKind.PROCESS:
         return ProcessExecution(
             configuration, state_dir=state_dir, memory_unenforced=settings.memory_unenforced
@@ -146,22 +158,55 @@ def execution_of(
 
 @asynccontextmanager
 async def open_worker(
-    settings: ExecutionSettings,
+    worker: WorkerSettings,
     configuration: Configuration,
     *,
     state_dir: Path,
     endpoint: str | None = None,
     stream_timeout: float = 3600.0,
-) -> AsyncIterator[tuple[str, Worker]]:
-    """The configured worker with its adapter identifier. `endpoint` overrides the configured
-    one for kind `endpoint` (`taktusctl run --worker`)."""
+) -> AsyncIterator[Worker]:
+    """One configured worker. `endpoint` overrides the configured one for the unnamed worker of
+    kind `endpoint` (`taktusctl run --worker`); a named worker's endpoint is its own."""
+    settings = worker.execution
     if settings.kind is ExecutionKind.ENDPOINT:
-        async with HttpWorker(endpoint or settings.endpoint, stream_timeout=stream_timeout) as w:
-            yield adapter_identifier(settings.kind), w
+        address = (endpoint if worker.name is None else None) or settings.endpoint
+        async with HttpWorker(address, stream_timeout=stream_timeout) as w:
+            yield w
         return
-    execution = execution_of(settings, configuration, state_dir=state_dir)
-    async with LaunchedWorker(execution, unit_of(settings), stream_timeout=stream_timeout) as w:
-        yield adapter_identifier(settings.kind), w
+    execution = execution_of(settings, worker.configuration(configuration), state_dir=state_dir)
+    async with LaunchedWorker(execution, worker_unit(worker), stream_timeout=stream_timeout) as w:
+        yield w
+
+
+@asynccontextmanager
+async def open_workers(
+    workers: Sequence[WorkerSettings],
+    configuration: Configuration,
+    *,
+    state_dir: Path,
+    endpoint: str | None = None,
+    stream_timeout: float = 3600.0,
+) -> AsyncIterator[list[tuple[str, Worker]]]:
+    """Every configured worker with its adapter identifier, in the configured order: what the
+    worker pool resolves a step against (ADR-0078). Each is an adapter of its own, so the
+    removal test can withhold one and the conformance half is recorded for each."""
+    async with AsyncExitStack() as stack:
+        opened = [
+            (
+                worker.identifier,
+                await stack.enter_async_context(
+                    open_worker(
+                        worker,
+                        configuration,
+                        state_dir=state_dir,
+                        endpoint=endpoint,
+                        stream_timeout=stream_timeout,
+                    )
+                ),
+            )
+            for worker in workers
+        ]
+        yield opened
 
 
 def telemetry_of(settings: TelemetrySettings) -> OpenTelemetryTelemetry:

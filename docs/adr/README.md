@@ -71,3 +71,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0066](ADR-0066-the-guides-run-daily-reading-every-source-at-one-commit-in-one-call.md) | The guides run daily, reading every source at one commit in one call | accepted |
 | [0069](ADR-0069-a-chat-receives-a-levels-text-equivalent-and-a-link-to-it-live.md) | A chat receives a level's text equivalent and a link to it live | accepted |
 | [0076](ADR-0076-a-step-of-method-ml-is-a-prediction-on-a-worker-and-an-unsure-one-goes-to-its-fallback.md) | A step of method `ml` is a prediction on a worker, and an unsure one goes to its fallback | accepted |
+| [0078](ADR-0078-an-instance-is-configured-with-several-workers-each-an-adapter-of-its-own.md) | An instance is configured with several workers, each an adapter of its own | accepted |

@@ -40,6 +40,57 @@ data:
   {{- with $execution.stateClaim }}
   TAKTUS_EXECUTION_STATE_CLAIM: {{ . | quote }}
   {{- end }}
+  {{- with $execution.workers }}
+  # Several workers, in the order a step is resolved in (ADR-0078). Each reads its own settings
+  # under TAKTUS_WORKER_<NAME>_… and the ones above where it sets none; its endpoint and its
+  # credentials are its own alone (credentials: parameter worker.<name>.credential.<name>).
+  {{- $names := list }}
+  {{- range . }}
+  {{- $name := required "execution.workers[].name is required" .name }}
+  {{- if not (regexMatch "^[a-z][a-z0-9]*(-[a-z0-9]+)*$" $name) }}
+  {{- fail (printf "execution.workers: %q is not a worker name: lowercase letters and digits, words joined by hyphens" $name) }}
+  {{- end }}
+  {{- if gt (len $name) 40 }}
+  {{- fail (printf "execution.workers: %q is longer than 40 characters" $name) }}
+  {{- end }}
+  {{- if has $name $names }}
+  {{- fail (printf "execution.workers: %q is named twice" $name) }}
+  {{- end }}
+  {{- $names = append $names $name }}
+  {{- $prefix := printf "TAKTUS_WORKER_%s_" ($name | upper | replace "-" "_") }}
+  {{- with .kind }}
+  {{ $prefix }}EXECUTION: {{ . | quote }}
+  {{- end }}
+  {{- with .endpoint }}
+  {{ $prefix }}ENDPOINT: {{ . | quote }}
+  {{- end }}
+  {{- if and (eq (default $execution.kind .kind) "endpoint") (not .endpoint) }}
+  {{- fail (printf "execution.workers %s: endpoint is required for kind endpoint" $name) }}
+  {{- end }}
+  {{- with .image }}
+  {{ $prefix }}EXECUTION_UNIT: {{ include "taktus.imageRef" (dict "what" (printf "execution.workers %s image" $name) "ref" .) | quote }}
+  {{- end }}
+  {{- with .unitPort }}
+  {{ $prefix }}EXECUTION_UNIT_PORT: {{ . | quote }}
+  {{- end }}
+  {{- with .cpus }}
+  {{ $prefix }}EXECUTION_CPUS: {{ . | quote }}
+  {{- end }}
+  {{- with .memoryMb }}
+  {{ $prefix }}EXECUTION_MEMORY_MB: {{ . | quote }}
+  {{- end }}
+  {{- with .wallSeconds }}
+  {{ $prefix }}EXECUTION_WALL_SECONDS: {{ . | quote }}
+  {{- end }}
+  {{- with .startTimeoutSeconds }}
+  {{ $prefix }}EXECUTION_START_TIMEOUT_SECONDS: {{ . | quote }}
+  {{- end }}
+  {{- with .stateClaim }}
+  {{ $prefix }}EXECUTION_STATE_CLAIM: {{ . | quote }}
+  {{- end }}
+  {{- end }}
+  TAKTUS_WORKERS: {{ join "," $names | quote }}
+  {{- end }}
   {{- with .Values.telemetry.otlp.endpoint }}
   TAKTUS_OTLP_ENDPOINT: {{ . | quote }}
   TAKTUS_OTLP_PROTOCOL: {{ $.Values.telemetry.otlp.protocol | quote }}

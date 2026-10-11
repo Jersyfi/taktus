@@ -165,5 +165,6 @@ credential the operator supplies.
 ## Not yet
 
 The image, the agent pinned to one exact version, and the live test against the real agent in
-the workflow `live` are #208, which waits for a credential (NEED-0022). An instance reads one
-worker today (`TAKTUS_WORKER`); configuring both coding workers on one instance is #209.
+the workflow `live` are #208, which waits for a credential (NEED-0022). An instance configures
+both coding workers in `TAKTUS_WORKERS`, each with its own credential (#209, ADR-0078); on
+Taktus's own instance that waits for this image.

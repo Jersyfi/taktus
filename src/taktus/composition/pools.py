@@ -35,6 +35,17 @@ class Pools:
             self.models.without(integration),
         )
 
+    def first(self, integration: str) -> Pools:
+        """The same configuration with the integration first in its pool, so that it serves
+        every step it can serve and not only those no other adapter before it covers: what
+        the removal test takes as its baseline (ADR-0078). Where the integration already
+        serves first, nothing changes."""
+        return Pools(
+            self.workers.first(integration),
+            self.connectors.first(integration),
+            self.models.first(integration),
+        )
+
     async def configuration(self, integration: str) -> Configuration | None:
         """What stands behind the identifier now: the adapter, what it declared and the version
         it declared — for a model, the model name it is configured with. None when no adapter

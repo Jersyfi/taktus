@@ -11,6 +11,7 @@ does, and a test hands in a mapping.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -113,6 +114,103 @@ class ExecutionSettings:
             ("TAKTUS_EXECUTION_EGRESS_ENFORCE", str(self.egress_enforced).lower()),
             ("TAKTUS_EXECUTION_SERVICE_ACCOUNT", self.service_account or ""),
             ("TAKTUS_EXECUTION_STATE_CLAIM", self.state_claim or ""),
+        ]
+
+
+WORKER_NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
+"""A configured worker's name: lowercase letters and digits, words joined by hyphens. It is the
+last segment of the worker's adapter identifier, `worker.<name>`, and a DNS label."""
+
+WORKER_NAME_LENGTH = 40
+
+CREDENTIAL_PREFIX = "credential."
+"""The configuration keys a worker's credentials are supplied under (CREDENTIALS.md)."""
+
+
+def worker_segment(name: str) -> str:
+    """The segment a worker's name takes in a configuration key: `coding-second` →
+    `coding_second`, so that the environment adapter's variable is a valid name. A worker's
+    name holds no underscore, so two names never share a segment."""
+    return name.replace("-", "_")
+
+
+class WorkerConfiguration:
+    """The configuration port as one named worker reads it (ADR-0078).
+
+    Every key `k` is first read as `worker.<name>.k` — the variable
+    `TAKTUS_WORKER_<NAME>_K` — and, where the worker sets nothing, as the instance's own `k`:
+    the execution namespace, the egress image and the limits are shared unless a worker sets
+    its own. Two keys have no such fallback. The endpoint (`worker`, read as
+    `worker.<name>.endpoint`) is the worker's alone, because two workers at one endpoint are one
+    worker. A credential (`credential.<name>`) is the worker's alone, because each launched
+    worker receives only its own credentials: two workers that reference the same credential
+    name receive the value configured for each of them, and neither sees the other's."""
+
+    def __init__(self, configuration: Configuration, name: str) -> None:
+        self._configuration = configuration
+        self._name = name
+        self._prefix = f"worker.{worker_segment(name)}."
+
+    def _own(self, key: str) -> str:
+        return self._prefix + ("endpoint" if key == "worker" else key)
+
+    @staticmethod
+    def _alone(key: str) -> bool:
+        return key == "worker" or key.startswith(CREDENTIAL_PREFIX)
+
+    def _where(self, key: str) -> str:
+        """The key the value under `key` is read from for this worker: its own where it is set
+        or where it has no fallback, the instance's otherwise."""
+        own = self._own(key)
+        if self._alone(key) or self._configuration.source(own) is not None:
+            return own
+        return key
+
+    def get(self, key: str) -> str | None:
+        return self._configuration.get(self._where(key))
+
+    def secret(self, key: str) -> Secret | None:
+        return self._configuration.secret(self._where(key))
+
+    def source(self, key: str) -> str | None:
+        return self._configuration.source(self._where(key))
+
+    def name(self, key: str) -> str:
+        """The variable the operator sets for this worker: its own, even where the value in
+        effect is the instance's."""
+        return self._configuration.name(self._own(key))
+
+
+@dataclass(frozen=True)
+class WorkerSettings:
+    """One worker the instance is configured with: its name and how it is reached."""
+
+    name: str | None
+    """Its name in `TAKTUS_WORKERS`; None for the one worker of an instance that names none,
+    configured as before through `TAKTUS_EXECUTION` and `TAKTUS_WORKER`."""
+    execution: ExecutionSettings
+
+    @property
+    def identifier(self) -> str:
+        """The adapter identifier the ledger records: `worker.<name>`, or `worker.<kind>` for
+        the one unnamed worker — never a product name (ADR-0003)."""
+        return f"worker.{self.name or self.execution.kind.value}"
+
+    def configuration(self, configuration: Configuration) -> Configuration:
+        """The configuration port as this worker reads it: its own keys first, and only its
+        own credentials. The unnamed worker reads the instance's, as before."""
+        if self.name is None:
+            return configuration
+        return WorkerConfiguration(configuration, self.name)
+
+    def effective(self) -> list[tuple[str, str]]:
+        lines = self.execution.effective()
+        if self.name is None:
+            return lines
+        prefix = f"TAKTUS_WORKER_{worker_segment(self.name).upper()}_"
+        return [
+            (prefix + ("ENDPOINT" if v == "TAKTUS_WORKER" else v.removeprefix("TAKTUS_")), value)
+            for v, value in lines
         ]
 
 
@@ -361,6 +459,39 @@ def load_execution(configuration: Configuration) -> ExecutionSettings:
     )
 
 
+def load_workers(configuration: Configuration) -> tuple[WorkerSettings, ...]:
+    """Every worker the instance is configured with, in the order a step is resolved in: the
+    first whose declared capabilities cover what the step requires serves it (ADR-0078).
+
+    `TAKTUS_WORKERS` unset: the one worker configured as before, by `TAKTUS_EXECUTION`,
+    `TAKTUS_WORKER` and `TAKTUS_EXECUTION_*`. Set, it names the workers in order, and each reads
+    its own settings under `TAKTUS_WORKER_<NAME>_…` with the instance's as the default — except
+    its endpoint and its credentials, which are its own alone (`WorkerConfiguration`)."""
+    reader = _Reader(configuration)
+    names = reader.names("workers", ())
+    if not names:
+        return (WorkerSettings(name=None, execution=load_execution(configuration)),)
+    setting = configuration.name("workers")
+    workers: list[WorkerSettings] = []
+    for name in names:
+        if len(name) > WORKER_NAME_LENGTH or WORKER_NAME.fullmatch(name) is None:
+            raise ConfigurationError(
+                setting,
+                f"{name!r} is not a worker name: lowercase letters and digits, words joined by "
+                f"hyphens, at most {WORKER_NAME_LENGTH} characters",
+            )
+        scoped = WorkerConfiguration(configuration, name)
+        execution = load_execution(scoped)
+        if execution.kind is ExecutionKind.ENDPOINT and scoped.get("worker") is None:
+            raise ConfigurationError(
+                scoped.name("worker"),
+                f"is not set; the worker {name} of {setting} is reached by endpoint and needs "
+                "its base URL here",
+            )
+        workers.append(WorkerSettings(name=name, execution=execution))
+    return tuple(workers)
+
+
 @dataclass(frozen=True)
 class CapacitySettings:
     """What the capacity report and admission against the platform are told
@@ -493,8 +624,8 @@ class Settings:
     http_port: int
     path_prefix: str
     """Everything the HTTP surface serves lives under this prefix, `/` by default."""
-    execution: ExecutionSettings
-    """How the runner reaches an execution unit for worker steps."""
+    workers: tuple[WorkerSettings, ...]
+    """The workers the runner resolves a worker step to, in order, and how each is reached."""
     telemetry: TelemetrySettings
     """Where spans are exported, if anywhere."""
     model: ModelSettings
@@ -546,7 +677,12 @@ class Settings:
             ("TAKTUS_HTTP_HOST", self.http_host),
             ("TAKTUS_HTTP_PORT", str(self.http_port)),
             ("TAKTUS_PATH_PREFIX", self.path_prefix),
-            *self.execution.effective(),
+            *(
+                [("TAKTUS_WORKERS", ",".join(w.name for w in self.workers if w.name))]
+                if self.workers[0].name is not None
+                else []
+            ),
+            *(line for worker in self.workers for line in worker.effective()),
             *self.telemetry.effective(),
             *self.model.effective(),
             *self.budget.effective(),
@@ -599,7 +735,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         http_host=reader.text("http.host", "127.0.0.1"),
         http_port=reader.integer("http.port", 8080, low=1, high=65535),
         path_prefix=normalise_prefix(prefix, configuration.name("path.prefix")),
-        execution=load_execution(configuration),
+        workers=load_workers(configuration),
         telemetry=load_telemetry(configuration),
         model=load_model(configuration),
         budget=load_budget(configuration),

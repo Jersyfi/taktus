@@ -103,6 +103,18 @@ execution:
   stateClaim: ""
   stateSize: 5Gi
   stateStorageClass: ""
+  # Several workers, in the order a step is resolved in: the first whose declared capabilities
+  # cover what a step requires serves it (TAKTUS_WORKERS, ADR-0078). Empty: the one worker
+  # configured above, as `worker.<kind>`. Each entry is the adapter `worker.<name>`; what it
+  # leaves out is taken from the settings above, except its endpoint. Its credentials are its
+  # own: list them under `credentials` with the parameter worker.<name>.credential.<name>.
+  #   - name: coding                 # lowercase letters and digits, words joined by hyphens
+  #     image: <registry>/<image>:<version>   # its unit, for kind `cluster`
+  #     kind: cluster                # optional; `kind` above by default
+  #     endpoint: ""                 # required for kind `endpoint`
+  #     memoryMb: 2048               # optional: unitPort, cpus, memoryMb, wallSeconds,
+  #                                  # startTimeoutSeconds, stateClaim (an existing claim)
+  workers: []
   defaults:
     cpus: 1
     memoryMb: 1024
