@@ -325,6 +325,40 @@ def test_the_database_is_its_own_with_a_twenty_gibibyte_volume_that_is_watched(
     assert config["data"]["TAKTUS_MIGRATE_ON_START"] == "false"
 
 
+def test_the_chat_connector_is_reached_by_the_roles_alone_and_reads_its_secrets_as_files(
+    rendered: list[dict[str, Any]],
+) -> None:
+    """Issue #239: the chat channel's connector is deployed with the instance, from the
+    control plane's image, with its bot token and signing secret as mounted files; it is
+    reached from the roles alone and mounts no token. Disabled, nothing of it is rendered."""
+    [connector] = [
+        d
+        for d in of_kind(rendered, "Deployment")
+        if d["metadata"]["labels"]["app.kubernetes.io/component"] == "connector-chat"
+    ]
+    spec = connector["spec"]["template"]["spec"]
+    assert spec["automountServiceAccountToken"] is False
+    [container] = spec["containers"]
+    assert container["command"][:3] == ["python", "-m", "taktus.adapters.driven.connectors.slack"]
+    variables = {v["name"]: v["value"] for v in container["env"]}
+    assert variables == {
+        "TAKTUS_CREDENTIAL_CHAT_TOKEN_FILE": "/run/secrets/taktus/chat/bot-token",
+        "TAKTUS_CREDENTIAL_CHAT_SIGNING_SECRET_FILE": "/run/secrets/taktus/chat/signing-secret",
+    }
+    [policy] = [
+        d
+        for d in of_kind(rendered, "NetworkPolicy")
+        if d["metadata"]["name"] == "taktus-connector-chat"
+    ]
+    [allowed] = policy["spec"]["ingress"]
+    [peer] = allowed["from"]
+    assert peer["podSelector"]["matchLabels"]["app.kubernetes.io/component"] == "control-plane"
+    off = render("connectors.chat.enabled=false")
+    assert not [d for d in off if "connector-chat" in d["metadata"]["name"]]
+    [config] = of_kind(off, "ConfigMap")
+    assert "channel.chat" not in config["data"]["TAKTUS_CONNECTORS"]
+
+
 def test_a_new_release_leaves_the_database_pod_as_it_is() -> None:
     """Issue #237: an upgrade that changes only the image tag does not change the database's
     pod template, so the StatefulSet does not replace its pod and the roles keep their
@@ -448,7 +482,8 @@ def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_
     }
     [config] = of_kind(rendered, "ConfigMap")
     url = "http://taktus-connector-repository:9100/mcp"
-    assert config["data"]["TAKTUS_CONNECTORS"] == f"channel.repo={url}"
+    chat = "http://taktus-connector-chat:9101/mcp"
+    assert config["data"]["TAKTUS_CONNECTORS"] == f"channel.repo={url},channel.chat={chat}"
     assert config["data"]["TAKTUS_FINDINGS_CONNECTOR"] == url
     [policy] = [
         d
@@ -459,7 +494,7 @@ def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_
     [peer] = allowed["from"]
     assert peer["podSelector"]["matchLabels"]["app.kubernetes.io/component"] == "control-plane"
     assert "namespaceSelector" not in peer
-    off = render("connectors.repository.enabled=false")
+    off = render("connectors.repository.enabled=false", "connectors.chat.enabled=false")
     assert not [d for d in off if "connector" in d["metadata"]["name"]]
     assert "TAKTUS_CONNECTORS" not in of_kind(off, "ConfigMap")[0]["data"]
 
