@@ -50,6 +50,7 @@ printed by `make status` and carried by every pull request description (DEC-0026
 | [0013](NEED-0013-an-app-of-its-own-on-the-repository-service.md) | An app of its own on the repository service | `account` | provided 2026-10-08 through the app-manifest flow, installed on this repository and the scratch repository; confirmed the same day |
 | [0014](NEED-0014-the-registry-the-images-are-pushed-to.md) | The registry the images are pushed to | `action` | provided 2026-10-10 by the session on the owner's answer: the repository service's registry, public images, built by the release candidate `v0.2.0-rc.1` |
 | [0016](NEED-0016-the-app-in-the-live-environment-and-the-personal-token-retired.md) | The app in the live environment, and the personal token retired | `action` | provided 2026-10-11: the app's secrets in `live` and the local `.env` by the session, the personal token revoked by the owner |
+| [0018](NEED-0018-an-app-in-the-owners-chat-workspace.md) | An app in the owner's chat workspace | `account` | provided 2026-10-11: the app, the private scratch channel, the live secrets, the instance's secret and its verified event subscription; live test green |
 
 The open needs are printed by `make status` (DEC-0026).
 
