@@ -84,3 +84,10 @@ taktusctl identity links
 
 lists one link of origin `confirmed`, on `channel.repo`, to `idn_owner`, active. The instance's
 ledger holds an `identity.linked` entry with outcome `confirmed` and actor `idn_owner`.
+
+## Outcome
+
+**Provided:** 2026-10-11
+**Confirmed by:** the instance answered the owner's comment with the code on issue #147 as `taktus-baton[bot]`: "This account is now linked to your Taktus account." From then on the owner's events in this repository are the owner's commands, not an unknown sender's.
+**How it was provided:** step 1 — `idn_owner` existed already from the install, so a new account key was issued for it with `taktusctl identity key`, run as a Job by the owner with the deployment identity and read once from its log into the owner's password manager, the Job deleted after; step 2 — the owner requested the link code from the workstation with the key read without echo; step 3 — the owner wrote the code on #147.
+**Recorded in:** the pull request that records the owner's answers of 2026-10-11, evening

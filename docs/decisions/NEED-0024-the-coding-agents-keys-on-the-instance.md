@@ -17,7 +17,7 @@ files, and from there into one secret in the control plane's namespace on the cl
 ## 2. Why
 
 P-03, the process that turns a ready issue into a pull request, has one step a coding worker
-does. On the installed instance the coding worker runs as a job in the cluster (ADR-0034,
+does. On the installed instance the coding worker runs as a job in the cluster (ADR-0002,
 `deploy/k8s/README.md` §7). The job receives exactly the credentials its step names, from a
 secret the chart mounts (`credentials[]`, parameter `worker.<worker>.credential.CODING_AGENT_API_KEY`,
 ADR-0078). Without a key there, every P-03 run on the instance stops at that step, and #87 —

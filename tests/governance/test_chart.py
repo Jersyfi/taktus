@@ -384,6 +384,7 @@ def test_the_cluster_adapter_is_wired_to_the_namespace_the_account_and_the_state
     assert data["TAKTUS_EXECUTION_SERVICE_ACCOUNT"] == "taktus-unit"
     assert data["TAKTUS_EXECUTION_EGRESS_ENFORCE"] == "true"
     assert data["TAKTUS_EXECUTION_STATE_CLAIM"] == "unit-state"
+    assert data["TAKTUS_EXECUTION_CPU_REQUEST_SHARE"] == "0.25", "a quarter of the CPU limit"
     claims = {
         (d["metadata"]["namespace"], d["metadata"]["name"])
         for d in of_kind(documents, "PersistentVolumeClaim")
@@ -402,6 +403,7 @@ def test_several_workers_are_configuration_each_with_its_own_credentials() -> No
         "execution.workers[1].name=coding-second",
         "execution.workers[1].image=taktus-worker-coding-second:0.1.0",
         "execution.workers[1].memoryMb=2048",
+        "execution.workers[1].cpuRequestShare=1",
         "execution.workers[2].name=shell",
         "execution.workers[2].kind=endpoint",
         "execution.workers[2].endpoint=http://shell:9000",
@@ -416,6 +418,8 @@ def test_several_workers_are_configuration_each_with_its_own_credentials() -> No
     assert data["TAKTUS_WORKER_CODING_SECOND_EXECUTION_UNIT"] == "taktus-worker-coding-second:0.1.0"
     assert data["TAKTUS_WORKER_CODING_SECOND_EXECUTION_MEMORY_MB"] == "2048"
     assert "TAKTUS_WORKER_CODING_EXECUTION_MEMORY_MB" not in data, "the instance's is the default"
+    assert data["TAKTUS_WORKER_CODING_SECOND_EXECUTION_CPU_REQUEST_SHARE"] == "1"
+    assert "TAKTUS_WORKER_CODING_EXECUTION_CPU_REQUEST_SHARE" not in data
     assert data["TAKTUS_WORKER_SHELL_EXECUTION"] == "endpoint"
     assert data["TAKTUS_WORKER_SHELL_ENDPOINT"] == "http://shell:9000"
     variables = {
