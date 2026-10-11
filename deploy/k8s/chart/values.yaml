@@ -177,6 +177,21 @@ connectors:
       requests: { cpu: 50m, memory: 128Mi }
       limits: { memory: 256Mi }
 
+  # The chat connector (#239): a deployment of its own, from the control plane's image, serving
+  # the chat channel — its event intake and its actions over MCP — as Taktus's own app in the
+  # owner's chat workspace (NEED-0018). The roles reach it as `channel.chat`. Its bot token and
+  # signing secret are keys of one existing Secret, mounted as files.
+  chat:
+    enabled: false
+    port: 9101
+    secret: ""             # the Secret holding both keys
+    tokenKey: ""           # the bot token's key in it
+    signingKey: ""         # the signing secret's key in it
+    egressPorts: [443]
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 256Mi }
+
 ingress:
   enabled: true            # rendered only when `host` is given as well
   className: ""

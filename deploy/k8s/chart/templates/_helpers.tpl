@@ -128,3 +128,8 @@ seccompProfile:
 {{- define "taktus.repositoryConnectorUrl" -}}
 {{- printf "http://%s-connector-repository:%v/mcp" (include "taktus.fullname" .) .Values.connectors.repository.port -}}
 {{- end -}}
+
+{{/* The chat connector's MCP address inside the cluster, when it is deployed. */}}
+{{- define "taktus.chatConnectorUrl" -}}
+{{- printf "http://%s-connector-chat:%v/mcp" (include "taktus.fullname" .) .Values.connectors.chat.port -}}
+{{- end -}}

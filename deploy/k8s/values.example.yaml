@@ -40,3 +40,8 @@ connectors:
     webhook:
       secret: taktus-repository-webhook
       key: secret
+  chat:
+    enabled: true
+    secret: taktus-chat
+    tokenKey: bot-token
+    signingKey: signing-secret

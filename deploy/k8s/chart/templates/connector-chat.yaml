@@ -1,0 +1,167 @@
+{{- /*
+The chat connector (#239): one deployment from the control plane's image, serving the chat
+channel over MCP — the event intake and the actions — as Taktus's own app in the owner's chat
+workspace (NEED-0018). The roles reach it, nothing else does; it reaches the name service and
+the chat service's API outside the cluster. Its bot token and signing secret are mounted files,
+their paths in TAKTUS_CREDENTIAL_<NAME>_FILE, and it mounts no service-account token.
+*/ -}}
+{{- $c := .Values.connectors.chat -}}
+{{- if $c.enabled }}
+{{- $name := printf "%s-connector-chat" (include "taktus.fullname" .) -}}
+{{- $secret := required "connectors.chat.secret is required: the Secret holding the bot token and the signing secret" $c.secret -}}
+{{- $tokenKey := required "connectors.chat.tokenKey is required" $c.tokenKey -}}
+{{- $signingKey := required "connectors.chat.signingKey is required" $c.signingKey -}}
+{{- $v4 := list -}}
+{{- $v6 := list -}}
+{{- range .Values.execution.egress.exceptCidrs -}}
+{{- if contains ":" . -}}{{- $v6 = append $v6 . -}}{{- else -}}{{- $v4 = append $v4 . -}}{{- end -}}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: connector-chat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" . "component" "connector-chat") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "taktus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: connector-chat
+    spec:
+      serviceAccountName: {{ include "taktus.serviceAccount" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: connector
+          image: {{ include "taktus.image" (dict "what" "image" "image" .Values.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - taktus.adapters.driven.connectors.slack
+            - --host
+            - "0.0.0.0"
+            - --port
+            - {{ $c.port | quote }}
+          env:
+            - name: TAKTUS_CREDENTIAL_CHAT_TOKEN_FILE
+              value: {{ printf "/run/secrets/taktus/chat/%s" $tokenKey | quote }}
+            - name: TAKTUS_CREDENTIAL_CHAT_SIGNING_SECRET_FILE
+              value: {{ printf "/run/secrets/taktus/chat/%s" $signingKey | quote }}
+          ports:
+            - name: mcp
+              containerPort: {{ $c.port }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: mcp
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: mcp
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          securityContext:
+            {{- include "taktus.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: chat
+              mountPath: /run/secrets/taktus/chat
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: chat
+          secret:
+            secretName: {{ $secret }}
+            defaultMode: 0440
+            items:
+              - key: {{ $tokenKey }}
+                path: {{ $tokenKey }}
+              - key: {{ $signingKey }}
+                path: {{ $signingKey }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: connector-chat
+spec:
+  selector:
+    {{- include "taktus.selector" (dict "root" . "component" "connector-chat") | nindent 4 }}
+  ports:
+    - name: mcp
+      port: {{ $c.port }}
+      targetPort: mcp
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" . "component" "connector-chat") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "taktus.selector" (dict "root" . "component" "control-plane") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: {{ $c.port }} }
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dns.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.dns.podLabels | nindent 14 }}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with $v4 }}
+            except: {{ toJson . }}
+            {{- end }}
+        - ipBlock:
+            cidr: ::/0
+            {{- with $v6 }}
+            except: {{ toJson . }}
+            {{- end }}
+      ports:
+        {{- range $c.egressPorts }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+{{- end }}

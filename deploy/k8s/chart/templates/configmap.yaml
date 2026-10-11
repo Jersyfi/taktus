@@ -118,11 +118,20 @@ data:
   {{- end }}
   TAKTUS_ADMINISTERS: {{ join "," $entries | quote }}
   {{- end }}
+  {{- $channels := list }}
   {{- if .Values.connectors.repository.enabled }}
-  {{- if hasKey .Values.env "TAKTUS_CONNECTORS" }}
-  {{- fail "env.TAKTUS_CONNECTORS: the deployed repository connector sets it; add further channels there once the chart deploys them" }}
+  {{- $channels = append $channels (printf "channel.repo=%s" (include "taktus.repositoryConnectorUrl" .)) }}
   {{- end }}
-  TAKTUS_CONNECTORS: {{ printf "channel.repo=%s" (include "taktus.repositoryConnectorUrl" .) | quote }}
+  {{- if .Values.connectors.chat.enabled }}
+  {{- $channels = append $channels (printf "channel.chat=%s" (include "taktus.chatConnectorUrl" .)) }}
+  {{- end }}
+  {{- if $channels }}
+  {{- if hasKey .Values.env "TAKTUS_CONNECTORS" }}
+  {{- fail "env.TAKTUS_CONNECTORS: the deployed connectors set it" }}
+  {{- end }}
+  TAKTUS_CONNECTORS: {{ join "," $channels | quote }}
+  {{- end }}
+  {{- if .Values.connectors.repository.enabled }}
   {{- if .Values.connectors.repository.findings }}
   TAKTUS_FINDINGS_CONNECTOR: {{ include "taktus.repositoryConnectorUrl" . | quote }}
   {{- end }}
