@@ -101,3 +101,11 @@ The dispatched run of the job `connector` is green, and its log carries `PASSED`
 `test_a_step_retried_after_a_restart_acts_once_on_the_real_service`, which as the app asserts
 that the pull request it opened shows the app, not a person, as its author. Your account's token
 list at the service no longer shows the token of NEED-0006.
+
+## Outcome
+
+**Provided:** 2026-10-11
+**Confirmed by:** section 7. The environment `live` holds `LIVE_APP_ID`, `LIVE_APP_PRIVATE_KEY` and `TAKTUS_LIVE_REPOSITORY`; the run of the workflow `live` dispatched on `main` on 2026-10-10 passed as the app, including the assertion that its pull request shows the app as author. The checkout's `.env` names the app and no token file. The owner revoked the personal token of NEED-0006 at the service and deleted its file, as he stated on 2026-10-11.
+**How it was provided:** steps 1 and 2 by the session on the owner's word, from the files and without printing them (2026-10-10); step 3 by the owner (2026-10-11).
+**Recorded in:** this pull request
+
