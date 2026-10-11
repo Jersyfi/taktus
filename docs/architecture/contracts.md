@@ -123,7 +123,7 @@ is why it is the basis and why no vendor's own extensions are used.
 | **Report the tokens by price kind** where the provider does — uncached input, cache read, cache write, output | money is computed from the record at a versioned price table (ADR-0010) |
 
 The contract is a schema with a conformance suite (`contracts/model/v1`): the declaration
-(`Calculability`), the usage of one call, the price table, and the checks M-01 to M-04 —
+(`Calculability`), the usage of one call, the price table, the weighting table of the Takt, and the checks M-01 to M-04 —
 `uv run taktusctl conformance run --contract model/v1`. The core's side is the model port
 (`src/taktus/ports/model.py`) and its one adapter (`adapters/driven/models/openai_compatible/`),
 configured by `TAKTUS_MODEL_ENDPOINT`, `TAKTUS_MODEL_NAME` and `TAKTUS_MODEL_PURPOSES` — one model,

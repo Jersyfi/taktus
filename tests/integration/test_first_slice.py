@@ -381,7 +381,7 @@ async def test_what_a_run_cost_is_read_back_from_the_ledger(
     worker_endpoint: str, tmp_path: Path
 ) -> None:
     from taktus.adapters.driving.cli.cost_command import render
-    from taktus.components.accounting.application.service import CostOfRun
+    from taktus.components.accounting.application.service import CostOfRun, TaktRateOf
 
     async with LocalWiring().services(
         state_dir=tmp_path / "state", worker_endpoint=worker_endpoint
@@ -389,9 +389,30 @@ async def test_what_a_run_cost_is_read_back_from_the_ledger(
         run = await start(services, bundle())
         assert services.cost is not None
         cost = await services.cost.execute(CostOfRun(run.id, TENANT))
+        assert services.takt_rate is not None
+        rate = await services.takt_rate.execute(TaktRateOf(TENANT))
+    assert cost.takt is not None and cost.takt.table == "0", "the repository's table is in force"
+    assert cost.takt.compute > 0 and cost.takt.calibration == "uncalibrated"
+    assert rate.runs == 1 and rate.takte == cost.takt.takte and rate.window_days == 30
     assert cost.meter.steps["worker"] == 1 and cost.meter.compute_seconds["cpu.small"] > 0
     assert cost.priced is None and cost.unpriced == ("the run was held without a price table",), (
         "compute seconds have a price at a table; held without one, that is named (#230)"
     )
     shown = render(cost)
     assert shown.startswith(f"run      {run.id}") and "compute  " in shown
+
+
+def test_without_a_run_the_cost_command_prints_the_tenants_takt_rate(tmp_path: Path) -> None:
+    """`taktusctl cost` without a run: the tenant's Takte over the window of the table in force,
+    and the rate, each with the word "uncalibrated" (UC-8.5, DEC-0131)."""
+    completed = subprocess.run(  # noqa: S603
+        [taktusctl(), "cost", "--state-dir", str(tmp_path / "state"), "--json"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **PLAIN},
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    rate = json.loads(completed.stdout)
+    assert rate["window_days"] == 30 and rate["runs"] == 0
+    assert rate["calibration"] == "uncalibrated"

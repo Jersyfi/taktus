@@ -280,7 +280,7 @@ MODEL = ROOT / "contracts" / "model" / "v1"
 MODEL_SCHEMA = json.loads((MODEL / "Model.json").read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("definition", ["Calculability", "PriceTable"])
+@pytest.mark.parametrize("definition", ["Calculability", "PriceTable", "WeightingTable"])
 def test_model_definitions_have_the_same_shape(definition: str) -> None:
     import taktus.ports.model as model
 
@@ -291,7 +291,12 @@ def test_model_definitions_have_the_same_shape(definition: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("concept", "binding"), [("calculability", "Calculability"), ("price-table", "PriceTable")]
+    ("concept", "binding"),
+    [
+        ("calculability", "Calculability"),
+        ("price-table", "PriceTable"),
+        ("weighting-table", "WeightingTable"),
+    ],
 )
 def test_every_model_example_binds_as_the_schema_says(concept: str, binding: str) -> None:
     import taktus.ports.model as model
