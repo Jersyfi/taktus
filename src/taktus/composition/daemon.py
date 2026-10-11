@@ -309,6 +309,7 @@ async def wire(
                 model_pool(settings.model),
             )
             prices = settings.budget.table()
+            weights = settings.budget.weights()
 
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
@@ -327,6 +328,8 @@ async def wire(
                     options=EngineOptions(
                         step_ceiling_seconds=settings.shutdown_ceiling_seconds,
                         prices=prices,
+                        weights=weights,
+                        model_classes=settings.budget.model_classes,
                         margin=settings.budget.margin,
                         uncalibrated_margin=settings.budget.uncalibrated_margin,
                         capacity=rules_of(settings.capacity),

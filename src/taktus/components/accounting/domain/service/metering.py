@@ -2,10 +2,9 @@
 
 ADR-0010 asks that the Takt be recomputable from the ledger; ADR-0005 asks the same of money.
 Both are functions of one breakdown, built once here: tokens per model and per price kind,
-compute seconds per resource class, quota units, and steps per method. Money is that breakdown
-at a price table (`ports/model.py`, `price`); the Takt will be the same breakdown at a
-weighting table once its weights are decided (M4.3 of the Taktus anchors: the owner's). Pure:
-ledger entries in, a meter out.
+compute seconds per resource class, quota units, bytes of state written, and steps per method.
+Money is that breakdown at a price table (`ports/model.py`, `price`); the Takt is the same
+breakdown at a weighting table (`weighing`). Pure: ledger entries in, a meter out.
 """
 
 from __future__ import annotations
@@ -28,6 +27,8 @@ class Meter(Value):
     compute_seconds: Mapping[str, float] = Field(default_factory=dict)
     """Per resource class."""
     quota_units: float = 0.0
+    storage_bytes: int = 0
+    """Bytes of state written."""
     steps: Mapping[str, int] = Field(default_factory=dict)
     """Finished steps per method."""
     currency_reported: Mapping[str, float] = Field(default_factory=dict)
@@ -41,6 +42,7 @@ def meter(entries: Iterable[LedgerEntry]) -> Meter:
     unattributed = 0
     compute: dict[str, float] = {}
     quota = 0.0
+    storage = 0
     steps: dict[str, int] = {}
     money: dict[str, float] = {}
     for entry in entries:
@@ -60,6 +62,7 @@ def meter(entries: Iterable[LedgerEntry]) -> Meter:
                 compute.get(used.resource_class, 0.0) + used.compute_seconds
             )
         quota += used.quota_units or 0.0
+        storage += used.storage_bytes or 0
         for code, amount in (used.currency or {}).items():
             money[code] = money.get(code, 0.0) + amount
     return Meter(
@@ -67,6 +70,7 @@ def meter(entries: Iterable[LedgerEntry]) -> Meter:
         tokens_unattributed=unattributed,
         compute_seconds=compute,
         quota_units=quota,
+        storage_bytes=storage,
         steps=steps,
         currency_reported=money,
     )

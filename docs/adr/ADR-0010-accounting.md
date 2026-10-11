@@ -1,6 +1,6 @@
 # ADR-0010 — The Takt as a unit of orchestrated work
 
-**Status:** **proposed**, amended 2026-09-30 (one breakdown, two tables) and 2026-10-11 (compute seconds have a price too; a currency budget holds them, ADR-0005 fourth amendment) — measured from `0.2.0`; how long data is collected before anything is
+**Status:** **proposed**, amended 2026-09-30 (one breakdown, two tables), 2026-10-11 (compute seconds have a price too; a currency budget holds them, ADR-0005 fourth amendment) and 2026-10-11 again (the Takt is measured at weighting table 0, uncalibrated) — measured from `0.2.0`; how long data is collected before anything is
 charged is decided later, based on real runs from both reference use cases
 
 ## Context
@@ -88,14 +88,46 @@ built (#230, NTC-0184).
   price is named. A table without `compute` gives the token amount and says that the compute
   seconds were not priced. A run held without a table names that when it used compute.
 
+## Third amendment — the Takt is measured, not charged (2026-10-11)
+
+The owner gave the first weighting table (DEC-0131, Option A) and the condition measuring must
+meet (DEC-0132, UC-8.5 §2). What follows is built (#81, NTC-0190).
+
+- **The table is a document in the repository.** Its shape is `WeightingTable`, beside the
+  price table in `contracts/model/v1/Model.json`. The tables are under
+  `contracts/model/v1/weighting-tables/`, one file per version, and the test of the Takt pins
+  each file's digest, so that a published table cannot change. Version 0 is DEC-0131's table,
+  marked `calibrated: false`. The table in force is the newest by `valid_from`; the operator
+  does not choose it.
+- **The model class is the operator's.** The table gives the factor of each class; which class
+  a model is in is configuration (`TAKTUS_TAKT_MODEL_CLASSES`), as DEC-0131 says.
+- **The run names the table it started at.** The budget statement names the weighting table in
+  force by the digest of its document, and the model classes beside it. `taktusctl cost <run>`
+  weighs the run's breakdown there and prints the Takte beside the money, in four parts:
+  tokens, compute, steps, storage. `--weights` and `--model-classes` weigh it at another
+  table, to compare.
+- **What a row weighs.** Tokens per price kind per `unit_tokens`, times the model's class factor;
+  compute per minute per resource class; finished steps of the methods the table names per
+  step; MiB of state written. An `llm` step is weighed by its tokens, an `ml`, `neural` or
+  `worker` step by its compute, not again by its number.
+- **Nothing unweighed counts as zero.** A model in no class, a class or a kind without a weight,
+  tokens without their model, compute of a class without a weight, and the steps of a method
+  the table does not name — `human` and `wait` in version 0 — are named beside the figure.
+- **The rate.** `taktusctl cost` without a run prints the tenant's Takte over the window of the
+  table in force, 30 days for version 0, and the Takte per hour. Every step finished inside the
+  window counts, weighed at the table its run started at.
+- **"Uncalibrated" beside every figure** of an uncalibrated table, in the text and in `--json`.
+
 ## Where this promise ends
 
-The Takt is proposed, not accepted: nothing is charged, the weights are a first draft, and the
-formula is fixed only after data from both reference use cases. "Recomputable from the ledger"
+The Takt is proposed, not accepted: nothing is charged, the weights are version 0 and
+uncalibrated, and the formula is fixed only after data from both reference use cases. A Takt
+figure is a measurement, not a price (M4.2). "Recomputable from the ledger"
 holds for what the ledger measures — tokens, compute seconds, resource class, step counts,
 storage — and not for what a provider does not report; where money is reported per assignment
-the Takt is still exact, because it derives from tokens and compute (ADR-0005). A budget in
-Takte is enforced only once the Takt is measured (`0.2.0`).
+the Takt is still exact, because it derives from tokens and compute (ADR-0005). The Takt is
+measured since the third amendment; a budget in Takte is not built, and admission holds tokens,
+compute and currency only.
 
 The breakdown holds what workers and models report. A worker that reports tokens without the
 model that used them leaves them unpriced, and says so; a worker that reports money only when
@@ -106,3 +138,10 @@ fourth amendment, #232). Under a currency budget, compute the table does not pri
 not admitted as free. A run held to a compute budget alone can still use compute its table does
 not price; its cost names that compute as unpriced. Quota units and storage have no price yet;
 they stay outside the amount.
+
+The Takt weighs storage as bytes written, because the ledger does not record how long state is
+kept; "storage × time" waits for that measure. The rate is the tenant's average over the window,
+not a peak; whether charging rests on a peak is still the owner's (Consequences). A run started
+before a weighting table was in force has no Takt of its own: it is named, and can be weighed at
+a table only on request, with the model classes given then. The window of the rate is the table
+in force's, even for runs weighed at an older table.

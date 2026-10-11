@@ -207,6 +207,7 @@ from taktus.ports.model import (
     ModelError,
     PriceTable,
     Prompt,
+    WeightingTable,
     price,
 )
 from taktus.ports.objectstore import ObjectStore
@@ -395,6 +396,13 @@ class EngineOptions:
     prices: PriceTable | None = None
     """The price table money is computed at. None: no model is priced, and a budget in a
     currency says so when it is set."""
+    weights: WeightingTable | None = None
+    """The weighting table in force, the Takt is computed at (ADR-0010). Its digest is named in
+    every run's budget statement when the run starts. None: the run's Takt is not computed, and
+    its cost says so."""
+    model_classes: Mapping[str, str] = field(default_factory=dict)
+    """Which class of the weighting table each model is in, as the operator set it
+    (`TAKTUS_TAKT_MODEL_CLASSES`); recorded with the run."""
     margin: float = 0.0
     """The named safety margin a run is held with unless its command names one
     (`TAKTUS_BUDGET_MARGIN`)."""
@@ -615,7 +623,8 @@ class RunEngine:
     async def _state_budget(self, run: Run, actor: str | None) -> None:
         """Say what the budget can promise when it is set, not afterwards (principle 8): the
         budget, the margin, the line the run is held to, how each limited kind is held and
-        why, the price table money is computed at, and the margin a worker without history
+        why, the price table money is computed at, the weighting table the Takt is computed
+        at, and the margin a worker without history
         reserves — with the statement, where an operator set it below the floor, that it is
         (DEC-0047) — one document, its digest in the
         ledger as `budget.set`, so that money stays recomputable from the ledger."""
@@ -643,6 +652,10 @@ class RunEngine:
         table_digest = None
         if table is not None:
             table_digest = await self._objects.put(_canonical(table.document()))
+        weights = self._options.weights
+        weights_digest = None
+        if weights is not None:
+            weights_digest = await self._objects.put(_canonical(weights.document()))
         statement = {
             "budget": run.budget.document(),
             "margin": run.margin,
@@ -655,6 +668,13 @@ class RunEngine:
             "price_table": None
             if table is None
             else {"version": table.version, "digest": table_digest},
+            "weighting_table": None
+            if weights is None
+            else {
+                "version": weights.version,
+                "digest": weights_digest,
+                "model_classes": dict(sorted(self._options.model_classes.items())),
+            },
             "uncalibrated_margin": {
                 "value": self._options.uncalibrated_margin,
                 "floor": budgeting.MARGIN_FLOOR,

@@ -145,7 +145,7 @@ webhook secret (NEED-0010), the live connector test in CI (since superseded by T
 **What was decided, and when**, is the register's index, `docs/decisions/README.md`, newest last,
 each with the pull request that recorded it. Each record stands in the table of its kind, and the gate checks it
 (DEC-0094). The ready rule reads an issue's form up to its footer (DEC-0116). **Open:** DEC-0044, the licence, which must be settled
-by the release of `1.0.0` and is taken up only when that release is prepared. On 2026-10-11 the owner answered DEC-0124 (UC-4.14 stands), DEC-0127 (four kinds of link, with a direction on outside contributors carried by #245), DEC-0131 (the candidate weighting table, version 0, uncalibrated), DEC-0132 (UC-8.5 gains the Takt's condition) and DEC-0133 (planning refuses a credential administering the instance's platform, undeclared ones too), each with Option A; UC-8.5 carries the Takt's condition since, and #81 is ready. DEC-0161, which library the ML bench trains with (M3.8), in force provisionally as Option A. DEC-0173, how a step whose value a fixed rule computes from its inputs stays `exact` (M3.15), in force provisionally as Option A, a sixth check, recomputation, which fifteen of the repository's sixteen `exact` steps declare (#91, ADR-0082). DEC-0164, what method maturation must achieve (M3.15), a use case of its own on Option A, on which #217 and #218 are written. On 2026-10-10 the
+by the release of `1.0.0` and is taken up only when that release is prepared. On 2026-10-11 the owner answered DEC-0124 (UC-4.14 stands), DEC-0127 (four kinds of link, with a direction on outside contributors carried by #245), DEC-0131 (the candidate weighting table, version 0, uncalibrated), DEC-0132 (UC-8.5 gains the Takt's condition) and DEC-0133 (planning refuses a credential administering the instance's platform, undeclared ones too), each with Option A; UC-8.5 carries the Takt's condition since, and #81 builds it. DEC-0161, which library the ML bench trains with (M3.8), in force provisionally as Option A. DEC-0173, how a step whose value a fixed rule computes from its inputs stays `exact` (M3.15), in force provisionally as Option A, a sixth check, recomputation, which fifteen of the repository's sixteen `exact` steps declare (#91, ADR-0082). DEC-0164, what method maturation must achieve (M3.15), a use case of its own on Option A, on which #217 and #218 are written. On 2026-10-10 the
 owner answered DEC-0069, DEC-0082 and DEC-0087 with Option A — what the seventeen, twenty-seven
 and seventeen use cases of the migration's second to fourth steps add beyond the definition
 stands — and DEC-0123: no figure compares the working time of named persons; processes are
@@ -261,6 +261,14 @@ the share of the runs held up sum per account, per process and per period from t
 and a wait on a person names no one except to the person who answered it. A model provider at its
 rate limit now makes a step wait instead of failing it (NTC-0089). What is a block and where each
 is booked is NTC-0090. The analysis over the accounts is `0.5.0`.
+
+**The Takt is measured, not charged** (#81, `0.2.0`, ADR-0010 third amendment). Every run's
+budget statement names the weighting table in force when it started by digest — version 0, the
+owner's first table, uncalibrated (DEC-0131) — and the model classes the operator set.
+`taktusctl cost <run>` prints the Takte beside the money and weighs them at another table on
+request; without a run it prints the tenant's Takte over 30 days and the rate per hour. What a
+table does not weigh is named, and every figure says "uncalibrated" (UC-8.5, NTC-0190). No
+model class is set on the instance yet, so its tokens are named unweighed until one is.
 
 **The conformance half of maturity is recorded** (#93, `0.2.0`, ADR-0044). The instance runs an
 adapter's contract suite itself, against the endpoint its configuration resolves for the
