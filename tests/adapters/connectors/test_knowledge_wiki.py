@@ -96,7 +96,7 @@ def test_it_declares_the_three_operations_and_a_marked_write() -> None:
     assert operations["knowledge.pages.read"]["effect"] == "read"
     assert operations["knowledge.pages.write"]["effect"] == "write"
     assert operations["knowledge.pages.write"]["idempotency"] == "marked"
-    assert declared["credentials"] == [{"name": "KNOWLEDGE_WRITE", "purpose": "actions"}]
+    assert declared["credentials"] == [{"name": "KNOWLEDGE_TOKEN", "purpose": "actions"}]
 
 
 async def test_an_untouched_page_reads_with_the_digest_of_the_text_written(wiki: Wiki) -> None:
