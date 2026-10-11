@@ -221,6 +221,29 @@ async def test_the_intake_tool_reads_the_secret_from_its_file(
         assert result.structured_content["refused"]["reason"] == "bad_signature"
 
 
+@pytest.mark.parametrize(
+    ("name", "authored"),
+    [
+        ("issue-comment-created", True),
+        ("issues-opened", True),
+        ("pull-request-opened", True),
+        ("issues-labeled", False),
+        ("push", False),
+        ("workflow-run-completed", False),
+    ],
+)
+def test_an_event_says_whether_its_text_is_what_the_sender_wrote(name: str, authored: bool) -> None:
+    """A label added carries the issue's title and body, which somebody else wrote; a push its
+    commit's message, a pipeline run its name. Taktus answers an unknown sender, and looks for a
+    link code, only in what they wrote (ADR-0040 §5, issue #247)."""
+    headers, body = recorded(name)
+    result = intake.normalise(signed(headers, body), body, RECEIVED, SHARED)
+    assert first_error("IntakeResult", result, "connector/v1") is None
+    said = result["accepted"]["intent"]
+    assert said.get("authored", True) is authored
+    assert "authored" not in said or said["authored"] is False, "unsaid means written"
+
+
 def test_a_label_added_is_the_event_issue_labelled_with_that_label() -> None:
     headers, body = recorded("issues-labeled")
     accepted = intake.normalise(signed(headers, body), body, RECEIVED, SHARED)["accepted"]

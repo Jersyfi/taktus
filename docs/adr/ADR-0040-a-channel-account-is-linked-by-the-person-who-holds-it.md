@@ -1,6 +1,6 @@
 # ADR-0040 — A channel account is linked by the person who holds it
 
-**Status:** accepted
+**Status:** accepted · amended 2026-10-11 (NTC-0191): an unknown sender is answered only for what they wrote, and once per window
 
 ## Context
 Nothing executes without an identity (control-plane.md §2). Until now one configured operator
@@ -65,6 +65,25 @@ however often they write there. That a code linked the account is said once per 
 automation is not answered: nobody reads the offer, and two automations answering each other
 would loop.
 
+*Amended 2026-10-11 (NTC-0191):* on the installed instance one issue, opened and labelled three
+times within a second, received three identical offers (issue #247). Each label is an event of
+its own. The three deliveries arrived together, each looked for the offer before any had made
+it, and each made it. Three rules replace "once per conversation".
+
+- **Only what the sender wrote is answered.** An intake says, in `intent.authored`, whether its
+  text is what the sender wrote in the event (`contracts/connector/v1` §7). A label added carries
+  the issue's text, which somebody else wrote; an assignment carries nothing of the person who
+  assigned. Such an event is not answered, and its text is not read for a link code: a code in
+  an issue's body is its author's, and must not link whoever labels the issue.
+- **One offer per window.** An offer answers every event of its person in its conversation for
+  a configured window, a day by default (`TAKTUS_OFFER_WINDOW_SECONDS`). A later event may be
+  offered again. The offer's idempotency key names the conversation, the account and the
+  stretch of the window the offer falls in, so that a redelivery or another instance within
+  that stretch finds the offer in the channel.
+- **The offers of one conversation are made one at a time.** An instance makes the offer of a
+  conversation under that conversation's lock. Deliveries that arrive together wait for each
+  other, and the second finds the first one's offer.
+
 ### 6. The command line and the scheduler name an identity the component knows
 `taktusctl run` and `submit` take `--identity` (or `TAKTUS_IDENTITY`). The identity must exist
 in the tenant; the component supplies its path. The command line authenticates by holding the
@@ -120,11 +139,18 @@ It never carries an account, a code or a key (ADR-0006).
 - **The reply reaches the channel only where the connector declares the reply operation.**
   Elsewhere the sender is not answered, and the outcome says so. A failed reply is not retried
   by Taktus.
-- **Every unlinked person who writes is answered, once per conversation.** A channel the
-  instance listens to does not say whether a message was meant for Taktus, so a person who
-  writes anywhere in it is offered a link, in public where the channel is public. The once per
-  conversation rests on the connector finding its earlier answer by the key, as an operation
-  declared `marked` does.
+- **Every unlinked person who writes is answered, once per conversation and window.** A
+  channel the instance listens to does not say whether a message was meant for Taktus, so a
+  person who writes anywhere in it is offered a link, in public where the channel is public.
+  Within one instance, one offer answers the window. Across instances and restarts it rests on
+  the connector finding its earlier answer by the key, as an operation declared `marked` does;
+  the key names a fixed stretch of the window, so two instances, or one before and after a
+  restart, may each make an offer on either side of a stretch's end, and two instances that
+  look at the same moment may both make one. *(Amended 2026-10-11, NTC-0191.)*
+- **What the sender wrote is the connector's word.** An event whose connector leaves
+  `intent.authored` unsaid is taken as the sender's text. A connector that says `true` of an
+  event that carries somebody else's text has an unknown sender answered for it, and that text
+  read for a code. *(Amended 2026-10-11, NTC-0191.)*
 - **A code found in a message links the sender who wrote it.** Whoever reads the code before
   it is used, and writes it first from another account, links that account to the identity.
   The 30 minutes and the single use bound that window; they do not close it.

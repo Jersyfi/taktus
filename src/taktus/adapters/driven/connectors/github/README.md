@@ -131,7 +131,10 @@ per label added, with the label's name), `issue_comment.created`, `pull_request.
 `pipeline_run.completed` (from `workflow_run`) and `branch.pushed` (from `push`, with the branch,
 the head commit and every path the pushed commits changed, as the service lists them; a push of
 a tag or a deleted branch is refused as `unsupported_event`). A comment that carries the
-connector's own mark is refused as `own_action`.
+connector's own mark is refused as `own_action`. A comment, an issue opened and a pull request
+opened carry the text their sender wrote. A label added, a pipeline run and a push do not: their
+`intent.authored` is `false`, because the text they carry — the issue's, the run's name, a commit
+message — is not what the sender wrote in this event.
 The recorded payloads under [`payloads/`](payloads/) are real deliveries with every identifier,
 name and URL replaced by a placeholder.
 
