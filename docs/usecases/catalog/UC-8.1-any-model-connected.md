@@ -7,7 +7,7 @@ serves: [P3, P13]
 state: building
 version: 0.4.0
 tests: [tests/conformance/test_model_v1.py::test_an_honest_endpoint_passes_every_check, tests/conformance/test_model_v1.py::test_an_invalid_declaration_fails_m01_and_calls_nothing, tests/components/run/test_llm_steps.py::test_a_purpose_without_a_model_fails_the_step_and_names_the_setting]
-adrs: {ADR-0003: d0268914fed9, ADR-0005: c1a4c3f4cfb5, ADR-0010: 829298f12128, ADR-0021: 202e0442e7ec}
+adrs: {ADR-0003: d0268914fed9, ADR-0005: c1a4c3f4cfb5, ADR-0010: e381de241d4a, ADR-0021: 202e0442e7ec}
 supersedes: null
 ---
 

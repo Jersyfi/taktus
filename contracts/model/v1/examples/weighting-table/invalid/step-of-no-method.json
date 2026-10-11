@@ -1,0 +1,29 @@
+{
+  "version": "0",
+  "valid_from": "2026-10-11T00:00:00Z",
+  "calibrated": false,
+  "source": "DEC-0131, Option A, decided by the owner on 2026-10-11: the candidate table, uncalibrated",
+  "unit_tokens": 1000,
+  "tokens": {
+    "input": 0.25,
+    "output": 1.0,
+    "cache_read": 0.025,
+    "cache_write": 0.3
+  },
+  "model_classes": {
+    "small": 0.25,
+    "medium": 1.0,
+    "large": 4.0
+  },
+  "compute_per_minute": {
+    "cpu.small": 0.1,
+    "cpu.large": 0.4,
+    "gpu.small": 2.0,
+    "accelerator.large": 8.0
+  },
+  "steps": {
+    "connector": 0.01
+  },
+  "storage_per_mib": 0.001,
+  "rate_window_days": 30
+}

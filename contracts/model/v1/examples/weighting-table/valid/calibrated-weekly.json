@@ -1,0 +1,22 @@
+{
+  "version": "example-1",
+  "valid_from": "2027-01-01T00:00:00Z",
+  "calibrated": true,
+  "source": "an example: a calibrated table, after data of both reference use cases",
+  "unit_tokens": 1000000,
+  "tokens": {
+    "input": 200,
+    "output": 1000
+  },
+  "model_classes": {
+    "medium": 1
+  },
+  "compute_per_minute": {
+    "cpu.small": 0.05
+  },
+  "steps": {
+    "rule": 0.005
+  },
+  "storage_per_mib": 0,
+  "rate_window_days": 7
+}
