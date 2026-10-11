@@ -3,7 +3,7 @@
 **Mode entry:** M2.3
 **Kind:** gate-weakened
 **Decided:** 2026-10-11
-**Raised in:** [#PR](https://github.com/Jersyfi/taktus/pull/PR), for issue #91
+**Raised in:** [#228](https://github.com/Jersyfi/taktus/pull/228), for issue #91
 
 ## 1. What was decided
 
