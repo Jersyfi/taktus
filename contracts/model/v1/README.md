@@ -7,7 +7,8 @@ contract is where an adapter says how strong that is.
 
 | File | Contents |
 |---|---|
-| [`Model.json`](Model.json) | the declaration, the usage of one call, the price table and the exchange the checks judge, as JSON Schema 2020-12 |
+| [`Model.json`](Model.json) | the declaration, the usage of one call, the price table, the weighting table and the exchange the checks judge, as JSON Schema 2020-12 |
+| [`weighting-tables/`](weighting-tables/) | the weighting tables of the Takt, one file per version, never changed once used |
 | [`examples/`](examples/) | valid examples per definition, and the must-fail fixtures for the checks below |
 
 On the wire an adapter speaks whatever its provider speaks. The one adapter this repository
@@ -118,3 +119,20 @@ is optional. `taktusctl cost` prices a run's compute seconds at it beside its to
 a class the table does not price, or a table without `compute`, as unpriced (ADR-0010, second
 amendment). A currency budget holds that money during the run, and refuses compute the table
 does not price (ADR-0005, fourth amendment).
+
+## 7. The weighting table
+
+A `WeightingTable` turns the same breakdown into Takte, the unit of ADR-0010. It gives Takte
+per `unit_tokens` tokens of each price kind, times the factor of the model's class; per minute
+of compute per resource class; per finished step of the methods it names; per MiB of state
+written. It also gives the window of the Takt rate in days, and says whether it is
+`calibrated`.
+
+Unlike prices, the weights are Taktus's own, not a provider's. The tables are therefore in the
+repository, under [`weighting-tables/`](weighting-tables/), one file per version. The operator
+does not choose them: the table in force is the newest by `valid_from`. **A version never
+changes once used**; a run's budget statement names the table it started at by the digest of
+its document. Which class a model is in is the operator's (`TAKTUS_TAKT_MODEL_CLASSES`), and is
+recorded beside the digest. A quantity the table does not weigh is named, never counted as
+zero. Version 0 is the owner's first table (DEC-0131), uncalibrated, and every figure computed
+at it says so.
