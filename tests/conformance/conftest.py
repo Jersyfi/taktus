@@ -50,9 +50,9 @@ from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.catalog.application.service import RunConformance, RunConformanceHandler
 from taktus.components.catalog.domain.model import AdapterMaturity, Configuration
 from taktus.components.ledger.application.service import ChainedLedger
-from taktus.composition.conformance import InstanceSuites, worker_target
+from taktus.composition.conformance import InstanceSuites, WorkerSuite, worker_suites
 from taktus.composition.pools import Pools
-from taktus.composition.settings import load_execution
+from taktus.composition.settings import load_workers
 from taktus.conformance import (
     ConnectorSuiteOptions,
     Report,
@@ -614,15 +614,15 @@ async def record(
     persistence = MemoryPersistence()
     ledger = ChainedLedger(MemoryLedgerStore(persistence), clock)
     objects = MemoryObjectStore()
-    target = None
+    workers: dict[str, WorkerSuite] = {}
     if worker is not None:
-        execution = load_execution(EnvironmentConfiguration({"TAKTUS_WORKER": worker}))
-        target = worker_target(execution, settings, state_dir=state_dir)
+        configured = load_workers(EnvironmentConfiguration({"TAKTUS_WORKER": worker}))
+        workers = worker_suites(configured, settings, state_dir=state_dir)
     handler = RunConformanceHandler(
         InstanceSuites(
             pools=pools,
             settings=settings,
-            worker=target,
+            workers=workers,
             connectors=connectors or {},
             model_endpoint=model_endpoint,
         ),
