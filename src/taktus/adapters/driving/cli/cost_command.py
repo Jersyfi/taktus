@@ -1,8 +1,9 @@
 """`taktusctl cost`: what a run cost, recomputed from the ledger (ADR-0005 third amendment).
 
-The tokens every step recorded, per model and price kind, priced at the table the run's budget
-statement names — the table it was held to, whatever is configured today. `--prices FILE`
-prices the same tokens at another table, to compare. What cannot be priced is named; nothing
+The tokens every step recorded, per model and price kind, and its compute seconds, per resource
+class, priced at the table the run's budget statement names — the table it was held to, whatever
+is configured today (#230). `--prices FILE` prices the same breakdown at another table, to
+compare. What cannot be priced is named; nothing
 is counted as free. A run held with an uncalibrated margin an operator set below the floor says
 so beside its money (DEC-0047).
 """
@@ -99,7 +100,8 @@ def render(result: RunCost) -> str:
     if result.priced is not None:
         lines.append(
             f"priced   {result.priced.amount:.6f} {result.priced.currency} at price table "
-            f"{result.priced.table}"
+            f"{result.priced.table}: tokens {result.tokens_amount or 0.0:.6f}, compute "
+            f"{result.compute_amount or 0.0:.6f}"
         )
     for missing in result.unpriced:
         lines.append(f"unpriced {missing}")

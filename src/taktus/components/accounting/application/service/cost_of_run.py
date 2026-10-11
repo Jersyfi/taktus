@@ -3,9 +3,11 @@
 The run's `budget.set` entry names its budget statement by digest, and the statement names the
 price table by the digest of its document. Both documents are in the object store, content-
 addressed, so the table read back is the table the run was held to, whatever the configuration
-says today. The run's `step.finished` entries are metered (`domain.service.metering`) and the
-tokens priced. What cannot be priced — a model the table does not know, tokens recorded without
-a model, a run held without a table — is named, never counted as free (ADR-0005, ADR-0010).
+says today. The run's `step.finished` entries are metered (`domain.service.metering`); the
+tokens are priced per model and kind, and the compute seconds per resource class, at that one
+table (#230). What cannot be priced — a model or a resource class the table does not know, a
+table that prices no compute, tokens recorded without a model, a run held without a table — is
+named, never counted as free (ADR-0005, ADR-0010).
 Where the run was held with an uncalibrated margin an operator set below the floor, the
 statement says so, and so does the cost (DEC-0047).
 """
@@ -18,7 +20,7 @@ from typing import Any
 
 from taktus.components.accounting.domain.service import Meter, meter
 from taktus.ports.ledger import Ledger
-from taktus.ports.model import Priced, PriceTable, price
+from taktus.ports.model import Priced, PriceTable, price, price_compute
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import Tenant, UnitOfWork
 from taktus.shared.v1 import LedgerEntry, Value
@@ -28,7 +30,12 @@ class RunCost(Value):
     run_id: str
     meter: Meter
     priced: Priced | None
-    """Money at the run's price table; None when the run was held without one."""
+    """Money at the run's price table, tokens and compute together; None when the run was held
+    without one."""
+    tokens_amount: float | None = None
+    """The part of the money that is tokens."""
+    compute_amount: float | None = None
+    """The part of the money that is compute seconds."""
     table_digest: str | None
     unpriced: tuple[str, ...] = ()
     """What the amount leaves out, and why."""
@@ -66,7 +73,7 @@ class CostOfRunHandler:
                 f"{used.tokens_unattributed} token(s) recorded without the model that used them"
             )
         if table is None:
-            if used.tokens:
+            if used.tokens or used.compute_seconds:
                 unpriced.append("the run was held without a price table")
             return RunCost(
                 run_id=query.run_id,
@@ -76,12 +83,29 @@ class CostOfRunHandler:
                 unpriced=tuple(unpriced),
                 below_floor=below_floor,
             )
-        priced = price(used.tokens, table)
-        unpriced.extend(f"no price for {kind}" for kind in priced.unpriced)
+        tokens = price(used.tokens, table)
+        unpriced.extend(f"no price for {kind}" for kind in tokens.unpriced)
+        compute = price_compute(used.compute_seconds, table)
+        if table.compute is None and compute.unpriced:
+            classes = ", ".join(sorted(c for c, s in used.compute_seconds.items() if s))
+            unpriced.append(
+                f"compute seconds were not priced: price table {table.version} prices no "
+                f"compute ({classes})"
+            )
+        else:
+            unpriced.extend(f"no price for {kind}" for kind in compute.unpriced)
+        priced = Priced(
+            amount=round(tokens.amount + compute.amount, 9),
+            currency=table.currency,
+            table=table.version,
+            unpriced=tokens.unpriced + compute.unpriced,
+        )
         return RunCost(
             run_id=query.run_id,
             meter=used,
             priced=priced,
+            tokens_amount=tokens.amount,
+            compute_amount=compute.amount,
             table_digest=digest,
             unpriced=tuple(unpriced),
             below_floor=below_floor,
