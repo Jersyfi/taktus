@@ -125,7 +125,8 @@ start. Every upgrade migrates before the new version starts (`pre-upgrade`). The
 migrates before anything starts when the database exists already (`database.deploy: false`,
 `pre-install`). When the chart deploys the database, the first install migrates right after
 creating it (`post-install`), because a hook that runs before the install has no database to
-migrate (DEC-0060). Until it is done the roles refuse to start against an empty schema and are
+migrate (DEC-0060). An upgrade that changes only the release's image does not restart the
+database: its pod template carries no label that changes with a release (#237). Until it is done the roles refuse to start against an empty schema and are
 restarted.
 
 **Every pod runs under the restricted profile**, the database included: not as root, no
