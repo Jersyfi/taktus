@@ -146,6 +146,7 @@ def execution_of(
             enforce_egress=settings.egress_enforced,
             service_account=settings.service_account,
             state_claim=settings.state_claim,
+            cpu_request_share=settings.cpu_request_share,
         )
     return ContainerExecution(
         configuration,
