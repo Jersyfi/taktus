@@ -195,7 +195,8 @@ next boundary before crossing
 them (check W-14, in both reference workers, with a fault each). Tokens are recorded per model
 and per price kind, a versioned price table prices them and the compute seconds per resource
 class, and `taktusctl cost <run>` recomputes a run's money from the ledger, naming what the
-table does not price (#230). Every model adapter declares what it can compute before a call;
+table does not price (#230). A currency budget holds that compute money during the run, and
+refuses compute its table does not price (#232, NTC-0188). Every model adapter declares what it can compute before a call;
 when a budget is set the run records what it can promise, and where a provider bills per time
 window it says that a currency budget cannot be enforced. The evidence is
 `docs/research/2026-09-30-what-providers-allow.md`.

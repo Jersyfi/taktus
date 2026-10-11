@@ -1,6 +1,6 @@
 # ADR-0010 — The Takt as a unit of orchestrated work
 
-**Status:** **proposed**, amended 2026-09-30 (one breakdown, two tables) and 2026-10-11 (compute seconds have a price too) — measured from `0.2.0`; how long data is collected before anything is
+**Status:** **proposed**, amended 2026-09-30 (one breakdown, two tables) and 2026-10-11 (compute seconds have a price too; a currency budget holds them, ADR-0005 fourth amendment) — measured from `0.2.0`; how long data is collected before anything is
 charged is decided later, based on real runs from both reference use cases
 
 ## Context
@@ -101,9 +101,8 @@ The breakdown holds what workers and models report. A worker that reports tokens
 model that used them leaves them unpriced, and says so; a worker that reports money only when
 an assignment ends reports it beside the computed figure, and the two may differ.
 
-Compute money is computed after the run, not held during it. A budget in a currency is held
-against what workers estimate and report in that currency and against tokens at the table
-(ADR-0005); compute seconds priced at the table are not part of that running total. A run can
-therefore cost more at its table than its currency budget held it to, and only a compute budget
-holds its compute (#232). Quota units and storage have no price yet; they stay outside the
-amount.
+A budget in a currency holds compute money at the same table, during the run (ADR-0005,
+fourth amendment, #232). Under a currency budget, compute the table does not price is refused,
+not admitted as free. A run held to a compute budget alone can still use compute its table does
+not price; its cost names that compute as unpriced. Quota units and storage have no price yet;
+they stay outside the amount.

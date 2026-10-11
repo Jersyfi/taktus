@@ -279,3 +279,84 @@ async def test_a_stopped_step_is_no_calibration_history() -> None:
     assert reservation is not None and reservation.compute_seconds == 4.0, (
         "the estimate of 2 s, twice: the stopped attempt counted as no history"
     )
+
+
+# --- a currency budget holds the money of compute (ADR-0005, fourth amendment, #232) --------
+
+COMPUTE = TABLE.model_copy(update={"version": "test-compute", "compute": {"cpu.small": 0.25}})
+"""The test table, and a price for a second of `cpu.small`: 0.25 usd, what the fake runs on."""
+
+
+def computing(table: PriceTable | None, *steps: str) -> tuple[Harness, FakeWorker]:
+    """Worker steps one after another, each estimated at 4 s of `cpu.small` and using 4 s —
+    1.00 usd at the table — reserved as estimated."""
+    fake = FakeWorker(estimate_seconds=4.0, script=(InnerStep("one", 4.0),))
+    definitions = [worker(step, after=(steps[n - 1],) if n else ()) for n, step in enumerate(steps)]
+    h = Harness(
+        *definitions,
+        workers=[fake],
+        options=EngineOptions(prices=table, uncalibrated_margin=0.0),
+    )
+    return h, fake
+
+
+@pytest.mark.parametrize(
+    ("table", "how", "said"),
+    [
+        (COMPUTE, "held", "priced at the table test-compute per resource class (cpu.small)"),
+        (TABLE, "unpriced", "the price table test-1 prices no compute"),
+        (None, "unpriced", "no price table is configured"),
+    ],
+)
+async def test_a_currency_budget_states_how_it_holds_a_worker_steps_compute_money(
+    table: PriceTable | None, how: str, said: str
+) -> None:
+    h, _ = computing(table, "do")
+    run = await h.start(Limits(currency={"usd": 5.0}))
+    promises = {p["kind"]: p for p in (await statement(h, run))["promises"]}  # type: ignore[attr-defined]
+    assert promises["compute_money"]["how"] == how
+    assert said in promises["compute_money"]["reason"]
+
+
+async def test_a_step_whose_compute_at_the_table_would_cross_what_remains_is_not_admitted() -> None:
+    """By hand: each step reserves 4 s at 0.25 usd a second, 1.00 usd. Of 1.50 usd the first
+    leaves 0.50 once it used its 4 s; the second needs 1.00 and is not admitted."""
+    h, fake = computing(COMPUTE, "one", "two")
+    run = await h.start(Limits(currency={"usd": 1.5}))
+    assert run.state is RunState.HALTED and run.cause is Cause.LIMIT
+    assert run.step_run("one").state is StepState.SUCCEEDED
+    two = run.step_run("two")
+    assert two.state is StepState.REJECTED
+    assert "1.0 usd needed, 0.5 left" in (two.reason or "")
+    assert len(fake.assignments) == 1, "nothing of the second step started"
+    ceiling = fake.assignments[0].limits.compute
+    assert ceiling is not None and ceiling.seconds == 4.0, "the worker halts on its seconds"
+
+
+async def test_a_currency_budget_that_covers_the_compute_at_the_table_admits_every_step() -> None:
+    h, _ = computing(COMPUTE, "one", "two")
+    run = await h.start(Limits(currency={"usd": 2.0}))
+    assert run.state is RunState.FINISHED, "twice 1.00 usd fits 2.00 exactly"
+
+
+@pytest.mark.parametrize(
+    ("table", "reason"),
+    [
+        (
+            COMPUTE.model_copy(update={"compute": {"gpu.large": 1.0}}),
+            "no price for compute cpu.small",
+        ),
+        (TABLE, "prices no compute"),
+        (None, "no price table is configured"),
+    ],
+)
+async def test_compute_the_table_does_not_price_is_never_admitted_as_free(
+    table: PriceTable | None, reason: str
+) -> None:
+    h, fake = computing(table, "do")
+    run = await h.start(Limits(currency={"usd": 100.0}))
+    assert run.state is RunState.HALTED and run.cause is Cause.NO_ESTIMATE
+    do = run.step_run("do")
+    assert do.state is StepState.REJECTED and reason in (do.reason or "")
+    assert fake.assignments == [], "the worker was never handed the step"
+    assert "step.rejected:do:no_estimate" in await h.kinds(run)

@@ -93,8 +93,9 @@ What is built of this page (ADR-0010, amendment of 2026-09-30):
   the same breakdown at another table with `--prices`. The money is the tokens per model and
   kind plus the compute seconds per resource class, with both parts shown (ADR-0010, second
   amendment). A model, a kind or a resource class without a price is named, never counted as
-  free; so is a table that prices no compute. Compute money is computed after the run: a
-  currency budget does not hold it. A run held with an uncalibrated margin an operator set below the floor
+  free; so is a table that prices no compute. A currency budget holds compute money at the
+  same table during the run, and refuses compute the table does not price (ADR-0005, fourth
+  amendment). A run held with an uncalibrated margin an operator set below the floor
   says so beside its money, as its budget statement does (DEC-0047).
 - **The Takt** will be the same breakdown at a weighting table. The weights are not fixed; they
   are the owner's (M4.3), and section 6 says when.

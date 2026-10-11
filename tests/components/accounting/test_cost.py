@@ -100,6 +100,10 @@ COMPUTE = TABLE.model_copy(update={"version": "test-compute", "compute": {"cpu.s
 
 BOTH = Limits(currency={"usd": 1.0}, compute=ComputeLimit(seconds=10, resource_class="cpu.small"))
 
+SECONDS = Limits(compute=ComputeLimit(seconds=10, resource_class="cpu.small"))
+"""A budget in compute seconds alone: a currency budget refuses compute its table does not price
+(ADR-0005, fourth amendment), so a run that used unpriced compute was held to none."""
+
 
 def with_a_worker(table: PriceTable | None) -> ModelHarness:
     """A run that refines with a model and then does the work on a worker: tokens and compute."""
@@ -138,7 +142,7 @@ async def test_a_run_costs_its_tokens_plus_its_compute_seconds_at_the_table_it_w
 
 async def test_compute_in_a_class_the_table_does_not_price_is_named_never_free() -> None:
     h = with_a_worker(TABLE.model_copy(update={"version": "gpu", "compute": {"gpu.large": 1.0}}))
-    run = await h.start(BOTH)
+    run = await h.start(SECONDS)
     cost = await CostOfRunHandler(h.ledger, h.objects, h.persistence).execute(
         CostOfRun(run.id, "t")
     )
@@ -153,7 +157,7 @@ async def test_a_table_without_compute_gives_todays_amount_and_says_compute_was_
     None
 ):
     h = with_a_worker(TABLE)
-    run = await h.start(BOTH)
+    run = await h.start(SECONDS)
     cost = await CostOfRunHandler(h.ledger, h.objects, h.persistence).execute(
         CostOfRun(run.id, "t")
     )
@@ -168,7 +172,7 @@ async def test_compute_is_priced_at_the_statements_table_and_another_table_only_
     """The run was held to a table without compute; a table given to compare prices its
     compute, and the run's own figure does not change (ADR-0010)."""
     h = with_a_worker(TABLE)
-    run = await h.start(BOTH)
+    run = await h.start(SECONDS)
     handler = CostOfRunHandler(h.ledger, h.objects, h.persistence)
     compared = await handler.execute(CostOfRun(run.id, "t", table=COMPUTE))
     own = await handler.execute(CostOfRun(run.id, "t"))

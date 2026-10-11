@@ -147,7 +147,10 @@ follow:
   boundary before crossing them (W-14). The overrun of the one inner step during which a total
   crossed the line is the residual; the reservation exists to absorb it (ADR-0005, third amendment;
   DEC-0035). For money reported only when an assignment ends — the coding worker's — the worker
-  cannot halt on it and is held by the tokens it reports per step. When a budget is set, the run
+  cannot halt on it and is held by the tokens it reports per step. A currency budget holds the
+  money of compute seconds at the run's price table, and gives a worker the compute ceiling that
+  money buys; under it, compute the table does not price is refused, not admitted as free
+  (ADR-0005, fourth amendment). When a budget is set, the run
   records what it can promise per kind — exactly per step, as an estimate, only as a share of a
   subscription's time window, or not at all — derived from what each model adapter declares it
   can compute (`contracts/model/v1`), as `budget.set`.

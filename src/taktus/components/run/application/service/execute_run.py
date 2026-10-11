@@ -42,7 +42,9 @@ What happens around every step is the contract of ADR-0005 and is the same for e
    (`domain.service.budget`), is reserved against what remains of the line the run is held to —
    the budget less its margin (`domain.service.admission`); a step that does not fit is
    *rejected* before anything starts, and the run halts with cause `limit`. A worker receives its
-   reservation as its `limits` and halts at its next boundary before crossing it (W-14);
+   reservation as its `limits` and halts at its next boundary before crossing it (W-14). Under a
+   currency budget, compute seconds count at the run's price table, and compute the table does
+   not price is refused, never admitted as free (ADR-0005, fourth amendment);
 3. run — through the worker port, the rule table, the connector port, or the clock;
 4. persist — the step run with its checkpoint, artifacts and raw consumption is written before
    the next step is looked at; every state change and the ledger entry that describes it are
@@ -636,8 +638,8 @@ class RunEngine:
             if worker_steps and run.budget.currency is not None
             else []
         )
-        promises = budgeting.promise(run.budget, models, by_assignment)
         table = self._options.prices
+        promises = budgeting.promise(run.budget, models, by_assignment, worker_steps, table)
         table_digest = None
         if table is not None:
             table_digest = await self._objects.put(_canonical(table.document()))
@@ -1585,6 +1587,68 @@ class RunEngine:
         """The line the run is held to: its budget less its margin."""
         return budgeting.held(run.budget, run.margin)
 
+    def _compute_table(self, run: Run) -> PriceTable | None:
+        """The table the run's currency budget holds compute money at; None where it holds
+        none — no currency budget, or one under which compute has no price (ADR-0005, fourth
+        amendment)."""
+        promised = budgeting.compute_money(run.budget, self._options.prices)
+        held = promised is not None and promised.how == budgeting.HELD
+        return self._options.prices if held else None
+
+    def _spent(self, run: Run) -> ConsumptionQuantities:
+        """What the run used and reserved, with the money of its compute seconds at the table
+        where its currency budget holds it: money follows from the record, never stored."""
+        consumed = run.consumed()
+        table = self._compute_table(run)
+        if table is None:
+            return consumed
+        return budgeting.with_money(consumed, run.compute_by_class(), table)[0]
+
+    def _priced(self, run: Run, quantities: ConsumptionQuantities) -> ConsumptionQuantities:
+        """A step's quantities with the money of its compute seconds, where it is held."""
+        table = self._compute_table(run)
+        if table is None or not quantities.compute_seconds or quantities.resource_class is None:
+            return quantities
+        seconds = {quantities.resource_class: quantities.compute_seconds}
+        return budgeting.with_money(quantities, seconds, table)[0]
+
+    def _per_second(self, run: Run, reservation: ConsumptionQuantities) -> tuple[str, float] | None:
+        """The currency and the price of a second of the reservation's resource class, where
+        the run's currency budget holds compute money: what the worker's ceiling is bought
+        with."""
+        table = self._compute_table(run)
+        if table is None or table.compute is None or reservation.resource_class is None:
+            return None
+        price = table.compute.get(reservation.resource_class)
+        return None if price is None else (table.currency, price)
+
+    def _unpriced(self, run: Run, quantities: ConsumptionQuantities) -> str | None:
+        """Why a step cannot be estimated in money under a currency budget, or None: its
+        compute seconds have no price, or the compute the run already used has none, so what
+        is left of the budget cannot be computed. Unpriced is never free (ADR-0010)."""
+        if run.budget.currency is None:
+            return None
+        if not quantities.compute_seconds and not quantities.currency:
+            return None
+        promised = budgeting.compute_money(run.budget, self._options.prices)
+        table = self._compute_table(run)
+        if table is None:
+            if not quantities.compute_seconds or promised is None:
+                return None
+            return f"the budget limits money and {promised.reason}"
+        seconds = dict(run.compute_by_class())
+        if quantities.compute_seconds:
+            needed = quantities.resource_class or "an unnamed class"
+            seconds[needed] = seconds.get(needed, 0.0) + quantities.compute_seconds
+        missing = budgeting.with_money(quantities, seconds, table)[1]
+        if not missing:
+            return None
+        return (
+            f"the budget limits money and the price table {table.version} has no price for "
+            + ", ".join(missing)
+            + ": the step's cost, or what is left of the budget, cannot be computed"
+        )
+
     async def _demand(self, run: Run, step: Step, work: Work) -> _Demand:
         """What a local step is estimated to use before it runs — or why it cannot be. A step
         whose adapter is not configured fails here, as it would when called, and its reason
@@ -1699,6 +1763,9 @@ class RunEngine:
         carries the estimate on `step.admitted` and, where the two differ, the reservation on
         `step.reserved`."""
         adapter = demand.adapter or step_run.adapter
+        unpriced = None if demand.quantities is None else self._unpriced(run, demand.quantities)
+        if unpriced is not None:
+            demand = _Demand(None, unpriced, demand.adapter, demand.capabilities)
         if demand.quantities is None:
             span.record_failure("no estimate")
             step_run = step_run.to(
@@ -1728,7 +1795,8 @@ class RunEngine:
         )
         reservation = budgeting.reserve(demand.quantities, scale)
         line = self._line(run)
-        verdict = admit(reservation, remaining(line, _without(run, step_run.step_id)), line)
+        spent = self._spent(_released(run, step_run.step_id))
+        verdict = admit(self._priced(run, reservation), remaining(line, spent), line)
         refused = (
             await self._platform_refuses(self._options.unit_memory_bytes)
             if step.method is Method.WORKER and verdict.fits
@@ -2293,7 +2361,7 @@ class RunEngine:
         if unverified is not None:
             return await self._refuse_unverified(run, step_run, adapter, unverified, span)
         resuming = step_run.checkpoint if step_run.state is StepState.STOPPED else None
-        left = remaining(self._line(run), run.consumed())
+        left = remaining(self._line(run), self._spent(run))
         assignment = Assignment(
             # An open assignment the worker never received is posted again under its own id:
             # a runner that handed it over and was cut off then meets the worker's 409.
@@ -2351,8 +2419,9 @@ class RunEngine:
             update={
                 "limits": budgeting.ceiling(
                     budgeting.grow(reservation, run.margin),
-                    remaining(run.budget, _without(run, step_run.step_id)),
+                    remaining(run.budget, self._spent(_released(run, step_run.step_id))),
                     run.budget,
+                    self._per_second(run, reservation),
                 )
             }
         )
@@ -3184,13 +3253,13 @@ def _times(demand: Mapping[str, Any], calls: int) -> ConsumptionQuantities:
     return ConsumptionQuantities.model_validate(quantities)
 
 
-def _without(run: Run, step_id: StepId) -> ConsumptionQuantities:
-    """What the run has used and reserved, the given step's own earlier use included but not
-    its reservation: the step is being admitted again, and its old reservation is replaced."""
+def _released(run: Run, step_id: StepId) -> Run:
+    """The run with the given step's reservation released, its own earlier use kept: the step
+    is being admitted again, and its old reservation is replaced."""
     for step_run in run.step_runs:
         if step_run.step_id == step_id and step_run.reservation is not None:
-            return run.with_step_run(step_run.model_copy(update={"reservation": None})).consumed()
-    return run.consumed()
+            return run.with_step_run(step_run.model_copy(update={"reservation": None}))
+    return run
 
 
 def _measured(span: Span, step_run: StepRun) -> None:

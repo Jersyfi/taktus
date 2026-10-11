@@ -8,7 +8,9 @@ estimated, money from the record, and a budget only as strong as the provider al
 (§*Third amendment*); implemented in the same pull request · amended 2026-10-01 (DEC-0043): the
 worker's margin has a floor of 10 % and its history resets with its model version (point 6) ·
 amended 2026-10-08 (DEC-0047, NTC-0025): an operator's margin below the floor is said where it is
-set and in every report that relies on it (point 6)
+set and in every report that relies on it (point 6) · amended 2026-10-11 (NTC-0188): a currency
+budget holds the money of compute seconds at the run's price table, and refuses compute the table
+does not price (§*Fourth amendment*)
 
 ## Context
 A limit enforced by aborting destroys work and money at the same time: the tokens are spent and the
@@ -217,6 +219,43 @@ budget-wide holdback of point 3 of the second amendment stays a named setting
 (`TAKTUS_BUDGET_MARGIN`) and holds back nothing by default; where an operator sets it, a worker
 may use its share of it before it must halt.
 
+## Fourth amendment — a currency budget holds the money of compute (2026-10-11)
+
+Since ADR-0084 a price table may price a second of compute per resource class, and since #230
+the cost of a run counts that money (ADR-0010, second amendment). Admission did not. A currency
+budget was held against what workers estimate and report in that currency and against the
+priced estimate of an `llm` step. A worker that reports compute seconds and no money was
+therefore admitted as if its compute were free, while the budget statement said the currency
+was held. That is a limit that does not hold, and the second amendment's position is that a
+limit is a limit. What follows is built (#232, NTC-0188).
+
+**1. Compute money is held at the run's table.** Where a run has a currency budget and its
+price table prices compute in a currency the budget limits, admission prices a step's reserved
+compute seconds at the table. It prices what the run used and reserved the same way, per
+resource class. The step is admitted only where its money fits what remains of the line. The
+money is derived from the seconds each time; it is never stored on the step, so that money
+still follows from the record (third amendment, point 3).
+
+**2. A worker halts on the compute its money buys.** A worker reports compute seconds, not
+money, so a ceiling in money would not stop it. Where compute money is held, the worker's
+`limits` carry a compute ceiling even where the budget sets none. The ceiling is its reservation,
+grown by the run's margin, and never more than the seconds the money left would buy (W-14).
+
+**3. Unpriced compute is refused, never admitted as free.** Under a currency budget, a step whose
+estimate names compute seconds is refused (`no_estimate`) when no price table is configured,
+when the table prices no compute, when it prices in a currency the budget does not limit, or
+when it does not price the step's resource class. The same holds when compute the run already
+used has no price, because what is left of the budget cannot then be computed. This is the rule
+the third amendment, point 2, set for a model the table does not price.
+
+**4. The statement says it when the budget is set.** A run with a currency budget and a worker
+step records, in `budget.set`, a promise of kind `compute_money`. It says `held`, with the table
+and the classes it prices, or `unpriced`, with the reason and the consequence that a step that
+needs compute is refused.
+
+**What this changes in the first amendment's table.** Nothing in its rows. The currency row now
+covers compute seconds where the table prices them, held per step like compute itself.
+
 ## Where this promise ends
 
 The first amendment states where the currency guarantee ends: a worker that reports money
@@ -238,3 +277,14 @@ after it, and is recorded as a calibration signal. Calibration learns only from 
 reads: the first run of an adapter no seed matches is held at its estimate as given. The
 refusal for want of an estimate holds for the four ways a step is estimated today; a method
 added later brings its own.
+
+The fourth amendment holds compute money only at the run's own table, in the table's currency.
+There is no conversion between currencies: a budget in another currency refuses compute instead
+of guessing a rate. A worker that reports money which already includes its compute is held for
+that compute twice — once as it reports it, once at the table; it errs towards the limit. Compute
+a worker uses without estimating it is priced once it is reported, at the next boundary, not
+before. A step's compute money is not part of its recorded estimate, so calibration learns the
+seconds and not the money. Quota units and storage have no price, and a currency budget does not
+hold them. The money of an `llm` step is held at its priced estimate while the step runs; once
+it finished, the running total does not count it yet. That is a finding against this ADR, not a
+boundary of it (#235).

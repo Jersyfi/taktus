@@ -18,6 +18,12 @@ workers' consumption kinds, how each limited kind is held — exactly per step, 
 only as a share of a time window, or not at all — and the run records that statement when its
 budget is set, not afterwards.
 
+**What a currency budget holds of compute.** A worker step's compute seconds have a price where
+the run's table prices its resource class (ADR-0010, second amendment). A currency budget holds
+that money as it holds every other: the step's reservation is priced before it is admitted, and
+what the run used and reserved is priced at every boundary (`compute_money`, `with_money`). A
+step whose compute has no price under a currency budget is refused, never admitted as free.
+
 **Where a worker must stop.** The reservation, grown by the run's margin, is the worker's hard
 ceiling (`grow`, `ceiling`), and never more than what is left of the whole budget: the worker
 halts at its next boundary when its running total would cross it (W-14). The margin is what
@@ -30,7 +36,7 @@ import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from taktus.ports.model import Calculability
+from taktus.ports.model import Calculability, PriceTable, price_compute
 from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit, TokenLimit
 from taktus.shared.v1 import ConsumptionQuantities, Method, Value
 
@@ -292,10 +298,19 @@ def _factor_names(quantities: ConsumptionQuantities) -> list[str]:
     return names + [f"currency.{code}" for code in quantities.currency or {}]
 
 
-def ceiling(reservation: ConsumptionQuantities, left: Limits | None, budget: Limits) -> Limits:
+def ceiling(
+    reservation: ConsumptionQuantities,
+    left: Limits | None,
+    budget: Limits,
+    per_second: tuple[str, float] | None = None,
+) -> Limits:
     """What a worker may use: its reservation, for every kind the budget limits, and never
     more than what is left. The worker halts at its next boundary when its running total
-    would cross it (W-14)."""
+    would cross it (W-14). `per_second` is the currency and the price of a second of the
+    reservation's resource class where a currency budget holds compute money. The worker is
+    then given a compute ceiling even where the budget sets none: the seconds the money left
+    would buy, and never more than its reservation. A worker halts on the compute it reports,
+    not on money it does not report (ADR-0005, fourth amendment)."""
     currency = None
     if budget.currency is not None:
         currency = {
@@ -314,6 +329,12 @@ def ceiling(reservation: ConsumptionQuantities, left: Limits | None, budget: Lim
         )
         quota = QuotaLimit(units=units) if math.isfinite(units) and units > 0 else None
     compute = None
+    if budget.compute is None and per_second is not None and reservation.compute_seconds:
+        code, price = per_second
+        money = math.inf if left is None or left.currency is None else left.currency.get(code, 0)
+        seconds = min(reservation.compute_seconds, money / price if price > 0 else math.inf)
+        if seconds > 0 and reservation.resource_class is not None:
+            compute = ComputeLimit(seconds=seconds, resource_class=reservation.resource_class)
     if budget.compute is not None:
         seconds = min(
             reservation.compute_seconds if reservation.compute_seconds is not None else math.inf,
@@ -369,10 +390,14 @@ def promise(
     budget: Limits,
     models: Sequence[tuple[str, Calculability, bool]],
     currency_by_assignment: Sequence[str],
+    compute_steps: Sequence[str] = (),
+    table: PriceTable | None = None,
 ) -> tuple[Promise, ...]:
     """For every kind the budget limits: how it is held. `models` is every configured model
     as (adapter, its declaration, whether the price table prices it); `currency_by_assignment`
-    names the workers that report money only when an assignment ends."""
+    names the workers that report money only when an assignment ends; `compute_steps` names
+    the steps that can use compute seconds, whose money a currency budget holds at `table`
+    or refuses (`compute_money`)."""
     out: list[Promise] = []
     if budget.tokens is not None:
         worst = _weakest_count(models)
@@ -399,7 +424,57 @@ def promise(
         )
     if budget.compute is not None:
         out.append(Promise(kind="compute", how=HELD, reason="reported per step"))
+    held_compute = compute_money(budget, table) if compute_steps else None
+    if held_compute is not None:
+        out.append(held_compute)
     return tuple(out)
+
+
+COMPUTE_MONEY = "compute_money"
+"""The kind of the promise that says how a currency budget holds the money of compute seconds."""
+
+
+def compute_money(budget: Limits, table: PriceTable | None) -> Promise | None:
+    """How a currency budget holds the money of compute seconds: at the table, or not at all.
+    Where it is not held, a step that needs compute is refused, never admitted as free
+    (ADR-0005, fourth amendment). None where the budget limits no currency."""
+    if budget.currency is None:
+        return None
+    refused = "; a step that needs compute seconds is refused, never admitted as free"
+    if table is None:
+        reason = "no price table is configured, so a second of compute has no price"
+    elif table.compute is None:
+        reason = f"the price table {table.version} prices no compute"
+    elif table.currency not in budget.currency:
+        reason = (
+            f"the price table {table.version} prices in {table.currency} and the budget limits "
+            f"{', '.join(sorted(budget.currency))}"
+        )
+    else:
+        return Promise(
+            kind=COMPUTE_MONEY,
+            how=HELD,
+            reason=f"compute seconds are priced at the table {table.version} per resource class "
+            f"({', '.join(sorted(table.compute))}) and held with the rest of the budget's "
+            f"{table.currency}: reserved before a step, measured per step, and a worker halts at "
+            "the compute the money left buys; a step in a class the table does not price is "
+            "refused, never admitted as free",
+        )
+    return Promise(kind=COMPUTE_MONEY, how=UNPRICED, reason=reason + refused)
+
+
+def with_money(
+    quantities: ConsumptionQuantities, seconds: Mapping[str, float], table: PriceTable
+) -> tuple[ConsumptionQuantities, tuple[str, ...]]:
+    """`quantities` with the money of `seconds` at the table added to its currency, and every
+    resource class the table does not price. An unpriced class adds nothing, so the caller
+    refuses what depends on it: unpriced is never free (ADR-0010)."""
+    priced = price_compute(seconds, table)
+    if not priced.amount:
+        return quantities, priced.unpriced
+    currency = dict(quantities.currency or {})
+    currency[table.currency] = currency.get(table.currency, 0.0) + priced.amount
+    return quantities.model_copy(update={"currency": currency}), priced.unpriced
 
 
 def _weakest_count(models: Sequence[tuple[str, Calculability, bool]]) -> str | None:
