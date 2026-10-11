@@ -429,8 +429,8 @@ platform that was read in full on 2026-09-23. Nothing the owner provides blocks 
 any more: since 2026-10-08 the deployment's access to the cluster, the public name with its
 certificate, the webhook secret, the backup store and Taktus's own app on the repository
 service exist (NEED-0007 to NEED-0010, NEED-0013); the connector acts as the app since #108
-(ADR-0033), and placing the app in the live environment and retiring the personal token is
-NEED-0016. The instance holds real work once its backup and restore exist (#67), and is treated as production
+(ADR-0033); the app is in the live environment and the personal token is retired since
+2026-10-11 (NEED-0016). The instance holds real work once its backup and restore exist (#67), and is treated as production
 (DEC-0057).
 
 Nothing else is blocked. Everything not listed here can be built by a session without the

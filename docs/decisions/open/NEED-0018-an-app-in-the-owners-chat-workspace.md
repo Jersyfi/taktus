@@ -5,6 +5,7 @@
 **Issue:** [#146](https://github.com/Jersyfi/taktus/issues/146)
 **Needed by:** 2026-10-31
 **Owner's answer:** 2026-10-10: the owner takes it up on 2026-10-11; it stays open until then.
+**Progress:** 2026-10-11: steps 1 to 4 done by the owner — the app created from the manifest and installed, the scratch channel, the token and the channel's identifier in the environment `live`. Step 5 is next; step 6 waits for the chart to deploy the chat connector on the instance (#239).
 **Foreseeable since:** [#148](https://github.com/Jersyfi/taktus/pull/148), where the chat connector was built (issue #84)
 
 ## 1. What is needed
