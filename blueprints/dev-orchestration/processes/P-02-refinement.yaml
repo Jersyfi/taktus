@@ -105,6 +105,8 @@ steps:
       - method: llm
         why: a fixed condition needs no judgement, and a judgement could be wrong
     exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the verdict whether the issue may be refined }
     depends_on: [read-issue, read-comments]
     work:
       rule: check
@@ -124,6 +126,8 @@ steps:
       - method: llm
         why: whether a section is there is a fact of the text, not a judgement
     exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the list of sections the issue lacks }
     depends_on: [admit]
     work:
       rule: ready

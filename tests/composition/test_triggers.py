@@ -137,6 +137,7 @@ def bundle(trigger: dict[str, Any], *, limits: bool = True) -> dict[str, Any]:
                 "reason": "r",
                 "rejected": [],
                 "exactness": "exact",
+                "checks": [{"kind": "recomputation"}],
                 "work": {"rule": "constant", "value": {"$input": "target"}},
             }
         ],

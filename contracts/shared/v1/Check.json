@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taktus.eu/contracts/shared/v1/Check.json",
+  "title": "Check",
+  "description": "A machine check a step declares on its result, taken from a fixed catalogue (UC-4.13, ADR-0082). The class `exact` is a claim that a check makes the value right; the check names how. Each kind is one row of the catalogue and takes exactly the parameters that row needs: reconciliation against a total (`total`, `source`), agreement with a second system (`source`, `reference`), plausibility bounds (`minimum`, `maximum`, `pattern`, at least one), approval above a threshold (`threshold`, `role`), sampling (`share`, `role`), and recomputation (none; provisional under DEC-0173). A kind outside the catalogue is a change of the catalogue, not a choice of whoever writes the process.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "description": "The row of the catalogue.",
+      "type": "string",
+      "enum": ["reconciliation", "agreement", "bounds", "approval", "sampling", "recomputation"]
+    },
+    "subject": {
+      "description": "What the check is applied to, in the reader's words: `the booked amount`. Without it the exactness statement says `the result`.",
+      "type": "string",
+      "minLength": 1
+    },
+    "total": {
+      "description": "reconciliation: the total the parts must sum to, in the reader's words: `the invoice total`.",
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "description": "reconciliation: the capability through which the total is read at the moment of the check. agreement: the capability through which the second system's value is read.",
+      "$ref": "Capability.json"
+    },
+    "reference": {
+      "description": "agreement: which of the two values is the reference when they differ — the step's own (`step`) or the second system's (`source`).",
+      "type": "string",
+      "enum": ["step", "source"]
+    },
+    "minimum": {
+      "description": "bounds: the smallest admissible value, inclusive.",
+      "type": "number"
+    },
+    "maximum": {
+      "description": "bounds: the largest admissible value, inclusive.",
+      "type": "number"
+    },
+    "pattern": {
+      "description": "bounds: a regular expression the whole value, as text, must match.",
+      "type": "string",
+      "minLength": 1
+    },
+    "threshold": {
+      "description": "approval: a value above it is confirmed by a person of `role` before it counts.",
+      "type": "number"
+    },
+    "share": {
+      "description": "sampling: the share of results a person of `role` checks after the fact, greater than 0 and at most 1.",
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1
+    },
+    "role": {
+      "description": "approval and sampling: the role that decides. Never a named person (principle 14).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    }
+  },
+  "required": ["kind"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "reconciliation" } } },
+      "then": {
+        "required": ["total", "source"],
+        "properties": {
+          "reference": false, "minimum": false, "maximum": false, "pattern": false,
+          "threshold": false, "share": false, "role": false
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "agreement" } } },
+      "then": {
+        "required": ["source", "reference"],
+        "properties": {
+          "total": false, "minimum": false, "maximum": false, "pattern": false,
+          "threshold": false, "share": false, "role": false
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "bounds" } } },
+      "then": {
+        "anyOf": [
+          { "required": ["minimum"] },
+          { "required": ["maximum"] },
+          { "required": ["pattern"] }
+        ],
+        "properties": {
+          "total": false, "source": false, "reference": false,
+          "threshold": false, "share": false, "role": false
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "approval" } } },
+      "then": {
+        "required": ["threshold", "role"],
+        "properties": {
+          "total": false, "source": false, "reference": false, "minimum": false,
+          "maximum": false, "pattern": false, "share": false
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "sampling" } } },
+      "then": {
+        "required": ["share", "role"],
+        "properties": {
+          "total": false, "source": false, "reference": false, "minimum": false,
+          "maximum": false, "pattern": false, "threshold": false
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "recomputation" } } },
+      "then": {
+        "properties": {
+          "total": false, "source": false, "reference": false, "minimum": false,
+          "maximum": false, "pattern": false, "threshold": false, "share": false, "role": false
+        }
+      }
+    }
+  ]
+}

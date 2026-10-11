@@ -51,10 +51,15 @@ The process bundle format proper arrives at `0.3.0` (`docs/roadmap.md`, ADR-0011
 bundle is the process version of `docs/architecture/control-plane.md` §4, written as YAML, with
 one addition per step. Every field of a step is the shared kernel's `Step`
 (`contracts/shared/v1/Step.json`) — `id`, `method`, `reason`, `rejected`, `exactness`,
-`fallback`, `model`, `requires`, `depends_on` — and the rules of that schema hold: a
+`checks`, `fallback`, `model`, `requires`, `depends_on` — and the rules of that schema hold: a
 result-producing step carries an exactness class, `wait` and `human` carry none, `llm` and
 `worker` name a fallback, `ml` and `neural` pin a model, and `exact` admits `rule` and
-`statistics` only. A bundle that breaks one of them is refused with every finding listed.
+`statistics` only. An `exact` step also declares at least one check from the catalogue
+(`contracts/shared/v1/Check.json`): `verify-answer` declares plausibility bounds, the pattern its
+rule checks (ADR-0082). A bundle that breaks one of them is refused with every finding listed.
+`uv run taktusctl exactness --process examples/processes/six-times-seven.yaml` prints the
+bundle's exactness statement: which checks apply, what they cover, what they do not cover, and
+what would slip through.
 
 Top level:
 
