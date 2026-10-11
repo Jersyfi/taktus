@@ -91,6 +91,5 @@ that the training did not finish. The budget of the trigger holds each training 
 not the weekly run as a whole: a tenant with many candidates spends that budget once per
 candidate. The measures read every run of the tenant on each call, as ADR-0084 says, and a
 weekly run reads them twice. `taktusctl maturation correct` lets any identity the tenant knows
-correct any step, until rights per role exist (UC-7.3). Applying an accepted proposal is #218;
-pricing compute seconds in `taktusctl cost` is #230; a web page for the measures is not part of
-this.
+correct any step, until rights per role exist (UC-7.3). Applying an accepted proposal is #218,
+and a web page for the measures is not part of this.
