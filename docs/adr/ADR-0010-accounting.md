@@ -91,7 +91,7 @@ built (#230, NTC-0184).
 ## Third amendment — the Takt is measured, not charged (2026-10-11)
 
 The owner gave the first weighting table (DEC-0131, Option A) and the condition measuring must
-meet (DEC-0132, UC-8.5 §2). What follows is built (#81, NTC-0190).
+meet (DEC-0132, UC-8.5 §2). What follows is built (#81, NTC-0192).
 
 - **The table is a document in the repository.** Its shape is `WeightingTable`, beside the
   price table in `contracts/model/v1/Model.json`. The tables are under

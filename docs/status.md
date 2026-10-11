@@ -267,7 +267,7 @@ budget statement names the weighting table in force when it started by digest â€
 owner's first table, uncalibrated (DEC-0131) â€” and the model classes the operator set.
 `taktusctl cost <run>` prints the Takte beside the money and weighs them at another table on
 request; without a run it prints the tenant's Takte over 30 days and the rate per hour. What a
-table does not weigh is named, and every figure says "uncalibrated" (UC-8.5, NTC-0190). No
+table does not weigh is named, and every figure says "uncalibrated" (UC-8.5, NTC-0192). No
 model class is set on the instance yet, so its tokens are named unweighed until one is.
 
 **The conformance half of maturity is recorded** (#93, `0.2.0`, ADR-0044). The instance runs an

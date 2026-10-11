@@ -1,4 +1,4 @@
-# NTC-0190 — The Takt is measured at the table a run started at
+# NTC-0192 — The Takt is measured at the table a run started at
 
 **Mode entry:** M2.4
 **Kind:** behaviour-change
