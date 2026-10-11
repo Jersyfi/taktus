@@ -7,7 +7,7 @@ serves: [P1, P4, P8, P12]
 state: built
 version: 0.2.0
 tests: [tests/composition/test_reactions.py::test_a_labelled_issue_starts_the_process_its_trigger_names_without_a_person, tests/composition/test_reactions.py::test_a_redelivery_starts_nothing_twice, tests/composition/test_reactions.py::test_a_reaction_interrupted_before_it_was_published_completes_nothing_twice, tests/composition/test_reactions.py::test_one_event_starts_each_process_once, tests/composition/test_reactions.py::test_a_condition_that_does_not_hold_makes_the_reaction_wait_not_vanish, tests/composition/test_reactions.py::test_an_event_received_before_the_version_was_registered_starts_nothing, tests/composition/test_reactions.py::test_an_unplaced_sender_starts_nothing, tests/integration/test_event_reactions.py::test_an_event_starts_exactly_one_run_whoever_reacts, tests/components/process/test_event_triggers.py::test_every_entry_must_hold_and_each_holds_for_any_of_its_values, tests/components/process/test_event_triggers.py::test_registration_refuses_what_the_contract_refuses_with_every_finding_at_once]
-adrs: {ADR-0035: 070012ed0fb2, ADR-0040: 4537335d5e04, ADR-0048: da64f1fa1ccb}
+adrs: {ADR-0035: 070012ed0fb2, ADR-0040: 9d4e8c625856, ADR-0048: da64f1fa1ccb}
 supersedes: null
 ---
 

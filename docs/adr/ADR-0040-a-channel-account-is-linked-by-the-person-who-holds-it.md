@@ -1,6 +1,6 @@
 # ADR-0040 — A channel account is linked by the person who holds it
 
-**Status:** accepted · amended 2026-10-11 (NTC-0189): an unknown sender is answered only for what they wrote, and once per window
+**Status:** accepted · amended 2026-10-11 (NTC-0191): an unknown sender is answered only for what they wrote, and once per window
 
 ## Context
 Nothing executes without an identity (control-plane.md §2). Until now one configured operator
@@ -65,7 +65,7 @@ however often they write there. That a code linked the account is said once per 
 automation is not answered: nobody reads the offer, and two automations answering each other
 would loop.
 
-*Amended 2026-10-11 (NTC-0189):* on the installed instance one issue, opened and labelled three
+*Amended 2026-10-11 (NTC-0191):* on the installed instance one issue, opened and labelled three
 times within a second, received three identical offers (issue #247). Each label is an event of
 its own. The three deliveries arrived together, each looked for the offer before any had made
 it, and each made it. Three rules replace "once per conversation".
@@ -146,11 +146,11 @@ It never carries an account, a code or a key (ADR-0006).
   the connector finding its earlier answer by the key, as an operation declared `marked` does;
   the key names a fixed stretch of the window, so two instances, or one before and after a
   restart, may each make an offer on either side of a stretch's end, and two instances that
-  look at the same moment may both make one. *(Amended 2026-10-11, NTC-0189.)*
+  look at the same moment may both make one. *(Amended 2026-10-11, NTC-0191.)*
 - **What the sender wrote is the connector's word.** An event whose connector leaves
   `intent.authored` unsaid is taken as the sender's text. A connector that says `true` of an
   event that carries somebody else's text has an unknown sender answered for it, and that text
-  read for a code. *(Amended 2026-10-11, NTC-0189.)*
+  read for a code. *(Amended 2026-10-11, NTC-0191.)*
 - **A code found in a message links the sender who wrote it.** Whoever reads the code before
   it is used, and writes it first from another account, links that account to the identity.
   The 30 minutes and the single use bound that window; they do not close it.

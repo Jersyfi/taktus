@@ -105,7 +105,7 @@ The identity component, in place of the provisional operator identity of DEC-001
 ADR-0040): a sender is placed by the link of their account, made by the person with a link code
 from their Taktus account or by the organisation's identity source behind a port; an unknown
 sender is answered in the channel through the connector's reply operation and kept nowhere,
-only for what they wrote and once per conversation within a configured window (NTC-0189, #247);
+only for what they wrote and once per conversation within a configured window (NTC-0191, #247);
 `taktusctl identity` adds identities and lists and revokes links, each a ledger entry; the
 command line names an identity the tenant knows, and a schedule acts for whoever activated the
 version (NTC-0080, NTC-0081). `TAKTUS_PROVISIONAL_IDENTITY` is gone.

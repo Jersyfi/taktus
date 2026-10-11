@@ -1,4 +1,4 @@
-# NTC-0189 — An unknown sender is answered once per window
+# NTC-0191 — An unknown sender is answered once per window
 
 **Mode entry:** M2.4
 **Kind:** behaviour-change
