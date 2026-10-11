@@ -27,11 +27,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Annotated, Literal, Protocol
 
-from pydantic import Field, model_validator
+from pydantic import Field, StringConstraints, model_validator
 
-from taktus.shared.v1 import ModelName, PriceKinds, Value
+from taktus.shared.v1 import Method, ModelName, PriceKinds, Value
 from taktus.shared.v1.consumption import ResourceClass
 
 type InputCount = Literal["exact", "upper_bound", "estimate", "none"]
@@ -208,3 +208,35 @@ def price_compute(seconds: Mapping[str, float], table: PriceTable) -> Priced:
         table=table.version,
         unpriced=tuple(unpriced),
     )
+
+
+# --- the weighting table (Model.json#/$defs/WeightingTable) --------------------------------------
+
+type ModelClassName = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{0,31}$")]
+"""A class of model the weighting table gives a factor: `small`, `medium`, `large`."""
+
+
+class WeightingTable(Value):
+    """One version of the weights the Takt is computed with (ADR-0010): Takte per unit of each
+    quantity of the one breakdown money is computed from. A version never changes once used;
+    the run's budget statement names the table in force when the run started by the digest of
+    its document. A quantity the table does not weigh is named, never counted as zero. The
+    tables in force are in the repository (`contracts/model/v1/weighting-tables/`)."""
+
+    version: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+    valid_from: datetime
+    calibrated: bool
+    """False until the weights are fixed from data of real operation; every figure says so."""
+    source: str = Field(min_length=1)
+    unit_tokens: int = Field(ge=1)
+    tokens: dict[PriceKindName, Annotated[float, Field(ge=0)]] = Field(min_length=1)
+    """Takte per `unit_tokens` tokens of each price kind, before the model's class factor."""
+    model_classes: dict[ModelClassName, Annotated[float, Field(ge=0)]] = Field(min_length=1)
+    """The factor of each model class; which class a model is in is the operator's."""
+    compute_per_minute: dict[ResourceClass, Annotated[float, Field(ge=0)]] = Field(min_length=1)
+    steps: dict[Method, Annotated[float, Field(ge=0)]] = Field(min_length=1)
+    """Takte per finished step of a method whose work no other row weighs."""
+    storage_per_mib: float = Field(ge=0)
+    """Takte per MiB of state written; how long state is kept is not recorded."""
+    rate_window_days: int = Field(ge=1)
+    """The Takt rate is Takte per hour, as a moving average over this many days."""

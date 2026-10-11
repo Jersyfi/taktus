@@ -57,7 +57,7 @@ from taktus.adapters.driving.cli.wiring import (
     NotOperable,
     Services,
 )
-from taktus.components.accounting.application.service import CostOfRunHandler
+from taktus.components.accounting.application.service import CostOfRunHandler, TaktRateHandler
 from taktus.components.catalog.application.service import (
     RecordRemovalResultHandler,
     RunConformanceHandler,
@@ -157,6 +157,7 @@ class LocalWiring:
             budget = load_budget(self._configuration)
             capacity = load_capacity(self._configuration)
             prices = budget.table()
+            weights = budget.weights()
             tenants = load_tenants(self._configuration)
             administration = load_administration(self._configuration)
             knowledge_directory = load_knowledge_directory(self._configuration)
@@ -213,6 +214,8 @@ class LocalWiring:
                     models=models,
                     options=EngineOptions(
                         prices=prices,
+                        weights=weights,
+                        model_classes=budget.model_classes,
                         margin=budget.margin,
                         uncalibrated_margin=budget.uncalibrated_margin,
                         capacity=rules_of(capacity),
@@ -317,6 +320,9 @@ class LocalWiring:
                 queued=stores.queue is not None,
                 cost=CostOfRunHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work
+                ),
+                takt_rate=TaktRateHandler(
+                    ledger, MemoryObjectStore(state_dir / "objects"), stores.work, clock, weights
                 ),
                 identities=identities,
                 configure_anchors=decisions.configure,

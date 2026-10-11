@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from taktus.components.accounting.application.service import CostOfRunHandler
+from taktus.components.accounting.application.service import CostOfRunHandler, TaktRateHandler
 from taktus.components.catalog.application.service import RunConformanceHandler
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import (
@@ -72,6 +72,9 @@ class Services:
     `taktusd` runs; false in memory, where nothing else executes."""
     cost: CostOfRunHandler | None = None
     """What a run cost, recomputed from the ledger at its price table (`taktusctl cost`)."""
+    takt_rate: TaktRateHandler | None = None
+    """A tenant's Takt consumption and rate over the window of the table in force
+    (`taktusctl cost` without a run)."""
     configure_anchors: ConfigureAnchorsHandler | None = None
     """A tenant's anchors, configured (`taktusctl anchors set`, ADR-0042)."""
     anchors: AnchorsInForce | None = None

@@ -13,14 +13,15 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
 from taktus.components.run.domain.service import budget as budgeting
+from taktus.conformance.contracts import contracts_root
 from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
-from taktus.ports.model import PriceTable
+from taktus.ports.model import PriceTable, WeightingTable
 
 
 class Role(StrEnum):
@@ -327,6 +328,14 @@ class BudgetSettings:
     """`TAKTUS_BUDGET_UNCALIBRATED_MARGIN`: what a worker with no calibration history reserves
     beyond its estimate — 1.0, twice the estimate, by default (DEC-0034). A value below the
     floor of 0.1 holds, and is said (`below_floor`, DEC-0047)."""
+    model_classes: Mapping[str, str] = field(default_factory=dict)
+    """`TAKTUS_TAKT_MODEL_CLASSES`: which class of the weighting table each model is in, as
+    `model=class` pairs, comma-separated — `fake-model@1=medium`. A model in no class has its
+    tokens named unweighed, never counted as zero (ADR-0010)."""
+
+    def weights(self) -> WeightingTable:
+        """The weighting table in force: the repository's (DEC-0131), never the operator's."""
+        return weighting_table_in_force()
 
     def below_floor(self) -> str | None:
         """The warning the startup log carries when the uncalibrated margin is set below the
@@ -352,7 +361,39 @@ class BudgetSettings:
             ("TAKTUS_PRICE_TABLE", "" if self.price_table is None else str(self.price_table)),
             ("TAKTUS_BUDGET_MARGIN", f"{self.margin:g}"),
             ("TAKTUS_BUDGET_UNCALIBRATED_MARGIN", f"{self.uncalibrated_margin:g}"),
+            (
+                "TAKTUS_TAKT_MODEL_CLASSES",
+                ",".join(f"{m}={c}" for m, c in sorted(self.model_classes.items())),
+            ),
         ]
+
+
+WEIGHTING_TABLES = ("model", "v1", "weighting-tables")
+"""Where the weighting tables are, under the contracts directory: in the repository, and in the
+installed package beside the schemas (ADR-0010)."""
+
+
+def weighting_table_in_force() -> WeightingTable:
+    """The newest weighting table the repository publishes, by `valid_from`. A table is never
+    changed once used; a new one is a new file (ADR-0010, DEC-0131)."""
+    directory = contracts_root().joinpath(*WEIGHTING_TABLES)
+    tables = [
+        WeightingTable.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        for path in sorted(directory.glob("*.json"))
+    ]
+    if not tables:
+        raise FileNotFoundError(f"no weighting table under {directory}")
+    return max(tables, key=lambda table: table.valid_from)
+
+
+def _model_classes(name: str, pairs: tuple[str, ...]) -> dict[str, str]:
+    classes: dict[str, str] = {}
+    for pair in pairs:
+        model, separator, model_class = pair.partition("=")
+        if not separator or not model.strip() or not model_class.strip():
+            raise ConfigurationError(name, f"{pair!r} is not model=class")
+        classes[model.strip()] = model_class.strip()
+    return classes
 
 
 DEFAULT_MARGIN = 0.0
@@ -375,6 +416,9 @@ def load_budget(configuration: Configuration) -> BudgetSettings:
         margin=margin,
         uncalibrated_margin=reader.number(
             "budget.uncalibrated.margin", DEFAULT_UNCALIBRATED_MARGIN, low=0.0
+        ),
+        model_classes=_model_classes(
+            configuration.name("takt.model.classes"), reader.names("takt.model.classes", ())
         ),
     )
 
