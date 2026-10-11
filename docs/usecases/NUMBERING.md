@@ -64,7 +64,8 @@ the migration's fourth step, for the requirements the owner stated outside the d
 next free number of its area: `UC-6.11` the owner-facing channel; `UC-6.12` the product finding;
 `UC-13.6` readable documentation beyond the repository. Numbered when a task needed a requirement
 no use case stated, the next free number of its area: `UC-4.14` a process starts on what happens
-in a tool (#76, DEC-0124).
+in a tool (#76, DEC-0124); `UC-1.9` a contribution from a person Taktus does not know is triaged
+for the owner (#245, DEC-0175).
 
 ## Numbers of the definition with no file of their own
 

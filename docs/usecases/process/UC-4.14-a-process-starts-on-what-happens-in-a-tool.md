@@ -66,7 +66,8 @@ time triggers; ADR-0040, by which a command acts for its sender. UC-1.1 ends whe
 command; this use case starts there. UC-5.2 rests on it. The roadmap's `0.2.0` names event
 reactions (#76), and P-02 and P-03 of the dev-orchestration blueprint are its first users (#87).
 Not in the definition: written by the session that made #76 buildable, and put to the owner in
-DEC-0124.
+DEC-0124. An unknown sender's issue or pull request on a public channel starts no process a trigger
+names; it starts the triage of UC-1.9, which acts for its owner.
 
 ## 5. What is proven so far
 
