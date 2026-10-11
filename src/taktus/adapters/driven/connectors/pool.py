@@ -56,3 +56,10 @@ class StaticConnectorPool:
         pool = StaticConnectorPool([(a, c) for a, c in self._connectors if a != adapter])
         pool._declared = {a: d for a, d in self._declared.items() if a != adapter}
         return pool
+
+    def first(self, adapter: str) -> StaticConnectorPool:
+        """The same configuration with one connector moved to the front, for the removal test's
+        baseline (ADR-0078); the original is untouched."""
+        pool = StaticConnectorPool(sorted(self._connectors, key=lambda entry: entry[0] != adapter))
+        pool._declared = dict(self._declared)
+        return pool

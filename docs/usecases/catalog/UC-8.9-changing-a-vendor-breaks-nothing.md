@@ -6,8 +6,8 @@ epic: E8
 serves: [P3, P4, P13]
 state: building
 version: 0.5.0
-tests: [tests/components/catalog/test_removal.py::test_a_step_changes_with_an_alternative_or_a_person_and_breaks_otherwise, tests/components/catalog/test_removal.py::test_a_process_breaks_if_any_step_does, tests/components/catalog/test_removal.py::test_the_integration_breaks_if_any_process_does_and_changes_when_nothing_uses_it, tests/components/catalog/test_removal.py::test_the_database_is_the_known_exception, tests/components/catalog/test_removal.py::test_verified_needs_both_halves_and_the_record_names_what_is_missing, tests/integration/test_removal_test.py::test_withholding_the_only_worker_changes_the_example_and_is_recorded, tests/integration/test_dev_orchestration.py::test_removing_each_integration_of_the_three_processes_changes_them, tests/integration/test_two_coding_workers.py::test_withholding_either_coding_worker_changes_the_step_to_the_other]
-adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0027: 8f3f450eeecb}
+tests: [tests/components/catalog/test_removal.py::test_a_step_changes_with_an_alternative_or_a_person_and_breaks_otherwise, tests/components/catalog/test_removal.py::test_a_process_breaks_if_any_step_does, tests/components/catalog/test_removal.py::test_the_integration_breaks_if_any_process_does_and_changes_when_nothing_uses_it, tests/components/catalog/test_removal.py::test_the_database_is_the_known_exception, tests/components/catalog/test_removal.py::test_verified_needs_both_halves_and_the_record_names_what_is_missing, tests/integration/test_removal_test.py::test_withholding_the_only_worker_changes_the_example_and_is_recorded, tests/integration/test_dev_orchestration.py::test_removing_each_integration_of_the_three_processes_changes_them, tests/integration/test_two_coding_workers.py::test_withholding_either_coding_worker_changes_the_step_to_the_other, tests/integration/test_two_coding_workers.py::test_an_instance_configured_with_both_says_changed_for_each]
+adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0027: 8f3f450eeecb, ADR-0078: 5988b2bd75b6}
 supersedes: null
 ---
 
@@ -73,5 +73,8 @@ for this requirement (DEC-0111).
 A second adapter now exists for the coding worker (#154). With both coding workers in one worker
 pool, the removal test withholds the one that serves a coding step, and the other serves it: the
 verdict is *changed* through an adapter, and the process rehearsed without the withheld worker
-finishes — by the named test, against stand-ins for both agents. An instance reads one worker
-today, so on Taktus's own instance the coding step still rests on a person until #209.
+finishes — by the named test, against stand-ins for both agents. An instance is configured with
+both since #209 (ADR-0078): S-01 run on it for each coding worker says *changed* with the other
+as its alternative, and the removal half of each passes, by the named test. On Taktus's own
+instance the coding step still rests on a person until the second coding worker's image exists
+and is configured there (#208).

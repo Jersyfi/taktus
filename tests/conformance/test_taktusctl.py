@@ -167,3 +167,49 @@ def test_taktusctl_conformance_record(start_worker: StartWorker, tmp_path: Path)
     )
     assert unknown.returncode == 2, unknown.stdout + unknown.stderr
     assert "no configured adapter 'connector.nowhere'" in unknown.stderr
+
+
+def test_taktusctl_conformance_record_for_each_configured_worker(
+    start_worker: StartWorker, tmp_path: Path
+) -> None:
+    """Issue #209: an instance configured with two workers records the conformance half of
+    each, under each identifier, each run against its own endpoint with its own credential
+    under the one name both read (ADR-0078)."""
+    first, second = start_worker(), start_worker()
+    assert first.credential_value != second.credential_value
+    taktusctl = shutil.which("taktusctl")
+    assert taktusctl is not None
+    task_path = tmp_path / "task.json"
+    task_path.write_text(json.dumps(TASK), encoding="utf-8")
+    state = tmp_path / "state"
+    env = {
+        **os.environ,
+        "NO_COLOR": "1",
+        "TERM": "dumb",
+        "TAKTUS_STATE_DIR": str(state),
+        "TAKTUS_WORKERS": "first,second",
+        "TAKTUS_CONFORMANCE_WORKER_TASK": str(task_path),
+        "TAKTUS_CONFORMANCE_WORKER_HOSTS": HOST,
+        "TAKTUS_CONFORMANCE_WORKER_CREDENTIAL": CREDENTIAL,
+    }
+    for name, worker in (("FIRST", first), ("SECOND", second)):
+        env[f"TAKTUS_WORKER_{name}_ENDPOINT"] = worker.endpoint
+        env[f"TAKTUS_WORKER_{name}_CREDENTIAL_{CREDENTIAL}"] = worker.credential_value
+        env[f"TAKTUS_WORKER_{name}_CONFORMANCE_WORKER_LOG"] = str(worker.log)
+    added_by_command_line(taktusctl, "idn_test", env)
+    for identifier in ("worker.first", "worker.second"):
+        completed = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
+            [taktusctl, "conformance", "record", identifier, "--identity", "idn_test"],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert f"conformance worker/v1 of {identifier}: passed" in completed.stdout
+    records = json.loads((state / "adaptermaturity.json").read_text())["default"]
+    recorded = {r["id"]: r["conformance"] for r in records}
+    assert set(recorded) == {"worker.first", "worker.second"}
+    for identifier, conformance in recorded.items():
+        assert conformance["outcome"] == "passed", conformance
+        assert conformance["configuration"]["adapter"] == identifier

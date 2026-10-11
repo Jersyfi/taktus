@@ -106,13 +106,13 @@ from taktus.components.run.application.service import (
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
-from taktus.composition.conformance import InstanceSuites, worker_target
+from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.execution import (
     connector_pool,
     memory_demand,
     model_pool,
-    open_worker,
+    open_workers,
     telemetry_of,
 )
 from taktus.composition.findings import RepositoryChannel, RunBlocks, findings_tick
@@ -291,17 +291,16 @@ async def wire(
             return PostgresRepository(persistence, kind)
 
         decisions = decision_wiring(stored, persistence, ledger, clock, identities)
-        async with open_worker(settings.execution, configuration, state_dir=settings.state_dir) as (
-            adapter,
-            worker,
-        ):
+        async with open_workers(
+            settings.workers, configuration, state_dir=settings.state_dir
+        ) as opened:
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
             objects = MemoryObjectStore(settings.state_dir / "objects")
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
-                StaticWorkerPool([(adapter, worker)]),
+                StaticWorkerPool(opened),
                 connector_pool(
                     settings.connectors,
                     also=[(LOOPBACK, loopback), *served_directory(settings.knowledge_directory)],
@@ -330,7 +329,7 @@ async def wire(
                         margin=settings.budget.margin,
                         uncalibrated_margin=settings.budget.uncalibrated_margin,
                         capacity=rules_of(settings.capacity),
-                        unit_memory_bytes=memory_demand(settings.execution),
+                        unit_memory_bytes=memory_demand(settings.workers),
                     ),
                     platform=HostPlatform(clock, state_dir=settings.state_dir),
                     connectors=connectors,
@@ -391,8 +390,8 @@ async def wire(
                 InstanceSuites(
                     pools=pools,
                     settings=configuration,
-                    worker=worker_target(
-                        settings.execution, configuration, state_dir=settings.state_dir
+                    workers=worker_suites(
+                        settings.workers, configuration, state_dir=settings.state_dir
                     ),
                     connectors=settings.connectors,
                     model_endpoint=settings.model.endpoint,
@@ -491,7 +490,7 @@ async def wire(
                     capacity=capacity_condition(
                         HostPlatform(clock, state_dir=settings.state_dir),
                         rules_of(settings.capacity),
-                        memory_demand(settings.execution),
+                        memory_demand(settings.workers),
                     ),
                 ),
                 leadership=PostgresLeadership(persistence.engine),
@@ -666,7 +665,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         tick = capacity_tick(
             wired.capacity,
             ReportCapacity(
-                tenants=settings.tenants, job_memory_bytes=memory_demand(settings.execution)
+                tenants=settings.tenants, job_memory_bytes=memory_demand(settings.workers)
             ),
             wired.clock,
             interval_seconds=settings.capacity.interval_seconds,

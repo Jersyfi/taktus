@@ -4,12 +4,14 @@
 For an adapter identifier, the endpoint is the one the configuration resolves for it, never one
 a caller names:
 
-- `worker.endpoint`: the worker endpoint the instance is configured with (`TAKTUS_WORKER`, or
-  `--worker` for `taktusctl`). `worker.<kind>` of a launched kind: one execution unit started
-  for the suite through the execution port, at autonomy level 1 and with no host, and ended
-  after it. The suite's task, the hosts it reaches, the name of the credential W-08 searches
-  for and a log the instance can read are `conformance.worker.task`, `.hosts`, `.credential`
-  and `.log`. How long one assignment may take, and how long the suite waits between two
+- `worker.<name>` or `worker.<kind>`: each configured worker separately (ADR-0078). One reached
+  by endpoint is run against its endpoint (`TAKTUS_WORKER`, or `--worker` for `taktusctl`, for
+  the unnamed worker). One of a launched kind: one execution unit started for the suite through
+  the execution port, at autonomy level 1 and with no host, and ended after it. The suite's
+  task, the hosts it reaches, the name of the credential W-08 searches for and a log the
+  instance can read are `conformance.worker.task`, `.hosts`, `.credential` and `.log`, read as
+  the worker reads its configuration: its own first, the instance's otherwise; the credential
+  is the worker's own. How long one assignment may take, and how long the suite waits between two
   events, are `conformance.timeout` and `conformance.idle.timeout`; the suite's own defaults
   apply where they are not set.
 - `connector.<label>`: the MCP URL `TAKTUS_CONNECTORS` maps the label to. The suite needs a
@@ -31,8 +33,9 @@ from __future__ import annotations
 
 import json
 import secrets
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -40,9 +43,9 @@ from typing import Any
 from taktus.adapters.driven.execution._common import credential_key
 from taktus.components.catalog.domain.model import Configuration, Family
 from taktus.components.catalog.ports import NotConfigured, NotRunnable, SuiteRun
-from taktus.composition.execution import execution_of, unit_of
+from taktus.composition.execution import execution_of, worker_unit
 from taktus.composition.pools import Pools
-from taktus.composition.settings import ExecutionKind, ExecutionSettings
+from taktus.composition.settings import ExecutionKind, WorkerSettings
 from taktus.conformance import (
     ConnectorSuiteOptions,
     ModelSuiteOptions,
@@ -62,6 +65,16 @@ type WorkerTarget = Callable[[], AbstractAsyncContextManager[str]]
 """Where the configured worker answers for the length of one suite: an endpoint, or a unit
 started for it and ended after."""
 
+
+@dataclass(frozen=True)
+class WorkerSuite:
+    """What the suite of one configured worker needs: where the worker answers, and the
+    configuration as that worker reads it — its suite settings and its own credential."""
+
+    target: WorkerTarget
+    settings: Settings
+
+
 CONTRACTS: Mapping[str, str] = {
     "worker": "worker/v1",
     "connector": "connector/v1",
@@ -78,18 +91,20 @@ def taktus_version() -> str:
 
 
 def worker_target(
-    settings: ExecutionSettings,
+    worker: WorkerSettings,
     configuration: Settings,
     *,
     state_dir: Path,
     endpoint: str | None = None,
 ) -> WorkerTarget:
-    """Where the configured worker answers for one suite. Kind `endpoint`: the endpoint, which
-    `endpoint` overrides as it does for the run (`taktusctl --worker`). A launched kind: one unit
-    started through the execution port at autonomy level 1, with no host and with the
-    conformance credential when one is configured, and ended after the suite."""
+    """Where one configured worker answers for one suite. Kind `endpoint`: the endpoint, which
+    `endpoint` overrides for the unnamed worker as it does for the run (`taktusctl --worker`).
+    A launched kind: one unit started through the execution port at autonomy level 1, with no
+    host and with the conformance credential when the worker has one, and ended after the
+    suite. `configuration` is the worker's own (`WorkerSettings.configuration`)."""
+    settings = worker.execution
     if settings.kind is ExecutionKind.ENDPOINT:
-        address = endpoint or settings.endpoint
+        address = (endpoint if worker.name is None else None) or settings.endpoint
 
         @asynccontextmanager
         async def running() -> AsyncIterator[str]:
@@ -105,7 +120,7 @@ def worker_target(
             credentials = (CredentialReference(name=name, injected_as="env"),)
         request = JobRequest(
             job_id=f"conformance-{secrets.token_hex(6)}",
-            unit=unit_of(settings),
+            unit=worker_unit(worker),
             autonomy_level=1,
             credentials=credentials,
         )
@@ -121,6 +136,22 @@ def worker_target(
     return launched
 
 
+def worker_suites(
+    workers: Sequence[WorkerSettings],
+    configuration: Settings,
+    *,
+    state_dir: Path,
+    endpoint: str | None = None,
+) -> dict[str, WorkerSuite]:
+    """The suite of every configured worker, by its adapter identifier."""
+    suites: dict[str, WorkerSuite] = {}
+    for worker in workers:
+        own = worker.configuration(configuration)
+        target = worker_target(worker, own, state_dir=state_dir, endpoint=endpoint)
+        suites[worker.identifier] = WorkerSuite(target=target, settings=own)
+    return suites
+
+
 class InstanceSuites:
     """The `Suites` port of the catalog, over one instance's configuration."""
 
@@ -129,13 +160,13 @@ class InstanceSuites:
         *,
         pools: Pools,
         settings: Settings,
-        worker: WorkerTarget | None,
+        workers: Mapping[str, WorkerSuite],
         connectors: Mapping[str, str],
         model_endpoint: str | None,
     ) -> None:
         self._pools = pools
         self._settings = settings
-        self._worker = worker
+        self._workers = workers
         self._connectors = connectors
         self._model_endpoint = model_endpoint
 
@@ -175,23 +206,25 @@ class InstanceSuites:
         return found
 
     async def _worker_suite(self, integration: str) -> Report:
-        if self._worker is None:
+        suite = self._workers.get(integration)
+        if suite is None:
             raise NotConfigured(f"no configured adapter {integration!r}")
-        task_path = self._settings.get("conformance.worker.task")
-        task = _json(task_path, self._settings.name("conformance.worker.task"))
+        settings = suite.settings
+        task_path = settings.get("conformance.worker.task")
+        task = _json(task_path, settings.name("conformance.worker.task"))
         hosts = tuple(
-            h.strip() for h in (self._settings.get("conformance.worker.hosts") or "").split(",")
+            h.strip() for h in (settings.get("conformance.worker.hosts") or "").split(",")
         )
-        name = self._settings.get("conformance.worker.credential") or DEFAULT_CREDENTIAL
-        log = self._settings.get("conformance.worker.log")
-        async with self._worker() as endpoint:
+        name = settings.get("conformance.worker.credential") or DEFAULT_CREDENTIAL
+        log = settings.get("conformance.worker.log")
+        async with suite.target() as endpoint:
             return await run_suite(
                 SuiteOptions(
                     endpoint=endpoint,
                     task=task,
                     hosts=tuple(h for h in hosts if h),
                     credential_name=name,
-                    credential_value=self._credential(name),
+                    credential_value=_credential(settings, name),
                     worker_log=None if log is None else Path(log),
                     timeout=self._seconds("conformance.timeout", 300.0),
                     idle_timeout=self._seconds("conformance.idle.timeout", 60.0),
@@ -213,7 +246,11 @@ class InstanceSuites:
             )
         scenario = _json(path, self._settings.name(key)) or {}
         names = [v for v in scenario.get("credentials", {}).values() if isinstance(v, str)]
-        values = {name: value for name in names if (value := self._credential(name)) is not None}
+        values = {
+            name: value
+            for name in names
+            if (value := _credential(self._settings, name)) is not None
+        }
         log = self._settings.get(f"conformance.connector.{label}.log")
         return await run_connector_suite(
             ConnectorSuiteOptions(
@@ -257,19 +294,20 @@ class InstanceSuites:
             raise NotRunnable(f"{self._settings.name(key)}: {value!r} is not above zero")
         return seconds
 
-    def _credential(self, name: str) -> str | None:
-        try:
-            secret = self._settings.secret(credential_key(name))
-        except ConfigurationError as error:
-            raise NotRunnable(str(error)) from error
-        return None if secret is None else secret.reveal()
-
     def _model_credential(self) -> str | None:
         try:
             secret = self._settings.secret("credential.model_api_key")
         except ConfigurationError as error:
             raise NotRunnable(str(error)) from error
         return None if secret is None else secret.reveal()
+
+
+def _credential(settings: Settings, name: str) -> str | None:
+    try:
+        secret = settings.secret(credential_key(name))
+    except ConfigurationError as error:
+        raise NotRunnable(str(error)) from error
+    return None if secret is None else secret.reveal()
 
 
 def _family(name: str) -> Family:

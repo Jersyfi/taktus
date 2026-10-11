@@ -83,8 +83,8 @@ operator's. The parts that carry a decision:
 | `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002); the scheduler is elected, more than one is allowed and idle |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
 | `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall |
-| `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults, the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges |
-| `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE` |
+| `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults, the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim` — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
+| `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE`. A credential of one of several workers has the parameter `worker.<worker>.credential.<name>`, and only that worker receives it |
 | `administration.platform`, `.administers` | the platform this instance runs on and, per credential parameter, the platforms it administers or `none` — `TAKTUS_PLATFORM`, `TAKTUS_ADMINISTERS` (ADR-0052). A process naming a credential that administers this platform, or one declared about nothing, is refused; with no platform nothing is checked |
 | `connectors.repository.*` | the repository channel's connector as a deployment of its own, from the control plane's image, acting as Taktus's own app (ADR-0033): the repository it serves, the app's identifier, the Secrets holding the app's key and the webhook secret — mounted as files — and `findings`, which makes it the connector product findings go through. Enabled, it sets `TAKTUS_CONNECTORS` (`channel.repo`) and, with `findings`, `TAKTUS_FINDINGS_CONNECTOR`; it is reached from the roles alone and reaches the name service and the service's API outside the cluster (#66) |
 | `ingress.*` | off unless `host` is given; `tls.secretName` names an existing certificate Secret, and then nothing is requested; only without it does `tls.issuer` ask the platform's certificate manager, by an annotation on the ingress. The stream of changes, `/changes`, is a long-lived `text/event-stream` response (ADR-0055): an ingress controller that buffers responses holds every change back until its buffer fills, and one that closes idle connections sooner than 15 seconds ends streams between heartbeats. Taktus sends `X-Accel-Buffering: no`; a controller that ignores it is told through `ingress.annotations`. Taktus cannot detect either |
@@ -313,6 +313,11 @@ with `httpx` alone, through the calls of the Role of section 1 and no other. It:
 The unit's state lives on the volume claim `execution.stateClaim` names, which the chart
 renders; without one it is an empty directory that dies with the job, and the adapter's
 startup log says so.
+
+With several workers (`execution.workers[]`), each worker's jobs are created by the same adapter
+in the same namespace, with that worker's image and limits and only that worker's credentials.
+They share the claim of `execution.stateClaim` unless a worker names an existing claim of its
+own.
 
 It is held to the container adapter's tests (`tests/adapters/execution/test_kubernetes_cluster.py`),
 including the one that checks from inside the job that no credential is on a filesystem, in a

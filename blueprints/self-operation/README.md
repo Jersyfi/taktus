@@ -21,8 +21,9 @@ DEC-0005), because a suite that talks to one adapter cannot remove it from proce
 are processes, and this is the test. A test that runs once in its life proves nothing; one that
 runs weekly is evidence.
 
-**What one run does**, for one integration named as its input (`worker.endpoint`,
-`connector.<label>`, `model.endpoint`, or `persistence.database`):
+**What one run does**, for one integration named as its input (`worker.endpoint`, or
+`worker.<name>` for one of several workers, `connector.<label>`, `model.endpoint`, or
+`persistence.database`):
 
 1. **describe** — reads from the instance what the integration serves, which other configured
    adapter serves the same, and which registered processes use it.
@@ -41,7 +42,10 @@ runs weekly is evidence.
    this instance, when a worker step may reach hosts, or when an input has no example. The
    finding says which. Every rehearsal run is in the ledger, and every one of its entries
    carries `rehearsal: true`; a rehearsed outward step finishes `rehearsed` and writes no
-   egress entry.
+   egress entry. The run *with* the integration puts it first in its pool, so an adapter
+   configured behind another that serves the same capabilities — the second of two coding
+   workers — is exercised on every step it can serve, and the one in front of it is its
+   alternative (ADR-0078).
 4. **describe-after** and **verify-restored** — read the configuration again and check that the
    integration is there and serves what it served (`exact`).
 5. **verdict** — checks that the result carries exactly one of four verdicts (`exact`).

@@ -411,7 +411,7 @@ and carried in three places, none of which two pull requests can edit at once (D
 
 | What | On what | Since |
 |---|---|---|
-| a removal-test verdict of *changed* through an alternative adapter, on an instance | #209: an instance reads one worker. The second adapter exists for the coding worker since #154: with both coding workers in one pool, withholding either changes the step to the other (`tests/integration/test_two_coding_workers.py`) | #14. The *broke* verdict on a real process is no longer missing: the run of 2026-09-23 produced it for `connector.channel.repo`, naming eight steps across P-02 and P-03 |
+| a removal-test verdict of *changed* through an alternative adapter, on Taktus's own instance | #208: the second coding worker's image. An instance is configured with both coding workers since #209 (`TAKTUS_WORKERS`, ADR-0078, NTC-0164), and S-01 on it says *changed* for each with the other as its alternative (`tests/integration/test_two_coding_workers.py`); Taktus's own instance can name the second only once its image exists | #14. The *broke* verdict on a real process is no longer missing: the run of 2026-09-23 produced it for `connector.channel.repo`, naming eight steps across P-02 and P-03 |
 | the second coding worker against its real agent | NEED-0022: a key for the second coding agent in the environment `live`; until then it is proven against a stand-in only (#208) | #154, 2026-10-10 |
 | the guides in a wiki | NEED-0021: the wiki and a token for Taktus in it; until then the guides go to a directory of files | #88, 2026-10-10 |
 

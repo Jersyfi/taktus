@@ -342,6 +342,65 @@ def test_the_cluster_adapter_is_wired_to_the_namespace_the_account_and_the_state
     assert {d["kind"] for d in documents} <= ALLOWED_KINDS
 
 
+def test_several_workers_are_configuration_each_with_its_own_credentials() -> None:
+    """Issue #209, ADR-0078: the chart names several workers in order, each with what it sets
+    itself, and mounts a credential for one worker under that worker's parameter."""
+    documents = render(
+        "execution.kind=cluster",
+        "execution.workers[0].name=coding",
+        "execution.workers[0].image=taktus-worker-coding:0.1.0",
+        "execution.workers[1].name=coding-second",
+        "execution.workers[1].image=taktus-worker-coding-second:0.1.0",
+        "execution.workers[1].memoryMb=2048",
+        "execution.workers[2].name=shell",
+        "execution.workers[2].kind=endpoint",
+        "execution.workers[2].endpoint=http://shell:9000",
+        "credentials[1].parameter=worker.coding-second.credential.coding_agent_api_key",
+        "credentials[1].secret=taktus-coding-second",
+        "credentials[1].key=api-key",
+    )
+    [config] = of_kind(documents, "ConfigMap")
+    data = config["data"]
+    assert data["TAKTUS_WORKERS"] == "coding,coding-second,shell"
+    assert data["TAKTUS_WORKER_CODING_EXECUTION_UNIT"] == "taktus-worker-coding:0.1.0"
+    assert data["TAKTUS_WORKER_CODING_SECOND_EXECUTION_UNIT"] == "taktus-worker-coding-second:0.1.0"
+    assert data["TAKTUS_WORKER_CODING_SECOND_EXECUTION_MEMORY_MB"] == "2048"
+    assert "TAKTUS_WORKER_CODING_EXECUTION_MEMORY_MB" not in data, "the instance's is the default"
+    assert data["TAKTUS_WORKER_SHELL_EXECUTION"] == "endpoint"
+    assert data["TAKTUS_WORKER_SHELL_ENDPOINT"] == "http://shell:9000"
+    variables = {
+        variable["name"]
+        for _, spec in pod_specs(documents)
+        for container in containers(spec)
+        for variable in container.get("env", [])
+    }
+    assert "TAKTUS_WORKER_CODING_SECOND_CREDENTIAL_CODING_AGENT_API_KEY_FILE" in variables
+
+
+@pytest.mark.parametrize(
+    ("sets", "message"),
+    [
+        (("execution.workers[0].name=Coding",), "is not a worker name"),
+        (
+            (
+                "execution.workers[0].name=a",
+                "execution.workers[0].endpoint=http://a:9000",
+                "execution.workers[1].name=a",
+            ),
+            "is named twice",
+        ),
+        (
+            ("execution.kind=endpoint", "execution.workers[0].name=a"),
+            "endpoint is required",
+        ),
+    ],
+)
+def test_a_worker_the_instance_could_not_read_is_refused(
+    sets: tuple[str, ...], message: str
+) -> None:
+    assert message in render_fails(*sets)
+
+
 def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_app(
     rendered: list[dict[str, Any]],
 ) -> None:

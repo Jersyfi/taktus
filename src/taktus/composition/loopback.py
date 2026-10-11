@@ -33,8 +33,10 @@ NTC-0091).
 **Which steps an integration serves** is decided the way the run decides it: the step's work
 is parsed, and the pool that would serve it — a worker for the capabilities it requires, a
 connector for the capability of its operation, a model for its purpose — is asked with and
-without the integration. The verdicts are the catalog component's rules (`domain.service.
-removal`); this module only observes.
+without the integration. "With" means with the integration first in its pool: an adapter the
+configuration places behind another that serves the same capabilities is exercised on the
+steps it can serve, and its alternative is the adapter in front of it (ADR-0078). The verdicts
+are the catalog component's rules (`domain.service.removal`); this module only observes.
 """
 
 from __future__ import annotations
@@ -221,7 +223,11 @@ class Loopback:
             if why_not is not None:
                 processes.append(removal.resolved_only(version.ref, findings, why_not))
                 continue
-            baseline = await self._rehearse(tenant, version, self._pools, identity, integration)
+            # The baseline runs with the integration first in its pool, so that one standing
+            # behind another adapter is exercised where it can serve (ADR-0078).
+            baseline = await self._rehearse(
+                tenant, version, self._pools.first(integration), identity, integration
+            )
             rehearsed = await self._rehearse(tenant, version, withheld, identity, integration)
             processes.append(removal.exercised(version.ref, findings, baseline, rehearsed))
         return RemovalResult(
@@ -300,6 +306,10 @@ class Loopback:
         configuration; and why the work could not be read, if it could not. None when the
         version does not use the integration — or is the removal test itself, which reaches
         Taktus through the loopback."""
+        # With the integration first: a worker configured behind another that serves the same
+        # capabilities is found serving the steps it can serve, so that withholding it is
+        # measured and not only declared unused (ADR-0078).
+        pools = self._pools.first(integration)
         withheld = self._pools.without(integration)
         examples = {name: given.example for name, given in version.inputs.items()}
         findings: list[StepFinding] = []
@@ -312,7 +322,7 @@ class Loopback:
             except RunError as error:
                 unparsed = unparsed or str(error)
                 continue
-            served = await self._pools.serving(step, work)
+            served = await pools.serving(step, work)
             if served is None:
                 continue
             what, adapter = served
@@ -321,7 +331,7 @@ class Loopback:
             alternative = await withheld.serving(step, work)
             if isinstance(work, WorkerWork) and work.allowed_hosts:
                 hosts.append(step.id)
-            elif isinstance(work, ConnectorRule) and await self._pools.outward(work):
+            elif isinstance(work, ConnectorRule) and await pools.outward(work):
                 instead = None if alternative is None else alternative[1]
                 for serving in dict.fromkeys((adapter, instead)):
                     if serving is not None:

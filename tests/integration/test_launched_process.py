@@ -6,13 +6,18 @@ checkpoint the previous one left in the unit's state."""
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.components.run.application.service import ResumeRun
 from taktus.components.run.domain.model import Cause, RunState, StepState
+from taktus.composition.execution import execution_of, worker_unit
 from taktus.composition.local import LocalWiring
+from taktus.composition.settings import load_workers
+from taktus.ports.execution import JobRequest
+from taktus.ports.worker import CredentialReference
 
 from .test_first_slice import TENANT, bundle, entries_of, start, through, verified, verifies
 
@@ -129,3 +134,45 @@ async def test_a_unit_that_exceeds_its_wall_clock_is_killed_and_the_step_fails_w
         assert failed.reason is not None and "wall-clock limit of 3s" in failed.reason
         assert failed.reason.startswith("the execution unit was killed")
         assert 0 < len(failed.artifacts) < 30, "what was done before the kill is kept"
+
+
+async def test_each_configured_worker_launches_with_its_own_credential(tmp_path: Path) -> None:
+    """Issue #209: two launched workers that reference the same credential name each receive
+    the value configured for that worker; neither unit sees the other's value, nor the
+    instance's. Each keeps its state and logs under its own name (ADR-0078)."""
+    values = {"first": "first-3f9a1c", "second": "second-77b0e2", "instance": "instance-0d1e"}
+    for name, value in values.items():
+        (tmp_path / name).write_text(value + "\n", encoding="utf-8")
+    dump = (
+        "import os, json; print(json.dumps({k: v for k, v in os.environ.items() "
+        "if k == 'AGENT_KEY'}), flush=True)"
+    )
+    serve = f"import runpy; runpy.run_path('{WORKER}', run_name='__main__')"
+    configuration = EnvironmentConfiguration(
+        {
+            "TAKTUS_WORKERS": "first,second",
+            "TAKTUS_EXECUTION": "process",
+            "TAKTUS_EXECUTION_UNIT": f'{sys.executable} -c "{dump}; {serve}"',
+            "TAKTUS_EXECUTION_MEMORY_UNENFORCED": "false" if LINUX else "true",
+            "TAKTUS_WORKER_FIRST_CREDENTIAL_AGENT_KEY_FILE": str(tmp_path / "first"),
+            "TAKTUS_WORKER_SECOND_CREDENTIAL_AGENT_KEY_FILE": str(tmp_path / "second"),
+            "TAKTUS_CREDENTIAL_AGENT_KEY_FILE": str(tmp_path / "instance"),
+        }
+    )
+    state = tmp_path / "state"
+    for worker in load_workers(configuration):
+        execution = execution_of(
+            worker.execution, worker.configuration(configuration), state_dir=state
+        )
+        request = JobRequest(
+            job_id=f"job-{worker.name}",
+            unit=worker_unit(worker),
+            autonomy_level=1,
+            credentials=(CredentialReference(name="AGENT_KEY", injected_as="env"),),
+        )
+        async with execution.launch(request):
+            pass
+    for name in ("first", "second"):
+        log = state / "units" / name / f"job-job-{name}.log"
+        dumped = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+        assert dumped == {"AGENT_KEY": values[name]}, name

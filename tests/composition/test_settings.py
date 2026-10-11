@@ -16,10 +16,11 @@ from taktus.composition.settings import (
     ExecutionKind,
     Role,
     Settings,
+    WorkerConfiguration,
     load,
     normalise_prefix,
 )
-from taktus.ports.configuration import ConfigurationError
+from taktus.ports.configuration import ConfigurationError, Secret
 
 URL = "postgresql://taktus:hunter2-the-password@db.internal:5432/taktus"
 
@@ -84,10 +85,12 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
     assert loaded.migrate_on_start is True
     assert (loaded.http_host, loaded.http_port) == ("0.0.0.0", 9000)  # noqa: S104
     assert loaded.path_prefix == "/taktus"
-    assert loaded.execution.endpoint == "http://worker:9000"
-    assert loaded.execution.kind is ExecutionKind.PROCESS
-    assert loaded.execution.unit == "python3 worker.py"
-    assert (loaded.execution.memory_mb, loaded.execution.wall_seconds) == (256, 120)
+    (worker,) = loaded.workers
+    assert worker.name is None and worker.identifier == "worker.process"
+    assert worker.execution.endpoint == "http://worker:9000"
+    assert worker.execution.kind is ExecutionKind.PROCESS
+    assert worker.execution.unit == "python3 worker.py"
+    assert (worker.execution.memory_mb, worker.execution.wall_seconds) == (256, 120)
     assert loaded.connectors == {"channel.repo": "http://connector:9100/mcp"}
     assert loaded.model.endpoint == "http://models:8000/v1" and loaded.model.name == "local-model"
     assert loaded.model.purposes == ("reasoning", "triage") and loaded.model.credential is None
@@ -274,7 +277,8 @@ def test_the_capacity_thresholds_are_named_settings_with_defaults() -> None:
     assert capacity.memory_reserve_mb == 256 and capacity.interval_seconds == 3600
     assert capacity.database_volume_mb is None, "not visible from the instance: told, or unknown"
     assert capacity.storage_expandable is None, "nobody has said"
-    assert settings().execution.memory_unenforced is False, "an unenforced limit is refused"
+    unenforced = settings().workers[0].execution.memory_unenforced
+    assert unenforced is False, "an unenforced limit is refused"
 
 
 def test_every_capacity_setting_is_read_from_its_variable() -> None:
@@ -297,7 +301,7 @@ def test_every_capacity_setting_is_read_from_its_variable() -> None:
     assert (capacity.memory_warn_percent, capacity.cpu_warn_percent) == (20.0, 5.0)
     assert capacity.memory_reserve_mb == 512 and capacity.interval_seconds == 600
     assert capacity.database_volume_mb == 20480 and capacity.storage_expandable is False
-    assert loaded.execution.memory_unenforced is True
+    assert loaded.workers[0].execution.memory_unenforced is True
     effective = dict(loaded.effective())
     assert effective["TAKTUS_CAPACITY_STORAGE_EXPANDABLE"] == "false"
     assert effective["TAKTUS_EXECUTION_MEMORY_UNENFORCED"] == "true"
@@ -306,21 +310,29 @@ def test_every_capacity_setting_is_read_from_its_variable() -> None:
 def test_the_cluster_kind_needs_its_namespace_and_reads_its_settings() -> None:
     with pytest.raises(ConfigurationError, match="TAKTUS_EXECUTION_NAMESPACE"):
         settings(TAKTUS_EXECUTION="cluster", TAKTUS_EXECUTION_UNIT="worker:1")
-    execution = settings(
-        TAKTUS_EXECUTION="cluster",
-        TAKTUS_EXECUTION_UNIT="worker:1",
-        TAKTUS_EXECUTION_NAMESPACE="jobs",
-        TAKTUS_EXECUTION_STATE_CLAIM="unit-state",
-    ).execution
+    execution = (
+        settings(
+            TAKTUS_EXECUTION="cluster",
+            TAKTUS_EXECUTION_UNIT="worker:1",
+            TAKTUS_EXECUTION_NAMESPACE="jobs",
+            TAKTUS_EXECUTION_STATE_CLAIM="unit-state",
+        )
+        .workers[0]
+        .execution
+    )
     assert execution.kind is ExecutionKind.CLUSTER and execution.namespace == "jobs"
     assert execution.egress_enforced is True, "network policies are enforced unless told not"
     assert execution.state_claim == "unit-state" and execution.service_account is None
-    off = settings(
-        TAKTUS_EXECUTION="cluster",
-        TAKTUS_EXECUTION_UNIT="worker:1",
-        TAKTUS_EXECUTION_NAMESPACE="jobs",
-        TAKTUS_EXECUTION_EGRESS_ENFORCE="false",
-    ).execution
+    off = (
+        settings(
+            TAKTUS_EXECUTION="cluster",
+            TAKTUS_EXECUTION_UNIT="worker:1",
+            TAKTUS_EXECUTION_NAMESPACE="jobs",
+            TAKTUS_EXECUTION_EGRESS_ENFORCE="false",
+        )
+        .workers[0]
+        .execution
+    )
     assert off.egress_enforced is False
 
 
@@ -354,3 +366,93 @@ def test_the_platform_and_what_each_credential_administers_are_read() -> None:
 def test_a_declaration_that_cannot_be_read_names_the_variable(value: str) -> None:
     with pytest.raises(ConfigurationError, match="TAKTUS_ADMINISTERS"):
         settings(TAKTUS_ADMINISTERS=value)
+
+
+def test_one_worker_configured_as_before_is_the_only_one_and_keeps_its_identifier() -> None:
+    """Issue #209: an instance that names no workers reads its one worker as it always has."""
+    loaded = settings(TAKTUS_WORKER="http://worker:9000")
+    (worker,) = loaded.workers
+    assert worker.name is None and worker.identifier == "worker.endpoint"
+    assert worker.execution.endpoint == "http://worker:9000"
+    effective = dict(loaded.effective())
+    assert "TAKTUS_WORKERS" not in effective
+    assert effective["TAKTUS_WORKER"] == "http://worker:9000"
+
+
+def test_several_workers_are_read_in_order_each_with_its_kind_and_what_it_needs() -> None:
+    """Issue #209: each named worker reads its own settings first and the instance's otherwise;
+    the order is the order a step is resolved in (ADR-0078)."""
+    loaded = settings(
+        TAKTUS_WORKERS="coding, coding-second, shell",
+        TAKTUS_EXECUTION="cluster",
+        TAKTUS_EXECUTION_NAMESPACE="jobs",
+        TAKTUS_EXECUTION_MEMORY_MB="1024",
+        TAKTUS_WORKER_CODING_EXECUTION_UNIT="coding:1",
+        TAKTUS_WORKER_CODING_SECOND_EXECUTION_UNIT="coding-second:1",
+        TAKTUS_WORKER_CODING_SECOND_EXECUTION_MEMORY_MB="2048",
+        TAKTUS_WORKER_SHELL_EXECUTION="endpoint",
+        TAKTUS_WORKER_SHELL_ENDPOINT="http://shell:9000/",
+    )
+    coding, second, shell = loaded.workers
+    assert [w.identifier for w in loaded.workers] == [
+        "worker.coding",
+        "worker.coding-second",
+        "worker.shell",
+    ]
+    assert coding.execution.kind is ExecutionKind.CLUSTER and coding.execution.unit == "coding:1"
+    assert second.execution.unit == "coding-second:1"
+    assert second.execution.namespace == "jobs", "the instance's setting is the default"
+    assert (coding.execution.memory_mb, second.execution.memory_mb) == (1024, 2048)
+    assert shell.execution.kind is ExecutionKind.ENDPOINT
+    assert shell.execution.endpoint == "http://shell:9000"
+    effective = dict(loaded.effective())
+    assert effective["TAKTUS_WORKERS"] == "coding,coding-second,shell"
+    assert effective["TAKTUS_WORKER_CODING_SECOND_EXECUTION_UNIT"] == "coding-second:1"
+    assert effective["TAKTUS_WORKER_CODING_SECOND_EXECUTION_NAMESPACE"] == "jobs"
+    assert effective["TAKTUS_WORKER_SHELL_ENDPOINT"] == "http://shell:9000"
+    assert "TAKTUS_EXECUTION_UNIT" not in effective, "no worker is configured unnamed"
+
+
+def test_a_named_worker_s_endpoint_and_unit_are_named_for_it() -> None:
+    """Two workers at one endpoint are one worker: `TAKTUS_WORKER` is not a named worker's.
+    A missing setting is reported under the worker's own variable."""
+    with pytest.raises(ConfigurationError, match="TAKTUS_WORKER_SHELL_ENDPOINT"):
+        settings(TAKTUS_WORKERS="shell", TAKTUS_WORKER="http://worker:9000")
+    with pytest.raises(ConfigurationError, match="TAKTUS_WORKER_CODING_EXECUTION_UNIT"):
+        settings(TAKTUS_WORKERS="coding", TAKTUS_EXECUTION="process")
+
+
+@pytest.mark.parametrize("names", ["Coding", "coding_second", "coding-", "-a", "a,a", "a,,b"])
+def test_a_worker_name_that_cannot_be_an_identifier_is_refused(names: str) -> None:
+    with pytest.raises(ConfigurationError, match="TAKTUS_WORKERS"):
+        settings(TAKTUS_WORKERS=names, TAKTUS_WORKER_A_ENDPOINT="http://a:1")
+
+
+def test_a_named_worker_reads_only_its_own_credentials(tmp_path: Path) -> None:
+    """Issue #209: two workers that reference the same credential name each receive the value
+    configured for that worker; neither sees the other's, nor the instance's."""
+    first, second, shared = tmp_path / "first", tmp_path / "second", tmp_path / "shared"
+    first.write_text("first-value\n", encoding="utf-8")
+    second.write_text("second-value\n", encoding="utf-8")
+    shared.write_text("shared-value\n", encoding="utf-8")
+    base = EnvironmentConfiguration(
+        {
+            "TAKTUS_WORKER_CODING_CREDENTIAL_AGENT_KEY_FILE": str(first),
+            "TAKTUS_WORKER_CODING_SECOND_CREDENTIAL_AGENT_KEY_FILE": str(second),
+            "TAKTUS_CREDENTIAL_VCS_TOKEN_FILE": str(shared),
+            "TAKTUS_CONFORMANCE_WORKER_TASK": "/tasks/default.json",
+            "TAKTUS_WORKER_CODING_SECOND_CONFORMANCE_WORKER_TASK": "/tasks/second.json",
+        }
+    )
+    coding = WorkerConfiguration(base, "coding")
+    other = WorkerConfiguration(base, "coding-second")
+    assert _revealed(coding.secret("credential.agent_key")) == "first-value"
+    assert _revealed(other.secret("credential.agent_key")) == "second-value"
+    assert coding.secret("credential.vcs_token") is None, "the instance's is not the worker's"
+    assert coding.name("credential.vcs_token") == "TAKTUS_WORKER_CODING_CREDENTIAL_VCS_TOKEN"
+    assert coding.get("conformance.worker.task") == "/tasks/default.json"
+    assert other.get("conformance.worker.task") == "/tasks/second.json"
+
+
+def _revealed(secret: Secret | None) -> str | None:
+    return None if secret is None else secret.reveal()
