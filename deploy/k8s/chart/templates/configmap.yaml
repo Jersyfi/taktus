@@ -27,6 +27,7 @@ data:
   {{- end }}
   TAKTUS_EXECUTION_UNIT_PORT: {{ $execution.unitPort | quote }}
   TAKTUS_EXECUTION_CPUS: {{ $execution.defaults.cpus | quote }}
+  TAKTUS_EXECUTION_CPU_REQUEST_SHARE: {{ $execution.defaults.cpuRequestShare | quote }}
   TAKTUS_EXECUTION_MEMORY_MB: {{ $execution.defaults.memoryMb | quote }}
   TAKTUS_EXECUTION_WALL_SECONDS: {{ $execution.defaults.wallSeconds | quote }}
   TAKTUS_EXECUTION_START_TIMEOUT_SECONDS: {{ $execution.defaults.startTimeoutSeconds | quote }}
@@ -75,6 +76,9 @@ data:
   {{- end }}
   {{- with .cpus }}
   {{ $prefix }}EXECUTION_CPUS: {{ . | quote }}
+  {{- end }}
+  {{- with .cpuRequestShare }}
+  {{ $prefix }}EXECUTION_CPU_REQUEST_SHARE: {{ . | quote }}
   {{- end }}
   {{- with .memoryMb }}
   {{ $prefix }}EXECUTION_MEMORY_MB: {{ . | quote }}

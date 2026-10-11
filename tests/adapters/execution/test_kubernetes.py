@@ -138,7 +138,7 @@ async def test_the_job_a_frame_produces_carries_every_field(
     assert container["securityContext"]["readOnlyRootFilesystem"] is True
     limits = container["resources"]["limits"]
     assert limits == {"cpu": "500m", "memory": str(256 * 1024 * 1024)}
-    assert container["resources"]["requests"] == limits
+    assert container["resources"]["requests"] == limits, "a share of 1: the whole limit"
     env = {e["name"]: e for e in container["env"]}
     assert env["TAKTUS_UNIT_PORT"]["value"] == str(unit_port)
     assert env["TAKTUS_UNIT_STATE_DIR"]["value"] == "/var/lib/taktus/unit"
@@ -207,6 +207,41 @@ async def test_a_job_without_hosts_has_no_proxy_and_no_secret_without_credential
         names = {e["name"] for e in pod["containers"][0]["env"]}
         assert not names & {"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"}
         assert pod["volumes"][2] == {"name": "state", "emptyDir": {}}, "no claim: dies with job"
+
+
+@pytest.mark.parametrize(
+    ("share", "cpu_request"),
+    [(0.25, "125m"), (0.5, "250m"), (1.0, "500m"), (0.001, "1m")],
+)
+async def test_a_unit_requests_a_share_of_its_cpu_and_all_of_its_memory(
+    cluster: FakeCluster,
+    configuration: EnvironmentConfiguration,
+    tmp_path: Path,
+    unit_port: int,
+    share: float,
+    cpu_request: str,
+) -> None:
+    """Issue #244: CPU is compressible, so a unit reserves a share of its CPU limit on the node
+    and may use the rest while the node has it to spare; memory is not — the node has no swap —
+    so the memory request is the memory limit. A share of 1 requests the whole limit, as before;
+    a request is never below one millicore."""
+    execution = execution_for(cluster, configuration, tmp_path, cpu_request_share=share)
+    async with execution.launch(request_for(unit_port)) as job:
+        pod = cluster.of("jobs")[job.name]["spec"]["template"]["spec"]
+    resources = pod["containers"][0]["resources"]
+    memory = str(LIMITS.memory_bytes)
+    assert resources["limits"] == {"cpu": "500m", "memory": memory}, "the limits do not move"
+    assert resources["requests"] == {"cpu": cpu_request, "memory": memory}
+
+
+@pytest.mark.parametrize("share", [0.0, -0.25, 1.5])
+def test_a_cpu_request_share_outside_zero_to_one_is_refused(
+    configuration: EnvironmentConfiguration, tmp_path: Path, share: float
+) -> None:
+    with pytest.raises(ValueError, match="CPU request share"):
+        execution_for(
+            FakeCluster(namespace=NAMESPACE), configuration, tmp_path, cpu_request_share=share
+        )
 
 
 # --- refused before anything is created ----------------------------------------------------------
