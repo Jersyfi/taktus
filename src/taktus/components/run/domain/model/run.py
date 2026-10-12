@@ -146,6 +146,12 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
         (StepState.STOPPED, StepState.FAILED),
         (StepState.FAILED, StepState.FAILED),
         (StepState.ADMITTED, StepState.FAILED),
+        # The worker was at capacity while it estimated — a platform without room for its
+        # probe — before admission, from whichever state the step is asked in (ADR-0037 §6).
+        (StepState.PLANNED, StepState.STOPPED),
+        (StepState.REJECTED, StepState.STOPPED),
+        (StepState.STOPPED, StepState.STOPPED),
+        (StepState.FAILED, StepState.STOPPED),
         # Adopted: the assignment an earlier attempt handed over is still the worker's, and the
         # step continues it instead of handing over another (ADR-0038).
         (StepState.STOPPED, StepState.RUNNING),

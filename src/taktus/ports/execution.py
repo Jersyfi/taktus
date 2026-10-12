@@ -220,6 +220,12 @@ class ExecutionError(Exception):
     and never a secret."""
 
 
+class ExecutionAtCapacity(ExecutionError):
+    """The platform has no room for the unit now: it could not be placed for lack of memory or
+    processor time. Nothing of the job ran, so the same job may be started again later
+    (ADR-0037 §6)."""
+
+
 class Execution(Protocol):
     """One way of starting execution units."""
 

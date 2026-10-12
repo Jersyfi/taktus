@@ -174,10 +174,12 @@ class Reactions:
         self._capacity = capacity
         self._identities = identities
         self._ids = ids
+        self._placed = False
 
     async def tick(self) -> list[str]:
         """The runs this pass started, by identifier."""
         started: list[str] = []
+        self._placed = False
         for tenant in self._tenants:
             try:
                 async with self._work.transaction(tenant):
@@ -282,6 +284,8 @@ class Reactions:
                     await self._refused(tenant, reaction, event, command.identity, str(error))
                     continue
                 started.append(run_id)
+                if reaction.trigger.condition == Condition.CAPACITY_AVAILABLE.value:
+                    self._placed = self._capacity is not None
                 log.info(
                     "an event started a run",
                     tenant=tenant,
@@ -406,7 +410,13 @@ class Reactions:
         if condition is None:
             return None
         if condition == Condition.CAPACITY_AVAILABLE.value:
-            return None if self._capacity is None else await self._capacity(reaction.version)
+            if self._capacity is None:
+                return None
+            if self._placed:
+                # The platform was observed before the run this pass started takes any room;
+                # every further start waits for the next pass to observe it again (ADR-0048 §2).
+                return "a run started under this condition in this pass; the next pass looks again"
+            return await self._capacity(reaction.version)
         return f"the condition {condition!r} is not one this instance evaluates"
 
     async def _start(

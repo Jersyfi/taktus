@@ -74,6 +74,7 @@ from taktus.ports.execution import (
     ISOLATION_REQUIRED_FROM,
     UNIT_PORT_VARIABLE,
     UNIT_STATE_DIR_VARIABLE,
+    ExecutionAtCapacity,
     ExecutionError,
     ExecutionRefused,
     Isolation,
@@ -236,6 +237,13 @@ class ClusterJob:
         return None
 
 
+def no_room(why: str) -> bool:
+    """Whether the cluster's reason a pod waits is that no node has room for it: the scheduler
+    names an exhausted resource as `Insufficient <resource>`. A pod that no node may take at
+    all — a taint, a selector — is not waiting for room, and fails as before."""
+    return why.startswith("not scheduled:") and "Insufficient" in why
+
+
 class KubernetesExecution:
     isolation = Isolation.CLUSTER
 
@@ -323,9 +331,10 @@ class KubernetesExecution:
                 )
             except ExecutionError as error:
                 why = await job.waiting()
-                raise ExecutionError(
-                    f"{error}; the cluster says: {why}" if why else str(error)
-                ) from None
+                said = f"{error}; the cluster says: {why}" if why else str(error)
+                if why is not None and no_room(why):
+                    raise ExecutionAtCapacity(said) from None
+                raise ExecutionError(said) from None
             yield job
         finally:
             if timer is not None:
