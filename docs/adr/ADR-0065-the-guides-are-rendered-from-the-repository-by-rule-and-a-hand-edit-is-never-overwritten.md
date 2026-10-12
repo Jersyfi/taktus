@@ -168,7 +168,12 @@ wiki the owner is to create is issue #197, after NEED-0021.
   computes `digest` over it. Issue #197 must show that for the wiki.
 - **The directory connector checks and replaces a file in two moves.** An editor that saves the
   file between the check and the rename loses that save. The window is the length of one file
-  write. A knowledge system with a server checks on its side.
+  write. A knowledge system with a server checks on its side only where it offers a conditional
+  write; the wiki connector of #197 has none to use, and reads, compares and writes in two moves
+  too, its window the length of one request.
+
+*Amended 2026-10-12 (DEC-0182): the last bullet said that every knowledge system with a server
+checks on its side; the first one connected, the wiki of #197, has no conditional write.*
 - **A difference reaches whoever runs `taktusctl guides publish`.** The daily process, S-05,
   reports it to the person responsible for the documentation (ADR-0066 §4).
 - **One language.** The guides are rendered in the repository's language. Other languages are
