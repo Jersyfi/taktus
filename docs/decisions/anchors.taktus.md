@@ -31,6 +31,7 @@ that is intended: the same anchor resolves differently per tenant (anchors.md §
 | M1.9 | **A change to the substance of an accepted ADR, as long as the vision holds.** The default keeps this with the owner (M3.4). Here it is the session's while the change keeps every guiding principle (CLAUDE.md §5), keeps the four requirements of ADR-0013, and touches no entry of mode 3 or 4 of this page. A change that would touch one of those is that entry's decision. The record is the amendment itself, in the ADR, with its date and reason. | the ADR |
 | M1.10 | **How a use case is described**: its wording, examples and links, its state, the tests it names, and the digest of each ADR it was checked against once it has been checked again. Not what it requires — that is M3.15. Given by the owner on 2026-09-29. | the use case file under `docs/usecases/` |
 | M1.11 | **Where a generated text is produced inside a run** — which step and which method produce a text whose content is fixed by a generator, as long as the text itself, its reader, limits, levels and public statements do not change. Given by the owner on 2026-10-01, answering DEC-0037. | the bundle and the pull request description |
+| M1.20 | **The look of a representation**: the tokens of the visual vocabulary and how a representation renders them, within the distinctions UC-6.10 requires. A change that would drop a distinction changes what the use case requires and is M3.15. Proposed by NTC-0127, given by the owner on 2026-10-12 (DEC-0185). | the vocabulary in `reporting` and the web app |
 
 ## Mode 2 — the session decides and records a notice
 
@@ -178,3 +179,6 @@ nothing else.
 On 2026-10-07 the owner accepted M2.8, the spend NTC-0018 proposed, with a cap of USD 1 per task
 (DEC-0049), and replaced the reason the session had given for an operator's explicit margin below
 the floor (DEC-0047).
+
+On 2026-10-12 the owner accepted M1.20, the look of a representation, as NTC-0127 proposed it,
+and approved the web app's design direction *one body that works* (DEC-0185).
