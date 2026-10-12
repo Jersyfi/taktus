@@ -132,6 +132,7 @@ from taktus.composition.owner_channel import (
     known_secrets,
     owner_channel_wiring,
 )
+from taktus.composition.proposals import ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
@@ -200,6 +201,8 @@ class Wired:
     """The levels of the live representation, drawn from the run's records (ADR-0063)."""
     proposals: Proposals
     """A person's proposals for a changed process, never versions (ADR-0091)."""
+    proposal_acts: ProposalActs
+    """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -450,6 +453,23 @@ async def wire(
                 clock,
                 ids,
             )
+            register_version = RegisterProcessVersionHandler(
+                PostgresRepository(persistence, ProcessVersion),
+                persistence,
+                PostgresRepository(persistence, Process),
+                ledger=ledger,
+                administration=settings.administration,
+                clock=clock,
+            )
+            proposals = Proposals(
+                PostgresRepository(persistence, ProcessVersion),
+                PostgresRepository(persistence, Process),
+                PostgresRepository(persistence, Proposal),
+                persistence,
+                clock,
+                ids,
+                settings.administration,
+            )
             wired = Wired(
                 settings=settings,
                 persistence=persistence,
@@ -458,14 +478,7 @@ async def wire(
                 ledger=ledger,
                 provenance=ProvenanceQuery(provenance_store, runs, ledger, persistence),
                 engine=engine,
-                register_version=RegisterProcessVersionHandler(
-                    PostgresRepository(persistence, ProcessVersion),
-                    persistence,
-                    PostgresRepository(persistence, Process),
-                    ledger=ledger,
-                    administration=settings.administration,
-                    clock=clock,
-                ),
+                register_version=register_version,
                 commission=commission,
                 intake=ReceiveIntakeHandler(
                     # Capability → connector is configuration (ADR-0003): TAKTUS_CONNECTORS.
@@ -497,14 +510,20 @@ async def wire(
                     LiveOptions(max_streams=settings.live_streams),
                 ),
                 levels=levels,
-                proposals=Proposals(
-                    PostgresRepository(persistence, ProcessVersion),
-                    PostgresRepository(persistence, Process),
-                    PostgresRepository(persistence, Proposal),
-                    persistence,
-                    clock,
-                    ids,
-                    settings.administration,
+                proposals=proposals,
+                proposal_acts=ProposalActs(
+                    proposals=proposals,
+                    processes=PostgresRepository(persistence, Process),
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    runs=runs,
+                    register=register_version,
+                    commission=commission,
+                    engine=engine,
+                    identities=identities,
+                    ledger=ledger,
+                    work=persistence,
+                    clock=clock,
+                    ids=ids,
                 ),
                 complete_intake=complete_intake,
                 reactions=Reactions(

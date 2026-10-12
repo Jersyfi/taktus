@@ -143,3 +143,140 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         return JSONResponse(_view(discarded))
 
     return routes
+
+
+class RehearseBody(BaseModel):
+    inputs: dict[str, Any] | None = Field(
+        default=None,
+        description="What the rehearsal is given; without it, the active version's last run's.",
+    )
+
+
+class CommissionBody(BaseModel):
+    approve_raise: bool = Field(
+        default=False,
+        description="True: you approve a raise of an autonomy level the version makes (ADR-0026).",
+    )
+
+
+class RollbackBody(CommissionBody):
+    version: str = Field(min_length=1, description="The earlier version to make current again.")
+    as_version: str | None = Field(
+        default=None, min_length=1, description="The new version's name; the next free one if none."
+    )
+
+
+STATUS = {"unknown": 404}
+"""Every other refusal of an act is a conflict with the proposal's or the process's state."""
+
+
+def _act_refused(error: ProposalError) -> JSONResponse:
+    return problem(STATUS.get(error.kind, 409), str(error), kind=error.kind)
+
+
+def acts_router(services: RestServices, authenticated: Authenticated) -> APIRouter:
+    routes = APIRouter(tags=["proposals"])
+    common: dict[int | str, dict[str, Any]] = {
+        401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+        404: {"description": "No such process, proposal or version you may see.", **PROBLEM},
+        409: {
+            "description": "The act does not fit the proposal's or the process's state.",
+            **PROBLEM,
+        },
+        422: {"description": "A parameter does not validate.", **PROBLEM},
+    }
+
+    @routes.post(
+        "/processes/{process_id}/proposals/{proposal_id}/rehearse",
+        summary="Rehearse a proposal",
+        description="The proposed version runs as a rehearsal: no outward operation acts, each "
+        "answers from the recording of its last real call (ADR-0030). The run counts as no "
+        "version. Read it at `/levels/runs/{run_id}` (ADR-0091 §3).",
+        responses={202: {"description": "The proposal, and the rehearsal run."}, **common},
+    )
+    async def rehearse(
+        process_id: str,
+        proposal_id: str,
+        body: RehearseBody,
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        who = await authenticated(services, authorization)
+        if who is None:
+            return problem(401, NEEDS_KEY)
+        try:
+            proposal, run = await services.proposal_acts.rehearse(
+                who.tenant, process_id, proposal_id, who.identity, body.inputs
+            )
+        except ProposalError as error:
+            return _act_refused(error)
+        return JSONResponse({"proposal": _view(proposal), "run": run.id}, status_code=202)
+
+    @routes.post(
+        "/processes/{process_id}/proposals/{proposal_id}/commission",
+        summary="Commission a proposal",
+        description="A proposal whose rehearsal finished is registered as the active version, "
+        "acting for you, through registration and every check it applies. The ledger records "
+        "`process.commissioned` with you as its actor (ADR-0091 §4).",
+        responses={
+            200: {"description": "The version registered."},
+            400: {"description": "Registration refused it; every finding.", **PROBLEM},
+            **common,
+        },
+    )
+    async def commission(
+        process_id: str,
+        proposal_id: str,
+        body: CommissionBody,
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        who = await authenticated(services, authorization)
+        if who is None:
+            return problem(401, NEEDS_KEY)
+        try:
+            version = await services.proposal_acts.commission(
+                who.tenant,
+                process_id,
+                proposal_id,
+                who.identity,
+                approved_by=who.identity if body.approve_raise else None,
+            )
+        except ProposalError as error:
+            return _act_refused(error)
+        except InvalidProcess as error:
+            return problem(400, "registration refused it", findings=list(error.findings))
+        return JSONResponse({"process": process_id, "version": version.version})
+
+    @routes.post(
+        "/processes/{process_id}/rollback",
+        summary="Roll a process back to an earlier version",
+        description="The earlier version's content is registered again as a new version, "
+        "through registration, acting for you. Nothing is deleted; a run under way finishes on "
+        "its version. The ledger records `process.rolled_back` (ADR-0091 §5).",
+        responses={
+            200: {"description": "The version registered."},
+            400: {"description": "Registration refused it; every finding.", **PROBLEM},
+            **common,
+        },
+    )
+    async def rollback(
+        process_id: str, body: RollbackBody, authorization: str | None = Header(default=None)
+    ) -> JSONResponse:
+        who = await authenticated(services, authorization)
+        if who is None:
+            return problem(401, NEEDS_KEY)
+        try:
+            version = await services.proposal_acts.rollback(
+                who.tenant,
+                process_id,
+                body.version,
+                who.identity,
+                as_version=body.as_version,
+                approved_by=who.identity if body.approve_raise else None,
+            )
+        except ProposalError as error:
+            return _act_refused(error)
+        except InvalidProcess as error:
+            return problem(400, "registration refused it", findings=list(error.findings))
+        return JSONResponse({"process": process_id, "version": version.version})
+
+    return routes

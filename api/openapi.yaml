@@ -1116,6 +1116,184 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /processes/{process_id}/proposals/{proposal_id}/rehearse:
+    post:
+      tags:
+      - proposals
+      summary: Rehearse a proposal
+      description: 'The proposed version runs as a rehearsal: no outward operation acts, each answers
+        from the recording of its last real call (ADR-0030). The run counts as no version. Read it at
+        `/levels/runs/{run_id}` (ADR-0091 §3).'
+      operationId: rehearse_processes__process_id__proposals__proposal_id__rehearse_post
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RehearseBody'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '202':
+          description: The proposal, and the rehearsal run.
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process, proposal or version you may see.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The act does not fit the proposal's or the process's state.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/proposals/{proposal_id}/commission:
+    post:
+      tags:
+      - proposals
+      summary: Commission a proposal
+      description: A proposal whose rehearsal finished is registered as the active version, acting for
+        you, through registration and every check it applies. The ledger records `process.commissioned`
+        with you as its actor (ADR-0091 §4).
+      operationId: commission_processes__process_id__proposals__proposal_id__commission_post
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommissionBody'
+      responses:
+        '200':
+          description: The version registered.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Registration refused it; every finding.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process, proposal or version you may see.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The act does not fit the proposal's or the process's state.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/rollback:
+    post:
+      tags:
+      - proposals
+      summary: Roll a process back to an earlier version
+      description: The earlier version's content is registered again as a new version, through registration,
+        acting for you. Nothing is deleted; a run under way finishes on its version. The ledger records
+        `process.rolled_back` (ADR-0091 §5).
+      operationId: rollback_processes__process_id__rollback_post
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackBody'
+      responses:
+        '200':
+          description: The version registered.
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Registration refused it; every finding.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process, proposal or version you may see.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The act does not fit the proposal's or the process's state.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
 components:
   schemas:
     AnswerBody:
@@ -1136,6 +1314,15 @@ components:
           description: Free text, as you would write it.
       type: object
       title: AnswerBody
+    CommissionBody:
+      properties:
+        approve_raise:
+          type: boolean
+          title: Approve Raise
+          description: 'True: you approve a raise of an autonomy level the version makes (ADR-0026).'
+          default: false
+      type: object
+      title: CommissionBody
     ConfirmBody:
       properties:
         confirmed:
@@ -1176,3 +1363,37 @@ components:
       required:
       - bundle
       title: ProposeBody
+    RehearseBody:
+      properties:
+        inputs:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Inputs
+          description: What the rehearsal is given; without it, the active version's last run's.
+      type: object
+      title: RehearseBody
+    RollbackBody:
+      properties:
+        approve_raise:
+          type: boolean
+          title: Approve Raise
+          description: 'True: you approve a raise of an autonomy level the version makes (ADR-0026).'
+          default: false
+        version:
+          type: string
+          minLength: 1
+          title: Version
+          description: The earlier version to make current again.
+        as_version:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: As Version
+          description: The new version's name; the next free one if none.
+      type: object
+      required:
+      - version
+      title: RollbackBody

@@ -20,6 +20,7 @@ from taktus.adapters.driven.memory import (
 )
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driving.rest import build_app
+from taktus.adapters.driving.rest.wiring import ProposalActs
 from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
@@ -119,6 +120,9 @@ class Services:
     leading: bool = False
     not_ready_reason: str | None = None
     ids: FakeIdentifiers = field(default_factory=FakeIdentifiers)
+    acts: ProposalActs | None = None
+    """The acts on a proposal; a test that reaches them sets them. What they do is held by
+    `tests/composition/test_proposals.py`."""
 
     @property
     def work(self) -> UnitOfWork:
@@ -163,6 +167,11 @@ class Services:
     @property
     def confirm_decision(self) -> ConfirmRequestHandler:
         return self.decisions.confirm
+
+    @property
+    def proposal_acts(self) -> ProposalActs:
+        assert self.acts is not None, "this test sets the acts it reaches"
+        return self.acts
 
     @property
     def proposals(self) -> Proposals:

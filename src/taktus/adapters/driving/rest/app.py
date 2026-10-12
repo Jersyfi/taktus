@@ -123,6 +123,7 @@ def build_app(
         app.include_router(_changes(services), prefix=base)
         app.include_router(levels.router(services, _authenticated), prefix=base)
         app.include_router(proposals.router(services, _authenticated), prefix=base)
+        app.include_router(proposals.acts_router(services, _authenticated), prefix=base)
         if web is not None and (web / "index.html").is_file():
             levels.mount_web(app, base, web)
     return app

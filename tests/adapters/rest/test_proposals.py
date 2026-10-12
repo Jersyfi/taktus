@@ -7,7 +7,13 @@ answered alike; a key is needed; an open proposal is discarded once.
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
+
+from taktus.components.process.application.service.proposals import ProposalError
+from taktus.components.process.application.service.register_version import parse_bundle
+from taktus.components.process.domain.model import ProcessVersion
 
 from .conftest import OTHER, TENANT, Services
 from .test_process_level import bundle, register
@@ -95,3 +101,62 @@ async def test_an_open_proposal_is_discarded_once(client: Client) -> None:
     first = await http.post(path, headers=bearer(key))
     assert first.status_code == 200 and first.json()["state"] == "discarded"
     assert (await http.post(path, headers=bearer(key))).status_code == 409
+
+
+class Acts:
+    """The acts as the surface reaches them: what was asked, and a refusal or a version back."""
+
+    def __init__(self, refusal: ProposalError | None = None) -> None:
+        self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+        self.refusal = refusal
+
+    def _answer(self, name: str, *args: Any, **kwargs: Any) -> None:
+        self.calls.append((name, args, kwargs))
+        if self.refusal is not None:
+            raise self.refusal
+
+    async def rehearse(self, *args: Any, **kwargs: Any) -> Any:
+        self._answer("rehearse", *args, **kwargs)
+        raise AssertionError("not reached in these tests")
+
+    async def commission(self, *args: Any, **kwargs: Any) -> ProcessVersion:
+        self._answer("commission", *args, **kwargs)
+        return parse_bundle(bundle("2"))
+
+    async def rollback(self, *args: Any, **kwargs: Any) -> ProcessVersion:
+        self._answer("rollback", *args, **kwargs)
+        return parse_bundle(bundle("3"))
+
+
+async def test_commission_and_rollback_act_for_the_key_s_identity(client: Client) -> None:
+    http, given, base = client
+    given.acts = acts = Acts()
+    key = await given.linked()
+    done = await http.post(
+        f"{base}/processes/invoices/proposals/prp_1/commission",
+        json={"approve_raise": True},
+        headers=bearer(key),
+    )
+    assert done.json() == {"process": "invoices", "version": "2"}
+    back = await http.post(
+        f"{base}/processes/invoices/rollback", json={"version": "1"}, headers=bearer(key)
+    )
+    assert back.json() == {"process": "invoices", "version": "3"}
+    (commissioned, rolled) = acts.calls
+    assert commissioned[1][2:4] == ("prp_1", "idn_ada")
+    assert commissioned[2] == {"approved_by": "idn_ada"}, "the raise approved by who asks"
+    assert rolled[1][1:4] == ("invoices", "1", "idn_ada") and rolled[2]["approved_by"] is None
+    missing = await http.post(f"{base}/processes/invoices/rollback", json={"version": "1"})
+    assert missing.status_code == 401
+
+
+async def test_a_refused_act_is_a_conflict_and_an_unknown_one_is_not_found(client: Client) -> None:
+    http, given, base = client
+    key = await given.linked()
+    for kind, status in (("unrehearsed", 409), ("stale", 409), ("unknown", 404)):
+        given.acts = Acts(ProposalError(kind, f"refused: {kind}"))
+        refused = await http.post(
+            f"{base}/processes/invoices/proposals/prp_1/commission", json={}, headers=bearer(key)
+        )
+        assert refused.status_code == status, kind
+        assert refused.json()["kind"] == kind

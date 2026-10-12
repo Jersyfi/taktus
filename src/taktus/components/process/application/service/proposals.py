@@ -137,3 +137,33 @@ class Proposals:
             discarded = found.model_copy(update={"state": ProposalState.DISCARDED})
             await self._proposals.put(tenant, discarded)
         return discarded
+
+    async def rehearsed(
+        self, tenant: Tenant, process_id: str, proposal_id: str, run_id: str
+    ) -> Proposal:
+        """The proposal, with the rehearsal run that was started for it (ADR-0091 §3)."""
+        return await self._move(
+            tenant, process_id, proposal_id, ProposalState.REHEARSED, rehearsal_run=run_id
+        )
+
+    async def commissioned(self, tenant: Tenant, process_id: str, proposal_id: str) -> Proposal:
+        """The proposal, commissioned: registration has registered its bundle (ADR-0091 §4)."""
+        return await self._move(tenant, process_id, proposal_id, ProposalState.COMMISSIONED)
+
+    async def _move(
+        self,
+        tenant: Tenant,
+        process_id: str,
+        proposal_id: str,
+        state: ProposalState,
+        **more: Any,
+    ) -> Proposal:
+        async with self._work.transaction(tenant):
+            found = await self._proposals.get(tenant, proposal_id)
+            if found is None or found.process_id != process_id:
+                raise ProposalError("unknown", f"no proposal {proposal_id!r} for {process_id!r}")
+            if found.state not in OPEN:
+                raise ProposalError("closed", f"the proposal {proposal_id} is {found.state}")
+            moved = found.model_copy(update={"state": state, **more})
+            await self._proposals.put(tenant, moved)
+        return moved
