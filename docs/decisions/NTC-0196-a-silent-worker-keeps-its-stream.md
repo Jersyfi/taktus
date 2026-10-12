@@ -1,4 +1,4 @@
-# NTC-0195 — A silent worker keeps its stream
+# NTC-0196 — A silent worker keeps its stream
 
 **Mode entry:** M2.4
 **Kind:** behaviour-change
