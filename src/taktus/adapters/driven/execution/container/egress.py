@@ -117,11 +117,11 @@ def authorised(headers: list[bytes], token: str | None) -> bool:
 
 
 def proxy(allowlist: Allowlist, token: str | None = None) -> Handler:
-    async def refuse(writer: asyncio.StreamWriter, status: str, why: str) -> None:
+    async def refuse(writer: asyncio.StreamWriter, status: str, why: str, extra: str = "") -> None:
         body = (why + "\n").encode()
         writer.write(
             f"HTTP/1.1 {status}\r\nContent-Type: text/plain\r\nContent-Length: {len(body)}\r\n"
-            "Connection: close\r\n\r\n".encode()
+            f"{extra}Connection: close\r\n\r\n".encode()
             + body
         )
         await writer.drain()
@@ -147,7 +147,14 @@ def proxy(allowlist: Allowlist, token: str | None = None) -> Handler:
         method, target, version = parts
         if not authorised(headers, token):
             log(f"refused {method} {target}: no valid proxy authorisation")
-            await refuse(writer, "407 Proxy Authentication Required", "this proxy is not yours")
+            # A 407 names the scheme it accepts (RFC 9110 §11.7.1). A client that negotiates,
+            # as git does by default, sends no credentials until it reads one (issue #356).
+            await refuse(
+                writer,
+                "407 Proxy Authentication Required",
+                "this proxy is not yours",
+                'Proxy-Authenticate: Basic realm="taktus"\r\n',
+            )
             return
         if method.upper() == "CONNECT":
             host, _, port_text = target.rpartition(":")
