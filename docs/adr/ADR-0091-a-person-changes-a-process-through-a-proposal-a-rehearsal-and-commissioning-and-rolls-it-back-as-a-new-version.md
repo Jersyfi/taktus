@@ -45,14 +45,12 @@ registered like any other:
 
 | Step | Method | Exactness | Why |
 |---|---|---|---|
-| read the active version | `rule` | `sourced` | the bundle is read as it is registered |
+| read | `rule` | `sourced` | the bundle is read as it is registered |
 | propose | `llm` | `tolerant` | the request is in a person's words; no rule states what it means for a bundle. Rejected: `rule`, the wording varies too much. Falls back to `human`: the person writes the bundle |
-| validate | `rule` | `exact` | the registration's own validation; the model's answer leaves only through it |
-| difference | `rule` | `exact` | the two bundles compared field by field |
-| keep the proposal | `rule` | `sourced` | the proposal is stored with its difference |
+| keep | `rule` | `exact` | the proposed bundle validated as registration would, its difference against the active version computed field by field, and the proposal kept; the model's answer leaves only through it. Its check is a recomputation (ADR-0082) |
 
 The model proposes; the rules decide whether there is a proposal at all. A person may also hand
-over the changed bundle directly; it then enters at *validate*, and no model is asked.
+over the changed bundle directly; it then enters at *keep*, and no model is asked.
 
 ### 3. A rehearsal before commissioning
 A proposal is rehearsed as ADR-0030 rehearses any run. The rehearsal runs the proposed version
