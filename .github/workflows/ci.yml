@@ -53,8 +53,8 @@ jobs:
       - name: vision
         run: make gate-vision
       # The status report is current: touched by every change to the state of the project, and
-      # section 3 pointing at `make status` (ADR-0028). The last section of a description is the
-      # `description` workflow's.
+      # section 3 pointing at `make status` (ADR-0028). The last section of a description is
+      # written by the `owner-list` workflow (DEC-0189).
       - name: status (pull request)
         if: github.event_name == 'pull_request'
         run: uv run tools/check_status.py --base origin/${{ github.base_ref }}

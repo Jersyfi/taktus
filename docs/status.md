@@ -447,8 +447,9 @@ assigned to the owner with the steps.
 **The list is not kept in this file.** It is generated from the open records of the register
 and carried in three places, none of which two pull requests can edit at once (DEC-0026):
 
-- the last section of every pull request description, `## Needed from the owner`, checked by
-  CI against the branch's register;
+- the last section of every pull request description, `## Needed from the owner`, written by
+  the `owner-list` workflow from the branch's register on every push and edit (DEC-0189 rule 1,
+  #314), and pasted by nobody;
 - [the open issues labelled `needs-owner` or `decision-request`](https://github.com/Jersyfi/taktus/issues?q=is%3Aopen+label%3Aneeds-owner%2Cdecision-request);
 - `make status` in a checkout, which prints it.
 
