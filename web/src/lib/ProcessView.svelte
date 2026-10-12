@@ -84,13 +84,6 @@
 </section>
 
 <style>
-	h1 {
-		font-size: 1.25rem;
-		margin: 0;
-	}
-	h2 {
-		font-size: 1.05rem;
-	}
 	.meta {
 		margin: 0.15rem 0 0;
 		opacity: 0.75;
@@ -102,11 +95,12 @@
 		margin-right: 0.4rem;
 	}
 	.autonomy {
-		margin: 1rem 0;
-		padding: 0.6rem 0.8rem;
+		margin: 1rem 0 1.5rem;
+		padding: 0.9rem 1.1rem;
 		border: 1px solid var(--line);
-		border-radius: 6px;
-		max-width: 48rem;
+		border-radius: 14px;
+		max-width: 56rem;
+		color: var(--ink-2);
 	}
 	.autonomy p {
 		margin: 0.2rem 0;
@@ -126,9 +120,5 @@
 	}
 	.state {
 		color: var(--muted);
-	}
-	.text ol {
-		padding-left: 1.25rem;
-		line-height: 1.5;
 	}
 </style>

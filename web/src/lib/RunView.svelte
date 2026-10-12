@@ -81,10 +81,6 @@
 		gap: 0.75rem;
 		align-items: center;
 	}
-	h1 {
-		font-size: 1.25rem;
-		margin: 0;
-	}
 	.meta {
 		margin: 0.15rem 0 0;
 		opacity: 0.75;
@@ -113,9 +109,5 @@
 		gap: 0.5rem;
 		align-items: center;
 		padding: 0.15rem 0;
-	}
-	.text ol {
-		padding-left: 1.25rem;
-		line-height: 1.5;
 	}
 </style>
