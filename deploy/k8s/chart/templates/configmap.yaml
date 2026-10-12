@@ -31,6 +31,7 @@ data:
   TAKTUS_EXECUTION_MEMORY_MB: {{ $execution.defaults.memoryMb | quote }}
   TAKTUS_EXECUTION_WALL_SECONDS: {{ $execution.defaults.wallSeconds | quote }}
   TAKTUS_EXECUTION_START_TIMEOUT_SECONDS: {{ $execution.defaults.startTimeoutSeconds | quote }}
+  TAKTUS_EXECUTION_SERVICE_HOSTS: {{ join "," ($execution.defaults.serviceHosts | default list) | quote }}
   TAKTUS_EXECUTION_EGRESS_IMAGE: {{ include "taktus.imageRef" (dict "what" "execution.egress.proxyImage" "ref" $execution.egress.proxyImage) | quote }}
   # Read by the cluster execution adapter (TAKTUS_EXECUTION=cluster): where its jobs go, the
   # account they run as, whether a frame's host list must be enforced, and the claim the units'
@@ -91,6 +92,9 @@ data:
   {{- end }}
   {{- with .stateClaim }}
   {{ $prefix }}EXECUTION_STATE_CLAIM: {{ . | quote }}
+  {{- end }}
+  {{- if hasKey . "serviceHosts" }}
+  {{ $prefix }}EXECUTION_SERVICE_HOSTS: {{ join "," (.serviceHosts | default list) | quote }}
   {{- end }}
   {{- end }}
   TAKTUS_WORKERS: {{ join "," $names | quote }}

@@ -179,7 +179,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 65, "every setting is in the startup log"
+    assert len(effective) == 66, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -364,6 +364,37 @@ def test_a_cpu_request_share_outside_a_hundredth_to_one_is_refused(value: str) -
             TAKTUS_EXECUTION_NAMESPACE="jobs",
             TAKTUS_EXECUTION_CPU_REQUEST_SHARE=value,
         )
+
+
+def test_service_hosts_are_read_per_worker_with_the_instances_as_the_default() -> None:
+    """ADR-0089: the hosts a worker's own service needs are configuration, the instance's
+    unless a worker names its own, and the startup log names them."""
+    loaded = settings(
+        TAKTUS_WORKERS="coding,shell",
+        TAKTUS_EXECUTION="cluster",
+        TAKTUS_EXECUTION_NAMESPACE="jobs",
+        TAKTUS_EXECUTION_UNIT="worker:1",
+        TAKTUS_EXECUTION_SERVICE_HOSTS=" model.example.net , 10.0.0.7:8443",
+        TAKTUS_WORKER_CODING_EXECUTION_SERVICE_HOSTS="agent.example.net",
+    )
+    coding, shell = loaded.workers
+    assert coding.execution.service_hosts == ("agent.example.net",)
+    assert shell.execution.service_hosts == ("model.example.net", "10.0.0.7:8443")
+    effective = dict(loaded.effective())
+    assert effective["TAKTUS_WORKER_CODING_EXECUTION_SERVICE_HOSTS"] == "agent.example.net"
+    assert effective["TAKTUS_WORKER_SHELL_EXECUTION_SERVICE_HOSTS"] == (
+        "model.example.net,10.0.0.7:8443"
+    )
+    assert settings().workers[0].execution.service_hosts == (), "none unless configured"
+    assert settings(TAKTUS_EXECUTION_SERVICE_HOSTS="").workers[0].execution.service_hosts == ()
+
+
+@pytest.mark.parametrize(
+    "value", ["*.example.net", "Model.example.net", "https://model.example.net", "a,,b", "a,a"]
+)
+def test_a_service_host_that_a_frame_could_not_name_is_refused(value: str) -> None:
+    with pytest.raises(ConfigurationError, match="TAKTUS_EXECUTION_SERVICE_HOSTS"):
+        settings(TAKTUS_EXECUTION_SERVICE_HOSTS=value)
 
 
 def test_findings_are_sent_only_where_the_operator_names_a_connector() -> None:

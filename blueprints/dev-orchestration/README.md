@@ -281,7 +281,7 @@ enforced.
   scheduler of `taktusd` runs P-01 every day at 00:00 UTC without anyone supplying them
   (ADR-0035, NTC-0045). P-02 needs the issue number; P-03 needs
   it too, plus `records_path` — the directory of `main` that holds the open decision and needs
-  records, `docs/decisions/open` here — the clone URL, the one host the worker may reach, the name of the coding
+  records, `docs/decisions/open` here — the clone URL, the one host the step lets the worker reach (its own service's hosts are the operator's, ADR-0089), the name of the coding
   worker's credential. `closing_section` is optional: the section the repository generates for
   the end of every pull request description, verbatim with its heading. Left out, the worker
   generates it after its change (ADR-0053); `tools/first_run.sh` still hands it in, from

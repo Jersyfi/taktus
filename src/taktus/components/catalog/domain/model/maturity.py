@@ -107,6 +107,10 @@ class Configuration(Value):
     """For a connector: the operations it declared. Absent for the other families."""
     version: str | None = None
     """The version the adapter declared, where it declares one."""
+    hosts: tuple[str, ...] | None = None
+    """For a launched worker: the hosts its own service may reach beyond a step's frame, as the
+    operator configured them (ADR-0089). Absent where it names none, so that a configuration
+    without them reads as it did before."""
 
 
 class RemovalResult(Value):

@@ -189,7 +189,7 @@ async def test_an_issue_labelled_ready_becomes_a_pull_request_that_ends_with_the
     await linked(wired, tenant)
     await verified_adapters(wired, tenant, outside)
     version = await registered(wired, tenant, the_bundle(outside))
-    assert version.ref == "p03-implementation@5"
+    assert version.ref == "p03-implementation@6"
 
     clock.current += timedelta(minutes=1)
     await labelled_ready(wired, tenant, tasks.ready, clock.now())

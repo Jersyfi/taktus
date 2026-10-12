@@ -397,6 +397,31 @@ def test_the_cluster_adapter_is_wired_to_the_namespace_the_account_and_the_state
     assert {d["kind"] for d in documents} <= ALLOWED_KINDS
 
 
+def test_service_hosts_are_configuration_for_the_instance_and_each_worker() -> None:
+    """ADR-0089: the hosts a worker's own service needs are rendered from the values, the
+    instance's as the default and a worker's own where it names them — an empty list too."""
+    [config] = of_kind(render("execution.kind=cluster"), "ConfigMap")
+    assert config["data"]["TAKTUS_EXECUTION_SERVICE_HOSTS"] == "", "none unless configured"
+    documents = render(
+        "execution.kind=cluster",
+        "execution.defaults.serviceHosts={model.example.net,10.0.0.7:8443}",
+        "execution.workers[0].name=coding",
+        "execution.workers[0].image=taktus-worker-coding:0.1.0",
+        "execution.workers[0].serviceHosts={agent.example.net}",
+        "execution.workers[1].name=plain",
+        "execution.workers[1].image=taktus-worker-plain:0.1.0",
+        "execution.workers[1].serviceHosts={}",
+        "execution.workers[2].name=shared",
+        "execution.workers[2].image=taktus-worker-shared:0.1.0",
+    )
+    [config] = of_kind(documents, "ConfigMap")
+    data = config["data"]
+    assert data["TAKTUS_EXECUTION_SERVICE_HOSTS"] == "model.example.net,10.0.0.7:8443"
+    assert data["TAKTUS_WORKER_CODING_EXECUTION_SERVICE_HOSTS"] == "agent.example.net"
+    assert data["TAKTUS_WORKER_PLAIN_EXECUTION_SERVICE_HOSTS"] == "", "its own: none"
+    assert "TAKTUS_WORKER_SHARED_EXECUTION_SERVICE_HOSTS" not in data, "the instance's"
+
+
 def test_several_workers_are_configuration_each_with_its_own_credentials() -> None:
     """Issue #209, ADR-0078: the chart names several workers in order, each with what it sets
     itself, and mounts a credential for one worker under that worker's parameter."""
