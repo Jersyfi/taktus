@@ -102,6 +102,25 @@ it, by price kind: uncached input, input read from a cache, input written to one
 run records them per model in the step's consumption (`contracts/shared/v1/Consumption.json`,
 `tokens_by_model`), so that money follows from the record.
 
+**The dialect's split.** Over the chat-completions dialect, `usage.prompt_tokens` is the input
+and `usage.completion_tokens` the output. An endpoint reports cached input in one of two
+shapes, and both are read:
+
+| Price kind | Nested | At the top of `usage` |
+|---|---|---|
+| `cache_read` | `prompt_tokens_details.cached_tokens` | `cache_read_input_tokens` |
+| `cache_write` | `prompt_tokens_details.cache_write_tokens` | `cache_creation_input_tokens` |
+
+A kind is reported where either of its fields is present, even at zero. Where both are present
+they count the same tokens, and the larger count is taken once. The uncached input is
+`prompt_tokens` less the cached tokens. Cached tokens that exceed `prompt_tokens` cannot be part
+of it: the total is then the uncached input alone, and the input tokens are the sum. The
+adapter and the suite read this one rule (`tests/conformance` holds them to each other).
+
+**The operator declares what the endpoint reports** (`TAKTUS_MODEL_USAGE_KINDS`, default
+`input,output`). The adapter's declaration names those kinds, and M-04 fails an endpoint that
+does not report one of them.
+
 ## 6. The price table
 
 A `PriceTable` prices each kind of each model per `unit_tokens` tokens, in one currency, with

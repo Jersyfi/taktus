@@ -25,7 +25,13 @@ import httpx
 
 from taktus.conformance.contracts import first_error
 from taktus.conformance.findings import Findings
-from taktus.conformance.model.rules import CATALOGUE, CHECKS, dialect_bound, exchange_violations
+from taktus.conformance.model.rules import (
+    CATALOGUE,
+    CHECKS,
+    dialect_bound,
+    dialect_usage,
+    exchange_violations,
+)
 from taktus.conformance.report import Report
 
 type Json = dict[str, Any]
@@ -107,23 +113,12 @@ async def _call(
     try:
         document = response.json()
         usage = document["usage"]
-        tokens_in = int(usage["prompt_tokens"])
+        tokens_in, by_kind = dialect_usage(usage)
         tokens_out = int(usage["completion_tokens"])
         finish = str(document["choices"][0].get("finish_reason") or "")
-    except (ValueError, KeyError, IndexError, TypeError) as error:
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
         raise _Unanswered(f"an answer outside the dialect: {type(error).__name__}") from error
-    details = usage.get("prompt_tokens_details") or {}
-    by_kind: Json = {}
-    read = int(details.get("cached_tokens") or 0) if "cached_tokens" in details else None
-    written = (
-        int(details.get("cache_write_tokens") or 0) if "cache_write_tokens" in details else None
-    )
-    by_kind["input"] = tokens_in - (read or 0) - (written or 0)
     by_kind["output"] = tokens_out
-    if read is not None:
-        by_kind["cache_read"] = read
-    if written is not None:
-        by_kind["cache_write"] = written
     exchange: Json = {
         "declaration": options.declaration,
         "max_output_tokens": limit,
@@ -138,11 +133,6 @@ async def _call(
     if options.declaration["input_count"] != "none":
         exchange["counted"] = dialect_bound(messages)
     return exchange
-
-
-def _count(details: Json, name: str) -> int | None:
-    """A count the endpoint reports, or None when it does not report that kind at all."""
-    return int(details.get(name) or 0) if name in details else None
 
 
 def _judge(purpose: str, exchange: Json, findings: Findings) -> None:

@@ -1497,20 +1497,35 @@ class RunEngine:
         """The model's provider answered at its rate limit. Nothing was produced: the step goes
         back to its boundary, and the run halts there with cause `capacity` for its runner to
         try again later, as for a worker at capacity (ADR-0037). The wait is booked to
-        `limit.provider`. Past the ceiling the step fails, and the run escalates (ADR-0043)."""
+        `limit.provider`. Past the ceiling the step fails, and the run escalates (ADR-0043).
+
+        A provider that names its delay (`Retry-After`) has it recorded with the block, and the
+        runner defers the job by it. A delay that reaches past the ceiling ends the wait now:
+        the provider has said it will not answer within it (ADR-0043, amendment)."""
         span.record_failure("provider at its rate limit")
         self._at_capacity.add(run.id)
         now = self._clock.now()
         since = step_run.waiting_since or now
         waits = step_run.waits + 1
         ceiling = self._options.capacity_ceiling_seconds
+        retry_after = limited.retry_after_seconds
         run, step_run = await self._open_block(
             run, step_run, "limit.provider", block.AT_PROVIDER_LIMIT, since=since
         )
+        if step_run.block is not None:
+            step_run = step_run.model_copy(
+                update={
+                    "block": step_run.block.model_copy(update={"retry_after_seconds": retry_after})
+                }
+            )
         step_run = step_run.model_copy(
             update={"adapter": limited.adapter, "waiting_since": since, "waits": waits}
         )
-        if waiting.over(since, now, ceiling):
+        past = waiting.over(since, now, ceiling)
+        named_past = retry_after is not None and waiting.over(
+            since, now + timedelta(seconds=retry_after), ceiling
+        )
+        if past or named_past:
             run, step_run = await self._close_block(
                 run,
                 step_run,
@@ -1518,11 +1533,15 @@ class RunEngine:
                     adapter=limited.adapter, waits=waits, ended="ceiling", ceiling_seconds=ceiling
                 ),
             )
+            stayed = (
+                f"stayed at its rate limit for {(now - since).total_seconds():.0f}s"
+                if past
+                else f"asks to be asked again in {retry_after:.0f}s, past the ceiling"
+            )
             step_run = step_run.to(
                 StepState.FAILED,
-                reason=f"the provider of {limited.adapter} stayed at its rate limit for "
-                f"{(now - since).total_seconds():.0f}s, {waits} times asked; the ceiling is "
-                f"{ceiling}s: {limited.reason}",
+                reason=f"the provider of {limited.adapter} {stayed}, {waits} times asked; the "
+                f"ceiling is {ceiling}s: {limited.reason}",
                 retryable=True,
                 finished_at=now,
             )
@@ -2125,7 +2144,11 @@ class RunEngine:
                 call.set_attribute("model.name", completion.model)
                 call.set_attribute("model.finish", completion.finish)
         except ModelAtLimit as error:
-            raise _AtLimit(adapter=resolved.adapter, reason=str(error)) from error
+            raise _AtLimit(
+                adapter=resolved.adapter,
+                reason=str(error),
+                retry_after_seconds=error.retry_after_seconds,
+            ) from error
         except ModelError as error:
             raise _StepFailed(
                 reason=str(error),
@@ -3363,6 +3386,8 @@ class _AtLimit(Exception):
 
     adapter: str
     reason: str
+    retry_after_seconds: float | None = None
+    """The delay the provider asked for in its `Retry-After`; None when it named none."""
 
 
 @dataclass(frozen=True)

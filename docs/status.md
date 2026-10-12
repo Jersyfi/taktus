@@ -419,7 +419,10 @@ object cache without a bound, cache writes booked too cheaply, and project value
 defaults (ADR-0092). Migrations run beside the previous release from now on (ADR-0093). The
 project's own records follow six working rules (DEC-0189). The deadlock is fixed (#309,
 NTC-0201): the ledger's claim on a tenant's chain is its only lock, and every database
-connection carries `lock_timeout` and `idle_in_transaction_session_timeout`.
+connection carries `lock_timeout` and `idle_in_transaction_session_timeout`. Cache writes are
+booked by their kind in either shape an endpoint reports them, the operator declares the price
+kinds an endpoint reports and M-04 holds it to that, and a `429`'s `Retry-After` defers the step
+(#312, NTC-0206); which shape each provider in use returns is still to be verified against it.
 
 ## 2. The next pull requests
 

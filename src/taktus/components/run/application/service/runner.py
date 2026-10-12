@@ -25,7 +25,9 @@ What happens when a run ends decides the job:
   claimed again after a delay that doubles with every answer of the same wait, up to a cap.
   The run waits at its boundary, holding no slot of any runner and no place at the worker; the
   runner that claims the job next asks the worker again, and the step's ceiling turns a wait
-  that does not end into an escalation (ADR-0037);
+  that does not end into an escalation (ADR-0037). A model's provider at its rate limit is
+  waited for the same way; where it named its delay in `Retry-After`, the job is deferred by
+  that delay instead (ADR-0043);
 - the engine raised — the job is *released* and counted as an attempt; after the queue's limit
   of attempts the job stays for a person.
 
@@ -263,10 +265,20 @@ class Runner:
             await self.queue.release(executing.tenant, executing.job.id, self.options.claimant)
 
     async def _defer(self, executing: _Executing, run: Run) -> None:
+        """Give the job back for later: after the delay the provider named in its
+        `Retry-After`, recorded with the step's block, never sooner than the first delay; else
+        after the delay that doubles with every answer of the same wait (ADR-0037, ADR-0043)."""
         waiting_step = run.next_step_run()
         waits = 1 if waiting_step is None else waiting_step.waits
-        seconds = waiting.delay(
-            waits, self.options.wait_first_seconds, self.options.wait_cap_seconds
+        named = (
+            None
+            if waiting_step is None or waiting_step.block is None
+            else waiting_step.block.retry_after_seconds
+        )
+        seconds = (
+            waiting.delay(waits, self.options.wait_first_seconds, self.options.wait_cap_seconds)
+            if named is None
+            else max(named, self.options.wait_first_seconds)
         )
         async with self.work.transaction(executing.tenant):
             await self.queue.defer(

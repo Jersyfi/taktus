@@ -378,6 +378,36 @@ async def test_a_provider_at_its_limit_past_the_ceiling_escalates_with_its_wait_
     assert content is not None and json.loads(content)["ended"] == "ceiling"
 
 
+async def test_a_provider_s_retry_after_is_recorded_with_the_block() -> None:
+    """The delay a `429` names is on the step's open block while it waits, for the runner to
+    defer by, and in the block's record once the model answers (ADR-0043, amendment)."""
+    w = World(model=FakeModel(answer="yes", at_limit=1, retry_after=30.0))
+    run = await w.start("provider", llm("draft"))
+    assert run.state is RunState.HALTED and run.cause is Cause.CAPACITY
+    waiting = run.step_run("draft").block
+    assert waiting is not None and waiting.retry_after_seconds == 30.0
+    w.later()
+    run = await w.resume(run)
+    assert run.state is RunState.FINISHED
+    async with w.persistence.transaction(TENANT):
+        (entry,) = [e for e in await w.ledger.entries(TENANT) if e.kind == "step.waited"]
+    assert entry.content_digest is not None
+    content = await w.objects.get(entry.content_digest)
+    assert content is not None
+    record = json.loads(content)
+    assert (record["retry_after_seconds"], record["ended"]) == (30.0, "answered")
+
+
+async def test_a_retry_after_past_the_ceiling_ends_the_wait_at_once() -> None:
+    w = World(model=FakeModel(answer="yes", at_limit=1, retry_after=7200.0))
+    w.engine._options = EngineOptions(uncalibrated_margin=0.0, capacity_ceiling_seconds=3600)
+    run = await w.start("provider", llm("draft"))
+    assert run.state is RunState.ESCALATED and run.cause is Cause.CAPACITY
+    assert "asks to be asked again in 7200s" in (run.step_run("draft").reason or "")
+    (waited,) = await w.accounts.blocks(TENANT)
+    assert (waited.account, waited.cause) == ("limit.provider", "at_provider_limit")
+
+
 def call(id: str, operation: str) -> tuple[Step, dict[str, Any]]:
     step = Step(
         id=id, method=Method.RULE, reason="r", rejected=(), exactness=ExactnessClass.SOURCED

@@ -20,13 +20,24 @@ declares both for the configured endpoint (`TAKTUS_MODEL_OUTPUT_CAP`, `TAKTUS_MO
 and the defaults are the cautious ones — a soft cap, billing per token. The evidence for what
 providers permit is `docs/research/2026-09-30-what-providers-allow.md`.
 
-**After it.** `usage.prompt_tokens` is every input token; where the endpoint reports how many
-were read from a cache (`prompt_tokens_details.cached_tokens`) or written to one
-(`prompt_tokens_details.cache_write_tokens`), the completion splits them by price kind.
+**After it.** `usage.prompt_tokens` is every input token. Where the endpoint reports how many
+were read from a cache or written to one, the completion splits them by price kind. An endpoint
+reports them in one of two shapes, and the adapter reads both: nested
+(`prompt_tokens_details.cached_tokens`, `prompt_tokens_details.cache_write_tokens`) and at the
+top level of the usage (`cache_read_input_tokens`, `cache_creation_input_tokens`). Where both
+shapes report a kind, they report the same tokens, and the larger count is booked once. Where
+the cached tokens exceed `prompt_tokens`, the total cannot include them: it is then the uncached
+input alone, and the input is the sum. Which kinds the endpoint reports the operator declares
+(`TAKTUS_MODEL_USAGE_KINDS`); conformance check M-04 holds the endpoint to it.
+
+**At the provider's limit.** A `429` is `ModelAtLimit`. A `Retry-After` header on it, in
+seconds or as an HTTP date, is passed on as the delay the provider asked for (ADR-0043).
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -40,6 +51,7 @@ from taktus.ports.model import (
     ModelAtLimit,
     ModelError,
     OutputCap,
+    PriceKindName,
     Prompt,
     ProviderLimit,
 )
@@ -74,6 +86,7 @@ class OpenAiCompatibleModel(Model):
         billing: Billing = "per_token",
         output_cap: OutputCap = "soft",
         provider_limit: ProviderLimit = "unknown",
+        usage_kinds: tuple[PriceKindName, ...] = ("input", "output"),
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
         self._model = model
@@ -82,7 +95,7 @@ class OpenAiCompatibleModel(Model):
         self._calculability = Calculability(
             input_count="upper_bound",
             output_cap=output_cap,
-            usage_kinds=("input", "output"),
+            usage_kinds=usage_kinds,
             billing=billing,
             provider_limit=provider_limit,
             evidence=EVIDENCE,
@@ -125,9 +138,12 @@ class OpenAiCompatibleModel(Model):
                 f"the model endpoint {self._endpoint} did not answer: {type(error).__name__}"
             ) from error
         if response.status_code == 429:
+            retry_after = _retry_after(response.headers.get("Retry-After"))
+            asked = "" if retry_after is None else f" (Retry-After {retry_after:.0f}s)"
             raise ModelAtLimit(
                 f"the model endpoint {self._endpoint} answered 429 for model {self._model!r}: "
-                f"the provider's rate limit is reached: {_message(response)}"
+                f"the provider's rate limit is reached{asked}: {_message(response)}",
+                retry_after_seconds=retry_after,
             )
         if response.status_code >= 400:
             raise ModelError(
@@ -146,30 +162,68 @@ class OpenAiCompatibleModel(Model):
             ) from error
         if not isinstance(text, str):
             raise ModelError(f"the model endpoint {self._endpoint} answered without text")
-        tokens_in = int(usage.get("prompt_tokens") or 0)
+        if not isinstance(usage, dict):
+            raise ModelError(
+                f"the model endpoint {self._endpoint} answered outside the chat-completions "
+                "shape: the usage is not an object"
+            )
+        tokens_in, by_kind = _by_kind(usage)
         tokens_out = int(usage.get("completion_tokens") or 0)
         return Completion(
             text=text,
             model=str(document.get("model") or self._model),
             tokens_in=tokens_in,
             tokens_out=tokens_out,
-            by_kind=_by_kind(usage, tokens_in, tokens_out),
+            by_kind=PriceKinds.model_validate({**by_kind, "output": tokens_out}),
             finish=FINISH.get(str(choice.get("finish_reason") or ""), "other"),  # type: ignore[arg-type]
         )
 
 
-def _by_kind(usage: dict[str, Any], tokens_in: int, tokens_out: int) -> PriceKinds:
-    """The totals split by price kind, as far as the endpoint reports the split: cached input
-    read and written where it says so, the rest uncached."""
-    details = usage.get("prompt_tokens_details") or {}
-    read = int(details.get("cached_tokens") or 0) if isinstance(details, dict) else 0
-    written = int(details.get("cache_write_tokens") or 0) if isinstance(details, dict) else 0
-    kinds: dict[str, int] = {"input": max(0, tokens_in - read - written), "output": tokens_out}
+def _by_kind(usage: dict[str, Any]) -> tuple[int, dict[str, int]]:
+    """Every input token, and the input split by price kind as far as the endpoint reports the
+    split: read from a cache and written to one, in either shape, the rest uncached. A kind the
+    endpoint does not report, or reports as zero, is left out. `contracts/model/v1` §5 states
+    the rule; `tests/conformance` holds this to the conformance suite's reading of it."""
+    prompt = int(usage.get("prompt_tokens") or 0)
+    details = usage.get("prompt_tokens_details")
+    nested = details if isinstance(details, dict) else {}
+    read = max(_tokens(nested, "cached_tokens"), _tokens(usage, "cache_read_input_tokens"))
+    written = max(
+        _tokens(nested, "cache_write_tokens"), _tokens(usage, "cache_creation_input_tokens")
+    )
+    if read + written > prompt:
+        # The total cannot hold the cached tokens: it is the uncached input alone.
+        tokens_in, uncached = prompt + read + written, prompt
+    else:
+        tokens_in, uncached = prompt, prompt - read - written
+    kinds = {"input": uncached}
     if read:
         kinds["cache_read"] = read
     if written:
         kinds["cache_write"] = written
-    return PriceKinds.model_validate(kinds)
+    return tokens_in, kinds
+
+
+def _tokens(where: dict[str, Any], name: str) -> int:
+    value = where.get(name)
+    return value if isinstance(value, int) and value > 0 else 0
+
+
+def _retry_after(value: str | None) -> float | None:
+    """The delay a `Retry-After` header asks for, in seconds: a number of seconds, or the time
+    until an HTTP date, never below zero. None when there is no header or it says neither."""
+    if value is None or not value.strip():
+        return None
+    text = value.strip()
+    if text.isdigit():
+        return float(text)
+    try:
+        when = parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - datetime.now(UTC)).total_seconds())
 
 
 def _message(response: httpx.Response) -> str:

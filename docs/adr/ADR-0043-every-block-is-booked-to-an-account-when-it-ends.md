@@ -148,6 +148,29 @@ protective rule; NTC-0168).
   decider; `own` reads them as the answer. A declined act is then a person's choice and no
   block. A further kind of wait adds a cause token and books to an existing account.
 
+## Amendment — the provider's own delay (2026-10-13)
+
+The adapter for the chat-completions dialect raised `ModelAtLimit` for a `429` and dropped the
+answer's `Retry-After` header. The runner then deferred the job by its own delay, which starts at
+a second and doubles up to a minute. A provider that asks for five minutes was asked again
+about ten times before it would answer (issue #312, `docs/research/2026-10-12-devops-review.md`
+§G1).
+
+### 8. A provider that names its delay is asked again after it
+- **The port carries the delay.** `ModelAtLimit.retry_after_seconds` is the delay the answer
+  names in `Retry-After`, in seconds or as an HTTP date; None where it names none or the header
+  says neither.
+- **It is recorded with the block.** The step's open block carries it as
+  `retry_after_seconds`, and the block's record carries it when the block ends. A later answer
+  of the same wait replaces it.
+- **The runner defers by it.** A run halted with cause `capacity` whose waiting step's block
+  names a delay is deferred by that delay, and never by less than the runner's first delay. A
+  block without one is deferred as ADR-0037 §3 says.
+- **A delay past the ceiling ends the wait at once.** Where the next try the provider permits
+  would fall at or after the ceiling, the step fails with outcome `at_provider_limit` and the
+  run escalates with cause `capacity` now. The reason names the delay. Waiting for a try that
+  cannot come within the ceiling would only hold the run longer.
+
 ## Where this promise ends
 The accounts hold the blocks Taktus sees at a step's boundary. A block that has not ended is on
 its step run and in no sum. A run that is abandoned while blocked keeps its block open for good.
@@ -169,3 +192,9 @@ time by hand; the accounts and their sums never do it for them. A sum of `wait.h
 withheld below two persons in its process and period; the `wait.dependency` sum of the steps
 held back behind such a wait is the process's and is shown, and its length follows the
 person's wait.
+
+The amendment of 2026-10-13 trusts the provider's delay. A delay that is shorter than the
+provider will in fact need costs one more try, and each try is booked in the same wait. A delay
+below the runner's first delay is raised to it, so that a provider answering `0` is not asked in
+a tight loop. A `Retry-After` on any answer other than `429` is not read. A run started in the
+same process with `start` has no runner, and the delay is only recorded.

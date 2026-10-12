@@ -91,6 +91,12 @@ class ModelAtLimit(ModelError):
     and the same call may be made again later. The step waits instead of failing, and the wait
     is booked to `limit.provider` (ADR-0043)."""
 
+    def __init__(self, message: str, *, retry_after_seconds: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+        """How long the provider asked to wait before the call is made again (its
+        `Retry-After`), in seconds; None when it did not say."""
+
 
 class Model(Protocol):
     def calculability(self) -> Calculability:

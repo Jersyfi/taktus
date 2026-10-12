@@ -13,7 +13,7 @@ import pytest
 from fakes import model_service
 
 from taktus.conformance import ModelSuiteOptions, Status, run_model_suite
-from taktus.conformance.model import dialect_bound, exchange_violations
+from taktus.conformance.model import dialect_bound, dialect_usage, exchange_violations
 
 ROOT = Path(__file__).resolve().parents[2]
 EXCHANGES = ROOT / "contracts" / "model" / "v1" / "examples" / "exchange"
@@ -50,6 +50,32 @@ def test_the_adapter_counts_by_the_dialect_rule() -> None:
         {"role": "user", "content": prompt.user},
     ]
     assert upper_bound(prompt) == dialect_bound(messages)
+
+
+USAGES: list[dict[str, Any]] = [
+    {"prompt_tokens": 10_000, "cache_creation_input_tokens": 8_000},
+    {"prompt_tokens": 10_000, "prompt_tokens_details": {"cache_write_tokens": 8_000}},
+    {"prompt_tokens": 10_000, "cache_read_input_tokens": 6_000},
+    {"prompt_tokens": 10_000, "prompt_tokens_details": {"cached_tokens": 6_000}},
+    {
+        "prompt_tokens": 10_000,
+        "cache_read_input_tokens": 6_000,
+        "cache_creation_input_tokens": 0,
+        "prompt_tokens_details": {"cached_tokens": 6_000},
+    },
+    {"prompt_tokens": 2_000, "cache_creation_input_tokens": 8_000},
+    {"prompt_tokens": 10},
+]
+
+
+@pytest.mark.parametrize("usage", USAGES)
+def test_the_adapter_splits_usage_by_the_dialect_rule(usage: dict[str, Any]) -> None:
+    """The adapter books what the suite judges: the same input, the same kinds, apart from a
+    kind reported at zero, which the suite counts as reported and the adapter leaves out."""
+    from taktus.adapters.driven.models.openai_compatible.client import _by_kind
+
+    tokens_in, by_kind = dialect_usage(usage)
+    assert _by_kind(usage) == (tokens_in, {k: v for k, v in by_kind.items() if v})
 
 
 @pytest.fixture
@@ -101,6 +127,18 @@ async def test_a_declared_price_kind_the_endpoint_does_not_report_fails_m04(
     declared = {**HARD, "usage_kinds": ["input", "output", "cache_read"]}
     assert (await suite(url, declared))["M-04"] is Status.FAILED
     script.cached = 2
+    assert (await suite(url, declared))["M-04"] is Status.PASSED
+
+
+@pytest.mark.parametrize("shape", ["nested", "top"])
+async def test_m04_holds_a_declared_cache_write_to_either_shape(
+    endpoint: tuple[str, model_service.Script], shape: str
+) -> None:
+    url, script = endpoint
+    declared = {**HARD, "usage_kinds": ["input", "output", "cache_write"]}
+    script.shape = shape
+    assert (await suite(url, declared))["M-04"] is Status.FAILED, "declared, not reported"
+    script.written = 2
     assert (await suite(url, declared))["M-04"] is Status.PASSED
 
 
