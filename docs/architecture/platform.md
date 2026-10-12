@@ -137,8 +137,8 @@ A quantity the platform did not observe refuses nothing. Refusing every job on a
 cannot be observed would stop all work silently, which is what this exists to prevent. It is not
 passed over either: the verdict names it under `unobserved`, for the caller to record.
 
-The function is built and tested. **The run engine does not call it yet**: that wiring is the
-next change to `execute_run.py`, beside the budget admission of worker steps.
+The function is built and tested, and the run engine calls it before a worker step is admitted
+(`execute_run.py`, beside the budget admission of worker steps).
 
 ## 5. Every job carries a memory limit, and the limit is real
 

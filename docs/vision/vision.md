@@ -66,10 +66,19 @@ features, not a compliance exercise.
 | **Small and medium businesses** | transformation without an AI department; an orchestrator that reports to them |
 | **Enterprises** | cross-departmental orchestration, a controlling layer, multi-tenancy, governance |
 | **Public sector and regulated industries** | sovereignty, air-gapped operation, auditability, EU conformity |
+| **Operators who provide Taktus to others** | one instance for many customers, B2C or B2B, each a tenant of its own; the customers decide how far and how large they use it |
 
 **One core, a smaller footprint.** The enterprise views and controlling functions are
 expansions of the same core, not a second product line. No autonomy level and no capability is
 reserved for organisational size.
+
+**A tenant is as large as its organisation.** One tenant may hold many departments, and its
+processes cross them. A family is a tenant, and so is a corporation.
+
+**Taktus serves itself as one customer among others.** The Taktus project drives its own
+development with Taktus, and will run the licensing and billing of its own customers the same
+way: as processes of its own tenant. Nothing that concerns only the project reaches a customer,
+and the project's own development never limits how a customer uses Taktus (DEC-0188, ADR-0092).
 
 ## What must be true for this to work
 

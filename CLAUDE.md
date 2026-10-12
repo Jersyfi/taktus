@@ -216,6 +216,10 @@ generated (`make status`) and never stored in the file (DEC-0026).
   count as potentially destructive and follow the same rule.
 - **Efficiency over verbosity.** Short descriptions, no restating the obvious, no report without a
   reader.
+- **The Taktus project is one tenant among others.** Nothing that concerns only the project —
+  its processes, its measured values, its repository's layout, its later licensing and
+  billing — is product code or a product default; it is configuration, a bundle of its tenant or
+  a document here. `tests/architecture` holds the named part of it (ADR-0092, #313).
 - **A note in a pull request is not a message to the owner.** Anything the owner must act on —
   a decision, a need, a date — becomes a record under `docs/decisions/` and an issue assigned
   to him: a decision request (`DEC-NNNN`) or a needs request (`NEED-NNNN`), raised when it
@@ -243,9 +247,11 @@ generated (`make status`) and never stored in the file (DEC-0026).
   waits. `make gate-usecases` fails a pull request that touches both a use case's requirement
   sections and its implementation. The rule protects what a use case *requires* — its sections
   1 to 3 — not the files that implement or test it: a test that configures its own value is
-  ordinary work (DEC-0047). What a use case requires is mode 3; how it is described,
-  its state and its test references are mode 1; `docs/vision/` is mode 4
-  (`docs/decisions/anchors.taktus.md`).
+  ordinary work (DEC-0047). What a use case requires is mode 3, unless it follows from what
+  the owner already accepted — the vision, a feature, the roadmap — which is a `restoration`
+  notice the owner may veto within seven days; how it is described, its state and its test
+  references are mode 1; `docs/vision/` is mode 4 (`docs/decisions/anchors.taktus.md`,
+  DEC-0189).
 - **What future work needs belongs in the repository. What concerned only one person stays in
   the channel.** The test is not "is it confidential" but "will someone working here in a year
   need it". A decision and its reasoning: yes. That the owner asked about it on a Tuesday: no.
@@ -254,7 +260,8 @@ generated (`make status`) and never stored in the file (DEC-0026).
 - **An owner answer is recorded first.** When a session receives an answer the owner gave
   elsewhere — in conversation, in a brief, in a review — recording it as a `DEC` is the first
   thing it does, before any other work. Answers that waited for the work reached the repository
-  one to seven days late (DEC-0040 to DEC-0043). The owner answers in the issue of the request,
+  one to seven days late (DEC-0040 to DEC-0043). Such a record may be short — a line per
+  section, the owner's words, and every place the answer changes (DEC-0189). The owner answers in the issue of the request,
   with the sentence it offers; the next session records every such answer first (DEC-0051).
 - **A brief marks a deliberate override.** Where a brief intends to set aside a rule in the
   repository, it says which rule, why, and that the owner decided it. Otherwise "the repository

@@ -178,7 +178,11 @@ as it happens**: live representations drawn from the records, from the overview 
 the origin of a result, reproducible and variable steps drawn apart (UC-6.10, DEC-0055) (#103,
 #104, #105, #183, #190, #191, #192, #193) · process bundle format · pair editing with rollback · sessions with project
 knowledge · documentation beyond the repository: administration and end-user guides generated
-from it and kept consistent with it, never a second source of truth (#88, #197, #198)
+from it and kept consistent with it, never a second source of truth (#88, #197, #198) · the faults
+the DevOps review found: no deadlock between two ledger records, runs listed without blocking,
+an object cache with a bound, cache writes booked as such (#309, #310, #311, #312) · **nothing of
+the project as a product default** (ADR-0092) (#313) · the project's own records lighter
+(DEC-0189) (#314, #315, #316)
 
 **Complete when** a process can be created, viewed, changed and rolled back entirely from the web app
 and chat, and you can see your own share of the waiting time.
@@ -186,8 +190,15 @@ and chat, and you can see your own share of the waiting time.
 ### `0.4.0` — the ML bench and the second tenant
 `mlbench` worker doing real work: training, evaluation, embeddings, classical ML (#89, #210) · method
 maturation with change proposals (#216, #217, #218, #229, #230) · model hub for in-house models · second coding worker, so that
-the removal test can say *changed* through an adapter, not only a person (#154, #208, #209) · model routing ·
-`dev-orchestration` blueprint · **second tenant onboarded at level 1–2**
+the removal test can say *changed* through an adapter, not only a person (#154, #208, #209) · model routing:
+an ordered chain per purpose switched at the step boundary, and a price list imported into the
+versioned table (#327, #328) · `dev-orchestration` blueprint · **second tenant onboarded at level
+1–2**, created by a command, its locks unable to collide with another's, and served fairly beside
+the first (#317, #318, #319) · waits that park the run, no read on a hot path that walks a
+tenant's ledger, writes of only what changed (#320, #321, #325) · a restore that brings the
+artifacts back, what needs action reaching a person, a small install profile (#322, #323, #326) ·
+no unit started per estimate, one egress gateway (#324) · a version rehearsed from the plan
+dialogue (#329)
 
 **Complete when** a step moves from a language model to a trained model on Taktus's own proposal —
 measurably cheaper and reproducible — and the second tenant produces its first milestone.
@@ -202,7 +213,10 @@ statement — what was checked against what, what was not, what would slip throu
 dashboard and in every report (UC-4.13, UC-6.9) (#91, #223, #224) · **result defects handled**: deviation
 detection, error window and impact analysis over the provenance chain, remediation plans under
 the correction anchor, incidents delivered into the organisation's own tracking (UC-4.10 to
-UC-4.12, UC-6.8; ADR-0021 to ADR-0023) (#92)
+UC-4.12, UC-6.8; ADR-0021 to ADR-0023) (#92) · upgrades without a gap in readiness (ADR-0093)
+(#330) · a role at every human step (#331) · one register of everything that acts, what breaks
+if an adapter goes, how a process really runs (#332, #333, #334) · a stage view, input checks as
+visible steps, outside participants through their own channel (#335, #336, #337)
 
 **Complete when** principles 6 and 13 are measured rather than asserted, and limit recommendations
 come with numbers.
@@ -210,24 +224,41 @@ come with numbers.
 ### `0.6.0` — level 4
 Autonomy level 4 · skill lifecycle, with a floor for the number of passed evaluations before a
 skill is approved automatically, its value set from the evaluation data of `0.5.0` and higher for
-`exact` steps (DEC-0028) · the catalogue · role-based agents · recurring decisions become rules on
-proposal
+`exact` steps (DEC-0028) · the catalogue, its connectors in images of their own (#339) ·
+role-based agents · recurring decisions become rules on proposal · the organisation seen as value
+streams (#338) · what a person may ask Taktus for (#340)
 
 **Complete when** a release happens end to end without intervention.
 
 ### `0.7.0` — second domain
 `it-operations` blueprint (#95) · connectors for operations and monitoring · autonomy per action
-class in production use
+class in production use · one ledger chain per run, before the contracts freeze (#341) · **more
+than one node**: an object store port and a highly available profile (#342) · fairness and quotas
+per department inside a tenant (#343) · role profiles derived from the processes (#344) · BPMN in
+as a plan draft and out as an export (#345)
 
 **Complete when** the second use case runs in production.
 
 ### `1.0.0` — contracts, licence, opening
 Contracts frozen and versioned · **licence decided, contributions opened** · accounting formula
-calibrated from real data across both use cases · community adapters in their own repositories ·
-GDPR tooling and generated compliance evidence
+calibrated from real data across both use cases · community adapters in their own repositories,
+found in a catalogue with signatures and three tiers (#348) · GDPR tooling and generated
+compliance evidence · point-in-time recovery and recovery targets per install profile (#346) ·
+images scanned, signed and pinned (#347) · an A2A binding for the worker contract (#349)
 
 **Complete when** a stranger builds an adapter without asking, and every condition of *The road
 to 1.0.0* below holds.
+
+### `2.0.0` — operating Taktus for others
+Thousands of tenants on one instance, an idle one costing nothing (#350) · an operator's
+lifecycle of its customers' tenants: create, suspend, export, close (#351) · each tenant's own
+model credentials, budgets per unit and the operator's margin (#352) · metrics for an operator,
+and fleet upgrades without downtime (#353) · the Taktus project's licensing and billing as
+bundles of its own tenant (ADR-0092) (#354)
+
+**Complete when** one instance serves ten thousand tenants and an idle one makes no database
+transaction, and an operator creates a customer's tenant, exports its usage for billing and
+closes it without a person touching the database (DEC-0187, DEC-0188).
 
 ---
 

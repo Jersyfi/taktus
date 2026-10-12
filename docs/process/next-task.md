@@ -56,8 +56,9 @@ an issue, in the shape of the form `Task`, and stays for its turn.
   adjusted to become meetable.
 - A spend on the owner's credential to derive or verify a fact is allowed up to USD 1 for the
   whole task, recorded as a notice; beyond that it is a request (M2.8).
-- **Stop when the pull request is open and green**: `make gates` locally, and every check in CI.
-  Merging is the owner's.
+- **Merge when the pull request is green**: `make gates` locally, and every check in CI. The
+  session merges its own pull request once every check is green, with no more running in
+  parallel than CI carries, and never one that raises a `BLOCKING` request (M1.22, DEC-0189).
 
 ## 5. Sessions in parallel
 
