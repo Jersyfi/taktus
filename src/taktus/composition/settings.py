@@ -757,6 +757,9 @@ class Settings:
     on the instance and shown to the operator."""
     state_dir: Path
     """Where artifact bytes are written."""
+    object_cache_mb: int
+    """How many MiB of artifact bytes the object store keeps in memory at most: the objects used
+    most recently. Every object stays readable from `state_dir`. 0 keeps none (#311)."""
     tenants: tuple[str, ...]
     """The tenants this instance serves: the runner claims work for each of them in turn, and
     the identity component places senders in them and nowhere else."""
@@ -814,6 +817,7 @@ class Settings:
                 ),
             ),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
+            ("TAKTUS_OBJECT_CACHE_MB", str(self.object_cache_mb)),
             ("TAKTUS_TENANTS", ",".join(self.tenants)),
             ("TAKTUS_INSTANCE", self.instance),
             ("TAKTUS_SHUTDOWN_CEILING_SECONDS", str(self.shutdown_ceiling_seconds)),
@@ -864,6 +868,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         knowledge_directory=load_knowledge_directory(configuration),
         findings_connector=reader.url("findings.connector", "") or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
+        object_cache_mb=reader.integer("object.cache.mb", 64, low=0),
         tenants=load_tenants(configuration),
         instance=reader.text("instance", default_instance),
         shutdown_ceiling_seconds=reader.integer("shutdown.ceiling.seconds", 300, low=1),
