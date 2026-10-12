@@ -2,13 +2,13 @@
 the visual vocabulary (UC-6.10 §2, ADR-0059).
 
 **The glyph** is everything a representation draws for one element, as tokens of the vocabulary
-(`domain/model/vocabulary.py`): outline and edge, the exactness mark, the state's fill and mark,
-the motion, the still mark, and the text. It is computed from the element's facts — method kind,
-exactness class, state — and from whether motion is allowed, and from nothing else.
+(`domain/model/vocabulary.py`): membrane and nucleus, the exactness rings, the state's fill and
+mark, the motion, the still mark, and the text. It is computed from the element's facts — method
+kind, exactness class, state — and from whether motion is allowed, and from nothing else.
 
 **Motion is allowed** unless the reader stopped it or the system asks for reduced motion
 (UC-6.10 §2, *calm on request*). When it is not, a running step does not move, and the still
-mark of its motion is drawn instead. Its outline, edge, marks and text do not change.
+mark of its motion is drawn instead. Its membrane, nucleus, rings, marks and text do not change.
 
 **The check.** A representation hands over what it drew for each element. The check computes
 the glyph the vocabulary gives the same facts and names every token that differs. A
@@ -31,7 +31,6 @@ from taktus.components.reporting.domain.model.vocabulary import (
     SOURCE_STATES,
     STEP_STATES,
     VOCABULARY,
-    Edge,
     Fill,
     Motion,
     Subject,
@@ -120,10 +119,11 @@ class Glyph(Value):
     """What a representation draws for one element. No field carries a colour (ADR-0059)."""
 
     subject: Subject
-    outline: str
-    edge: Edge | None = None
-    """None for a run, which has no edge of its own; a document leaves it out."""
-    exactness_mark: str
+    membrane: str
+    """A step's family membrane; for a run, a result, a source and a decision request, its own."""
+    nucleus: str
+    """A step's method kind; `none` for every other element, which has no nucleus."""
+    rings: str
     fill: Fill
     state_mark: str
     motion: Motion
@@ -153,14 +153,14 @@ def describe(element: Element, vocabulary: Vocabulary = VOCABULARY) -> str:
 
 
 def _still_element(
-    subject: Subject, outline: str, element: Element, mark: str, vocabulary: Vocabulary
+    subject: Subject, membrane: str, element: Element, rings: str, vocabulary: Vocabulary
 ) -> Glyph:
     state = vocabulary.state(subject, element.state)
     return Glyph(
         subject=subject,
-        outline=outline,
-        edge=None,
-        exactness_mark=mark,
+        membrane=membrane,
+        nucleus=NO_MARK,
+        rings=rings,
         fill=state.fill,
         state_mark=state.mark,
         motion=Motion.NONE,
@@ -173,34 +173,24 @@ def glyph(element: Element, *, motion: bool, vocabulary: Vocabulary = VOCABULARY
     """The glyph of an element. `motion` is False when the reader stopped motion or the system
     asks for reduced motion. Only a running step ever moves."""
     if isinstance(element, Result):
-        mark = vocabulary.exactness_of(element.exactness).mark
-        return _still_element("result", vocabulary.result_outline, element, mark, vocabulary)
+        rings = vocabulary.exactness_of(element.exactness).rings
+        return _still_element("result", vocabulary.result_membrane, element, rings, vocabulary)
     if isinstance(element, Source):
-        return _still_element("source", vocabulary.source_outline, element, NO_MARK, vocabulary)
+        membrane = vocabulary.source_membrane
+        return _still_element("source", membrane, element, NO_MARK, vocabulary)
     if isinstance(element, DecisionRequest):
-        outline = vocabulary.decision_outline
-        return _still_element("decision_request", outline, element, NO_MARK, vocabulary)
+        membrane = vocabulary.decision_membrane
+        return _still_element("decision_request", membrane, element, NO_MARK, vocabulary)
     if isinstance(element, Run):
-        state = vocabulary.state("run", element.state)
-        return Glyph(
-            subject="run",
-            outline=vocabulary.run_outline,
-            edge=None,
-            exactness_mark=NO_MARK,
-            fill=state.fill,
-            state_mark=state.mark,
-            motion=Motion.NONE,
-            still_mark=NO_MARK,
-            text=describe(element, vocabulary),
-        )
+        return _still_element("run", vocabulary.run_membrane, element, NO_MARK, vocabulary)
     family = vocabulary.family(family_of(element.method))
     state = vocabulary.state("step", element.state)
     moving = family.motion if state.moves else Motion.NONE
     return Glyph(
         subject="step",
-        outline=vocabulary.method(element.method).outline,
-        edge=family.edge,
-        exactness_mark=vocabulary.exactness_of(element.exactness).mark,
+        membrane=family.membrane,
+        nucleus=vocabulary.method(element.method).nucleus,
+        rings=vocabulary.exactness_of(element.exactness).rings,
         fill=state.fill,
         state_mark=state.mark,
         motion=moving if motion else Motion.NONE,

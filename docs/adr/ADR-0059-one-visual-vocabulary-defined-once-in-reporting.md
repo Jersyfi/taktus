@@ -2,7 +2,9 @@
 
 **Status:** accepted · makes UC-6.10's conditions *one visual vocabulary* and *reproducible and
 variable are told apart* buildable (issue #104, DEC-0055) · amended 2026-10-10: a result, a
-source a step read and a decision request have their forms (ADR-0068, #192)
+source a step read and a decision request have their forms (ADR-0068, #192) · amended
+2026-10-12: a step is drawn as a cell — membrane, nucleus, rings — the look the owner approved
+(DEC-0185, M1.20)
 
 ## Context
 UC-6.10 requires a live representation of what Taktus does: a graph or a flow drawn from the
@@ -36,19 +38,20 @@ HTTP surface, or a file generated from it — is decided by the change that buil
 representation (#105).
 
 ### 2. Form, motion and marks
-- **Form.** A step has an *outline*, one shape per method kind, and an *edge*, the way the outline
-  is drawn. The edge belongs to a *family*: straight for the four reproducible kinds, wavering for
-  `llm` and `worker`, round for `human`, broken for `wait`. The family is derived from the shared
+- **Form.** A step is drawn as a *cell*. It has a *nucleus*, one shape per method kind, and a
+  *membrane* that belongs to its *family*: beaded for the four reproducible kinds, fluid for
+  `llm` and `worker`, soft for `human`, dormant for `wait`. The family is derived from the shared
   kernel's subsets, never listed by hand.
 - **Motion.** Only a running step moves, in its family's motion. Reproducible steps pulse at a
   fixed period; variable steps shimmer irregularly; a person's step swells slowly. A waiting step
   never moves, because it does no work. A run never moves itself; what moves in it is its running
   steps. An idle system therefore draws no motion.
 - **Without motion.** When the reader stops motion, or the system asks for reduced motion, every
-  motion is replaced by its own *still mark*. Outline, edge, marks and text stay the same.
-- **Marks.** An exactness class is a mark on the outline. `exact` has a mark no other class
-  carries. A state is a fill and a mark, unique within the states of a step and within those of
-  a run.
+  motion is replaced by its own *still mark*, an aura. Membrane, nucleus, rings, marks and text
+  stay the same.
+- **Rings and marks.** An exactness class is drawn as rings on the membrane. `exact` has rings no
+  other class carries. A state is a fill and a mark, unique within the states of a step and
+  within those of a run.
 - **Text.** Every element has a text that names its method kind, its family, its exactness class
   and its state. It is the element's text equivalent.
 - **No colour.** No token is a colour. A representation may add colour on top, and every
@@ -62,7 +65,7 @@ glyph. Every representation's tests run it over what the representation drew. A 
 that draws an element another way fails.
 
 The vocabulary's own tests hold the distinctions of UC-6.10: they fail a vocabulary in which two
-families share an edge or a motion, `exact` shares its mark, a state other than *running* moves,
+families share a membrane or a motion, `exact` shares its rings, a state other than *running* moves,
 a motion has no still mark, or a state of the `run` component has no form.
 
 ## Alternatives
@@ -75,7 +78,7 @@ a motion has no still mark, or a state of the `run` component has no form.
 - **Distinguishing by colour, with shape as a fallback.** UC-6.10 forbids colour alone. A shape
   that only backs up a colour tends to be dropped when space is short.
 - **Every method kind its own motion.** Eight motions are hard to tell apart, and the question a
-  reader asks is first whether a step is reproducible. The family carries that; the outline
+  reader asks is first whether a step is reproducible. The family carries that; the nucleus
   names the kind.
 
 ## Consequences

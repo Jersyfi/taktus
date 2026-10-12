@@ -4,10 +4,10 @@
 
 /** Everything drawn for one element, as tokens of the visual vocabulary (ADR-0059). */
 export interface Glyph {
-	subject: 'step' | 'run';
-	outline: string;
-	edge?: string;
-	exactness_mark: string;
+	subject: 'step' | 'run' | 'result' | 'source' | 'decision_request';
+	membrane: string;
+	nucleus: string;
+	rings: string;
 	fill: string;
 	state_mark: string;
 	motion: string;

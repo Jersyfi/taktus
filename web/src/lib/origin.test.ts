@@ -8,7 +8,7 @@ import fixtures from './generated/fixtures.json';
 import { originLink, runLink } from './links';
 import OriginView from './OriginView.svelte';
 import RunView from './RunView.svelte';
-import { known, OUTLINES, STATE_MARKS } from './shapes';
+import { known, MEMBRANES, STATE_MARKS } from './cells';
 import type { Glyph as GlyphTokens, OriginLevel, RunLevel } from './types';
 
 const LEVEL = fixtures.origin as unknown as OriginLevel;
@@ -16,9 +16,9 @@ const RUN = fixtures.run_level as unknown as RunLevel;
 
 const TOKENS = [
 	['subject', 'data-subject'],
-	['outline', 'data-outline'],
-	['edge', 'data-edge'],
-	['exactness_mark', 'data-exactness-mark'],
+	['membrane', 'data-membrane'],
+	['nucleus', 'data-nucleus'],
+	['rings', 'data-rings'],
 	['fill', 'data-fill'],
 	['state_mark', 'data-state-mark'],
 	['motion', 'data-motion'],
@@ -73,10 +73,10 @@ describe('the origin of a result', () => {
 		for (const element of inOrder) expect(html).toContain(element.text);
 	});
 
-	it('has a drawing for the outlines and marks of a result, a source and a decision request', () => {
+	it('has a drawing for the membranes and marks of a result, a source and a decision request', () => {
 		const vocabulary = fixtures.vocabulary;
-		for (const outline of [vocabulary.result_outline, vocabulary.source_outline, vocabulary.decision_outline]) {
-			expect(known(outline, OUTLINES), outline).toBe(true);
+		for (const membrane of [vocabulary.result_membrane, vocabulary.source_membrane, vocabulary.decision_membrane]) {
+			expect(known(membrane, MEMBRANES), membrane).toBe(true);
 		}
 		for (const s of vocabulary.states) expect(known(s.mark, STATE_MARKS), s.mark).toBe(true);
 	});

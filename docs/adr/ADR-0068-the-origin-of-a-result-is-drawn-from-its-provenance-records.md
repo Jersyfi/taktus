@@ -1,7 +1,8 @@
 # ADR-0068 — The origin of a result is drawn from its provenance records, and the vocabulary gains the forms of a result, a source and a decision request
 
 **Status:** accepted · builds the fourth level of UC-6.10, the origin of a result (issue #192,
-DEC-0055); fills what ADR-0059 left to the level that draws these forms
+DEC-0055); fills what ADR-0059 left to the level that draws these forms · amended 2026-10-12:
+the forms are named as membranes, when a step became a cell (DEC-0185)
 
 ## Context
 UC-6.10's last level is *the origin of a result*: the path from a result back through the steps
@@ -45,12 +46,13 @@ there. When the result's own run is withheld, the level is answered `404`, alike
 that does not exist.
 
 ### 3. The forms of a result, a source and a decision request
-The vocabulary gains three subjects, each with an outline no other element has:
+The vocabulary gains three subjects, each with a membrane no other element has (named as
+amended 2026-10-12, when a step became a cell, DEC-0185):
 
-- **a result** — outline `seal`, its exactness class as its mark, with `exact`'s mark kept for
+- **a result** — membrane `crystal`, its exactness class as its rings, with `exact`'s rings kept for
   `exact` alone; one state, `recorded`;
-- **a source** — outline `page`; one state, `read`;
-- **a decision request** — outline `flag`; one form per status of the shared kernel: `open` (empty,
+- **a source** — membrane `root`; one state, `read`;
+- **a decision request** — membrane `signal`; one form per status of the shared kernel: `open` (empty,
   a question mark), `answered` (partial, a dot), `interpreted` (partial, a quote), `confirmed`
   (partial, a check), `applied` (full, a check).
 
