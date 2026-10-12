@@ -150,7 +150,7 @@ is addressed to the role its anchor names and reached on the control plane's own
 (`/decisions`, with the decider's account key): listed with what is overdue, answered, its reading
 sent back and confirmed. The reading is a rule — the answer names exactly one option, or none is
 read — and every answer is confirmed, a chosen option as well as free text. A decider reads their
-own response times; anyone else reads them aggregated by role or department over at least two
+own response times, with their own total and median; anyone else reads them aggregated by role or department over at least two
 deciders (ADR-0015).
 
 ### 3.3 Against escalation
