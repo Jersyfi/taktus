@@ -176,8 +176,10 @@ def test_a_list_of_an_earlier_marker_wording_is_replaced() -> None:
 
 def test_under_a_heading_without_a_list_the_persons_text_stays() -> None:
     written = check_status.with_owner_section(COMPLETE, LIST)
-    assert f"## Needed from the owner\n\n{check_status.printable(LIST)}\n" in written
-    assert written.rstrip().endswith("Nothing.")
+    block = check_status.printable(LIST)
+    assert written.endswith(f"## Needed from the owner\n\n{block}\n\nNothing.\n")
+    heading_only = WITHOUT_SECTION + "## Needed from the owner\n"
+    assert check_status.with_owner_section(heading_only, LIST).endswith(f"\n\n{block}\n")
 
 
 def test_writing_twice_changes_nothing_the_second_time() -> None:

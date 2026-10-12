@@ -488,7 +488,8 @@ def with_owner_section(body: str, content: str) -> str:
         return GENERATED_SPAN.sub(lambda _: block, body, count=1)
     heading = OWNER_HEADING.search(body)
     if heading is not None:
-        return f"{body[: heading.end()]}\n\n{block}\n{body[heading.end() :]}"
+        rest = body[heading.end() :].lstrip("\n")
+        return f"{body[: heading.end()]}\n\n{block}\n" + (f"\n{rest}" if rest else "")
     return f"{body.rstrip()}\n\n## Needed from the owner\n\n{block}\n"
 
 

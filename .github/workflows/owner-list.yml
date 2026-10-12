@@ -42,14 +42,17 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v5
-      # Read now, not from the event: an edit made since the event is kept.
+      # Read now, not from the event: an edit made since the event is kept. Taken from the JSON
+      # as it is, so that no newline is added on the way.
       - name: the description as it is
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > "$RUNNER_TEMP/body.md"
+          gh api "repos/$REPO/pulls/$PR" > "$RUNNER_TEMP/pull.json"
+          python3 -c 'import json, sys; open(sys.argv[2], "w", encoding="utf-8").write(json.load(open(sys.argv[1], encoding="utf-8"))["body"] or "")' \
+            "$RUNNER_TEMP/pull.json" "$RUNNER_TEMP/body.md"
           cp "$RUNNER_TEMP/body.md" "$RUNNER_TEMP/before.md"
       - name: the list from the branch's register
         env:
