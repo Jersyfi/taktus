@@ -73,6 +73,10 @@ class ExecutionUnit(Value):
     limits: ResourceLimits
     start_timeout_seconds: int = Field(default=60, ge=1)
     """How long the unit may take until its health answers."""
+    service_hosts: tuple[Host, ...] = ()
+    """The hosts the unit's own service needs to work at all — its agent's or its model's
+    provider — as the operator configures them for the worker, never a bundle (ADR-0089). A
+    launched worker adds them to the hosts of an assignment's job, never to a probe's."""
 
 
 class JobRequest(Value):
@@ -85,12 +89,20 @@ class JobRequest(Value):
     is required."""
     allowed_hosts: tuple[Host, ...] = ()
     """The hosts the unit may reach; nothing else. Empty means no outbound access at all — the
-    `container` adapter enforces it at the network, the `process` adapter cannot."""
+    `container` and `cluster` adapters enforce it at the network, the `process` adapter cannot.
+    For an assignment it is the frame's hosts and the unit's service hosts (`reach`)."""
     credentials: tuple[CredentialReference, ...] = ()
     """By name. The adapter reads each value at launch through the configuration port and
     injects it into the unit; the value is never written to a volume, an image or a log."""
     wall_seconds: int | None = Field(default=None, ge=1)
     """A ceiling below the unit's own, for a job with a deadline."""
+
+
+def reach(unit: ExecutionUnit, frame_hosts: tuple[Host, ...]) -> tuple[Host, ...]:
+    """The hosts a unit that works on an assignment may reach: the frame's, then the unit's
+    own service hosts, each once (ADR-0089). The frame handed to the worker stays the step's:
+    the worker still refuses a tool call to a host outside it (W-13)."""
+    return tuple(dict.fromkeys((*frame_hosts, *unit.service_hosts)))
 
 
 type KillCause = Literal["memory", "cpu", "wall", "stop"]

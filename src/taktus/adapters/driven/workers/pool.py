@@ -9,16 +9,27 @@ every result the worker produces carries.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from taktus.ports.worker import ResolvedWorker, Worker
 from taktus.shared.v1 import Capability
 
 
 class StaticWorkerPool:
-    def __init__(self, workers: Sequence[tuple[str, Worker]]) -> None:
+    def __init__(
+        self,
+        workers: Sequence[tuple[str, Worker]],
+        *,
+        hosts: Mapping[str, tuple[str, ...]] | None = None,
+    ) -> None:
         self._workers = list(workers)
         self._declared: dict[str, tuple[frozenset[str], str | None]] = {}
+        self._hosts = dict(hosts or {})
+
+    def hosts(self, adapter: str) -> tuple[str, ...]:
+        """The hosts the configuration lets one worker's own service reach, beyond a step's
+        frame (ADR-0089); empty when it names none."""
+        return self._hosts.get(adapter, ())
 
     async def resolve(self, required: Sequence[Capability]) -> ResolvedWorker | None:
         needed = set(required)
@@ -58,7 +69,10 @@ class StaticWorkerPool:
     def without(self, adapter: str) -> StaticWorkerPool:
         """The same configuration with one worker withheld: what the removal test runs a
         process against. The original is untouched; restoring is not using this one."""
-        pool = StaticWorkerPool([(a, w) for a, w in self._workers if a != adapter])
+        pool = StaticWorkerPool(
+            [(a, w) for a, w in self._workers if a != adapter],
+            hosts={a: h for a, h in self._hosts.items() if a != adapter},
+        )
         pool._declared = {a: d for a, d in self._declared.items() if a != adapter}
         return pool
 
@@ -67,6 +81,6 @@ class StaticWorkerPool:
         runs its baseline against, so that a worker standing behind another one serves every
         step it can serve (ADR-0078). The original is untouched."""
         ordered = sorted(self._workers, key=lambda entry: entry[0] != adapter)
-        pool = StaticWorkerPool(ordered)
+        pool = StaticWorkerPool(ordered, hosts=self._hosts)
         pool._declared = dict(self._declared)
         return pool

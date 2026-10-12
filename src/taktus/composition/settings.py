@@ -17,11 +17,14 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+from pydantic import TypeAdapter, ValidationError
+
 from taktus.components.run.domain.service import budget as budgeting
 from taktus.conformance.contracts import contracts_root
 from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.model import PriceTable, WeightingTable
+from taktus.ports.worker import Host
 
 
 class Role(StrEnum):
@@ -100,6 +103,12 @@ class ExecutionSettings:
     from the cluster's scheduler, between 0.01 and 1. A unit may still use its whole limit while
     the node has CPU to spare. 1 requests the whole limit. The memory request is always the
     memory limit, because the node has no swap (deploy/k8s/README.md §7, NTC-0190)."""
+    service_hosts: tuple[str, ...] = ()
+    """`TAKTUS_EXECUTION_SERVICE_HOSTS` (the launching kinds): the hosts the worker's own service
+    needs — its agent's or its model's provider — as comma-separated host names, each as a
+    frame names a host. A launched unit reaches them for an assignment and for the conformance
+    suite, never for a probe; the step's frame is not changed by them (ADR-0089). Empty, a unit
+    reaches the frame's hosts alone, as before."""
 
     def effective(self) -> list[tuple[str, str]]:
         return [
@@ -121,6 +130,7 @@ class ExecutionSettings:
             ("TAKTUS_EXECUTION_SERVICE_ACCOUNT", self.service_account or ""),
             ("TAKTUS_EXECUTION_STATE_CLAIM", self.state_claim or ""),
             ("TAKTUS_EXECUTION_CPU_REQUEST_SHARE", str(self.cpu_request_share)),
+            ("TAKTUS_EXECUTION_SERVICE_HOSTS", ",".join(self.service_hosts)),
         ]
 
 
@@ -507,6 +517,7 @@ def load_execution(configuration: Configuration) -> ExecutionSettings:
         service_account=reader.text("execution.service.account", "") or None,
         state_claim=reader.text("execution.state.claim", "") or None,
         cpu_request_share=reader.number("execution.cpu.request.share", 0.25, low=0.01, high=1.0),
+        service_hosts=reader.hosts("execution.service.hosts"),
     )
 
 
@@ -831,6 +842,9 @@ def normalise_prefix(prefix: str, setting: str) -> str:
     return "/" if prefix == "/" else "/" + prefix.strip("/")
 
 
+_HOST: TypeAdapter[str] = TypeAdapter(Host)
+
+
 class _Reader:
     """Typed reads over the port, each failing with the variable's name."""
 
@@ -912,6 +926,25 @@ class _Reader:
             raise ConfigurationError(name, f"{value!r} has an empty entry")
         if len(set(items)) != len(items):
             raise ConfigurationError(name, f"{value!r} names an entry twice")
+        return items
+
+    def hosts(self, key: str) -> tuple[str, ...]:
+        """A comma-separated list of hosts, each as a frame names one — a lowercase host name or
+        an IPv4 address, optionally with a port, no wildcard — none twice. Unset or empty: no
+        host."""
+        name, value = self._raw(key)
+        if value is None or not value.strip():
+            return ()
+        items = self.names(key, ())
+        for item in items:
+            try:
+                _HOST.validate_python(item)
+            except ValidationError:
+                raise ConfigurationError(
+                    name,
+                    f"{item!r} is not a host: a lowercase host name or an IPv4 address, "
+                    "optionally with a port, and no wildcard",
+                ) from None
         return items
 
     def roles(self) -> frozenset[Role]:

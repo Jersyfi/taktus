@@ -20,7 +20,8 @@
 #
 # Inputs: `issue`, the issue's number; `records_path`, the directory of the base branch that
 # holds the open decision and needs records; `repository_url`, where the worker clones from;
-# `repository_host`, the one host the worker may reach (the clone's); `coding_credential`, the
+# `repository_host`, the one host the step lets the worker reach (the clone's; the hosts its own
+# service needs are configured for the worker, ADR-0089); `coding_credential`, the
 # name of the credential the coding worker's authentication needs (its README);
 # `closing_section`, optional, the section the repository generates for the end of every pull
 # request description, verbatim with its heading. Without it the worker generates the section:
@@ -38,7 +39,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "5"
+version: "6"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -46,9 +47,10 @@ autonomy:
     nothing writes to a protected branch, the pipeline's verdict is the gate and never the
     worker's opinion, a person merges, and every outward effect is reversible until the merge.
     The fourth condition is the deployment's, not the bundle's: the worker runs in isolation
-    with exactly the hosts and credentials the frame names where the execution kind provides
-    it — `container` and `cluster` do, `process` and `endpoint` do not, and with those two the
-    isolation is whoever started the worker's (DEC-0022)
+    with exactly the hosts and credentials the frame names, and the hosts its own service needs
+    as the operator configures them for the worker (ADR-0089), where the execution kind
+    provides it — `container` and `cluster` do, `process` and `endpoint` do not, and with those
+    two the isolation is whoever started the worker's (DEC-0022)
 author: the repository
 reason: the third process of the dev-orchestration blueprint, runnable
 
