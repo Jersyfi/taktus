@@ -20,7 +20,9 @@
 				? 2
 				: page.route.id?.startsWith('/processes')
 					? 1
-					: 0
+					: page.route.id === '/'
+						? 0
+						: -1
 	);
 	const calm = $derived(motion.stoppedByReader || motion.reducedBySystem);
 </script>
