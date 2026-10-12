@@ -256,6 +256,23 @@ needs compute is refused.
 **What this changes in the first amendment's table.** Nothing in its rows. The currency row now
 covers compute seconds where the table prices them, held per step like compute itself.
 
+
+## Fifth amendment — a bound is calibrated by its own step (2026-10-13)
+
+A connector call, a counted prompt and a declared demand are estimated as a bound, and a
+call that needed more than its operation declared is a calibration signal (point 4 of the
+second amendment, and the bound below). The engine scaled such a bound by the largest error
+of any call through the same adapter. On the installed instance, one read through the
+repository connector used three times its estimate of one unit. A branch write that had
+used 14 of its 64 estimated units was then reserved 192, and the run halted one unit short
+of its quota (issue #370).
+
+- **A bound is calibrated by its own step.** The observations that scale it are those of the
+  same step of the same process, `<process>/<step>`, through the same adapter, over every
+  version of the process. A step never observed is a bound taken as given.
+- **A worker is unchanged.** Its error is the worker's, measured across every step it works
+  on (point 4 of the second amendment, DEC-0034, DEC-0043).
+
 ## Where this promise ends
 
 The first amendment states where the currency guarantee ends: a worker that reports money
@@ -288,3 +305,7 @@ seconds and not the money. Quota units and storage have no price, and a currency
 hold them. The money of an `llm` step is held at its priced estimate while the step runs; once
 it finished, the running total does not count it yet. That is a finding against this ADR, not a
 boundary of it (#235).
+
+The fifth amendment calibrates a bound by its step, so the same operation called from two
+processes is calibrated twice, once in each. A step renamed in a new version starts again as
+a bound taken as given.
