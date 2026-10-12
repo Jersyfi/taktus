@@ -22,6 +22,9 @@ What it enforces, because the connector's checks depend on it:
   does: the installation, and a token that lives `token_seconds` (an hour unless changed). The
   token acts with write scope until it expires or is revoked, as a bot whose login ends in
   `[bot]`. Every repository is installed until `POST /_fake/app` says otherwise.
+- **Workflow files are refused.** A tree that touches `.github/workflows/` is answered 403
+  "Resource not accessible by integration", as the service answers an app that lacks the right
+  to change workflows (issue #366).
 - **Pull request uniqueness.** A second open pull request for the same head branch is refused
   with 422, as the real service does; so is one whose head branch does not exist.
 - **An issue list that lags**, when started with `--issue-list-lag SECONDS` or told so by
@@ -823,6 +826,10 @@ class Handler(BaseHTTPRequestHandler):
             entries = body.get("tree")
             if not isinstance(entries, list) or (base is not None and base not in repo.objects):
                 self._send(422, {"message": "Validation Failed"})
+                return
+            if any(str(e.get("path", "")).startswith(".github/workflows/") for e in entries):
+                # An app without the right to change workflows, as Taktus's own is (#366).
+                self._send(403, {"message": "Resource not accessible by integration"})
                 return
             merged: dict[str, Json] = {}
             if base is not None:
