@@ -325,9 +325,9 @@ answers, for the first time, how much of the vision stands:
 
 - **Every one of the fourteen principles is served by at least one use case**; `make gate-vision`
   fails when one is not.
-- **Seventy-six use cases exist in the new format. None is verified; four are built**: UC-1.7
+- **Seventy-seven use cases exist in the new format. None is verified; four are built**: UC-1.7
   every command belongs to one identity (#82), UC-7.4 the decision request (#79), UC-6.12
-  the product finding (#86), and UC-4.14 a process starts on what happens in a tool (#76). Seventeen
+  the product finding (#86), and UC-4.14 a process starts on what happens in a tool (#76). Twenty-two
   are *building* — part of what they require is built and named tests prove that part, which
   each states in its section 5, *What is proven so far*, outside the requirement (DEC-0106): UC-1.1
   commands from any channel, UC-4.5 halt or escalate at the boundary, UC-6.1 the complete activity
@@ -338,8 +338,11 @@ answers, for the first time, how much of the vision stands:
   UC-1.2 planning in dialogue, UC-5.8 observability
   platforms, UC-8.1 any model connected, UC-8.4 repeatability, UC-8.10 limits that do no harm,
   UC-14.1 the worker interface; and from the fourth step UC-9.5 bottleneck and waiting analysis,
-  whose blocked-time accounts are built (#80). Fifty-five are *specified* and nothing of them is
-  built. UC-6.10
+  whose blocked-time accounts are built (#80); UC-4.13 working out how a step becomes exact and
+  UC-6.9 the exactness statement (#91), UC-13.5 a person's own contribution made visible (#94),
+  UC-13.6 readable documentation beyond the repository (#198, #197), and UC-1.9 a contribution
+  from a person Taktus does not know (#245, DEC-0175). Fifty-one are *specified* and nothing of
+  them is built. UC-6.10
   was added on 2026-10-08 and accepted by the owner (DEC-0055); seventeen came with the migration's
   second step on the same day, twenty-seven with the third on 2026-10-09, and seventeen with the
   fourth the same day.
