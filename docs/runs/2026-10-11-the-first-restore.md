@@ -41,6 +41,19 @@ Every check held. Nothing was changed in §11 for the steps to work.
 - One tenant: two are held by the test.
 - The source was a development deployment; the instance's own backup is restored under NEED-0025.
 
+## The instance's own backup, 2026-10-12
+
+After the upgrade to `v0.2.0-rc.4` (NEED-0025) the CronJob's first runs failed: the database
+refused `psql` in the first seconds of each new pod, while the cluster applied its network policy
+to it; a probe with the backup's labels was answered from the fifth second on. The fix is #266.
+A backup started by hand with ten seconds' delay wrote `taktus-20261012T060426Z` (138 581 bytes,
+one tenant). The steps of §11, carried out on the workstation with the store's credential:
+
+- the store listed the backups under `instance/`; both objects copied out; the dump's SHA-256
+  equal to the manifest's;
+- the role created and granted; `pg_restore` without error into an empty `postgres:16-alpine`;
+- the head of `default`: `seq` 139, the hash the manifest names; schema revision `0049`.
+
 ## Frictions
 
 - `make verify-compose` stops at its second step since #82: `taktusctl submit` without
