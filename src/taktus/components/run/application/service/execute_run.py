@@ -2547,10 +2547,14 @@ class RunEngine:
 
         # 1 + 2: estimate and admit, before anything starts. A worker that cannot answer — an
         # execution unit that does not start, an endpoint that does not answer — fails the
-        # step with that cause; the run escalates and nothing is left half done.
+        # step with that cause; the run escalates and nothing is left half done. A worker at
+        # capacity while it estimates — a platform without room for its unit — makes the step
+        # wait, as at the hand-over (ADR-0037 §6).
         try:
             async with self._telemetry.span("worker.estimate", call):
                 estimate = await worker.estimate(assignment.estimate_request())
+        except WorkerAtCapacity as error:
+            return await self._full(run, step_run, work, adapter, resuming, span, error)
         except WorkerError as error:
             return await self._unavailable(run, step_run, adapter, span, error)
         demand = ConsumptionQuantities.model_validate(

@@ -271,7 +271,12 @@ async def wire(
             await upgrade(url)
         except Exception as error:
             raise NotOperable(f"the migrations failed against {described(url)}: {error}") from error
-    persistence = PostgresPersistence(url, pool_size=settings.runner_concurrency + 4)
+    persistence = PostgresPersistence(
+        url,
+        pool_size=settings.runner_concurrency + 4,
+        lock_timeout_seconds=settings.database_timeouts.lock_seconds,
+        idle_in_transaction_seconds=settings.database_timeouts.idle_in_transaction_seconds,
+    )
     try:
         try:
             await check_schema(persistence.engine)

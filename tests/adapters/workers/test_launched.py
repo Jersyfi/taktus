@@ -13,6 +13,7 @@ import pytest
 
 from taktus.adapters.driven.workers.launched import LaunchedWorker
 from taktus.ports.execution import (
+    ExecutionAtCapacity,
     ExecutionRefused,
     ExecutionUnit,
     Isolation,
@@ -28,6 +29,7 @@ from taktus.ports.worker import (
     Frame,
     Limits,
     Task,
+    WorkerAtCapacity,
     WorkerError,
 )
 
@@ -56,6 +58,15 @@ class RecordingExecution:
     @asynccontextmanager
     async def _refused(self) -> AsyncIterator[Job]:
         raise ExecutionRefused("recorded, not started")
+        yield  # pragma: no cover
+
+
+class FullExecution(RecordingExecution):
+    """A platform without room: every unit waits to be placed."""
+
+    @asynccontextmanager
+    async def _refused(self) -> AsyncIterator[Job]:
+        raise ExecutionAtCapacity("not scheduled: 0/1 nodes are available: 1 Insufficient memory")
         yield  # pragma: no cover
 
 
@@ -111,3 +122,14 @@ async def test_without_service_hosts_a_job_reaches_the_frames_hosts_alone() -> N
         with pytest.raises(WorkerError):
             await worker.assign(assignment(("repo.example.org",)))
     assert execution.requests[0].allowed_hosts == ("repo.example.org",)
+
+
+async def test_a_platform_without_room_is_the_worker_at_capacity() -> None:
+    """A unit the platform cannot place is a full worker, not a broken one: the step waits
+    (ADR-0037 §6, #358). It holds for the probe as for the assignment."""
+    execution = FullExecution()
+    async with LaunchedWorker(execution, UNIT) as worker:
+        with pytest.raises(WorkerAtCapacity, match="Insufficient memory"):
+            await worker.estimate(assignment(()).estimate_request())
+        with pytest.raises(WorkerAtCapacity, match="Insufficient memory"):
+            await worker.assign(assignment(()))

@@ -107,6 +107,7 @@ from taktus.composition.settings import (
     load_budget,
     load_capacity,
     load_connectors,
+    load_database_timeouts,
     load_knowledge_directory,
     load_model,
     load_telemetry,
@@ -412,7 +413,15 @@ class LocalWiring:
             return
         url = database.reveal()
         try:
-            postgres = PostgresPersistence(url)
+            timeouts = load_database_timeouts(self._configuration)
+        except ConfigurationError as error:
+            raise NotOperable(str(error)) from error
+        try:
+            postgres = PostgresPersistence(
+                url,
+                lock_timeout_seconds=timeouts.lock_seconds,
+                idle_in_transaction_seconds=timeouts.idle_in_transaction_seconds,
+            )
         except ValueError as error:
             raise NotOperable(f"TAKTUS_DATABASE_URL: {error}") from error
         try:

@@ -358,6 +358,20 @@ async def test_a_condition_that_does_not_hold_makes_the_reaction_wait_not_vanish
     assert await world.pending() == 0
 
 
+async def test_one_pass_starts_one_run_under_the_capacity_condition() -> None:
+    """The platform is observed before any run of the pass takes room. Thirty-five issues
+    labelled at once all passed the same observation and overfilled the node (#358); a pass
+    now starts one, and the next pass looks again."""
+    world = World()
+    await world.linked()
+    await world.registered(bundle(trigger={"condition": "capacity.available"}))
+    for number in range(3):
+        await world.delivered(labelled(delivery=f"dlv_{number}", issue=str(80 + number)))
+    for number in range(3):
+        assert await world.reactions.tick() == [run_id_of(TENANT, "implement", f"dlv_{number}")]
+    assert await world.pending() == 0
+
+
 async def test_an_event_received_before_the_version_was_registered_starts_nothing() -> None:
     world = World()
     await world.linked()

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from datetime import UTC, datetime
+from typing import Any, cast
 
 import pytest
 from fakes import FakeClock
@@ -13,6 +15,7 @@ from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.ledger.domain.model import canonical, hash_of, link, verify
 from taktus.ports.ledger import Fact
+from taktus.ports.persistence import LedgerStore
 from taktus.shared.v1 import Consumption, LedgerEntry, LedgerRefs, Method
 
 AT = datetime(2026, 9, 16, 12, 0, tzinfo=UTC)
@@ -122,3 +125,63 @@ async def test_the_ledger_records_in_sequence_and_verifies() -> None:
         assert (await ledger.verify("t")).intact
     async with persistence.transaction("other"):
         assert list(await ledger.entries("other")) == [], "one chain per tenant"
+
+
+async def test_two_transactions_of_one_tenant_in_one_process_record_in_turn() -> None:
+    """Each records two entries and yields between them (issue #309). The store's claim on the
+    chain makes the second wait for the first to commit, then read its entries: the chain holds
+    four entries in sequence, not two pairs that both begin at 1."""
+    persistence = MemoryPersistence()
+    ledger = ChainedLedger(MemoryLedgerStore(persistence), FakeClock())
+
+    async def commit(run_id: str) -> None:
+        async with persistence.transaction("t"):
+            await ledger.record("t", Fact(kind="run.created", refs=LedgerRefs(run_id=run_id)))
+            await asyncio.sleep(0)
+            await ledger.record("t", Fact(kind="run.triggered", refs=LedgerRefs(run_id=run_id)))
+
+    async with asyncio.timeout(5):
+        await asyncio.gather(commit("run_1"), commit("run_2"))
+    async with persistence.transaction("t"):
+        assert [e.seq for e in await ledger.entries("t")] == [1, 2, 3, 4]
+        assert (await ledger.verify("t")).intact
+
+
+class _Holding:
+    """A store whose `last` for one tenant waits until it is let go: a chain whose claim is
+    held elsewhere."""
+
+    def __init__(self, store: MemoryLedgerStore, tenant: str) -> None:
+        self._store = store
+        self._tenant = tenant
+        self.reached = asyncio.Event()
+        self.release = asyncio.Event()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._store, name)
+
+    async def last(self, tenant: str) -> LedgerEntry | None:
+        if tenant == self._tenant:
+            self.reached.set()
+            await self.release.wait()
+        return await self._store.last(tenant)
+
+
+async def test_a_tenant_waiting_for_its_chain_does_not_hold_up_another_tenant() -> None:
+    """No lock of the process serialises the ledger writes of different tenants (issue #309):
+    while tenant a waits for its chain, tenant b records."""
+    persistence = MemoryPersistence()
+    store = _Holding(MemoryLedgerStore(persistence), "a")
+    ledger = ChainedLedger(cast(LedgerStore, store), FakeClock())
+
+    async def record(tenant: str) -> LedgerEntry:
+        async with persistence.transaction(tenant):
+            return await ledger.record(tenant, fact())
+
+    waiting = asyncio.create_task(record("a"))
+    await store.reached.wait()
+    async with asyncio.timeout(5):
+        entry = await record("b")
+    assert entry.seq == 1 and not waiting.done()
+    store.release.set()
+    assert (await waiting).seq == 1
