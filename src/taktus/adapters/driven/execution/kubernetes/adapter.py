@@ -19,9 +19,10 @@ The third implementation of the execution port (ADR-0002), specified in
   configuration names the Secret and its keys and never a value;
 - **a Service** that selects the unit's pod; the control plane reaches the worker contract at
   its address;
-- **an egress proxy of its own** when the frame names hosts: a second Job, never a sidecar
+- **an egress proxy of its own** when the job names hosts: a second Job, never a sidecar
   (containers in one pod share a network), behind a Service of its own, running the container
-  adapter's `egress.py` with the frame's hosts. The unit finds it in `HTTP(S)_PROXY`, by
+  adapter's `egress.py` with the job's hosts — for an assignment, the frame's and the worker's
+  service hosts (ADR-0089). The unit finds it in `HTTP(S)_PROXY`, by
   address, since a unit resolves no names. The proxy admits only the job's unit: it asks for a
   token that only this job's Secret holds, because the namespace's network policy cannot tell
   one job's proxy from another's. Without hosts there is no proxy and nothing to reach;
@@ -31,7 +32,7 @@ The third implementation of the execution port (ADR-0002), specified in
   died first — the deadline ends the Job, the time to live deletes it, and its objects go too.
 
 It refuses before creating anything, with the port's `ExecutionRefused`: a job it cannot give
-limits to; a frame that names hosts on a cluster whose network policies are not enforced
+limits to; a job that names hosts on a cluster whose network policies are not enforced
 (`enforce_egress=False`), because a host list nothing enforces is a line in a bundle; and, on
 such a cluster, every job whose autonomy level needs isolation (ADR-0002) — without an enforced
 policy the pod's network is open, and the cluster isolates the process and the filesystem only.
@@ -131,7 +132,8 @@ def egress_refusal(request: JobRequest, *, enforce_egress: bool) -> str | None:
         return None
     if request.allowed_hosts:
         return (
-            "the frame names allowed hosts, and this cluster does not enforce network policies "
+            "the job names allowed hosts — the frame's or the worker's service hosts — and this "
+            "cluster does not enforce network policies "
             "(enforce_egress is off): without them the job could bypass its egress proxy, and a "
             "host list nothing enforces is refused rather than started "
             "(deploy/k8s/README.md §6)"

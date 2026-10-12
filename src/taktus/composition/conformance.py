@@ -7,7 +7,8 @@ a caller names:
 - `worker.<name>` or `worker.<kind>`: each configured worker separately (ADR-0078). One reached
   by endpoint is run against its endpoint (`TAKTUS_WORKER`, or `--worker` for `taktusctl`, for
   the unnamed worker). One of a launched kind: one execution unit started for the suite through
-  the execution port, at autonomy level 1 and with no host, and ended after it. The suite's
+  the execution port, at autonomy level 1, reaching the hosts the suite's task reaches and those
+  the worker's own service needs (ADR-0089), and ended after it. The suite's
   task, the hosts it reaches, the name of the credential W-08 searches for and a log the
   instance can read are `conformance.worker.task`, `.hosts`, `.credential` and `.log`, read as
   the worker reads its configuration: its own first, the instance's otherwise; the credential
@@ -40,6 +41,8 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from taktus.adapters.driven.execution._common import credential_key
 from taktus.components.catalog.domain.model import Configuration, Family
 from taktus.components.catalog.ports import NotConfigured, NotRunnable, SuiteRun
@@ -58,7 +61,7 @@ from taktus.conformance import (
 from taktus.conformance.suite import DEFAULT_CREDENTIAL
 from taktus.ports.configuration import Configuration as Settings
 from taktus.ports.configuration import ConfigurationError
-from taktus.ports.execution import ExecutionError, ExecutionRefused, JobRequest
+from taktus.ports.execution import ExecutionError, ExecutionRefused, JobRequest, reach
 from taktus.ports.worker import CredentialReference
 
 type WorkerTarget = Callable[[], AbstractAsyncContextManager[str]]
@@ -99,9 +102,10 @@ def worker_target(
 ) -> WorkerTarget:
     """Where one configured worker answers for one suite. Kind `endpoint`: the endpoint, which
     `endpoint` overrides for the unnamed worker as it does for the run (`taktusctl --worker`).
-    A launched kind: one unit started through the execution port at autonomy level 1, with no
-    host and with the conformance credential when the worker has one, and ended after the
-    suite. `configuration` is the worker's own (`WorkerSettings.configuration`)."""
+    A launched kind: one unit started through the execution port at autonomy level 1, with the
+    conformance credential when the worker has one, reaching the hosts the suite's task reaches
+    (`conformance.worker.hosts`) and the worker's service hosts (`reach`, ADR-0089), and ended
+    after the suite. `configuration` is the worker's own (`WorkerSettings.configuration`)."""
     settings = worker.execution
     if settings.kind is ExecutionKind.ENDPOINT:
         address = (endpoint if worker.name is None else None) or settings.endpoint
@@ -118,12 +122,20 @@ def worker_target(
         credentials: tuple[CredentialReference, ...] = ()
         if configuration.secret(credential_key(name)) is not None:
             credentials = (CredentialReference(name=name, injected_as="env"),)
-        request = JobRequest(
-            job_id=f"conformance-{secrets.token_hex(6)}",
-            unit=worker_unit(worker),
-            autonomy_level=1,
-            credentials=credentials,
-        )
+        unit = worker_unit(worker)
+        try:
+            request = JobRequest(
+                job_id=f"conformance-{secrets.token_hex(6)}",
+                unit=unit,
+                autonomy_level=1,
+                allowed_hosts=reach(unit, suite_hosts(configuration)),
+                credentials=credentials,
+            )
+        except ValidationError as error:
+            raise NotRunnable(
+                f"{configuration.name('conformance.worker.hosts')}: a host is not a host name "
+                f"or an IPv4 address with an optional port ({error.error_count()} error(s))"
+            ) from None
         execution = execution_of(settings, configuration, state_dir=state_dir)
         try:
             async with execution.launch(request) as job:
@@ -134,6 +146,12 @@ def worker_target(
             ) from error
 
     return launched
+
+
+def suite_hosts(configuration: Settings) -> tuple[str, ...]:
+    """The hosts the suite's task reaches, `conformance.worker.hosts`, as the worker reads it."""
+    value = configuration.get("conformance.worker.hosts") or ""
+    return tuple(h for h in (h.strip() for h in value.split(",")) if h)
 
 
 def worker_suites(
@@ -212,9 +230,6 @@ class InstanceSuites:
         settings = suite.settings
         task_path = settings.get("conformance.worker.task")
         task = _json(task_path, settings.name("conformance.worker.task"))
-        hosts = tuple(
-            h.strip() for h in (settings.get("conformance.worker.hosts") or "").split(",")
-        )
         name = settings.get("conformance.worker.credential") or DEFAULT_CREDENTIAL
         log = settings.get("conformance.worker.log")
         async with suite.target() as endpoint:
@@ -222,7 +237,7 @@ class InstanceSuites:
                 SuiteOptions(
                     endpoint=endpoint,
                     task=task,
-                    hosts=tuple(h for h in hosts if h),
+                    hosts=suite_hosts(settings),
                     credential_name=name,
                     credential_value=_credential(settings, name),
                     worker_log=None if log is None else Path(log),

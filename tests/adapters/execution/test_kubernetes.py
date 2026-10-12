@@ -31,6 +31,7 @@ from taktus.ports.execution import (
     ExecutionUnit,
     JobRequest,
     ResourceLimits,
+    reach,
 )
 from taktus.ports.worker import CredentialReference
 from taktus.shared.v1 import AutonomyLevel
@@ -207,6 +208,63 @@ async def test_a_job_without_hosts_has_no_proxy_and_no_secret_without_credential
         names = {e["name"] for e in pod["containers"][0]["env"]}
         assert not names & {"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"}
         assert pod["volumes"][2] == {"name": "state", "emptyDir": {}}, "no claim: dies with job"
+
+
+async def test_the_proxy_admits_the_frames_hosts_and_the_workers_service_hosts(
+    cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path, unit_port: int
+) -> None:
+    """ADR-0089: a unit whose worker names service hosts reaches them beside the frame's —
+    the hosts a launched worker hands the adapter for an assignment (`reach`)."""
+    unit = ExecutionUnit(
+        name="coding",
+        program="worker:1",
+        port=unit_port,
+        limits=LIMITS,
+        service_hosts=("model.example.net", "api.example.org"),
+    )
+    hosts = reach(unit, ("api.example.org",))
+    assert hosts == ("api.example.org", "model.example.net"), "the frame's first, each once"
+    execution = execution_for(cluster, configuration, tmp_path)
+    async with execution.launch(request_for(unit_port, unit=unit, allowed_hosts=hosts)) as job:
+        egress = next(j for n, j in cluster.of("jobs").items() if n != job.name)
+    args = egress["spec"]["template"]["spec"]["containers"][0]["args"]
+    assert args[args.index("--allow") + 1] == "api.example.org,model.example.net"
+
+
+async def test_service_hosts_alone_start_a_proxy_and_a_frame_without_hosts_reaches_them(
+    cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path, unit_port: int
+) -> None:
+    unit = ExecutionUnit(
+        name="coding",
+        program="worker:1",
+        port=unit_port,
+        limits=LIMITS,
+        service_hosts=("model.example.net",),
+    )
+    execution = execution_for(cluster, configuration, tmp_path)
+    request = request_for(unit_port, unit=unit, allowed_hosts=reach(unit, ()))
+    async with execution.launch(request) as job:
+        egress = next(j for n, j in cluster.of("jobs").items() if n != job.name)
+    args = egress["spec"]["template"]["spec"]["containers"][0]["args"]
+    assert args[args.index("--allow") + 1] == "model.example.net"
+
+
+async def test_service_hosts_on_a_cluster_that_does_not_enforce_network_policies_are_refused(
+    cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path, unit_port: int
+) -> None:
+    unit = ExecutionUnit(
+        name="coding",
+        program="worker:1",
+        port=unit_port,
+        limits=LIMITS,
+        service_hosts=("model.example.net",),
+    )
+    execution = execution_for(cluster, configuration, tmp_path, enforce_egress=False)
+    request = request_for(unit_port, unit=unit, autonomy_level=1, allowed_hosts=reach(unit, ()))
+    with pytest.raises(ExecutionRefused, match="service hosts"):
+        async with execution.launch(request):
+            pass
+    assert cluster.calls == []
 
 
 @pytest.mark.parametrize(
