@@ -274,7 +274,9 @@ async def test_a_proposal_carries_the_evidence_and_never_applies_itself() -> Non
 def test_no_code_path_stores_a_version_but_the_one_that_asks_for_the_approval() -> None:
     """Every write of a process version goes through `RegisterProcessVersionHandler`, which
     refuses a raise without a person's approval (the tests above). No other code puts a
-    version; and the approval is only ever the invoking person's, given with `--approve-raise`."""
+    version; and the approval is only ever the invoking person's, given with `--approve-raise`
+    on the command line or `approve_raise` on a commission or rollback (ADR-0091). The
+    composition passes the approval through unchanged; the channel never gives one."""
     src = ROOT / "src" / "taktus"
     puts = [
         path.relative_to(ROOT).as_posix()
@@ -295,6 +297,11 @@ def test_no_code_path_stores_a_version_but_the_one_that_asks_for_the_approval() 
         "src/taktus/adapters/driving/cli/submit_command.py": [
             "placed.identity if approve_raise else None"
         ],
+        "src/taktus/adapters/driving/rest/proposals.py": [
+            "who.identity if body.approve_raise else None",
+            "who.identity if body.approve_raise else None",
+        ],
+        "src/taktus/composition/proposals.py": ["approved_by", "approved_by"],
     }
 
 
