@@ -297,6 +297,20 @@ application role may insert and read, and a trigger rejects every update, delete
 for everyone but a superuser (`migrations/`). A hash chain whose rows can be edited proves
 nothing.
 
+**One chain per tenant, one claim on it.** Each entry carries the next sequence number and the
+hash of the entry before it, so two transactions must not append to one chain at once. The
+ledger store claims the tenant's chain when it reads the newest entry, and holds the claim until
+the transaction ends: in the database a transaction advisory lock, in memory a lock released at
+the transaction's end. A second transaction waits, then reads the first one's entries. The claim
+is the only lock on the chain; no lock of the process is held beside it. A lock of the process
+held while the store waits for the claim formed a cycle that neither side could see: two runs of
+one tenant whose commits recorded two entries each hung for good (#309, NTC-0201;
+`tests/integration/test_ledger_concurrency.py`). Every database connection also carries
+`lock_timeout` and `idle_in_transaction_session_timeout`
+(`TAKTUS_DATABASE_LOCK_TIMEOUT_SECONDS`, 30; `TAKTUS_DATABASE_IDLE_IN_TRANSACTION_SECONDS`, 120),
+so a wait that should not happen fails with the server's reason instead of holding a runner's
+place while its lease is still renewed.
+
 **A change of state reaches its reader from the ledger** (ADR-0055). Every insert notifies the
 tenant it wrote, from a trigger, when its transaction commits. The `api` role reads the
 tenant's new entries on that signal, or every 2 seconds without one, and sends each entry that
