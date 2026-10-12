@@ -132,7 +132,7 @@ from taktus.composition.owner_channel import (
     known_secrets,
     owner_channel_wiring,
 )
-from taktus.composition.proposals import ProposalActs
+from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
@@ -414,6 +414,15 @@ async def wire(
                 objects,
                 clock,
             )
+            proposals = Proposals(
+                PostgresRepository(persistence, ProcessVersion),
+                PostgresRepository(persistence, Process),
+                PostgresRepository(persistence, Proposal),
+                persistence,
+                clock,
+                ids,
+                settings.administration,
+            )
             loopback.bind(
                 Loopback(
                     conformance=conformance,
@@ -443,6 +452,13 @@ async def wire(
                         prices=prices,
                     )
                 ),
+                # A change in dialogue, which S-07 runs (ADR-0091 §2).
+                changes=InstanceChanges(
+                    proposals,
+                    PostgresRepository(persistence, Process),
+                    PostgresRepository(persistence, ProcessVersion),
+                    persistence,
+                ),
             )
             outbox = PostgresOutbox(persistence)
             complete_intake = CompleteIntakeHandler(
@@ -460,15 +476,6 @@ async def wire(
                 ledger=ledger,
                 administration=settings.administration,
                 clock=clock,
-            )
-            proposals = Proposals(
-                PostgresRepository(persistence, ProcessVersion),
-                PostgresRepository(persistence, Process),
-                PostgresRepository(persistence, Proposal),
-                persistence,
-                clock,
-                ids,
-                settings.administration,
             )
             wired = Wired(
                 settings=settings,

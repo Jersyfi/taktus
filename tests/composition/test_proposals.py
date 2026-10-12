@@ -10,9 +10,11 @@ it; a rollback registers an earlier version's content again as a new version, an
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from fakes import FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.identity import directory
 from fakes.maturity import VERIFIED
@@ -244,4 +246,23 @@ async def test_a_rollback_registers_an_earlier_version_again_and_deletes_nothing
     assert taken.value.kind == "taken"
     with pytest.raises(ProposalError) as unknown:
         await world.acts.rollback(TENANT, "daily", "9", WHO)
+    assert unknown.value.kind == "unknown"
+
+
+S07 = Path(__file__).resolve().parents[2] / "blueprints/self-operation/processes"
+
+
+async def test_a_change_asked_in_words_starts_s07_for_the_person() -> None:
+    world = await World().setup()
+    with pytest.raises(ProposalError) as unavailable:
+        await world.acts.ask(TENANT, "daily", "add a step", WHO)
+    assert unavailable.value.kind == "unavailable"
+    document = yaml.safe_load((S07 / "S-07-change-in-dialogue.yaml").read_text(encoding="utf-8"))
+    await world.register.execute(RegisterProcessVersion(document, tenant=TENANT, by=WHO))
+    run = await world.acts.ask(TENANT, "daily", "add a step", WHO)
+    assert run.process_version == "s07-change-in-dialogue@1"
+    assert run.inputs == {"process": "daily", "request": "add a step"}
+    assert not run.rehearsal and run.state is RunState.PLANNED
+    with pytest.raises(ProposalError) as unknown:
+        await world.acts.ask(TENANT, "nothing", "add a step", WHO)
     assert unknown.value.kind == "unknown"

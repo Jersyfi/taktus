@@ -12,6 +12,7 @@ first process is the check of the product's own central claim.
 | S-04 Load measurement — how many concurrent runs one instance carries | `1.0.0` | — |
 | **S-05 Guides** — the administration guide and the guide for users, rendered from the repository and put into the knowledge system; a hand edit is kept and reported | **runs** daily | [`processes/S-05-guides.yaml`](processes/S-05-guides.yaml) |
 | **S-06 Maturation** — every step measured, and a step on a language model proposed a trained model where the evidence holds; never applied | **runs** weekly | [`processes/S-06-maturation.yaml`](processes/S-06-maturation.yaml) |
+| **S-07 Change in dialogue** — a request in a person's own words becomes a proposal for a changed process; nothing is registered | **runs** when a person asks, from the web app or the chat | [`processes/S-07-change-in-dialogue.yaml`](processes/S-07-change-in-dialogue.yaml) |
 
 ## S-01 Removal test
 
@@ -355,3 +356,51 @@ configuration and `taktusctl`.
    out; at least 95 % agreement on the held-out cases, a lower cost per case, and the same model
    from two trainings. A person can collect the step's cases from its runs, train a classifier
    on the bench by hand (`workers/mlbench/README.md`), and hold the result to those numbers.
+
+## S-07 Change in dialogue
+
+UC-4.15 asks that a person changes a process in their own words. ADR-0091 makes the proposing a
+process of Taktus's own, so that the one variable step is visible and the rest are rules
+(issue #295).
+
+**What one run does:**
+
+1. **read** — reads the process's active version as the bundle it registers as.
+2. **propose** — a language model, for the purpose `reasoning`, is given that bundle and the
+   person's request, and answers with the complete changed bundle as one JSON object. An answer
+   that is no JSON object does not leave the step.
+3. **keep** — the instance validates the proposed bundle as registration would, computes its
+   difference against the active version field by field, and keeps the proposal. A bundle that
+   would not register is kept nowhere: the step fails with every finding, and the run goes to a
+   person (`exact`, its check a recomputation, provisional under DEC-0173, ADR-0082).
+
+Steps 1 and 3 are calls of `orchestrator.changes`, served by the loopback connector over
+`composition/proposals.py`. The run acts for the person who asked. Nothing is registered: the
+person reads the proposal, has it rehearsed and commissions it, or discards it (ADR-0091 §3, §4).
+
+**Started by a person.** It has no trigger. `POST /processes/{id}/proposals` with the request in
+words starts one run, and the answer names it; the web app and the owner's chat ask the same way.
+Register it once:
+
+```bash
+uv run taktusctl submit --process blueprints/self-operation/processes/S-07-change-in-dialogue.yaml \
+    --input process=<process> --input 'request=<what should change>'
+```
+
+`tests/composition/test_change_in_dialogue.py` runs it end to end with a scripted model.
+
+### Its autonomy, with the reason
+
+Level 3: the one value a language model produces is a proposed bundle, and it leaves its step
+only through registration's validation; a proposal is a record a person reads; nothing is
+registered, and commissioning is the person's act at every level. Toward level 4: a quarter of
+proposals whose differences their requesters found to be what they asked for, without a
+rewrite by hand; then Taktus proposes the raise with that evidence (M3.9).
+
+### By hand — the takeover test of this process
+
+A person does the same without the model (ADR-0013 B). Copy the process's bundle — the file
+under `blueprints/` or `GET /levels/processes/{id}` — change it, give it a new version name and
+hand it over: `POST /processes/{id}/proposals` with the changed bundle keeps the proposal with
+its difference, as S-07 would, and registers nothing. Without Taktus, the bundle is a YAML file:
+registering the changed file with `taktusctl submit` is the same change, made directly.

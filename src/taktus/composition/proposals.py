@@ -19,17 +19,24 @@ composition root may hold them all (`composition/README.md`).
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Mapping
 from typing import Any
 
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
-from taktus.components.process.application.service.proposals import ProposalError, Proposals
+from taktus.components.process.application.service.proposals import (
+    ProposalError,
+    Proposals,
+    Propose,
+)
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
     RegisterProcessVersionHandler,
     parse_bundle,
 )
 from taktus.components.process.domain.model import (
+    InvalidProcess,
     Process,
     ProcessVersion,
     Proposal,
@@ -47,6 +54,9 @@ from taktus.shared.v1 import Command, Intent, LedgerRefs, ReplyTo
 
 CHANNEL = "channel.web"
 """The channel a change in dialogue arrives on; the chat's acts arrive on their own (ADR-0069)."""
+
+CHANGE_IN_DIALOGUE = "s07-change-in-dialogue"
+"""The process that turns a request in words into a proposal (`blueprints/self-operation/`)."""
 
 
 class ProposalActs:
@@ -78,6 +88,61 @@ class ProposalActs:
         self._work = work
         self._clock = clock
         self._ids = ids
+
+    async def ask(self, tenant: Tenant, process_id: str, request: str, by: str) -> Run:
+        """A change asked for in words: a run of S-07 for the process (ADR-0091 §2), which keeps
+        a proposal once the model's bundle passes validation. The run acts for whoever asked."""
+        async with self._work.transaction(tenant):
+            target = await self._processes.get(tenant, process_id)
+            s07 = await self._processes.get(tenant, CHANGE_IN_DIALOGUE)
+            version = (
+                None
+                if s07 is None or s07.active_version is None
+                else await self._versions.get(tenant, f"{s07.id}@{s07.active_version}")
+            )
+        if target is None or target.active_version is None:
+            raise ProposalError("unknown", f"no process {process_id!r}")
+        if version is None or version.limits is None:
+            raise ProposalError(
+                "unavailable",
+                f"{CHANGE_IN_DIALOGUE} is not registered on this instance: hand over the changed "
+                "bundle instead",
+            )
+        placed = await self._identities.identity(tenant, by)
+        if placed is None:
+            raise ProposalError("unknown", f"the identity {by!r} is not known to {tenant!r}")
+        inputs = {"process": process_id, "request": request}
+        command = Command(
+            id=self._ids.new("cmd"),
+            channel=CHANNEL,
+            identity=placed.identity,
+            org_path=placed.org_path,
+            intent=Intent(raw=request, recognised="process.change"),
+            context={"inputs": inputs},
+            reply_to=ReplyTo(channel=CHANNEL, address="ledger"),
+            received_at=self._clock.now(),
+        )
+        plan = await self._commission.execute(
+            CommissionPlan(
+                command=command,
+                tenant=tenant,
+                goal=f"propose a change to {process_id}",
+                autonomy_level=version.autonomy_level,
+                steps=version.ordered(),
+            )
+        )
+        return await self._engine.submit(
+            StartRun(
+                plan=plan,
+                work=version.work,
+                budget=Limits.model_validate(dict(version.limits)),
+                process_version=version.ref,
+                actor=placed.identity,
+                tenant=tenant,
+                inputs=inputs,
+                actions=version.autonomy.action_levels,
+            )
+        )
 
     async def rehearse(
         self,
@@ -231,3 +296,72 @@ class ProposalActs:
                     outcome=outcome,
                 ),
             )
+
+
+class InstanceChanges:
+    """The loopback connector's `orchestrator.changes` (ADR-0091 §2): S-07 reads a process's
+    active version as a bundle, and keeps the proposal for the bundle the model proposed. What
+    the model answered leaves only through the proposals' validation; a bundle that would not
+    register is a `ValueError` naming every finding, and nothing is kept."""
+
+    def __init__(
+        self,
+        proposals: Proposals,
+        processes: Repository[Process],
+        versions: Repository[ProcessVersion],
+        work: UnitOfWork,
+    ) -> None:
+        self._proposals = proposals
+        self._processes = processes
+        self._versions = versions
+        self._work = work
+
+    async def read(self, tenant: str, process: str) -> dict[str, Any]:
+        async with self._work.transaction(tenant):
+            found = await self._processes.get(tenant, process)
+            active = (
+                None
+                if found is None or found.active_version is None
+                else await self._versions.get(tenant, f"{process}@{found.active_version}")
+            )
+        if active is None:
+            raise ValueError(f"no process {process!r} with an active version")
+        bundle = bundle_of(
+            active,
+            as_version=active.version,
+            author=active.author,
+            reason=active.reason or "as registered",
+        )
+        return {"version": active.version, "bundle": bundle}
+
+    async def propose(
+        self, tenant: str, *, identity: str, process: str, bundle: str, request: str
+    ) -> dict[str, Any]:
+        document = _bundle_from(bundle)
+        try:
+            proposal = await self._proposals.propose(
+                Propose(tenant, process, document, by=identity, request=request)
+            )
+        except InvalidProcess as error:
+            raise ValueError("; ".join(error.findings)) from error
+        except ProposalError as error:
+            raise ValueError(str(error)) from error
+        return {"proposal": proposal.id, "difference": proposal.difference.document()}
+
+
+FENCE = re.compile(r"^```[a-z]*\s*\n(.*)\n```\s*$", re.DOTALL)
+
+
+def _bundle_from(text: str) -> dict[str, Any]:
+    """The bundle a model answered, as JSON; a fence around it is taken off, nothing else."""
+    stripped = text.strip()
+    fenced = FENCE.match(stripped)
+    if fenced is not None:
+        stripped = fenced.group(1).strip()
+    try:
+        document = json.loads(stripped)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"the proposed bundle is no JSON document: {error}") from error
+    if not isinstance(document, dict):
+        raise ValueError("the proposed bundle is no JSON object")
+    return document

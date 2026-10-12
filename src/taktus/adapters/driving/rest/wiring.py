@@ -57,6 +57,8 @@ class ProposalActs(Protocol):
     """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5): the
     composition root's, because each act crosses the process, command and run components."""
 
+    async def ask(self, tenant: Tenant, process_id: str, request: str, by: str) -> Run: ...
+
     async def rehearse(
         self,
         tenant: Tenant,

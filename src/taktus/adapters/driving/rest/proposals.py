@@ -32,7 +32,11 @@ NEEDS_KEY = "an account key is needed: Authorization: Bearer <key>"
 
 
 class ProposeBody(BaseModel):
-    bundle: dict[str, Any] = Field(description="The changed process bundle, as a document.")
+    bundle: dict[str, Any] | None = Field(
+        default=None,
+        description="The changed process bundle, as a document. Without it, `request` is turned "
+        "into a proposal by S-07, and the answer names that run (ADR-0091 §2).",
+    )
     request: str | None = Field(
         default=None, min_length=1, description="The words the change was asked for in."
     )
@@ -63,6 +67,7 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         "registration would give, and nothing is kept (ADR-0091 §1).",
         responses={
             201: {"description": "The proposal."},
+            202: {"description": "Asked in words: the S-07 run that makes the proposal."},
             400: {"description": "The bundle would not register; every finding.", **PROBLEM},
             **common,
         },
@@ -73,6 +78,16 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         who = await authenticated(services, authorization)
         if who is None:
             return problem(401, NEEDS_KEY)
+        if body.bundle is None:
+            if body.request is None:
+                return problem(422, "give the changed bundle, or the change in your own words")
+            try:
+                run = await services.proposal_acts.ask(
+                    who.tenant, process_id, body.request, who.identity
+                )
+            except ProposalError as error:
+                return _act_refused(error)
+            return JSONResponse({"run": run.id}, status_code=202)
         try:
             made = await services.proposals.propose(
                 Propose(

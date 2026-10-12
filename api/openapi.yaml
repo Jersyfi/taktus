@@ -967,6 +967,8 @@ paths:
               schema: {}
         '201':
           description: The proposal.
+        '202':
+          description: 'Asked in words: the S-07 run that makes the proposal.'
         '400':
           description: The bundle would not register; every finding.
           content:
@@ -1348,10 +1350,13 @@ components:
     ProposeBody:
       properties:
         bundle:
-          additionalProperties: true
-          type: object
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
           title: Bundle
-          description: The changed process bundle, as a document.
+          description: The changed process bundle, as a document. Without it, `request` is turned into
+            a proposal by S-07, and the answer names that run (ADR-0091 §2).
         request:
           anyOf:
           - type: string
@@ -1360,8 +1365,6 @@ components:
           title: Request
           description: The words the change was asked for in.
       type: object
-      required:
-      - bundle
       title: ProposeBody
     RehearseBody:
       properties:

@@ -21,6 +21,7 @@ requires:
     - capability: orchestrator.maturity
     - capability: orchestrator.guides
     - capability: orchestrator.maturation
+    - capability: orchestrator.changes
     - capability: repository.files
     - capability: knowledge.pages
 
@@ -81,3 +82,14 @@ processes:
       - { id: nothing-applied, method: rule, exactness: exact }     # a proposal is never a change
       - { id: report,          method: rule, exactness: sourced }
     slo: { freshness: 7d }
+  - id: S-07
+    name: Change in dialogue
+    autonomy:
+      level: 3
+      reason: the model's proposed bundle leaves its step only through registration's validation; a proposal is a record the person reads; nothing is registered, and commissioning is the person's act
+      toward_next: a quarter of proposals whose differences their requesters found to be what they asked for, without a rewrite by hand
+    triggers: []   # started by a person's request, from the web app or the chat (ADR-0091 §6)
+    steps:
+      - { id: read,    method: rule, exactness: sourced }
+      - { id: propose, method: llm,  exactness: tolerant }   # the model proposes the changed bundle
+      - { id: keep,    method: rule, exactness: exact }      # validated as registration would; nothing registered

@@ -7,6 +7,7 @@ answered alike; a key is needed; an open proposal is discarded once.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -115,6 +116,10 @@ class Acts:
         if self.refusal is not None:
             raise self.refusal
 
+    async def ask(self, *args: Any, **kwargs: Any) -> Any:
+        self._answer("ask", *args, **kwargs)
+        return SimpleNamespace(id="run_7")
+
     async def rehearse(self, *args: Any, **kwargs: Any) -> Any:
         self._answer("rehearse", *args, **kwargs)
         raise AssertionError("not reached in these tests")
@@ -160,3 +165,19 @@ async def test_a_refused_act_is_a_conflict_and_an_unknown_one_is_not_found(clien
         )
         assert refused.status_code == status, kind
         assert refused.json()["kind"] == kind
+
+
+async def test_a_change_in_words_is_answered_with_the_run_that_proposes_it(client: Client) -> None:
+    http, given, base = client
+    given.acts = acts = Acts()
+    key = await given.linked()
+    asked = await http.post(
+        f"{base}/processes/invoices/proposals",
+        json={"request": "a person signs the draft"},
+        headers=bearer(key),
+    )
+    assert asked.status_code == 202 and asked.json() == {"run": "run_7"}
+    ((name, args, _),) = acts.calls
+    assert name == "ask" and args[1:] == ("invoices", "a person signs the draft", "idn_ada")
+    empty = await http.post(f"{base}/processes/invoices/proposals", json={}, headers=bearer(key))
+    assert empty.status_code == 422

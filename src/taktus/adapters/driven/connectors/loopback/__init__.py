@@ -31,6 +31,13 @@ request. Both operations are a `read`: what the training and the trial do is rec
 runs, and a decision request is a record of the decision component, which delivers it and
 records the delivery itself, as for the removal test's rehearsals and the guides' reports.
 
+A person's change in dialogue (UC-4.15, ADR-0091 §2) runs as a process too, S-07 of
+`blueprints/self-operation/`. It asks the instance for the capability `orchestrator.changes`: the
+active version of a process as a bundle, and a proposal kept for the bundle a language model
+proposed. The instance answers through the `Changes` protocol below, which the composition root
+implements over the process component's proposals (`composition/proposals.py`). Keeping a
+proposal validates it as registration would and registers nothing; both operations are a `read`.
+
 Every operation but two declares effect `read`. The effect field says whether an operation's
 effect leaves Taktus (contracts/connector/v1 §3); a rehearsal run inside Taktus and a record in
 the catalog do not leave it, so no egress entry is written for them (ADR-0022). Running a
@@ -74,6 +81,7 @@ MATURITY = "orchestrator.maturity"
 CONFORMANCE = "orchestrator.conformance"
 GUIDES = "orchestrator.guides"
 MATURATION = "orchestrator.maturation"
+CHANGES = "orchestrator.changes"
 
 LIST = f"{INTEGRATIONS}.list"
 DESCRIBE = f"{INTEGRATIONS}.describe"
@@ -87,6 +95,8 @@ GUIDE_PUBLISH = f"{GUIDES}.publish"
 GUIDE_REPORT = f"{GUIDES}.report"
 MATURATION_MEASURES = f"{MATURATION}.measures"
 MATURATION_PROPOSE = f"{MATURATION}.propose"
+CHANGES_READ = f"{CHANGES}.read"
+CHANGES_PROPOSE = f"{CHANGES}.propose"
 
 
 class UnknownIntegration(LookupError):
@@ -193,11 +203,36 @@ class Maturation(Protocol):
         ...
 
 
+class Changes(Protocol):
+    """What the connector needs from the instance for a change in dialogue (ADR-0091 §2). The
+    instance validates what it is given and raises `ValueError`, naming what is wrong."""
+
+    async def read(self, tenant: str, process: str) -> dict[str, Any]:
+        """The process's active version as a bundle: `version` and `bundle`."""
+        ...
+
+    async def propose(
+        self, tenant: str, *, identity: str, process: str, bundle: str, request: str
+    ) -> dict[str, Any]:
+        """The proposal kept for `bundle`, a bundle as JSON text, asked for in `request` by
+        `identity`: `proposal`, its identifier, and `difference`. A bundle that would not
+        register raises `ValueError` with every finding, and nothing is kept."""
+        ...
+
+
 DECLARATION = Capabilities.model_validate(
     {
         "contract": "connector/v1",
         "version": "1",
-        "capabilities": [INTEGRATIONS, REMOVAL, MATURITY, CONFORMANCE, GUIDES, MATURATION],
+        "capabilities": [
+            INTEGRATIONS,
+            REMOVAL,
+            MATURITY,
+            CONFORMANCE,
+            GUIDES,
+            MATURATION,
+            CHANGES,
+        ],
         "operations": [
             {
                 "name": LIST,
@@ -297,6 +332,21 @@ DECLARATION = Capabilities.model_validate(
                 "candidate trained and tried in runs held to the budget named, and a proposal "
                 "raised as a decision request where the evidence holds; never applied.",
             },
+            {
+                "name": CHANGES_READ,
+                "capability": CHANGES,
+                "effect": "read",
+                "demand": {"quota_units": 1},
+                "summary": "A process's active version, as the bundle it registers as.",
+            },
+            {
+                "name": CHANGES_PROPOSE,
+                "capability": CHANGES,
+                "effect": "read",
+                "demand": {"quota_units": 1},
+                "summary": "A proposal kept for a changed bundle, validated as registration "
+                "would; nothing is registered.",
+            },
         ],
         "credentials": [],
         "consumption": {"kinds": ["quota"], "unit": "calls", "window_seconds": 3600},
@@ -315,17 +365,22 @@ class LoopbackConnector:
         orchestrator: Orchestrator | None = None,
         guides: Guides | None = None,
         maturation: Maturation | None = None,
+        changes: Changes | None = None,
     ) -> None:
         self._orchestrator = orchestrator
         self._guides = guides
         self._maturation = maturation
+        self._changes = changes
 
     def bind(
         self,
         orchestrator: Orchestrator | None = None,
         guides: Guides | None = None,
         maturation: Maturation | None = None,
+        changes: Changes | None = None,
     ) -> None:
+        if changes is not None:
+            self._changes = changes
         if orchestrator is not None:
             self._orchestrator = orchestrator
         if guides is not None:
@@ -340,6 +395,13 @@ class LoopbackConnector:
         try:
             if operation.startswith(f"{GUIDES}."):
                 return await self._guide(operation, context, dict(input))
+            if operation.startswith(f"{CHANGES}."):
+                output = await self._change(operation, context, dict(input))
+                return Result(
+                    output=output,
+                    effect=EffectReport(kind=Effect.READ),
+                    consumption=Consumption(quota_units=1),
+                )
             if operation.startswith(f"{MATURATION}."):
                 output = await self._mature(operation, context, dict(input))
                 return Result(
@@ -450,6 +512,26 @@ class LoopbackConnector:
                 identity=context.identity,
                 budget=_mapping(input, "budget"),
                 scope=_mapping(input, "scope"),
+            )
+        raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
+
+    async def _change(
+        self, operation: str, context: CallContext, input: dict[str, Any]
+    ) -> dict[str, Any]:
+        changes = self._changes
+        if changes is None:
+            raise CallFailed(
+                operation, _failure(Cause.NOT_FOUND, "this instance takes no change in dialogue")
+            )
+        if operation == CHANGES_READ:
+            return await changes.read(context.tenant, _text(input, "process"))
+        if operation == CHANGES_PROPOSE:
+            return await changes.propose(
+                context.tenant,
+                identity=context.identity,
+                process=_text(input, "process"),
+                bundle=_text(input, "bundle"),
+                request=_text(input, "request"),
             )
         raise CallFailed(operation, _failure(Cause.NOT_FOUND, f"no operation {operation!r}"))
 
