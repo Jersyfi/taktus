@@ -74,6 +74,7 @@ async def test_a_call_returns_a_result_with_the_declared_effect(service: Service
 
 @pytest.mark.usefixtures("credentials")
 async def test_an_outward_call_repeated_with_the_same_key_is_replayed(service: Service) -> None:
+    service.branch(REPOSITORY, "taktus/issue-9")
     input = {"head": "taktus/issue-9", "base": "main", "title": "t", "body": "b"}
     first = await connector(service).call("repository.pullrequests.open", context("pr"), input)
     again = await connector(service).call("repository.pullrequests.open", context("pr"), input)

@@ -82,6 +82,7 @@ async def test_the_connector_acts_under_the_apps_own_name(service: Service) -> N
     )
     assert not error, read
     assert read["output"]["author"]["kind"] == "automation"
+    service.branch(REPOSITORY, "taktus/issue-1")
     pull_request = {"head": "taktus/issue-1", "base": "main", "title": "t", "body": "b"}
     error, opened = await call(
         connector, "repository.pullrequests.open", context("open", "run_app:o:1"), pull_request
