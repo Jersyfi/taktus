@@ -307,3 +307,22 @@ export interface Proposal {
 	created_at: string;
 	rehearsal_run?: string;
 }
+
+/** A group's response times, or why they are withheld (ADR-0015). */
+export interface ResponseAggregate {
+	group: string;
+	decisions?: number | null;
+	median_seconds?: number | null;
+	withheld?: string | null;
+}
+
+/** `GET /decisions/response-times`: the reader's own times, theirs alone, and the rest only
+ * aggregated by role and department (ADR-0015, principle 14). */
+export interface ResponseTimes {
+	reader: string;
+	own?: { request_id: string; run_id: string; seconds: number }[];
+	own_total_seconds?: number | null;
+	own_median_seconds?: number | null;
+	by_role?: ResponseAggregate[];
+	by_department?: ResponseAggregate[];
+}

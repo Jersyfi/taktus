@@ -69,6 +69,22 @@ class Service:
     def reset(self) -> None:
         self.control("/_fake/reset", {})
 
+    def branch(self, repository: str, name: str) -> None:
+        """A branch at the head of `main`, made through the service's reference interface: a
+        pull request needs its head branch to exist, on the service as on the fake."""
+        headers = {"Authorization": f"Bearer {self.write_value}"}
+        base = f"{self.url}/repos/{repository}/git"
+        main = httpx.get(f"{base}/ref/heads/main", headers=headers, timeout=5.0)
+        main.raise_for_status()
+        sha = main.json()["object"]["sha"]
+        made = httpx.post(
+            f"{base}/refs",
+            json={"ref": f"refs/heads/{name}", "sha": sha},
+            headers=headers,
+            timeout=5.0,
+        )
+        made.raise_for_status()
+
 
 @pytest.fixture(scope="session")
 def service(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Service]:

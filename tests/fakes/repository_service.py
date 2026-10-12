@@ -23,7 +23,11 @@ What it enforces, because the connector's checks depend on it:
   token acts with write scope until it expires or is revoked, as a bot whose login ends in
   `[bot]`. Every repository is installed until `POST /_fake/app` says otherwise.
 - **Pull request uniqueness.** A second open pull request for the same head branch is refused
-  with 422, as the real service does.
+  with 422, as the real service does; so is one whose head branch does not exist.
+- **An issue list that lags**, when started with `--issue-list-lag SECONDS` or told so by
+  `POST /_fake/lag` with `{"seconds": 2}`: the issue list leaves out what was created less than
+  that long ago, as the real service's list did on 2026-10-12, while one issue read by its
+  number is there at once. Off unless asked for; the conformance gate asks for it.
 - **Paging.** Comment, issue and collaborator lists page with `per_page`/`page` and a
   `Link: <…>; rel="next"` header.
 - **Collaborators.** Every repository starts with two, `fake-user` (role `admin`) and
@@ -105,6 +109,7 @@ class Repository:
     refs: dict[str, str] = field(default_factory=dict)  # branch name -> commit sha
     objects: dict[str, Json] = field(default_factory=dict)  # sha -> blob | tree | commit
     milestones: dict[int, Json] = field(default_factory=dict)
+    created: dict[int, float] = field(default_factory=dict)  # number -> monotonic moment
     collaborators: list[Json] = field(
         default_factory=lambda: [
             collaborator("fake-user", 1, "admin"),
@@ -147,6 +152,7 @@ class Store:
     hang_seconds: float = 0.0
     ci_conclusion: str = "success"
     ci_pending: bool = False
+    issue_list_lag: float = 0.0  # seconds an issue stays out of the issue list
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def repository(self, owner: str, name: str) -> Repository:
@@ -212,6 +218,7 @@ class Store:
             "updated_at": now(),
         }
         repo.issues[number] = issue
+        repo.created[number] = time.monotonic()
         repo.comments[number] = []
         return issue
 
@@ -488,6 +495,10 @@ class Handler(BaseHTTPRequestHandler):
             self.store.outage = bool(body.get("on"))
             self._send(200, {"outage": self.store.outage})
             return
+        if url.path == "/_fake/lag":
+            self.store.issue_list_lag = float(body.get("seconds") or 0)
+            self._send(200, {"issue_list_lag": self.store.issue_list_lag})
+            return
         if url.path == "/_fake/hang":
             self.store.hang_seconds = float(body.get("seconds") or 0)
             self._send(200, {"hang_seconds": self.store.hang_seconds})
@@ -607,7 +618,13 @@ class Handler(BaseHTTPRequestHandler):
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/issues", path):
             repo = store.repository(m.group(1), m.group(2))
             state = query.get("state", "open")
-            issues = [i for i in repo.issues.values() if state == "all" or i["state"] == state]
+            listed_before = time.monotonic() - store.issue_list_lag
+            issues = [
+                i
+                for i in repo.issues.values()
+                if (state == "all" or i["state"] == state)
+                and repo.created[int(i["number"])] <= listed_before
+            ]
             issues.sort(key=lambda i: int(i["number"]), reverse=True)
             per_page = max(1, min(100, int(query.get("per_page", 30))))
             page = max(1, int(query.get("page", 1)))
@@ -746,6 +763,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(422, {"message": "Validation Failed: head and base are the same"})
                 return
             label = head if ":" in head else f"{repo.owner}:{head}"
+            if label.split(":", 1)[1] not in repo.refs:
+                self._send(
+                    422,
+                    {
+                        "message": "Validation Failed",
+                        "errors": [{"resource": "PullRequest", "field": "head", "code": "invalid"}],
+                    },
+                )
+                return
             if any(
                 p["state"] == "open" and p["head"]["label"] == label for p in repo.pulls.values()
             ):
@@ -892,9 +918,16 @@ def tokens_from_environment() -> dict[str, str]:
 
 
 def make_server(
-    host: str, port: int, tokens: dict[str, str], app: App | None = None
+    host: str,
+    port: int,
+    tokens: dict[str, str],
+    app: App | None = None,
+    *,
+    issue_list_lag: float = 0.0,
 ) -> ThreadingHTTPServer:
-    store = Store(base_url=f"http://{host}:{port}", tokens=tokens, app=app)
+    store = Store(
+        base_url=f"http://{host}:{port}", tokens=tokens, app=app, issue_list_lag=issue_list_lag
+    )
 
     class Bound(Handler):
         pass
@@ -909,12 +942,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="A fake repository hosting service.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9200)
+    parser.add_argument(
+        "--issue-list-lag",
+        type=float,
+        default=0.0,
+        help="seconds a new issue stays out of the issue list, as on the real service",
+    )
     args = parser.parse_args(argv)
     tokens = tokens_from_environment()
     app = app_from_environment()
     if not tokens and app is None:
         sys.stderr.write(f"{TOKENS_VARIABLE} is empty: no request will authenticate\n")
-    server = make_server(args.host, args.port, tokens, app)
+    server = make_server(args.host, args.port, tokens, app, issue_list_lag=args.issue_list_lag)
     sys.stderr.write(f"{now()} fake-repository listening on {server.server_address}\n")
     try:
         server.serve_forever()

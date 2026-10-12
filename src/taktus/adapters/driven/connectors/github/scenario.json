@@ -1,5 +1,9 @@
 {
-  "credentials": { "actions": "REPOSITORY_TOKEN", "intake": "REPOSITORY_WEBHOOK_SECRET" },
+  "credentials": {
+    "actions": "REPOSITORY_TOKEN",
+    "intake": "REPOSITORY_WEBHOOK_SECRET",
+    "app": "REPOSITORY_APP_KEY"
+  },
   "read": { "operation": "repository.issues.read", "input": { "number": 1 } },
   "writes": [
     {
@@ -7,26 +11,26 @@
       "input": { "title": "conformance {{unique}}", "body": "Opened by the conformance suite." }
     },
     {
+      "operation": "repository.branches.create",
+      "input": {
+        "name": "conformance/{{shared}}",
+        "base": "main",
+        "message": "conformance {{shared}}",
+        "files": [{ "path": "conformance/{{shared}}.md", "content": "Created by the conformance suite.\n" }]
+      }
+    },
+    {
       "operation": "repository.pullrequests.open",
       "input": {
-        "head": "conformance/{{unique}}",
+        "head": "conformance/{{shared}}",
         "base": "main",
-        "title": "conformance {{unique}}",
+        "title": "conformance {{shared}}",
         "body": "Opened by the conformance suite."
       }
     },
     {
       "operation": "repository.comments.create",
       "input": { "number": 1, "body": "Comment {{unique}} by the conformance suite." }
-    },
-    {
-      "operation": "repository.branches.create",
-      "input": {
-        "name": "conformance/branch-{{unique}}",
-        "base": "main",
-        "message": "conformance {{unique}}",
-        "files": [{ "path": "conformance/{{unique}}.md", "content": "Created by the conformance suite.\n" }]
-      }
     }
   ],
   "invalid": {

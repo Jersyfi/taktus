@@ -842,7 +842,7 @@
     },
     "ScenarioCall": {
       "title": "ScenarioCall",
-      "description": "One operation the conformance suite calls, with its input. In string values, {{unique}} is replaced by a fresh token per call, so that a write can be repeated with a new key without colliding with its own earlier record.",
+      "description": "One operation the conformance suite calls, with its input. In string values, {{unique}} is replaced by a token fresh for each write: the same in its first call and in the repeat with the same key, another in the call with a new key, so that the new key's call does not collide with the first call's record. {{shared}} is replaced by one token in every call made with a first key and by another in every call made with a new key, the same across all writes of a run, so that a later write can name what an earlier write created — a pull request from the branch the write before it made. Outside the writes both are replaced by nothing.",
       "type": "object",
       "properties": {
         "operation": {
@@ -918,7 +918,7 @@
     },
     "Scenario": {
       "title": "Scenario",
-      "description": "The input of the conformance suite for one connector: which operations to call with which input, and which recorded events to deliver. The suite cannot know the input an operation needs; the connector's author states it here, against a target the connector may write to. credentials names the secrets the suite references by name; the suite reads their values from its own environment for the scan and for signing, and never sends them.",
+      "description": "The input of the conformance suite for one connector: which operations to call with which input, and which recorded events to deliver. The suite cannot know the input an operation needs; the connector's author states it here, against a target the connector may write to. credentials names the secrets the suite references by name; the suite reads their values from its own environment for the scan and for signing, and never sends them. Only actions is referenced in a call's context; intake signs; any further name is a secret the connector holds, which the scan looks for as well.",
       "type": "object",
       "properties": {
         "credentials": {
@@ -934,13 +934,15 @@
           "required": [
             "actions"
           ],
-          "additionalProperties": false
+          "additionalProperties": {
+            "$ref": "#/$defs/CredentialName"
+          }
         },
         "read": {
           "$ref": "#/$defs/ScenarioCall"
         },
         "writes": {
-          "description": "Outward operations whose idempotency is native or marked. Each is called twice with one key, then once with another.",
+          "description": "Outward operations whose idempotency is native or marked. Each is called twice with one key, then once with another, in the order listed: a write that names what an earlier one created through {{shared}} comes after it.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/ScenarioCall"

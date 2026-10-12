@@ -170,6 +170,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0196](NTC-0196-a-silent-worker-keeps-its-stream.md) | A silent worker keeps its stream | M2.4 | `behaviour-change` | an idle timeout of a worker that answers for its running assignment costs no reconnect; attempts counted between events; `stream_timeout` enforced (#271) |
 | [0197](NTC-0197-verify-compose-expects-an-adopted-step.md) | verify-compose expects an adopted step | M2.2 | `test-strategy` | `make verify-compose` checks that the worker step interrupted by the kill was started once and adopted after the restart, not started twice (ADR-0038, NTC-0074, #250) |
 | [0198](NTC-0198-a-workers-unit-receives-the-settings-its-program-needs.md) | A worker's unit receives the settings its program needs | M2.4 | `behaviour-change` | `TAKTUS_EXECUTION_UNIT_ENV`, per worker too: `NAME=value` pairs every unit of the worker receives, a probe's included; a name that carries a secret is refused; a record names the names, never the values (ADR-0090, #288) |
+| [0199](NTC-0199-an-issue-repeat-is-found-while-the-list-lags.md) | An issue repeat is found while the list lags | M2.4 | `behaviour-change` | `repository.issues.create` reads the issues above the newest listed number one by one, at most twenty; a scenario's `{{shared}}` names what an earlier write created, and `credentials` takes further names for C-04; the fake refuses a pull request without its head and its issue list can lag (ADR-0024 amended, #300) |
 
 ## Decisions
 
