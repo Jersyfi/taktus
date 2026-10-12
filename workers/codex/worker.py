@@ -83,6 +83,16 @@ WRITES = re.compile(r">|\$\(|`|\btee\b")
 SHELLS = frozenset({"bash", "sh", "zsh", "dash"})
 AUTH_VARIABLE = {"api-key": "CODEX_API_KEY", "session": "auth.json"}
 BASELINE_TAG = "taktus-baseline"
+
+GIT_PROXY_VARIABLES = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "NO_PROXY",
+    "no_proxy",
+)
+"""The proxy variables a clone reads, passed to git as to the agent."""
 # The names a coding step references its credential by. They are the first coding worker's, so
 # that a process runs unchanged on either; the value each worker receives is its own agent's.
 DEFAULT_CREDENTIAL = {"api-key": "CODING_AGENT_API_KEY", "session": "CODING_AGENT_SESSION"}
@@ -629,6 +639,9 @@ class _Run:
     def _git(self, command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
         env = {
             **{k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "LANG", "TMPDIR")},
+            # The unit's egress proxy, where the execution kind gives one: on a cluster a clone
+            # reaches its host through it and nothing else (issue #306).
+            **{k: v for k, v in os.environ.items() if k in GIT_PROXY_VARIABLES},
             "GIT_AUTHOR_NAME": "taktus",
             "GIT_AUTHOR_EMAIL": "taktus@localhost",
             "GIT_COMMITTER_NAME": "taktus",

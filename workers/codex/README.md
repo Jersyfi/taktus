@@ -140,7 +140,7 @@ can be given, and is refused.
 
 ## What an assignment does
 
-As the first coding worker's: the workspace is cloned or started empty under
+As the first coding worker's: the workspace is cloned (through the unit's proxy, #306) or started empty under
 `<state>/workspaces/<id>`, a baseline is committed and tagged, the task becomes the agent's
 prompt, every completed item that changed the workspace is committed and announced as an
 artifact `change-N` of kind `patch`, and at the end the `summary` and the `changeset` are
