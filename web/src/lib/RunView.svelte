@@ -8,7 +8,7 @@
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
-	import { originLink, processLink } from './links';
+	import { originLink, processLink, requestsLink } from './links';
 	import type { Figure, RunLevel } from './types';
 
 	let { level, motionAllowed }: { level: RunLevel; motionAllowed: boolean } = $props();
@@ -56,7 +56,10 @@
 		<ul class="more">
 			{#each decided as step (step.id)}
 				{#each step.decisions ?? [] as d (d.id)}
-					<li><Glyph glyph={chosen(d.drawn, motionAllowed)} size={22} /> {step.id}: {d.id}, {d.status}</li>
+					<li>
+						<Glyph glyph={chosen(d.drawn, motionAllowed)} size={22} />
+						{step.id}: <a href={requestsLink(d.id)}>{d.id}</a>, {d.status}
+					</li>
 				{/each}
 			{/each}
 			{#each produced as step (step.id)}

@@ -243,3 +243,45 @@ export interface Problem {
 	title: string;
 	detail: string;
 }
+
+/** One option of a decision request (ADR-0008). */
+export interface DecisionOption {
+	id: string;
+	proposal: string;
+	consequence?: string;
+	effort?: string;
+	recommended: boolean;
+	reason?: string;
+}
+
+/** A decision request as its decider sees it: `GET /decisions` and `GET /decisions/{id}`
+ * (ADR-0042). Who answered is shown to that person alone (ADR-0015). */
+export interface AddressedRequest {
+	id: string;
+	decider: string;
+	anchor?: string;
+	raised_at: string;
+	overdue: boolean;
+	answered_by_you: boolean;
+	reflection?: string;
+	request: {
+		id: string;
+		raised_by: { run: string; step: string };
+		class: string;
+		situation: string;
+		question: string;
+		options: DecisionOption[];
+		blocking: string[];
+		due: string;
+		status: 'open' | 'answered' | 'interpreted' | 'confirmed' | 'applied';
+		answer_raw?: string;
+		answer_interpreted?: { option: string; modifications?: string };
+	};
+}
+
+/** `GET /decisions`. */
+export interface AddressedList {
+	identity: string;
+	requests: AddressedRequest[];
+	overdue: number;
+}

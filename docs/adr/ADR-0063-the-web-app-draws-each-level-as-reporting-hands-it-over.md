@@ -2,7 +2,7 @@
 
 **Status:** accepted · builds the web app and the run level of UC-6.10 (issue #105, DEC-0055);
 answers the question ADR-0059 left to this change · amended 2026-10-12: every level opens with
-its summary (§6; DEC-0185)
+its summary (§6; DEC-0185); it answers the decision requests addressed to the reader (§4)
 
 ## Context
 UC-6.10 requires four live representations — the overview, the process, the run and the origin
@@ -78,6 +78,12 @@ an address. A `401` asks for the key again.
 
 A level the reader may not see is answered `404`, exactly as one that does not exist, by the one
 predicate of `reporting` that the stream asks too (ADR-0055 §5).
+
+Amended 2026-10-12: the web app also answers the decision requests addressed to the reader. It
+reads them from `GET /decisions`, sends an answer to `POST /decisions/{id}/answer` and a
+confirmation to `POST /decisions/{id}/confirm` (ADR-0042), with the same key in the same header.
+Those are the only writes it makes. It decides nothing itself: it shows the reading the surface
+sends back, and nothing takes effect before the reader confirms it (ADR-0008).
 
 ### 5. The web app's checks are a gate
 `make gate-web` installs the web app's packages from its lock file, checks its types, runs its

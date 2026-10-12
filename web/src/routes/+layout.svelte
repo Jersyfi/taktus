@@ -20,7 +20,9 @@
 				? 2
 				: page.route.id?.startsWith('/processes')
 					? 1
-					: 0
+					: page.route.id === '/'
+						? 0
+						: -1
 	);
 	const calm = $derived(motion.stoppedByReader || motion.reducedBySystem);
 </script>
@@ -31,7 +33,7 @@
 		<nav class="depth" aria-label="Depth">
 			{#each DEPTHS as name, i (name)}
 				{#if i > 0}<span class="rail" aria-hidden="true"></span>{/if}
-				{#if i === 0 && depth > 0}
+				{#if i === 0 && depth !== 0}
 					<a class="stop done" href="#/">{name}</a>
 				{:else}
 					<span class="stop" class:done={i < depth} class:here={i === depth} aria-current={i === depth ? 'page' : undefined}
@@ -39,6 +41,7 @@
 				{/if}
 			{/each}
 		</nav>
+		<a class="requests" href="#/requests" aria-current={page.route.id?.startsWith('/requests') ? 'page' : undefined}>Requests</a>
 		<button
 			class="calm"
 			type="button"
@@ -221,6 +224,16 @@
 		margin: 0 0.5rem;
 		background: var(--line);
 		flex: none;
+	}
+	.requests {
+		font-size: 0.85rem;
+		text-decoration: none;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		padding: 0.35rem 0.8rem;
+	}
+	.requests[aria-current='page'] {
+		background: var(--paper-2);
 	}
 	.calm {
 		border: 1px solid var(--line);
