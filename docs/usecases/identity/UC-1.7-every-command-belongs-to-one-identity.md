@@ -7,7 +7,7 @@ serves: [P4, P12]
 state: built
 version: 0.2.0
 tests: [tests/integration/test_first_slice.py::test_nothing_executes_without_an_identity, tests/components/command/test_complete_intake.py::test_an_unknown_sender_is_kept_nowhere_and_completed_never, tests/components/identity/test_directory.py::test_one_account_maps_to_at_most_one_identity_and_one_identity_to_many, tests/components/identity/test_directory.py::test_a_code_from_the_persons_account_written_from_the_account_links_it, tests/components/identity/test_directory.py::test_a_matching_name_or_address_links_nothing, tests/components/identity/test_directory.py::test_the_organisations_identity_source_links_what_it_answers, tests/components/identity/test_directory.py::test_every_link_and_every_removal_is_a_ledger_entry_and_revoked_is_unknown, tests/components/command/test_complete_intake.py::test_identity_and_path_are_the_components_never_the_connectors, tests/components/command/test_complete_intake.py::test_several_events_within_the_window_get_one_offer_and_a_later_one_another, tests/components/command/test_complete_intake.py::test_an_event_without_the_senders_text_is_never_answered_nor_read_for_a_code, tests/adapters/connectors/test_repository_unknown_sender.py::test_an_issue_opened_and_labelled_together_gets_one_offer, tests/adapters/connectors/test_repository_unknown_sender.py::test_a_label_added_alone_is_answered_nothing, tests/adapters/connectors/test_repository_unknown_sender.py::test_after_the_window_a_comment_is_offered_again]
-adrs: {ADR-0020: 406f1ca33b50, ADR-0024: d57aa05c4f28, ADR-0033: eb18bea6bfb4, ADR-0040: 9d4e8c625856}
+adrs: {ADR-0020: 406f1ca33b50, ADR-0024: 64d7f9095b59, ADR-0033: eb18bea6bfb4, ADR-0040: 9d4e8c625856}
 supersedes: null
 ---
 

@@ -282,6 +282,12 @@ async def test_a_feature_approved_by_the_owner_stays_open_in_its_version(outside
 async def test_a_declined_pull_request_is_closed_with_the_owner_s_words_and_never_merged(
     outside: Outside,
 ) -> None:
+    main = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/main")
+    outside.send(
+        "POST",
+        f"/repos/{REPOSITORY}/git/refs",
+        {"ref": "refs/heads/outside/csv", "sha": main["object"]["sha"]},
+    )
     pull = outside.send(
         "POST",
         f"/repos/{REPOSITORY}/pulls",

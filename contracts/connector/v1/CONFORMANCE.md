@@ -44,7 +44,12 @@ open a pull request from. You tell it, in a *scenario*: one JSON file in the sha
   "read":   { "operation": "repository.issues.read", "input": { "number": 1 } },
   "writes": [
     { "operation": "repository.issues.create",
-      "input": { "title": "conformance {{unique}}", "body": "opened by the suite" } }
+      "input": { "title": "conformance {{unique}}", "body": "opened by the suite" } },
+    { "operation": "repository.branches.create",
+      "input": { "name": "conformance/{{shared}}", "base": "main" } },
+    { "operation": "repository.pullrequests.open",
+      "input": { "head": "conformance/{{shared}}", "base": "main",
+                 "title": "conformance {{shared}}", "body": "opened by the suite" } }
   ],
   "invalid": { "operation": "repository.issues.read", "input": { "number": 999999 },
                "expected_cause": "not_found" },
@@ -62,8 +67,9 @@ open a pull request from. You tell it, in a *scenario*: one JSON file in the sha
 |---|---|
 | `credentials.actions` | the name under which your connector reads the token it acts with. Set that name to the token's value in your connector's environment (or the file it reads), **and** in the environment of the suite: the suite never sends it, only searches for it (check C-04). |
 | `credentials.intake` | the name of the secret your target signs events with. Set it in both environments too; the suite signs the recorded payloads with it. Leave it out if your connector has no intake. |
+| `credentials.<any other name>` | optional: a further secret your connector holds — the key it mints its tokens from, for example (`"app": "REPOSITORY_APP_KEY"`). The suite never sends it and signs nothing with it; it only searches for its value (check C-04). |
 | `read` | one operation with `effect: read` and an input that finds an existing record. |
-| `writes` | one or more operations whose effect leaves the system and whose idempotency is `native` or `marked`. Each is called twice with one key and once with another; write `{{unique}}` wherever a repeat with a new key would otherwise collide with the record of the first call. Do **not** list an operation with `idempotency: none`: the suite refuses to repeat one. |
+| `writes` | one or more operations whose effect leaves the system and whose idempotency is `native` or `marked`. Each is called twice with one key and once with another, in the order listed; write `{{unique}}` wherever a repeat with a new key would otherwise collide with the record of the first call. Write `{{shared}}` where a write must name what an earlier write created: it is one token in every call made with a first key and another in every call made with a new key, the same across the writes. In the example, the pull request's first and repeated calls name the branch the branch write's first call made, and its call with a new key the branch made with the new key — a real service refuses a pull request from a branch that does not exist, and a second one from the same branch. Do **not** list an operation with `idempotency: none`: the suite refuses to repeat one. |
 | `invalid` | a call your target must refuse, and the `cause` your connector must classify it as. |
 | `intake.signature` | where the suite puts the signature it computes over the raw body: the header name and the prefix before the lowercase hex digest. |
 | `intake.signature.timestamp` | only when your declaration names `hmac-sha256-timestamped`: the header your target sends the moment of sending in, and the version token that opens the signed string. The suite then writes that header itself — the moment it says the payload arrived, in whole seconds since the epoch — and signs `<version>:<moment>:<body>`. |

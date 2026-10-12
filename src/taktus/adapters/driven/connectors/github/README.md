@@ -27,7 +27,7 @@ The resource `taktus://connector/v1/capabilities` ([`declaration.py`](declaratio
 |---|---|---|---|
 | `repository.issues.read` | read | — | one issue, with its labels by name and its milestone by title (`null` without one) — what a backlog's ready standard reads besides the body (issue #70) |
 | `repository.issues.list` | read | — | the issues in one state, `open` unless `state` says `closed` or `all`, without pull requests, each in the shape of `repository.issues.read`; page by page, at most twenty pages of 100, and `complete` says whether every page was read, so that a reader that must see every open issue can refuse a reading that stopped short |
-| `repository.issues.create` | write | marked | the key in the issue body, among the 100 most recently created issues |
+| `repository.issues.create` | write | marked | the key in the issue body, among the 100 most recently created issues and, above the newest number that list shows, among the issues read one by one by their number, up to twenty, until a number does not exist. **The issue list lags**: on 2026-10-12 an issue created a second earlier was not in it, and a repeat that looked there alone opened a second issue (issue #300). One issue read by its number is answered as written. A repeat is not recognised after 100 other issues and pull requests were opened in between, nor when more than twenty were opened while the list lagged |
 | `repository.issues.close` | write | marked | the key in the comment that says why, among all comments of the item, as `repository.comments.create` finds one; the comment is written first and the item closed as not planned after it, so a repeat that finds the comment closes an item still open and does nothing to one closed. A pull request is closed through the issue interface, which cannot merge it (UC-1.9, ADR-0088) |
 | `repository.issues.milestone` | write | marked | the milestone itself, on the item, as a label is for `repository.labels.set`: a repeat that finds it set changes nothing and reports `replayed`. The milestone is found by its title among the open ones; a title no open milestone has is `not_found` (ADR-0088) |
 | `repository.pullrequests.read` | read | — | |
@@ -48,11 +48,15 @@ The resource `taktus://connector/v1/capabilities` ([`declaration.py`](declaratio
 The mark is an HTML comment at the end of the body, `<!-- taktus-idempotency-key … -->`,
 invisible when rendered, or a git trailer in a commit message. Every `marked` operation looks
 for it **before** acting ([`operations.py`](operations.py)); the connector keeps no memory of
-what it did, the service does, and that memory survives a restart of the connector. The key the
+what it did, the service does, and that memory survives a restart of the connector. **A lookup
+reads only what the service answers as written** (ADR-0024, amendment of 2026-10-12): a pull
+request by its head, the comments of one issue, a reference, one issue by its number. A list
+the service fills later — its issue list, its search — is not a lookup on its own. The key the
 run derives is `taktus:<run id>:<step id>:<attempt>`. The test that tries to open a pull request
 twice for the same step across a restart is `tests/adapters/connectors/test_repository_actions.py`
 against the fake service, and `test_repository_live.py` against the real one — a branch, a pull
-request, a comment and a label, each twice across two connectors, with one record each; it runs
+request, a comment, a label and an issue, each twice across two connectors, with one record
+each, the issue's repeat at once; it runs
 when `TAKTUS_LIVE_REPOSITORY` and an identity — the app's two variables, or `REPOSITORY_TOKEN` —
 are set, and skips otherwise.
 
@@ -157,6 +161,15 @@ uv run taktusctl conformance run --contract connector/v1 \
     --endpoint http://127.0.0.1:9100/mcp --scenario src/taktus/adapters/driven/connectors/github/scenario.json
 ```
 
-[`scenario.json`](scenario.json) is written for the fake service: its writes open pull requests
-from branches that the fake accepts without their existing. Against the real service, the same
-scenario needs the head branches to exist.
+[`scenario.json`](scenario.json) runs against the fake and against the real service alike: the
+branch write comes before the pull request, and both name the branch through `{{shared}}`, so
+that every pull request comes from a branch the scenario made (CONFORMANCE.md §2). Like the
+real service, the fake refuses a pull request whose head branch does not exist, and the
+conformance gate starts it with an issue list that lags. Against the real service the suite
+writes into the repository the connector serves: point it at a sandbox, never at a repository
+that matters, and expect what it leaves there — an issue, two branches, two pull requests and
+two comments per run, besides the issue it reads and comments on, number 1. The scenario names
+the app's key as `credentials.app`, so that C-04 searches for it where the suite has it.
+
+On 2026-10-12 the suite passed C-01 to C-09 against a private sandbox repository, the connector
+acting as the app; C-10 stays pending.

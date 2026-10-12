@@ -7,15 +7,22 @@ survives a restart of the connector — which is the point (README §4 of the co
 
 Where the lookup is exact and where it is bounded is stated per operation. A pull request is
 found by its head branch, which the service keeps unique among open pull requests. An issue is
-found among the most recently created ones, a comment among all comments of its issue, page by
-page. A branch is found by its name, and the mark at the head commit says whether it is ours. A
-label is its own mark: the operation looks for the labels on the issue before adding any. A
-pipeline dispatch is found by nothing: the service answers with no identifier, which is why
-that operation declares `idempotency: none`.
+found among the most recently created ones and, above the newest number that list shows, by its
+number, one by one; a comment among all comments of its issue, page by page. A branch is found
+by its name, and the mark at the head commit says whether it is ours. A label is its own mark:
+the operation looks for the labels on the issue before adding any. A pipeline dispatch is found
+by nothing: the service answers with no identifier, which is why that operation declares
+`idempotency: none`.
 
 Every function takes the service, the operation's input and the idempotency key, and returns an
 `Outcome`: the operation's output and the effect report. Faults of the service arrive as
 `TargetError`. Input the operation cannot use is an `invalid` error before any request is made.
+
+**A lookup reads only what the service answers consistently** (ADR-0024, amendment of
+2026-10-12): a record the service has acknowledged must be found by the next request. A pull
+request by its head, the comments of one issue, a reference, one issue by its number: each is
+read as written. The list of a repository's issues is not: on 2026-10-12 an issue created a
+second earlier was missing from it, and a repeat that relied on it opened a second issue.
 """
 
 from __future__ import annotations
@@ -35,6 +42,7 @@ type Json = dict[str, Any]
 MARK = re.compile(r"<!-- taktus-idempotency-key ([A-Za-z0-9_.:-]{16,128}) -->")
 TRAILER = re.compile(r"^Taktus-Idempotency-Key: ([A-Za-z0-9_.:-]{16,128})$", re.MULTILINE)
 RECENT = 100  # how many of the most recently created issues a repeat is looked for in
+PROBES = 20  # how many numbers above the newest listed one are read one by one
 MAX_PAGES = 20  # how many pages of comments a repeat is looked for in
 MAX_RUNS = 50  # how many pipeline runs of one head are read
 SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -435,10 +443,13 @@ def _pull_records(pull: Json) -> list[Json]:
 
 
 async def create_issue(api: Api, input: Json, key: str) -> Outcome:
-    """Lookup: the RECENT most recently created issues, by mark. Bounded, and stated so: a repeat
-    that arrives after RECENT other issues were opened in between is not recognised. The
-    service's search index would widen the window but lags by minutes, which is worse than a
-    bound that is exact."""
+    """Lookup, in two parts, by mark. First the RECENT most recently created issues, from the
+    issue list. That list lags: an issue created seconds ago is not in it yet. So, second, every
+    number above the newest one the list shows is read on its own, upwards, until the service
+    answers that a number does not exist; one issue read by its number is answered as written.
+    Bounded, and stated so: a repeat is not recognised after RECENT other issues and pull
+    requests were opened in between, nor when more than PROBES were opened while the list
+    lagged. The service's search index would widen the window but lags by minutes."""
     title = _str(input, "title")
     body = marked(_str(input, "body", optional=True), key)
     request: Json = {"title": title, "body": body}
@@ -448,19 +459,44 @@ async def create_issue(api: Api, input: Json, key: str) -> Outcome:
             raise invalid("labels must be a list of strings")
         request["labels"] = labels
     digest = digest_of(request)
-    recent = await api.get(
+    found = await _issue_marked(api, key)
+    if found is not None:
+        return Outcome(
+            issue_output(found), write_effect(_issue_records(found), digest, replayed=True)
+        )
+    created = await api.post(api.repo("issues"), request)
+    return Outcome(
+        issue_output(created), write_effect(_issue_records(created), digest, replayed=False)
+    )
+
+
+async def _issue_marked(api: Api, key: str) -> Json | None:
+    """The issue that carries the key, among the recent ones and those the list does not show
+    yet; None when there is none. Issues and pull requests share one sequence of numbers, so
+    the newest number listed may be a pull request's, and a number read may name one; a pull
+    request is never the issue sought. A number the service answers as gone — deleted (410) or
+    moved to another repository (301) — is passed over: it holds nothing of ours."""
+    recent: list[Json] = await api.get(
         api.repo("issues"),
         {"state": "all", "sort": "created", "direction": "desc", "per_page": RECENT},
     )
     for issue in recent:
         if "pull_request" not in issue and mark_of(issue.get("body")) == key:
-            return Outcome(
-                issue_output(issue), write_effect(_issue_records(issue), digest, replayed=True)
-            )
-    created = await api.post(api.repo("issues"), request)
-    return Outcome(
-        issue_output(created), write_effect(_issue_records(created), digest, replayed=False)
-    )
+            return issue
+    number = max((int(issue["number"]) for issue in recent), default=0)
+    for _ in range(PROBES):
+        number += 1
+        try:
+            read: Json = await api.get(api.repo(f"issues/{number}"))
+        except TargetError as error:
+            if error.cause == "not_found":
+                return None
+            if error.status in (301, 410):
+                continue
+            raise
+        if "pull_request" not in read and mark_of(read.get("body")) == key:
+            return read
+    return None
 
 
 def _issue_records(issue: Json) -> list[Json]:

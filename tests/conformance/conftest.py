@@ -456,7 +456,16 @@ def start_connector(tmp_path: Path) -> Iterator[StartConnector]:
         service_log = tmp_path / f"service-{name}.log"
         with service_log.open("wb") as handle:
             service = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
-                [sys.executable, str(FAKE_SERVICE), "--port", str(service_port)],
+                # The issue list lags, as the real service's does (issue #300): a repeat the
+                # connector looked for in that list alone would act twice and fail C-05.
+                [
+                    sys.executable,
+                    str(FAKE_SERVICE),
+                    "--port",
+                    str(service_port),
+                    "--issue-list-lag",
+                    "60",
+                ],
                 stdout=handle,
                 stderr=subprocess.STDOUT,
                 env=service_env,
