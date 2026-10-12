@@ -1,4 +1,4 @@
-# NTC-0194 — verify-compose expects an adopted step
+# NTC-0197 — verify-compose expects an adopted step
 
 **Mode entry:** M2.2
 **Kind:** test-strategy
