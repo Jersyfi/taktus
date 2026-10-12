@@ -1,6 +1,6 @@
 # Deploying Taktus on Kubernetes
 
-**The chart is built; the cluster execution adapter and the install are not.** This file was
+**The chart, the cluster execution adapter and the install are built.** This file was
 written on 2026-09-23 as the specification, against a cluster that was inspected read-only and
 against the target decision DEC-0023. Since #64 the chart under `chart/` renders what sections 1
 to 6 require, and a release tag builds the images (section 3). Section 10 says what is built and
@@ -456,15 +456,15 @@ the migrations' job. A unit requested its whole CPU limit on the node then; on a
 unit waited for CPU while most cores were idle. Since #244 a unit requests a share of its CPU
 and all of its memory (section 7), so memory decides how many fit.
 
+**Backed up** since 2026-10-12 (#67, NEED-0025): the chart's job runs on the instance, its first
+backup is in the store and was restored from it on the workstation (`docs/runs/2026-10-11-the-first-restore.md`).
+The backup holds the database and not the state volume's artifacts; that is #322.
+
 **Waits:**
 
 - **a pull request P-03 opens on the installed instance**, showing Taktus's own app as its author
   (#66, DEC-0063). It needs the coding agents' keys on the instance (NEED-0024) and the owner's
   linked identity (NEED-0017).
-- **the backup on the installed instance** (section 11, #67): the chart renders it and the
-  restore was exercised against a database of its own; on the instance it waits for the
-  deployment identity's right to manage cron jobs, the backup image in a release, and its first
-  run (NEED-0025).
 
 ## 11. Backup and restore
 
