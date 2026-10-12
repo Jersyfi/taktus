@@ -92,6 +92,16 @@ STEP_KIND: dict[str, str] = {
 TEST_COMMAND = re.compile(r"\b(pytest|npm test|npm run test|make test|go test|cargo test)\b")
 AUTH_VARIABLE = {"api-key": "ANTHROPIC_API_KEY", "session": "CLAUDE_CODE_OAUTH_TOKEN"}
 BASELINE_TAG = "taktus-baseline"
+
+GIT_PROXY_VARIABLES = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "NO_PROXY",
+    "no_proxy",
+)
+"""The proxy variables a clone reads, passed to git as to the agent."""
 DEFAULT_CREDENTIAL = {"api-key": "CODING_AGENT_API_KEY", "session": "CODING_AGENT_SESSION"}
 AUTH_FAILURE = re.compile(
     r"not logged in|invalid api key|authentication|unauthori[sz]ed|token expired|expired|"
@@ -571,6 +581,9 @@ class _Run:
     def _git(self, command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
         env = {
             **{k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "LANG", "TMPDIR")},
+            # The unit's egress proxy, where the execution kind gives one: on a cluster a clone
+            # reaches its host through it and nothing else (issue #306).
+            **{k: v for k, v in os.environ.items() if k in GIT_PROXY_VARIABLES},
             "GIT_AUTHOR_NAME": "taktus",
             "GIT_AUTHOR_EMAIL": "taktus@localhost",
             "GIT_COMMITTER_NAME": "taktus",
