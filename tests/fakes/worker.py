@@ -8,7 +8,9 @@ refuse every assignment before starting, as W-10 describes.
 
 `capacity` makes the worker hold at most that many assignments at once and answer every further
 one at capacity, as the contract's 503 does; `full_for` answers the next so many at capacity
-whatever it holds. `peak` is the most it ever held, `refused` how many it turned away.
+whatever it holds, and `estimate_full_for` the next so many estimates, as a launched worker
+whose platform has no room for its probe does. `peak` is the most it ever held, `refused` how
+many it turned away.
 `inner_seconds` makes every inner step take that long, in real time, so that assignments of
 several runs overlap.
 
@@ -76,6 +78,7 @@ class FakeWorker:
     unreachable: str | None = None  # every call fails with this WorkerError, as a dead unit does
     capacity: int | None = None
     full_for: int = 0
+    estimate_full_for: int = 0
     inner_seconds: float = 0.0
     peak: int = 0
     refused: int = 0
@@ -112,6 +115,10 @@ class FakeWorker:
     async def estimate(self, request: EstimateRequest) -> Estimate:
         if self.unreachable is not None:
             raise WorkerError(self.unreachable)
+        if self.estimate_full_for > 0:
+            self.estimate_full_for -= 1
+            self.refused += 1
+            raise WorkerAtCapacity("no room for the probe")
         self.estimates.append(request)
         start = self._start_index(request.context.checkpoint_ref)
         return Estimate(

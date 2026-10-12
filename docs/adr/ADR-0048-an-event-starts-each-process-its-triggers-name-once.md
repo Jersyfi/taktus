@@ -147,6 +147,19 @@ so that the refusal is not repeated every pass. The ledger stays content-free (A
 - The bundles of P-01, P-02 and P-03 name kinds of the catalogue. Their triggers, written before
   the contract, are rewritten to it in the change that builds this record.
 
+## Amendment — one start per pass under `capacity.available` (2026-10-12)
+
+`capacity.available` asks whether the platform has room for one more unit. A pass asked it
+once per event, and every answer rested on the same observation. A run that started a moment
+ago holds no room yet: its first steps read, and its unit comes later. On 2026-10-12 forty-six
+issues were labelled ready within a minute, and one pass after another started thirty-five
+runs on a node with room for a few (issue #358).
+
+- **A pass starts at most one run under `capacity.available`.** Once one has started, every
+  further reaction under that condition waits for the next pass, as a condition that does not
+  hold waits (§2). The next pass observes the platform again. Reactions without the condition
+  are not held back.
+
 ## Where this promise ends
 A delivery starts each process at most once as long as every instance sees the same database;
 two instances on two databases each react. A delivery the source sends with a new identifier —
@@ -163,3 +176,8 @@ tenants there is none. Who may cause which event is not decided here: authorisat
 and today any linked sender can start any process whose trigger matches what they did. Events
 that arise inside Taktus — an anchor hit, a milestone reached — are not covered; the catalogue
 of v1 holds only events from tools.
+
+The amendment of 2026-10-12: the next pass sees the room the started run took only once its unit exists. Until then the
+condition can admit a further run, so the platform can still be overfilled, more slowly. What
+catches that is ADR-0037 §6: a unit without room makes its step wait. The limit is per pass of
+one instance's automation role, across tenants; it is not a count of runs in flight.
