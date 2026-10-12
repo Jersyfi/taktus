@@ -153,6 +153,10 @@ ACTS: dict[str, str] = {
     "taktus.components.reporting.domain.model.report.Filed": (
         f"{ACT}: one answer filed, and who gave it"
     ),
+    "taktus.components.process.domain.model.proposal.Proposal": (
+        f"{ACT}: one request for a change and who asked it, beside the autonomy statement of "
+        "the version it proposes (ADR-0091)"
+    ),
     "taktus.ports.connector.CallContext": (
         f"{ACT}: one call of a connector, for whom it acts, and its attempt"
     ),

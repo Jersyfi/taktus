@@ -20,6 +20,7 @@ from taktus.adapters.driven.memory import (
 )
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driving.rest import build_app
+from taktus.adapters.driving.rest.wiring import ProposalActs
 from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
@@ -33,7 +34,8 @@ from taktus.components.decision.application.service import (
 from taktus.components.decision.domain.model import Request
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.ledger.application.service import ChainedLedger
-from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.process.application.service.proposals import Proposals
+from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import LiveChanges
 from taktus.components.run.domain.model import Run
@@ -117,6 +119,10 @@ class Services:
     roles: Sequence[str] = ("api", "runner")
     leading: bool = False
     not_ready_reason: str | None = None
+    ids: FakeIdentifiers = field(default_factory=FakeIdentifiers)
+    acts: ProposalActs | None = None
+    """The acts on a proposal; a test that reaches them sets them. What they do is held by
+    `tests/composition/test_proposals.py`."""
 
     @property
     def work(self) -> UnitOfWork:
@@ -161,6 +167,23 @@ class Services:
     @property
     def confirm_decision(self) -> ConfirmRequestHandler:
         return self.decisions.confirm
+
+    @property
+    def proposal_acts(self) -> ProposalActs:
+        assert self.acts is not None, "this test sets the acts it reaches"
+        return self.acts
+
+    @property
+    def proposals(self) -> Proposals:
+        # One store per test world: the persistence keeps the proposals across calls.
+        return Proposals(
+            MemoryRepository(self.persistence, ProcessVersion),
+            MemoryRepository(self.persistence, Process),
+            MemoryRepository(self.persistence, Proposal),
+            self.persistence,
+            self.clock,
+            self.ids,
+        )
 
     async def decided(self, tenant: str, run_id: str, actor: str) -> None:
         self.continued.append((tenant, run_id, actor))

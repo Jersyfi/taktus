@@ -22,3 +22,8 @@ export function originLink(runId: string, stepId: string): string {
 export function requestsLink(requestId?: string): string {
 	return requestId ? `#/requests/${encodeURIComponent(requestId)}` : '#/requests';
 }
+
+/** Where a process is changed in dialogue, and rolled back (ADR-0091 §6). */
+export function changeLink(processId: string): string {
+	return `#/changes/${encodeURIComponent(processId)}`;
+}

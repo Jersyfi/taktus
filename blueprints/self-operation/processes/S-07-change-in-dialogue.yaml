@@ -1,0 +1,123 @@
+# S-07 Change in dialogue — a request in a person's words becomes a proposal for a changed
+# process; nothing is registered (UC-4.15, ADR-0091 §2, issue #295).
+#
+# A person asks, from the web app or the chat, for a change to a process. Taktus reads the
+# process's active version, a language model proposes the changed bundle, and the instance keeps
+# the proposal only if it passes what registration checks. The person then sees the difference,
+# has the proposal rehearsed and commissions it, or discards it. This process never registers
+# anything: commissioning is the person's act (ADR-0091 §4).
+#
+#     uv run taktusctl run --process blueprints/self-operation/processes/S-07-change-in-dialogue.yaml \
+#         --input process=p02-refinement --input 'request=also post the sections as a comment'
+#
+# The capability `orchestrator.changes` is served by the loopback connector, through which Taktus
+# reaches itself (docs/architecture/contracts.md §4).
+
+id: s07-change-in-dialogue
+version: "1"
+name: S-07 Change in dialogue
+autonomy:
+  level: 3
+  reason: >
+    the one value a language model produces is a proposed bundle, and it leaves the step only
+    through the validation registration applies; a proposal is a record the person reads, nothing
+    is registered, and commissioning is the person's act at every level
+  toward_next: >
+    a quarter of proposals whose differences their requesters found to be what they asked for,
+    without a rewrite by hand; then Taktus proposes level 4 with that evidence
+    (anchors.taktus.md M3.9)
+author: the repository
+reason: a person changes a process in their own words (UC-4.15, issue #295)
+
+inputs:
+  process:
+    description: the process to change, by its identifier
+    example: p02-refinement
+  request:
+    description: what should change, in the person's own words
+    example: also post the sections as a comment on the issue
+
+# Counted in calls of the loopback connector. The model's answer is held to its own limit below.
+limits:
+  quota: { units: 4 }
+
+steps:
+  - id: read
+    method: rule
+    reason: the active version is read as it is registered, as a bundle
+    rejected:
+      - method: llm
+        why: a version is read, not judged
+    exactness: sourced
+    fallback:
+      when: the loopback connector is unavailable
+      to: human
+    work:
+      rule: connector
+      operation: orchestrator.changes.read
+      input:
+        process: { $input: process }
+
+  - id: propose
+    method: llm
+    reason: >
+      what a request in a person's words means for a given bundle is understanding language and
+      the process; no rule set states it
+    rejected:
+      - method: rule
+        why: the wording of a request varies too much for a rule set
+      - method: ml
+        why: no labelled corpus of requests and the bundles they led to exists yet
+    exactness: tolerant
+    fallback:
+      when: the answer does not validate, or the model serving the purpose reasoning is unavailable
+      to: human
+    depends_on: [read]
+    work:
+      purpose: reasoning
+      system: >
+        You change a process bundle as a person asks. You are given the bundle of the active
+        version as JSON and the person's request. Answer with the complete changed bundle as one
+        JSON object and nothing else. Give it a version name that is not the current one. Keep
+        every step the request does not touch exactly as it is. Every step you add or change
+        carries its method, the reason for it, the methods not chosen with why, a fallback where
+        the method is `llm` or `worker`, and an exactness class where it produces a result; an
+        `exact` step declares a check, such as recomputation. Do not raise the autonomy level.
+      prompt: |
+        The active version of ${process} (JSON):
+        ${bundle}
+
+        The person asks:
+        ${request}
+      values:
+        process: { $input: process }
+        request: { $input: request }
+        bundle: { $from: read, $select: output.bundle }
+      max_output_tokens: 8192
+      # The answer is a JSON object, fenced or not, or it does not leave; the keep step
+      # validates the rest.
+      pattern: "^\\s*(```[a-z]*\\s*)?\\{"
+
+  - id: keep
+    method: rule
+    reason: >
+      the proposed bundle is validated as registration would validate it, its difference against
+      the active version computed field by field, and the proposal kept; a bundle that would not
+      register is kept nowhere, and the step fails with every finding
+    rejected:
+      - method: llm
+        why: whether a bundle registers is a fixed set of rules; a model's opinion of it is not
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: "whether the bundle registers, and its difference against the active version" }
+    fallback:
+      when: the bundle would not register, or the loopback connector is unavailable
+      to: human
+    depends_on: [propose]
+    work:
+      rule: connector
+      operation: orchestrator.changes.propose
+      input:
+        process: { $input: process }
+        request: { $input: request }
+        bundle: { $from: propose, $select: text }

@@ -6,8 +6,8 @@ project-structure.md §3). The composition root implements this and hands it to 
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from typing import Protocol
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from typing import Any, Protocol
 
 from taktus.components.command.application.service import (
     CompleteIntakeHandler,
@@ -19,6 +19,8 @@ from taktus.components.decision.application.service import (
     ConfirmRequestHandler,
 )
 from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.process.application.service.proposals import Proposals
+from taktus.components.process.domain.model import ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.domain.model import Change, Reader, Scope, Snapshot
 from taktus.components.run.domain.model import Run
@@ -49,6 +51,41 @@ class ChangeStreams(Protocol):
         every heartbeat; when it answers None the stream ends. `StreamsFull` when the replica
         holds its maximum."""
         ...
+
+
+class ProposalActs(Protocol):
+    """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5): the
+    composition root's, because each act crosses the process, command and run components."""
+
+    async def ask(self, tenant: Tenant, process_id: str, request: str, by: str) -> Run: ...
+
+    async def rehearse(
+        self,
+        tenant: Tenant,
+        process_id: str,
+        proposal_id: str,
+        by: str,
+        inputs: Mapping[str, Any] | None = None,
+    ) -> tuple[Proposal, Run]: ...
+
+    async def commission(
+        self,
+        tenant: Tenant,
+        process_id: str,
+        proposal_id: str,
+        by: str,
+        approved_by: str | None = None,
+    ) -> ProcessVersion: ...
+
+    async def rollback(
+        self,
+        tenant: Tenant,
+        process_id: str,
+        to_version: str,
+        by: str,
+        as_version: str | None = None,
+        approved_by: str | None = None,
+    ) -> ProcessVersion: ...
 
 
 class RestServices(Protocol):
@@ -104,6 +141,16 @@ class RestServices(Protocol):
 
     @property
     def confirm_decision(self) -> ConfirmRequestHandler: ...
+
+    @property
+    def proposals(self) -> Proposals:
+        """A person's proposals for a changed process (ADR-0091 §1)."""
+        ...
+
+    @property
+    def proposal_acts(self) -> ProposalActs:
+        """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
+        ...
 
     async def decided(self, tenant: Tenant, run_id: str, actor: str) -> None:
         """A request of the run took effect: the run continues from the boundary it waits

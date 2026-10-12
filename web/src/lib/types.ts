@@ -286,6 +286,28 @@ export interface AddressedList {
 	overdue: number;
 }
 
+/** One step a proposal adds, removes or changes (ADR-0091 §1). */
+export interface StepChange {
+	id: string;
+	change: 'added' | 'removed' | 'changed';
+	before?: { id: string; method: string; reason: string; exactness?: string };
+	after?: { id: string; method: string; reason: string; exactness?: string };
+	fields?: string[];
+}
+
+/** A person's proposal for a changed process: `GET /processes/{id}/proposals/{proposal}`. */
+export interface Proposal {
+	id: string;
+	process_id: string;
+	base_version: string;
+	version: string;
+	request?: string;
+	state: 'proposed' | 'rehearsed' | 'commissioned' | 'discarded';
+	difference: { steps?: StepChange[]; triggers_changed?: boolean; inputs_changed?: boolean };
+	created_at: string;
+	rehearsal_run?: string;
+}
+
 /** A group's response times, or why they are withheld (ADR-0015). */
 export interface ResponseAggregate {
 	group: string;

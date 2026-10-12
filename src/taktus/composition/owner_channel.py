@@ -272,6 +272,29 @@ class DecisionsOfTheChannel(DecisionAnswers):
         return done.entry.id
 
 
+class Changed(Protocol):
+    @property
+    def outcome(self) -> str: ...
+
+    @property
+    def replied(self) -> bool: ...
+
+
+class Changer(Protocol):
+    """A change in dialogue read in the owner's conversation (`composition/change_in_channel`)."""
+
+    async def take(
+        self,
+        tenant: str,
+        channel: str,
+        address: str,
+        thread: str | None,
+        identity: str | None,
+        text: str,
+        event: str,
+    ) -> Changed | None: ...
+
+
 class OwnerAnswers(ChannelAnswers):
     """A message in the thread of a report is an answer to it; a message in the owner's
     conversation that asks for a live representation is answered with its text equivalent and
@@ -282,6 +305,12 @@ class OwnerAnswers(ChannelAnswers):
     ) -> None:
         self._answering = answering
         self._showing = showing
+        self._changing: Changer | None = None
+
+    def change_with(self, changing: Changer) -> None:
+        """A change in dialogue is read too, once the composition root has its acts (ADR-0091
+        §6): they need the run engine, which is built after the channel."""
+        self._changing = changing
 
     async def take(
         self,
@@ -303,23 +332,35 @@ class OwnerAnswers(ChannelAnswers):
         )
         if answer is not None:
             return Taken(outcome=answer.outcome, replied=answer.replied)
-        if self._showing is None:
-            return None
-        shown = await self._showing.execute(
-            ShowInChannel(
-                tenant=tenant,
-                channel=intake.reply_to.channel,
-                address=intake.reply_to.address,
-                thread=intake.reply_to.thread,
-                identity=identity,
-                roles=roles,
-                text=intake.intent.raw,
-                event=intake.event_id,
+        if self._showing is not None:
+            shown = await self._showing.execute(
+                ShowInChannel(
+                    tenant=tenant,
+                    channel=intake.reply_to.channel,
+                    address=intake.reply_to.address,
+                    thread=intake.reply_to.thread,
+                    identity=identity,
+                    roles=roles,
+                    text=intake.intent.raw,
+                    event=intake.event_id,
+                )
             )
-        )
-        if shown is None:
+            if shown is not None:
+                return Taken(outcome=shown.outcome, replied=shown.replied)
+        if self._changing is None:
             return None
-        return Taken(outcome=shown.outcome, replied=shown.replied)
+        changed = await self._changing.take(
+            tenant,
+            intake.reply_to.channel,
+            intake.reply_to.address,
+            intake.reply_to.thread,
+            identity,
+            intake.intent.raw,
+            intake.event_id,
+        )
+        if changed is None:
+            return None
+        return Taken(outcome=changed.outcome, replied=changed.replied)
 
 
 @dataclass(frozen=True)
@@ -335,6 +376,10 @@ class OwnerChannelWiring:
     answers: OwnerAnswers
     """The intake's `ChannelAnswers`."""
     decisions: DecisionsOfTheChannel
+    deliveries: Deliveries
+    """What says a message in the channel, for whatever else answers there."""
+    secrets: SecretValues
+    """The secret values no message may carry."""
 
     async def decision_raised(self, tenant: Tenant, request: Request) -> Report | None:
         """A decision request addressed to a role the tenant's channel carries reaches the
@@ -437,4 +482,6 @@ def owner_channel_wiring(
             else ShowInChannelHandler(channels, work, levels, carrier, secrets),
         ),
         decisions=decisions,
+        deliveries=carrier,
+        secrets=secrets,
     )

@@ -16,11 +16,18 @@ from taktus.components.process.domain.model.process import (
     Slo,
     Trigger,
 )
+from taktus.components.process.domain.model.proposal import (
+    Difference,
+    Proposal,
+    ProposalState,
+    StepChange,
+)
 from taktus.components.process.domain.model.trigger_state import Firing, TriggerState
 
 __all__ = [
     "KINDS",
     "Condition",
+    "Difference",
     "Each",
     "Edge",
     "Event",
@@ -31,8 +38,11 @@ __all__ = [
     "Kind",
     "Process",
     "ProcessVersion",
+    "Proposal",
+    "ProposalState",
     "RaiseRefused",
     "Slo",
+    "StepChange",
     "Trigger",
     "TriggerState",
     "holds",

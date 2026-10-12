@@ -35,7 +35,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
-from taktus.adapters.driving.rest import levels
+from taktus.adapters.driving.rest import levels, proposals
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
 from taktus.adapters.driving.rest.wiring import RestServices, StreamsFull
 from taktus.components.command.application.service import (
@@ -122,6 +122,8 @@ def build_app(
         app.include_router(_reads(services), prefix=base)
         app.include_router(_changes(services), prefix=base)
         app.include_router(levels.router(services, _authenticated), prefix=base)
+        app.include_router(proposals.router(services, _authenticated), prefix=base)
+        app.include_router(proposals.acts_router(services, _authenticated), prefix=base)
         if web is not None and (web / "index.html").is_file():
             levels.mount_web(app, base, web)
     return app

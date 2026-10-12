@@ -69,10 +69,11 @@ from taktus.components.identity.domain.model import ChannelLink, Identity, LinkC
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
+from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
-from taktus.components.process.domain.model import Process, ProcessVersion
+from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
 from taktus.components.reporting.application.service import ProductFindings
 from taktus.components.run.application.query import (
     BlockedTime,
@@ -100,6 +101,7 @@ from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
+from taktus.composition.proposals import InstanceChanges
 from taktus.composition.settings import (
     load_administration,
     load_budget,
@@ -302,6 +304,20 @@ class LocalWiring:
                 ),
                 guides=InstanceGuides(pools.connectors, owner.channel, owner.raising, clock),
                 maturation=InstanceMaturation(maturation),
+                # A change in dialogue, which S-07 runs (ADR-0091 §2).
+                changes=InstanceChanges(
+                    Proposals(
+                        stores.of(ProcessVersion),
+                        stores.of(Process),
+                        stores.of(Proposal),
+                        stores.work,
+                        clock,
+                        ids,
+                    ),
+                    stores.of(Process),
+                    stores.of(ProcessVersion),
+                    stores.work,
+                ),
             )
             yield Services(
                 conformance=conformance,

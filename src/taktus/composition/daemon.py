@@ -79,12 +79,13 @@ from taktus.components.governance.application.service import (
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.ledger.application.service import ChainedLedger
+from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.reactions import ReactionsHandler
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.application.service.triggers import TriggersHandler
-from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
+from taktus.components.process.domain.model import Process, ProcessVersion, Proposal, TriggerState
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     BrokenInterfaces,
@@ -92,6 +93,7 @@ from taktus.components.reporting.application.service import (
     ProductFindings,
     Sending,
 )
+from taktus.components.reporting.domain.model import OwnerChannel, PendingAct
 from taktus.components.run.application.query import (
     BlockedTime,
     ProvenanceQuery,
@@ -107,6 +109,7 @@ from taktus.components.run.application.service import (
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
+from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.execution import (
@@ -132,6 +135,7 @@ from taktus.composition.owner_channel import (
     known_secrets,
     owner_channel_wiring,
 )
+from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
@@ -198,6 +202,10 @@ class Wired:
     (ADR-0055). Only the `api` role opens any."""
     levels: LevelQueries
     """The levels of the live representation, drawn from the run's records (ADR-0063)."""
+    proposals: Proposals
+    """A person's proposals for a changed process, never versions (ADR-0091)."""
+    proposal_acts: ProposalActs
+    """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -413,6 +421,15 @@ async def wire(
                 objects,
                 clock,
             )
+            proposals = Proposals(
+                PostgresRepository(persistence, ProcessVersion),
+                PostgresRepository(persistence, Process),
+                PostgresRepository(persistence, Proposal),
+                persistence,
+                clock,
+                ids,
+                settings.administration,
+            )
             loopback.bind(
                 Loopback(
                     conformance=conformance,
@@ -442,6 +459,13 @@ async def wire(
                         prices=prices,
                     )
                 ),
+                # A change in dialogue, which S-07 runs (ADR-0091 §2).
+                changes=InstanceChanges(
+                    proposals,
+                    PostgresRepository(persistence, Process),
+                    PostgresRepository(persistence, ProcessVersion),
+                    persistence,
+                ),
             )
             outbox = PostgresOutbox(persistence)
             complete_intake = CompleteIntakeHandler(
@@ -452,6 +476,41 @@ async def wire(
                 clock,
                 ids,
             )
+            register_version = RegisterProcessVersionHandler(
+                PostgresRepository(persistence, ProcessVersion),
+                persistence,
+                PostgresRepository(persistence, Process),
+                ledger=ledger,
+                administration=settings.administration,
+                clock=clock,
+            )
+            proposal_acts = ProposalActs(
+                proposals=proposals,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                runs=runs,
+                register=register_version,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+                ids=ids,
+            )
+            # A change in dialogue read in the owner's conversation too (ADR-0091 §6).
+            owner.answers.change_with(
+                ChangeInChannel(
+                    channels=PostgresRepository(persistence, OwnerChannel),
+                    pending=PostgresRepository(persistence, PendingAct),
+                    work=persistence,
+                    acts=proposal_acts,
+                    proposals=proposals,
+                    deliveries=owner.deliveries,
+                    secrets=owner.secrets,
+                    clock=clock,
+                )
+            )
             wired = Wired(
                 settings=settings,
                 persistence=persistence,
@@ -460,14 +519,7 @@ async def wire(
                 ledger=ledger,
                 provenance=ProvenanceQuery(provenance_store, runs, ledger, persistence),
                 engine=engine,
-                register_version=RegisterProcessVersionHandler(
-                    PostgresRepository(persistence, ProcessVersion),
-                    persistence,
-                    PostgresRepository(persistence, Process),
-                    ledger=ledger,
-                    administration=settings.administration,
-                    clock=clock,
-                ),
+                register_version=register_version,
                 commission=commission,
                 intake=ReceiveIntakeHandler(
                     # Capability → connector is configuration (ADR-0003): TAKTUS_CONNECTORS.
@@ -499,6 +551,8 @@ async def wire(
                     LiveOptions(max_streams=settings.live_streams),
                 ),
                 levels=levels,
+                proposals=proposals,
+                proposal_acts=proposal_acts,
                 complete_intake=complete_intake,
                 reactions=Reactions(
                     tenants=settings.tenants,

@@ -14,9 +14,17 @@
   "answer_with": "Antworte in diesem Thread mit: {answers}.",
   "recommended": "empfohlen",
   "done": "erledigt",
-  "done_words": ["erledigt", "bereitgestellt"],
-  "yes_words": ["ja", "bestätigt"],
-  "no_words": ["nein"],
+  "done_words": [
+    "erledigt",
+    "bereitgestellt"
+  ],
+  "yes_words": [
+    "ja",
+    "bestätigt"
+  ],
+  "no_words": [
+    "nein"
+  ],
   "reflect": "Ich verstehe deine Antwort als {answer}: {label}.",
   "kept": "Was du darüber hinaus geschrieben hast, wird mit der Antwort aufbewahrt; Taktus handelt nicht danach.",
   "confirm": "Antworte mit „{yes}“, damit ich sie ablege, oder mit „{no}“, wenn ich dich falsch verstanden habe.",
@@ -25,9 +33,34 @@
   "reread": "Nichts wurde abgelegt. Bitte antworte noch einmal.",
   "not_filed": "Diese Antwort wird nicht abgelegt: Hier antwortet nur der Eigentümer oder jemand, den er dafür benannt hat.",
   "closed": "Diese Anfrage ist bereits beantwortet; deine Nachricht ändert nichts.",
-  "show_run_words": ["zeige lauf"],
-  "show_process_words": ["zeige prozess"],
-  "show_overview_words": ["zeige überblick"],
+  "show_run_words": [
+    "zeige lauf"
+  ],
+  "show_process_words": [
+    "zeige prozess"
+  ],
+  "show_overview_words": [
+    "zeige überblick"
+  ],
   "live": "Live-Ansicht",
-  "not_shown": "Dazu kann ich dir hier nichts zeigen."
+  "not_shown": "Dazu kann ich dir hier nichts zeigen.",
+  "change_words": [
+    "ändere prozess"
+  ],
+  "rehearse_words": [
+    "probe"
+  ],
+  "commission_words": [
+    "beauftrage"
+  ],
+  "rollback_words": [
+    "zurück zu"
+  ],
+  "change_started": "Ich arbeite deine Änderung an {process} in Lauf {run} aus. Der Vorschlag erscheint auf der Seite des Prozesses unten.",
+  "rehearsing": "Probelauf für {proposal} in Lauf {run}; nichts verlässt das System.",
+  "commission_read": "Ich verstehe das so: {proposal} beauftragen, damit wird Version {version} von {process} aktiv.",
+  "rollback_read": "Ich verstehe das so: Version {version} von {process} wird wieder aktuell, als neue Version.",
+  "commissioned": "Version {version} von {process} ist aktiv.",
+  "rolled_back": "{process} ist wieder bei Version {version}, als Version {new}.",
+  "act_refused": "Das geht gerade nicht; die Seite des Prozesses sagt, warum."
 }
