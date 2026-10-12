@@ -111,6 +111,9 @@ class Configuration(Value):
     """For a launched worker: the hosts its own service may reach beyond a step's frame, as the
     operator configured them (ADR-0089). Absent where it names none, so that a configuration
     without them reads as it did before."""
+    environment: tuple[str, ...] | None = None
+    """For a launched worker: the names of the variables its unit is configured with
+    (ADR-0090), never their values. Absent where it names none, as `hosts` is."""
 
 
 class RemovalResult(Value):

@@ -422,6 +422,37 @@ def test_service_hosts_are_configuration_for_the_instance_and_each_worker() -> N
     assert "TAKTUS_WORKER_SHARED_EXECUTION_SERVICE_HOSTS" not in data, "the instance's"
 
 
+def test_a_units_variables_are_configuration_for_the_instance_and_each_worker() -> None:
+    """ADR-0090: the variables a worker's unit is given are rendered from the values into the
+    ConfigMap, the instance's as the default and a worker's own map where it names one — an
+    empty map too. A value with a comma is refused: the comma separates the pairs."""
+    [config] = of_kind(render("execution.kind=cluster"), "ConfigMap")
+    assert config["data"]["TAKTUS_EXECUTION_UNIT_ENV"] == "", "none unless configured"
+    documents = render(
+        "execution.kind=cluster",
+        "execution.defaults.unitEnv.LOG_FORMAT=json",
+        "execution.workers[0].name=coding",
+        "execution.workers[0].image=taktus-worker-coding:0.1.0",
+        "execution.workers[0].unitEnv.CODING_AGENT_AUTH=api-key",
+        "execution.workers[0].unitEnv.CODING_AGENT_MODEL=m-1",
+        "execution.workers[1].name=plain",
+        "execution.workers[1].image=taktus-worker-plain:0.1.0",
+        "execution.workers[1].unitEnv=",
+        "execution.workers[2].name=shared",
+        "execution.workers[2].image=taktus-worker-shared:0.1.0",
+    )
+    [config] = of_kind(documents, "ConfigMap")
+    data = config["data"]
+    assert data["TAKTUS_EXECUTION_UNIT_ENV"] == "LOG_FORMAT=json"
+    assert data["TAKTUS_WORKER_CODING_EXECUTION_UNIT_ENV"] == (
+        "CODING_AGENT_AUTH=api-key,CODING_AGENT_MODEL=m-1"
+    )
+    assert data["TAKTUS_WORKER_PLAIN_EXECUTION_UNIT_ENV"] == "", "its own: none"
+    assert "TAKTUS_WORKER_SHARED_EXECUTION_UNIT_ENV" not in data, "the instance's"
+    refused = render_fails("execution.kind=cluster", "execution.defaults.unitEnv.A=x\\,y")
+    assert "holds a comma" in refused
+
+
 def test_several_workers_are_configuration_each_with_its_own_credentials() -> None:
     """Issue #209, ADR-0078: the chart names several workers in order, each with what it sets
     itself, and mounts a credential for one worker under that worker's parameter."""
