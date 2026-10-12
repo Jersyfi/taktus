@@ -15,6 +15,7 @@ or it is not a friction anybody will fix.
 | [first-run.md](first-run.md) | 2026-09-23: the first time an issue of this repository became a pull request opened by Taktus. Four attempts, three defects, one flaky pipeline, and the first real numbers |
 | [2026-09-19-the-run-that-stopped.md](2026-09-19-the-run-that-stopped.md) | 2026-09-19: the attempt before the credentials existed. P-02 ran to its language-model step and stopped; P-03 stopped at its admission check, correctly. Kept because its friction list is still the honest one |
 | [2026-10-11-the-first-restore.md](2026-10-11-the-first-restore.md) | 2026-10-11: a backup of a running Taktus restored onto an empty database by the steps of `deploy/k8s/README.md` §11, by hand; every check held (ADR-0013 C, #67) |
+| [2026-10-12-the-second-live-run.md](2026-10-12-the-second-live-run.md) | 2026-10-12: P-03 on #250 against the real service and agent, at level 2; Taktus opened #274 as its own app; the budget's estimate, reservation and actual per step, a halt on a real quota reservation, nine findings (#74) |
 
 **Why two files both about "the first run".** The record of 2026-09-19 was called the first run
 when it was written, and it was the first time the bundles met the real repository. It was not a

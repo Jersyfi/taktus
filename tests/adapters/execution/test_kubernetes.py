@@ -231,6 +231,53 @@ async def test_the_proxy_admits_the_frames_hosts_and_the_workers_service_hosts(
     assert args[args.index("--allow") + 1] == "api.example.org,model.example.net"
 
 
+async def test_the_variables_the_units_configuration_names_are_plain_values_in_the_pod(
+    cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path, unit_port: int
+) -> None:
+    """ADR-0090: configuration, not a secret — a value in the pod's environment, beside the
+    convention's, and nothing of it in the job's Secret."""
+    unit = ExecutionUnit(
+        name="coding",
+        program="worker:1",
+        port=unit_port,
+        limits=LIMITS,
+        environment=(("CODING_AGENT_AUTH", "api-key"), ("CODING_AGENT_MODEL", "m-1")),
+    )
+    execution = execution_for(cluster, configuration, tmp_path)
+    request = request_for(unit_port, unit=unit, credentials=CREDENTIALS[:1])
+    async with execution.launch(request) as job:
+        pod = cluster.of("jobs")[job.name]["spec"]["template"]["spec"]
+        secret = next(iter(cluster.of("secrets").values()))
+    env = {e["name"]: e for e in pod["containers"][0]["env"]}
+    assert env["CODING_AGENT_AUTH"] == {"name": "CODING_AGENT_AUTH", "value": "api-key"}
+    assert env["CODING_AGENT_MODEL"] == {"name": "CODING_AGENT_MODEL", "value": "m-1"}
+    assert env["TAKTUS_UNIT_PORT"]["value"] == str(unit_port)
+    assert "secretKeyRef" in env["VCS_TOKEN"]["valueFrom"]
+    assert "CODING_AGENT_AUTH" not in secret["data"]
+
+
+async def test_a_credential_under_a_configured_variables_name_is_refused_before_anything(
+    cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path, unit_port: int
+) -> None:
+    unit = ExecutionUnit(
+        name="coding",
+        program="worker:1",
+        port=unit_port,
+        limits=LIMITS,
+        environment=(("SIGNING", "x"),),
+    )
+    execution = execution_for(cluster, configuration, tmp_path)
+    request = request_for(
+        unit_port,
+        unit=unit,
+        credentials=(CredentialReference(name="SIGNING", injected_as="env"),),
+    )
+    with pytest.raises(ExecutionRefused, match="either configuration or a credential"):
+        async with execution.launch(request):
+            pass
+    assert cluster.everything() == [], "nothing was created"
+
+
 async def test_service_hosts_alone_start_a_proxy_and_a_frame_without_hosts_reaches_them(
     cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path, unit_port: int
 ) -> None:

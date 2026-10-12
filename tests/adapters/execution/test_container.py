@@ -188,6 +188,23 @@ async def test_the_job_is_walled_in_and_torn_down(
     assert log.is_file() and PLANTED not in log.read_text() and "key-77aa" not in log.read_text()
 
 
+async def test_the_variables_the_units_configuration_names_reach_its_environment(
+    execution: ContainerExecution, reference_worker_image: str
+) -> None:
+    """ADR-0090: what the operator configured for the worker's unit, beside the convention."""
+    request = JobRequest(
+        job_id="asg_env",
+        unit=unit(reference_worker_image, environment=(("CODING_AGENT_AUTH", "api-key"),)),
+        autonomy_level=4,
+    )
+    async with execution.launch(request) as job:
+        outputs = await run_commands(
+            job, ["printenv CODING_AGENT_AUTH", "printenv TAKTUS_UNIT_PORT"]
+        )
+    assert outputs["output-1"].strip() == "api-key"
+    assert outputs["output-2"].strip(), "the convention is still there"
+
+
 async def test_an_empty_allowlist_reaches_nothing_and_a_named_host_is_reached_through_the_proxy(
     execution: ContainerExecution, reference_worker_image: str, engine_socket: str
 ) -> None:

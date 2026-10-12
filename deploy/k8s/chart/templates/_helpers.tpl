@@ -74,6 +74,20 @@ are refused at render time: what runs must be what was released. Call with (dict
 {{- include "taktus.image" (dict "what" .what "image" (dict "repository" (trimSuffix $parts $ref) "tag" (trimPrefix ":" $parts))) -}}
 {{- end -}}
 
+{{/* A unit's variables (ADR-0090), a map, as TAKTUS_EXECUTION_UNIT_ENV reads them: NAME=value
+pairs, comma separated, in the order of their names. A value holds no comma, which separates
+the pairs. Which names are refused is the daemon's to say, at its start. */}}
+{{- define "taktus.unitEnv" -}}
+{{- $pairs := list -}}
+{{- range $name, $value := (.env | default dict) -}}
+{{- if contains "," (toString $value) -}}
+{{- fail (printf "%s: the value of %s holds a comma, which separates the pairs" $.what $name) -}}
+{{- end -}}
+{{- $pairs = append $pairs (printf "%s=%v" $name $value) -}}
+{{- end -}}
+{{- join "," $pairs -}}
+{{- end -}}
+
 {{/* credential.model_api_key → TAKTUS_CREDENTIAL_MODEL_API_KEY: the configuration key in capitals. */}}
 {{- define "taktus.variable" -}}
 {{- printf "TAKTUS_%s" (. | upper | replace "." "_" | replace "-" "_") -}}

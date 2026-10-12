@@ -105,6 +105,7 @@ def unit_of(settings: ExecutionSettings, name: str = UNIT_NAME) -> ExecutionUnit
         ),
         start_timeout_seconds=settings.start_timeout_seconds,
         service_hosts=settings.service_hosts,
+        environment=settings.unit_env,
     )
 
 
@@ -121,6 +122,18 @@ def service_hosts(workers: Sequence[WorkerSettings]) -> dict[str, tuple[str, ...
         worker.identifier: worker.execution.service_hosts
         for worker in workers
         if worker.execution.kind is not ExecutionKind.ENDPOINT and worker.execution.service_hosts
+    }
+
+
+def unit_environments(workers: Sequence[WorkerSettings]) -> dict[str, tuple[str, ...]]:
+    """The names of the variables each launched worker's unit is configured with, by adapter
+    identifier, for the workers that name any: what the configuration a maturity record names
+    states for a worker (ADR-0090). Names and not values: a record is written once and never
+    changed, and a value an operator set by mistake must not outlive its correction there."""
+    return {
+        worker.identifier: tuple(name for name, _ in worker.execution.unit_env)
+        for worker in workers
+        if worker.execution.kind is not ExecutionKind.ENDPOINT and worker.execution.unit_env
     }
 
 

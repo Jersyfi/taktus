@@ -106,6 +106,12 @@ for a named worker, `serviceHosts` in the chart. The unit reaches it for an assi
 the conformance suite, never for a probe; the frame the worker holds tool calls against stays the
 step's (ADR-0089).
 
+Launched, the worker reads its authentication mode from `CODING_AGENT_AUTH`, since an execution
+adapter starts the image's own command and passes no `--auth`. The operator names it in the
+unit's environment: `TAKTUS_WORKER_<NAME>_EXECUTION_UNIT_ENV=CODING_AGENT_AUTH=api-key`, in the
+chart `unitEnv: {CODING_AGENT_AUTH: api-key}` on the worker's entry. It is visible configuration
+and never a secret (ADR-0090).
+
 ### The frame
 
 **The agent asks no permission per call** in its non-interactive mode. The worker holds the frame
