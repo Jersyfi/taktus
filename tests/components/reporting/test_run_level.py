@@ -90,7 +90,7 @@ def test_only_the_running_step_moves_and_without_motion_it_has_its_still_mark() 
     }
     draft = next(s for s in level.steps if s.id == "draft")
     assert draft.drawn.still.motion is Motion.NONE
-    assert draft.drawn.still.still_mark == "ring_dotted"
+    assert draft.drawn.still.still_mark == "aura_dotted"
     # Nothing but the motion and its still mark differs between the two.
     for s in level.steps:
         assert s.drawn.moving.model_copy(

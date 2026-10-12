@@ -3,25 +3,25 @@
     "families": [
       {
         "family": "reproducible",
-        "edge": "straight",
+        "membrane": "beaded",
         "motion": "pulse",
         "text": "reproducible"
       },
       {
         "family": "variable",
-        "edge": "wavering",
+        "membrane": "fluid",
         "motion": "shimmer",
         "text": "variable"
       },
       {
         "family": "person",
-        "edge": "round",
+        "membrane": "soft",
         "motion": "swell",
         "text": "a person"
       },
       {
         "family": "waiting",
-        "edge": "broken",
+        "membrane": "dormant",
         "motion": "none",
         "text": "waiting"
       }
@@ -29,42 +29,42 @@
     "methods": [
       {
         "method": "rule",
-        "outline": "square",
+        "nucleus": "single",
         "text": "rule"
       },
       {
         "method": "statistics",
-        "outline": "triangle",
+        "nucleus": "population",
         "text": "statistics"
       },
       {
         "method": "ml",
-        "outline": "pentagon",
+        "nucleus": "cluster",
         "text": "trained model"
       },
       {
         "method": "neural",
-        "outline": "hexagon",
+        "nucleus": "network",
         "text": "neural network"
       },
       {
         "method": "llm",
-        "outline": "ellipse",
+        "nucleus": "cloud",
         "text": "language model"
       },
       {
         "method": "worker",
-        "outline": "rounded_square",
+        "nucleus": "satellites",
         "text": "worker"
       },
       {
         "method": "human",
-        "outline": "circle",
+        "nucleus": "open",
         "text": "person"
       },
       {
         "method": "wait",
-        "outline": "diamond",
+        "nucleus": "seed",
         "text": "wait"
       }
     ],
@@ -76,43 +76,43 @@
       },
       {
         "motion": "pulse",
-        "still": "ring_solid",
+        "still": "aura_solid",
         "text": "working, the same every time"
       },
       {
         "motion": "shimmer",
-        "still": "ring_dotted",
+        "still": "aura_dotted",
         "text": "working, variably"
       },
       {
         "motion": "swell",
-        "still": "ring_open",
+        "still": "aura_open",
         "text": "with a person"
       }
     ],
     "exactness": [
       {
         "exactness": "exact",
-        "mark": "double_outline",
+        "rings": "inner_membrane",
         "text": "exact"
       },
       {
         "exactness": "sourced",
-        "mark": "source_notch",
+        "rings": "pore",
         "text": "sourced"
       },
       {
         "exactness": "tolerant",
-        "mark": "tilde",
+        "rings": "tolerance_band",
         "text": "tolerant"
       },
       {
         "exactness": "free",
-        "mark": "none",
+        "rings": "none",
         "text": "free"
       },
       {
-        "mark": "none",
+        "rings": "none",
         "text": "no result of its own"
       }
     ],
@@ -294,10 +294,10 @@
         "text": "applied"
       }
     ],
-    "run_outline": "frame",
-    "result_outline": "seal",
-    "source_outline": "page",
-    "decision_outline": "flag"
+    "run_membrane": "tissue",
+    "result_membrane": "crystal",
+    "source_membrane": "root",
+    "decision_membrane": "signal"
   },
   "overview": {
     "areas": [
@@ -323,9 +323,9 @@
                 "drawn": {
                   "moving": {
                     "subject": "step",
-                    "outline": "triangle",
-                    "edge": "straight",
-                    "exactness_mark": "source_notch",
+                    "membrane": "beaded",
+                    "nucleus": "population",
+                    "rings": "pore",
                     "fill": "partial",
                     "state_mark": "none",
                     "motion": "pulse",
@@ -334,13 +334,13 @@
                   },
                   "still": {
                     "subject": "step",
-                    "outline": "triangle",
-                    "edge": "straight",
-                    "exactness_mark": "source_notch",
+                    "membrane": "beaded",
+                    "nucleus": "population",
+                    "rings": "pore",
                     "fill": "partial",
                     "state_mark": "none",
                     "motion": "none",
-                    "still_mark": "ring_solid",
+                    "still_mark": "aura_solid",
                     "text": "step score: statistics, reproducible; sourced; running."
                   }
                 },
@@ -354,9 +354,9 @@
                 "drawn": {
                   "moving": {
                     "subject": "step",
-                    "outline": "ellipse",
-                    "edge": "wavering",
-                    "exactness_mark": "none",
+                    "membrane": "fluid",
+                    "nucleus": "cloud",
+                    "rings": "none",
                     "fill": "partial",
                     "state_mark": "none",
                     "motion": "shimmer",
@@ -365,13 +365,13 @@
                   },
                   "still": {
                     "subject": "step",
-                    "outline": "ellipse",
-                    "edge": "wavering",
-                    "exactness_mark": "none",
+                    "membrane": "fluid",
+                    "nucleus": "cloud",
+                    "rings": "none",
                     "fill": "partial",
                     "state_mark": "none",
                     "motion": "none",
-                    "still_mark": "ring_dotted",
+                    "still_mark": "aura_dotted",
                     "text": "step draft: language model, variable; free; running."
                   }
                 },
@@ -384,9 +384,9 @@
                 "drawn": {
                   "moving": {
                     "subject": "step",
-                    "outline": "circle",
-                    "edge": "round",
-                    "exactness_mark": "none",
+                    "membrane": "soft",
+                    "nucleus": "open",
+                    "rings": "none",
                     "fill": "partial",
                     "state_mark": "none",
                     "motion": "swell",
@@ -395,13 +395,13 @@
                   },
                   "still": {
                     "subject": "step",
-                    "outline": "circle",
-                    "edge": "round",
-                    "exactness_mark": "none",
+                    "membrane": "soft",
+                    "nucleus": "open",
+                    "rings": "none",
                     "fill": "partial",
                     "state_mark": "none",
                     "motion": "none",
-                    "still_mark": "ring_open",
+                    "still_mark": "aura_open",
                     "text": "step review: person, a person; no result of its own; running."
                   }
                 },
@@ -450,8 +450,9 @@
       "drawn": {
         "moving": {
           "subject": "run",
-          "outline": "frame",
-          "exactness_mark": "none",
+          "membrane": "tissue",
+          "nucleus": "none",
+          "rings": "none",
           "fill": "partial",
           "state_mark": "none",
           "motion": "none",
@@ -460,8 +461,9 @@
         },
         "still": {
           "subject": "run",
-          "outline": "frame",
-          "exactness_mark": "none",
+          "membrane": "tissue",
+          "nucleus": "none",
+          "rings": "none",
           "fill": "partial",
           "state_mark": "none",
           "motion": "none",
@@ -484,9 +486,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "full",
             "state_mark": "check",
             "motion": "none",
@@ -495,9 +497,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "full",
             "state_mark": "check",
             "motion": "none",
@@ -521,9 +523,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "triangle",
-            "edge": "straight",
-            "exactness_mark": "source_notch",
+            "membrane": "beaded",
+            "nucleus": "population",
+            "rings": "pore",
             "fill": "partial",
             "state_mark": "none",
             "motion": "pulse",
@@ -532,13 +534,13 @@
           },
           "still": {
             "subject": "step",
-            "outline": "triangle",
-            "edge": "straight",
-            "exactness_mark": "source_notch",
+            "membrane": "beaded",
+            "nucleus": "population",
+            "rings": "pore",
             "fill": "partial",
             "state_mark": "none",
             "motion": "none",
-            "still_mark": "ring_solid",
+            "still_mark": "aura_solid",
             "text": "step score: statistics, reproducible; sourced; running."
           }
         },
@@ -558,9 +560,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "pentagon",
-            "edge": "straight",
-            "exactness_mark": "tilde",
+            "membrane": "beaded",
+            "nucleus": "cluster",
+            "rings": "tolerance_band",
             "fill": "full",
             "state_mark": "cross",
             "motion": "none",
@@ -569,9 +571,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "pentagon",
-            "edge": "straight",
-            "exactness_mark": "tilde",
+            "membrane": "beaded",
+            "nucleus": "cluster",
+            "rings": "tolerance_band",
             "fill": "full",
             "state_mark": "cross",
             "motion": "none",
@@ -595,9 +597,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "hexagon",
-            "edge": "straight",
-            "exactness_mark": "none",
+            "membrane": "beaded",
+            "nucleus": "network",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "pause",
             "motion": "none",
@@ -606,9 +608,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "hexagon",
-            "edge": "straight",
-            "exactness_mark": "none",
+            "membrane": "beaded",
+            "nucleus": "network",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "pause",
             "motion": "none",
@@ -641,9 +643,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "ellipse",
-            "edge": "wavering",
-            "exactness_mark": "none",
+            "membrane": "fluid",
+            "nucleus": "cloud",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "none",
             "motion": "shimmer",
@@ -652,13 +654,13 @@
           },
           "still": {
             "subject": "step",
-            "outline": "ellipse",
-            "edge": "wavering",
-            "exactness_mark": "none",
+            "membrane": "fluid",
+            "nucleus": "cloud",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "none",
             "motion": "none",
-            "still_mark": "ring_dotted",
+            "still_mark": "aura_dotted",
             "text": "step draft: language model, variable; free; running."
           }
         },
@@ -678,9 +680,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "rounded_square",
-            "edge": "wavering",
-            "exactness_mark": "tilde",
+            "membrane": "fluid",
+            "nucleus": "satellites",
+            "rings": "tolerance_band",
             "fill": "hatched",
             "state_mark": "slash",
             "motion": "none",
@@ -689,9 +691,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "rounded_square",
-            "edge": "wavering",
-            "exactness_mark": "tilde",
+            "membrane": "fluid",
+            "nucleus": "satellites",
+            "rings": "tolerance_band",
             "fill": "hatched",
             "state_mark": "slash",
             "motion": "none",
@@ -714,9 +716,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "circle",
-            "edge": "round",
-            "exactness_mark": "none",
+            "membrane": "soft",
+            "nucleus": "open",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "none",
             "motion": "swell",
@@ -725,13 +727,13 @@
           },
           "still": {
             "subject": "step",
-            "outline": "circle",
-            "edge": "round",
-            "exactness_mark": "none",
+            "membrane": "soft",
+            "nucleus": "open",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "none",
             "motion": "none",
-            "still_mark": "ring_open",
+            "still_mark": "aura_open",
             "text": "step review: person, a person; no result of its own; running."
           }
         },
@@ -762,8 +764,9 @@
             "drawn": {
               "moving": {
                 "subject": "decision_request",
-                "outline": "flag",
-                "exactness_mark": "none",
+                "membrane": "signal",
+                "nucleus": "none",
+                "rings": "none",
                 "fill": "empty",
                 "state_mark": "question",
                 "motion": "none",
@@ -772,8 +775,9 @@
               },
               "still": {
                 "subject": "decision_request",
-                "outline": "flag",
-                "exactness_mark": "none",
+                "membrane": "signal",
+                "nucleus": "none",
+                "rings": "none",
                 "fill": "empty",
                 "state_mark": "question",
                 "motion": "none",
@@ -787,9 +791,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "diamond",
-            "edge": "broken",
-            "exactness_mark": "none",
+            "membrane": "dormant",
+            "nucleus": "seed",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "person",
             "motion": "none",
@@ -798,9 +802,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "diamond",
-            "edge": "broken",
-            "exactness_mark": "none",
+            "membrane": "dormant",
+            "nucleus": "seed",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "person",
             "motion": "none",
@@ -824,9 +828,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "empty",
             "state_mark": "dot",
             "motion": "none",
@@ -835,9 +839,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "empty",
             "state_mark": "dot",
             "motion": "none",
@@ -861,9 +865,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -872,9 +876,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -917,9 +921,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -928,9 +932,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -955,9 +959,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "triangle",
-            "edge": "straight",
-            "exactness_mark": "source_notch",
+            "membrane": "beaded",
+            "nucleus": "population",
+            "rings": "pore",
             "fill": "partial",
             "state_mark": "none",
             "motion": "pulse",
@@ -966,13 +970,13 @@
           },
           "still": {
             "subject": "step",
-            "outline": "triangle",
-            "edge": "straight",
-            "exactness_mark": "source_notch",
+            "membrane": "beaded",
+            "nucleus": "population",
+            "rings": "pore",
             "fill": "partial",
             "state_mark": "none",
             "motion": "none",
-            "still_mark": "ring_solid",
+            "still_mark": "aura_solid",
             "text": "step score: statistics, reproducible; sourced; running."
           }
         },
@@ -991,9 +995,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "pentagon",
-            "edge": "straight",
-            "exactness_mark": "tilde",
+            "membrane": "beaded",
+            "nucleus": "cluster",
+            "rings": "tolerance_band",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1002,9 +1006,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "pentagon",
-            "edge": "straight",
-            "exactness_mark": "tilde",
+            "membrane": "beaded",
+            "nucleus": "cluster",
+            "rings": "tolerance_band",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1027,9 +1031,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "hexagon",
-            "edge": "straight",
-            "exactness_mark": "none",
+            "membrane": "beaded",
+            "nucleus": "network",
+            "rings": "none",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1038,9 +1042,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "hexagon",
-            "edge": "straight",
-            "exactness_mark": "none",
+            "membrane": "beaded",
+            "nucleus": "network",
+            "rings": "none",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1065,9 +1069,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "ellipse",
-            "edge": "wavering",
-            "exactness_mark": "none",
+            "membrane": "fluid",
+            "nucleus": "cloud",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "none",
             "motion": "shimmer",
@@ -1076,13 +1080,13 @@
           },
           "still": {
             "subject": "step",
-            "outline": "ellipse",
-            "edge": "wavering",
-            "exactness_mark": "none",
+            "membrane": "fluid",
+            "nucleus": "cloud",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "none",
             "motion": "none",
-            "still_mark": "ring_dotted",
+            "still_mark": "aura_dotted",
             "text": "step draft: language model, variable; free; running."
           }
         },
@@ -1101,9 +1105,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "rounded_square",
-            "edge": "wavering",
-            "exactness_mark": "tilde",
+            "membrane": "fluid",
+            "nucleus": "satellites",
+            "rings": "tolerance_band",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1112,9 +1116,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "rounded_square",
-            "edge": "wavering",
-            "exactness_mark": "tilde",
+            "membrane": "fluid",
+            "nucleus": "satellites",
+            "rings": "tolerance_band",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1138,9 +1142,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "circle",
-            "edge": "round",
-            "exactness_mark": "none",
+            "membrane": "soft",
+            "nucleus": "open",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "none",
             "motion": "swell",
@@ -1149,13 +1153,13 @@
           },
           "still": {
             "subject": "step",
-            "outline": "circle",
-            "edge": "round",
-            "exactness_mark": "none",
+            "membrane": "soft",
+            "nucleus": "open",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "none",
             "motion": "none",
-            "still_mark": "ring_open",
+            "still_mark": "aura_open",
             "text": "step review: person, a person; no result of its own; running."
           }
         },
@@ -1173,9 +1177,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "diamond",
-            "edge": "broken",
-            "exactness_mark": "none",
+            "membrane": "dormant",
+            "nucleus": "seed",
+            "rings": "none",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1184,9 +1188,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "diamond",
-            "edge": "broken",
-            "exactness_mark": "none",
+            "membrane": "dormant",
+            "nucleus": "seed",
+            "rings": "none",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1209,9 +1213,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1220,9 +1224,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1245,9 +1249,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1256,9 +1260,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "square",
-            "edge": "straight",
-            "exactness_mark": "double_outline",
+            "membrane": "beaded",
+            "nucleus": "single",
+            "rings": "inner_membrane",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1283,8 +1287,9 @@
         "drawn": {
           "moving": {
             "subject": "run",
-            "outline": "frame",
-            "exactness_mark": "none",
+            "membrane": "tissue",
+            "nucleus": "none",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "none",
             "motion": "none",
@@ -1293,8 +1298,9 @@
           },
           "still": {
             "subject": "run",
-            "outline": "frame",
-            "exactness_mark": "none",
+            "membrane": "tissue",
+            "nucleus": "none",
+            "rings": "none",
             "fill": "partial",
             "state_mark": "none",
             "motion": "none",
@@ -1322,8 +1328,9 @@
       "drawn": {
         "moving": {
           "subject": "result",
-          "outline": "seal",
-          "exactness_mark": "none",
+          "membrane": "crystal",
+          "nucleus": "none",
+          "rings": "none",
           "fill": "full",
           "state_mark": "check",
           "motion": "none",
@@ -1332,8 +1339,9 @@
         },
         "still": {
           "subject": "result",
-          "outline": "seal",
-          "exactness_mark": "none",
+          "membrane": "crystal",
+          "nucleus": "none",
+          "rings": "none",
           "fill": "full",
           "state_mark": "check",
           "motion": "none",
@@ -1359,9 +1367,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "ellipse",
-            "edge": "wavering",
-            "exactness_mark": "none",
+            "membrane": "fluid",
+            "nucleus": "cloud",
+            "rings": "none",
             "fill": "full",
             "state_mark": "check",
             "motion": "none",
@@ -1370,9 +1378,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "ellipse",
-            "edge": "wavering",
-            "exactness_mark": "none",
+            "membrane": "fluid",
+            "nucleus": "cloud",
+            "rings": "none",
             "fill": "full",
             "state_mark": "check",
             "motion": "none",
@@ -1396,9 +1404,9 @@
         "drawn": {
           "moving": {
             "subject": "step",
-            "outline": "triangle",
-            "edge": "straight",
-            "exactness_mark": "source_notch",
+            "membrane": "beaded",
+            "nucleus": "population",
+            "rings": "pore",
             "fill": "full",
             "state_mark": "check",
             "motion": "none",
@@ -1407,9 +1415,9 @@
           },
           "still": {
             "subject": "step",
-            "outline": "triangle",
-            "edge": "straight",
-            "exactness_mark": "source_notch",
+            "membrane": "beaded",
+            "nucleus": "population",
+            "rings": "pore",
             "fill": "full",
             "state_mark": "check",
             "motion": "none",
@@ -1430,8 +1438,9 @@
         "drawn": {
           "moving": {
             "subject": "source",
-            "outline": "page",
-            "exactness_mark": "none",
+            "membrane": "root",
+            "nucleus": "none",
+            "rings": "none",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",
@@ -1440,8 +1449,9 @@
           },
           "still": {
             "subject": "source",
-            "outline": "page",
-            "exactness_mark": "none",
+            "membrane": "root",
+            "nucleus": "none",
+            "rings": "none",
             "fill": "empty",
             "state_mark": "none",
             "motion": "none",

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import fixtures from './generated/fixtures.json';
 import Glyph from './Glyph.svelte';
 import RunView from './RunView.svelte';
-import { EDGES, EXACTNESS_MARKS, FILLS, known, MOTIONS, OUTLINES, STATE_MARKS, STILL_MARKS } from './shapes';
+import { FILLS, known, MEMBRANES, MOTIONS, NUCLEI, RINGS, STATE_MARKS, STILL_MARKS } from './cells';
 import type { Glyph as GlyphTokens, RunLevel } from './types';
 
 const LEVEL = fixtures.run_level as unknown as RunLevel;
@@ -18,9 +18,9 @@ const VOCABULARY = fixtures.vocabulary;
 
 const TOKENS = [
 	['subject', 'data-subject'],
-	['outline', 'data-outline'],
-	['edge', 'data-edge'],
-	['exactness_mark', 'data-exactness-mark'],
+	['membrane', 'data-membrane'],
+	['nucleus', 'data-nucleus'],
+	['rings', 'data-rings'],
 	['fill', 'data-fill'],
 	['state_mark', 'data-state-mark'],
 	['motion', 'data-motion'],
@@ -71,21 +71,21 @@ describe('a glyph', () => {
 	it('fails a drawing that carries another token than the one handed over', () => {
 		const glyph = LEVEL.steps[0]!.drawn.moving;
 		const html = render(Glyph, { props: { glyph } }).body.replace(
-			`data-outline="${glyph.outline}"`,
-			'data-outline="star"'
+			`data-nucleus="${glyph.nucleus}"`,
+			'data-nucleus="star"'
 		);
 		expect(drawnIn(html)).not.toEqual([handedOver(glyph)]);
 	});
 
 	it('has a drawing for every token of the vocabulary', () => {
-		for (const m of VOCABULARY.methods) expect(known(m.outline, OUTLINES), m.outline).toBe(true);
-		expect(known(VOCABULARY.run_outline, OUTLINES)).toBe(true);
+		for (const m of VOCABULARY.methods) expect(known(m.nucleus, NUCLEI), m.nucleus).toBe(true);
+		expect(known(VOCABULARY.run_membrane, MEMBRANES)).toBe(true);
 		for (const f of VOCABULARY.families) {
-			expect(known(f.edge, EDGES), f.edge).toBe(true);
+			expect(known(f.membrane, MEMBRANES), f.membrane).toBe(true);
 			expect(known(f.motion, MOTIONS), f.motion).toBe(true);
 		}
 		for (const m of VOCABULARY.motions) expect(known(m.still, STILL_MARKS), m.still).toBe(true);
-		for (const e of VOCABULARY.exactness) expect(known(e.mark, EXACTNESS_MARKS), e.mark).toBe(true);
+		for (const e of VOCABULARY.exactness) expect(known(e.rings, RINGS), e.rings).toBe(true);
 		for (const s of VOCABULARY.states) {
 			expect(known(s.fill, FILLS), s.fill).toBe(true);
 			expect(known(s.mark, STATE_MARKS), s.mark).toBe(true);

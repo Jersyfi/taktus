@@ -13,9 +13,9 @@ const LEVEL = fixtures.process_level as unknown as ProcessLevel;
 
 const TOKENS = [
 	['subject', 'data-subject'],
-	['outline', 'data-outline'],
-	['edge', 'data-edge'],
-	['exactness_mark', 'data-exactness-mark'],
+	['membrane', 'data-membrane'],
+	['nucleus', 'data-nucleus'],
+	['rings', 'data-rings'],
 	['fill', 'data-fill'],
 	['state_mark', 'data-state-mark'],
 	['motion', 'data-motion'],

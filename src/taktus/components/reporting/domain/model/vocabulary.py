@@ -8,21 +8,27 @@ tokens: a form, a motion, marks and a text. A representation turns the tokens in
 chooses no token itself. `domain/service/drawing.py` gives the glyph of an element and checks a
 representation against this vocabulary.
 
-**Form.** A step's form is an *outline*, a shape of its own per method kind, and an *edge*, the
-way the outline is drawn. The edge is shared by a family of method kinds:
+Every step is drawn as a *cell* (the look the owner approved, DEC-0185; M1.20).
 
-- the four reproducible kinds, `rule`, `statistics`, `ml`, `neural` — a straight edge;
-- the variable kinds, `llm` and `worker` — a wavering edge;
-- `human` — a round edge;
-- `wait` — a broken edge.
+**Form.** A step's form is a *membrane* and a *nucleus*. The membrane is shared by a family of
+method kinds:
+
+- the four reproducible kinds, `rule`, `statistics`, `ml`, `neural` — a beaded membrane: crisp,
+  set with even beads;
+- the variable kinds, `llm` and `worker` — a fluid membrane;
+- `human` — a soft membrane;
+- `wait` — a dormant membrane, broken like a spore's.
+
+The nucleus is a shape of its own per method kind. A run, a result, a source and a decision
+request each have a membrane of their own and no nucleus.
 
 **Motion.** Only a step that is running moves, and only in the motion of its family: the
 reproducible ones pulse at a fixed period, the variable ones shimmer irregularly, a person's step
 swells slowly, and a waiting step does not move, because it does no work. Every motion has a
-*still mark*, which stands in for it when motion is stopped, so that nothing is lost.
+*still mark*, an aura, which stands in for it when motion is stopped, so that nothing is lost.
 
-**Marks.** An exactness class is a mark on the outline; `exact` has one no other class has.
-A state is a fill and a mark.
+**Rings and marks.** An exactness class is a ring on the membrane; `exact` has one no other
+class has. A state is a fill and a mark.
 
 **No colour.** The vocabulary has no colour. A representation may add one, but every distinction
 above is already carried without it.
@@ -42,7 +48,7 @@ from taktus.shared.v1.method import VARIABLE
 
 
 class Family(StrEnum):
-    """Which kind of working a method kind belongs to; it sets the edge and the motion."""
+    """Which kind of working a method kind belongs to; it sets the membrane and the motion."""
 
     REPRODUCIBLE = "reproducible"
     VARIABLE = "variable"
@@ -50,11 +56,13 @@ class Family(StrEnum):
     WAITING = "waiting"
 
 
-class Edge(StrEnum):
-    STRAIGHT = "straight"
-    WAVERING = "wavering"
-    ROUND = "round"
-    BROKEN = "broken"
+class Membrane(StrEnum):
+    """The membrane a family's steps share."""
+
+    BEADED = "beaded"
+    FLUID = "fluid"
+    SOFT = "soft"
+    DORMANT = "dormant"
 
 
 class Motion(StrEnum):
@@ -93,7 +101,7 @@ def family_of(method: Method) -> Family:
 
 class FamilyForm(Value):
     family: Family
-    edge: Edge
+    membrane: Membrane
     motion: Motion
     """The motion of a running step of this family."""
     text: str
@@ -101,21 +109,21 @@ class FamilyForm(Value):
 
 class MethodForm(Value):
     method: Method
-    outline: str
+    nucleus: str
     text: str
 
 
 class MotionForm(Value):
     motion: Motion
     still: str
-    """The mark drawn in place of the motion when motion is stopped."""
+    """The aura drawn in place of the motion when motion is stopped."""
     text: str
 
 
 class ExactnessForm(Value):
     exactness: ExactnessClass | None = None
     """None for a step that produces no result and carries no class (ADR-0018)."""
-    mark: str
+    rings: str
     text: str
 
 
@@ -135,14 +143,14 @@ class Vocabulary(Value):
     motions: tuple[MotionForm, ...]
     exactness: tuple[ExactnessForm, ...]
     states: tuple[StateForm, ...]
-    run_outline: str
-    result_outline: str
-    """A step's result, at the end of the path to its origin; its exactness class is its mark."""
-    source_outline: str
+    run_membrane: str
+    """A run is drawn as a capsule of tissue; its state is the capsule's fill and mark."""
+    result_membrane: str
+    """A step's result, at the end of the path to its origin; its exactness class is its ring."""
+    source_membrane: str
     """An external source a step read, where the path to a result's origin begins."""
-    decision_outline: str
+    decision_membrane: str
     """A decision request a step raised (ADR-0042); its status is its fill and mark."""
-    """A run is drawn as a frame around its steps; its state is the frame's fill and mark."""
 
     def family(self, family: Family) -> FamilyForm:
         return next(f for f in self.families if f.family is family)
@@ -211,38 +219,42 @@ VOCABULARY = Vocabulary(
     families=(
         FamilyForm(
             family=Family.REPRODUCIBLE,
-            edge=Edge.STRAIGHT,
+            membrane=Membrane.BEADED,
             motion=Motion.PULSE,
             text="reproducible",
         ),
         FamilyForm(
-            family=Family.VARIABLE, edge=Edge.WAVERING, motion=Motion.SHIMMER, text="variable"
+            family=Family.VARIABLE, membrane=Membrane.FLUID, motion=Motion.SHIMMER, text="variable"
         ),
-        FamilyForm(family=Family.PERSON, edge=Edge.ROUND, motion=Motion.SWELL, text="a person"),
-        FamilyForm(family=Family.WAITING, edge=Edge.BROKEN, motion=Motion.NONE, text="waiting"),
+        FamilyForm(
+            family=Family.PERSON, membrane=Membrane.SOFT, motion=Motion.SWELL, text="a person"
+        ),
+        FamilyForm(
+            family=Family.WAITING, membrane=Membrane.DORMANT, motion=Motion.NONE, text="waiting"
+        ),
     ),
     methods=(
-        MethodForm(method=Method.RULE, outline="square", text="rule"),
-        MethodForm(method=Method.STATISTICS, outline="triangle", text="statistics"),
-        MethodForm(method=Method.ML, outline="pentagon", text="trained model"),
-        MethodForm(method=Method.NEURAL, outline="hexagon", text="neural network"),
-        MethodForm(method=Method.LLM, outline="ellipse", text="language model"),
-        MethodForm(method=Method.WORKER, outline="rounded_square", text="worker"),
-        MethodForm(method=Method.HUMAN, outline="circle", text="person"),
-        MethodForm(method=Method.WAIT, outline="diamond", text="wait"),
+        MethodForm(method=Method.RULE, nucleus="single", text="rule"),
+        MethodForm(method=Method.STATISTICS, nucleus="population", text="statistics"),
+        MethodForm(method=Method.ML, nucleus="cluster", text="trained model"),
+        MethodForm(method=Method.NEURAL, nucleus="network", text="neural network"),
+        MethodForm(method=Method.LLM, nucleus="cloud", text="language model"),
+        MethodForm(method=Method.WORKER, nucleus="satellites", text="worker"),
+        MethodForm(method=Method.HUMAN, nucleus="open", text="person"),
+        MethodForm(method=Method.WAIT, nucleus="seed", text="wait"),
     ),
     motions=(
         MotionForm(motion=Motion.NONE, still=NO_MARK, text="still"),
-        MotionForm(motion=Motion.PULSE, still="ring_solid", text="working, the same every time"),
-        MotionForm(motion=Motion.SHIMMER, still="ring_dotted", text="working, variably"),
-        MotionForm(motion=Motion.SWELL, still="ring_open", text="with a person"),
+        MotionForm(motion=Motion.PULSE, still="aura_solid", text="working, the same every time"),
+        MotionForm(motion=Motion.SHIMMER, still="aura_dotted", text="working, variably"),
+        MotionForm(motion=Motion.SWELL, still="aura_open", text="with a person"),
     ),
     exactness=(
-        ExactnessForm(exactness=ExactnessClass.EXACT, mark="double_outline", text="exact"),
-        ExactnessForm(exactness=ExactnessClass.SOURCED, mark="source_notch", text="sourced"),
-        ExactnessForm(exactness=ExactnessClass.TOLERANT, mark="tilde", text="tolerant"),
-        ExactnessForm(exactness=ExactnessClass.FREE, mark=NO_MARK, text="free"),
-        ExactnessForm(exactness=None, mark=NO_MARK, text="no result of its own"),
+        ExactnessForm(exactness=ExactnessClass.EXACT, rings="inner_membrane", text="exact"),
+        ExactnessForm(exactness=ExactnessClass.SOURCED, rings="pore", text="sourced"),
+        ExactnessForm(exactness=ExactnessClass.TOLERANT, rings="tolerance_band", text="tolerant"),
+        ExactnessForm(exactness=ExactnessClass.FREE, rings=NO_MARK, text="free"),
+        ExactnessForm(exactness=None, rings=NO_MARK, text="no result of its own"),
     ),
     states=(
         _step("planned", Fill.EMPTY, NO_MARK, "planned"),
@@ -274,9 +286,9 @@ VOCABULARY = Vocabulary(
         _form("decision_request", "confirmed", Fill.PARTIAL, "check", "its reading confirmed"),
         _form("decision_request", "applied", Fill.FULL, "check", "applied"),
     ),
-    run_outline="frame",
-    result_outline="seal",
-    source_outline="page",
-    decision_outline="flag",
+    run_membrane="tissue",
+    result_membrane="crystal",
+    source_membrane="root",
+    decision_membrane="signal",
 )
 """The one vocabulary. Every representation draws from it (ADR-0059)."""

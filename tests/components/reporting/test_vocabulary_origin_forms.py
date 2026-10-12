@@ -2,7 +2,7 @@
 #192): the vocabulary covers them as it covers steps and runs.
 
 Every status of a decision request has a form of its own; a result carries its exactness class
-as its mark, and `exact` keeps a mark no other class carries; none of them moves; each has a
+as its rings, and `exact` keeps rings no other class carries; none of them moves; each has a
 text; and the check fails a representation that draws one another way.
 """
 
@@ -40,10 +40,10 @@ def test_every_status_of_a_decision_request_has_its_form_once() -> None:
         assert len({(f.fill, f.mark) for f in forms}) == len(forms), subject
 
 
-def test_each_has_an_outline_of_its_own() -> None:
-    outlines = {m.outline for m in VOCABULARY.methods} | {VOCABULARY.run_outline}
-    new = [VOCABULARY.result_outline, VOCABULARY.source_outline, VOCABULARY.decision_outline]
-    assert len(set(new)) == 3 and not set(new) & outlines
+def test_each_has_a_membrane_of_its_own() -> None:
+    membranes = {f.membrane for f in VOCABULARY.families} | {VOCABULARY.run_membrane}
+    new = [VOCABULARY.result_membrane, VOCABULARY.source_membrane, VOCABULARY.decision_membrane]
+    assert len(set(new)) == 3 and not set(new) & membranes
 
 
 @pytest.mark.parametrize("exactness", list(ExactnessClass))
@@ -51,10 +51,10 @@ def test_a_result_carries_its_class_and_exact_keeps_its_own_mark(
     exactness: ExactnessClass,
 ) -> None:
     drawn = glyph(Result(name="s", exactness=exactness), motion=True)
-    assert drawn.exactness_mark == VOCABULARY.exactness_of(exactness).mark
-    exact = glyph(Result(name="s", exactness=ExactnessClass.EXACT), motion=True).exactness_mark
+    assert drawn.rings == VOCABULARY.exactness_of(exactness).rings
+    exact = glyph(Result(name="s", exactness=ExactnessClass.EXACT), motion=True).rings
     if exactness is not ExactnessClass.EXACT:
-        assert drawn.exactness_mark != exact
+        assert drawn.rings != exact
 
 
 def elements() -> list[Result | Source | DecisionRequest]:
@@ -70,7 +70,7 @@ def test_none_of_them_moves_and_each_has_a_text(motion: bool) -> None:
     for element in elements():
         drawn = glyph(element, motion=motion)
         assert drawn.motion is Motion.NONE and drawn.still_mark == NO_MARK
-        assert drawn.edge is None
+        assert drawn.nucleus == NO_MARK
         assert element.name in drawn.text and drawn.text.endswith(".")
 
 
@@ -85,7 +85,7 @@ def test_the_text_says_the_class_and_the_status() -> None:
 
 def test_a_representation_that_draws_one_another_way_fails() -> None:
     result = Result(name="s", exactness=ExactnessClass.EXACT)
-    unmarked = glyph(result, motion=True).model_copy(update={"exactness_mark": NO_MARK})
+    unmarked = glyph(result, motion=True).model_copy(update={"rings": NO_MARK})
     assert check([(result, unmarked)], motion=True)
     request = DecisionRequest(name="dr_1", state="open")
     as_applied = glyph(DecisionRequest(name="dr_1", state="applied"), motion=True)
