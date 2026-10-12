@@ -49,7 +49,8 @@ import re
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterable, Mapping, Sequence
+import time
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -58,6 +59,7 @@ from urllib.parse import quote, unquote, urlsplit
 NAME = re.compile(r"^taktus-(\d{8}T\d{6}Z)\.(dump|json)(\.age)?$")
 TIME = "%Y%m%dT%H%M%SZ"
 DEFAULT_RETENTION_DAYS = 30
+WAIT_SECONDS = 60.0
 
 HEADS = (
     "SELECT coalesce(json_object_agg(tenant, json_build_object('seq', seq, 'hash', hash)), '{}') "
@@ -228,9 +230,28 @@ def sha256(path: Path) -> str:
 # --- one run -----------------------------------------------------------------------------------
 
 
+def wait_for_database(
+    s: Settings, *, seconds: float = WAIT_SECONDS, sleep: Callable[[float], None] = time.sleep
+) -> None:
+    """Wait until the database accepts connections, for at most `seconds`. A pod that has just
+    started may be refused for a few seconds while the cluster applies its network policy to it
+    (#67, observed on the instance on 2026-10-12): the first connection of a scheduled backup
+    must not fail for that."""
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            run(["pg_isready", "--dbname", s.database_url], env=s.database_env, what="pg_isready")
+            return
+        except BackupError:
+            if time.monotonic() >= deadline:
+                raise
+        sleep(2.0)
+
+
 def backup(s: Settings, *, now: datetime) -> str:
     """Write one backup; return its name. Nothing is deleted here."""
     name = name_at(now)
+    wait_for_database(s)
     heads = json.loads(query(s, HEADS) or "{}")
     revision = query(s, REVISION)
     with tempfile.TemporaryDirectory(dir=s.work_dir) as work:

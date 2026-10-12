@@ -170,3 +170,36 @@ def test_a_refusal_never_carries_the_secret(
     assert backup.main(["backup"], env) == 1
     err = capsys.readouterr().err
     assert SECRET not in err and "pw" not in err
+
+
+# --- waiting for the database -------------------------------------------------------------------
+
+
+def test_the_backup_waits_while_the_database_refuses_and_goes_on_once_it_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    answers = iter([False, False, True])
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **_: object) -> str:
+        calls.append(command)
+        if not next(answers):
+            raise backup.BackupError("pg_isready failed (2): refused")
+        return ""
+
+    monkeypatch.setattr(backup, "run", run)
+    slept: list[float] = []
+    backup.wait_for_database(backup.settings(base(tmp_path)), sleep=slept.append)
+    assert [c[0] for c in calls] == ["pg_isready"] * 3
+    assert slept == [2.0, 2.0]
+
+
+def test_a_database_that_never_answers_fails_the_run_after_the_wait(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def run(command: list[str], **_: object) -> str:
+        raise backup.BackupError("pg_isready failed (2): refused")
+
+    monkeypatch.setattr(backup, "run", run)
+    with pytest.raises(backup.BackupError, match="refused"):
+        backup.wait_for_database(backup.settings(base(tmp_path)), seconds=0, sleep=lambda _: None)

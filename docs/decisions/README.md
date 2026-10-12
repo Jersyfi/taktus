@@ -55,6 +55,7 @@ printed by `make status` and carried by every pull request description (DEC-0026
 | [0019](NEED-0019-a-sandbox-the-connector-suite-may-write-to.md) | A sandbox the connector suite may write to | `access` | provided 2026-10-11: the private repository with issue 1, the app installed on it; its name in the private note |
 | [0020](NEED-0020-the-owner-facing-channel-on-the-installed-instance.md) | The owner-facing channel on the instance | `action` | provided 2026-10-11: the chat account linked, `idn_owner` holding `owner`, the channel configured in German |
 | [0024](NEED-0024-the-coding-agents-keys-on-the-instance.md) | The coding agents' keys on the instance | `credential` | provided 2026-10-11 for the first agent; the second follows #208 |
+| [0025](NEED-0025-the-backup-switched-on-for-the-instance.md) | The backup switched on for the instance | `action` | provided 2026-10-12: the deployer may manage cron jobs, `v0.2.0-rc.4` installed with the backup, the first backup in the store and restored from it on the workstation at the manifest's head |
 
 The open needs are printed by `make status` (DEC-0026).
 
