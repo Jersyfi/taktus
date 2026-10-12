@@ -73,14 +73,6 @@
 </section>
 
 <style>
-	h1 {
-		font-size: 1.25rem;
-		margin: 0 0 0.75rem;
-	}
-	h2 {
-		font-size: 1.05rem;
-		margin: 0.5rem 0 0.25rem;
-	}
 	a {
 		color: inherit;
 	}
@@ -98,9 +90,9 @@
 		gap: 0.75rem;
 	}
 	.process {
-		border: 1px solid var(--line);
-		border-radius: 6px;
-		padding: 0.6rem 0.8rem;
+		background: var(--paper-2);
+		border-radius: 14px;
+		padding: 1rem 1.1rem;
 	}
 	.head {
 		display: flex;
@@ -117,9 +109,5 @@
 		display: flex;
 		gap: 0.5rem;
 		align-items: center;
-	}
-	.text ol {
-		padding-left: 1.25rem;
-		line-height: 1.5;
 	}
 </style>

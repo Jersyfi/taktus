@@ -63,13 +63,6 @@
 </section>
 
 <style>
-	h1 {
-		font-size: 1.25rem;
-		margin: 0;
-	}
-	h2 {
-		font-size: 1.05rem;
-	}
 	.meta {
 		color: var(--muted);
 		margin: 0.2rem 0 1rem;
@@ -79,9 +72,5 @@
 	}
 	.run {
 		margin-left: 0.4rem;
-	}
-	.text ol {
-		padding-left: 1.25rem;
-		line-height: 1.5;
 	}
 </style>
