@@ -9,7 +9,7 @@
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
-	import { processLink, runLink } from './links';
+	import { changeLink, processLink, runLink } from './links';
 	import type { ProcessLevel } from './types';
 
 	let { level, motionAllowed }: { level: ProcessLevel; motionAllowed: boolean } = $props();
@@ -31,7 +31,7 @@
 	<header>
 		<h1 id="process-title">{process.name}</h1>
 		<p class="meta">
-			{process.id}@{process.version}
+			{process.id}@{process.version} · <a href={changeLink(process.id)}>change in dialogue</a>
 			{#if process.versions.length > 1}
 				· versions:
 				{#each process.versions as v (v.version)}
