@@ -7,7 +7,7 @@ serves: [P1, P2, P6, P10, P13]
 state: building
 version: 0.3.0
 tests: [tests/components/process/test_proposals.py::test_a_changed_bundle_becomes_a_proposal_and_nothing_is_registered, tests/components/process/test_proposals.py::test_the_difference_names_every_step_added_removed_or_changed, tests/components/process/test_proposals.py::test_a_bundle_that_would_not_register_gives_the_findings_and_no_proposal, tests/components/process/test_proposals.py::test_a_proposal_never_writes_over_a_registered_version, tests/adapters/rest/test_proposals.py::test_another_tenants_process_or_none_is_answered_alike_and_a_key_is_needed]
-adrs: {ADR-0008: e6a4e033abd4, ADR-0011: f25413d512b9, ADR-0026: ccc4bd1f5423, ADR-0030: 9d551b889a39, ADR-0091: 92e6054cf4c8}
+adrs: {ADR-0008: e6a4e033abd4, ADR-0011: f25413d512b9, ADR-0026: ccc4bd1f5423, ADR-0030: 9d551b889a39, ADR-0091: 22e6c748bb90}
 supersedes: null
 ---
 

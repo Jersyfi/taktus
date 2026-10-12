@@ -83,9 +83,13 @@ The HTTP surface gains, under the reader's account key (ADR-0063 §4):
 
 Each answers `404` for a process the reader may not see, as the levels do, and refuses an identity
 that may not register versions of it. The web app calls these and nothing else to change a
-process. The chat's phrasebook gains `change_words`, `commission_words` and `rollback_words`,
-given all three or none, as ADR-0069 §5 holds for its entries. A free-text answer in the chat is
-read back and confirmed before it commissions or rolls back anything (ADR-0008).
+process. In the owner's conversation (ADR-0069) the phrasebook gains the words of four acts —
+`change_words`, `rehearse_words`, `commission_words` and `rollback_words` — and the sentences
+Taktus answers them with, given all or none, as ADR-0069 §5 holds for its entries. A change
+starts S-07 for the owner; a rehearsal acts on nothing outside and needs no confirmation. A
+commissioning or a rollback is read back first, kept as waiting in its thread, and takes effect
+only on the same person's confirmation there (ADR-0008); a `no` drops it. Nothing is deleted:
+what waits moves to done or dropped.
 
 ## Alternatives
 - **The proposal as a version that is not yet active.** Registration makes the last registered
