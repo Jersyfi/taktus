@@ -124,6 +124,9 @@ and all four levels: the run (ADR-0063, #105), the process (ADR-0064, #190), the
 - Without motion, every motion is replaced by a still mark of its own, and nothing else changes.
 - Steps are joined by vessels. A vessel into a running step carries that step's motion and no
   other vessel moves; without motion none does (`web/src/lib/graph.test.ts`).
+- Every level opens with a sentence made from its own elements and figures, set as its heading
+  and as the first line of its text. The overview draws every process as the cells of its
+  active version; a cell moves only while a run of that version runs it.
 - Every step and every run has a text that names its method kind, exactness class and state.
 - A representation that draws an element another way than the vocabulary fails the check.
 
