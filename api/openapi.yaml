@@ -928,6 +928,194 @@ paths:
           content:
             application/json:
               schema: {}
+  /processes/{process_id}/proposals:
+    post:
+      tags:
+      - proposals
+      summary: Propose a changed process
+      description: 'The changed bundle becomes a proposal, made against the active version, with its difference
+        step by step. Nothing is registered: the active version, its triggers and its runs are unchanged.
+        A bundle that would not register is answered with the findings registration would give, and nothing
+        is kept (ADR-0091 §1).'
+      operationId: propose_processes__process_id__proposals_post
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProposeBody'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '201':
+          description: The proposal.
+        '400':
+          description: The bundle would not register; every finding.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process or proposal you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    get:
+      tags:
+      - proposals
+      summary: The proposals for a process
+      operationId: proposals_processes__process_id__proposals_get
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposals, newest first.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process or proposal you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/proposals/{proposal_id}:
+    get:
+      tags:
+      - proposals
+      summary: One proposal, with its difference
+      operationId: one_processes__process_id__proposals__proposal_id__get
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposal.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process or proposal you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/proposals/{proposal_id}/discard:
+    post:
+      tags:
+      - proposals
+      summary: Discard a proposal
+      description: An open proposal is discarded; nothing else changes.
+      operationId: discard_processes__process_id__proposals__proposal_id__discard_post
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proposal Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The proposal, discarded.
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: The proposal is no longer open.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process or proposal you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
 components:
   schemas:
     AnswerBody:
@@ -970,3 +1158,21 @@ components:
       required:
       - channel
       title: LinkCodeRequest
+    ProposeBody:
+      properties:
+        bundle:
+          additionalProperties: true
+          type: object
+          title: Bundle
+          description: The changed process bundle, as a document.
+        request:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Request
+          description: The words the change was asked for in.
+      type: object
+      required:
+      - bundle
+      title: ProposeBody

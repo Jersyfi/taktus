@@ -4,9 +4,9 @@ title: A person changes a process in dialogue, and rolls it back
 component: process
 epic: E4
 serves: [P1, P2, P6, P10, P13]
-state: specified
+state: building
 version: 0.3.0
-tests: []
+tests: [tests/components/process/test_proposals.py::test_a_changed_bundle_becomes_a_proposal_and_nothing_is_registered, tests/components/process/test_proposals.py::test_the_difference_names_every_step_added_removed_or_changed, tests/components/process/test_proposals.py::test_a_bundle_that_would_not_register_gives_the_findings_and_no_proposal, tests/components/process/test_proposals.py::test_a_proposal_never_writes_over_a_registered_version, tests/adapters/rest/test_proposals.py::test_another_tenants_process_or_none_is_answered_alike_and_a_key_is_needed]
 adrs: {ADR-0008: e6a4e033abd4, ADR-0011: f25413d512b9, ADR-0026: ccc4bd1f5423, ADR-0030: 9d551b889a39, ADR-0091: 50164462cfa1}
 supersedes: null
 ---
@@ -77,3 +77,15 @@ editing with rollback*, and it is complete when *a process can be created, viewe
 rolled back entirely from the web app and chat*. The blueprint UC-01 asks the web app for pair
 editing (`AF-01-dev-orchestration.md`). Not written as a use case before: put to the owner in
 DEC-0186, and in force on its provisional answer, Option A. ADR-0091 says how it is built.
+
+## 5. What is proven so far
+
+A changed bundle becomes a proposal, never a version (ADR-0091 §1, #294). By the named tests: the
+proposal carries the version it was made against and its difference, step by step — added,
+removed or changed, a changed step with the fields that differ — and the active version, its
+triggers and its runs are unchanged. A bundle that would not register gives the registration's
+findings and no proposal, and a proposal never names a version already registered. On the HTTP
+surface, a process of another tenant or none is answered alike, and a key is needed.
+
+Not yet: a request in words (S-07, #295), the rehearsal (#296), commissioning and rollback
+(#297), the web app's page (#298) and the chat (#299).

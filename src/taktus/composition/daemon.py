@@ -79,12 +79,13 @@ from taktus.components.governance.application.service import (
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.ledger.application.service import ChainedLedger
+from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.reactions import ReactionsHandler
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.application.service.triggers import TriggersHandler
-from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
+from taktus.components.process.domain.model import Process, ProcessVersion, Proposal, TriggerState
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     BrokenInterfaces,
@@ -197,6 +198,8 @@ class Wired:
     (ADR-0055). Only the `api` role opens any."""
     levels: LevelQueries
     """The levels of the live representation, drawn from the run's records (ADR-0063)."""
+    proposals: Proposals
+    """A person's proposals for a changed process, never versions (ADR-0091)."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -494,6 +497,15 @@ async def wire(
                     LiveOptions(max_streams=settings.live_streams),
                 ),
                 levels=levels,
+                proposals=Proposals(
+                    PostgresRepository(persistence, ProcessVersion),
+                    PostgresRepository(persistence, Process),
+                    PostgresRepository(persistence, Proposal),
+                    persistence,
+                    clock,
+                    ids,
+                    settings.administration,
+                ),
                 complete_intake=complete_intake,
                 reactions=Reactions(
                     tenants=settings.tenants,

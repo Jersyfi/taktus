@@ -19,6 +19,7 @@ from taktus.components.decision.application.service import (
     ConfirmRequestHandler,
 )
 from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.domain.model import Change, Reader, Scope, Snapshot
 from taktus.components.run.domain.model import Run
@@ -104,6 +105,11 @@ class RestServices(Protocol):
 
     @property
     def confirm_decision(self) -> ConfirmRequestHandler: ...
+
+    @property
+    def proposals(self) -> Proposals:
+        """A person's proposals for a changed process (ADR-0091 §1)."""
+        ...
 
     async def decided(self, tenant: Tenant, run_id: str, actor: str) -> None:
         """A request of the run took effect: the run continues from the boundary it waits

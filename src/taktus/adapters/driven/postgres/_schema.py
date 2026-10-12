@@ -212,6 +212,19 @@ report = Table(
     Index("report_state", "tenant", "state"),
 )
 
+proposal = Table(
+    "proposal",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("process_id", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    _at("created_at"),
+    Column("proposal", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("proposal_process", "tenant", "process_id"),
+)
+
 trigger_state = Table(
     "trigger_state",
     metadata,
