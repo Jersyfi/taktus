@@ -122,6 +122,8 @@ and all four levels: the run (ADR-0063, #105), the process (ADR-0064, #190), the
 - Only a running step moves; a waiting step and every run never do, so an idle system draws no
   motion.
 - Without motion, every motion is replaced by a still mark of its own, and nothing else changes.
+- Steps are joined by vessels. A vessel into a running step carries that step's motion and no
+  other vessel moves; without motion none does (`web/src/lib/graph.test.ts`).
 - Every step and every run has a text that names its method kind, exactness class and state.
 - A representation that draws an element another way than the vocabulary fails the check.
 
