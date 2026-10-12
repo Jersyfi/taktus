@@ -77,6 +77,22 @@ def secret_named(name: str) -> str | None:
     return os.environ.get(name) or None
 
 
+OWN_SECRETS = ("REPOSITORY_APP_KEY", declaration.INTAKE_CREDENTIAL)
+"""The secrets the connector holds for itself — never a call's credential. A call that names one,
+or names the file that holds one, acts with nothing (issue #267): a caller could otherwise make
+the connector send its own key as the credential of a call."""
+
+
+def own_secret_files() -> set[str]:
+    """The files the connector's own secrets are read from, resolved."""
+    files: set[str] = set()
+    for name in OWN_SECRETS:
+        path = os.environ.get(f"TAKTUS_CREDENTIAL_{name.upper()}_FILE")
+        if path:
+            files.add(str(Path(path).resolve()))
+    return files
+
+
 def credential_value(context: Json) -> str | None:
     """The first referenced credential whose value the runtime made available, or None. Read at
     the moment of the call, used for the call, kept nowhere."""
@@ -84,6 +100,11 @@ def credential_value(context: Json) -> str | None:
         if not isinstance(reference, dict):
             continue
         name = str(reference.get("name", ""))
+        if name.upper() in OWN_SECRETS or (
+            reference.get("path")
+            and str(Path(str(reference["path"])).resolve()) in own_secret_files()
+        ):
+            continue
         value: str | None = None
         if reference.get("injected_as") == "env":
             value = secret_named(name)

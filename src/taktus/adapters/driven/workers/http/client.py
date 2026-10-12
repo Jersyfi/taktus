@@ -159,7 +159,7 @@ class HttpWorker:
                 if isinstance(error, httpx.ReadTimeout) and await self._working(assignment_id):
                     # Silent, not gone: an agent that runs the tests for minutes sends nothing
                     # meanwhile. The worker answered for the assignment, which still runs, so
-                    # the silence costs no attempt (found in the live run of #74, 2026-10-12; issue #271).
+                    # the silence costs no attempt (the live run of #74, 2026-10-12; #271).
                     continue
                 attempts += 1
                 if attempts > self._reconnects:

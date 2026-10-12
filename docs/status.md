@@ -92,7 +92,7 @@ scheduler and a shutdown at the step boundary; the execution port with the `proc
 `container` adapters; a worker that is silent while it works keeps its stream (#271); two workers in their own images — the reference `script` worker and the
 coding worker, the latter passing the suite in both authentication modes against a stand-in for
 its agent; the reference repository connector in both directions, proven against the real
-service, and acting as Taktus's own app when configured (ADR-0033); the loopback connector and the removal test as a process (`S-01`), run once by hand;
+service, and acting as Taktus's own app when configured (ADR-0033), never with a secret it holds for itself and never quoting what it sent in an error (#267, NTC-0194); the loopback connector and the removal test as a process (`S-01`), run once by hand;
 the model contract as a schema with a conformance suite (`contracts/model/v1`, M-01 to M-04):
 what an adapter can compute before a call, the price table, and the model port with one adapter
 over the chat-completions dialect; OpenTelemetry spans with the
