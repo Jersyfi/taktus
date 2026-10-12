@@ -24,8 +24,15 @@
 	let {
 		steps,
 		motionAllowed,
-		notes = () => []
-	}: { steps: Node[]; motionAllowed: boolean; notes?: (id: string) => string[] } = $props();
+		notes = () => [],
+		compact = false
+	}: {
+		steps: Node[];
+		motionAllowed: boolean;
+		notes?: (id: string) => string[];
+		/** Small cells without names: a process drawn among others on the overview. */
+		compact?: boolean;
+	} = $props();
 
 	/** Whether the screen is narrow; read once mounted, wide until then. */
 	let narrow = $state(false);
@@ -38,10 +45,11 @@
 		return () => query.removeEventListener('change', changed);
 	});
 
-	const CELL = $derived(narrow ? 48 : 56);
-	const ACROSS = $derived(narrow ? 112 : 150);
-	const ALONG = $derived(narrow ? 136 : 124);
-	const WIDTH = $derived(narrow ? 108 : 140);
+	const vertical = $derived(narrow && !compact);
+	const CELL = $derived(compact ? 22 : narrow ? 48 : 56);
+	const ACROSS = $derived(compact ? 32 : narrow ? 112 : 150);
+	const ALONG = $derived(compact ? 30 : narrow ? 136 : 124);
+	const WIDTH = $derived(compact ? 32 : narrow ? 108 : 140);
 	/** Where a vessel meets a membrane, from a cell's centre. */
 	const REACH = $derived((CELL * R) / 100 + 3);
 
@@ -49,13 +57,13 @@
 	const at = $derived(new Map(placed.map((p) => [p.id, p])));
 	const columns = $derived(Math.max(1, ...placed.map((p) => p.column + 1)));
 	const rows = $derived(Math.max(1, ...placed.map((p) => p.row + 1)));
-	const width = $derived((narrow ? rows : columns) * ACROSS);
-	const height = $derived((narrow ? columns : rows) * ALONG);
+	const width = $derived((vertical ? rows : columns) * ACROSS);
+	const height = $derived((vertical ? columns : rows) * ALONG);
 	const glyphs = $derived(new Map(steps.map((s) => [s.id, chosen(s.drawn, motionAllowed)])));
 
 	function corner(id: string): [number, number] {
 		const p = at.get(id)!;
-		return narrow ? [p.row * ACROSS, p.column * ALONG] : [p.column * ACROSS, p.row * ALONG];
+		return vertical ? [p.row * ACROSS, p.column * ALONG] : [p.column * ACROSS, p.row * ALONG];
 	}
 	function centre(id: string): [number, number] {
 		const [x, y] = corner(id);
@@ -69,7 +77,7 @@
 				.map((d) => {
 					const [x1, y1] = centre(d);
 					const [x2, y2] = centre(s.id);
-					const path = narrow
+					const path = vertical
 						? `M${x1},${y1 + REACH + 44} C${x1},${(y1 + y2) / 2 + 22} ${x2},${(y1 + y2) / 2 + 22} ${x2},${y2 - REACH}`
 						: `M${x1 + REACH},${y1} C${(x1 + x2) / 2},${y1} ${(x1 + x2) / 2},${y2} ${x2 - REACH},${y2}`;
 					return { key: `${d}>${s.id}`, path, motion: glyphs.get(s.id)?.motion ?? 'none' };
@@ -78,7 +86,7 @@
 	);
 </script>
 
-<div class="tissue" aria-hidden="true">
+<div class="tissue" class:compact aria-hidden="true">
 	<div class="flow" style="width: {width}px; height: {height}px">
 		<svg class="vessels" {width} {height}>
 			{#each vessels as v (v.key)}
@@ -90,10 +98,12 @@
 			{@const [x, y] = corner(step.id)}
 			<div class="step" style="left: {x}px; top: {y}px; width: {WIDTH}px" data-step={step.id}>
 				<Glyph glyph={glyphs.get(step.id)!} size={CELL} />
-				<span class="name">{step.name ?? step.id}</span>
-				{#each notes(step.id) as note, i (i)}
-					<span class="note">{note}</span>
-				{/each}
+				{#if !compact}
+					<span class="name">{step.name ?? step.id}</span>
+					{#each notes(step.id) as note, i (i)}
+						<span class="note">{note}</span>
+					{/each}
+				{/if}
 			</div>
 		{/each}
 	</div>
@@ -110,6 +120,15 @@
 		overflow: auto;
 		overscroll-behavior: contain;
 		margin: 1rem 0;
+	}
+	.tissue.compact {
+		background: none;
+		padding: 0.25rem 0;
+		margin: 0.5rem 0;
+		border-radius: 0;
+	}
+	.compact .wall {
+		stroke-width: 4;
 	}
 	.flow {
 		position: relative;

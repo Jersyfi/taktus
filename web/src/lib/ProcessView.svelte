@@ -29,7 +29,8 @@
 
 <section class="process" aria-labelledby="process-title">
 	<header>
-		<h1 id="process-title">{process.name}</h1>
+		<p class="eyebrow">{process.name}</p>
+		<h1 id="process-title">{level.summary}</h1>
 		<p class="meta">
 			{process.id}@{process.version}
 			{#if process.versions.length > 1}
@@ -72,6 +73,7 @@
 	<section class="text" aria-label="The process as text">
 		<h2>As text</h2>
 		<ol>
+			<li data-text="summary">{level.summary}</li>
 			<li data-text="process">{process.text}</li>
 			{#each level.steps as step (step.id)}
 				<li data-text={step.id}>{step.text}</li>
@@ -84,6 +86,13 @@
 </section>
 
 <style>
+	.eyebrow {
+		font-size: 0.75rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		margin: 0 0 0.5rem;
+	}
 	.meta {
 		margin: 0.15rem 0 0;
 		opacity: 0.75;

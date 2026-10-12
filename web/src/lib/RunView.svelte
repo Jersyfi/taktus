@@ -36,7 +36,8 @@
 	<header>
 		<Glyph glyph={chosen(level.run.drawn, motionAllowed)} size={44} />
 		<div>
-			<h1 id="run-title">Run {level.run.id}</h1>
+			<p class="eyebrow">Run {level.run.id}</p>
+			<h1 id="run-title">{level.summary}</h1>
 			<p class="meta">
 				Process <a href={processLink(level.run.process_version)}>{level.run.process_version}</a
 				>{#if level.run.rehearsal}&#32;· a rehearsal{/if}
@@ -67,6 +68,7 @@
 	<section class="text" aria-label="The run as text">
 		<h2>As text</h2>
 		<ol>
+			<li data-text="summary">{level.summary}</li>
 			<li data-text="run">{level.run.text}</li>
 			{#each level.steps as step (step.id)}
 				<li data-text={step.id}>{step.text}</li>
@@ -76,6 +78,13 @@
 </section>
 
 <style>
+	.eyebrow {
+		font-size: 0.75rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		margin: 0 0 0.5rem;
+	}
 	header {
 		display: flex;
 		gap: 0.75rem;

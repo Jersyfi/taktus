@@ -1,7 +1,8 @@
 # ADR-0067 — The overview counts the runs that work and wait, by the run component's own definition
 
 **Status:** accepted · builds the overview of UC-6.10 (issue #191, DEC-0055) on the shape ADR-0063
-set for every level
+set for every level · amended 2026-10-12: every process is drawn as the cells of its active
+version, and the overview opens with its summary (§5; DEC-0185)
 
 ## Context
 UC-6.10's first level is *the overview*: the areas a reader may look into, the processes in
@@ -46,6 +47,16 @@ see is neither drawn nor counted, by the same predicate as every other level. Th
 where the web app starts: `#/` follows the tenant's stream and reads `GET /levels/overview` again
 on every change. Each process leads down to its process level, each running step to its run
 level, and every level leads back to the overview.
+
+### 5. Every process as its cells, and a sentence first
+Amended 2026-10-12, with the look the owner approved, *one body that works* (DEC-0185). Each
+process carries the steps of its active version as *cells*, so that the overview draws every
+process as one body. A cell is drawn running while a run of that version the reader may see runs
+it, and at rest otherwise: the rule of ADR-0064 §2. A run of another version moves no cell. So
+the only things that move are still the steps running now (§3), and an idle tenant still draws
+no motion. The overview opens with its summary (ADR-0063 §6). The summary counts the steps
+running now, by family, and says how many runs wait. A waiting step does no work, so it is named
+apart. These are counts of what is drawn and the figures of §2; no other figure appears.
 
 ## Alternatives
 - **The organisational path of whoever activated a version as its area.** It would place a

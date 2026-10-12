@@ -67,6 +67,8 @@ export interface RunElement {
 export interface RunLevel {
 	run: RunElement;
 	steps: StepElement[];
+	/** One sentence: how far the run is and what it does now. */
+	summary: string;
 }
 
 export interface SnapshotRun {
@@ -142,6 +144,8 @@ export interface ProcessLevel {
 	};
 	steps: ProcessStepElement[];
 	runs?: RunAtVersionElement[];
+	/** One sentence: how its steps work, and how many run now. */
+	summary: string;
 }
 
 export interface RunningStepElement {
@@ -149,6 +153,17 @@ export interface RunningStepElement {
 	step: string;
 	method: string;
 	exactness?: string;
+	drawn: Drawn;
+	text: string;
+}
+
+/** A step of a process's active version, drawn on the overview among its process's cells. */
+export interface CellElement {
+	id: string;
+	method: string;
+	exactness?: string;
+	depends_on?: string[];
+	running_in?: string[];
 	drawn: Drawn;
 	text: string;
 }
@@ -163,6 +178,8 @@ export interface ProcessSummaryElement {
 	/** How many of its runs wait right now, by the run component's own definition. */
 	waiting: number;
 	running?: RunningStepElement[];
+	/** The steps of its active version, so that the overview draws every process as one body. */
+	cells?: CellElement[];
 	text: string;
 }
 
@@ -176,6 +193,8 @@ export interface OverviewLevel {
 		processes: ProcessSummaryElement[];
 		text: string;
 	}[];
+	/** One sentence: how many steps work now and how, and how many runs wait. */
+	summary: string;
 }
 
 /** `GET /levels/origins/{run}/{step}` (ADR-0068): the path back from a result. */
@@ -214,6 +233,8 @@ export interface OriginLevel {
 		drawn: Drawn;
 		text: string;
 	}[];
+	/** One sentence: what produced the result, and which methods are on its path. */
+	summary: string;
 }
 
 /** An RFC 9457 problem, as every refusal of the surface is answered. */

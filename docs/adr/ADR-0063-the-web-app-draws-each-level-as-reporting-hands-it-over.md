@@ -1,7 +1,8 @@
 # ADR-0063 — The web app is a static build in the image, and draws each level as `reporting` hands it over
 
 **Status:** accepted · builds the web app and the run level of UC-6.10 (issue #105, DEC-0055);
-answers the question ADR-0059 left to this change
+answers the question ADR-0059 left to this change · amended 2026-10-12: every level opens with
+its summary (§6; DEC-0185)
 
 ## Context
 UC-6.10 requires four live representations — the overview, the process, the run and the origin
@@ -82,6 +83,14 @@ predicate of `reporting` that the stream asks too (ADR-0055 §5).
 `make gate-web` installs the web app's packages from its lock file, checks its types, runs its
 tests and builds it. CI runs it in a job of its own, which may not skip. `make gates` runs it
 too; without Node on the path it skips and says so, as the database tests do without Docker.
+
+### 6. Every level opens with its summary
+Amended 2026-10-12, with the look the owner approved (DEC-0185). Every level carries a
+`summary`: one sentence that says what is happening at that level. `reporting` makes it from the
+level's own elements and figures and from nothing else. It names no figure of its own, only how
+many of the drawn elements are in which family or state. The web app sets it as the level's
+heading, and it is the first line of the level's text equivalent. So a reader learns what is
+happening before reading the picture.
 
 ## Alternatives
 - **The web app computes glyphs from the vocabulary document.** It would hold a second
