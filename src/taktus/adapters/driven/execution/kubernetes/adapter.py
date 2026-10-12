@@ -17,6 +17,9 @@ The third implementation of the execution port (ADR-0002), specified in
 - **credentials from a Secret created for the job**: a variable from a key of the Secret for
   `env`, a file mounted from a key at its exact path for `file`. The pod's recorded
   configuration names the Secret and its keys and never a value;
+- **the variables its configuration names** (`ExecutionUnit.environment`, ADR-0090) as plain
+  values in the pod's environment, beside the launch convention's: configuration, never a
+  secret;
 - **a Service** that selects the unit's pod; the control plane reaches the worker contract at
   its address;
 - **an egress proxy of its own** when the job names hosts: a second Job, never a sidecar
@@ -77,6 +80,7 @@ from taktus.ports.execution import (
     JobExit,
     JobRequest,
     refusal,
+    unit_environment,
 )
 
 EGRESS_SOURCE = Path(container.__file__).resolve().parent / "egress.py"
@@ -294,6 +298,7 @@ class KubernetesExecution:
         ):
             if why is not None:
                 raise ExecutionRefused(why)
+        unit_environment(request)
         credentials = resolve_credentials(self._configuration, request.credentials)
         names = _Names.of(request.job_id, secrets.token_hex(3))
         api = self._api()
@@ -460,7 +465,10 @@ class KubernetesExecution:
         hosts: bool,
     ) -> Json:
         unit = request.unit
+        # The variables the unit's configuration names, as plain values (ADR-0090): they are
+        # configuration and never a secret, which comes from the job's Secret below.
         environment: list[Json] = [
+            *({"name": name, "value": value} for name, value in unit.environment),
             {"name": UNIT_PORT_VARIABLE, "value": str(unit.port)},
             {"name": UNIT_STATE_DIR_VARIABLE, "value": unit.state_dir},
             {"name": "HOME", "value": WORKSPACE},
