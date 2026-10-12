@@ -182,7 +182,7 @@ sections an issue lacks, as a comment (issue #70, NTC-0040). P-01 Roadmap contro
 bundle too: it holds the roadmap against the open issues by the issue numbers each roadmap item
 now names, and reports every item without an issue, every issue its milestone does not name and
 every `ready` label on content that fails the standard, with the backlog's order computed by
-the code `make backlog` runs (issue #71, NTC-0048, NTC-0049). Its daily trigger carries its inputs, and its reports go to #129, so an instance's scheduler can run it every day (NTC-0045). It changes nothing. The owner chose the
+the code `make backlog` runs (issue #71, NTC-0048, NTC-0049). Its daily trigger carries its inputs, and its reports go to #129, so an instance's scheduler can run it every day (NTC-0045). It changes nothing. Its first real run on the instance, on 2026-10-13, halted at `read-issues`: the step's uncalibrated reserve alone is its whole quota of 40 units; the quota is the owner's (DEC-0192, #363). The owner chose the
 rule for that reconciliation over a model's matching, as the blueprint first described it
 (DEC-0080).
 
