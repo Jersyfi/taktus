@@ -110,7 +110,10 @@ class Api:
             return await self._client.request(method, path, params=params, json=body)
         except httpx.ConnectError as error:
             raise TargetError(
-                "unavailable", "none", True, f"the service could not be reached: {error}"
+                "unavailable",
+                "none",
+                True,
+                f"the service could not be reached: {type(error).__name__}",
             ) from error
         except httpx.ConnectTimeout as error:
             raise TargetError(
@@ -125,7 +128,11 @@ class Api:
                 f"the request was sent and no answer arrived: {type(error).__name__}",
             ) from error
         except httpx.HTTPError as error:
-            raise TargetError("unavailable", "none", True, f"transport fault: {error}") from error
+            # The type alone: an error's text can carry what was sent, a header with the credential
+            # among it (found on 2026-10-12, issue #267), and C-04 forbids a credential in an error.
+            raise TargetError(
+                "unavailable", "none", True, f"transport fault: {type(error).__name__}"
+            ) from error
 
     def _parse(self, response: httpx.Response) -> Any:
         if response.status_code < 300:

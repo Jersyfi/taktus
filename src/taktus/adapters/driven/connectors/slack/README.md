@@ -55,7 +55,9 @@ describes both as parameters, under NEED-0018:
 A file the variable names wins, even when it is missing: a call then ends `unauthenticated`
 rather than falling back to a value somewhere else. The connector has no token of its own. A
 call that references no credential, or one that is not available, ends `unauthenticated`
-without a request. A token the service refuses for this conversation ends `forbidden`.
+without a request. A token the service refuses for this conversation ends `forbidden`. A call
+that names the signing secret, by name or by its file, acts with nothing; a transport fault is
+named by its type, never by its text, which can quote a header (issue #267).
 
 What the app needs at the service, and no more (NEED-0018): the bot scopes `chat:write`, to
 post; the history scope of each kind of conversation it reads — `im:history` for direct
