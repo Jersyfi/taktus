@@ -87,3 +87,33 @@ A run started in the same process with `start` has no runner to defer it; it hal
 decided here: the queue's order, oldest job first, and the delays decide it, and a run can be
 overtaken. Work is not spread across several workers of one capability; that lies outside issue
 #122.
+
+## Amendment — a platform without room is a worker at capacity (2026-10-12)
+
+A launched worker runs each assignment, and each estimate, in an execution unit of its own. On
+2026-10-12 the installed instance started thirty-five runs within two minutes on one node
+(issue #358). Twelve units could not be placed. The cluster said "Insufficient memory", the
+unit did not answer its health check in time, and each step failed and escalated its run. A
+person could act on none of them: the node would have had room a little later. That is the
+situation this record is about, with the platform in place of the worker.
+
+### 6. No room for the unit makes the step wait
+- **The execution port says so.** `ExecutionAtCapacity`, a kind of `ExecutionError`, means
+  the platform has no room for the unit now. Nothing of the job ran. The cluster adapter
+  raises it when the unit did not become ready and the cluster's reason is that no node has
+  room: the scheduler's `Insufficient <resource>`. Any other reason a pod is not placed — a
+  taint, a selector no node meets — stays an `ExecutionError`.
+- **The launched worker answers `WorkerAtCapacity`.** Its platform is its capacity. The step
+  then waits as §2 to §5 say, with the same ceiling and the same deferral.
+- **An estimate at capacity waits too.** A launched worker's estimate starts a unit of its
+  own, so it can find the platform full before the step is admitted. The step then goes back
+  to its boundary from whichever state it was asked in, as at the hand-over.
+
+### Where the amendment ends
+Only the cluster adapter recognises a platform without room. The process and container
+adapters start a unit or fail. The reason is read from the scheduler's message, which names an
+exhausted resource as `Insufficient`. A scheduler that words it otherwise makes the step fail
+as before. Room that never comes keeps the step waiting until its ceiling, an hour by default,
+and then the run escalates with cause `capacity`. Which waiting step gets room first is not
+decided here, as §5's bound says for a worker.
+

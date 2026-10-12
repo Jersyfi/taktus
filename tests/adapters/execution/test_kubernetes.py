@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +26,7 @@ from taktus.adapters.driven.execution.kubernetes.adapter import EGRESS_SOURCE
 from taktus.adapters.driven.execution.kubernetes.api import Connection
 from taktus.ports.configuration import Secret
 from taktus.ports.execution import (
+    ExecutionAtCapacity,
     ExecutionError,
     ExecutionRefused,
     ExecutionUnit,
@@ -513,6 +514,42 @@ async def test_everything_is_deleted_when_the_unit_never_becomes_ready(
         async with execution.launch(request_for(1, unit=unit, credentials=CREDENTIALS)):
             pass
     assert_all_deleted(cluster)
+
+
+async def test_a_unit_no_node_has_room_for_is_at_capacity(
+    cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path
+) -> None:
+    """The scheduler names an exhausted resource; the job waits for room, it is not broken
+    (ADR-0037 §6, #358). A pod no node may take at all is still an error."""
+
+    def unplaced(message: str) -> Callable[[dict[str, Any]], None]:
+        def mark(pod: dict[str, Any]) -> None:
+            pod["status"]["conditions"] = [
+                {
+                    "type": "PodScheduled",
+                    "status": "False",
+                    "reason": "Unschedulable",
+                    "message": message,
+                }
+            ]
+            pod["status"]["containerStatuses"] = []
+
+        return mark
+
+    unit = ExecutionUnit(
+        name="reference", program="worker:1", port=1, limits=LIMITS, start_timeout_seconds=1
+    )
+    execution = execution_for(cluster, configuration, tmp_path)
+    cluster.on_pod = unplaced("0/1 nodes are available: 1 Insufficient memory.")
+    with pytest.raises(ExecutionAtCapacity, match="Insufficient memory"):
+        async with execution.launch(request_for(1, unit=unit, credentials=CREDENTIALS)):
+            pass
+    assert_all_deleted(cluster)
+    cluster.on_pod = unplaced("0/1 nodes are available: 1 node(s) had untolerated taint.")
+    with pytest.raises(ExecutionError) as raised:
+        async with execution.launch(request_for(1, unit=unit, credentials=CREDENTIALS)):
+            pass
+    assert not isinstance(raised.value, ExecutionAtCapacity)
 
 
 async def test_the_units_log_is_kept_and_carries_no_credential(
