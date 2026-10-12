@@ -55,7 +55,7 @@ import pytest
 import yaml
 from fakes.identity import added_by_command_line
 
-from taktus.components.run.domain.service.budget import scale_for
+from taktus.components.run.domain.service.budget import Seed, scale_for, seeds_of
 from taktus.shared.v1 import Method
 
 type Json = dict[str, Any]
@@ -174,13 +174,16 @@ class Budget:
         ]
 
 
-def budget_of(cap_usd: float, capabilities: tuple[str, ...] = CAPABILITIES) -> Budget:
+def budget_of(
+    cap_usd: float, capabilities: tuple[str, ...] = CAPABILITIES, seeds: tuple[Seed, ...] = ()
+) -> Budget:
     """Convert the cap. The factors are the ones the run applies to a worker with no history
-    for these capabilities — the seed of the first live run where it applies, twice the
-    estimate otherwise — so that the reservation is the ceiling and never more."""
+    for these capabilities — a seed its operator loaded where one applies, twice the estimate
+    otherwise (a fresh install loads none, ADR-0092) — so that the reservation is the ceiling
+    and never more."""
     line = math.floor(cap_usd / USD_PER_TOKEN)
     ceiling = math.floor(line * (1 - YIELD_SHARE))
-    scale, _ = scale_for("worker.endpoint", Method.WORKER, capabilities, ())
+    scale, _ = scale_for("worker.endpoint", Method.WORKER, capabilities, (), seeds=seeds)
     factor_in = scale.get("tokens_in", 1.0)
     factor_currency = scale.get("currency.*", 1.0)
     # Cents, rounded down, so that the reserved money stays inside the ceiling's share.
@@ -517,10 +520,14 @@ def test_the_cap_becomes_a_line_and_a_ceiling_the_worker_halts_at(
     assert budget.estimate_steps <= budget.max_steps
 
 
-def test_the_conversion_follows_the_seed_where_it_applies() -> None:
-    """Where the step requires what the first live run's seed covers, the run reserves the
-    seed's measured error; the estimate shrinks so that the reservation is still the ceiling."""
-    seeded = budget_of(0.50, ("code.read", "code.edit", "code.test", "shell.sandboxed"))
+def test_the_conversion_follows_a_loaded_seed_where_it_applies() -> None:
+    """Where the step requires what a loaded seed covers — the project's first live run, which
+    its instance loads (`TAKTUS_BUDGET_SEEDS`) — the run reserves the seed's measured error; the
+    estimate shrinks so that the reservation is still the ceiling."""
+    project = Path(__file__).resolve().parents[2] / "docs" / "runs" / "first-run.seeds.yaml"
+    seeds = seeds_of(yaml.safe_load(project.read_text(encoding="utf-8")))
+    coding = ("code.read", "code.edit", "code.test", "shell.sandboxed")
+    seeded = budget_of(0.50, coding, seeds)
     assert seeded.factor_tokens_in > 4
     assert math.ceil(seeded.estimate_tokens_in * seeded.factor_tokens_in) <= 46_875
 

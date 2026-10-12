@@ -419,7 +419,13 @@ object cache without a bound, cache writes booked too cheaply, and project value
 defaults (ADR-0092). Migrations run beside the previous release from now on (ADR-0093). The
 project's own records follow six working rules (DEC-0189). The deadlock is fixed (#309,
 NTC-0201): the ledger's claim on a tenant's chain is its only lock, and every database
-connection carries `lock_timeout` and `idle_in_transaction_session_timeout`.
+connection carries `lock_timeout` and `idle_in_transaction_session_timeout`. The project's
+values are no longer product defaults (#313, NTC-0205, ADR-0092 amended): the calibration seed,
+the guides manifest's path, the chart's output limit, a finding's form and labels, and the
+process that turns a change in words into a proposal are each a setting its operator sets. The
+project's own instance sets them in its private values (`deploy/k8s/README.md` §2), and
+`tests/architecture` fails on a project process, its repository's path or its owner's name in
+`src/` or the chart's defaults.
 
 ## 2. The next pull requests
 

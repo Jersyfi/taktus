@@ -968,7 +968,7 @@ paths:
         '201':
           description: The proposal.
         '202':
-          description: 'Asked in words: the S-07 run that makes the proposal.'
+          description: 'Asked in words: the run that makes the proposal.'
         '400':
           description: The bundle would not register; every finding.
           content:
@@ -1356,7 +1356,8 @@ components:
           - type: 'null'
           title: Bundle
           description: The changed process bundle, as a document. Without it, `request` is turned into
-            a proposal by S-07, and the answer names that run (ADR-0091 §2).
+            a proposal by the process the instance names for it, and the answer names that run (ADR-0091
+            §2).
         request:
           anyOf:
           - type: string

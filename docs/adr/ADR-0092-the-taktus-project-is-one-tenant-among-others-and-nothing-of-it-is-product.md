@@ -68,7 +68,44 @@ Comments that explain where a feature came from are exempt as long as they set n
   `docs/status.md`) stays a document of the repository and never a feature of the product. The
   product's decision requests and anchors are the generic form of it (`anchors.md`).
 
+## Amendment — where each leak went (2026-10-13)
+
+Issue #313 removed the leaks of the context. Each became a setting of the instance, without a
+default that serves the project. The project's own values are documents of this repository,
+which its operator loads. This amendment sets aside two sentences of earlier records:
+ADR-0005's third amendment, point 4, says the product ships the seed of the first run, and
+ADR-0046 §4 says a finding opens an issue labelled `task` in the sections of this repository's
+issue form. Both are now the project's configuration.
+
+### 5. Each leak, and the setting that replaced it
+- **The budget seed.** The product ships no seed. `TAKTUS_BUDGET_SEEDS` names a file of seeds,
+  each with its method, the capabilities it applies to, its source and its observations. Without
+  it a worker nothing has measured reserves twice its estimate (DEC-0034). The project's seed
+  is `docs/runs/first-run.seeds.yaml`.
+- **The guides manifest.** `taktusctl guides` takes the manifest's path with `--manifest` or
+  `TAKTUS_GUIDES_MANIFEST`, and refuses without one. The project's manifest is
+  `docs/guides/guides.yaml`.
+- **The chart's output limit.** `model.outputCap` defaults to `soft`, the setting's own default.
+  The project's operator sets `hard` in the private values.
+- **The findings.** `TAKTUS_FINDINGS_FORM` names a file with the form of a finding's issue.
+  `TAKTUS_FINDINGS_LABELS` names its labels. Without them a finding takes the product's plain
+  shape, with no label. The repository it goes to is the connector's, as before. The project's
+  form is `.github/finding-form.md`, with the label `task`.
+- **The change in dialogue.** The product named the project's process S-07 to turn a request in
+  words into a proposal (ADR-0091 §2). `TAKTUS_CHANGE_PROCESS` names that process now. Without
+  it a change is handed over as a bundle. The project sets `s07-change-in-dialogue`.
+- **Help and error texts.** They name no project process. An example in a text uses a neutral
+  name.
+
+### 6. Files of configuration on a cluster
+A setting that names a file needs the file in the pod. The chart's `configFiles` maps a file
+name to its content and mounts it read-only at `/etc/taktus/files/<name>` in every role. It
+carries no secret: a secret goes through `credentials`.
+
 ## Where this promise ends
+- The amendment moves the project's values out of the product. It does not move them into a
+  place the product reads by itself: the project's operator sets every one of them, and an
+  instance whose operator forgets one runs with the product's neutral value.
 - The test catches named leaks: identifiers, paths and names. It cannot catch a default that was
   chosen because it suits the project without naming it. That remains a matter for review.
 - The project's experience still shapes the product, as any customer's would. This rule bounds how

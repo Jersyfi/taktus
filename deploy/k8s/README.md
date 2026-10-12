@@ -92,8 +92,23 @@ operator's. The parts that carry a decision:
 | `ingress.*` | off unless `host` is given; `tls.secretName` names an existing certificate Secret, and then nothing is requested; only without it does `tls.issuer` ask the platform's certificate manager, by an annotation on the ingress. The stream of changes, `/changes`, is a long-lived `text/event-stream` response (ADR-0055): an ingress controller that buffers responses holds every change back until its buffer fills, and one that closes idle connections sooner than 15 seconds ends streams between heartbeats. Taktus sends `X-Accel-Buffering: no`; a controller that ignores it is told through `ingress.annotations`. Taktus cannot detect either |
 | `backup.*` | the database's scheduled backup (section 11, ADR-0087): off unless `enabled`; the backup image, released with the instance; the `schedule`, daily by default; `retentionDays`, 30 by default (DEC-0058); `recipient`, an `age` public key, empty for no encryption; the store's `endpoint`, `region`, `bucket`, `prefix`, and the Secret holding its credential with the key of its identifier and of its secret, mounted as files. It reaches the name service, the database and the store on `egressPorts` outside the excluded ranges; the database admits it |
 | `networkPolicy.*` | the name service, the API server's addresses, the ingress controller's namespace, and further egress rules for the hosts the control plane needs (section 5) |
-| `telemetry.otlp.*`, `model.*`, `capacity.*` | as their `TAKTUS_*` variables; `model.outputCap: hard` because this tenant's endpoint holds the limit (research [A4]; M-03 passed against it on 2026-10-01) — for another endpoint, run M-03 and set what it shows |
+| `telemetry.otlp.*`, `model.*`, `capacity.*` | as their `TAKTUS_*` variables; `model.outputCap` is `soft` by default, the setting's own default. An endpoint shown to hold the output limit — run M-03 against it — is set to `hard` in the operator's values. The Taktus project's own instance sets `hard`: M-03 passed against its endpoint on 2026-10-01 (research [A4]). That is its operator's value, not the chart's (ADR-0092) |
 | `env` | further non-secret `TAKTUS_*` settings — tenants, connectors; a `_FILE` variable here fails the render, because a secret goes through `credentials` |
+| `configFiles` | files of configuration a setting names by path, file name to content, mounted read-only at `/etc/taktus/files/<name>` in every role; the setting that reads one is set in `env`. A name that is not letters, digits, dots, hyphens and underscores fails the render. Never a secret. Empty by default |
+
+**What one tenant measured or shaped is its operator's value, never the chart's** (ADR-0092).
+The Taktus project's own instance is an example. Its operator's private values set:
+
+| Values | What they carry |
+|---|---|
+| `model.outputCap: hard` | M-03 passed against the project's endpoint on 2026-10-01 |
+| `configFiles.budget-seeds.yaml` from `docs/runs/first-run.seeds.yaml`, `env.TAKTUS_BUDGET_SEEDS: /etc/taktus/files/budget-seeds.yaml` | the calibration seed of the project's first live run |
+| `configFiles.finding-form.md` from `.github/finding-form.md`, `env.TAKTUS_FINDINGS_FORM: /etc/taktus/files/finding-form.md`, `env.TAKTUS_FINDINGS_LABELS: task` | the shape of the project's issue form `Task`, for findings sent with `connectors.repository.findings` |
+| `env.TAKTUS_CHANGE_PROCESS: s07-change-in-dialogue` | the project's process that turns a change in words into a proposal |
+
+`helm --set-file configFiles.budget-seeds\.yaml=docs/runs/first-run.seeds.yaml` reads a file
+into the values. `taktusctl guides` is told the project's manifest with
+`--manifest docs/guides/guides.yaml` or `TAKTUS_GUIDES_MANIFEST`.
 
 **Every secret is mounted as a file and read through `TAKTUS_<KEY>_FILE`** — never handed to a
 container as an environment variable, because variables leak into process listings and child
