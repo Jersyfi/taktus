@@ -1,13 +1,17 @@
 """The ledger port, implemented over an append-only store.
 
 Recording happens inside the caller's unit of work. Two facts never race for the same sequence
-number: within one instance, recording is serialised here; across instances sharing one store,
-the store keeps the chain claimed from `last` to the end of the transaction (ADR-0013 A).
+number: the store keeps the tenant's chain claimed from `last` to the end of the transaction,
+for the transactions of one instance and of several alike (ADR-0013 A).
+
+No lock is taken here. A lock in this process, held while the store waits for its claim, would
+wait against that claim: a transaction that records a second entry waits here while still
+holding the chain, and the one holding this lock waits for the chain. Neither the database nor
+the event loop sees that cycle (issue #309). The store's claim is the only one.
 """
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Sequence
 
 from taktus.components.ledger.domain.model import link, verify
@@ -21,14 +25,12 @@ class ChainedLedger:
     def __init__(self, store: LedgerStore, clock: Clock) -> None:
         self._store = store
         self._clock = clock
-        self._lock = asyncio.Lock()
 
     async def record(self, tenant: Tenant, fact: Fact) -> LedgerEntry:
-        async with self._lock:
-            previous = await self._store.last(tenant)
-            entry = link(previous, fact, self._clock.now())
-            await self._store.append(tenant, entry)
-            return entry
+        previous = await self._store.last(tenant)
+        entry = link(previous, fact, self._clock.now())
+        await self._store.append(tenant, entry)
+        return entry
 
     async def entries(self, tenant: Tenant, run_id: str | None = None) -> Sequence[LedgerEntry]:
         entries = await self._store.entries(tenant)

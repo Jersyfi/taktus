@@ -43,6 +43,9 @@ class Transaction:
     spoilt: bool = False
     ended: list[Callable[[], None]] = field(default_factory=list)
     """What to undo when the transaction ends, committed or not: the locks it took."""
+    claimed: set[str] = field(default_factory=set)
+    """The claims this transaction holds until it ends, by name: a second claim of one it holds
+    is granted at once, as PostgreSQL grants a transaction's advisory lock again."""
 
 
 class MemoryPersistence:
@@ -52,6 +55,7 @@ class MemoryPersistence:
         self._ledger: dict[Tenant, list[LedgerEntry]] = {}
         self._provenance: dict[Tenant, list[Provenance]] = {}
         self._current: ContextVar[Transaction | None] = ContextVar("transaction", default=None)
+        self._claims: dict[str, asyncio.Lock] = {}
         if snapshot_dir is not None:
             stored = _snapshot.read(snapshot_dir / f"{LEDGER}.json") or {}
             for tenant, documents in stored.items():
@@ -87,6 +91,16 @@ class MemoryPersistence:
         if transaction.tenant != tenant:
             raise WrongTenant(tenant, transaction.tenant)
         return transaction
+
+    async def claim(self, transaction: Transaction, name: str) -> None:
+        """Hold the claim `name` until `transaction` ends, waiting while another transaction
+        holds it: what `pg_advisory_xact_lock` is to the database adapter."""
+        if name in transaction.claimed:
+            return
+        lock = self._claims.setdefault(name, asyncio.Lock())
+        await lock.acquire()
+        transaction.claimed.add(name)
+        transaction.ended.append(lock.release)
 
     async def _commit(self, transaction: Transaction) -> None:
         touched: set[str] = set()
