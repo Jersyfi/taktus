@@ -78,3 +78,10 @@ the manifest. The result goes to `docs/runs/`, beside the exercise of #67.
   `Complete`; its log names the backup and the number of tenants, and no secret.
 - The store lists two objects under `instance/`, `taktus-<time>.dump` and `.json`.
 - The restore of §11 on the workstation ends with every tenant's head equal to the manifest's.
+
+## Outcome
+
+**Provided:** 2026-10-12
+**Confirmed by:** `kubectl auth can-i create cronjobs` as the deployment identity answers `yes` in the control plane's namespace and `no` in the execution namespace; after the upgrade to `v0.2.0-rc.4` the CronJob `taktus-backup` exists; a backup started from it ended `Complete` and wrote `taktus-20261012T060426Z.dump` and `.json` under `instance/` in the store; and the restore of `deploy/k8s/README.md` §11, carried out on the workstation from the store into an empty database, ended with the tenant `default` at `seq` 139 and the hash the manifest names, the dump's SHA-256 equal to the manifest's and the schema revision `0049`. The first runs started from the CronJob were refused by the database in their first seconds; the fix is #266, and until it is released the first backup was started by hand with a delay of ten seconds before the program.
+**How it was provided:** step 1 by the owner on 2026-10-11 (the Role applied); step 2, the tag `v0.2.0-rc.4`, by the session under DEC-0174; step 3, no encryption, the owner's answer; step 4, the upgrade with the install script, by the session under DEC-0179 and the owner's explicit permission of 2026-10-12.
+**Recorded in:** the pull request that makes the backup wait for the database (#266)
