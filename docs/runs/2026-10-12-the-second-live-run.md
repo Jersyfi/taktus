@@ -30,7 +30,9 @@ step reserves, consumes or records.
 
 **Taktus opened pull request #274 as its own app**, closing #250: the coding agent fixed
 `deploy/docker/verify.sh`, the run read the pipeline's verdict, and opened the pull request. It
-needed four interventions by a person on the way, each a finding below.
+needed four interventions by a person on the way, each a finding below. With every check green,
+the session merged it under DEC-0174 the same day, closing #250: the first change Taktus made
+through P-03 with the real agent that reached `main`.
 
 ## The measurements
 
