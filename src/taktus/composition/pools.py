@@ -48,7 +48,8 @@ class Pools:
 
     async def configuration(self, integration: str) -> Configuration | None:
         """What stands behind the identifier now: the adapter, what it declared and the version
-        it declared — for a model, the model name it is configured with. None when no adapter
+        it declared — for a model, the model name it is configured with; for a launched worker, the
+        hosts its own service may reach (ADR-0089). None when no adapter
         of the pools has the identifier. The family is read from the identifier's first
         segment, so that asking about one adapter reads no other's declaration."""
         family = integration.split(".", 1)[0]
@@ -57,8 +58,12 @@ class Pools:
             if worker is None:
                 return None
             capabilities, version = worker
+            hosts = self.workers.hosts(integration)
             return Configuration(
-                adapter=integration, serves=tuple(sorted(capabilities)), version=version
+                adapter=integration,
+                serves=tuple(sorted(capabilities)),
+                version=version,
+                hosts=hosts or None,
             )
         if family == "connector":
             declaration = await self.connectors.member(integration)

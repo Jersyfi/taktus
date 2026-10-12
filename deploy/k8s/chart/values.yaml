@@ -141,7 +141,8 @@ execution:
   #     kind: cluster                # optional; `kind` above by default
   #     endpoint: ""                 # required for kind `endpoint`
   #     memoryMb: 2048               # optional: unitPort, cpus, cpuRequestShare, memoryMb,
-  #                                  # wallSeconds, startTimeoutSeconds, stateClaim (an existing claim)
+  #                                  # wallSeconds, startTimeoutSeconds, stateClaim (an existing claim),
+  #                                  # serviceHosts (its own list; [] for none)
   workers: []
   defaults:
     cpus: 1                # a unit's CPU limit
@@ -153,6 +154,12 @@ execution:
     memoryMb: 1024
     wallSeconds: 3600
     startTimeoutSeconds: 120
+    # The hosts a launched worker's own service needs to work at all — its agent's or its
+    # model's provider — by name, as a frame names a host (TAKTUS_EXECUTION_SERVICE_HOSTS,
+    # README §6, ADR-0089). A unit reaches them, through its egress proxy, for an assignment and
+    # for the conformance suite, beside the hosts of the step's frame; a probe reaches none.
+    # A worker of `workers` may set its own. The proxy still connects only on `egress.ports`.
+    serviceHosts: []
   egress:
     proxyImage: "python:3.13-slim"  # the per-job egress proxy (README §6): any image with python3
     proxyPort: 3128

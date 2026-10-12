@@ -104,12 +104,24 @@ def unit_of(settings: ExecutionSettings, name: str = UNIT_NAME) -> ExecutionUnit
             wall_seconds=settings.wall_seconds,
         ),
         start_timeout_seconds=settings.start_timeout_seconds,
+        service_hosts=settings.service_hosts,
     )
 
 
 def worker_unit(worker: WorkerSettings) -> ExecutionUnit:
     """The unit one configured worker launches, named after the worker."""
     return unit_of(worker.execution, worker.name or UNIT_NAME)
+
+
+def service_hosts(workers: Sequence[WorkerSettings]) -> dict[str, tuple[str, ...]]:
+    """The hosts each launched worker's own service needs, by adapter identifier, for the
+    workers that name any: what the configuration a maturity record names states for a worker
+    (ADR-0089). A worker reached by endpoint is absent — its reach is whoever runs it."""
+    return {
+        worker.identifier: worker.execution.service_hosts
+        for worker in workers
+        if worker.execution.kind is not ExecutionKind.ENDPOINT and worker.execution.service_hosts
+    }
 
 
 def memory_demand(workers: Sequence[WorkerSettings]) -> int | None:

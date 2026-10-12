@@ -89,6 +89,7 @@ from taktus.composition.execution import (
     memory_demand,
     model_pool,
     open_workers,
+    service_hosts,
     telemetry_of,
 )
 from taktus.composition.findings import RunBlocks
@@ -188,7 +189,7 @@ class LocalWiring:
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
             pools = Pools(
-                StaticWorkerPool(opened),
+                StaticWorkerPool(opened, hosts=service_hosts(configured)),
                 connector_pool(
                     connectors,
                     also=[(LOOPBACK, loopback), *served_directory(knowledge_directory)],

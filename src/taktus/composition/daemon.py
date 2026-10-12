@@ -114,6 +114,7 @@ from taktus.composition.execution import (
     memory_demand,
     model_pool,
     open_workers,
+    service_hosts,
     telemetry_of,
 )
 from taktus.composition.findings import RepositoryChannel, RunBlocks, findings_tick
@@ -302,7 +303,7 @@ async def wire(
             objects = MemoryObjectStore(settings.state_dir / "objects")
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
-                StaticWorkerPool(opened),
+                StaticWorkerPool(opened, hosts=service_hosts(settings.workers)),
                 connector_pool(
                     settings.connectors,
                     also=[(LOOPBACK, loopback), *served_directory(settings.knowledge_directory)],
