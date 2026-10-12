@@ -103,7 +103,7 @@ async def test_a_rollback_dropped_with_no_changes_nothing() -> None:
 
 
 async def test_only_the_person_who_asked_confirms_and_a_rehearsal_needs_no_confirmation() -> None:
-    world, acts, handler = await given()
+    _, acts, handler = await given()
     await say(handler, "zurück zu daily@1")
     assert await say(handler, "ja", who=NAMED, n=2) is None
     assert acts.calls == []
@@ -113,7 +113,7 @@ async def test_only_the_person_who_asked_confirms_and_a_rehearsal_needs_no_confi
 
 
 async def test_anyone_the_owner_did_not_name_is_refused_and_another_address_is_not_read() -> None:
-    world, acts, handler = await given()
+    _, acts, handler = await given()
     refused = await say(handler, "ändere prozess daily: alles anders", who=OUTSIDER)
     assert refused is not None and refused.outcome == REFUSED
     assert acts.calls == []
