@@ -74,5 +74,7 @@ request is an entry in the register, linked to the run, the step and the request
 in the run's reason and ledger and in the decider's list, overdue shown. A decider reads their own
 response times; anyone else reads them aggregated by role or department over at least two
 deciders, never under the decider's name. A request addressed to the owner
-reaches the owner's chat and is answered there (UC-6.11). Not built: the decider's page in the
-web app (`0.3.0`), rules from precedent (`0.6.0`).
+reaches the owner's chat and is answered there (UC-6.11). The decider answers in the web app too,
+the reading confirmed before it takes effect (#289), and reads there how long runs waited on
+their own decisions, with their total and median, beside their role only aggregated (#290). Not
+built: rules from precedent (`0.6.0`).

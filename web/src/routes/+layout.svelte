@@ -41,6 +41,7 @@
 				{/if}
 			{/each}
 		</nav>
+		<a class="requests" href="#/me" aria-current={page.route.id === '/me' ? 'page' : undefined}>Yours</a>
 		<a class="requests" href="#/requests" aria-current={page.route.id?.startsWith('/requests') ? 'page' : undefined}>Requests</a>
 		<button
 			class="calm"
