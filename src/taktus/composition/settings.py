@@ -23,6 +23,7 @@ from taktus.components.run.domain.service import budget as budgeting
 from taktus.conformance.contracts import contracts_root
 from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
+from taktus.ports.execution import variable_refusal
 from taktus.ports.model import PriceTable, WeightingTable
 from taktus.ports.worker import Host
 
@@ -109,6 +110,12 @@ class ExecutionSettings:
     frame names a host. A launched unit reaches them for an assignment and for the conformance
     suite, never for a probe; the step's frame is not changed by them (ADR-0089). Empty, a unit
     reaches the frame's hosts alone, as before."""
+    unit_env: tuple[tuple[str, str], ...] = ()
+    """`TAKTUS_EXECUTION_UNIT_ENV` (the launching kinds): the variables a launched unit's own
+    program needs to start, as comma-separated `NAME=value` pairs — a coding worker's
+    `CODING_AGENT_AUTH=api-key`. Every unit of the worker receives them: an assignment's, a
+    probe's and the conformance suite's. Visible configuration, never a secret: a name that
+    carries one is refused (ADR-0090). Empty, a unit receives the launch convention alone."""
 
     def effective(self) -> list[tuple[str, str]]:
         return [
@@ -131,6 +138,7 @@ class ExecutionSettings:
             ("TAKTUS_EXECUTION_STATE_CLAIM", self.state_claim or ""),
             ("TAKTUS_EXECUTION_CPU_REQUEST_SHARE", str(self.cpu_request_share)),
             ("TAKTUS_EXECUTION_SERVICE_HOSTS", ",".join(self.service_hosts)),
+            ("TAKTUS_EXECUTION_UNIT_ENV", ",".join(f"{n}={v}" for n, v in self.unit_env)),
         ]
 
 
@@ -518,6 +526,7 @@ def load_execution(configuration: Configuration) -> ExecutionSettings:
         state_claim=reader.text("execution.state.claim", "") or None,
         cpu_request_share=reader.number("execution.cpu.request.share", 0.25, low=0.01, high=1.0),
         service_hosts=reader.hosts("execution.service.hosts"),
+        unit_env=reader.unit_env("execution.unit.env"),
     )
 
 
@@ -946,6 +955,38 @@ class _Reader:
                     "optionally with a port, and no wildcard",
                 ) from None
         return items
+
+    def unit_env(self, key: str) -> tuple[tuple[str, str], ...]:
+        """Comma-separated `NAME=value` pairs, a value holding no comma, no name twice (ADR-0090).
+        A name that carries a secret is refused: one `variable_refusal` refuses, and one under
+        which this configuration supplies a credential (`TAKTUS_CREDENTIAL_<NAME>_FILE`) —
+        for a named worker, its own. Unset or empty: none."""
+        name, value = self._raw(key)
+        if value is None or not value.strip():
+            return ()
+        pairs: list[tuple[str, str]] = []
+        for entry in value.split(","):
+            variable, sep, setting = entry.partition("=")
+            variable = variable.strip()
+            if not sep or not variable:
+                raise ConfigurationError(
+                    name, f"{entry.strip()!r} is not NAME=value; pairs are comma separated"
+                )
+            refusal = variable_refusal(variable)
+            if refusal is not None:
+                raise ConfigurationError(name, f"{variable} {refusal}")
+            credential = CREDENTIAL_PREFIX + variable.lower()
+            if self._configuration.source(credential) is not None:
+                raise ConfigurationError(
+                    name,
+                    f"{variable} is a credential this configuration supplies "
+                    f"({self._configuration.name(credential)}_FILE); a secret reaches a unit as "
+                    "a credential, never as configuration",
+                )
+            if any(variable == known for known, _ in pairs):
+                raise ConfigurationError(name, f"{variable} is set twice")
+            pairs.append((variable, setting))
+        return tuple(pairs)
 
     def roles(self) -> frozenset[Role]:
         name, value = self._raw("roles")

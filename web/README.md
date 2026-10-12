@@ -56,7 +56,8 @@ origin.
 | `src/lib/motion.svelte.ts` | whether motion is allowed |
 | `src/lib/key.ts`, `KeyForm.svelte` | the reader's key, for the tab's session |
 | `src/lib/generated/fixtures.json` | written by `make generate`, never by hand: what the tests draw |
-| `src/routes/` | the pages: the overview at `#/`, `#/runs/<id>`, `#/processes/<id>` with an optional `/<version>`, `#/origins/<run>/<step>`, and `#/changes/<process>`, where a process is changed in dialogue and rolled back (ADR-0091 §6) |
+| `src/routes/` | the pages: the overview at `#/`, `#/runs/<id>`, `#/processes/<id>` with an optional `/<version>`, `#/origins/<run>/<step>`, and `#/requests` with an optional `/<id>`: the decision requests addressed to the reader, answered and confirmed there (ADR-0063 §4), and `#/changes/<process>`, where a process is changed in dialogue and rolled back (ADR-0091 §6) |
+| `src/lib/RequestView.svelte` | one decision request: what happened, the options with the recommended one, what is blocked, by when; an answer by option or in the reader's words, and the reading confirmed before anything takes effect |
 | `src/lib/ChangeView.svelte` | a process changed in dialogue: the request in words, each open proposal as its difference in words, its rehearsal, commissioning and discarding, and a rollback for every earlier version |
 
 ## Working on it

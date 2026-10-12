@@ -2,6 +2,7 @@
 # The first end-to-end, in one command: an issue of this repository becomes a pull request.
 #
 #     tools/first_run.sh <issue number> [--only P-02|P-03 | --from P-02|P-03] [--resume RUN_ID]
+#                        [--approve STEP]... [--level 1|2|3]
 #
 # Runs P-02 Refinement and then P-03 Implementation of the dev-orchestration blueprint against
 # the repository this checkout was cloned from, with the reference connector, the coding worker
@@ -17,6 +18,15 @@
 #   --resume RUN_ID  continues a halted or escalated run of the bundle --only names, with the
 #                    connector and the worker started again; `taktusctl run --resume` alone
 #                    would find neither running.
+#   --level N        runs the bundles at autonomy level N, lower than they declare, from a copy
+#                    that differs in its level alone. From level 3 a step runs only on an adapter
+#                    at verified (ADR-0039), and a workstation's fresh state has none; at level 2
+#                    each step waits for a person. Give the same --level on every resume.
+#   --approve STEP   with --resume: confirm a step that waits for a person (level 2), as
+#                    `taktusctl run --approve` does; repeatable.
+#   --quota N        the bundle's quota limit set to N units in the same copy; with --resume, a
+#                    run halted at its quota continues with the raised limit (the bundle is read
+#                    again on every resume).
 #
 # When P-02 stops at its admission because the issue already carries every section of the ready
 # standard, or P-02 already wrote them as a comment, that is "already done", not a failure: the
@@ -94,7 +104,7 @@ P02_ALREADY_REFINED="(admit +rule +exact +failed .*condition 1 does not hold: .*
 # P-03 found the branch it would create, carrying another run's key.
 P03_LEFTOVER_BRANCH="repository\.branches\.create failed: conflict .*exists and was not created for this step"
 
-usage="usage: tools/first_run.sh <issue number> [--only P-02|P-03 | --from P-02|P-03] [--resume RUN_ID]"
+usage="usage: tools/first_run.sh <issue number> [--only P-02|P-03 | --from P-02|P-03] [--resume RUN_ID [--approve STEP]...] [--level 1|2|3] [--quota N]"
 
 fail() {
     echo "first_run: $1" >&2
@@ -105,14 +115,20 @@ issue=""
 only=""
 from=""
 resume=""
+level=""
+approve=""
+quota=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --only | --from | --resume)
+        --only | --from | --resume | --level | --approve | --quota)
             [ "$#" -ge 2 ] || fail "$1 needs a value; $usage"
             case "$1" in
                 --only) only="$2" ;;
                 --from) from="$2" ;;
                 --resume) resume="$2" ;;
+                --level) level="$2" ;;
+                --approve) approve="$approve $2" ;;
+                --quota) quota="$2" ;;
             esac
             shift 2
             ;;
@@ -140,6 +156,14 @@ for bundle in "$only" "$from"; do
 done
 [ -z "$only" ] || [ -z "$from" ] || fail "--only and --from exclude each other"
 [ -z "$resume" ] || [ -n "$only" ] || fail "--resume continues one run: name its bundle with --only P-02 or --only P-03"
+[ -z "$approve" ] || [ -n "$resume" ] || fail "--approve confirms a step of a run that waits: give --resume as well"
+case "$quota" in
+    '' | *[!0-9]*) [ -z "$quota" ] || fail "--quota is a whole number of units" ;;
+esac
+case "$level" in
+    '' | 1 | 2 | 3) ;;
+    *) fail "--level lowers a bundle's autonomy to 1, 2 or 3; a raise is not this script's" ;;
+esac
 
 run_p02=yes
 run_p03=yes
@@ -352,9 +376,58 @@ did_not_finish() {
 p02_process=blueprints/dev-orchestration/processes/P-02-refinement.yaml
 p03_process=blueprints/dev-orchestration/processes/P-03-implementation.yaml
 
+# --level N: run the bundles at a lower autonomy level, from a copy under $logs that differs from
+# the bundle in its level alone. From level 3 a step runs only on an adapter at *verified*
+# (ADR-0039), and a fresh state on a workstation has none: at level 2 every step waits for a
+# person instead, who confirms it with --resume RUN --approve STEP. A raise is refused here.
+lowered() {
+    bundle="$1"
+    [ -n "$level" ] || [ -n "$quota" ] || { echo "$bundle"; return; }
+    copy="$logs/$(basename "$bundle" .yaml)-level-${level:-same}-quota-${quota:-same}.yaml"
+    uv run python - "$bundle" "$copy" "${level:-0}" "${quota:-0}" <<'PY'
+import sys
+import yaml
+source, target, level, quota = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+with open(source, encoding="utf-8") as handle:
+    document = yaml.safe_load(handle)
+declared = document["autonomy"]["level"]
+if quota:
+    # A resumed run reads the bundle again: a changed `limits` block is a changed budget.
+    document.setdefault("limits", {})["quota"] = {"units": quota}
+if not level:
+    level = declared
+if level > declared:
+    sys.exit(f"--level {level} would raise the bundle's level {declared}")
+if level == declared:
+    with open(target, "w", encoding="utf-8") as handle:
+        yaml.safe_dump(document, handle, sort_keys=False, allow_unicode=True)
+    sys.exit(0)
+document["autonomy"]["level"] = level
+document["autonomy"].setdefault(
+    "toward_next",
+    f"the level the bundle declares, {declared}, once its adapters are verified on this state "
+    "(ADR-0039); this copy exists for a run on a workstation",
+)
+document["autonomy"]["reason"] = (
+    f"lowered from {declared} for a run on a workstation where no adapter is verified "
+    "(tools/first_run.sh --level, ADR-0039): " + document["autonomy"]["reason"]
+)
+with open(target, "w", encoding="utf-8") as handle:
+    yaml.safe_dump(document, handle, sort_keys=False, allow_unicode=True)
+PY
+    echo "$copy"
+}
+p02_process="$(lowered "$p02_process")"
+p03_process="$(lowered "$p03_process")"
+approvals=""
+for step in $approve; do
+    approvals="$approvals --approve $step"
+done
+
 if [ "$run_p02" = yes ]; then
     if [ -n "$resume" ]; then
-        set -- --resume "$resume"
+        # shellcheck disable=SC2086 # one word per approval
+        set -- --resume "$resume" $approvals
     else
         set -- --input "issue=$issue"
     fi
@@ -370,7 +443,8 @@ fi
 
 if [ "$run_p03" = yes ]; then
     if [ -n "$resume" ]; then
-        set -- --resume "$resume"
+        # shellcheck disable=SC2086 # one word per approval
+        set -- --resume "$resume" $approvals
     else
         closing="$(closing_section)"
         set -- --input "issue=$issue" --input "records_path=docs/decisions/open" \

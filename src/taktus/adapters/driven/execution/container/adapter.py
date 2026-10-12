@@ -19,6 +19,8 @@ The default in operation (ADR-0002). Every job gets:
   the launcher exports the env kind and removes the files, and the unit starts. No value is on
   a volume, in an image layer, in the container's recorded configuration, on a command line,
   or in a log;
+- **the variables its configuration names** (`ExecutionUnit.environment`, ADR-0090) in the
+  container's environment, beside the launch convention's: configuration, never a secret;
 - **a workspace that dies with the job**: the container's own filesystem, removed with the
   container. The unit's *state* — its checkpoints — is one named volume per unit, mounted at
   the unit's state directory, and it outlives jobs so that a resumed assignment finds them;
@@ -62,6 +64,7 @@ from taktus.ports.execution import (
     Isolation,
     JobExit,
     JobRequest,
+    unit_environment,
 )
 
 HERE = Path(__file__).resolve().parent
@@ -142,6 +145,7 @@ class ContainerExecution:
 
     @asynccontextmanager
     async def launch(self, request: JobRequest) -> AsyncIterator[ContainerJob]:
+        unit_environment(request)  # refused before anything starts
         credentials = resolve_credentials(self._configuration, request.credentials)
         suffix = secrets.token_hex(3)
         names = _Names(f"{request.job_id}-{suffix}".lower().replace("_", "-"))
@@ -236,7 +240,9 @@ class ContainerExecution:
             if credential.reference.injected_as == "file" and credential.reference.path:
                 directory = credential.reference.path.rpartition("/")[0] or "/"
                 tmpfs.setdefault(directory, "rw,noexec,nosuid,mode=1777,size=1m")
+        # The variables the unit's configuration names (ADR-0090), then the launch convention.
         environment = [
+            *(f"{name}={value}" for name, value in unit.environment),
             f"{UNIT_PORT_VARIABLE}={unit.port}",
             f"{UNIT_STATE_DIR_VARIABLE}={unit.state_dir}",
             f"TAKTUS_CREDENTIALS_DIR={CREDENTIALS_DIR}",

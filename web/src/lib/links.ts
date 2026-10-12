@@ -18,6 +18,11 @@ export function originLink(runId: string, stepId: string): string {
 	return `#/origins/${encodeURIComponent(runId)}/${encodeURIComponent(stepId)}`;
 }
 
+/** The decision requests addressed to the reader, or one of them. */
+export function requestsLink(requestId?: string): string {
+	return requestId ? `#/requests/${encodeURIComponent(requestId)}` : '#/requests';
+}
+
 /** Where a process is changed in dialogue, and rolled back (ADR-0091 §6). */
 export function changeLink(processId: string): string {
 	return `#/changes/${encodeURIComponent(processId)}`;

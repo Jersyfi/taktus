@@ -169,6 +169,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0195](NTC-0195-a-workers-unit-reaches-its-own-services-hosts.md) | A worker's unit reaches its own service's hosts | M2.4 | `behaviour-change` | `TAKTUS_EXECUTION_SERVICE_HOSTS`, per worker too: an assignment's unit reaches the frame's hosts and these, the suite's unit the suite's hosts and these, a probe none; the frame the worker holds stays the step's; P-03 version 6 says so (ADR-0089, #269) |
 | [0196](NTC-0196-a-silent-worker-keeps-its-stream.md) | A silent worker keeps its stream | M2.4 | `behaviour-change` | an idle timeout of a worker that answers for its running assignment costs no reconnect; attempts counted between events; `stream_timeout` enforced (#271) |
 | [0197](NTC-0197-verify-compose-expects-an-adopted-step.md) | verify-compose expects an adopted step | M2.2 | `test-strategy` | `make verify-compose` checks that the worker step interrupted by the kill was started once and adopted after the restart, not started twice (ADR-0038, NTC-0074, #250) |
+| [0198](NTC-0198-a-workers-unit-receives-the-settings-its-program-needs.md) | A worker's unit receives the settings its program needs | M2.4 | `behaviour-change` | `TAKTUS_EXECUTION_UNIT_ENV`, per worker too: `NAME=value` pairs every unit of the worker receives, a probe's included; a name that carries a secret is refused; a record names the names, never the values (ADR-0090, #288) |
 
 ## Decisions
 

@@ -154,13 +154,24 @@ class ProcessFacts(Value):
         return f"{self.id}@{self.version}"
 
 
+class PlannedStep(Value):
+    """A step of a process's active version, as the overview draws it among its process's cells."""
+
+    id: str = Field(min_length=1)
+    method: Method
+    exactness: ExactnessClass | None
+    depends_on: tuple[str, ...] = ()
+
+
 class ProcessSummary(Value):
-    """A process as the overview lists it: its name, its active version, its autonomy level."""
+    """A process as the overview lists it: its name, its active version, its autonomy level,
+    and the steps of its active version (ADR-0067, amended 2026-10-12)."""
 
     id: str = Field(min_length=1)
     name: str = Field(min_length=1)
     active_version: str | None = None
     autonomy_level: int | None = None
+    steps: tuple[PlannedStep, ...] = ()
 
 
 class RunningStep(Value):

@@ -47,6 +47,7 @@ def web_fixtures() -> str:
         DecisionFacts,
         OriginFacts,
         OverviewFacts,
+        PlannedStep,
         ProcessFacts,
         ProcessStepFacts,
         ProcessSummary,
@@ -156,7 +157,18 @@ def web_fixtures() -> str:
     overview = OverviewFacts(
         tenant="default",
         processes=(
-            ProcessSummary(id="example", name="Example", active_version="1", autonomy_level=2),
+            ProcessSummary(
+                id="example",
+                name="Example",
+                active_version="1",
+                autonomy_level=2,
+                steps=tuple(
+                    PlannedStep(
+                        id=s.id, method=s.method, exactness=s.exactness, depends_on=s.depends_on
+                    )
+                    for s in facts.steps
+                ),
+            ),
             ProcessSummary(id="quiet", name="Quiet", active_version="3", autonomy_level=4),
         ),
         runs=(
