@@ -84,7 +84,7 @@ operator's. The parts that carry a decision:
 | `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002); the scheduler is elected, more than one is allowed and idle |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
 | `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall |
-| `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
+| `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6; `defaults.unitEnv` the variables a worker's own program needs to start, section 7 — configuration, never a secret), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none), `unitEnv` (`{}` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
 | `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE`. A credential of one of several workers has the parameter `worker.<worker>.credential.<name>`, and only that worker receives it |
 | `administration.platform`, `.administers` | the platform this instance runs on and, per credential parameter, the platforms it administers or `none` — `TAKTUS_PLATFORM`, `TAKTUS_ADMINISTERS` (ADR-0052). A process naming a credential that administers this platform, or one declared about nothing, is refused; with no platform nothing is checked |
 | `connectors.repository.*` | the repository channel's connector as a deployment of its own, from the control plane's image, acting as Taktus's own app (ADR-0033): the repository it serves, the app's identifier, the Secrets holding the app's key and the webhook secret — mounted as files — and `findings`, which makes it the connector product findings go through. Enabled, it sets `TAKTUS_CONNECTORS` (`channel.repo`) and, with `findings`, `TAKTUS_FINDINGS_CONNECTOR`; it is reached from the roles alone and reaches the name service and the service's API outside the cluster (#66) |
@@ -314,7 +314,8 @@ with `httpx` alone, through the calls of the Role of section 1 and no other. It:
    (below); `activeDeadlineSeconds` of the wall clock plus
    the start timeout, as the cluster's backstop; `backoffLimit: 0`; `ttlSecondsAfterFinished`;
    a pod that satisfies `restricted` (section 4) and mounts no service-account token; the
-   environment the contract names (`TAKTUS_UNIT_PORT`, `TAKTUS_UNIT_STATE_DIR`); and the
+   environment the contract names (`TAKTUS_UNIT_PORT`, `TAKTUS_UNIT_STATE_DIR`); the variables
+   the worker's configuration names (below); and the
    credentials from a Secret it creates for the job — a `file` credential mounted from a key at
    its exact path, an `env` credential as a variable from a key, because the worker contract
    asks for it there, as the container adapter does. The pod's recorded configuration names the
@@ -333,7 +334,7 @@ with `httpx` alone, through the calls of the Role of section 1 and no other. It:
    so that the cluster removes them too when the control plane died before it could: the
    deadline ends the Job, its time to live deletes it, and what it owns goes with it;
 5. refuses, with the port's `ExecutionRefused` and before creating anything, a job it cannot
-   give limits to, a job that names hosts while `execution.egress.enforce` is false, and an
+   give limits to, a job that names a credential under the name of one of the unit's variables, a job that names hosts while `execution.egress.enforce` is false, and an
    isolation that does not suffice for the run's autonomy level. With network policies not
    enforced, a pod's network is open: the cluster then isolates the process and the filesystem,
    not the reach, and every job at level 3 or above — or at a level not known — is refused,
@@ -369,6 +370,20 @@ platform (ADR-0031) holds memory alone, and only for units started on the platfo
 plane runs on; a Job in the cluster is placed by the cluster's scheduler, outside what that
 platform observes. Admission at a worker's capacity (ADR-0037) counts assignments, not cores.
 The share therefore changes where the cluster places units, and nothing Taktus admits.
+
+**A unit receives the variables its worker's configuration names.** The adapter starts the
+image's own command, so a worker that needs a setting to start reads it from its environment —
+the coding worker needs `CODING_AGENT_AUTH` and exits without it. The operator names them as a
+map: `execution.defaults.unitEnv`, or `unitEnv` of an entry of `execution.workers[]`, which
+replaces the default for that worker (`TAKTUS_EXECUTION_UNIT_ENV`, ADR-0090). Every unit of the
+worker gets them as plain values in its pod — an assignment's, a probe's and the conformance
+suite's. **They are configuration, visible in the ConfigMap, the startup log and every pod's
+description, and never a secret.** A name that carries one stops the daemon's start: the
+`TAKTUS_` namespace, a name ending in `_FILE`, a name the adapter sets itself (`HOME`,
+`TMPDIR`, the proxy variables), a name with the word `TOKEN`, `KEY`, `SECRET`, `PASSWORD` or
+`PASSWD`, and a credential the worker is configured with. The rule reads names only: a secret
+given under another name is not recognised, and the operator answers for what a value holds. A
+secret is a credential under `credentials`. A value with a comma fails the render.
 
 The unit's state lives on the volume claim `execution.stateClaim` names, which the chart
 renders; without one it is an empty directory that dies with the job, and the adapter's

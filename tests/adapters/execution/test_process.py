@@ -228,3 +228,26 @@ async def test_an_unenforced_limit_is_the_operator_s_explicit_choice(tmp_path: P
     request = JobRequest(job_id="job-10", unit=unit(), autonomy_level=1)
     async with execution.launch(request) as job:
         assert job.endpoint.startswith("http://127.0.0.1:")
+
+
+async def test_the_variables_the_units_configuration_names_reach_its_environment(
+    tmp_path: Path,
+) -> None:
+    """ADR-0090: what the operator configured for the worker's unit, beside the convention."""
+    execution = ProcessExecution(
+        EnvironmentConfiguration({}), state_dir=tmp_path / "state", memory_unenforced=UNENFORCED
+    )
+    dump = (
+        "import os, json; print(json.dumps({k: os.environ.get(k) for k in "
+        "('CODING_AGENT_AUTH', 'TAKTUS_UNIT_PORT')}), flush=True)"
+    )
+    serve = f"import runpy; runpy.run_path('{WORKER}', run_name='__main__')"
+    configured = unit(f'{sys.executable} -c "{dump}; {serve}"').model_copy(
+        update={"environment": (("CODING_AGENT_AUTH", "api-key"),)}
+    )
+    request = JobRequest(job_id="job-env", unit=configured, autonomy_level=1)
+    async with execution.launch(request):
+        log = tmp_path / "state" / "units" / "reference" / "job-job-env.log"
+        dumped = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+    assert dumped["CODING_AGENT_AUTH"] == "api-key"
+    assert dumped["TAKTUS_UNIT_PORT"], "the convention is still there"
