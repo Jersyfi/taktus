@@ -78,3 +78,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0087](ADR-0087-the-database-is-backed-up-by-a-job-of-the-chart-and-restored-by-hand.md) | The database is backed up by a job of the chart, and restored by hand | accepted |
 | [0088](ADR-0088-an-unknown-senders-contribution-starts-the-triage-for-its-owner-and-a-process-holds-its-own-steps.md) | An unknown sender's contribution starts the triage for its owner, and a process holds its own steps | accepted |
 | [0089](ADR-0089-a-launched-worker-reaches-the-hosts-its-own-service-needs-as-the-operator-configures-them.md) | A launched worker reaches the hosts its own service needs, as the operator configures them | accepted |
+| [0091](ADR-0091-a-person-changes-a-process-through-a-proposal-a-rehearsal-and-commissioning-and-rolls-it-back-as-a-new-version.md) | A person changes a process through a proposal, a rehearsal and commissioning, and rolls it back as a new version | accepted |
