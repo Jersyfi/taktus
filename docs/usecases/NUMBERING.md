@@ -65,7 +65,7 @@ next free number of its area: `UC-6.11` the owner-facing channel; `UC-6.12` the 
 `UC-13.6` readable documentation beyond the repository. Numbered when a task needed a requirement
 no use case stated, the next free number of its area: `UC-4.14` a process starts on what happens
 in a tool (#76, DEC-0124); `UC-1.9` a contribution from a person Taktus does not know is triaged
-for the owner (#245, DEC-0175).
+for the owner (#245, DEC-0175); `UC-4.15` a person changes a process in dialogue, and rolls it back (DEC-0186).
 
 ## Numbers of the definition with no file of their own
 
