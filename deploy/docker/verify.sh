@@ -34,8 +34,10 @@ found="$(grep -rl "separate deployable, as every worker is" /app 2>/dev/null || 
 echo "no worker code in the image"'
 
 say "1c. a reader of the read API: an identity and its account key, read from the header only (#186)"
-compose exec -T taktus taktusctl identity add idn_verify >/dev/null
-key="$(compose exec -T taktus taktusctl identity key idn_verify | sed -n 's/.*hand it to the person: //p')"
+# The same identity submits and confirms the run in steps 2 and 5: nothing executes without one.
+identity=idn_verify
+compose exec -T taktus taktusctl identity add "$identity" >/dev/null
+key="$(compose exec -T taktus taktusctl identity key "$identity" | sed -n 's/.*hand it to the person: //p')"
 [ -n "$key" ] || { echo "no account key was issued"; exit 1; }
 reader=(-H "Authorization: Bearer ${key}")
 code="$(curl -s -o /dev/null -w '%{http_code}' "${api}/runs")"
@@ -58,7 +60,7 @@ prepare["work"]["value"] = {"commands": ["expr 6 '*' 7", *[f"echo {n}" for n in 
 print(yaml.safe_dump(document))
 PY
 compose cp "$bundle" taktus:/tmp/verify-bundle.yaml
-run_id="$(compose exec -T taktus taktusctl submit --process /tmp/verify-bundle.yaml 2>/dev/null | tail -1)"
+run_id="$(compose exec -T taktus taktusctl submit --process /tmp/verify-bundle.yaml --identity "$identity" 2>/dev/null | tail -1)"
 echo "run ${run_id}"
 
 state() { curl -fsS "${reader[@]}" "${api}/runs/${run_id}" | python3 -c 'import json,sys; r=json.load(sys.stdin); c=[s for s in r["step_runs"] if s["step_id"]=="compute"][0]; print(r["state"], c["state"], len(c.get("artifacts",[])))'; }
@@ -66,7 +68,7 @@ state() { curl -fsS "${reader[@]}" "${api}/runs/${run_id}" | python3 -c 'import 
 # Whatever waits is confirmed here, as the operator would, and the run goes back to the daemon.
 confirm_waiting() {
     for step in $(curl -fsS "${reader[@]}" "${api}/runs/${run_id}" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(" ".join(s["step_id"] for s in r["step_runs"] if s["state"]=="waiting_human"))'); do
-        compose exec -T taktus taktusctl submit --process /tmp/verify-bundle.yaml --resume "$run_id" --approve "$step" >/dev/null 2>&1
+        compose exec -T taktus taktusctl submit --process /tmp/verify-bundle.yaml --identity "$identity" --resume "$run_id" --approve "$step" >/dev/null 2>&1
         echo "confirmed ${step}"
     done
 }
@@ -104,9 +106,12 @@ kinds = [e["kind"] for e in ledger["entries"]]
 assert ledger["chain"]["intact"], "the chain does not verify"
 assert "run.recovered" in kinds, kinds
 assert kinds[-1] == "run.finished", kinds
-started = [e for e in ledger["entries"] if e["kind"] == "step.started" and e["refs"].get("step_id") == "compute"]
-assert len(started) == 2, "the interrupted step ran twice: once before the kill, once after"
-print("ledger:", len(kinds), "entries, chain intact, run.recovered present, compute started twice")
+# The worker outlived the kill and still holds the assignment: the recovered run adopts it and
+# reads its stream on, it never starts the step a second time (ADR-0038, NTC-0074).
+compute = [e["kind"] for e in ledger["entries"] if e["refs"].get("step_id") == "compute"]
+assert compute.count("step.started") == 1, compute
+assert compute.count("step.adopted") == 1, compute
+print("ledger:", len(kinds), "entries, chain intact, run.recovered present, compute started once and adopted")
 '
 curl -fsS "${reader[@]}" "${api}/runs/${run_id}" | python3 -c '
 import json, sys

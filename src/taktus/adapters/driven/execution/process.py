@@ -1,7 +1,8 @@
 """The `process` adapter: an execution unit as a child process of this one. No isolation.
 
 For local development and a single user (ADR-0002). What it does: starts the unit's command
-line with a free port and the unit's state directory in its environment, injects the
+line with a free port, the unit's state directory and the variables its configuration names
+(ADR-0090) in its environment, injects the
 credentials the job names as environment variables, gives the job a workspace that is removed
 when the job ends, waits until the unit answers health, and kills the unit when the wall clock
 runs out or the job is over. What it does not do, and cannot: keep the unit off the network —
@@ -61,6 +62,7 @@ from taktus.ports.execution import (
     JobExit,
     JobRequest,
     refusal,
+    unit_environment,
 )
 
 UNIT_WORKSPACE_VARIABLE = "TAKTUS_UNIT_WORKSPACE"
@@ -157,17 +159,19 @@ class ProcessExecution:
                 memory_bytes=limit,
                 system=self._system,
             )
+        configured = unit_environment(request)
         credentials = resolve_credentials(self._configuration, request.credentials)
         unit_state = self._state_dir / "units" / request.unit.name
         unit_state.mkdir(parents=True, exist_ok=True)
         workspace = Path(tempfile.mkdtemp(prefix=f"taktus-job-{request.job_id}-"))
         port = _free_port()
         endpoint = f"http://127.0.0.1:{port}"
-        # The unit gets what a program needs to run on this machine, the launch convention and
-        # the credentials — not this process's own environment, which may carry the paths to
-        # the control plane's secrets.
+        # The unit gets what a program needs to run on this machine, the variables its
+        # configuration names (ADR-0090), the launch convention and the credentials — not this
+        # process's own environment, which may carry the paths to the control plane's secrets.
         environment = {
             **{name: os.environ[name] for name in INHERITED if name in os.environ},
+            **configured,
             UNIT_PORT_VARIABLE: str(port),
             UNIT_STATE_DIR_VARIABLE: str(unit_state),
             UNIT_WORKSPACE_VARIABLE: str(workspace),
