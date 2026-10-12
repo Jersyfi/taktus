@@ -31,7 +31,7 @@
 		<nav class="depth" aria-label="Depth">
 			{#each DEPTHS as name, i (name)}
 				{#if i > 0}<span class="rail" aria-hidden="true"></span>{/if}
-				{#if i === 0 && depth > 0}
+				{#if i === 0 && depth !== 0}
 					<a class="stop done" href="#/">{name}</a>
 				{:else}
 					<span class="stop" class:done={i < depth} class:here={i === depth} aria-current={i === depth ? 'page' : undefined}
