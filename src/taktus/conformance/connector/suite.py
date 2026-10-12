@@ -663,6 +663,20 @@ async def _intake(
 # --- C-04 across everything --------------------------------------------------------------------
 
 
+def needles_of(value: str) -> dict[str, str]:
+    """Every form in which a credential's value can appear in a text: in clear, in base64, with
+    its line breaks escaped as an error's quoting of bytes or JSON writes them, and each line of a
+    value of several lines that is long enough to be its own — a private key quoted in an error
+    is found by its lines (issue #267)."""
+    needles = {"in clear": value, "base64": base64.b64encode(value.encode()).decode()}
+    if "\n" in value:
+        needles["with its line breaks escaped"] = value.replace("\n", "\\n")
+        for number, line in enumerate(value.splitlines(), start=1):
+            if len(line.strip()) >= 20 and not line.startswith("-----"):
+                needles[f"by its line {number}"] = line.strip()
+    return needles
+
+
 def _c04(options: ConnectorSuiteOptions, seen: Seen, findings: Findings) -> None:
     values = {name: value for name, value in options.credential_values.items() if value}
     if not values:
@@ -679,7 +693,7 @@ def _c04(options: ConnectorSuiteOptions, seen: Seen, findings: Findings) -> None
             findings.inconclusive["C-04"] = f"the connector log could not be read: {error}"
     hits: list[str] = []
     for name, value in values.items():
-        needles = {"in clear": value, "base64": base64.b64encode(value.encode()).decode()}
+        needles = needles_of(value)
         for where, text in places:
             for form, needle in needles.items():
                 if needle in text:
