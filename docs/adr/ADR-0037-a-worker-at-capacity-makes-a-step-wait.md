@@ -74,20 +74,6 @@ cause `capacity`. A person who resumes it starts a fresh wait.
   `run.resumed` per try. A wait of an hour at the longest delay is about sixty tries.
 - The reference worker takes `--max-concurrent`, so that a test can give it a small capacity.
 
-## Where this promise ends
-A worker holds no more assignments than it declares only as long as it answers `503` when it
-is full. The engine trusts the answer and does not count. Conformance check W-15 checks the
-answer once, when the suite runs (#133, after DEC-0085). A worker whose W-15 stayed
-inconclusive, or that takes more than it declares after it passed, is not stopped by Taktus. A `503` from something in front of the worker — a proxy whose
-worker is down — reads as at capacity too: the step waits instead of failing, and escalates
-at its ceiling with cause `capacity` rather than with the true cause. The ceiling is checked
-when the worker is asked, so a wait can outlast it by up to one delay, sixty seconds at most.
-A run started in the same process with `start` has no runner to defer it; it halts with cause
-`capacity` and waits for a resume. Which of several waiting runs gets a free place is not
-decided here: the queue's order, oldest job first, and the delays decide it, and a run can be
-overtaken. Work is not spread across several workers of one capability; that lies outside issue
-#122.
-
 ## Amendment — a platform without room is a worker at capacity (2026-10-12)
 
 A launched worker runs each assignment, and each estimate, in an execution unit of its own. On
@@ -109,11 +95,23 @@ situation this record is about, with the platform in place of the worker.
   own, so it can find the platform full before the step is admitted. The step then goes back
   to its boundary from whichever state it was asked in, as at the hand-over.
 
-### Where the amendment ends
-Only the cluster adapter recognises a platform without room. The process and container
+## Where this promise ends
+A worker holds no more assignments than it declares only as long as it answers `503` when it
+is full. The engine trusts the answer and does not count. Conformance check W-15 checks the
+answer once, when the suite runs (#133, after DEC-0085). A worker whose W-15 stayed
+inconclusive, or that takes more than it declares after it passed, is not stopped by Taktus. A `503` from something in front of the worker — a proxy whose
+worker is down — reads as at capacity too: the step waits instead of failing, and escalates
+at its ceiling with cause `capacity` rather than with the true cause. The ceiling is checked
+when the worker is asked, so a wait can outlast it by up to one delay, sixty seconds at most.
+A run started in the same process with `start` has no runner to defer it; it halts with cause
+`capacity` and waits for a resume. Which of several waiting runs gets a free place is not
+decided here: the queue's order, oldest job first, and the delays decide it, and a run can be
+overtaken. Work is not spread across several workers of one capability; that lies outside issue
+#122.
+
+The amendment of 2026-10-12: only the cluster adapter recognises a platform without room. The process and container
 adapters start a unit or fail. The reason is read from the scheduler's message, which names an
 exhausted resource as `Insufficient`. A scheduler that words it otherwise makes the step fail
 as before. Room that never comes keeps the step waiting until its ceiling, an hour by default,
 and then the run escalates with cause `capacity`. Which waiting step gets room first is not
 decided here, as §5's bound says for a worker.
-
