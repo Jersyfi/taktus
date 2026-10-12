@@ -151,6 +151,11 @@ duplicate when it already exists. The mark is part of the record and survives th
 restart, which is the point — the connector keeps no memory of what it did; the target system
 does.
 
+The lookup reads where the target answers **as written**: a record it has acknowledged must be
+found by the next request that looks for it. A list or a search the target fills later may
+narrow where to look, never be the only place looked; a repeat made at once would miss the
+original and act twice (ADR-0024, amendment of 2026-10-12).
+
 ---
 
 ## 5. A call
@@ -408,7 +413,8 @@ adapters at *verified* or above.
 The suite cannot know which input an operation needs. The connector's author states it in a
 **scenario** (`Connector.json#/$defs/Scenario`): one read, one or more writes whose idempotency
 is `native` or `marked`, one call the target must refuse and with which cause, and recorded
-payloads for intake. How to write one, and what each check means in plain words:
+payloads for intake. A later write can name what an earlier one created (`{{shared}}`), so
+that the same scenario runs against a real target. How to write one, and what each check means in plain words:
 [CONFORMANCE.md](CONFORMANCE.md).
 
 **Fixtures.** `examples/<definition>/valid/` holds what a conforming connector produces or

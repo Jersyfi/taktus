@@ -7,6 +7,10 @@ writes, one call the target must refuse, and the recorded payloads for intake. T
 1. reads the declaration and the tool list — C-01;
 2. calls the read with a fresh key, and once without any credential — C-02, C-03, C-09;
 3. calls every write twice with one key and once with another — C-05, and C-02, C-09 again;
+   `{{unique}}` in a write's input is fresh per write, `{{shared}}` is one token for every
+   call made with a first key and another for every call made with a new key, the same across
+   the writes, so that a later write can name what an earlier one created — a pull request
+   from the branch the scenario's branch write made;
 4. calls the invalid case — C-06;
 5. delivers the intake payload signed, unsigned, wrongly signed — and, under a timestamped
    scheme, signed at a moment long before it arrived — and the unsupported and own-action
@@ -52,6 +56,7 @@ type Json = dict[str, Any]
 
 CONTRACT = "connector/v1"
 UNIQUE = "{{unique}}"
+SHARED = "{{shared}}"
 
 
 @dataclass
@@ -197,13 +202,13 @@ def _context(scenario: Json, step: str, key: str, *, credentials: bool = True) -
     }
 
 
-def _unique(value: Any, token: str) -> Any:
+def _unique(value: Any, token: str, shared: str = "") -> Any:
     if isinstance(value, str):
-        return value.replace(UNIQUE, token)
+        return value.replace(UNIQUE, token).replace(SHARED, shared)
     if isinstance(value, dict):
-        return {k: _unique(v, token) for k, v in value.items()}
+        return {k: _unique(v, token, shared) for k, v in value.items()}
     if isinstance(value, list):
-        return [_unique(v, token) for v in value]
+        return [_unique(v, token, shared) for v in value]
     return value
 
 
@@ -215,8 +220,9 @@ async def _call(
     context: Json,
     *,
     token: str | None = None,
+    shared: str | None = None,
 ) -> Answer:
-    arguments = {"context": context, "input": _unique(case["input"], token or "")}
+    arguments = {"context": context, "input": _unique(case["input"], token or "", shared or "")}
     answer = await client.call(str(case["operation"]), arguments)
     seen.answered(purpose, answer)
     return answer
@@ -338,6 +344,8 @@ async def _writes(
     seen: Seen,
 ) -> None:
     operations = rules.operations_of(capabilities)
+    # {{shared}}: one token for the calls with a first key, one for the calls with a new key.
+    first_shared, fresh_shared = secrets.token_hex(4), secrets.token_hex(4)
     for case in scenario["writes"]:
         operation = str(case["operation"])
         declared = operations.get(operation)
@@ -361,7 +369,13 @@ async def _writes(
         token = secrets.token_hex(4)
         key = _key(operation.rsplit(".", 1)[-1])
         first = await _call(
-            client, seen, "write", case, _context(scenario, "write", key), token=token
+            client,
+            seen,
+            "write",
+            case,
+            _context(scenario, "write", key),
+            token=token,
+            shared=first_shared,
         )
         first_result = _result_of(first, findings, f"first {operation}")
         if first_result is None:
@@ -372,7 +386,13 @@ async def _writes(
         if misreported:
             continue  # a result that misreports its effect cannot be judged for a repeat
         repeat = await _call(
-            client, seen, "write repeated", case, _context(scenario, "write", key), token=token
+            client,
+            seen,
+            "write repeated",
+            case,
+            _context(scenario, "write", key),
+            token=token,
+            shared=first_shared,
         )
         repeat_result = _result_of(repeat, findings, f"repeated {operation}", error_owner="C-05")
         if repeat_result is None:
@@ -384,6 +404,7 @@ async def _writes(
             case,
             _context(scenario, "write", _key("fresh")),
             token=secrets.token_hex(4),
+            shared=fresh_shared,
         )
         fresh_result = _result_of(fresh, findings, f"fresh {operation}")
         for violation in rules.repeat_violations(

@@ -6,8 +6,9 @@ message, a reference that exists once. This test runs when the repository and on
 set, and skips otherwise:
 
     TAKTUS_LIVE_REPOSITORY=owner/name   the repository to act in; the test creates a branch, a
-                                        pull request, a comment and a label there, and removes
-                                        the branch and closes the pull request afterwards
+                                        pull request, a comment, a label and two issues there,
+                                        and removes the branch and closes the pull request and
+                                        the issues afterwards
 
 and either Taktus's own app installed on that repository (ADR-0033) — the connector then mints
 its installation token from the key, and the pull request must show the app as its author:
@@ -208,6 +209,46 @@ async def test_a_step_retried_after_a_restart_acts_once_on_the_real_service(
     assert status["output"]["sha"] == first["output"]["sha"]
 
     for document in (first, again, read, opened, replayed, first_comment, labelled, status):
+        assert token not in str(document)
+
+
+async def test_an_issue_repeated_at_once_is_one_issue_on_the_real_service(
+    live: tuple[str, str],
+) -> None:
+    """Issue #300: the service's issue list lags by seconds, and a repeat that looked for its
+    key there alone opened a second issue. The repeat comes at once, on a second connector;
+    the service holds one issue for the key, and a new key opens another. Both are closed
+    afterwards."""
+    repository, suffix = live
+    fresh = lambda: Connector(  # noqa: E731
+        Config(target=TARGET, repository=repository, timeout=60.0, app=APP)
+    )
+    issue_input = {
+        "title": f"live idempotency check {suffix}",
+        "body": "Opened by tests/adapters/connectors/test_repository_live.py; closed by it.",
+    }
+    key = f"run_live:issue-{suffix}:1"
+    opened = await call(fresh(), "repository.issues.create", context("issue", key), issue_input)
+    again = await call(fresh(), "repository.issues.create", context("issue", key), issue_input)
+    other = await call(
+        fresh(),
+        "repository.issues.create",
+        context("issue", f"run_live:issue-{suffix}:2"),
+        issue_input,
+    )
+    numbers = [int(d["output"]["number"]) for d in (opened, again, other)]
+    token = await service_token(repository)
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    async with httpx.AsyncClient(base_url=TARGET, headers=headers, timeout=30.0) as client:
+        for number in sorted(set(numbers)):
+            await client.patch(
+                f"/repos/{repository}/issues/{number}",
+                json={"state": "closed", "state_reason": "not_planned"},
+            )
+    assert opened["effect"]["replayed"] is False and again["effect"]["replayed"] is True
+    assert numbers[1] == numbers[0], "the repeat with the same key is the first issue"
+    assert other["effect"]["replayed"] is False and numbers[2] != numbers[0]
+    for document in (opened, again, other):
         assert token not in str(document)
 
 

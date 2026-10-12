@@ -293,7 +293,12 @@ level-3 step on it is refused. Proven for the three families against the referen
 their fakes, every fault recorded as not passed (NTC-0092), and through the run engine. No
 integration of Taktus's own instance has been recorded yet: that run belongs to #87, and the
 connector's suite there needs a sandbox it may write to (NEED-0019). P-03's coding step there
-needs the coding agents' keys of the instance's own (NEED-0024).
+needs the coding agents' keys of the instance's own (NEED-0024). The repository connector's
+first run against that sandbox, on 2026-10-12, failed twice: a repeated issue create acted
+twice, because the service's issue list lags, and the scenario opened a pull request from a
+branch that did not exist. Since #300 (NTC-0199, ADR-0024 amended) the connector finds an
+issue's repeat at once and its shipped scenario runs against the real service; from a
+workstation it passed C-01 to C-09 there. The instance's scenario points at it or follows it.
 
 **What an instance meets that the product lacks becomes an issue** (#86, `0.2.0`, ADR-0046). A step
 that fails because no configured worker, connector or operation offers what it needs now carries a
