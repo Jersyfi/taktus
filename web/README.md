@@ -56,7 +56,8 @@ origin.
 | `src/lib/motion.svelte.ts` | whether motion is allowed |
 | `src/lib/key.ts`, `KeyForm.svelte` | the reader's key, for the tab's session |
 | `src/lib/generated/fixtures.json` | written by `make generate`, never by hand: what the tests draw |
-| `src/routes/` | the pages: the overview at `#/`, `#/runs/<id>`, `#/processes/<id>` with an optional `/<version>`, and `#/origins/<run>/<step>` |
+| `src/routes/` | the pages: the overview at `#/`, `#/runs/<id>`, `#/processes/<id>` with an optional `/<version>`, `#/origins/<run>/<step>`, and `#/changes/<process>`, where a process is changed in dialogue and rolled back (ADR-0091 §6) |
+| `src/lib/ChangeView.svelte` | a process changed in dialogue: the request in words, each open proposal as its difference in words, its rehearsal, commissioning and discarding, and a rollback for every earlier version |
 
 ## Working on it
 
