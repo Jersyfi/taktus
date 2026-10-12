@@ -57,3 +57,5 @@ fixed the distinctions and left the look open; a change that would drop a distin
 what the use case requires, and is M3.15.
 
 **Accepted** by the owner on 2026-10-12 as proposed (DEC-0185): M1.20 is an entry of `anchors.taktus.md`.
+
+**Superseded** on 2026-10-12: a step is drawn as a cell — a membrane per family (beaded, fluid, soft, dormant), a nucleus per method kind, rings for the exactness class, an aura as the still mark — under M1.20 (DEC-0185); ADR-0059 §2 says so. Every distinction above is still carried.

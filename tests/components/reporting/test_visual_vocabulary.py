@@ -18,7 +18,7 @@ from taktus.components.reporting.domain.model.vocabulary import (
     RUN_STATES,
     STEP_STATES,
     VOCABULARY,
-    Edge,
+    Membrane,
     Motion,
     Vocabulary,
 )
@@ -29,7 +29,7 @@ from taktus.shared.v1.method import NON_PRODUCING
 
 REPRODUCIBLE = (Method.RULE, Method.STATISTICS, Method.ML, Method.NEURAL)
 VARIABLE = (Method.LLM, Method.WORKER)
-FORM = ("outline", "edge")
+FORM = ("membrane", "nucleus")
 """The tokens that are form. Motion is `motion` and, without motion, `still_mark`."""
 
 
@@ -44,14 +44,14 @@ def running(method: Method, *, motion: bool = True) -> Glyph:
 
 
 def differ_in_form_and_motion(a: Method, b: Method) -> bool:
-    """Two method kinds are told apart by their edge — the form their family shares — and by
+    """Two method kinds are told apart by their membrane — the form their family shares — and by
     the motion of a running step, with motion and without it."""
     moving_a, moving_b = running(a), running(b)
     still_a, still_b = running(a, motion=False), running(b, motion=False)
     return (
-        moving_a.edge != moving_b.edge
+        moving_a.membrane != moving_b.membrane
         and moving_a.motion != moving_b.motion
-        and (still_a.still_mark, still_a.edge) != (still_b.still_mark, still_b.edge)
+        and (still_a.still_mark, still_a.membrane) != (still_b.still_mark, still_b.membrane)
     )
 
 
@@ -62,7 +62,7 @@ def test_the_states_are_the_run_components() -> None:
 
 def test_every_method_class_and_state_has_its_form_once() -> None:
     assert sorted(m.method for m in VOCABULARY.methods) == sorted(Method)
-    assert len({m.outline for m in VOCABULARY.methods}) == len(Method)
+    assert len({m.nucleus for m in VOCABULARY.methods}) == len(Method)
     assert {e.exactness for e in VOCABULARY.exactness} == {*ExactnessClass, None}
     for subject, states in (("step", STEP_STATES), ("run", RUN_STATES)):
         forms = [f for f in VOCABULARY.states if f.subject == subject]
@@ -91,33 +91,34 @@ def test_a_persons_step_and_a_waiting_step_differ_from_both_and_from_each_other(
     assert differ_in_form_and_motion(own, other)
 
 
-def test_the_four_reproducible_kinds_share_their_family_and_keep_their_own_outline() -> None:
+def test_the_four_reproducible_kinds_share_their_family_and_keep_their_own_nucleus() -> None:
     glyphs = [running(m) for m in REPRODUCIBLE]
-    assert {g.edge for g in glyphs} == {Edge.STRAIGHT}
+    assert {g.membrane for g in glyphs} == {Membrane.BEADED}
     assert {g.motion for g in glyphs} == {Motion.PULSE}
-    assert len({g.outline for g in glyphs}) == len(REPRODUCIBLE)
+    assert len({g.nucleus for g in glyphs}) == len(REPRODUCIBLE)
 
 
 @pytest.mark.parametrize("method", [Method.RULE, Method.STATISTICS])
 def test_exact_is_marked_and_no_other_class_carries_its_mark(method: Method) -> None:
     exact = glyph(step(method, exactness=ExactnessClass.EXACT), motion=True)
-    assert exact.exactness_mark != NO_MARK
+    assert exact.rings != NO_MARK
     others = [
-        glyph(step(method, exactness=c), motion=True).exactness_mark
+        glyph(step(method, exactness=c), motion=True).rings
         for c in ExactnessClass
         if c is not ExactnessClass.EXACT
     ]
-    others.append(glyph(step(Method.WAIT), motion=True).exactness_mark)
-    assert exact.exactness_mark not in others
+    others.append(glyph(step(Method.WAIT), motion=True).rings)
+    assert exact.rings not in others
     assert "exact" in exact.text
 
 
 def test_no_token_is_a_colour() -> None:
     assert not [f for f in Glyph.model_fields if "colo" in f or "hue" in f]
     tokens = {
-        *(m.outline for m in VOCABULARY.methods),
+        *(m.nucleus for m in VOCABULARY.methods),
+        *(f.membrane for f in VOCABULARY.families),
         *(m.still for m in VOCABULARY.motions),
-        *(e.mark for e in VOCABULARY.exactness),
+        *(e.rings for e in VOCABULARY.exactness),
         *(s.mark for s in VOCABULARY.states),
     }
     colours = {"red", "green", "blue", "yellow", "orange", "purple", "grey", "gray", "black"}
@@ -182,7 +183,9 @@ def test_a_representation_drawn_from_the_vocabulary_passes() -> None:
 
 def test_a_representation_that_draws_an_llm_step_as_reproducible_fails() -> None:
     llm = step(Method.LLM)
-    drawn = running(Method.LLM).model_copy(update={"edge": Edge.STRAIGHT, "motion": Motion.PULSE})
+    drawn = running(Method.LLM).model_copy(
+        update={"membrane": Membrane.BEADED, "motion": Motion.PULSE}
+    )
     found = check([(llm, drawn)], motion=True)
     assert len(found) == 2
     assert all(f.startswith("step llm-step:") for f in found)
@@ -192,7 +195,7 @@ def test_a_representation_that_hides_exact_moves_while_idle_or_ignores_reduced_m
     None
 ):
     exact = step(Method.RULE, "planned", ExactnessClass.EXACT)
-    unmarked = glyph(exact, motion=True).model_copy(update={"exactness_mark": NO_MARK})
+    unmarked = glyph(exact, motion=True).model_copy(update={"rings": NO_MARK})
     pulsing_idle = glyph(exact, motion=True).model_copy(update={"motion": Motion.PULSE})
     moving_anyway = running(Method.RULE)
     assert check([(exact, unmarked)], motion=True)
@@ -208,7 +211,7 @@ def test_a_representation_that_draws_a_text_of_its_own_fails() -> None:
 
 @pytest.mark.parametrize(("a", "b"), list(combinations(Method, 2)))
 def test_no_two_method_kinds_are_drawn_alike(a: Method, b: Method) -> None:
-    assert running(a).outline != running(b).outline
+    assert running(a).nucleus != running(b).nucleus
 
 
 def test_a_step_without_its_class_or_with_one_it_cannot_carry_is_refused() -> None:

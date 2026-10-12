@@ -34,7 +34,9 @@ origin.
   `{prefix}/app/`; the surface it reads is the directory above.
 - It draws what a level hands it: every glyph comes from `reporting` with motion and without, and
   the app picks one by the reader's setting — the button *Stop motion*, or the system's reduced
-  motion from the first moment. It chooses no token and no colour of its own (ADR-0059).
+  motion from the first moment. It chooses no token of its own (ADR-0059). It adds one colour per
+  family on top of the form, paper and ink otherwise; every distinction is carried without it
+  (M1.20, DEC-0185).
 - The reader gives an account key once per browser tab. It is kept in the tab's session storage
   and sent in `Authorization: Bearer`, never in an address.
 
@@ -44,7 +46,7 @@ origin.
 | `src/lib/api.ts` | the surface's address, and a read with the key |
 | `src/lib/stream.ts` | the stream of changes, read with `fetch`, resumed from its last position |
 | `src/lib/live.ts` | a level followed live, read again on every change |
-| `src/lib/shapes.ts`, `Glyph.svelte` | a glyph's tokens turned into a drawing, each token kept on it as an attribute |
+| `src/lib/cells.ts`, `Glyph.svelte` | a glyph's tokens turned into a cell — membrane, nucleus, rings, cytoplasm, badge — each token kept on it as an attribute; a family's hue on top (M1.20) |
 | `src/lib/Graph.svelte` | steps as a graph, placed by their dependencies |
 | `src/lib/RunView.svelte` | the run level, and its text equivalent |
 | `src/lib/OverviewView.svelte` | the overview, and its text equivalent |
