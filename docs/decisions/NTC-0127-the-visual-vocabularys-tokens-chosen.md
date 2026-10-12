@@ -55,3 +55,5 @@ mode 2 names it either, so M2.6 applies: decided in the direction of the sources
 representation renders them, within the distinctions UC-6.10 requires. Mode 1, because the owner
 fixed the distinctions and left the look open; a change that would drop a distinction changes
 what the use case requires, and is M3.15.
+
+**Accepted** by the owner on 2026-10-12 as proposed (DEC-0185): M1.20 is an entry of `anchors.taktus.md`.
