@@ -93,6 +93,7 @@ from taktus.components.reporting.application.service import (
     ProductFindings,
     Sending,
 )
+from taktus.components.reporting.domain.model import OwnerChannel, PendingAct
 from taktus.components.run.application.query import (
     BlockedTime,
     ProvenanceQuery,
@@ -108,6 +109,7 @@ from taktus.components.run.application.service import (
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
+from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.execution import (
@@ -477,6 +479,33 @@ async def wire(
                 administration=settings.administration,
                 clock=clock,
             )
+            proposal_acts = ProposalActs(
+                proposals=proposals,
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                runs=runs,
+                register=register_version,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                ledger=ledger,
+                work=persistence,
+                clock=clock,
+                ids=ids,
+            )
+            # A change in dialogue read in the owner's conversation too (ADR-0091 §6).
+            owner.answers.change_with(
+                ChangeInChannel(
+                    channels=PostgresRepository(persistence, OwnerChannel),
+                    pending=PostgresRepository(persistence, PendingAct),
+                    work=persistence,
+                    acts=proposal_acts,
+                    proposals=proposals,
+                    deliveries=owner.deliveries,
+                    secrets=owner.secrets,
+                    clock=clock,
+                )
+            )
             wired = Wired(
                 settings=settings,
                 persistence=persistence,
@@ -518,20 +547,7 @@ async def wire(
                 ),
                 levels=levels,
                 proposals=proposals,
-                proposal_acts=ProposalActs(
-                    proposals=proposals,
-                    processes=PostgresRepository(persistence, Process),
-                    versions=PostgresRepository(persistence, ProcessVersion),
-                    runs=runs,
-                    register=register_version,
-                    commission=commission,
-                    engine=engine,
-                    identities=identities,
-                    ledger=ledger,
-                    work=persistence,
-                    clock=clock,
-                    ids=ids,
-                ),
+                proposal_acts=proposal_acts,
                 complete_intake=complete_intake,
                 reactions=Reactions(
                     tenants=settings.tenants,

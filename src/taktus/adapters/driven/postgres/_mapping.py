@@ -1076,6 +1076,33 @@ class ProposalMapper:
         return [dict(row.proposal) for row in rows]
 
 
+class PendingActMapper:
+    """One row per commissioning or rollback asked for in the owner's conversation and read
+    back, as a document (ADR-0091 §6). A row is never deleted: its state moves on."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.pending_act, tenant, id)
+        return None if row is None else dict(row.act)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.pending_act,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "state": document.get("state", "awaiting"),
+                "asked_at": _at(document["asked_at"]),
+                "act": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.pending_act, tenant, s.pending_act.c.asked_at)
+        return [dict(row.act) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -1096,4 +1123,5 @@ MAPPERS: dict[str, Mapper] = {
     "owner_channel": OwnerChannelMapper(),
     "report": ReportMapper(),
     "proposal": ProposalMapper(),
+    "pending_act": PendingActMapper(),
 }

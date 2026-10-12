@@ -14,9 +14,17 @@
   "answer_with": "Answer in this thread with: {answers}.",
   "recommended": "recommended",
   "done": "done",
-  "done_words": ["done", "provided"],
-  "yes_words": ["yes", "confirmed"],
-  "no_words": ["no"],
+  "done_words": [
+    "done",
+    "provided"
+  ],
+  "yes_words": [
+    "yes",
+    "confirmed"
+  ],
+  "no_words": [
+    "no"
+  ],
   "reflect": "I read your answer as {answer}: {label}.",
   "kept": "What else you wrote is kept with the answer; Taktus does not act on it.",
   "confirm": "Answer \"{yes}\" to file it, or \"{no}\" if I misread you.",
@@ -25,9 +33,34 @@
   "reread": "Nothing was filed. Please answer again.",
   "not_filed": "This answer is not filed: only the owner, or someone the owner named, answers here.",
   "closed": "This request is answered already; your message changes nothing.",
-  "show_run_words": ["show run"],
-  "show_process_words": ["show process"],
-  "show_overview_words": ["show overview"],
+  "show_run_words": [
+    "show run"
+  ],
+  "show_process_words": [
+    "show process"
+  ],
+  "show_overview_words": [
+    "show overview"
+  ],
   "live": "Live",
-  "not_shown": "Nothing of that name can be shown to you here."
+  "not_shown": "Nothing of that name can be shown to you here.",
+  "change_words": [
+    "change process"
+  ],
+  "rehearse_words": [
+    "rehearse"
+  ],
+  "commission_words": [
+    "commission"
+  ],
+  "rollback_words": [
+    "roll back"
+  ],
+  "change_started": "I am working out your change to {process} in run {run}. The proposal will be on the process's page below.",
+  "rehearsing": "Rehearsing {proposal} in run {run}; nothing leaves the system.",
+  "commission_read": "I read this as: commission {proposal}, which makes version {version} of {process} active.",
+  "rollback_read": "I read this as: make version {version} of {process} current again, as a new version.",
+  "commissioned": "Version {version} of {process} is active.",
+  "rolled_back": "{process} is at version {version} again, as version {new}.",
+  "act_refused": "That cannot be done now; the process's page says why."
 }

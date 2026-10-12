@@ -120,6 +120,14 @@ class Proposals:
             raise ProposalError("unknown", f"no proposal {proposal_id!r} for {process_id!r}")
         return found
 
+    async def find(self, tenant: Tenant, proposal_id: str) -> Proposal:
+        """A proposal by its identifier alone, as the owner's conversation names it."""
+        async with self._work.transaction(tenant):
+            found = await self._proposals.get(tenant, proposal_id)
+        if found is None:
+            raise ProposalError("unknown", f"no proposal {proposal_id!r}")
+        return found
+
     async def of_process(self, tenant: Tenant, process_id: str) -> list[Proposal]:
         """The proposals for a process, newest first."""
         async with self._work.transaction(tenant):

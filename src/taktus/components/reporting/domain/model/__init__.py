@@ -1,5 +1,6 @@
 from taktus.components.reporting.domain.model.channel import (
     OwnerChannel,
+    PendingAct,
     Phrasebook,
     TaskDestination,
 )
@@ -86,6 +87,7 @@ __all__ = [
     "OriginFacts",
     "OverviewFacts",
     "OwnerChannel",
+    "PendingAct",
     "Phrasebook",
     "ProcessFacts",
     "ProcessRef",

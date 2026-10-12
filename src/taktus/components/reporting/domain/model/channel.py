@@ -25,6 +25,12 @@ PLACEHOLDERS: dict[str, frozenset[str]] = {
     "confirm": frozenset({"yes", "no"}),
     "asked_back": frozenset({"answers"}),
     "filed": frozenset({"answer"}),
+    "change_started": frozenset({"process", "run"}),
+    "rehearsing": frozenset({"proposal", "run"}),
+    "commission_read": frozenset({"proposal", "process", "version"}),
+    "rollback_read": frozenset({"process", "version"}),
+    "commissioned": frozenset({"process", "version"}),
+    "rolled_back": frozenset({"process", "version", "new"}),
 }
 """The sentences that take values, and the values each must use — no more, no fewer."""
 
@@ -83,6 +89,25 @@ class Phrasebook(Value):
     not_shown: str | None = Field(default=None, min_length=1)
     """Said when nothing of that name can be shown to whoever asked: the same whether it does
     not exist or they may not see it."""
+    change_words: tuple[str, ...] | None = None
+    """The words a change in dialogue begins with, before `<process>:` and the change in the
+    owner's own words (UC-4.15, ADR-0091 §6). None: the channel reads no change — a phrasebook
+    configured before there were any."""
+    rehearse_words: tuple[str, ...] | None = None
+    """The words before a proposal's identifier that ask for its rehearsal."""
+    commission_words: tuple[str, ...] | None = None
+    """The words before a proposal's identifier that ask to commission it; read back first."""
+    rollback_words: tuple[str, ...] | None = None
+    """The words before `<process>@<version>` that ask to roll back to it; read back first."""
+    change_started: str | None = Field(default=None, min_length=1)
+    rehearsing: str | None = Field(default=None, min_length=1)
+    commission_read: str | None = Field(default=None, min_length=1)
+    rollback_read: str | None = Field(default=None, min_length=1)
+    commissioned: str | None = Field(default=None, min_length=1)
+    rolled_back: str | None = Field(default=None, min_length=1)
+    act_refused: str | None = Field(default=None, min_length=1)
+    """Said when a change, a rehearsal, a commissioning or a rollback cannot be done; the web
+    app's page of the process says why."""
 
     @model_validator(mode="after")
     def _readable(self) -> Phrasebook:
@@ -102,6 +127,10 @@ class Phrasebook(Value):
             "show_run_words": self.show_run_words or (),
             "show_process_words": self.show_process_words or (),
             "show_overview_words": self.show_overview_words or (),
+            "change_words": self.change_words or (),
+            "rehearse_words": self.rehearse_words or (),
+            "commission_words": self.commission_words or (),
+            "rollback_words": self.rollback_words or (),
         }
         for name, listed in words.items():
             if any(w != w.strip().casefold() or not w for w in listed):
@@ -126,6 +155,35 @@ class Phrasebook(Value):
         )
         if any(a & b for i, a in enumerate(asking) for b in asking[i + 1 :]):
             problems.append("a word cannot ask for two levels")
+        changing = (
+            self.change_words,
+            self.rehearse_words,
+            self.commission_words,
+            self.rollback_words,
+            self.change_started,
+            self.rehearsing,
+            self.commission_read,
+            self.rollback_read,
+            self.commissioned,
+            self.rolled_back,
+            self.act_refused,
+        )
+        if any(x is not None for x in changing) and any(not x for x in changing):
+            problems.append(
+                "a phrasebook that reads a change in dialogue names every one of its eleven "
+                "entries, from change_words to act_refused (ADR-0091 §6)"
+            )
+        acting = [
+            set(words or ())
+            for words in (
+                self.change_words,
+                self.rehearse_words,
+                self.commission_words,
+                self.rollback_words,
+            )
+        ]
+        if any(a & b for i, a in enumerate(acting) for b in acting[i + 1 :]):
+            problems.append("a word cannot ask for two acts")
         if problems:
             raise ValueError("; ".join(problems))
         return self
@@ -173,3 +231,22 @@ class OwnerChannel(Value):
     def may_answer(self, identity: str | None) -> bool:
         """Only the owner, or someone the owner named (UC-1.7)."""
         return identity is not None and (identity == self.owner or identity in self.named)
+
+
+class PendingAct(Value):
+    """A commissioning or a rollback asked for in the owner's conversation, read back and waiting
+    for its confirmation (ADR-0008, ADR-0091 §6). Stored under its conversation and thread, so
+    that the next `yes` there confirms it; never deleted, only moved to `done` or `dropped`."""
+
+    id: str = Field(min_length=1)
+    """`<address>:<thread>`: one act waits per thread."""
+    tenant: str = Field(min_length=1)
+    kind: str = Field(pattern=r"^(commission|rollback)$")
+    process: str = Field(min_length=1)
+    proposal: str | None = None
+    version: str = Field(min_length=1)
+    """The version a commissioning makes active, or the one a rollback makes current again."""
+    by: str = Field(min_length=1)
+    """Who asked; only the same person confirms it."""
+    state: str = Field(default="awaiting", pattern=r"^(awaiting|done|dropped)$")
+    asked_at: datetime

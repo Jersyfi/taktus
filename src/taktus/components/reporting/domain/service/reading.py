@@ -85,3 +85,49 @@ def representation(text: str, book: Phrasebook) -> Asked | None:
         if process and version:
             return Asked(level="process", id=process, version=version)
     return None
+
+
+class Act(Value):
+    """A change in dialogue asked for in the owner's conversation (UC-4.15, ADR-0091 §6)."""
+
+    kind: Literal["change", "rehearse", "commission", "rollback"]
+    target: str = Field(min_length=1, pattern=r"^\S+$")
+    """The process for a change or a rollback; the proposal for a rehearsal or a commissioning."""
+    version: str | None = Field(default=None, min_length=1)
+    """For a rollback: the version to make current again."""
+    words: str | None = Field(default=None, min_length=1)
+    """For a change: what should change, in the owner's own words."""
+
+
+def act(text: str, book: Phrasebook) -> Act | None:
+    """A message that asks for a change in dialogue, read by a rule:
+
+    - one of `change_words`, the process, a colon, and the change in the owner's own words;
+    - one of `rehearse_words` or `commission_words`, and one proposal's identifier;
+    - one of `rollback_words`, and `<process>@<version>`.
+
+    The words are matched as the other words are; identifiers and the owner's words are taken
+    as written. None for anything else, and for a phrasebook that reads no change."""
+    if book.change_words is None:
+        return None
+    message = text.strip()
+    folded = message.casefold()
+    for word in book.change_words:
+        if folded.startswith(word + " "):
+            process, colon, words = message[len(word) :].strip().partition(":")
+            if colon and process.strip() and " " not in process.strip() and words.strip():
+                return Act(kind="change", target=process.strip(), words=words.strip())
+            return None
+    tokens = message.strip(_AROUND).split()
+    if len(tokens) < 2:
+        return None
+    said, name = " ".join(tokens[:-1]).casefold(), tokens[-1]
+    if said in (book.rehearse_words or ()):
+        return Act(kind="rehearse", target=name)
+    if said in (book.commission_words or ()):
+        return Act(kind="commission", target=name)
+    if said in (book.rollback_words or ()):
+        process, at, version = name.rpartition("@")
+        if at and process and version:
+            return Act(kind="rollback", target=process, version=version)
+    return None

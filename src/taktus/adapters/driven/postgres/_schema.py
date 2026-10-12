@@ -225,6 +225,17 @@ proposal = Table(
     Index("proposal_process", "tenant", "process_id"),
 )
 
+pending_act = Table(
+    "pending_act",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    _at("asked_at"),
+    Column("act", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+
 trigger_state = Table(
     "trigger_state",
     metadata,
