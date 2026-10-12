@@ -309,7 +309,9 @@ async def wire(
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
-            objects = MemoryObjectStore(settings.state_dir / "objects")
+            objects = MemoryObjectStore(
+                settings.state_dir / "objects", cache_bytes=settings.object_cache_mb * 1024 * 1024
+            )
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
                 StaticWorkerPool(
