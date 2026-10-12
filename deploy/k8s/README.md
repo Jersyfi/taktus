@@ -84,7 +84,7 @@ operator's. The parts that carry a decision:
 | `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002); the scheduler is elected, more than one is allowed and idle |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
 | `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall |
-| `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim` — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
+| `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
 | `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE`. A credential of one of several workers has the parameter `worker.<worker>.credential.<name>`, and only that worker receives it |
 | `administration.platform`, `.administers` | the platform this instance runs on and, per credential parameter, the platforms it administers or `none` — `TAKTUS_PLATFORM`, `TAKTUS_ADMINISTERS` (ADR-0052). A process naming a credential that administers this platform, or one declared about nothing, is refused; with no platform nothing is checked |
 | `connectors.repository.*` | the repository channel's connector as a deployment of its own, from the control plane's image, acting as Taktus's own app (ADR-0033): the repository it serves, the app's identifier, the Secrets holding the app's key and the webhook secret — mounted as files — and `findings`, which makes it the connector product findings go through. Enabled, it sets `TAKTUS_CONNECTORS` (`channel.repo`) and, with `findings`, `TAKTUS_FINDINGS_CONNECTOR`; it is reached from the roles alone and reaches the name service and the service's API outside the cluster (#66) |
@@ -275,6 +275,29 @@ with an unenforced list. `execution.egress.enforce: false` is the operator's exp
 recorded choice to run without it, and the run's ledger records that the frame was not
 enforced. **The one thing that must never happen is the list quietly meaning nothing.**
 
+**A worker's own service is not in the frame.** A coding worker's agent calls its provider's
+API to work at all; a model worker calls its model's. That host belongs to the worker, not to
+the step: a bundle names what its step may reach, and must not have to name which provider
+the operator chose. So the operator names it as configuration, per worker:
+`execution.defaults.serviceHosts`, or `serviceHosts` of an entry of `execution.workers[]`
+(`TAKTUS_EXECUTION_SERVICE_HOSTS`, ADR-0089). Each is a host name as the frame names one —
+lowercase, optionally with a port, no wildcard — and is validated the same way at startup.
+
+- **An assignment's job** gets the frame's hosts and the service hosts, each once, in its
+  proxy's list. The frame handed to the worker is still the step's: the worker refuses a tool
+  call to a service host the frame does not name (W-13). The service host is reachable by the
+  agent, not granted to the step.
+- **The conformance suite's unit** gets the suite's hosts (`conformance.worker.hosts`) and the
+  service hosts, so that the suite exercises the worker as a run would.
+- **A probe** — the unit started to answer capabilities or an estimate — gets none, and no
+  credential either.
+- **Empty**, the default, changes nothing: a unit reaches the frame's hosts alone.
+
+The proxy still connects only on `execution.egress.ports` and to no address in
+`execution.egress.exceptCidrs`; a service host on another port needs that port there too.
+With `execution.egress.enforce: false` a job that names hosts is refused, and service hosts
+are hosts: a worker that names them cannot run on such a cluster at all.
+
 On the target cluster the enforcement is present; it was verified read-only on 2026-09-23. The
 verification and every detail of that cluster are in the operator's private note and not here,
 because this repository is public (`CREDENTIALS.md`).
@@ -296,8 +319,9 @@ with `httpx` alone, through the calls of the Role of section 1 and no other. It:
    its exact path, an `env` credential as a variable from a key, because the worker contract
    asks for it there, as the container adapter does. The pod's recorded configuration names the
    Secret's keys and never a value;
-2. when the frame names hosts, creates the egress proxy as a second Job and a Service, with the
-   frame's host list and the job's token (section 6), and waits for it to be ready within
+2. when the job names hosts — the frame's, and for an assignment the worker's service hosts
+   (section 6) — creates the egress proxy as a second Job and a Service, with that host list
+   and the job's token, and waits for it to be ready within
    `startTimeoutSeconds`. Without hosts there is no proxy, and the job reaches nothing;
 3. reaches the unit at its Service's address and speaks the worker contract to it, exactly as
    the other two adapters do — the port's interface does not change. The unit must answer
@@ -309,7 +333,7 @@ with `httpx` alone, through the calls of the Role of section 1 and no other. It:
    so that the cluster removes them too when the control plane died before it could: the
    deadline ends the Job, its time to live deletes it, and what it owns goes with it;
 5. refuses, with the port's `ExecutionRefused` and before creating anything, a job it cannot
-   give limits to, a frame that names hosts while `execution.egress.enforce` is false, and an
+   give limits to, a job that names hosts while `execution.egress.enforce` is false, and an
    isolation that does not suffice for the run's autonomy level. With network policies not
    enforced, a pod's network is open: the cluster then isolates the process and the filesystem,
    not the reach, and every job at level 3 or above — or at a level not known — is refused,

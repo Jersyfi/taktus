@@ -99,6 +99,13 @@ checkpoint once a working login is supplied.
 The agent's home is under the worker's state (`<state>/agent`, `CODEX_HOME`), so that its threads
 outlive a job and nothing of the machine's own login is used.
 
+The agent calls its provider's API to work at all, and that host is in no step's frame. On an
+execution kind that enforces a unit's reach (`container`, `cluster`), the operator names it for
+this worker: `TAKTUS_EXECUTION_SERVICE_HOSTS`, or `TAKTUS_WORKER_<NAME>_EXECUTION_SERVICE_HOSTS`
+for a named worker, `serviceHosts` in the chart. The unit reaches it for an assignment and for
+the conformance suite, never for a probe; the frame the worker holds tool calls against stays the
+step's (ADR-0089).
+
 ### The frame
 
 **The agent asks no permission per call** in its non-interactive mode. The worker holds the frame

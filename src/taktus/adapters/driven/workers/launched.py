@@ -2,18 +2,20 @@
 
 An endpoint worker (`http/`) is already running somewhere; a launched worker exists only while
 a job does. This adapter starts one execution unit per assignment through an `Execution`
-adapter — process, container, later a pod — with the credentials, the hosts and the autonomy
-level the assignment carries, talks to it over HTTP and SSE as to any worker, and ends the
-unit when the assignment's stream has ended. The unit's checkpoints live in its state, which
-the execution adapter keeps across jobs, so that a resumed assignment finds them in a new
+adapter — process, container, a pod — with the credentials and the autonomy level the
+assignment carries, and with the hosts of the assignment's frame and those the worker's own
+service needs (`reach`, ADR-0089). It talks to the unit over HTTP and SSE as to any worker, and
+ends the unit when the assignment's stream has ended. The unit's checkpoints live in its state,
+which the execution adapter keeps across jobs, so that a resumed assignment finds them in a new
 unit.
 
 Two calls need a unit before there is an assignment: `capabilities`, which the pool asks once,
 and `estimate`, which the engine asks before every worker step. Each is answered by a *probe*:
-a unit started with no credential and no host, asked, and ended. A probe carries no task, so
-it is launched at autonomy level 1 for `capabilities` and at the assignment's level for
-`estimate`; that costs one unit start per estimate, and the cost is the price of never
-starting a unit with credentials before admission control has said yes (ADR-0005).
+a unit started with no credential and no host, not even the service hosts, asked, and ended. A
+probe carries no task, so it is launched at autonomy level 1 for `capabilities` and at the
+assignment's level for `estimate`; that costs one unit start per estimate, and the cost is the
+price of never starting a unit with credentials before admission control has said yes
+(ADR-0005).
 
 A unit that the execution adapter killed — memory, wall clock — is reported as a failed step
 with that cause, not as a broken stream: the stream's error is replaced by the job's exit.
@@ -37,6 +39,7 @@ from taktus.ports.execution import (
     ExecutionUnit,
     Job,
     JobRequest,
+    reach,
 )
 from taktus.ports.worker import (
     ArtifactList,
@@ -109,7 +112,7 @@ class LaunchedWorker:
             job_id=assignment.assignment_id,
             unit=self._unit,
             autonomy_level=assignment.frame.autonomy_level,
-            allowed_hosts=assignment.frame.allowed_hosts,
+            allowed_hosts=reach(self._unit, assignment.frame.allowed_hosts),
             credentials=assignment.credentials or (),
             wall_seconds=_until(assignment.frame.deadline),
         )
