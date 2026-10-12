@@ -35,6 +35,7 @@ from taktus.components.reporting.domain.model import (
     ProcessSummary,
     RunActivity,
     RunAtVersion,
+    RunCount,
     RunFacts,
     RunningStep,
     StepFacts,
@@ -108,23 +109,14 @@ OVERVIEW = OverviewFacts(
         ProcessSummary(id="invoices", name="Invoices", active_version="2", autonomy_level=2),
         ProcessSummary(id="orders", name="Orders", active_version="1", autonomy_level=1),
     ),
+    counts=(RunCount(tenant=TENANT, process_version="invoices@2", working=1, waiting=1),),
     runs=(
         RunActivity(
             id="run_1",
             tenant=TENANT,
             process_version="invoices@2",
             state="running",
-            working=True,
-            waiting=False,
             running=(RunningStep(id="draft", method=Method.LLM, exactness=ExactnessClass.FREE),),
-        ),
-        RunActivity(
-            id="run_2",
-            tenant=TENANT,
-            process_version="invoices@2",
-            state="waiting_human",
-            working=False,
-            waiting=True,
         ),
     ),
 )

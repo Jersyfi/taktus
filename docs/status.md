@@ -417,7 +417,9 @@ to an operator hosting Taktus for others (DEC-0187, DEC-0188,
 leaks for `0.3.0`: a deadlock between two ledger records, listing runs that blocks the process, an
 object cache without a bound, cache writes booked too cheaply, and project values as product
 defaults (ADR-0092). Migrations run beside the previous release from now on (ADR-0093). The
-project's own records follow six working rules (DEC-0189).
+project's own records follow six working rules (DEC-0189). Listing runs no longer blocks the
+process (#310): `GET /runs` answers a page, the overview counts runs by query, and 2 000 runs of
+ten steps each are answered in a twentieth of a second instead of 45 to 57 (ADR-0094, NTC-0202).
 
 ## 2. The next pull requests
 

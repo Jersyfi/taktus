@@ -32,6 +32,7 @@ from taktus.adapters.driven.postgres.url import for_sqlalchemy
 from taktus.ports.persistence import (
     LedgerStore,
     ProvenanceStore,
+    Queried,
     Repository,
     Stored,
     UnitOfWork,
@@ -54,6 +55,11 @@ class Backend:
 
     def repository[T: Stored](self, kind: type[T]) -> Repository[T]:
         repository: Repository[T] = self._repository(kind)
+        return repository
+
+    def queried[T: Stored](self, kind: type[T]) -> Queried[T]:
+        """The repository with its queries (ADR-0094)."""
+        repository: Queried[T] = self._repository(kind)
         return repository
 
     async def tenant(self) -> str:

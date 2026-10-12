@@ -63,6 +63,15 @@ class RunRef(Value):
         return self.process_version.rsplit("@", 1)[0]
 
 
+class CountedRuns(Value):
+    """What the predicate needs of the runs of one process version counted together, without
+    reading each of them: where they belong (ADR-0094)."""
+
+    tenant: str = Field(min_length=1)
+    process_version: str = Field(min_length=1)
+    """`process@version`."""
+
+
 class ProcessRef(Value):
     """What the predicate needs of a process: its identity and where it belongs."""
 

@@ -16,11 +16,19 @@ second path.
 
 from __future__ import annotations
 
-from taktus.components.reporting.domain.model.live import ProcessRef, Reader, RunRef
+from taktus.components.reporting.domain.model.live import CountedRuns, ProcessRef, Reader, RunRef
 
 
 def may_see(reader: Reader, run: RunRef) -> bool:
     return run.tenant == reader.tenant
+
+
+def may_count(reader: Reader, runs: CountedRuns) -> bool:
+    """Whether a reader may see the runs of one process version counted together, without each
+    run being read (ADR-0094). It never says yes where `may_see` would say no for a run among
+    them: until UC-6.4 both hold the tenant boundary. A view of UC-6.4 that tells the runs of one
+    version apart changes this predicate with it, or a count would show what `may_see` hides."""
+    return runs.tenant == reader.tenant
 
 
 def may_see_process(reader: Reader, process: ProcessRef) -> bool:
