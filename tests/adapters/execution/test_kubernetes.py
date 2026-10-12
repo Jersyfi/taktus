@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -630,3 +631,44 @@ async def test_a_client_that_sends_the_proxy_url_credentials_reaches_through_the
             refused = await client.get(f"http://127.0.0.1:{target_port}/")
     assert response.text == "reached"
     assert refused.status_code == 407
+
+
+async def test_a_client_that_negotiates_the_scheme_reaches_through_the_proxy(
+    tmp_path: Path,
+) -> None:
+    """git asks without credentials first and sends the token only once the 407 names a scheme
+    it can answer. Without `Proxy-Authenticate` it gave up, and no coding worker in a cluster
+    could clone its workspace (issue #356)."""
+    requests: list[bytes] = []
+
+    async def upstream(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        requests.append(await reader.readuntil(b"\r\n\r\n"))
+        writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        await writer.drain()
+        writer.close()
+
+    target = await asyncio.start_server(upstream, "127.0.0.1", 0)
+    target_port = target.sockets[0].getsockname()[1]
+    server = await asyncio.start_server(
+        proxy(Allowlist([f"127.0.0.1:{target_port}"]), "tok-1"), "127.0.0.1", 0
+    )
+    port = server.sockets[0].getsockname()[1]
+    environment = {
+        "HOME": str(tmp_path),
+        "PATH": os.environ["PATH"],
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+        "http_proxy": f"http://taktus:tok-1@127.0.0.1:{port}",
+    }
+    async with server, target:
+        git = await asyncio.create_subprocess_exec(
+            "git",
+            "ls-remote",
+            f"http://127.0.0.1:{target_port}/repository.git",
+            env=environment,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, error = await git.communicate()
+    assert b"407" not in error
+    assert requests and b"/repository.git/info/refs" in requests[0]
