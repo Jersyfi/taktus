@@ -606,10 +606,12 @@ async def test_another_identity_cannot_read_a_decider_s_response_time_under_thei
     own = await w.decisions.queries.response_times(TENANT, DECIDER)
     assert [o.request_id for o in own.own] == [request_id]
     assert own.own[0].seconds >= 5 * 3600
+    assert own.own_total_seconds == own.own[0].seconds == own.own_median_seconds
 
     for reader in (COLLEAGUE, OUTSIDER):
         theirs = await w.decisions.queries.response_times(TENANT, reader)
         assert theirs.own == ()
+        assert theirs.own_total_seconds is None and theirs.own_median_seconds is None
         assert DECIDER not in str(theirs.document()), "nobody else reads it under the name"
         for aggregate in (*theirs.by_role, *theirs.by_department):
             assert aggregate.median_seconds is None and aggregate.decisions is None

@@ -71,6 +71,7 @@ async def test_a_step_retried_after_a_restart_opens_one_pull_request(service: Se
     """Two connector processes — the second knows nothing of the first — asked to open the same
     pull request for the same step: one pull request exists, and the second answer is the first,
     marked as replayed. This is ADR-0005's promise tested against the outside."""
+    service.branch(REPOSITORY, PR_INPUT["head"])
     before = await asyncio_call(build_server(config(service)), "repository.pullrequests.open", KEY)
     assert before["effect"]["replayed"] is False
     number = before["output"]["number"]
@@ -103,6 +104,8 @@ async def asyncio_call(server: Any, operation: str, key: str) -> Json:
 async def test_a_new_attempt_key_opens_a_new_pull_request_only_for_a_new_head(
     service: Service,
 ) -> None:
+    service.branch(REPOSITORY, PR_INPUT["head"])
+    service.branch(REPOSITORY, "taktus/issue-413")
     connector = Connector(config(service))
     error, first = await call(
         connector, "repository.pullrequests.open", context("open-pr", KEY), PR_INPUT
@@ -153,6 +156,49 @@ async def test_issues_and_comments_are_marked_and_found_again(
     assert repeat["effect"]["records"] == first["effect"]["records"]
     assert service.state()[REPOSITORY][counter] == baseline + 1
     assert "taktus-idempotency-key" in first["output"]["body"]
+
+
+@pytest.fixture
+def lagging(service: Service) -> Any:
+    """The issue list leaves out what was created in the last minute, as the real service's
+    list did on 2026-10-12; one issue read by its number is there at once."""
+    service.control("/_fake/lag", {"seconds": 60})
+    yield
+    service.control("/_fake/lag", {"seconds": 0})
+
+
+@pytest.mark.usefixtures("credentials", "lagging")
+async def test_an_issue_repeated_at_once_is_found_while_the_list_lags(service: Service) -> None:
+    """Issue #300: a repeat that relied on the issue list opened a second issue, because the
+    first was not listed yet. The numbers above the newest listed one are read one by one; a
+    pull request among them is passed over; a new key acts again."""
+    service.branch(REPOSITORY, "taktus/between")
+    _service_post(
+        service,
+        f"/repos/{REPOSITORY}/pulls",
+        {"title": "Between", "head": "taktus/between", "base": "main", "body": "b"},
+    )
+    issue = {"title": "Found a thing", "body": "Details."}
+    key = "run_01:issue-lag:1-0123456789"
+    baseline = count(service, "issues")
+    error, first = await call(
+        Connector(config(service)), "repository.issues.create", context("i", key), issue
+    )
+    assert not error and first["effect"]["replayed"] is False
+    error, repeat = await call(
+        Connector(config(service)), "repository.issues.create", context("i", key), issue
+    )
+    assert not error and repeat["effect"]["replayed"] is True
+    assert repeat["effect"]["records"] == first["effect"]["records"]
+    assert count(service, "issues") == baseline + 1
+    error, fresh = await call(
+        Connector(config(service)),
+        "repository.issues.create",
+        context("i", "run_01:issue-lag:2-0123456789"),
+        issue,
+    )
+    assert not error and fresh["effect"]["replayed"] is False
+    assert count(service, "issues") == baseline + 2
 
 
 @pytest.mark.usefixtures("credentials")
@@ -318,7 +364,8 @@ async def test_source_system_permissions_remain_in_force(service: Service) -> No
     assert error
     assert refused["cause"] == "forbidden"
     assert refused["effect"] == "none"
-    assert refused["consumption"] == {"quota_units": 2}  # the lookup, then the refused create
+    # The lookup — the list, then the number above the newest listed one — and the refused create.
+    assert refused["consumption"] == {"quota_units": 3}
 
     unknown = {"name": "REPOSITORY_TOKEN_NOBODY", "injected_as": "env"}
     error, missing = await call(
@@ -909,6 +956,7 @@ async def test_the_pipeline_state_of_a_branch_is_the_pipelines_verdict(service: 
 async def test_an_item_is_closed_once_after_the_comment_that_says_why(service: Service) -> None:
     """UC-1.9: what is not accepted is closed with its reason. A retried step finds its comment
     and the item closed, and writes nothing twice; a pull request is closed, never merged."""
+    service.branch(REPOSITORY, "outside/branch")
     pull = _service_post(
         service,
         f"/repos/{REPOSITORY}/pulls",

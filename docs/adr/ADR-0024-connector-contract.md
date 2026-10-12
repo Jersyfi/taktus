@@ -157,6 +157,36 @@ Two places could carry the answer: a third branch of `IntakeResult`, beside `acc
   that ignores the field answers as before. `v1` is not yet released (ADR-0019), and no
   published contract is broken (M3.5).
 
+## Amendment — a lookup reads what the target answers as written (2026-10-12)
+
+The suite ran against the real repository service for the first time (issue #300). The
+repository connector looked for an issue's key in the service's list of recent issues. That
+list lags: an issue created a second earlier was not in it. A repeat with the same key, made at
+once, opened a second issue. The fake answered its list at once, so no test had seen it. The
+other `marked` writes held, because each looks where the service answers as written: a pull
+request by its head, the comments of one issue, a reference, the labels of one issue.
+
+- **A `marked` lookup reads only what the target answers as written.** A record the target has
+  acknowledged must be found by the next request that looks for it. A list the target fills
+  later, an index or a search, may narrow where to look; it is never the only place looked.
+  The repository connector now reads the list and then every issue above the newest number
+  the list shows, one by one, until a number does not exist. One issue read by its number is
+  answered as written.
+- **Not a memory in the connector.** Remembering in the connector process the keys it acted on
+  would cover a repeat within the process and nothing after a restart. The target's own
+  record covers both, which is what §3 asks of `marked`.
+- **A scenario can name what an earlier write created.** A real service refuses a pull request
+  from a branch that does not exist, and the scenario's `{{unique}}` is fresh per write, so no
+  write could name a branch another made. `{{shared}}` is one token in every call with a first
+  key and another in every call with a new key, the same across the writes (`ScenarioCall`).
+  A scenario may also name further secrets under `credentials`, which the suite only searches
+  for (C-04): the installed instance already named the app's key there, which the schema
+  refused. The fake service refuses a pull request without its head branch, and the
+  conformance gate starts it with an issue list that lags (NTC-0199).
+- **Nothing that conformed stops conforming.** The change adds a placeholder and allows further
+  credential names. A scenario that was valid before is valid now and runs as before. `v1` is
+  not yet released (ADR-0019), and no published contract is broken (M3.5).
+
 ## Where this promise ends
 
 Effect and idempotency are the connector's declarations, and the run trusts them: a connector
@@ -176,3 +206,11 @@ receiving endpoint copies the body and the media type and does not judge them; a
 answers with a value the target did not send has broken nothing the suite can see unless its
 scenario names the handshake. Status `200` is the only status an answer has: a handshake that
 needs another, or headers of its own, is not covered.
+
+A lookup that reads what the target answers as written is still bounded by how far it reads.
+The repository connector finds an issue among the 100 most recently created and up to twenty
+numbers above the newest listed one; a repeat after more records than that is not recognised,
+and acts again. That a single record is answered as written is what the service did on
+2026-10-12, measured, not a guarantee the service gives. The suite proves a lookup only as fast
+as its own repeat: a target whose lag outlasts the time between two calls of the suite fails
+C-05 there, and one whose lag is shorter passes it without proving more.

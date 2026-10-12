@@ -1,7 +1,8 @@
 {
   "credentials": {
     "actions": "REPOSITORY_TOKEN",
-    "intake": "REPOSITORY_WEBHOOK_SECRET"
+    "intake": "REPOSITORY_WEBHOOK_SECRET",
+    "app": "REPOSITORY_APP_KEY"
   },
   "read": {
     "operation": "repository.issues.read",
@@ -18,11 +19,25 @@
       }
     },
     {
+      "operation": "repository.branches.create",
+      "input": {
+        "name": "conformance/{{shared}}",
+        "base": "main",
+        "message": "conformance {{shared}}",
+        "files": [
+          {
+            "path": "conformance/{{shared}}.md",
+            "content": "created by the conformance suite\n"
+          }
+        ]
+      }
+    },
+    {
       "operation": "repository.pullrequests.open",
       "input": {
-        "head": "conformance/{{unique}}",
+        "head": "conformance/{{shared}}",
         "base": "main",
-        "title": "conformance {{unique}}",
+        "title": "conformance {{shared}}",
         "body": "opened by the conformance suite"
       }
     }
