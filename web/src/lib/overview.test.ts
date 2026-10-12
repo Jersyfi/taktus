@@ -54,26 +54,41 @@ function handedOver(glyph: GlyphTokens): Record<string, string> {
 const processes = LEVEL.areas.flatMap((a) => a.processes);
 const running = processes.flatMap((p) => p.running ?? []);
 
+/** Every glyph the overview draws, in its order: for each process its cells, then the steps
+ * running now. */
+function drawn(key: 'moving' | 'still'): Record<string, string>[] {
+	return processes.flatMap((p) => [
+		...(p.cells ?? []).map((c) => handedOver(c.drawn[key])),
+		...(p.running ?? []).map((s) => handedOver(s.drawn[key]))
+	]);
+}
+
 describe('the overview', () => {
 	it('draws the steps running right now as handed over, with motion and without', () => {
 		expect(running.length).toBeGreaterThan(0);
 		const moving = render(OverviewView, { props: { level: LEVEL, motionAllowed: true } }).body;
-		expect(drawnIn(moving)).toEqual(running.map((s) => handedOver(s.drawn.moving)));
+		expect(drawnIn(moving)).toEqual(drawn('moving'));
 		const still = render(OverviewView, { props: { level: LEVEL, motionAllowed: false } }).body;
-		expect(drawnIn(still)).toEqual(running.map((s) => handedOver(s.drawn.still)));
+		expect(drawnIn(still)).toEqual(drawn('still'));
 		expect(drawnIn(still).every((g) => g['data-motion'] === 'none')).toBe(true);
 	});
 
 	it('draws nothing that moves where nothing runs', () => {
 		const idle: OverviewLevel = {
+			summary: 'Nothing is working right now.',
 			areas: LEVEL.areas.map((a) => ({
 				...a,
 				working: 0,
-				processes: a.processes.map((p) => ({ ...p, working: 0, running: [] }))
+				processes: a.processes.map((p) => ({
+					...p,
+					working: 0,
+					running: [],
+					cells: (p.cells ?? []).map((c) => ({ ...c, drawn: { moving: c.drawn.still, still: c.drawn.still } }))
+				}))
 			}))
 		};
 		const html = render(OverviewView, { props: { level: idle, motionAllowed: true } }).body;
-		expect(drawnIn(html)).toEqual([]);
+		expect(drawnIn(html).every((g) => g['data-motion'] === 'none')).toBe(true);
 	});
 
 	it('shows how many runs of each process work and wait, as handed over', () => {
@@ -99,5 +114,20 @@ describe('the overview', () => {
 			expect(html).toContain(s.text);
 		}
 		for (const a of LEVEL.areas) expect(html).toContain(a.text);
+	});
+});
+
+describe('every level', () => {
+	it('opens with the sentence its level hands over, as its heading', () => {
+		const html = unescape(render(OverviewView, { props: { level: LEVEL, motionAllowed: true } }).body);
+		expect(html).toMatch(new RegExp(`<h1[^>]*>${LEVEL.summary.replaceAll('.', '\\.')}</h1>`));
+	});
+
+	it('draws every process as its cells, and a cell moves only while a run runs it', () => {
+		const cells = processes.flatMap((p) => p.cells ?? []);
+		expect(cells.length).toBeGreaterThan(0);
+		for (const c of cells) {
+			expect(c.drawn.moving.motion !== 'none').toBe((c.running_in ?? []).length > 0);
+		}
 	});
 });

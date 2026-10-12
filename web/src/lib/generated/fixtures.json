@@ -408,6 +408,350 @@
                 "text": "step review: person, a person; no result of its own; running. In run run_example."
               }
             ],
+            "cells": [
+              {
+                "id": "load",
+                "method": "rule",
+                "exactness": "exact",
+                "depends_on": [],
+                "running_in": [],
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "single",
+                    "rings": "inner_membrane",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step load: rule, reproducible; exact; planned."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "single",
+                    "rings": "inner_membrane",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step load: rule, reproducible; exact; planned."
+                  }
+                },
+                "text": "step load: rule, reproducible; exact; planned."
+              },
+              {
+                "id": "score",
+                "method": "statistics",
+                "exactness": "sourced",
+                "depends_on": [
+                  "load"
+                ],
+                "running_in": [
+                  "run_example"
+                ],
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "population",
+                    "rings": "pore",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "pulse",
+                    "still_mark": "none",
+                    "text": "step score: statistics, reproducible; sourced; running."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "population",
+                    "rings": "pore",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "aura_solid",
+                    "text": "step score: statistics, reproducible; sourced; running."
+                  }
+                },
+                "text": "step score: statistics, reproducible; sourced; running. In run_example."
+              },
+              {
+                "id": "classify",
+                "method": "ml",
+                "exactness": "tolerant",
+                "depends_on": [
+                  "load"
+                ],
+                "running_in": [],
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "cluster",
+                    "rings": "tolerance_band",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step classify: trained model, reproducible; tolerant; planned."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "cluster",
+                    "rings": "tolerance_band",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step classify: trained model, reproducible; tolerant; planned."
+                  }
+                },
+                "text": "step classify: trained model, reproducible; tolerant; planned."
+              },
+              {
+                "id": "embed",
+                "method": "neural",
+                "exactness": "free",
+                "depends_on": [
+                  "load"
+                ],
+                "running_in": [],
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "network",
+                    "rings": "none",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step embed: neural network, reproducible; free; planned."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "network",
+                    "rings": "none",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step embed: neural network, reproducible; free; planned."
+                  }
+                },
+                "text": "step embed: neural network, reproducible; free; planned."
+              },
+              {
+                "id": "draft",
+                "method": "llm",
+                "exactness": "free",
+                "depends_on": [
+                  "score"
+                ],
+                "running_in": [
+                  "run_example"
+                ],
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "membrane": "fluid",
+                    "nucleus": "cloud",
+                    "rings": "none",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "shimmer",
+                    "still_mark": "none",
+                    "text": "step draft: language model, variable; free; running."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "membrane": "fluid",
+                    "nucleus": "cloud",
+                    "rings": "none",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "aura_dotted",
+                    "text": "step draft: language model, variable; free; running."
+                  }
+                },
+                "text": "step draft: language model, variable; free; running. In run_example."
+              },
+              {
+                "id": "build",
+                "method": "worker",
+                "exactness": "tolerant",
+                "depends_on": [
+                  "draft"
+                ],
+                "running_in": [],
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "membrane": "fluid",
+                    "nucleus": "satellites",
+                    "rings": "tolerance_band",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step build: worker, variable; tolerant; planned."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "membrane": "fluid",
+                    "nucleus": "satellites",
+                    "rings": "tolerance_band",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step build: worker, variable; tolerant; planned."
+                  }
+                },
+                "text": "step build: worker, variable; tolerant; planned."
+              },
+              {
+                "id": "review",
+                "method": "human",
+                "depends_on": [
+                  "draft"
+                ],
+                "running_in": [
+                  "run_example"
+                ],
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "membrane": "soft",
+                    "nucleus": "open",
+                    "rings": "none",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "swell",
+                    "still_mark": "none",
+                    "text": "step review: person, a person; no result of its own; running."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "membrane": "soft",
+                    "nucleus": "open",
+                    "rings": "none",
+                    "fill": "partial",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "aura_open",
+                    "text": "step review: person, a person; no result of its own; running."
+                  }
+                },
+                "text": "step review: person, a person; no result of its own; running. In run_example."
+              },
+              {
+                "id": "pipeline",
+                "method": "wait",
+                "depends_on": [
+                  "review"
+                ],
+                "running_in": [],
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "membrane": "dormant",
+                    "nucleus": "seed",
+                    "rings": "none",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step pipeline: wait, waiting; no result of its own; planned."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "membrane": "dormant",
+                    "nucleus": "seed",
+                    "rings": "none",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step pipeline: wait, waiting; no result of its own; planned."
+                  }
+                },
+                "text": "step pipeline: wait, waiting; no result of its own; planned."
+              },
+              {
+                "id": "check",
+                "method": "rule",
+                "exactness": "exact",
+                "depends_on": [
+                  "pipeline"
+                ],
+                "running_in": [],
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "single",
+                    "rings": "inner_membrane",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step check: rule, reproducible; exact; planned."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "single",
+                    "rings": "inner_membrane",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step check: rule, reproducible; exact; planned."
+                  }
+                },
+                "text": "step check: rule, reproducible; exact; planned."
+              },
+              {
+                "id": "close",
+                "method": "rule",
+                "exactness": "exact",
+                "depends_on": [
+                  "check"
+                ],
+                "running_in": [],
+                "drawn": {
+                  "moving": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "single",
+                    "rings": "inner_membrane",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step close: rule, reproducible; exact; planned."
+                  },
+                  "still": {
+                    "subject": "step",
+                    "membrane": "beaded",
+                    "nucleus": "single",
+                    "rings": "inner_membrane",
+                    "fill": "empty",
+                    "state_mark": "none",
+                    "motion": "none",
+                    "still_mark": "none",
+                    "text": "step close: rule, reproducible; exact; planned."
+                  }
+                },
+                "text": "step close: rule, reproducible; exact; planned."
+              }
+            ],
             "text": "Process Example (example@1) at autonomy level 2: 1 run working, 1 waiting; running now: score in run_example, draft in run_example, review in run_example."
           },
           {
@@ -418,12 +762,14 @@
             "working": 0,
             "waiting": 0,
             "running": [],
+            "cells": [],
             "text": "Process Quiet (quiet@3) at autonomy level 4: 0 runs working, 0 waiting."
           }
         ],
         "text": "Area default: 2 processes, 1 run working, 1 waiting."
       }
-    ]
+    ],
+    "summary": "3 steps at work in 1 process: 1 reproducible, 1 variable, 1 with a person. 1 run waits."
   },
   "run_level": {
     "run": {
@@ -888,7 +1234,8 @@
         },
         "text": "step close: rule, reproducible; exact; planned."
       }
-    ]
+    ],
+    "summary": "1 of 10 steps completed. Now: score (statistics), draft (language model), review (person), pipeline (wait). It waits for a person."
   },
   "process_level": {
     "process": {
@@ -1310,7 +1657,8 @@
         },
         "text": "run run_example: running. Running score, draft, review."
       }
-    ]
+    ],
+    "summary": "10 steps: 6 reproducible, 2 variable, 1 with a person, 1 waiting. 3 steps running now."
   },
   "origin": {
     "result": {
@@ -1461,6 +1809,7 @@
         },
         "text": "source repository.files main:README.md: read, at 2026-10-10T09:00:00+00:00."
       }
-    ]
+    ],
+    "summary": "The free result of draft comes from a language model step. On its path: 1 language model, 1 statistics, and 1 source read."
   }
 }

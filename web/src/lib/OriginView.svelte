@@ -34,7 +34,8 @@
 </script>
 
 <section class="origin" aria-labelledby="origin-title">
-	<h1 id="origin-title">Where the result of {level.result.step} came from</h1>
+	<p class="eyebrow">Where the result of {level.result.step} came from</p>
+	<h1 id="origin-title">{level.summary}</h1>
 	<p class="meta">
 		Run <a href={runLink(level.result.run)}>{level.result.run}</a> · {level.result.exactness}
 	</p>
@@ -51,6 +52,7 @@
 	<section class="text" aria-label="The origin as text">
 		<h2>As text</h2>
 		<ol>
+			<li data-text="summary">{level.summary}</li>
 			<li data-text="result">{level.result.text}</li>
 			{#each level.steps as step (step.id)}
 				<li data-text={step.id}>{step.text}</li>
@@ -63,6 +65,13 @@
 </section>
 
 <style>
+	.eyebrow {
+		font-size: 0.75rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		margin: 0 0 0.5rem;
+	}
 	.meta {
 		color: var(--muted);
 		margin: 0.2rem 0 1rem;

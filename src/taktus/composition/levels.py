@@ -19,6 +19,7 @@ from taktus.components.reporting.domain.model import (
     DecisionFacts,
     OriginFacts,
     OverviewFacts,
+    PlannedStep,
     ProcessFacts,
     ProcessStepFacts,
     ProcessSummary,
@@ -151,6 +152,17 @@ class RepositoryLevelRecords:
                     name=process.name,
                     active_version=process.active_version,
                     autonomy_level=None if active is None else active.autonomy.level,
+                    steps=()
+                    if active is None
+                    else tuple(
+                        PlannedStep(
+                            id=step.id,
+                            method=step.method,
+                            exactness=step.exactness,
+                            depends_on=step.dependencies,
+                        )
+                        for step in active.steps
+                    ),
                 )
             )
         return OverviewFacts(

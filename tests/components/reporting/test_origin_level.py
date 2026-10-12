@@ -180,3 +180,12 @@ async def test_a_result_the_reader_may_not_see_is_absent(monkeypatch: pytest.Mon
     monkeypatch.setattr(visibility, "may_see", lambda reader, ref: ref.id != "r2")
     assert await LevelQueries(Records()).origin(READER, "r2", "book") is None
     assert await LevelQueries(Records()).origin(READER, "r9", "book") is None
+
+
+def test_the_origin_opens_with_what_produced_the_result() -> None:
+    level = origin_level(PATH)
+    assert level is not None
+    assert level.summary.startswith(
+        "The exact result of book comes from a rule step. On its path: "
+    )
+    assert level.summary.endswith(", and 1 source read.")
