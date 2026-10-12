@@ -89,7 +89,7 @@ kernel (`contracts/process`, `contracts/shared`); command, plan, process version
 and provenance in the control plane, in memory and in PostgreSQL, with restart at the last step
 boundary proven for one instance; the daemon with four roles, claims with a lease, an elected
 scheduler and a shutdown at the step boundary; the execution port with the `process` and
-`container` adapters; two workers in their own images — the reference `script` worker and the
+`container` adapters; a worker that is silent while it works keeps its stream (#271); two workers in their own images — the reference `script` worker and the
 coding worker, the latter passing the suite in both authentication modes against a stand-in for
 its agent; the reference repository connector in both directions, proven against the real
 service, and acting as Taktus's own app when configured (ADR-0033); the loopback connector and the removal test as a process (`S-01`), run once by hand;

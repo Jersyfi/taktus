@@ -1,24 +1,27 @@
 """One worker endpoint behind the worker port.
 
-Every answer is validated against the contract's shapes before it reaches the core; an answer
-that does not validate is a WorkerError naming the endpoint and the first violation, never a
-half-read object. The stream is read until `assignment.finished`; a connection that drops is
-reopened from the last sequence number seen (`Last-Event-ID`), which the contract obliges the
-worker to honour (W-03). Two timeouts guard the read: `idle_timeout` between two events and
-`stream_timeout` for the whole stream; either becomes a WorkerError, which the run engine treats
-as a failed step. A 503 to a new assignment is the contract's "at capacity" and becomes
-WorkerAtCapacity, on which the run engine makes the step wait (ADR-0037). A 409 to a new
-assignment is the contract's "an assignment with this id exists" and becomes AssignmentExists;
-a 404 to the state of an assignment becomes UnknownAssignment. The run engine asks both when it
-finds an assignment a dead runner handed over (ADR-0038).
+Every answer is validated against the contract's shapes before it reaches the core; an answer that
+does not validate is a WorkerError naming the endpoint and the first violation, never a half-read
+object. The stream is read until `assignment.finished`; a connection that drops is reopened from the
+last sequence number seen (`Last-Event-ID`), which the contract obliges the worker to honour (W-03).
+Two timeouts guard the read: `idle_timeout` between two events and `stream_timeout` for the whole
+stream; either becomes a WorkerError, which the run engine treats as a failed step. A silence longer
+than `idle_timeout` is not a broken stream while the worker answers for the assignment and it still
+runs: the client asks its state and reads on. Reconnects are counted between two events, so a long
+assignment with several silences is not cut off. A 503 to a new assignment is the contract's "at
+capacity" and becomes WorkerAtCapacity, on which the run engine makes the step wait (ADR-0037). A
+409 to a new assignment is the contract's "an assignment with this id exists" and becomes
+AssignmentExists; a 404 to the state of an assignment becomes UnknownAssignment. The run engine asks
+both when it finds an assignment a dead runner handed over (ADR-0038).
 
-Credential values never pass through here: the contract carries names, and the environment of
-the worker process is the execution adapter's business.
+Credential values never pass through here: the contract carries names, and the environment of the
+worker process is the execution adapter's business.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from types import TracebackType
 from typing import Any, Self
@@ -120,7 +123,13 @@ class HttpWorker:
         attempts = 0
         finished = False
         stream_timeout = httpx.Timeout(self._idle_timeout, connect=10.0)
+        deadline = time.monotonic() + self._stream_timeout
         while not finished:
+            if time.monotonic() > deadline:
+                raise WorkerError(
+                    f"{self.endpoint}: the stream of {assignment_id} did not finish within "
+                    f"{self._stream_timeout:.0f} s"
+                )
             headers = {"Accept": "text/event-stream"}
             if last_seq > 0:
                 headers["Last-Event-ID"] = str(last_seq)
@@ -141,11 +150,17 @@ class HttpWorker:
                                 f"{self.endpoint}: {path} jumped from seq {last_seq} to {event.seq}"
                             )
                         last_seq = event.seq
+                        attempts = 0  # the worker made progress: a later silence starts afresh
                         yield event
                         if event.type == "assignment.finished":
                             finished = True
                             break
             except httpx.HTTPError as error:
+                if isinstance(error, httpx.ReadTimeout) and await self._working(assignment_id):
+                    # Silent, not gone: an agent that runs the tests for minutes sends nothing
+                    # meanwhile. The worker answered for the assignment, which still runs, so
+                    # the silence costs no attempt (found in the live run of #74, 2026-10-12; issue #271).
+                    continue
                 attempts += 1
                 if attempts > self._reconnects:
                     raise WorkerError(
@@ -163,6 +178,15 @@ class HttpWorker:
                     )
 
     # --- plumbing ---------------------------------------------------------------------------
+
+    async def _working(self, assignment_id: AssignmentId) -> bool:
+        """Whether the worker answers for the assignment and it has not finished — a silent
+        stream of a worker that is alive, as opposed to one that is gone."""
+        try:
+            state = await self.state(assignment_id)
+        except WorkerError:
+            return False
+        return state.status != "finished"
 
     def _event(self, text: str, path: str) -> Event:
         try:
