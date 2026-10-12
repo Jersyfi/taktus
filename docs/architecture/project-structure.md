@@ -108,7 +108,7 @@ taktus/
 │   │       ├── execution/           # process.py: a unit as a child process, its memory limit enforced on Linux and refused elsewhere; container/: a unit per job in a container with limits, no swap, credentials in memory, an egress proxy; kubernetes/: a unit per job as a Job in the execution namespace, requesting all of its memory limit and a share of its CPU limit (`TAKTUS_EXECUTION_CPU_REQUEST_SHARE`, deploy/k8s/README.md §7), credentials from a Secret for the job's lifetime, an egress proxy Job whose 407 names its scheme (#356), a unit no node has room for at capacity (ADR-0037 §6) — api.py speaks the cluster's API with httpx, only the calls of the Role (M1.3), and nothing else imports it
 │   │       ├── platform/            # host.py: the platform port for this machine or container — control group, /proc, the state directory's filesystem; standard library only
 │   │       ├── objectstore/ secret/ ledger/
-│   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here
+│   │       ├── connectors/github/   # the reference connector: an MCP server behind contracts/connector/v1; the product name lives only here; a refused write of the pipeline's workflow files names them (#366)
 │   │       ├── connectors/mcp/      # the connector port as an MCP client: intake and actions; connectors/pool.py maps capabilities
 │   │       ├── connectors/loopback/ # Taktus reached by Taktus: the capabilities orchestrator.* behind the action side of the connector port, over an Orchestrator the composition root implements
 │   │       ├── connectors/directory/ # knowledge.pages over a directory of Markdown files: the knowledge system of an organisation that has none (ADR-0065)

@@ -68,7 +68,7 @@ of open records on `main`, admit — the ready standard, and open, not a pull re
 (`rule` `ready`, `exact`; a refusal names every reason) — claim the issue with the label
 `in-progress` (`rule`, outward), implement (`worker`, `tolerant`: the coding worker in a clone of
 the repository, with the issue's text as its task and its section "How it is verified" as the
-acceptance), name the branch, put the worker's changeset on it through the connector (`rule`,
+acceptance; it leaves the pipeline's workflow files to a person, which the app may not write, NTC-0203), name the branch, put the worker's changeset on it through the connector (`rule`,
 outward: one commit that carries the idempotency key), wait for the pipeline (`wait`, polling
 the pipeline's state), read the verdict, verify it is `success` (`rule`, `exact` — the pipeline's
 verdict, never the worker's opinion), compose the title, the closing section and the body, open the pull request

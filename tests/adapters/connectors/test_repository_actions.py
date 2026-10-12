@@ -618,6 +618,30 @@ async def test_a_branch_without_files_carries_an_empty_marked_commit(service: Se
 
 
 @pytest.mark.usefixtures("credentials")
+async def test_a_refused_change_of_a_workflow_file_names_the_file(service: Service) -> None:
+    """The service answers a tree that touches a workflow file with "not accessible" and
+    nothing more; the first P-03 run on the instance escalated with only that (issue #366).
+    The failure names the workflow files and only those."""
+    error, result = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("flows", "run_01:flows:1-0123456789"),
+        {
+            "name": "taktus/flows",
+            "base": "main",
+            "files": [
+                {"path": "tools/check.py", "content": "print('ok')\n"},
+                {"path": ".github/workflows/ci.yml", "content": "name: ci\n"},
+            ],
+        },
+    )
+    assert error
+    assert result["cause"] == "forbidden" and not result["retryable"]
+    assert ".github/workflows/ci.yml" in result["detail"]
+    assert "tools/check.py" not in result["detail"]
+
+
+@pytest.mark.usefixtures("credentials")
 async def test_a_changed_file_keeps_the_mode_it_had(service: Service) -> None:
     """An executable file that a change touches stays executable (DEC-0020).
 
