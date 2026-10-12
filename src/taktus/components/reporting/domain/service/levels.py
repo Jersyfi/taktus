@@ -19,11 +19,16 @@ definitions, counted — and the steps running right now, which are the only thi
 produced it: the result, each step on the way with how it works, and each source it read and
 when — as a graph from the sources to the result. Nothing is drawn the records do not hold.
 
+Every level opens with a *summary*: one sentence that says what is happening, made from the
+level's own elements and figures and nothing else. It is the first line of the text equivalent,
+and the web app sets it as the level's heading (ADR-0063, amended 2026-10-12, DEC-0185).
+
 Pure: facts in, elements out.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 
 from pydantic import Field
@@ -44,6 +49,7 @@ from taktus.components.reporting.domain.model.levels import (
     VersionRef,
     Wait,
 )
+from taktus.components.reporting.domain.model.vocabulary import VOCABULARY, Family, family_of
 from taktus.components.reporting.domain.service.drawing import (
     DecisionRequest,
     Element,
@@ -76,6 +82,23 @@ ACCOUNTS: dict[str, str] = {
 }
 """What each of the seven accounts of ADR-0015 says a step waits on, in words. A test holds the
 keys equal to the run component's accounts."""
+
+FAMILY_WORDS: dict[Family, str] = {
+    Family.REPRODUCIBLE: "reproducible",
+    Family.VARIABLE: "variable",
+    Family.PERSON: "with a person",
+    Family.WAITING: "waiting",
+}
+"""How a summary names the steps of each family."""
+
+
+def by_family(methods: Iterable[Method]) -> str:
+    """How many steps of each family, in words: `3 reproducible, 1 variable`."""
+    counts: dict[Family, int] = {}
+    for method in methods:
+        family = family_of(method)
+        counts[family] = counts.get(family, 0) + 1
+    return ", ".join(f"{counts[f]} {FAMILY_WORDS[f]}" for f in Family if counts.get(f))
 
 
 class Drawn(Value):
@@ -126,6 +149,8 @@ class RunLevel(Value):
 
     run: RunElement
     steps: tuple[StepElement, ...]
+    summary: str = Field(min_length=1)
+    """One sentence: how far the run is, and what it does now."""
 
 
 def figures(quantities: ConsumptionQuantities | None) -> tuple[Figure, ...]:
@@ -218,6 +243,7 @@ def run_level(facts: RunFacts) -> RunLevel:
     text.append(
         f"Consumed so far: {_figures_text(consumed)}." if consumed else "Consumed: nothing."
     )
+    steps = tuple(_step(step) for step in facts.steps)
     return RunLevel(
         run=RunElement(
             id=facts.id,
@@ -230,7 +256,8 @@ def run_level(facts: RunFacts) -> RunLevel:
             drawn=drawn,
             text=" ".join(text),
         ),
-        steps=tuple(_step(step) for step in facts.steps),
+        steps=steps,
+        summary=_run_summary(facts.state, steps),
     )
 
 
@@ -292,6 +319,8 @@ class ProcessLevel(Value):
     process: ProcessElement
     steps: tuple[ProcessStepElement, ...]
     runs: tuple[RunAtVersionElement, ...]
+    summary: str = Field(min_length=1)
+    """One sentence: how its steps work, and how many run now."""
 
 
 AT_REST = "planned"
@@ -378,6 +407,7 @@ def process_level(facts: ProcessFacts) -> ProcessLevel:
         ),
         steps=tuple(_process_step(step, runs) for step in facts.steps),
         runs=tuple(_run_at_version(run) for run in runs),
+        summary=_process_summary(facts.steps, runs),
     )
 
 
@@ -386,6 +416,20 @@ class RunningStepElement(Value):
     step: str
     method: Method
     exactness: ExactnessClass | None
+    drawn: Drawn
+    text: str = Field(min_length=1)
+
+
+class CellElement(Value):
+    """A step of a process's active version, drawn on the overview among its process's cells:
+    running while a run of that version the reader may see runs it, at rest otherwise
+    (ADR-0064 §2)."""
+
+    id: str
+    method: Method
+    exactness: ExactnessClass | None
+    depends_on: tuple[str, ...] = ()
+    running_in: tuple[str, ...] = ()
     drawn: Drawn
     text: str = Field(min_length=1)
 
@@ -400,6 +444,8 @@ class ProcessSummaryElement(Value):
     waiting: int
     """How many of its runs wait right now: the run component's `WAITING`, counted."""
     running: tuple[RunningStepElement, ...] = ()
+    cells: tuple[CellElement, ...] = ()
+    """The steps of its active version, so that the overview draws every process as one body."""
     text: str = Field(min_length=1)
 
 
@@ -417,6 +463,8 @@ class OverviewLevel(Value):
     how busy each one is right now."""
 
     areas: tuple[AreaElement, ...]
+    summary: str = Field(min_length=1)
+    """One sentence: how many steps work now and how, and how many runs wait."""
 
 
 def _running_step(run: RunActivity, step: RunningStep) -> RunningStepElement:
@@ -453,6 +501,7 @@ def _summary(process: ProcessSummary, runs: list[RunActivity]) -> ProcessSummary
         working=working,
         waiting=waiting,
         running=running,
+        cells=_cells(process, runs),
         text=f"Process {process.name} ({process.id}{version}){level}: {busy}{steps}.",
     )
 
@@ -482,7 +531,7 @@ def overview_level(facts: OverviewFacts) -> OverviewLevel:
         text=f"Area {facts.tenant}: {_counted(len(summaries), 'process')}, "
         f"{_counted(working, 'run')} working, {waiting} waiting.",
     )
-    return OverviewLevel(areas=(area,))
+    return OverviewLevel(areas=(area,), summary=_overview_summary(summaries, waiting))
 
 
 class OriginStepElement(Value):
@@ -538,6 +587,8 @@ class OriginLevel(Value):
     result: ResultElement
     steps: tuple[OriginStepElement, ...]
     sources: tuple[SourceElement, ...] = ()
+    summary: str = Field(min_length=1)
+    """One sentence: what produced the result, and which methods are on its path."""
 
 
 def _source_id(capability: str, ref: str) -> str:
@@ -599,6 +650,7 @@ def origin_level(facts: OriginFacts) -> OriginLevel | None:
         ),
         steps=tuple(steps),
         sources=tuple(sources.values()),
+        summary=_origin_summary(producing.exactness, produced, steps, len(sources)),
     )
 
 
@@ -634,4 +686,96 @@ def _origin_step(record: Provenance, reads: tuple[str, ...]) -> OriginStepElemen
         depends_on=reads,
         drawn=drawn,
         text=" ".join(text),
+    )
+
+
+def _run_summary(state: str, steps: tuple[StepElement, ...]) -> str:
+    """How far a run is and what it does now, in one sentence."""
+    done = sum(1 for s in steps if s.state == "succeeded")
+    if state == "finished":
+        return f"Finished: all {_counted(len(steps), 'step')} completed."
+    sentence = f"{done} of {_counted(len(steps), 'step')} completed."
+    now = [s for s in steps if s.state in ("running", "waiting_human")]
+    if now:
+        sentence += (
+            " Now: " + ", ".join(f"{s.id} ({VOCABULARY.method(s.method).text})" for s in now) + "."
+        )
+    if any(s.state == "waiting_human" for s in steps) or state == "waiting_human":
+        sentence += " It waits for a person."
+    return sentence
+
+
+def _process_summary(steps: tuple[ProcessStepFacts, ...], runs: tuple[RunAtVersion, ...]) -> str:
+    """How a version's steps work, and how many of them a run runs right now."""
+    sentence = f"{_counted(len(steps), 'step')}: {by_family(s.method for s in steps)}."
+    running = {step for run in runs for step in run.running}
+    if running:
+        return f"{sentence} {_counted(len(running), 'step')} running now."
+    return f"{sentence} At rest."
+
+
+def _cells(process: ProcessSummary, runs: list[RunActivity]) -> tuple[CellElement, ...]:
+    """The steps of a process's active version as cells. Only runs of that version count."""
+    active = f"{process.id}@{process.active_version}"
+    of_version = [r for r in runs if r.process_version == active]
+    cells: list[CellElement] = []
+    for step in process.steps:
+        running_in = tuple(r.id for r in of_version if any(s.id == step.id for s in r.running))
+        state = "running" if running_in else AT_REST
+        drawn = _drawn(
+            Step(name=step.id, method=step.method, exactness=step.exactness, state=state)
+        )
+        text = drawn.moving.text + (f" In {', '.join(running_in)}." if running_in else "")
+        cells.append(
+            CellElement(
+                id=step.id,
+                method=step.method,
+                exactness=step.exactness,
+                depends_on=step.depends_on,
+                running_in=running_in,
+                drawn=drawn,
+                text=text,
+            )
+        )
+    return tuple(cells)
+
+
+def _overview_summary(summaries: tuple[ProcessSummaryElement, ...], waiting: int) -> str:
+    """How many steps work right now, of which family, in how many processes; and how many runs
+    wait. A waiting step does no work, so it is named apart."""
+    working = [(p.id, s) for p in summaries for s in p.running]
+    at_work = [(p, s) for p, s in working if family_of(s.method) is not Family.WAITING]
+    resting = len(working) - len(at_work)
+    if at_work:
+        processes = len({p for p, _ in at_work})
+        sentence = (
+            f"{_counted(len(at_work), 'step')} at work in {_counted(processes, 'process')}: "
+            f"{by_family(s.method for _, s in at_work)}."
+        )
+    else:
+        sentence = "Nothing is working right now."
+    if resting:
+        verb = "waits" if resting == 1 else "wait"
+        sentence += f" {_counted(resting, 'step')} {verb} on something outside."
+    if waiting:
+        verb = "waits" if waiting == 1 else "wait"
+        sentence += f" {_counted(waiting, 'run')} {verb}."
+    return sentence
+
+
+def _origin_summary(
+    exactness: ExactnessClass,
+    produced: OriginStepElement,
+    steps: list[OriginStepElement],
+    sources: int,
+) -> str:
+    """What produced the result, and which method kinds are on the path back from it."""
+    kinds: dict[Method, int] = {}
+    for step in steps:
+        kinds[step.method] = kinds.get(step.method, 0) + 1
+    path = ", ".join(f"{n} {VOCABULARY.method(m).text}" for m, n in kinds.items())
+    read = f", and {_counted(sources, 'source')} read" if sources else ""
+    return (
+        f"The {VOCABULARY.exactness_of(exactness).text} result of {produced.step} comes from a "
+        f"{VOCABULARY.method(produced.method).text} step. On its path: {path}{read}."
     )

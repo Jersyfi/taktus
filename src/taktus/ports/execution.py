@@ -16,15 +16,22 @@ The launch convention, the one thing a unit must know when an adapter starts it:
 `TAKTUS_UNIT_PORT` for the port to serve the contract on and `TAKTUS_UNIT_STATE_DIR` for the
 directory that outlives the job. Both are environment variables, so that any worker — a
 script, a foreign binary behind a shell wrapper — can be launched without knowing more.
+
+Beside the convention a unit receives the variables its own program needs to start, as the
+operator configures them for the worker (`ExecutionUnit.environment`, ADR-0090): a coding
+worker's authentication mode, for instance. They are configuration, visible as configuration
+is, and never a secret: a name that reads as a secret's carrier is refused (`variable_refusal`),
+and a secret reaches a unit only as a credential the job names.
 """
 
 from __future__ import annotations
 
+import re
 from contextlib import AbstractAsyncContextManager
 from enum import StrEnum
 from typing import Literal, Protocol
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from taktus.ports.worker import CredentialReference, Host
 from taktus.shared.v1 import AutonomyLevel, Value
@@ -33,6 +40,42 @@ UNIT_PORT_VARIABLE = "TAKTUS_UNIT_PORT"
 UNIT_STATE_DIR_VARIABLE = "TAKTUS_UNIT_STATE_DIR"
 ISOLATION_REQUIRED_FROM: AutonomyLevel = 3
 """From this autonomy level upwards an unisolated unit is refused (ADR-0002)."""
+
+VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+SET_BY_THE_ADAPTER = frozenset(
+    {"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "USER", "SHELL"}
+    | {"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY"}
+)
+"""What an execution adapter sets for a unit itself, compared in upper case: what a program
+needs to run on the machine, and the egress proxy. A unit's environment never overrides them."""
+SECRET_WORDS = frozenset({"PASSWORD", "PASSWD", "SECRET", "TOKEN", "KEY"})
+"""A segment of a variable's name that marks it as a secret's carrier — `VCS_TOKEN`,
+`CODING_AGENT_API_KEY`. A unit's environment is configuration, visible as configuration is, so a
+name that reads as a secret's is refused there: a secret reaches a unit as a credential."""
+
+
+def variable_refusal(name: str) -> str | None:
+    """Why `name` may not be one of a unit's configured variables (ADR-0090), or None. The rule
+    is on the name only; a value is never inspected, and is visible configuration whatever it
+    holds."""
+    if VARIABLE_NAME.fullmatch(name) is None:
+        return "is not a variable name: letters, digits and underscores, not starting with a digit"
+    upper = name.upper()
+    if upper.startswith("TAKTUS_"):
+        return (
+            "is in the TAKTUS_ namespace, which the launch convention and the credentials' "
+            "files own (TAKTUS_UNIT_PORT, TAKTUS_CREDENTIAL_<NAME>_FILE)"
+        )
+    if upper.endswith("_FILE"):
+        return "names a file, as a secret's carrier does; a secret reaches a unit as a credential"
+    if upper in SET_BY_THE_ADAPTER:
+        return "is set by the execution adapter itself, for every unit"
+    if SECRET_WORDS.intersection(upper.split("_")):
+        return (
+            "reads as a secret's name; a unit's environment is visible configuration, and a "
+            "secret reaches a unit as a credential the job names"
+        )
+    return None
 
 
 class Isolation(StrEnum):
@@ -77,6 +120,27 @@ class ExecutionUnit(Value):
     """The hosts the unit's own service needs to work at all — its agent's or its model's
     provider — as the operator configures them for the worker, never a bundle (ADR-0089). A
     launched worker adds them to the hosts of an assignment's job, never to a probe's."""
+    environment: tuple[tuple[str, str], ...] = ()
+    """The variables the unit's own program needs to start, as `(name, value)` pairs, as the
+    operator configures them for the worker (ADR-0090). Every adapter gives them to every unit
+    it starts — for an assignment, a probe and the conformance suite alike. Visible
+    configuration, never a secret: a name `variable_refusal` refuses is refused here."""
+
+    @field_validator("environment")
+    @classmethod
+    def _configuration_not_secrets(
+        cls, environment: tuple[tuple[str, str], ...]
+    ) -> tuple[tuple[str, str], ...]:
+        names = [name for name, _ in environment]
+        for name, value in environment:
+            refusal = variable_refusal(name)
+            if refusal is not None:
+                raise ValueError(f"{name} {refusal}")
+            if "\0" in value:
+                raise ValueError(f"{name}: a value holds no NUL character")
+        if len(set(names)) != len(names):
+            raise ValueError("a variable is named twice")
+        return environment
 
 
 class JobRequest(Value):
@@ -103,6 +167,20 @@ def reach(unit: ExecutionUnit, frame_hosts: tuple[Host, ...]) -> tuple[Host, ...
     own service hosts, each once (ADR-0089). The frame handed to the worker stays the step's:
     the worker still refuses a tool call to a host outside it (W-13)."""
     return tuple(dict.fromkeys((*frame_hosts, *unit.service_hosts)))
+
+
+def unit_environment(request: JobRequest) -> dict[str, str]:
+    """The variables the unit's configuration gives it (ADR-0090), or a refusal when the job
+    names a credential under one of their names: the credential would silently replace the
+    configured value, or the other way round, and neither is what the operator meant."""
+    environment = dict(request.unit.environment)
+    clash = sorted({c.name for c in request.credentials} & environment.keys())
+    if clash:
+        raise ExecutionRefused(
+            f"the job names the credential {', '.join(clash)}, which the unit's configured "
+            "environment also sets; a variable is either configuration or a credential"
+        )
+    return environment
 
 
 type KillCause = Literal["memory", "cpu", "wall", "stop"]

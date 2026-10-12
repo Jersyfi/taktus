@@ -35,3 +35,27 @@ export async function read<T>(
 	}
 	return { ok: false, problem };
 }
+
+/** A JSON write with the reader's key: an answer to a decision request, or its confirmation.
+ * A refusal is the surface's problem, never thrown. */
+export async function send<T>(
+	base: URL,
+	path: string,
+	key: string,
+	body: unknown,
+	fetcher: typeof fetch = fetch
+): Promise<Answer<T>> {
+	const response = await fetcher(new URL(path, base), {
+		method: 'POST',
+		headers: { Authorization: `Bearer ${key}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	});
+	if (response.ok) return { ok: true, body: (await response.json()) as T };
+	let problem: Problem = { status: response.status, title: response.statusText, detail: '' };
+	try {
+		problem = { ...problem, ...((await response.json()) as Partial<Problem>) };
+	} catch {
+		// A body that is no problem document: the status says enough.
+	}
+	return { ok: false, problem };
+}

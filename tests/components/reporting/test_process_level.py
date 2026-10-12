@@ -200,3 +200,11 @@ async def test_a_run_the_predicate_withholds_is_neither_drawn_nor_counted(
     assert all("r1" not in s.text and "r1" not in s.running_in for s in level.steps)
     assert "with 3 steps and 1 run." in level.process.text
     assert all(s.drawn.moving.motion is Motion.NONE for s in level.steps)
+
+
+def test_the_process_level_opens_with_how_its_steps_work() -> None:
+    assert process_level(facts()).summary == (
+        "3 steps: 1 reproducible, 1 variable, 1 with a person. At rest."
+    )
+    busy = process_level(facts(run("r1", "draft"), run("r2", "draft")))
+    assert busy.summary.endswith(" 1 step running now.")

@@ -142,7 +142,10 @@ execution:
   #     endpoint: ""                 # required for kind `endpoint`
   #     memoryMb: 2048               # optional: unitPort, cpus, cpuRequestShare, memoryMb,
   #                                  # wallSeconds, startTimeoutSeconds, stateClaim (an existing claim),
-  #                                  # serviceHosts (its own list; [] for none)
+  #                                  # serviceHosts (its own list; [] for none),
+  #                                  # unitEnv (its own map; {} for none)
+  #     unitEnv:                     # the coding worker starts only with its authentication mode
+  #       CODING_AGENT_AUTH: api-key
   workers: []
   defaults:
     cpus: 1                # a unit's CPU limit
@@ -160,6 +163,14 @@ execution:
     # for the conformance suite, beside the hosts of the step's frame; a probe reaches none.
     # A worker of `workers` may set its own. The proxy still connects only on `egress.ports`.
     serviceHosts: []
+    # The variables a launched worker's own program needs to start, NAME: value
+    # (TAKTUS_EXECUTION_UNIT_ENV, README §7, ADR-0090) — the coding worker's CODING_AGENT_AUTH.
+    # Every unit of the worker receives them: an assignment's, a probe's and the conformance
+    # suite's. They are plain configuration, visible in the ConfigMap and in each unit's pod,
+    # and NEVER a secret: a name that carries one (…_FILE, …_TOKEN, …_KEY, TAKTUS_…, a
+    # credential the worker is configured with) stops the daemon's start. A secret is a
+    # credential under `credentials`. A worker of `workers` replaces the map with its own.
+    unitEnv: {}
   egress:
     proxyImage: "python:3.13-slim"  # the per-job egress proxy (README §6): any image with python3
     proxyPort: 3128

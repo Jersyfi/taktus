@@ -21,15 +21,22 @@ class StaticWorkerPool:
         workers: Sequence[tuple[str, Worker]],
         *,
         hosts: Mapping[str, tuple[str, ...]] | None = None,
+        environment: Mapping[str, tuple[str, ...]] | None = None,
     ) -> None:
         self._workers = list(workers)
         self._declared: dict[str, tuple[frozenset[str], str | None]] = {}
         self._hosts = dict(hosts or {})
+        self._environment = dict(environment or {})
 
     def hosts(self, adapter: str) -> tuple[str, ...]:
         """The hosts the configuration lets one worker's own service reach, beyond a step's
         frame (ADR-0089); empty when it names none."""
         return self._hosts.get(adapter, ())
+
+    def environment(self, adapter: str) -> tuple[str, ...]:
+        """The names of the variables the configuration gives one worker's unit (ADR-0090);
+        empty when it names none."""
+        return self._environment.get(adapter, ())
 
     async def resolve(self, required: Sequence[Capability]) -> ResolvedWorker | None:
         needed = set(required)
@@ -72,6 +79,7 @@ class StaticWorkerPool:
         pool = StaticWorkerPool(
             [(a, w) for a, w in self._workers if a != adapter],
             hosts={a: h for a, h in self._hosts.items() if a != adapter},
+            environment={a: e for a, e in self._environment.items() if a != adapter},
         )
         pool._declared = {a: d for a, d in self._declared.items() if a != adapter}
         return pool
@@ -81,6 +89,6 @@ class StaticWorkerPool:
         runs its baseline against, so that a worker standing behind another one serves every
         step it can serve (ADR-0078). The original is untouched."""
         ordered = sorted(self._workers, key=lambda entry: entry[0] != adapter)
-        pool = StaticWorkerPool(ordered, hosts=self._hosts)
+        pool = StaticWorkerPool(ordered, hosts=self._hosts, environment=self._environment)
         pool._declared = dict(self._declared)
         return pool

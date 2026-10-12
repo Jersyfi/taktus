@@ -8,7 +8,7 @@
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
-	import { originLink, processLink } from './links';
+	import { originLink, processLink, requestsLink } from './links';
 	import type { Figure, RunLevel } from './types';
 
 	let { level, motionAllowed }: { level: RunLevel; motionAllowed: boolean } = $props();
@@ -36,7 +36,8 @@
 	<header>
 		<Glyph glyph={chosen(level.run.drawn, motionAllowed)} size={44} />
 		<div>
-			<h1 id="run-title">Run {level.run.id}</h1>
+			<p class="eyebrow">Run {level.run.id}</p>
+			<h1 id="run-title">{level.summary}</h1>
 			<p class="meta">
 				Process <a href={processLink(level.run.process_version)}>{level.run.process_version}</a
 				>{#if level.run.rehearsal}&#32;· a rehearsal{/if}
@@ -55,7 +56,10 @@
 		<ul class="more">
 			{#each decided as step (step.id)}
 				{#each step.decisions ?? [] as d (d.id)}
-					<li><Glyph glyph={chosen(d.drawn, motionAllowed)} size={22} /> {step.id}: {d.id}, {d.status}</li>
+					<li>
+						<Glyph glyph={chosen(d.drawn, motionAllowed)} size={22} />
+						{step.id}: <a href={requestsLink(d.id)}>{d.id}</a>, {d.status}
+					</li>
 				{/each}
 			{/each}
 			{#each produced as step (step.id)}
@@ -67,6 +71,7 @@
 	<section class="text" aria-label="The run as text">
 		<h2>As text</h2>
 		<ol>
+			<li data-text="summary">{level.summary}</li>
 			<li data-text="run">{level.run.text}</li>
 			{#each level.steps as step (step.id)}
 				<li data-text={step.id}>{step.text}</li>
@@ -76,14 +81,17 @@
 </section>
 
 <style>
+	.eyebrow {
+		font-size: 0.75rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		margin: 0 0 0.5rem;
+	}
 	header {
 		display: flex;
 		gap: 0.75rem;
 		align-items: center;
-	}
-	h1 {
-		font-size: 1.25rem;
-		margin: 0;
 	}
 	.meta {
 		margin: 0.15rem 0 0;
@@ -113,9 +121,5 @@
 		gap: 0.5rem;
 		align-items: center;
 		padding: 0.15rem 0;
-	}
-	.text ol {
-		padding-left: 1.25rem;
-		line-height: 1.5;
 	}
 </style>

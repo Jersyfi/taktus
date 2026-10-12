@@ -164,7 +164,11 @@ A unit the adapter killed — memory, wall clock — is a failed step with that 
 **The launch convention** is the one thing a unit must know when an adapter starts it: it reads
 `TAKTUS_UNIT_PORT` for the port to serve the contract on and `TAKTUS_UNIT_STATE_DIR` for the
 directory that outlives the job. Both workers of this repository take them as defaults; a
-foreign worker is wrapped by a shell script that translates.
+foreign worker is wrapped by a shell script that translates. Beside them, every unit of a worker
+— an assignment's, a probe's, the conformance suite's — receives the variables its program needs
+to start, which the operator configures per worker (`TAKTUS_EXECUTION_UNIT_ENV`, ADR-0090): the
+coding worker's `CODING_AGENT_AUTH`, for one. They are visible configuration and never a
+secret; a name that carries one is refused (`ports/execution.py: variable_refusal`).
 
 **Several workers on one instance** (ADR-0078). `TAKTUS_WORKERS` names them in the order a step
 is resolved in: the first whose declared capabilities cover what the step requires serves it.

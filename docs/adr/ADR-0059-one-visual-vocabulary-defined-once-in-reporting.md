@@ -4,7 +4,7 @@
 variable are told apart* buildable (issue #104, DEC-0055) · amended 2026-10-10: a result, a
 source a step read and a decision request have their forms (ADR-0068, #192) · amended
 2026-10-12: a step is drawn as a cell — membrane, nucleus, rings — the look the owner approved
-(DEC-0185, M1.20)
+(DEC-0185, M1.20); a vessel into a running step carries its motion
 
 ## Context
 UC-6.10 requires a live representation of what Taktus does: a graph or a flow drawn from the
@@ -46,6 +46,10 @@ representation (#105).
   fixed period; variable steps shimmer irregularly; a person's step swells slowly. A waiting step
   never moves, because it does no work. A run never moves itself; what moves in it is its running
   steps. An idle system therefore draws no motion.
+- **Vessels.** A line from a step to a step that follows it is a *vessel*. A vessel into a
+  running step carries that step's own motion: the work arriving. It is drawn from the glyph of
+  the step it leads into and from nothing else, so it moves exactly when that step moves, and not
+  without motion. Every other vessel is still. Amended 2026-10-12 (DEC-0185, M1.20).
 - **Without motion.** When the reader stops motion, or the system asks for reduced motion, every
   motion is replaced by its own *still mark*, an aura. Membrane, nucleus, rings, marks and text
   stay the same.

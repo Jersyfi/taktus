@@ -235,3 +235,13 @@ def test_a_channel_that_cannot_draw_receives_the_decision_requests_in_the_same_w
     lines = shown(level, channel).splitlines()
     assert lines == [level.run.text, f"• {level.steps[0].text}"]
     assert "Decision request dr_1: open, waiting for its decider." in lines[1]
+
+
+def test_the_run_level_opens_with_how_far_it_is_and_what_it_does_now() -> None:
+    assert run_level(MIXED).summary == (
+        "1 of 4 steps completed. Now: draft (language model), approve (person). "
+        "It waits for a person."
+    )
+    load = step("load", Method.RULE, "succeeded", ExactnessClass.EXACT)
+    done = run_level(facts(load, state="finished"))
+    assert done.summary == "Finished: all 1 step completed."

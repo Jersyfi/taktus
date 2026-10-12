@@ -29,7 +29,8 @@
 
 <section class="process" aria-labelledby="process-title">
 	<header>
-		<h1 id="process-title">{process.name}</h1>
+		<p class="eyebrow">{process.name}</p>
+		<h1 id="process-title">{level.summary}</h1>
 		<p class="meta">
 			{process.id}@{process.version}
 			{#if process.versions.length > 1}
@@ -72,6 +73,7 @@
 	<section class="text" aria-label="The process as text">
 		<h2>As text</h2>
 		<ol>
+			<li data-text="summary">{level.summary}</li>
 			<li data-text="process">{process.text}</li>
 			{#each level.steps as step (step.id)}
 				<li data-text={step.id}>{step.text}</li>
@@ -84,12 +86,12 @@
 </section>
 
 <style>
-	h1 {
-		font-size: 1.25rem;
-		margin: 0;
-	}
-	h2 {
-		font-size: 1.05rem;
+	.eyebrow {
+		font-size: 0.75rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		margin: 0 0 0.5rem;
 	}
 	.meta {
 		margin: 0.15rem 0 0;
@@ -102,11 +104,12 @@
 		margin-right: 0.4rem;
 	}
 	.autonomy {
-		margin: 1rem 0;
-		padding: 0.6rem 0.8rem;
+		margin: 1rem 0 1.5rem;
+		padding: 0.9rem 1.1rem;
 		border: 1px solid var(--line);
-		border-radius: 6px;
-		max-width: 48rem;
+		border-radius: 14px;
+		max-width: 56rem;
+		color: var(--ink-2);
 	}
 	.autonomy p {
 		margin: 0.2rem 0;
@@ -126,9 +129,5 @@
 	}
 	.state {
 		color: var(--muted);
-	}
-	.text ol {
-		padding-left: 1.25rem;
-		line-height: 1.5;
 	}
 </style>
