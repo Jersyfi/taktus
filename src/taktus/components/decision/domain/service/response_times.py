@@ -4,7 +4,8 @@ A response time is the time from a request being raised to the answer that took 
 measured, and it is exactly the number principle 14 forbids once it is used to assess a person.
 So the rule lives here, in what the read returns, not in a policy beside it:
 
-- **The decider reads their own**, each decision with its time.
+- **The decider reads their own**, each decision with its time, their median and their total:
+  how long runs waited on them, their own share of the waiting on a person.
 - **Anyone else reads aggregates only**: by the role that decided, and by the department of
   the deciders — never by person, and never ranked.
 - **An aggregate over fewer than `MINIMUM_DECIDERS` distinct deciders is withheld**: an average
@@ -46,6 +47,11 @@ class Aggregate(Value):
 class ResponseTimes(Value):
     reader: str = Field(min_length=1)
     own: tuple[Own, ...] = ()
+    own_total_seconds: float | None = None
+    """How long runs waited on the reader's own decisions, together: the reader's own share of the
+    waiting on a person. None when the reader decided nothing."""
+    own_median_seconds: float | None = None
+    """The median of the reader's own response times. None when the reader decided nothing."""
     by_role: tuple[Aggregate, ...] = ()
     by_department: tuple[Aggregate, ...] = ()
 
@@ -69,6 +75,8 @@ def read(
     return ResponseTimes(
         reader=reader,
         own=own,
+        own_total_seconds=sum(o.seconds for o in own) if own else None,
+        own_median_seconds=median(o.seconds for o in own) if own else None,
         by_role=_aggregates(entries, lambda e: e.decider),
         by_department=_aggregates(entries, lambda e: department_of(e.decided_by)),
     )
