@@ -82,6 +82,10 @@ one that is not available, ends `unauthenticated` without a request. A token the
 for a write ends `forbidden`. Whoever cannot do something on the service cannot do it through
 Taktus either.
 
+**Its own secrets are never a call's credential.** A call that names the app's key or the webhook
+secret, by name or by the file that holds it, acts with nothing and ends `unauthenticated`; a
+transport fault is named by its type, never by its text, which can quote a header (issue #267).
+
 ### As Taktus's own app (the default) or with a token
 
 An **app** is an identity of its own on the service, not a person, installed on chosen
