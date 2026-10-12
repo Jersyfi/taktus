@@ -109,6 +109,24 @@ for a named worker, `serviceHosts` in the chart. The unit reaches it for an assi
 the conformance suite, never for a probe; the frame the worker holds tool calls against stays the
 step's (ADR-0089).
 
+**Launched, the worker needs its authentication mode in its unit's environment.** An execution
+adapter starts the image's own command, so there is no `--auth` to pass, and without
+`CODING_AGENT_AUTH` the worker exits before it is ready. The operator names it for this worker,
+with any other variable the worker reads (`CODING_AGENT_MODEL`, `CODING_AGENT_ENV`):
+`TAKTUS_EXECUTION_UNIT_ENV=CODING_AGENT_AUTH=api-key`, or
+`TAKTUS_WORKER_<NAME>_EXECUTION_UNIT_ENV` for a named worker, and in the chart:
+
+```yaml
+execution:
+  workers:
+    - name: coding
+      image: <registry>/<image>:<version>
+      unitEnv: {CODING_AGENT_AUTH: api-key}
+```
+
+Every unit of the worker receives them — a probe's too, so that it can answer. They are visible
+configuration and never a secret: the credential itself stays a credential (ADR-0090).
+
 ### The frame
 
 The agent is given every tool this worker maps (`--tools`), may use exactly those the frame

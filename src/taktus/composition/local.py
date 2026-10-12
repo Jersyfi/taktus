@@ -91,6 +91,7 @@ from taktus.composition.execution import (
     open_workers,
     service_hosts,
     telemetry_of,
+    unit_environments,
 )
 from taktus.composition.findings import RunBlocks
 from taktus.composition.guides import InstanceGuides, served_directory
@@ -189,7 +190,11 @@ class LocalWiring:
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
             pools = Pools(
-                StaticWorkerPool(opened, hosts=service_hosts(configured)),
+                StaticWorkerPool(
+                    opened,
+                    hosts=service_hosts(configured),
+                    environment=unit_environments(configured),
+                ),
                 connector_pool(
                     connectors,
                     also=[(LOOPBACK, loopback), *served_directory(knowledge_directory)],
