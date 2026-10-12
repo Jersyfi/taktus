@@ -284,6 +284,8 @@ export interface AddressedList {
 	identity: string;
 	requests: AddressedRequest[];
 	overdue: number;
+}
+
 /** One step a proposal adds, removes or changes (ADR-0091 §1). */
 export interface StepChange {
 	id: string;
