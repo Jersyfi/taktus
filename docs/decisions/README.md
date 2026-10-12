@@ -168,6 +168,7 @@ The open needs are printed by `make status` (DEC-0026).
 | [0194](NTC-0194-a-connector-never-acts-with-its-own-secrets.md) | A connector never acts with its own secrets | M2.4 | `behaviour-change` | the repository and the chat connector treat a call naming their own key, webhook or signing secret — by name or file — as one without a credential; a transport fault is named by its type; C-04 finds a credential with escaped line breaks or by its lines (#267) |
 | [0195](NTC-0195-a-workers-unit-reaches-its-own-services-hosts.md) | A worker's unit reaches its own service's hosts | M2.4 | `behaviour-change` | `TAKTUS_EXECUTION_SERVICE_HOSTS`, per worker too: an assignment's unit reaches the frame's hosts and these, the suite's unit the suite's hosts and these, a probe none; the frame the worker holds stays the step's; P-03 version 6 says so (ADR-0089, #269) |
 | [0196](NTC-0196-a-silent-worker-keeps-its-stream.md) | A silent worker keeps its stream | M2.4 | `behaviour-change` | an idle timeout of a worker that answers for its running assignment costs no reconnect; attempts counted between events; `stream_timeout` enforced (#271) |
+| [0197](NTC-0197-verify-compose-expects-an-adopted-step.md) | verify-compose expects an adopted step | M2.2 | `test-strategy` | `make verify-compose` checks that the worker step interrupted by the kill was started once and adopted after the restart, not started twice (ADR-0038, NTC-0074, #250) |
 
 ## Decisions
 

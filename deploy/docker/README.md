@@ -94,14 +94,16 @@ make verify-compose
 ```
 
 `verify.sh` does, from nothing: `make up-dev`, the deployment with the reference worker in
-its own image; checks that the control plane image holds no worker code; queues a bundle
+its own image; checks that the control plane image holds no worker code; adds the identity
+`idn_verify`, which reads the API and submits and confirms the run, since nothing executes
+without an identity; queues a bundle
 whose worker step runs 24 commands, confirming each step as an operator would, since the bundle
 runs at autonomy level 2 (`taktusctl submit --resume RUN --approve STEP`, ADR-0039); waits until
 that step has persisted a boundary; kills the
 application container with SIGKILL; starts it again; waits for the run to finish; and checks
 through the read API that the run was recovered at its last boundary (`run.recovered` in the
-ledger, the step started twice), that every artifact exists exactly once, and that the ledger's
-chain is intact. It exits 0 when every step held and leaves the containers running.
+ledger; the worker step started once and adopted after the restart, ADR-0038), that every
+artifact exists exactly once, and that the ledger's chain is intact. It exits 0 when every step held and leaves the containers running.
 
 **Finding.** Two containers suffice for the control plane. The end-to-end check needs a third
 process — an execution unit — because a process with a worker step needs a worker, and no
