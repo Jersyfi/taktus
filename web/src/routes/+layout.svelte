@@ -39,6 +39,7 @@
 				{/if}
 			{/each}
 		</nav>
+		<a class="requests" href="#/requests" aria-current={page.route.id?.startsWith('/requests') ? 'page' : undefined}>Requests</a>
 		<button
 			class="calm"
 			type="button"
@@ -221,6 +222,16 @@
 		margin: 0 0.5rem;
 		background: var(--line);
 		flex: none;
+	}
+	.requests {
+		font-size: 0.85rem;
+		text-decoration: none;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		padding: 0.35rem 0.8rem;
+	}
+	.requests[aria-current='page'] {
+		background: var(--paper-2);
 	}
 	.calm {
 		border: 1px solid var(--line);
