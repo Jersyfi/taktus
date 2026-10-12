@@ -2,7 +2,7 @@
 
 **Category:** NON-BLOCKING
 **Mode entry:** M3.10
-**Raised in:** the pull request that raises this request, from the work on issue #75
+**Raised in:** [#364](https://github.com/Jersyfi/taktus/pull/364), from the work on issue #75
 **Issue:** [#363](https://github.com/Jersyfi/taktus/issues/363)
 **Needed by:** before #87's observation window starts, in which the instance runs P-01 daily on its own
 **Provisional answer:** none is applied. P-01 keeps its quota of 40 units, and every P-01 run on the instance halts at its second step until you answer.
