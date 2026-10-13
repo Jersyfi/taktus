@@ -147,8 +147,14 @@ def _list_faults(command: list[str]) -> list[tuple[str, str]]:
     return [(line.split("\t")[0], line.split("\t")[1]) for line in output.splitlines() if line]
 
 
+# How long a started worker or connector may take to answer its health check.
+READY_SECONDS = 60
+
+
 def wait_ready(process: subprocess.Popen[bytes], url: str, log: Path, what: str) -> None:
-    deadline = time.monotonic() + 20
+    # How long a process may take to start, not a bound the suite measures: with the suite spread
+    # over every core (ADR-0096) a cold interpreter importing its libraries waits for a core.
+    deadline = time.monotonic() + READY_SECONDS
     while time.monotonic() < deadline:
         if process.poll() is not None:
             raise RuntimeError(f"the {what} exited early; see {log}")
@@ -200,7 +206,7 @@ def start_worker(tmp_path: Path) -> Iterator[StartWorker]:
             )
         started.append(process)
         endpoint = f"http://127.0.0.1:{port}"
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + READY_SECONDS
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise RuntimeError(f"the worker exited early; see {log}")
