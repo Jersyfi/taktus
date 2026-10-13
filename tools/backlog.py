@@ -12,7 +12,7 @@ decision request or a needs request, which are the owner's and not work, and wit
 labelled `report`, which carries a process's reports. For each issue:
 
 - **claimed** when it carries the label `in-progress`: a session works on it; another skips it.
-  An issue labelled `taktus` is handed to Taktus (DEC-0197) and listed here too: a session
+  An issue labelled `to-taktus` is handed to Taktus (DEC-0197) and listed here too: a session
   skips it;
 - **ready** when it carries the label `ready` and the ready standard holds: the three sections of
   a use case — what must be achieved, how it is verified, where the boundary lies — filled, a

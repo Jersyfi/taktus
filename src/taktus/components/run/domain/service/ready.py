@@ -14,7 +14,7 @@ what P-02 Refinement uses to find the sections an issue lacks. It adds condition
 reads elsewhere: the issue is open, not a pull request, not labelled as no work, and not
 claimed — a session that reads the backlog lists a claimed issue apart instead of refusing it.
 
-An issue labelled `taktus` is handed to Taktus (DEC-0197): a process takes it, and a session
+An issue labelled `to-taktus` is handed to Taktus (DEC-0197): a process takes it, and a session
 skips it, so the backlog lists it with the claimed ones. An admission of a handed issue
 (`handed=True`) requires that label, and refuses an issue whose "Blocked by" names an ADR —
 `ADR-NNNN` or the word `ADR`: a task that waits for an architectural decision is not handed
@@ -40,7 +40,7 @@ COMPONENT = "Component"
 BLOCKED_BY = "Blocked by"
 READY = "ready"
 CLAIMED = "in-progress"
-HANDED = "taktus"
+HANDED = "to-taktus"
 """The label that hands an issue to Taktus: a process takes it, a session skips it."""
 PRIORITIES = {"priority:high": 0, "priority:normal": 1, "priority:low": 2}
 NOT_WORK = frozenset({"decision-request", "needs-owner", "report"})
@@ -144,7 +144,7 @@ def admission(
 ) -> list[str]:
     """Every reason a process may not take the issue up: the standard's reasons, and before
     them that it is closed, a pull request, labelled as no work, or claimed. With `handed`, the
-    admission is of an issue handed to Taktus: it carries the label `taktus`, and its "Blocked
+    admission is of an issue handed to Taktus: it carries the label `to-taktus`, and its "Blocked
     by" names no ADR. `issue` is a repository reading: `number`, `state`, `is_pull_request`,
     `body`, `labels` (names) and `milestone` (a title, or nothing)."""
     labels = {str(label) for label in issue.get("labels") or []}
@@ -171,7 +171,7 @@ def admission(
 
 
 def handover(body: str, labels: Iterable[str]) -> list[str]:
-    """Every reason an issue is not one handed to Taktus: it lacks the label `taktus`, or its
+    """Every reason an issue is not one handed to Taktus: it lacks the label `to-taktus`, or its
     "Blocked by" names an ADR — one to be written or accepted first, an architectural decision
     a process never takes in passing (DEC-0197)."""
     found: list[str] = []
@@ -211,7 +211,7 @@ def backlog(
 ) -> dict[str, list[dict[str, Any]]]:
     """The backlog as a session reads it, in its order, in three groups: `ready` — the label
     and the standard hold and nobody claimed it, in the order a session takes them;
-    `claimed`, by a session (`in-progress`) or by being handed to Taktus (`taktus`); and
+    `claimed`, by a session (`in-progress`) or by being handed to Taktus (`to-taktus`); and
     `not_ready`, each with every reason. A pull request and an issue labelled
     as not work (`NOT_WORK`) are not part of it.
 

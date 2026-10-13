@@ -134,9 +134,9 @@ def test_the_next_issue_skips_a_claimed_one_and_falls_back_to_the_top_unready() 
 
 
 def test_the_next_issue_skips_one_handed_to_taktus() -> None:
-    """DEC-0197: an issue labelled `taktus` is Taktus's; a session never takes it next, and the
+    """DEC-0197: an issue labelled `to-taktus` is Taktus's; a session never takes it next, and the
     backlog lists it with the claimed ones."""
-    handed = issue(1, milestone="0.1.0", labels=("ready", "priority:high", "taktus"))
+    handed = issue(1, milestone="0.1.0", labels=("ready", "priority:high", "to-taktus"))
     ready = issue(4)
     for task in (handed, ready):
         task.reasons = backlog.assess(task, set(), set())
@@ -147,7 +147,7 @@ def test_the_next_issue_skips_one_handed_to_taktus() -> None:
             "number": 1,
             "title": "handed",
             "body": FORM.format(blocked="nothing"),
-            "labels": [{"name": n} for n in ("ready", "priority:high", "taktus")],
+            "labels": [{"name": n} for n in ("ready", "priority:high", "to-taktus")],
             "milestone": {"title": "0.1.0"},
         }
     ]

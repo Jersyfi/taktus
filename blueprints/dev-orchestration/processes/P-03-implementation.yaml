@@ -15,14 +15,15 @@
 # Ready means the backlog's ready standard (docs/process/README.md, DEC-0051), evaluated by the
 # rule `ready` — the same code a session's `make backlog` runs — over the issue, the repository's
 # open issues and the open records under `records_path` on the base branch. P-03 takes only an
-# issue handed to Taktus: labelled `taktus` by the owner or by P-01, and naming no ADR under
+# issue handed to Taktus: labelled `to-taktus` by the owner or by P-01 (the label `taktus` marks
+# the pull requests P-03 opens and hands nothing over), and naming no ADR under
 # "Blocked by" (DEC-0197, docs/process/README.md, *Handed to Taktus*). An issue that meets all
 # of it is claimed with the label `in-progress` before anything is implemented, so that a
 # session or another run skips it, and the run says so in a comment that names it.
 #
 # A run that escalates after its claim gives the claim back (ADR-0097): three steps that run
 # only then take the label `in-progress` off the issue and say in a comment which step failed
-# and why. The label `taktus` stays: a person removes it to give the task to a session, or
+# and why. The label `to-taktus` stays: a person removes it to give the task to a session, or
 # removes and adds it to hand it to Taktus again. A run that escalates before the claim, or at
 # the last step, when the pull request is open, gives nothing back.
 #
@@ -70,7 +71,7 @@ autonomy:
 author: the repository
 reason: the third process of the dev-orchestration blueprint, runnable
 
-# The blueprint's `issue.handed`: the event `issue.labelled` with the filter `label: taktus` and
+# The blueprint's `issue.handed`: the event `issue.labelled` with the filter `label: to-taktus` and
 # the condition `capacity.available` (contracts/events/v1 §2). The label `ready` starts nothing:
 # on 2026-10-13 a trigger on it took ten of twenty-two issues a session had just written, and
 # opened a duplicate pull request (DEC-0197). A run started by an event has
@@ -80,7 +81,7 @@ reason: the third process of the dev-orchestration blueprint, runnable
 # section inside the run (DEC-0037, ADR-0053, NTC-0112). P-03 still starts by hand as above.
 triggers:
   - event: issue.labelled
-    filter: { label: taktus }
+    filter: { label: to-taktus }
     condition: capacity.available
     inputs:
       records_path: docs/decisions/open
@@ -242,7 +243,7 @@ steps:
       ready means the backlog's ready standard — the three sections, a component, a milestone,
       one priority label, the label `ready`, nothing open under "Blocked by" — and open, not a
       pull request, not labelled as no work, not claimed, and handed to Taktus: the label
-      `taktus`, and no ADR named under "Blocked by" (DEC-0197). The rule `ready`, the same code
+      `to-taktus`, and no ADR named under "Blocked by" (DEC-0197). The rule `ready`, the same code
       a session's `make backlog` runs, over the fields just read; a refusal names every reason.
       The run's budget is checked by admission control before every step, not here
     rejected:
@@ -786,7 +787,7 @@ steps:
 
         > ${reason}
 
-        The label `in-progress` is removed. The label `taktus` stays: remove it to leave the
+        The label `in-progress` is removed. The label `to-taktus` stays: remove it to leave the
         task to a session, or remove it and add it again to hand it to Taktus once more.
 
         *Written by Taktus, process P-03 Implementation.*

@@ -135,12 +135,12 @@ P03 = Path(__file__).resolve().parents[3] / (
 
 def test_p03_reacts_to_the_label_that_hands_an_issue_over_and_needs_no_closing_section() -> None:
     """NTC-0112: the worker generates the closing section (#77), so `closing_section` is
-    optional. DEC-0197: P-03 reacts to the label `taktus`, which hands an issue to Taktus, and
+    optional. DEC-0197: P-03 reacts to the label `to-taktus`, which hands an issue to Taktus, and
     no longer to `ready`."""
     version = parse_bundle(yaml.safe_load(P03.read_text(encoding="utf-8")))
     assert version.inputs["closing_section"].required is False
     assert "closing_section" not in version.required_inputs
-    handed = event(repository="acme/taktus", issue="76", label="taktus")
+    handed = event(repository="acme/taktus", issue="76", label="to-taktus")
     trigger = version.reacting_to(handed)
     assert trigger is not None and trigger.condition == "capacity.available"
     given = version.given_by(trigger, handed)

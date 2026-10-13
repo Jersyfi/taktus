@@ -77,7 +77,7 @@ processes:
     autonomy:
       level: 4
       reason: nothing writes to a protected branch, the pipeline's verdict is the gate and a person merges; the worker runs in isolation
-    triggers: [ { event: issue.labelled, filter: { label: taktus }, condition: capacity.available } ]   # handed to Taktus (DEC-0197)
+    triggers: [ { event: issue.labelled, filter: { label: to-taktus }, condition: capacity.available } ]   # handed to Taktus (DEC-0197)
     steps:
       - { id: admit,     method: rule, exactness: exact }   # the ready standard, handed over (docs/process/README.md)
       - { id: claim,     method: rule }                     # the label in-progress; given back if the run escalates (ADR-0097)

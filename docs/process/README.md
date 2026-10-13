@@ -61,8 +61,8 @@ comment, and adds no label (issue #70).
 
 Development is handed to Taktus in stages, each earned by measured results (DEC-0197). In
 stage 0 Taktus takes only single small tasks, handed to it explicitly. **A task is handed to
-Taktus when it carries the label `taktus`.** The owner adds it, or P-01 once it is allowed to;
-the label `ready` alone hands nothing over. A session skips an issue labelled `taktus`, as it
+Taktus when it carries the label `to-taktus`.** The owner adds it, or P-01 once it is allowed to;
+the label `ready` alone hands nothing over. A session skips an issue labelled `to-taktus`, as it
 skips a claimed one: `make backlog` lists it with the claimed ones.
 
 A handed task meets the ready standard, and two conditions beside it, which P-03's admission
@@ -82,7 +82,7 @@ judgement. Whoever hands a task over makes sure the line is true.
 
 When P-03 claims a handed task, it comments on the issue that Taktus took it, naming the run.
 A run that fails after its claim gives the claim back: it removes `in-progress` and says in a
-comment which step failed and why (ADR-0097). The label `taktus` stays. To leave the task to a
+comment which step failed and why (ADR-0097). The label `to-taktus` stays. To leave the task to a
 session, a person removes it; to hand it to Taktus once more, a person removes it and adds it
 again, which starts a new run.
 
@@ -92,7 +92,8 @@ again, which starts a new run.
 |---|---|
 | `ready` | the task's content meets the ready standard; blockers are checked when the backlog is read |
 | `in-progress` | a session or a run of P-03 has claimed the task and works on it; every other session skips it |
-| `taktus` | on an issue: the task is handed to Taktus, and every session skips it (DEC-0197); on a pull request: Taktus opened it |
+| `to-taktus` | the task is handed to Taktus: P-03 takes it, and every session skips it (DEC-0197) |
+| `taktus` | on a pull request: Taktus opened it; it hands nothing over |
 | `priority:high`, `priority:normal`, `priority:low` | the order within a milestone; exactly one per task |
 | `task` | an issue made from the form `Task` |
 | `report` | the issue carries a process's reports, such as P-01's; it is not work |

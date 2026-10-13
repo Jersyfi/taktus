@@ -1,6 +1,6 @@
 """P-03 Implementation started by an event, end to end (DEC-0037, issue #77), against PostgreSQL.
 
-An issue handed to Taktus — labelled `taktus` (DEC-0197) — starts P-03 through its own trigger,
+An issue handed to Taktus — labelled `to-taktus` (DEC-0197) — starts P-03 through its own trigger,
 without a person and without the input `closing_section`: the daemon's automation role reacts
 to the event, its runner executes the run. The coding worker implements the issue in a clone,
 and after its change runs the repository's generator in its workspace — the command the bundle
@@ -83,7 +83,7 @@ def the_bundle(outside: Outside) -> dict[str, Any]:
     with (BLUEPRINT / "P-03-implementation.yaml").open(encoding="utf-8") as handle:
         document: dict[str, Any] = yaml.safe_load(handle)
     (trigger,) = document["triggers"]
-    assert trigger["event"] == "issue.labelled" and trigger["filter"] == {"label": "taktus"}
+    assert trigger["event"] == "issue.labelled" and trigger["filter"] == {"label": "to-taktus"}
     assert "closing_section" not in trigger["inputs"], "a trigger cannot give it"
     trigger["inputs"]["repository_url"] = outside.clone_url
     trigger["inputs"]["repository_host"] = "localhost"
@@ -104,7 +104,7 @@ async def verified_adapters(wired: Wired, tenant: str, outside: Outside) -> None
 
 
 async def handed_over(wired: Wired, tenant: str, issue: int, at: datetime) -> None:
-    """What the intake keeps for the label `taktus` added to the issue, with its outbox entry."""
+    """What the intake keeps for the label `to-taktus` added to the issue, with its outbox entry."""
     event = IntakeEvent(
         id=f"dlv_taktus_{issue}",
         tenant=tenant,
@@ -112,8 +112,8 @@ async def handed_over(wired: Wired, tenant: str, issue: int, at: datetime) -> No
         event="issue.labelled",
         sender_account=ACCOUNT,
         sender_kind="person",
-        intent="taktus",
-        context={"repository": REPOSITORY, "issue": str(issue), "label": "taktus"},
+        intent="to-taktus",
+        context={"repository": REPOSITORY, "issue": str(issue), "label": "to-taktus"},
         reply_channel="channel.repo",
         reply_address=f"{REPOSITORY}#{issue}",
         occurred_at=at,

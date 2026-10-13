@@ -149,7 +149,7 @@ def handed() -> ReadyRule:
     )
 
 
-HANDED = ["priority:normal", "ready", "taktus", "task"]
+HANDED = ["priority:normal", "ready", "to-taktus", "task"]
 
 
 def test_an_issue_handed_to_taktus_is_admitted() -> None:
@@ -160,7 +160,7 @@ def test_an_issue_handed_to_taktus_is_admitted() -> None:
 @pytest.mark.parametrize(
     ("changes", "reason"),
     [
-        ({}, "not handed over: no label taktus"),
+        ({}, "not handed over: no label to-taktus"),
         (
             {
                 "labels": HANDED,
@@ -195,5 +195,5 @@ def test_an_adr_outside_blocked_by_does_not_refuse() -> None:
 
 
 def test_a_session_admission_needs_no_handover() -> None:
-    assert ready.handover(FORM.format(verified="x", blocked="nothing"), ["taktus"]) == []
+    assert ready.handover(FORM.format(verified="x", blocked="nothing"), ["to-taktus"]) == []
     assert rules.ready(admission(), reading(), RECORDS, [])["ready"] is True

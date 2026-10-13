@@ -380,10 +380,12 @@ class Backlog:
 
 
 def hand(outside: Outside, *numbers: int) -> None:
-    """The issues handed to Taktus, as the owner or P-01 hands them: the label `taktus`
+    """The issues handed to Taktus, as the owner or P-01 hands them: the label `to-taktus`
     (DEC-0197)."""
     for number in numbers:
-        outside.send("POST", f"/repos/{REPOSITORY}/issues/{number}/labels", {"labels": ["taktus"]})
+        outside.send(
+            "POST", f"/repos/{REPOSITORY}/issues/{number}/labels", {"labels": ["to-taktus"]}
+        )
 
 
 def milestone_of(outside: Outside, number: int) -> int:
@@ -504,7 +506,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         (tasks.no_milestone, "no milestone"),
         (tasks.blocked, "blocked by DEC-0999, still open"),
         (waits_for_an_adr, "'Blocked by' names an ADR (ADR)"),
-        (not_handed, "not handed over: no label taktus"),
+        (not_handed, "not handed over: no label to-taktus"),
     ):
         output = run_bundle(outside, state_dir, p03, *p03_inputs(outside, number), expect=3)
         assert refused(output, "admit", f"issue #{number} is not ready: "), output
@@ -539,8 +541,8 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "in-progress",
         "priority:high",
         "ready",
-        "taktus",
         "task",
+        "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
     assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@9`", announced)
@@ -616,7 +618,7 @@ def test_a_branch_left_by_an_earlier_attempt_stops_the_run_in_the_words_first_ru
     leftover = first_run_pattern("P03_LEFTOVER_BRANCH")
     assert any(leftover.search(line) for line in output.splitlines()), output
     assert outside.state()[REPOSITORY]["pulls"] == 0  # type: ignore[index]
-    assert outside.labels(tasks.ready) == ["priority:high", "ready", "taktus", "task"]
+    assert outside.labels(tasks.ready) == ["priority:high", "ready", "task", "to-taktus"]
     took, gave_back = comments_on(outside, tasks.ready)
     assert took.startswith("Taktus took this issue: run `run_")
     assert gave_back.startswith("Taktus gives this issue back: run `run_")

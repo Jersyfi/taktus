@@ -130,7 +130,7 @@ class ReadyRule(Value):
     `open_issues` the repository's open issues, as numbers or as readings with a `number`.
     `expect: sections_missing` asks the opposite of the content alone: the issue is open, not
     a pull request, and lacks at least one of the three sections. `handed: true` makes the
-    admission one of an issue handed to Taktus: it carries the label `taktus`, and its "Blocked
+    admission one of an issue handed to Taktus: it carries the label `to-taktus`, and its "Blocked
     by" names no ADR (DEC-0197).
 
     The result is `{"number", "ready", "reasons", "missing"}` once the expectation holds; when

@@ -63,10 +63,10 @@ the sections into the issue and labels it, until P-02's autonomy is raised (M3.9
 the same issue, it stops at the first check: nothing is written twice.
 
 **P-03 Implementation** (version 9, autonomy 4, twenty-seven steps, three of them on escalation): it starts when an
-issue is handed to Taktus, the label `taktus` added (DEC-0197), not on the label `ready`. Read the issue and its comments, compose
+issue is handed to Taktus, the label `to-taktus` added (DEC-0197), not on the label `ready`. Read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
 of open records on `main`, admit — the ready standard, and open, not a pull request, not
-labelled as no work, not claimed, labelled `taktus`, and no ADR named under "Blocked by"
+labelled as no work, not claimed, labelled `to-taktus`, and no ADR named under "Blocked by"
 (`rule` `ready`, `exact`; a refusal names every reason) — claim the issue with the label
 `in-progress` (`rule`, outward), say so in a comment that names the run (`rule` `template`, and
 `rule`, outward), implement (`worker`, `tolerant`: the coding worker in a clone of
@@ -208,7 +208,7 @@ a person applies by reading.
    open records on `main`.
 2. **admit** — the issue meets the ready standard, is open, is not a pull request and is not
    labelled `in-progress`; anything it names under "Blocked by" is closed, or its record file
-   is gone from the open directory. Taken over from Taktus, it is labelled `taktus` and names
+   is gone from the open directory. Taken over from Taktus, it is labelled `to-taktus` and names
    no ADR under "Blocked by" (`docs/process/README.md`, *Handed to Taktus*). If not, stop and
    note why.
 3. **claim** (person) — add the label `in-progress` to the issue.
@@ -303,7 +303,7 @@ enforced.
   worker's credential. `closing_section` is optional: the section the repository generates for
   the end of every pull request description, verbatim with its heading. Left out, the worker
   generates it after its change (ADR-0053); `tools/first_run.sh` still hands it in, from
-  `tools/check_status.py --print` on `main`. P-03's trigger reacts to the label `taktus`, which hands
+  `tools/check_status.py --print` on `main`. P-03's trigger reacts to the label `to-taktus`, which hands
   an issue to Taktus (DEC-0197), and gives every required input, the issue from the event
   (NTC-0112). The label must exist in the repository.
 - **The pipeline on a branch.** P-03 reads the pipeline's verdict before it opens the pull

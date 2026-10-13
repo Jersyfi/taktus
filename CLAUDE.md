@@ -197,7 +197,7 @@ generated (`make status`) and never stored in the file (DEC-0026).
 
 - **"Continue with the next task" means [`docs/process/next-task.md`](docs/process/next-task.md).**
   The backlog is the repository's issues; a session takes the top ready, unclaimed one, and
-  never invents work outside it (DEC-0051). An issue labelled `taktus` is handed to Taktus,
+  never invents work outside it (DEC-0051). An issue labelled `to-taktus` is handed to Taktus,
   and a session never takes it (DEC-0197).
 - **One pull request per change.** Conventional Commits. Pull requests are squash-merged; the pull
   request title becomes the commit on `main` and follows Conventional Commits.
