@@ -1109,7 +1109,7 @@ class _Run:
         if ended_by == "result" and not result.get("is_error"):
             self._finish_succeeded(result, text)
             return
-        cause = text or stderr.strip()[-400:] or f"the agent exited with {returncode}"
+        cause = _cause_of(result, stderr, returncode)
         if AUTH_FAILURE.search(cause):
             self._finish_stopped(f"authentication failed or expired: {cause[:200]}")
             return
@@ -1272,6 +1272,23 @@ def _artifact_event(assignment: Assignment, produced: Produced, step_id: str | N
     if step_id is not None:
         event["step_id"] = step_id
     return event
+
+
+def _cause_of(result: Json, stderr: str, returncode: int | None) -> str:
+    """Why the agent ended without success: its result's text, else the error its result
+    names — a limit of turns ends with a subtype and no text (#375) — else its error stream,
+    else its exit code."""
+    text = str(result.get("result") or "")
+    if text:
+        return text
+    subtype = str(result.get("subtype") or "")
+    if result.get("is_error") or subtype.startswith("error"):
+        turns = result.get("num_turns")
+        after = f" after {turns} turn(s)" if isinstance(turns, int) else ""
+        named = f"the agent ended with {subtype or 'an error'}{after}"
+        tail = stderr.strip()[-200:]
+        return f"{named}: {tail}" if tail else named
+    return stderr.strip()[-400:] or f"the agent exited with {returncode}"
 
 
 def _summary_of(tool: str, arguments: Json) -> str:
