@@ -32,7 +32,8 @@
 # standard, or P-02 already wrote them as a comment, that is "already done", not a failure: the
 # script says so and goes on to P-03. Any other stop of P-02 ends the script. P-03 admits only
 # an issue that meets the ready standard (docs/process/README.md): P-02 writes a comment, and a
-# person puts the sections into the issue and adds the label `ready` before P-03 can run.
+# person puts the sections into the issue and adds the label `ready` before P-03 can run. P-03
+# takes only an issue handed to Taktus: a person adds the label `taktus` too (DEC-0197).
 #
 # The branch P-03 creates, taktus/issue-<n>, carries the idempotency key of the run that made
 # it. A new run has a new key, so a branch left by an earlier attempt makes the new run end

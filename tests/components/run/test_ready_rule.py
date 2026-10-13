@@ -138,3 +138,62 @@ def test_a_footer_after_a_rule_is_no_blocker_and_hides_none() -> None:
     assert reasons_for("needs a decision request on the fallback") == [
         "'Blocked by' names no NEED, DEC or issue, and is not 'nothing'"
     ]
+
+
+# --- an issue handed to Taktus (DEC-0197) ----------------------------------------------------
+
+
+def handed() -> ReadyRule:
+    return ReadyRule(
+        rule="ready", expect="ready", issue={}, open_records=[], open_issues=[], handed=True
+    )
+
+
+HANDED = ["priority:normal", "ready", "taktus", "task"]
+
+
+def test_an_issue_handed_to_taktus_is_admitted() -> None:
+    result = rules.ready(handed(), reading(labels=HANDED), RECORDS, [])
+    assert result["ready"] is True
+
+
+@pytest.mark.parametrize(
+    ("changes", "reason"),
+    [
+        ({}, "not handed over: no label taktus"),
+        (
+            {
+                "labels": HANDED,
+                "body": FORM.format(verified="A test.", blocked="an ADR on the trigger's shape"),
+            },
+            "'Blocked by' names an ADR (ADR)",
+        ),
+        (
+            {"labels": HANDED, "body": FORM.format(verified="A test.", blocked="ADR-0097 and #3")},
+            "'Blocked by' names an ADR (ADR-0097)",
+        ),
+        (
+            {"labels": HANDED, "body": FORM.format(verified="A test.", blocked="DEC-0999")},
+            "blocked by DEC-0999, still open",
+        ),
+        ({"labels": [*HANDED, "decision-request"]}, "not work: labelled decision-request"),
+    ],
+)
+def test_a_handed_admission_refuses_what_waits_for_a_decision(
+    changes: dict[str, Any], reason: str
+) -> None:
+    with pytest.raises(RuleFailed) as refused:
+        rules.ready(handed(), reading(**changes), RECORDS, [])
+    assert reason in str(refused.value)
+
+
+def test_an_adr_outside_blocked_by_does_not_refuse() -> None:
+    """The criterion is the section a task names its blockers in, nothing else: a task may
+    implement what an accepted ADR says, and name it in its text."""
+    body = FORM.format(verified="What ADR-0088 §3 says holds.", blocked="nothing")
+    assert rules.ready(handed(), reading(labels=HANDED, body=body), RECORDS, [])["ready"]
+
+
+def test_a_session_admission_needs_no_handover() -> None:
+    assert ready.handover(FORM.format(verified="x", blocked="nothing"), ["taktus"]) == []
+    assert rules.ready(admission(), reading(), RECORDS, [])["ready"] is True

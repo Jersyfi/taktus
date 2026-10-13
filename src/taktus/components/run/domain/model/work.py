@@ -25,6 +25,9 @@ connector call's `input`, the values of a template, a check or a prompt — an o
   that step: parsed when its media type is JSON, text otherwise; `$select` applies to it;
 - `{"$input": "<name>"}` — one of the run's inputs, given when the run starts
   (`taktusctl run --input`), optionally with `$select` as well;
+- `{"$run": "<part>"}` — a part of the run's own record, resolved when the step runs: `id`,
+  `process_version`, and `failed` — the step that failed and its reason, `{"step", "reason"}`,
+  or null while none has (ADR-0097);
 - `{"$input": "<name>", "$otherwise": <value>}` — that input where the run was given it, and
   the value otherwise. The value may itself be a `$from` reference: an input the bundle
   declares `required: false` can then stand in for what a step produces, so that whoever
@@ -34,8 +37,8 @@ A `$from` names a step that is a dependency of the step, directly or through oth
 references are resolved when the run is created — the inputs are known then — and may
 therefore stand in typed places too: a workspace location, an allowed host.
 
-**When a step runs, and whom it asks first** (ADR-0088). Beside what it does, a step's work may
-carry two keys of its own, read by `control_of` and never part of the typed work:
+**When a step runs, and whom it asks first** (ADR-0088, ADR-0097). Beside what it does, a step's
+work may carry three keys of its own, read by `control_of` and never part of the typed work:
 
 - `when` — conditions in the shape of a `check` rule's, over earlier results. A step whose
   conditions do not all hold is skipped: it succeeds with the result
@@ -43,7 +46,10 @@ carry two keys of its own, read by `control_of` and never part of the typed work
 - `ask` — the step's act is put to a person as a decision request before it starts, at every
   level, as an anchor would put it: the process declares it, and no tenant configuration
   removes it. `on_decline: continue` makes a declined act a result instead of a halt: the step
-  succeeds with `{"declined": true, "by": …, "answer": …}`, and the steps after it read that.
+  succeeds with `{"declined": true, "by": …, "answer": …}`, and the steps after it read that;
+- `on_escalation: true` — the step is no part of the run's sequence. It runs only when the run
+  escalates, after the step that failed and before the run ends, and only when every step it
+  depends on succeeded; a run that finishes skips it (ADR-0097).
 """
 
 from __future__ import annotations
@@ -67,7 +73,8 @@ INPUT = "$input"
 SELECT = "$select"
 ARTIFACT = "$artifact"
 OTHERWISE = "$otherwise"
-REFERENCE_KEYS = frozenset({FROM, INPUT, SELECT, ARTIFACT, OTHERWISE})
+RUN = "$run"
+REFERENCE_KEYS = frozenset({FROM, INPUT, RUN, SELECT, ARTIFACT, OTHERWISE})
 
 
 class ConstantRule(Value):
@@ -122,7 +129,9 @@ class ReadyRule(Value):
     `open_records` are the file names of the directory that holds the open records, and
     `open_issues` the repository's open issues, as numbers or as readings with a `number`.
     `expect: sections_missing` asks the opposite of the content alone: the issue is open, not
-    a pull request, and lacks at least one of the three sections.
+    a pull request, and lacks at least one of the three sections. `handed: true` makes the
+    admission one of an issue handed to Taktus: it carries the label `taktus`, and its "Blocked
+    by" names no ADR (DEC-0197).
 
     The result is `{"number", "ready", "reasons", "missing"}` once the expectation holds; when
     it does not, the step fails naming every reason. The verdict comes from the fields read,
@@ -133,6 +142,7 @@ class ReadyRule(Value):
     issue: Any
     open_records: Any = None
     open_issues: Any = None
+    handed: bool = False
 
     @model_validator(mode="after")
     def _admission_reads_what_is_open(self) -> ReadyRule:
@@ -488,7 +498,8 @@ type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork
 
 WHEN = "when"
 ASK = "ask"
-CONTROL_KEYS = frozenset({WHEN, ASK})
+ON_ESCALATION = "on_escalation"
+CONTROL_KEYS = frozenset({WHEN, ASK, ON_ESCALATION})
 
 
 class Ask(Value):
@@ -506,11 +517,20 @@ class Ask(Value):
 
 
 class Control(Value):
-    """When a step runs and whom it asks first: the two keys of a step's work that are not
-    what the step does (ADR-0088)."""
+    """When a step runs and whom it asks first: the keys of a step's work that are not what the
+    step does (ADR-0088, ADR-0097)."""
 
     when: tuple[Condition, ...] = ()
     ask: Ask | None = None
+    on_escalation: bool = False
+    """The step runs only when the run escalates, and asks nobody: the run has gone to a person
+    already (ADR-0097)."""
+
+    @model_validator(mode="after")
+    def _a_step_on_escalation_asks_nobody(self) -> Control:
+        if self.on_escalation and self.ask is not None:
+            raise ValueError("a step that runs on escalation asks nobody")
+        return self
 
     def referenced(self) -> list[Any]:
         """The untyped parts that may carry `$from` references."""
@@ -589,12 +609,19 @@ def parse_work(
     raise UnsupportedWork(step.id, f"no executor for method {step.method} in this version")
 
 
+def escalation_steps(work: Mapping[StepId, Mapping[str, Any]]) -> frozenset[StepId]:
+    """The steps whose work says `on_escalation: true` (ADR-0097)."""
+    return frozenset(
+        step_id for step_id, given in work.items() if given and given.get(ON_ESCALATION) is True
+    )
+
+
 def is_reference(value: Any) -> bool:
     return (
         isinstance(value, Mapping)
         and bool(value)
         and set(value.keys()) <= REFERENCE_KEYS
-        and (FROM in value) != (INPUT in value)
+        and sum(key in value for key in (FROM, INPUT, RUN)) == 1
         and (OTHERWISE not in value or INPUT in value)
     )
 
@@ -634,18 +661,29 @@ def resolve_inputs(value: Any, inputs: Mapping[str, Any]) -> Any:
     return value
 
 
-def resolve(value: Any, results: Mapping[StepId, Any], artifacts: Mapping[str, Any]) -> Any:
+def resolve(
+    value: Any,
+    results: Mapping[StepId, Any],
+    artifacts: Mapping[str, Any],
+    record: Mapping[str, Any] | None = None,
+) -> Any:
     """The value with every `$from` reference replaced by the referenced result, selected
-    where asked; `artifacts` maps `<step-id>/<artifact-id>` to loaded content."""
+    where asked; `artifacts` maps `<step-id>/<artifact-id>` to loaded content. A `$run`
+    reference is replaced by the part of `record`, the run's own (ADR-0097), that it names; one
+    without a record is a KeyError."""
     if isinstance(value, Mapping):
         if is_reference(value) and FROM in value:
             step_id = str(value[FROM])
             if ARTIFACT in value:
                 return select(artifacts[f"{step_id}/{value[ARTIFACT]}"], value.get(SELECT))
             return select(results[step_id], value.get(SELECT))
-        return {key: resolve(item, results, artifacts) for key, item in value.items()}
+        if is_reference(value) and RUN in value:
+            if record is None:
+                raise KeyError(RUN)
+            return select(select(record, value[RUN]), value.get(SELECT))
+        return {key: resolve(item, results, artifacts, record) for key, item in value.items()}
     if isinstance(value, list | tuple):
-        return [resolve(item, results, artifacts) for item in value]
+        return [resolve(item, results, artifacts, record) for item in value]
     return value
 
 

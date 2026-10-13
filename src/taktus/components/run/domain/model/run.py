@@ -11,6 +11,7 @@ from pydantic import Field, model_validator
 
 from taktus.components.run.domain.model.block import OpenBlock
 from taktus.components.run.domain.model.errors import IllegalTransition, UnsupportedWork
+from taktus.components.run.domain.model.work import escalation_steps
 from taktus.ports.worker import AssignmentId, Limits
 from taktus.shared.v1 import (
     Artifact,
@@ -377,14 +378,43 @@ class Run(Value):
     def runnable(self) -> StepRun | None:
         """Where execution continues: the first step that has not succeeded, does not wait for
         a person, and whose dependencies have all succeeded. A step waiting for a person holds
-        back only the steps that depend on it (ADR-0039)."""
+        back only the steps that depend on it (ADR-0039). A step that runs on escalation is no
+        part of the sequence and is never where execution continues (ADR-0097)."""
         done = {s.step_id for s in self.step_runs if s.done}
+        aside = self.on_escalation()
         for step_run in self.step_runs:
             if step_run.done or step_run.state is StepState.WAITING_HUMAN:
+                continue
+            if step_run.step_id in aside:
                 continue
             if all(d in done for d in self.step(step_run.step_id).dependencies):
                 return step_run
         return None
+
+    def on_escalation(self) -> frozenset[StepId]:
+        """The steps that run only when the run escalates (ADR-0097)."""
+        return escalation_steps(self.work)
+
+    def failed(self) -> StepRun | None:
+        """The first step of the sequence that failed, which is the one the run escalates for;
+        None while none has. A step that runs on escalation is not one of them."""
+        aside = self.on_escalation()
+        for step_run in self.step_runs:
+            if step_run.state is StepState.FAILED and step_run.step_id not in aside:
+                return step_run
+        return None
+
+    def record(self) -> dict[str, Any]:
+        """What a `$run` reference reads (ADR-0097): the run's identifier, its process version,
+        and the step that failed with its reason, or null while none has."""
+        failed = self.failed()
+        return {
+            "id": self.id,
+            "process_version": self.process_version,
+            "failed": None
+            if failed is None
+            else {"step": failed.step_id, "reason": failed.reason or ""},
+        }
 
     def waiting(self) -> tuple[StepRun, ...]:
         """The steps that wait for a person."""

@@ -36,7 +36,9 @@ answer has nothing to do with the task, they go into a pull request of their own
 "main is red", mending it is the task, before anything below (ADR-0096 §5).
 
 1. `git fetch origin` and start a branch from `origin/main`.
-2. `make backlog NEXT=1` names the task: the top ready one that nobody has claimed.
+2. `make backlog NEXT=1` names the task: the top ready one that nobody has claimed and that
+   is not handed to Taktus. **Never take an open issue labelled `taktus`**: it is Taktus's
+   (DEC-0197). Never add or remove that label either; handing a task over is the owner's.
 3. **Claim it before working on it**: add the label `in-progress`, and comment "Claimed by
    <branch>." on the issue.
 4. Read the issue again. If an earlier claim comment by someone else is there, theirs wins: remove
@@ -70,7 +72,7 @@ an issue, in the shape of the form `Task`, and stays for its turn.
 
 ## 5. Sessions in parallel
 
-- Claim before working; skip a claimed task.
+- Claim before working; skip a claimed task, and a task labelled `taktus`.
 - Numbers of records — `DEC`, `NTC`, `NEED` — are reserved before the record is written:
   `make reserve KIND=NTC` prints a number no other session holds. Write the record under it and
   name it anywhere at once; it is never renumbered. A number taken by hand fails CI

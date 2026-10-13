@@ -14,9 +14,17 @@
 #
 # Ready means the backlog's ready standard (docs/process/README.md, DEC-0051), evaluated by the
 # rule `ready` — the same code a session's `make backlog` runs — over the issue, the repository's
-# open issues and the open records under `records_path` on the base branch. An issue that meets
-# it is claimed with the label `in-progress` before anything is implemented, so that a session
-# or another run skips it.
+# open issues and the open records under `records_path` on the base branch. P-03 takes only an
+# issue handed to Taktus: labelled `taktus` by the owner or by P-01, and naming no ADR under
+# "Blocked by" (DEC-0197, docs/process/README.md, *Handed to Taktus*). An issue that meets all
+# of it is claimed with the label `in-progress` before anything is implemented, so that a
+# session or another run skips it, and the run says so in a comment that names it.
+#
+# A run that escalates after its claim gives the claim back (ADR-0097): three steps that run
+# only then take the label `in-progress` off the issue and say in a comment which step failed
+# and why. The label `taktus` stays: a person removes it to give the task to a session, or
+# removes and adds it to hand it to Taktus again. A run that escalates before the claim, or at
+# the last step, when the pull request is open, gives nothing back.
 #
 # Inputs: `issue`, the issue's number; `records_path`, the directory of the base branch that
 # holds the open decision and needs records; `repository_url`, where the worker clones from;
@@ -47,7 +55,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "8"
+version: "9"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -62,15 +70,17 @@ autonomy:
 author: the repository
 reason: the third process of the dev-orchestration blueprint, runnable
 
-# The blueprint's `issue.ready`: the event `issue.labelled` with the filter `label: ready` and
-# the condition `capacity.available` (contracts/events/v1 §2). A run started by an event has
+# The blueprint's `issue.handed`: the event `issue.labelled` with the filter `label: taktus` and
+# the condition `capacity.available` (contracts/events/v1 §2). The label `ready` starts nothing:
+# on 2026-10-13 a trigger on it took ten of twenty-two issues a session had just written, and
+# opened a duplicate pull request (DEC-0197). A run started by an event has
 # nobody to ask, so the trigger gives every input the process requires: this repository's
 # records, its clone and the host of the clone, and the name of the coding worker's credential;
 # the issue comes from the event. It gives no `closing_section`: the worker generates the
 # section inside the run (DEC-0037, ADR-0053, NTC-0112). P-03 still starts by hand as above.
 triggers:
   - event: issue.labelled
-    filter: { label: ready }
+    filter: { label: taktus }
     condition: capacity.available
     inputs:
       records_path: docs/decisions/open
@@ -231,9 +241,10 @@ steps:
     reason: >
       ready means the backlog's ready standard — the three sections, a component, a milestone,
       one priority label, the label `ready`, nothing open under "Blocked by" — and open, not a
-      pull request, not claimed: the rule `ready`, the same code a session's `make backlog`
-      runs, over the fields just read; a refusal names every reason. The run's budget is
-      checked by admission control before every step, not here
+      pull request, not labelled as no work, not claimed, and handed to Taktus: the label
+      `taktus`, and no ADR named under "Blocked by" (DEC-0197). The rule `ready`, the same code
+      a session's `make backlog` runs, over the fields just read; a refusal names every reason.
+      The run's budget is checked by admission control before every step, not here
     rejected:
       - method: llm
         why: a fixed set of conditions needs no judgement, and a judgement could be wrong
@@ -244,6 +255,7 @@ steps:
     work:
       rule: ready
       expect: ready
+      handed: true
       issue: { $from: read-issue, $select: output }
       open_issues: { $from: read-open-issues, $select: output.issues }
       open_records: { $from: read-open-records, $select: output.entries }
@@ -268,6 +280,51 @@ steps:
       input:
         number: { $input: issue }
         labels: [in-progress]
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  # Whoever reads the issue sees that Taktus took it, and which run to look for (DEC-0197). The
+  # run is named by its identifier: the address of the instance it runs on is the operator's,
+  # and no bundle names it.
+  - id: claim-notice
+    method: rule
+    reason: the comment that says the issue was taken, naming the run, as a fixed composition
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model
+    exactness: sourced
+    depends_on: [claim]
+    work:
+      rule: template
+      text: |
+        Taktus took this issue: run `${run}` of `${version}` claimed it with the label `in-progress`.
+
+        *Written by Taktus, process P-03 Implementation. The run ends in a pull request that
+        closes this issue, or it gives the issue back here and says why. Merging stays with a
+        person.*
+      values:
+        run: { $run: id }
+        version: { $run: process_version }
+
+  - id: announce-claim
+    method: rule
+    reason: >
+      the claim is said where people read the issue, beside the label; a repeat finds the
+      comment by its mark and writes nothing twice
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.comments is unavailable
+      to: human
+    depends_on: [claim, claim-notice]
+    work:
+      rule: connector
+      operation: repository.comments.create
+      input:
+        number: { $input: issue }
+        body: { $from: claim-notice }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }
 
@@ -674,5 +731,90 @@ steps:
       input:
         number: { $from: open-pr, $select: output.number }
         labels: [taktus]
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  # --- on escalation: the claim is given back (ADR-0097, DEC-0197) ------------------------------
+  #
+  # These steps are no part of the sequence. They run only when a step fails and the run
+  # escalates, and only once the claim succeeded: a run refused at admission took nothing. A
+  # run that escalates at `label`, the last step, leaves the claim: its pull request is open
+  # and closes the issue. A run that finishes skips them.
+
+  - id: give-back
+    method: rule
+    reason: >
+      a run that failed works on the issue no more, so its claim comes off and a session or a
+      later run may take the issue; a repeat finds the label gone and removes nothing
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.labels is unavailable
+      to: human
+    depends_on: [claim]
+    work:
+      on_escalation: true
+      when:
+        - value: { $run: failed.step }
+          not_matches: '^label$'
+      rule: connector
+      operation: repository.labels.remove
+      input:
+        number: { $input: issue }
+        labels: [in-progress]
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: give-back-notice
+    method: rule
+    reason: the comment that says why the issue was given back, as a fixed composition
+    rejected:
+      - method: llm
+        why: a fixed composition needs no model, and the reason is the failed step's own
+    exactness: sourced
+    depends_on: [claim]
+    work:
+      on_escalation: true
+      when:
+        - value: { $run: failed.step }
+          not_matches: '^label$'
+      rule: template
+      text: |
+        Taktus gives this issue back: run `${run}` of `${version}` stopped at the step `${step}`.
+
+        > ${reason}
+
+        The label `in-progress` is removed. The label `taktus` stays: remove it to leave the
+        task to a session, or remove it and add it again to hand it to Taktus once more.
+
+        *Written by Taktus, process P-03 Implementation.*
+      values:
+        run: { $run: id }
+        version: { $run: process_version }
+        step: { $run: failed.step }
+        reason: { $run: failed.reason }
+
+  - id: announce-give-back
+    method: rule
+    reason: >
+      the reason is said where people read the issue; a repeat finds the comment by its mark and
+      writes nothing twice
+    rejected:
+      - method: worker
+        why: nothing here needs a sandbox or tools
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.comments is unavailable
+      to: human
+    depends_on: [claim, give-back-notice]
+    work:
+      on_escalation: true
+      rule: connector
+      operation: repository.comments.create
+      input:
+        number: { $input: issue }
+        body: { $from: give-back-notice }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }

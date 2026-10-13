@@ -186,6 +186,16 @@ OPERATIONS: list[Json] = [
         "repeat finds every requested label present and adds nothing.",
     },
     {
+        "name": "repository.labels.remove",
+        "demand": {"quota_units": 6},
+        "capability": "repository.labels",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Take up to five labels off an issue or pull request. The mark is the "
+        "label's absence: a repeat finds none of the requested labels present and removes "
+        "nothing.",
+    },
+    {
         "name": "repository.files.read",
         "demand": {"quota_units": 2},
         "capability": "repository.files",

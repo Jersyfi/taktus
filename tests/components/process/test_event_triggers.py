@@ -133,17 +133,20 @@ P03 = Path(__file__).resolve().parents[3] / (
 )
 
 
-def test_p03_reacts_to_a_ready_label_and_its_trigger_needs_no_closing_section() -> None:
+def test_p03_reacts_to_the_label_that_hands_an_issue_over_and_needs_no_closing_section() -> None:
     """NTC-0112: the worker generates the closing section (#77), so `closing_section` is
-    optional and the trigger of the blueprint's `issue.ready` is in place."""
+    optional. DEC-0197: P-03 reacts to the label `taktus`, which hands an issue to Taktus, and
+    no longer to `ready`."""
     version = parse_bundle(yaml.safe_load(P03.read_text(encoding="utf-8")))
     assert version.inputs["closing_section"].required is False
     assert "closing_section" not in version.required_inputs
-    trigger = version.reacting_to(event())
+    handed = event(repository="acme/taktus", issue="76", label="taktus")
+    trigger = version.reacting_to(handed)
     assert trigger is not None and trigger.condition == "capacity.available"
-    given = version.given_by(trigger, event())
+    given = version.given_by(trigger, handed)
     assert given["issue"] == 76 and "closing_section" not in given
     assert set(given) == set(version.required_inputs)
+    assert version.reacting_to(event()) is None, "the label `ready` starts nothing"
     assert version.reacting_to(event(label="wontfix", repository="a/b", issue="1")) is None
 
 

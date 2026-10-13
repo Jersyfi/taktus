@@ -1039,6 +1039,47 @@ async def test_labels_are_their_own_mark(service: Service) -> None:
 
 
 @pytest.mark.usefixtures("credentials")
+async def test_a_label_removed_is_its_own_mark_by_its_absence(service: Service) -> None:
+    """A claim given back (ADR-0097): the label comes off, the others stay, and a repeat that
+    finds it gone removes nothing and says so."""
+    connector = Connector(config(service))
+    await call(
+        connector,
+        "repository.labels.set",
+        context("claim", "run_01:claim:1-0123456789"),
+        {"number": 1, "labels": ["in-progress", "taktus"]},
+    )
+    key = "run_01:give-back:1-0123456789"
+    error, first = await call(
+        connector,
+        "repository.labels.remove",
+        context("give-back", key),
+        {"number": 1, "labels": ["in-progress"]},
+    )
+    assert not error, first
+    assert first["effect"]["replayed"] is False
+    assert first["output"]["labels"] == ["taktus"]
+    assert first["effect"]["records"] == [{"kind": "label", "id": "1#in-progress"}]
+    error, again = await call(
+        Connector(config(service)),
+        "repository.labels.remove",
+        context("give-back", key),
+        {"number": 1, "labels": ["in-progress"]},
+    )
+    assert not error
+    assert again["effect"]["replayed"] is True
+    assert again["output"]["labels"] == ["taktus"]
+    assert service.state()[REPOSITORY]["labels"] == 1
+    error, refused = await call(
+        connector,
+        "repository.labels.remove",
+        context("give-back", key),
+        {"number": 1, "labels": ["a", "b", "c", "d", "e", "f"]},
+    )
+    assert error and refused["cause"] == "invalid"
+
+
+@pytest.mark.usefixtures("credentials")
 async def test_the_pipeline_state_of_a_branch_is_the_pipelines_verdict(service: Service) -> None:
     connector = Connector(config(service))
     key = "run_01:ci:1-0123456789"
