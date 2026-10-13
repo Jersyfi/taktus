@@ -22,6 +22,11 @@ times the worker's default estimate of 60 000 — the real agent used 1.8 to 4.3
 estimate in the first live run. So the worker can be shown to halt when a running total
 reaches its limit (W-14). `FAKE_AGENT_USAGE_FACTOR` scales every token count (default 1); a
 small factor keeps the run within the estimate.
+
+Every message is streamed in several lines whose usage grows, as the real agent's does: the
+first line carries a twentieth of the message's output, the last all of it. The final line
+carries the session's total. `FAKE_AGENT_LATE_USAGE=1` keeps every
+line at the fraction, so that only the total holds the rest.
 """
 
 from __future__ import annotations
@@ -68,6 +73,31 @@ def usage(n: int) -> Json:
         "output_tokens": 40 + n,
     }
     return {name: max(0, round(factor * count)) for name, count in counts.items()}
+
+
+def partial(full: Json) -> Json:
+    """A message's usage while it is still streamed: its input, a fraction of its output."""
+    return {**full, "output_tokens": full["output_tokens"] // 20}
+
+
+def add(total: Json, used: Json) -> Json:
+    return {name: total.get(name, 0) + count for name, count in used.items()}
+
+
+def message(message_id: str, blocks: list[Json], used: Json, session_id: str) -> Json:
+    return {
+        "type": "assistant",
+        "message": {"id": message_id, "role": "assistant", "content": blocks, "usage": used},
+        "session_id": session_id,
+    }
+
+
+def stream(message_id: str, text: str, last: Json, full: Json, session_id: str) -> None:
+    """One message in two lines: its text with the usage so far, then its last block with all
+    of it — or, with `FAKE_AGENT_LATE_USAGE`, still the usage so far."""
+    late = bool(os.environ.get("FAKE_AGENT_LATE_USAGE"))
+    emit(message(message_id, [{"type": "text", "text": text}], partial(full), session_id))
+    emit(message(message_id, [last], partial(full) if late else full, session_id))
 
 
 def perform(tool: str, arguments: Json) -> tuple[str, bool]:
@@ -165,39 +195,16 @@ def main(argv: list[str] | None = None) -> int:
     pace = float(os.environ.get("FAKE_AGENT_STEP_SECONDS") or 0.15)
     turns = 0
     results = 0
+    total: Json = {}
     for n, (tool, arguments) in enumerate(PLAN[done:], done + 1):
         if turns >= args.max_turns:
             break
         turns += 1
         message_id = f"msg_fake{n:04d}"
         call_id = f"toolu_fake{n:04d}"
-        # The real agent streams one message in several lines that all carry its usage.
-        emit(
-            {
-                "type": "assistant",
-                "message": {
-                    "id": message_id,
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": f"Step {n}: {tool}."}],
-                    "usage": usage(n),
-                },
-                "session_id": session_id,
-            }
-        )
-        emit(
-            {
-                "type": "assistant",
-                "message": {
-                    "id": message_id,
-                    "role": "assistant",
-                    "content": [
-                        {"type": "tool_use", "id": call_id, "name": tool, "input": arguments}
-                    ],
-                    "usage": usage(n),
-                },
-                "session_id": session_id,
-            }
-        )
+        call = {"type": "tool_use", "id": call_id, "name": tool, "input": arguments}
+        stream(message_id, f"Step {n}: {tool}.", call, usage(n), session_id)
+        total = add(total, usage(n))
         time.sleep(pace)
         if tool not in available or tool not in allowed:
             text, is_error = DENIED.format(tool=tool), True
@@ -240,18 +247,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         if is_error and "denied" in text:
             break  # the real agent may try another way; this one gives up
-    emit(
-        {
-            "type": "assistant",
-            "message": {
-                "id": "msg_fakefinal",
-                "role": "assistant",
-                "content": [{"type": "text", "text": FINAL}],
-                "usage": usage(99),
-            },
-            "session_id": session_id,
-        }
-    )
+    stream("msg_fakefinal", "Done.", {"type": "text", "text": FINAL}, usage(99), session_id)
+    total = add(total, usage(99))
     emit(
         {
             "type": "result",
@@ -261,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
             "session_id": session_id,
             "num_turns": turns + 1,
             "total_cost_usd": round(0.02 * (turns + 1), 4),
-            "usage": usage(99),
+            "usage": total,  # the session's total: every message, each once
         }
     )
     return 0

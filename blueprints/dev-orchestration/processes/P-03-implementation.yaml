@@ -39,7 +39,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "6"
+version: "7"
 name: P-03 Implementation
 autonomy:
   level: 4

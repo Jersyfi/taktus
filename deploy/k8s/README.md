@@ -460,11 +460,14 @@ and all of its memory (section 7), so memory decides how many fit.
 backup is in the store and was restored from it on the workstation (`docs/runs/2026-10-11-the-first-restore.md`).
 The backup holds the database and not the state volume's artifacts; that is #322.
 
-**Waits:**
-
-- **a pull request P-03 opens on the installed instance**, showing Taktus's own app as its author
-  (#66, DEC-0063). It needs the coding agents' keys on the instance (NEED-0024) and the owner's
-  linked identity (NEED-0017).
+**A pull request P-03 opened on the installed instance** (#66, DEC-0063), on 2026-10-13: #373,
+authored by Taktus's own app, closing #278. The run cloned the repository through its unit's
+egress proxy, implemented the issue with the coding agent in a cluster unit, put the change on
+a branch through the connector, waited for the pipeline's verdict and opened the pull request.
+Four findings on the way were fixed first, each in a release candidate: the proxy's 407 named no
+scheme (#356), units the node had no room for failed their step (#358), a change of a workflow
+file was refused (#366), and a branch write was reserved by another operation's error (#370).
+The run is in `docs/runs/2026-10-13-the-instance-opens-its-own-pull-request.md`.
 
 ## 11. Backup and restore
 
