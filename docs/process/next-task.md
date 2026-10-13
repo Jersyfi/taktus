@@ -32,6 +32,9 @@ answer has nothing to do with the task, they go into a pull request of their own
 
 ## 3. Take the top ready task, and claim it
 
+**A red `main` comes first.** When the newest `ci` run on `main` is red, or an open issue says
+"main is red", mending it is the task, before anything below (ADR-0096 §5).
+
 1. `git fetch origin` and start a branch from `origin/main`.
 2. `make backlog NEXT=1` names the task: the top ready one that nobody has claimed.
 3. **Claim it before working on it**: add the label `in-progress`, and comment "Claimed by
@@ -62,6 +65,8 @@ an issue, in the shape of the form `Task`, and stays for its turn.
 - **Merge when the pull request is green**: `make gates` locally, and every check in CI. The
   session merges its own pull request once every check is green, with no more running in
   parallel than CI carries, and never one that raises a `BLOCKING` request (M1.22, DEC-0189).
+  Once #390 lands, the pull request stays a draft until `make verify` passed for its pushed head,
+  and CI runs from *ready* on (ADR-0096 §4).
 
 ## 5. Sessions in parallel
 
