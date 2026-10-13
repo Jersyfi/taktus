@@ -133,6 +133,28 @@ def test_the_next_issue_skips_a_claimed_one_and_falls_back_to_the_top_unready() 
     assert backlog.next_issue([claimed]) == (None, False)
 
 
+def test_the_next_issue_skips_one_handed_to_taktus() -> None:
+    """DEC-0197: an issue labelled `to-taktus` is Taktus's; a session never takes it next, and the
+    backlog lists it with the claimed ones."""
+    handed = issue(1, milestone="0.1.0", labels=("ready", "priority:high", "to-taktus"))
+    ready = issue(4)
+    for task in (handed, ready):
+        task.reasons = backlog.assess(task, set(), set())
+    assert handed.claimed
+    assert backlog.next_issue([handed, ready]) == (ready, True)
+    raw = [
+        {
+            "number": 1,
+            "title": "handed",
+            "body": FORM.format(blocked="nothing"),
+            "labels": [{"name": n} for n in ("ready", "priority:high", "to-taktus")],
+            "milestone": {"title": "0.1.0"},
+        }
+    ]
+    found = backlog.groups(raw, set())
+    assert [e["number"] for e in found["claimed"]] == [1] and found["ready"] == []
+
+
 def test_a_label_without_the_standard_is_not_ready() -> None:
     task = issue(labels=("ready", "priority:normal"), milestone=None)
     task.reasons = backlog.assess(task, set(), set())

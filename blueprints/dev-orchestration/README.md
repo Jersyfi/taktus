@@ -62,17 +62,23 @@ ledger). P-02 never edits the issue and never adds the label `ready`: a person, 
 the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
 the same issue, it stops at the first check: nothing is written twice.
 
-**P-03 Implementation** (version 8, autonomy 4, twenty-two steps): read the issue and its comments, compose
+**P-03 Implementation** (version 9, autonomy 4, twenty-seven steps, three of them on escalation): it starts when an
+issue is handed to Taktus, the label `to-taktus` added (DEC-0197), not on the label `ready`. Read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
-of open records on `main`, admit — the ready standard, and open, not a pull request, not claimed
+of open records on `main`, admit — the ready standard, and open, not a pull request, not
+labelled as no work, not claimed, labelled `to-taktus`, and no ADR named under "Blocked by"
 (`rule` `ready`, `exact`; a refusal names every reason) — claim the issue with the label
-`in-progress` (`rule`, outward), implement (`worker`, `tolerant`: the coding worker in a clone of
+`in-progress` (`rule`, outward), say so in a comment that names the run (`rule` `template`, and
+`rule`, outward), implement (`worker`, `tolerant`: the coding worker in a clone of
 the repository, with the issue's text as its task and its section "How it is verified" as the
 acceptance; it leaves the pipeline's workflow files to a person, which the app may not write, NTC-0203), reserve the numbers of the records the change adds — read the records `main` holds, derive the references `refs/register/<PREFIX>-<NNNN>` of every record the changeset writes under `docs/decisions/` that `main` does not hold (`rule` `extract`, `exact`), and create them (`rule`, outward, skipped when there is none; a number somebody else holds stops the run, naming the reference, ADR-0095) — name the branch, put the worker's changeset on it through the connector (`rule`,
 outward: one commit that carries the idempotency key), wait for the pipeline (`wait`, polling
 the pipeline's state), read the verdict, verify it is `success` (`rule`, `exact` — the pipeline's
 verdict, never the worker's opinion), compose the title, the closing section and the body, open the pull request
-(`rule`, outward), label it (`rule`, outward). The body is the worker's summary between what
+(`rule`, outward), label it (`rule`, outward). A run that escalates after its claim gives the
+claim back first (ADR-0097): it removes `in-progress` (`rule`, outward) and comments which step
+failed and why (`rule` `template`, and `rule`, outward); a run refused at admission, or one that
+fails at `label` with its pull request open, gives nothing back. The body is the worker's summary between what
 the template fixes: `Closes #N` and Taktus's own statement before it, and after it the section
 the repository generates for the end of every description — a copy is a rule, not a model's
 output (issue #34). The worker generates it: after its change it runs `tools/check_status.py
@@ -87,7 +93,7 @@ names, provisional under DEC-0173 (ADR-0082); `uv run taktusctl exactness --proc
 prints what each process's checks cover and what would slip through.
 Every step an integration serves — a connector call, the wait on the pipeline, the worker, the
 model — also names a person as its fallback, under a condition that says the integration is
-unavailable (issue #90). That is nineteen steps: the seventeen repository steps, `implement` and
+unavailable (issue #90). That is twenty-two steps: the twenty repository steps, `implement` and
 `refine`. The engine does not switch to the person on its own. The step fails or is refused, the
 run escalates or halts there, and a person does the step, or the rest of the process, by hand
 as the section below says. The removal test (S-01) reads the declaration, and its verdict for the
@@ -202,8 +208,11 @@ a person applies by reading.
    open records on `main`.
 2. **admit** — the issue meets the ready standard, is open, is not a pull request and is not
    labelled `in-progress`; anything it names under "Blocked by" is closed, or its record file
-   is gone from the open directory. If not, stop and note why.
+   is gone from the open directory. Taken over from Taktus, it is labelled `to-taktus` and names
+   no ADR under "Blocked by" (`docs/process/README.md`, *Handed to Taktus*). If not, stop and
+   note why.
 3. **claim** (person) — add the label `in-progress` to the issue.
+   **claim-notice** and **announce-claim** (person) — comment on the issue that you took it.
 4. **implement** (person) — in a clone, on a branch from `main`, make the change the issue asks
    for so that every condition under "How it is verified" holds, within "Where the boundary
    lies", following the repository's own rules for a change; run its checks (`make gates`
@@ -228,6 +237,10 @@ a person applies by reading.
     carries no label.
 
 Merging stays with the person who reviews, as it does when Taktus runs the process.
+
+**give-back**, **give-back-notice** and **announce-give-back** (person) — run only when a step
+after the claim failed and the work stops there: remove the label `in-progress` from the issue,
+and comment which step failed and why. Not after the pull request is open.
 
 ### P-05 Triage of contributions
 
@@ -290,8 +303,9 @@ enforced.
   worker's credential. `closing_section` is optional: the section the repository generates for
   the end of every pull request description, verbatim with its heading. Left out, the worker
   generates it after its change (ADR-0053); `tools/first_run.sh` still hands it in, from
-  `tools/check_status.py --print` on `main`. P-03's trigger reacts to the label `ready` and
-  gives every required input, the issue from the event (NTC-0112).
+  `tools/check_status.py --print` on `main`. P-03's trigger reacts to the label `to-taktus`, which hands
+  an issue to Taktus (DEC-0197), and gives every required input, the issue from the event
+  (NTC-0112). The label must exist in the repository.
 - **The pipeline on a branch.** P-03 reads the pipeline's verdict before it opens the pull
   request, so the pipeline must run for a pushed branch; this repository's
   `.github/workflows/ci.yml` runs on pushes to `taktus/**` for that reason.

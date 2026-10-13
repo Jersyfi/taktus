@@ -53,15 +53,47 @@ The standard is written once, in `src/taktus/components/run/domain/service/ready
 runs to the next heading or to a horizontal rule (`---`); a footer after the rule — the record or
 pull request the issue was written under — is part of no section and blocks nothing (DEC-0116).
 `make backlog` runs it, and so does P-03 Implementation's admission, which also refuses a
-claimed issue and claims the one it admits with `in-progress`. P-02 Refinement uses it to find
-the sections an issue lacks, writes those as a comment, and adds no label (issue #70).
+claimed issue and one that is not handed to Taktus (below), and claims the one it admits with
+`in-progress`. P-02 Refinement uses it to find the sections an issue lacks, writes those as a
+comment, and adds no label (issue #70).
+
+## Handed to Taktus
+
+Development is handed to Taktus in stages, each earned by measured results (DEC-0197). In
+stage 0 Taktus takes only single small tasks, handed to it explicitly. **A task is handed to
+Taktus when it carries the label `to-taktus`.** The owner adds it, or P-01 once it is allowed to;
+the label `ready` alone hands nothing over. A session skips an issue labelled `to-taktus`, as it
+skips a claimed one: `make backlog` lists it with the claimed ones.
+
+A handed task meets the ready standard, and two conditions beside it, which P-03's admission
+checks and refuses with the reason:
+
+1. **It waits for no decision.** Nothing it names under "Blocked by" is open. A task that waits
+   for an owner's decision names its `DEC-NNNN` there, and is not handed over while the record
+   is open.
+2. **It needs no ADR first.** Its "Blocked by" names no ADR: neither an `ADR-NNNN` nor the word
+   `ADR`. A task whose change has architectural effect names the ADR it waits for there, in
+   either form. It is handed over once that ADR is accepted and the line no longer names it.
+   An ADR named elsewhere in the issue — one whose decision the task carries out — does not
+   count.
+
+So the criterion is what the issue says under "Blocked by". It is checked by the rule, never by
+judgement. Whoever hands a task over makes sure the line is true.
+
+When P-03 claims a handed task, it comments on the issue that Taktus took it, naming the run.
+A run that fails after its claim gives the claim back: it removes `in-progress` and says in a
+comment which step failed and why (ADR-0097). The label `to-taktus` stays. To leave the task to a
+session, a person removes it; to hand it to Taktus once more, a person removes it and adds it
+again, which starts a new run.
 
 ## Labels
 
 | Label | Means |
 |---|---|
 | `ready` | the task's content meets the ready standard; blockers are checked when the backlog is read |
-| `in-progress` | a session has claimed the task and works on it; every other session skips it |
+| `in-progress` | a session or a run of P-03 has claimed the task and works on it; every other session skips it |
+| `to-taktus` | the task is handed to Taktus: P-03 takes it, and every session skips it (DEC-0197) |
+| `taktus` | on a pull request: Taktus opened it; it hands nothing over |
 | `priority:high`, `priority:normal`, `priority:low` | the order within a milestone; exactly one per task |
 | `task` | an issue made from the form `Task` |
 | `report` | the issue carries a process's reports, such as P-01's; it is not work |

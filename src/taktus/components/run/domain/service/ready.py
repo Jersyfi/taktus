@@ -10,9 +10,15 @@ issue form renders them (`### Label`) or as a person writes them (`## 1. Label`)
 Two readers apply it, and both import this module, so that the standard exists once:
 `tools/backlog.py`, which a session runs by hand, and the built-in rules of the run component.
 The rule `ready` (`rules.ready`) is what P-03 Implementation's admission evaluates (`exact`) and
-what P-02 Refinement uses to find the sections an issue lacks. It adds two conditions the
-backlog reads elsewhere: the issue is open and not a pull request, and it is not claimed — a
-session that reads the backlog lists a claimed issue apart instead of refusing it.
+what P-02 Refinement uses to find the sections an issue lacks. It adds conditions the backlog
+reads elsewhere: the issue is open, not a pull request, not labelled as no work, and not
+claimed — a session that reads the backlog lists a claimed issue apart instead of refusing it.
+
+An issue labelled `to-taktus` is handed to Taktus (DEC-0197): a process takes it, and a session
+skips it, so the backlog lists it with the claimed ones. An admission of a handed issue
+(`handed=True`) requires that label, and refuses an issue whose "Blocked by" names an ADR —
+`ADR-NNNN` or the word `ADR`: a task that waits for an architectural decision is not handed
+over (docs/process/README.md, *Handed to Taktus*).
 
 The backlog's order is here too: earliest milestone, then priority, then issue number. The rule
 `backlog` (`rules.backlog`), which P-01 Roadmap control evaluates, and `make backlog` both
@@ -34,6 +40,8 @@ COMPONENT = "Component"
 BLOCKED_BY = "Blocked by"
 READY = "ready"
 CLAIMED = "in-progress"
+HANDED = "to-taktus"
+"""The label that hands an issue to Taktus: a process takes it, a session skips it."""
 PRIORITIES = {"priority:high": 0, "priority:normal": 1, "priority:low": 2}
 NOT_WORK = frozenset({"decision-request", "needs-owner", "report"})
 """Labels of issues that are not work: a question or a need for the owner, or the issue that
@@ -44,6 +52,8 @@ NOTHING = {"nothing", "none", "-", "_no response_", ""}
 HEADING = re.compile(r"^#{2,3}\s+(?:\d+\.\s+)?(.+?)\s*$", re.MULTILINE)
 RULE = re.compile(r"^\s*-{3,}\s*$", re.MULTILINE)
 RECORD = re.compile(r"\b((?:NEED|DEC)-\d{4})\b")
+ADR = re.compile(r"\bADR(?:-\d{4})?\b")
+"""An architectural decision record named under "Blocked by", by number or by the word."""
 ISSUE = re.compile(r"(?<![\w/])#(\d+)\b")
 RECORD_NAME = re.compile(r"^((?:NEED|DEC)-\d{4})-.*\.md$")
 VERSION = re.compile(r"(\d+)\.(\d+)\.(\d+)")
@@ -126,20 +136,29 @@ def reasons(
 
 
 def admission(
-    issue: Mapping[str, Any], open_record_ids: set[str], open_issues: set[int]
+    issue: Mapping[str, Any],
+    open_record_ids: set[str],
+    open_issues: set[int],
+    *,
+    handed: bool = False,
 ) -> list[str]:
     """Every reason a process may not take the issue up: the standard's reasons, and before
-    them that it is closed, a pull request, or claimed. `issue` is a repository reading:
-    `number`, `state`, `is_pull_request`, `body`, `labels` (names) and `milestone` (a title, or
-    nothing)."""
+    them that it is closed, a pull request, labelled as no work, or claimed. With `handed`, the
+    admission is of an issue handed to Taktus: it carries the label `to-taktus`, and its "Blocked
+    by" names no ADR. `issue` is a repository reading: `number`, `state`, `is_pull_request`,
+    `body`, `labels` (names) and `milestone` (a title, or nothing)."""
     labels = {str(label) for label in issue.get("labels") or []}
     found: list[str] = []
     if issue.get("state") != "open":
         found.append(f"not open: {issue.get('state')}")
     if issue.get("is_pull_request"):
         found.append("a pull request, not an issue")
+    for label in sorted(labels & NOT_WORK):
+        found.append(f"not work: labelled {label}")
     if CLAIMED in labels:
         found.append(f"claimed: labelled {CLAIMED}")
+    if handed:
+        found += handover(str(issue.get("body") or ""), labels)
     milestone = issue.get("milestone")
     return found + reasons(
         number=int(issue["number"]),
@@ -149,6 +168,24 @@ def admission(
         open_record_ids=open_record_ids,
         open_issues=open_issues,
     )
+
+
+def handover(body: str, labels: Iterable[str]) -> list[str]:
+    """Every reason an issue is not one handed to Taktus: it lacks the label `to-taktus`, or its
+    "Blocked by" names an ADR — one to be written or accepted first, an architectural decision
+    a process never takes in passing (DEC-0197)."""
+    found: list[str] = []
+    if HANDED not in set(labels):
+        found.append(f"not handed over: no label {HANDED}")
+    blocked = sections(body).get(BLOCKED_BY) or ""
+    named = sorted(set(ADR.findall(blocked)))
+    if named:
+        found.append(
+            "'Blocked by' names an ADR ("
+            + ", ".join(named)
+            + "): a task that waits for an architectural decision is not handed over"
+        )
+    return found
 
 
 def milestone_key(title: str | None) -> tuple[int, int, int]:
@@ -174,7 +211,8 @@ def backlog(
 ) -> dict[str, list[dict[str, Any]]]:
     """The backlog as a session reads it, in its order, in three groups: `ready` — the label
     and the standard hold and nobody claimed it, in the order a session takes them;
-    `claimed`; and `not_ready`, each with every reason. A pull request and an issue labelled
+    `claimed`, by a session (`in-progress`) or by being handed to Taktus (`to-taktus`); and
+    `not_ready`, each with every reason. A pull request and an issue labelled
     as not work (`NOT_WORK`) are not part of it.
 
     `issues` are repository readings: `number`, `title`, `body`, `labels` as names,
@@ -217,8 +255,9 @@ def backlog(
             }
         )
     entries.sort(key=lambda e: order(e["number"], e["labels"], e["milestone"]))
-    claimed = [e for e in entries if CLAIMED in e["labels"]]
-    free = [e for e in entries if CLAIMED not in e["labels"]]
+    taken = {CLAIMED, HANDED}
+    claimed = [e for e in entries if taken & set(e["labels"])]
+    free = [e for e in entries if not taken & set(e["labels"])]
     return {
         "ready": [e for e in free if not e["reasons"]],
         "claimed": claimed,

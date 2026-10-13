@@ -1,12 +1,13 @@
 """P-03 Implementation started by an event, end to end (DEC-0037, issue #77), against PostgreSQL.
 
-An issue labelled `ready` starts P-03 through its own trigger, without a person and without the
-input `closing_section`: the daemon's automation role reacts to the event, its runner executes
-the run. The coding worker implements the issue in a clone, and after its change runs the
-repository's generator in its workspace — the command the bundle names under `after` — and the
-run appends what it printed. What is proven: the section the pull request ends with is byte for
-byte what `tools/check_status.py --print` prints on the branch the pull request carries, read
-back from the repository hosting service, and the description check passes on that branch.
+An issue handed to Taktus — labelled `to-taktus` (DEC-0197) — starts P-03 through its own trigger,
+without a person and without the input `closing_section`: the daemon's automation role reacts
+to the event, its runner executes the run. The coding worker implements the issue in a clone,
+and after its change runs the repository's generator in its workspace — the command the bundle
+names under `after` — and the run appends what it printed. What is proven: the section the pull
+request ends with is byte for byte what `tools/check_status.py --print` prints on the branch the
+pull request carries, read back from the repository hosting service, and the description check
+passes on that branch.
 
 What is real: the daemon with every role, the run engine, the reference connector, the coding
 worker. What is faked: the repository hosting service and the coding agent, as in
@@ -35,7 +36,7 @@ from taktus.components.run.domain.model import RunState
 from taktus.composition.daemon import Wired
 from taktus.ports.outbox import INTAKE_ACCEPTED
 
-from .test_dev_orchestration import BLUEPRINT, REPOSITORY, Outside, backlog, outside
+from .test_dev_orchestration import BLUEPRINT, REPOSITORY, Outside, backlog, hand, outside
 from .test_event_reactions import ACCOUNT, linked
 from .test_time_triggers import (
     Daemon,
@@ -82,7 +83,7 @@ def the_bundle(outside: Outside) -> dict[str, Any]:
     with (BLUEPRINT / "P-03-implementation.yaml").open(encoding="utf-8") as handle:
         document: dict[str, Any] = yaml.safe_load(handle)
     (trigger,) = document["triggers"]
-    assert trigger["event"] == "issue.labelled" and trigger["filter"] == {"label": "ready"}
+    assert trigger["event"] == "issue.labelled" and trigger["filter"] == {"label": "to-taktus"}
     assert "closing_section" not in trigger["inputs"], "a trigger cannot give it"
     trigger["inputs"]["repository_url"] = outside.clone_url
     trigger["inputs"]["repository_host"] = "localhost"
@@ -102,17 +103,17 @@ async def verified_adapters(wired: Wired, tenant: str, outside: Outside) -> None
             )
 
 
-async def labelled_ready(wired: Wired, tenant: str, issue: int, at: datetime) -> None:
-    """What the intake keeps for the label `ready` added to the issue, with its outbox entry."""
+async def handed_over(wired: Wired, tenant: str, issue: int, at: datetime) -> None:
+    """What the intake keeps for the label `to-taktus` added to the issue, with its outbox entry."""
     event = IntakeEvent(
-        id=f"dlv_ready_{issue}",
+        id=f"dlv_taktus_{issue}",
         tenant=tenant,
         channel="channel.repo",
         event="issue.labelled",
         sender_account=ACCOUNT,
         sender_kind="person",
-        intent="ready",
-        context={"repository": REPOSITORY, "issue": str(issue), "label": "ready"},
+        intent="to-taktus",
+        context={"repository": REPOSITORY, "issue": str(issue), "label": "to-taktus"},
         reply_channel="channel.repo",
         reply_address=f"{REPOSITORY}#{issue}",
         occurred_at=at,
@@ -169,7 +170,7 @@ def description_check(tree: Path, body: Path) -> subprocess.CompletedProcess[str
     )
 
 
-async def test_an_issue_labelled_ready_becomes_a_pull_request_that_ends_with_the_branchs_section(
+async def test_an_issue_handed_over_becomes_a_pull_request_that_ends_with_the_branchs_section(
     daemons: Callable[..., Daemon], tenant: str, outside: Outside, tmp_path: Path
 ) -> None:
     tasks = backlog(outside)
@@ -189,10 +190,11 @@ async def test_an_issue_labelled_ready_becomes_a_pull_request_that_ends_with_the
     await linked(wired, tenant)
     await verified_adapters(wired, tenant, outside)
     version = await registered(wired, tenant, the_bundle(outside))
-    assert version.ref == "p03-implementation@8"
+    assert version.ref == "p03-implementation@9"
 
     clock.current += timedelta(minutes=1)
-    await labelled_ready(wired, tenant, tasks.ready, clock.now())
+    hand(outside, tasks.ready)
+    await handed_over(wired, tenant, tasks.ready, clock.now())
 
     async def ended() -> bool:
         runs = await runs_of(wired, tenant, version.ref)
@@ -207,6 +209,9 @@ async def test_an_issue_labelled_ready_becomes_a_pull_request_that_ends_with_the
         assert (await wired.ledger.verify(tenant)).intact
     assert [e.kind for e in entries][:2] == ["run.created", "run.triggered"]
     assert entries[1].outcome == "event"
+    comments = outside.get(f"/repos/{REPOSITORY}/issues/{tasks.ready}/comments")
+    assert isinstance(comments, list) and len(comments) == 1
+    assert str(comments[0]["body"]).startswith(f"Taktus took this issue: run `{run.id}` of ")
 
     pulls = outside.get(f"/repos/{REPOSITORY}/pulls")
     assert isinstance(pulls, list) and len(pulls) == 1

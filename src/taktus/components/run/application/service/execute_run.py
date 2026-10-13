@@ -26,6 +26,12 @@ declares `ask` raises its own decision request beside any anchor's, at every lev
 `on_decline: continue`, a declined act is not performed and the step succeeds with a result
 that says who declined it and what they answered, so that the steps after it act on it.
 
+A process may also say what it does when a run escalates (ADR-0097). A step whose work says
+`on_escalation: true` is no part of the sequence. When a step fails and the run escalates, the
+steps marked so run first, in the plan's order, each once every step it depends on succeeded;
+then the run ends escalated for the step that failed. They read the run's own record through
+`$run`: its id, and the step that failed with its reason. A run that finishes skips them.
+
 Before a step starts, its autonomy level is applied (ADR-0039, `domain.service.autonomy`): the
 lowest of the process's level and the levels of the tool actions the step uses. At level 2 the
 step waits until a person confirmed it (`step.awaiting`, then `step.confirmed`); at level 1 a
@@ -1018,6 +1024,14 @@ class RunEngine:
                         raise UnsupportedWork(
                             step.id, f"$from {referenced!r} is not a dependency of this step"
                         )
+        aside = run.on_escalation()
+        for step in run.steps:
+            if step.id not in aside and ancestors[step.id] & aside:
+                raise UnsupportedWork(
+                    step.id,
+                    "depends on a step that runs on escalation, which a run that does not "
+                    "escalate never runs (ADR-0097)",
+                )
 
     async def _execute(self, run: Run, stop_after: int | None, span: Span) -> Run:
         try:
@@ -1065,6 +1079,7 @@ class RunEngine:
             self._at_capacity.discard(run.id)
             if step_run.state is StepState.FAILED:
                 cause = Cause.CAPACITY if capacity else Cause.FAILURE
+                run = await self._escalating(run)
                 return await self._end(run, RunState.ESCALATED, cause, step_run.reason, span)
             if step_run.state is StepState.STOPPED:
                 if capacity:
@@ -1092,7 +1107,41 @@ class RunEngine:
                 + "; ".join(f"{s.step_id} — {s.reason}" for s in waiting_for),
                 span,
             )
+        for step_id in self._aside(run):
+            aside = run.step_run(step_id)
+            if aside.state in (StepState.PLANNED, StepState.REJECTED):
+                run, _ = await self._settle(
+                    run, aside, {"skipped": True, "because": "the run did not escalate"}, "skipped"
+                )
         return await self._end(run, RunState.FINISHED, None, None, span)
+
+    @staticmethod
+    def _aside(run: Run) -> list[StepId]:
+        """The steps that run on escalation, in the plan's order (ADR-0097)."""
+        aside = run.on_escalation()
+        return [step.id for step in run.steps if step.id in aside]
+
+    async def _escalating(self, run: Run) -> Run:
+        """The steps that run on escalation (ADR-0097), in the plan's order, after the step
+        that failed and before the run ends escalated. A step runs when every step it depends
+        on succeeded, and stays planned otherwise, for a later escalation of the same run. Each
+        runs as any step does, through its boundary. One that fails, is refused or waits keeps
+        none of the others from running, and the run escalates for the step that failed first
+        all the same."""
+        for step_id in self._aside(run):
+            step_run = run.step_run(step_id)
+            if step_run.done or step_run.state is StepState.WAITING_HUMAN:
+                continue
+            step = run.step(step_id)
+            done = {s.step_id for s in run.step_runs if s.done}
+            if any(dependency not in done for dependency in step.dependencies):
+                continue
+            run, _ = await self._execute_step(run, step, step_run)
+        self._at_capacity.discard(run.id)
+        self._limit_halts.discard(run.id)
+        self._immature.discard(run.id)
+        self._administering.discard(run.id)
+        return run
 
     async def _end(
         self, run: Run, state: RunState, cause: Cause | None, reason: str | None, span: Span
@@ -2462,7 +2511,8 @@ class RunEngine:
                 run, step_id, artifact_id
             )
         try:
-            return [resolve(value, results, contents) for value in values], read
+            record = run.record()
+            return [resolve(value, results, contents, record) for value in values], read
         except KeyError as missing:
             raise RuleFailed(f"reference to {missing.args[0]!r} cannot be resolved") from missing
 

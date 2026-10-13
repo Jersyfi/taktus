@@ -10,10 +10,9 @@ found by its head branch, which the service keeps unique among open pull request
 found among the most recently created ones and, above the newest number that list shows, by its
 number, one by one; a comment among all comments of its issue, page by page. A branch is found
 by its name, and the mark at the head commit says whether it is ours; so is any other
-reference. A label is its own mark:
-the operation looks for the labels on the issue before adding any. A pipeline dispatch is found
-by nothing: the service answers with no identifier, which is why that operation declares
-`idempotency: none`.
+reference. A label is its own mark: the operation looks for the labels on the issue before
+adding any, and before removing any. A pipeline dispatch is found by nothing: the service
+answers with no identifier, which is why that operation declares `idempotency: none`.
 
 Every function takes the service, the operation's input and the idempotency key, and returns an
 `Outcome`: the operation's output and the effect report. Faults of the service arrive as
@@ -869,6 +868,46 @@ async def set_labels(api: Api, input: Json, key: str) -> Outcome:
     )
 
 
+MAX_LABELS_REMOVED = 5  # what one call removes at most: one request per label
+
+
+async def remove_labels(api: Api, input: Json, key: str) -> Outcome:
+    """Lookup: the labels on the issue, as for `repository.labels.set`. The mark is the label's
+    absence: a repeat with any key that finds none of the requested labels present removes
+    nothing and reports `replayed`. A label removed by somebody else between the lookup and the
+    removal is gone either way, and is not an error. At most five labels in one call."""
+    number = _int(input, "number")
+    labels = _paths(input, "labels")
+    if not labels:
+        raise invalid("labels must name at least one label")
+    if len(labels) > MAX_LABELS_REMOVED:
+        raise invalid(f"labels names at most {MAX_LABELS_REMOVED} labels to remove")
+    request: Json = {"remove": labels}
+    digest = digest_of(request)
+    issue = await api.get(api.repo(f"issues/{number}"))
+    present = {str(label.get("name", "")) for label in issue.get("labels", []) or []}
+    records = [{"kind": "label", "id": f"{number}#{label}"} for label in labels]
+    present_now = [label for label in labels if label in present]
+    if not present_now:
+        output = {"number": number, "labels": sorted(present)}
+        return Outcome(output, write_effect(records, digest, replayed=True))
+    remaining = set(present)
+    for label in present_now:
+        try:
+            left = await api.delete(api.repo(f"issues/{number}/labels/{quote(label, safe='')}"))
+        except TargetError as error:
+            if error.status != 404:
+                raise
+            left = None
+        remaining.discard(label)
+        if isinstance(left, list):
+            remaining = {str(item.get("name", "")) for item in left}
+    return Outcome(
+        {"number": number, "labels": sorted(remaining)},
+        write_effect(records, digest, replayed=False),
+    )
+
+
 async def close_issue(api: Api, input: Json, key: str) -> Outcome:
     """Lookup: the comment that says why, among every comment of the item, by mark — exactly as
     `repository.comments.create` finds one — and the item's state. The comment is written
@@ -954,6 +993,7 @@ OPERATIONS: dict[str, Operation] = {
     "repository.branches.create": create_branch,
     "repository.refs.create": create_references,
     "repository.labels.set": set_labels,
+    "repository.labels.remove": remove_labels,
     "repository.files.read": read_file,
     "repository.files.read_many": read_many,
     "repository.files.list": list_files,

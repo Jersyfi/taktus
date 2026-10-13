@@ -82,7 +82,7 @@ def ready(rule: ReadyRule, issue: Any, open_records: Any, open_issues: Any) -> d
         raise RuleFailed("the issue is not a reading with a number")
     records = standard.open_records(_names(open_records, "name"))
     issues = {int(n) for n in _names(open_issues, "number")}
-    reasons = standard.admission(issue, records, issues)
+    reasons = standard.admission(issue, records, issues, handed=rule.handed)
     missing = standard.missing_sections(str(issue.get("body") or ""))
     result = {
         "number": issue["number"],

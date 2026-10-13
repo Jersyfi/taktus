@@ -11,7 +11,9 @@ The backlog is the repository's open issues, without pull requests, without the 
 decision request or a needs request, which are the owner's and not work, and without an issue
 labelled `report`, which carries a process's reports. For each issue:
 
-- **claimed** when it carries the label `in-progress`: a session works on it; another skips it;
+- **claimed** when it carries the label `in-progress`: a session works on it; another skips it.
+  An issue labelled `to-taktus` is handed to Taktus (DEC-0197) and listed here too: a session
+  skips it;
 - **ready** when it carries the label `ready` and the ready standard holds: the three sections of
   a use case — what must be achieved, how it is verified, where the boundary lies — filled, a
   component, a milestone, one priority label, and nothing it names under "Blocked by" still open.
@@ -64,6 +66,7 @@ _spec.loader.exec_module(standard)
 
 SECTIONS = standard.SECTIONS
 CLAIMED = standard.CLAIMED
+HANDED = standard.HANDED
 PRIORITIES = standard.PRIORITIES
 NOT_WORK = standard.NOT_WORK
 """Labels of issues that are not work: the owner's to answer or provide, or a process's reports."""
@@ -84,7 +87,8 @@ class Issue:
 
     @property
     def claimed(self) -> bool:
-        return CLAIMED in self.labels
+        """Claimed by a session, or handed to Taktus: either way, a session skips it."""
+        return bool({CLAIMED, HANDED} & self.labels)
 
     @property
     def ready(self) -> bool:

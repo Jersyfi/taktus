@@ -379,6 +379,27 @@ class Backlog:
     blocked: int
 
 
+def hand(outside: Outside, *numbers: int) -> None:
+    """The issues handed to Taktus, as the owner or P-01 hands them: the label `to-taktus`
+    (DEC-0197)."""
+    for number in numbers:
+        outside.send(
+            "POST", f"/repos/{REPOSITORY}/issues/{number}/labels", {"labels": ["to-taktus"]}
+        )
+
+
+def milestone_of(outside: Outside, number: int) -> int:
+    issue = outside.get(f"/repos/{REPOSITORY}/issues/{number}")
+    assert isinstance(issue, dict) and issue["milestone"]
+    return int(issue["milestone"]["number"])
+
+
+def comments_on(outside: Outside, number: int) -> list[str]:
+    found = outside.get(f"/repos/{REPOSITORY}/issues/{number}/comments")
+    assert isinstance(found, list)
+    return [str(comment["body"]) for comment in found]
+
+
 def backlog(outside: Outside) -> Backlog:
     """A backlog in the shape of this repository's: issues made from the form `Task`, a
     milestone, and one open decision record on `main` under the directory of open records."""
@@ -462,18 +483,36 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     state_dir = tmp_path / "state"
     tasks = backlog(outside)
     p03 = "P-03-implementation.yaml"
+    waits_for_an_adr = outside.issue(
+        "Waits for an ADR",
+        FORM.format(verified="hello.txt says hello.", blocked="an ADR on greetings"),
+        ["task", "ready", "priority:high"],
+        milestone_of(outside, tasks.ready),
+    )
+    not_handed = outside.issue(
+        "Not handed over",
+        FORM.format(verified="hello.txt says hello.", blocked="nothing"),
+        ["task", "ready", "priority:high"],
+        None,
+    )
+    hand(outside, tasks.ready, tasks.missing_section, tasks.no_milestone, tasks.blocked)
+    hand(outside, waits_for_an_adr)
 
-    # Each issue that fails the standard is refused at admission with the reason, and nothing
-    # is written: no claim, no branch.
+    # Each issue that fails the standard, or is not handed to Taktus, or waits for an ADR, is
+    # refused at admission with the reason, and nothing is written: no claim, no comment, no
+    # branch, and nothing given back that was never taken.
     for number, reason in (
         (tasks.missing_section, "section 'How it is verified' is missing or empty"),
         (tasks.no_milestone, "no milestone"),
         (tasks.blocked, "blocked by DEC-0999, still open"),
+        (waits_for_an_adr, "'Blocked by' names an ADR (ADR)"),
+        (not_handed, "not handed over: no label to-taktus"),
     ):
         output = run_bundle(outside, state_dir, p03, *p03_inputs(outside, number), expect=3)
         assert refused(output, "admit", f"issue #{number} is not ready: "), output
         assert refused(output, "admit", reason), output
         assert "in-progress" not in outside.labels(number)
+        assert comments_on(outside, number) == []
     assert outside.state()[REPOSITORY]["branches"] == 1  # type: ignore[index]
 
     # The ready one is admitted, claimed, implemented, and becomes a pull request.
@@ -490,11 +529,23 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     ]
     assert writes == [
         ["egress.write", "claim"],
+        ["egress.write", "announce-claim"],
         ["egress.write", "create-branch"],
         ["egress.write", "open-pr"],
         ["egress.write", "label"],
     ], output
-    assert outside.labels(tasks.ready) == ["in-progress", "priority:high", "ready", "task"]
+    assert re.search(r"give-back\s+rule\s+sourced\s+skipped", output) or re.search(
+        r"give-back\s+rule\s+sourced\s+succeeded", output
+    ), output
+    assert outside.labels(tasks.ready) == [
+        "in-progress",
+        "priority:high",
+        "ready",
+        "task",
+        "to-taktus",
+    ]
+    (announced,) = comments_on(outside, tasks.ready)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@9`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -529,7 +580,13 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     # Every write is in the ledger as egress, and the chain and the provenance verify.
     ledger = json.loads((state_dir / "ledger.json").read_text())["default"]
     egress = [e for e in ledger if e["kind"].startswith("egress.")]
-    assert [e["refs"]["step_id"] for e in egress] == ["claim", "create-branch", "open-pr", "label"]
+    assert [e["refs"]["step_id"] for e in egress] == [
+        "claim",
+        "announce-claim",
+        "create-branch",
+        "open-pr",
+        "label",
+    ]
     assert all(e["content_digest"].startswith("sha256:") for e in egress)
     assert "DOES NOT VERIFY" not in output
 
@@ -544,9 +601,11 @@ def test_a_branch_left_by_an_earlier_attempt_stops_the_run_in_the_words_first_ru
 ) -> None:
     """A ready issue whose branch `taktus/issue-<n>` already exists without this run's key, as
     an earlier attempt after a defect leaves it: the run ends `conflict` at create-branch,
-    opens nothing, and says so in the words `tools/first_run.sh` looks for (issue #30)."""
+    opens nothing, and says so in the words `tools/first_run.sh` looks for (issue #30). It
+    escalates after its claim, so it gives the claim back and says why (ADR-0097)."""
     state_dir = tmp_path / "state"
     tasks = backlog(outside)
+    hand(outside, tasks.ready)
     main = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/main")
     assert isinstance(main, dict)
     outside.send(
@@ -559,6 +618,14 @@ def test_a_branch_left_by_an_earlier_attempt_stops_the_run_in_the_words_first_ru
     leftover = first_run_pattern("P03_LEFTOVER_BRANCH")
     assert any(leftover.search(line) for line in output.splitlines()), output
     assert outside.state()[REPOSITORY]["pulls"] == 0  # type: ignore[index]
+    assert outside.labels(tasks.ready) == ["priority:high", "ready", "task", "to-taktus"]
+    took, gave_back = comments_on(outside, tasks.ready)
+    assert took.startswith("Taktus took this issue: run `run_")
+    assert gave_back.startswith("Taktus gives this issue back: run `run_")
+    assert "stopped at the step `create-branch`" in gave_back
+    assert "conflict" in gave_back, "the failed step's own reason"
+    writes = [line.split()[2:4] for line in output.splitlines() if "egress." in line]
+    assert writes[-2:] == [["egress.write", "give-back"], ["egress.write", "announce-give-back"]]
 
 
 # --- the numbers of the records a change adds (issues #382, #281) -------------------------------
@@ -580,6 +647,7 @@ def test_the_number_of_a_record_the_change_adds_is_reserved_before_the_branch(
     reads. The record the change edits keeps main's number and is not reserved."""
     state_dir = tmp_path / "state"
     tasks = backlog(outside)
+    hand(outside, tasks.ready)
     output = run_bundle(
         outside, state_dir, "P-03-implementation.yaml", *p03_inputs(outside, tasks.ready)
     )
@@ -588,6 +656,7 @@ def test_the_number_of_a_record_the_change_adds_is_reserved_before_the_branch(
     writes = [line.split()[2:4] for line in output.splitlines() if "egress." in line]
     assert writes == [
         ["egress.write", "claim"],
+        ["egress.write", "announce-claim"],
         ["egress.write", "reserve-records"],
         ["egress.write", "create-branch"],
         ["egress.write", "open-pr"],
@@ -619,6 +688,7 @@ def test_a_number_somebody_else_reserved_stops_the_run_before_the_branch(
     branch and no pull request; a person renumbers, or runs the issue again."""
     state_dir = tmp_path / "state"
     tasks = backlog(outside)
+    hand(outside, tasks.ready)
     main = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/main")
     assert isinstance(main, dict)
     outside.send(
@@ -801,7 +871,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@4",
     "P-02-refinement.yaml": "p02-refinement@4",
-    "P-03-implementation.yaml": "p03-implementation@8",
+    "P-03-implementation.yaml": "p03-implementation@9",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -813,12 +883,13 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "write-report",
         },
         "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@8": {
+        "p03-implementation@9": {
             "read-issue",
             "read-comments",
             "read-open-issues",
             "read-open-records",
             "claim",
+            "announce-claim",
             "read-register",
             "read-register-open",
             "reserve-records",
@@ -827,9 +898,11 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "read-pipeline",
             "open-pr",
             "label",
+            "give-back",
+            "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@8": {"implement"}},
+    "worker.endpoint": {"p03-implementation@9": {"implement"}},
     "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""

@@ -558,6 +558,27 @@ class Handler(BaseHTTPRequestHandler):
             repo.refs[name] = str(sha)
             self._send(200, {"ref": f"refs/heads/{name}", "object": {"type": "commit", "sha": sha}})
 
+    def do_DELETE(self) -> None:
+        """A label taken off an issue, as the service's issue interface does: the labels left,
+        or 404 when the issue does not carry it."""
+        url = urlparse(self.path)
+        self._body()
+        if not self._guard(write=True):
+            return
+        with self.store.lock:
+            m = re.fullmatch(r"/repos/([^/]+)/([^/]+)/issues/(\d+)/labels/(.+)", url.path)
+            if m is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            repo = self.store.repository(m.group(1), m.group(2))
+            issue = repo.issues.get(int(m.group(3)))
+            name = unquote(m.group(4))
+            if issue is None or name not in {label["name"] for label in issue["labels"]}:
+                self._send(404, {"message": "Label does not exist"})
+                return
+            issue["labels"] = [label for label in issue["labels"] if label["name"] != name]
+            self._send(200, issue["labels"])
+
     def _patch_issue(self, repo: Repository, number: int, body: Json) -> None:
         """An issue or a pull request changed as the issue interface changes it: its state
         (closed with a reason, or open) and its milestone by number. A pull request closed so

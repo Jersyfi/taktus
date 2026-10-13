@@ -85,3 +85,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0094](ADR-0094-runs-are-read-a-page-at-a-time-and-counted-where-they-are-stored.md) | Runs are read a page at a time, and counted where they are stored | accepted |
 | [0095](ADR-0095-a-run-reserves-the-numbers-of-the-records-its-change-adds-through-the-connector.md) | A run reserves the numbers of the records its change adds, through the connector | accepted |
 | [0096](ADR-0096-ci-checks-what-changed-before-a-merge-and-everything-after-it.md) | CI checks what changed before a merge, and everything after it | accepted |
+| [0097](ADR-0097-a-process-names-the-steps-that-run-when-its-run-escalates.md) | A process names the steps that run when its run escalates | accepted |
