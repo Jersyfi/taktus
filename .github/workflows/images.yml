@@ -25,6 +25,7 @@ permissions:
 jobs:
   registry:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
       version: ${{ steps.check.outputs.version }}
@@ -51,6 +52,7 @@ jobs:
     needs: registry
     if: needs.registry.outputs.enabled == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
