@@ -3,7 +3,7 @@
 Blueprint `it-operations`. An orchestrator that runs a platform: reports, documents, updates,
 monitors, heals within its frame, and fetches a person exactly where that is required.
 
-Planned for `0.7.0`. It needs a much broader connector base than UC-01 — cluster, metrics,
+Planned after `1.0.0` (DEC-0195 moved the roadmap's second domain to `invoice-to-payment`, #402). It needs a much broader connector base than UC-01 — cluster, metrics,
 virtualisation, object storage. **Depth in one case first, breadth second.**
 
 ---
