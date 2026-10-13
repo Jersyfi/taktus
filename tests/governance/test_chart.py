@@ -611,7 +611,9 @@ def test_a_file_of_configuration_is_mounted_into_every_role_and_none_by_default(
 
 def test_the_model_output_cap_is_soft_unless_the_operator_sets_it() -> None:
     """ADR-0092 §2: a limit measured on one endpoint is that operator's value, not the chart's."""
-    [config] = of_kind(render(), "ConfigMap")
+    [config] = of_kind(
+        render("model.endpoint=https://models.example.net/v1", "model.name=m"), "ConfigMap"
+    )
     assert config["data"]["TAKTUS_MODEL_OUTPUT_CAP"] == "soft"
 
 

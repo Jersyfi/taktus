@@ -426,6 +426,7 @@ process (#310): `GET /runs` answers a page, the overview counts runs by query, a
 ten steps each are answered in a twentieth of a second instead of 45 to 57 (ADR-0094, NTC-0202). Cache writes are
 booked by their kind in either shape an endpoint reports them, the operator declares the price
 kinds an endpoint reports and M-04 holds it to that, and a `429`'s `Retry-After` defers the step
+<<<<<<< HEAD
 (#312, NTC-0206); which shape each provider in use returns is still to be verified against it.
 The project's values are no longer product defaults (#313, NTC-0205, ADR-0092 amended): the calibration seed,
 the guides manifest's path, the chart's output limit, a finding's form and labels, and the
@@ -433,6 +434,9 @@ process that turns a change in words into a proposal are each a setting its oper
 project's own instance sets them in its private values (`deploy/k8s/README.md` §2), and
 `tests/architecture` fails on a project process, its repository's path or its owner's name in
 `src/` or the chart's defaults.
+=======
+(#312, NTC-0206); the endpoint in use reports no cached input in either shape, and is declared `input,output` (NTC-0208).
+>>>>>>> origin/main
 
 ## 2. The next pull requests
 
