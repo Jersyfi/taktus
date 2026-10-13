@@ -114,12 +114,12 @@ class RegisterProcessVersionHandler:
         refused: autonomy.RaiseVerdict | None = None
         async with self._work.transaction(tenant):
             stored = await self._versions.get(tenant, version.ref)
-            if stored is not None:
-                # A registered version never changes: the runs that name it, their ledger and
-                # their provenance, describe what it was. The same content again changes
-                # nothing; another content needs a version of its own (#377).
-                if _content(stored) == _content(version):
-                    return stored
+            # A registered version never changes: the runs that name it, their ledger and their
+            # provenance, describe what it was. The same content again is the stored version,
+            # and registering it switches the process on again (ADR-0066 §5); another content
+            # needs a version of its own (#377).
+            same = stored is not None and _content(stored) == _content(version)
+            if stored is not None and not same:
                 raise InvalidProcess(
                     (
                         f"{version.ref} is registered with another content, and a registered "
@@ -140,7 +140,8 @@ class RegisterProcessVersionHandler:
                     outcome = verdict.refusal or "refused"
                     await self._record(tenant, version, "autonomy.refused", outcome, command)
             if refused is None:
-                await self._versions.put(tenant, version)
+                if not same:
+                    await self._versions.put(tenant, version)
                 if self._processes is not None:
                     await self._processes.put(
                         tenant,
@@ -154,7 +155,7 @@ class RegisterProcessVersionHandler:
                     )
         if refused is not None:
             raise RaiseRefused(version.ref, refused.findings)
-        return version
+        return stored if same and stored is not None else version
 
     async def _replaced(self, tenant: Tenant, version: ProcessVersion) -> list[ProcessVersion]:
         """The version the new one replaces: the process's active version where it is known;

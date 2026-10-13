@@ -150,3 +150,33 @@ async def test_a_registered_version_never_changes() -> None:
         assert await versions.get("t", "p@1") == first
     second = await handler.execute(RegisterProcessVersion({**changed, "version": "2"}, tenant="t"))
     assert second.ref == "p@2"
+
+
+async def test_registering_a_switched_off_version_again_switches_it_on() -> None:
+    """A registered version never changes (#377), and registering it again still switches its
+    process back on, as ADR-0066 §5 promises; #377 first left a switched-off process off."""
+    from taktus.components.process.application.service.deactivate import (
+        DeactivateProcess,
+        DeactivateProcessHandler,
+    )
+    from taktus.components.process.domain.model import Process
+
+    persistence = MemoryPersistence()
+    versions = MemoryRepository(persistence, ProcessVersion)
+    processes = MemoryRepository(persistence, Process)
+    ledger = ChainedLedger(
+        MemoryLedgerStore(persistence), FakeClock(datetime(2026, 10, 13, tzinfo=UTC))
+    )
+    handler = RegisterProcessVersionHandler(versions, persistence, processes, ledger=ledger)
+    first = await handler.execute(RegisterProcessVersion(bundle(), tenant="t", by="idn_a"))
+    await DeactivateProcessHandler(processes, persistence, ledger).execute(
+        DeactivateProcess(tenant="t", process_id="p", by="idn_a")
+    )
+    async with persistence.transaction("t"):
+        off = await processes.get("t", "p")
+    assert off is not None and off.active_version is None
+    again = await handler.execute(RegisterProcessVersion(bundle(), tenant="t", by="idn_a"))
+    assert again == first
+    async with persistence.transaction("t"):
+        on = await processes.get("t", "p")
+    assert on is not None and on.active_version == "1"
