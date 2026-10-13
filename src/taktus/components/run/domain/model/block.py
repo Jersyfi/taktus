@@ -122,3 +122,7 @@ class OpenBlock(Value):
     lacking: str | None = Field(default=None, min_length=1)
     """For a lack: what no configured adapter offers — the capabilities, comma-separated, or
     the operation. An identifier, never a text."""
+    retry_after_seconds: float | None = Field(default=None, ge=0)
+    """For a wait on a provider's rate limit: the delay its latest answer asked for in
+    `Retry-After`, in seconds; the runner defers the job by it (ADR-0043). None where the
+    provider named none."""

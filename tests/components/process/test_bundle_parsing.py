@@ -128,3 +128,25 @@ async def test_the_handler_stores_the_version() -> None:
     version = await handler.execute(RegisterProcessVersion(bundle(), tenant="t"))
     async with persistence.transaction("t"):
         assert await versions.get("t", "p@1") == version
+
+
+async def test_a_registered_version_never_changes() -> None:
+    """P-03's bundle changed under the same version, and the instance stored the new content
+    over the old one: the runs that named the version then described another (#377). The same
+    content again changes nothing; another content is refused."""
+    persistence = MemoryPersistence()
+    versions = MemoryRepository(persistence, ProcessVersion)
+    ledger = ChainedLedger(
+        MemoryLedgerStore(persistence), FakeClock(datetime(2026, 10, 13, tzinfo=UTC))
+    )
+    handler = RegisterProcessVersionHandler(versions, persistence, ledger=ledger)
+    first = await handler.execute(RegisterProcessVersion(bundle(), tenant="t", by="idn_a"))
+    again = await handler.execute(RegisterProcessVersion(bundle(), tenant="t", by="idn_b"))
+    assert again == first, "the same bundle registered again is the stored version"
+    changed = bundle(slo={"freshness": "12h"})
+    with pytest.raises(InvalidProcess, match="never changes"):
+        await handler.execute(RegisterProcessVersion(changed, tenant="t"))
+    async with persistence.transaction("t"):
+        assert await versions.get("t", "p@1") == first
+    second = await handler.execute(RegisterProcessVersion({**changed, "version": "2"}, tenant="t"))
+    assert second.ref == "p@2"

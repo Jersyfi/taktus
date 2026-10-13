@@ -43,8 +43,9 @@ Taktus does as a process of its own.
 **A report you run does not make a model *verified* in anybody's Taktus.** A Taktus instance
 records this suite's half only when it ran the suite itself, against the model endpoint and the
 model name its own configuration names (`taktusctl conformance record model.endpoint`,
-ADR-0044). It judges the declaration its own model adapter makes: the output limit and the
-billing basis configured as `TAKTUS_MODEL_OUTPUT_CAP` and `TAKTUS_MODEL_BILLING`. It records the
+ADR-0044). It judges the declaration its own model adapter makes: the output limit, the
+billing basis and the price kinds reported, configured as `TAKTUS_MODEL_OUTPUT_CAP`,
+`TAKTUS_MODEL_BILLING` and `TAKTUS_MODEL_USAGE_KINDS`. It records the
 outcome with the model name and the purposes it serves. When either changes, the pass no longer
 counts, and the instance needs to run the suite again.
 
@@ -58,7 +59,7 @@ evidence. This is the way to check a model when no instance runs, and the way to
 
 1. **Find the endpoint and the model**: `TAKTUS_MODEL_ENDPOINT` and `TAKTUS_MODEL_NAME`.
 2. **Write the declaration the instance's adapter makes**, with the instance's
-   `TAKTUS_MODEL_OUTPUT_CAP` and `TAKTUS_MODEL_BILLING`:
+   `TAKTUS_MODEL_OUTPUT_CAP`, `TAKTUS_MODEL_BILLING` and `TAKTUS_MODEL_USAGE_KINDS`:
 
    ```json
    { "contract": "model/v1", "input_count": "upper_bound", "output_cap": "soft",

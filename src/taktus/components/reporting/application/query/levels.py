@@ -8,7 +8,7 @@ A run the reader may not see is answered as absent, exactly as one that does not
 
 from __future__ import annotations
 
-from taktus.components.reporting.domain.model.live import ProcessRef, Reader, RunRef
+from taktus.components.reporting.domain.model.live import CountedRuns, ProcessRef, Reader, RunRef
 from taktus.components.reporting.domain.service import visibility
 from taktus.components.reporting.domain.service.levels import (
     OriginLevel,
@@ -59,7 +59,8 @@ class LevelQueries:
 
     async def overview(self, reader: Reader) -> OverviewLevel:
         """The overview of the reader's tenant. A process the reader may not see is absent, and
-        so is every run of it; a run the reader may not see is neither drawn nor counted."""
+        so is every run of it; a run the reader may not see is neither drawn nor counted. The
+        runs of a version are counted together, by `may_count` (ADR-0094)."""
         facts = await self._records.overview(reader.tenant)
         processes = tuple(
             p
@@ -74,7 +75,17 @@ class LevelQueries:
                 reader, RunRef(id=r.id, tenant=r.tenant, process_version=r.process_version)
             )
         )
-        return overview_level(facts.model_copy(update={"processes": processes, "runs": runs}))
+        counts = tuple(
+            c
+            for c in facts.counts
+            if visibility.may_see_process(reader, ProcessRef(id=c.process, tenant=c.tenant))
+            and visibility.may_count(
+                reader, CountedRuns(tenant=c.tenant, process_version=c.process_version)
+            )
+        )
+        return overview_level(
+            facts.model_copy(update={"processes": processes, "counts": counts, "runs": runs})
+        )
 
     async def origin(self, reader: Reader, run_id: str, step_id: str) -> OriginLevel | None:
         """The origin of one step's result; None when there is no such result or the reader may

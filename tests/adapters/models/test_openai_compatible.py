@@ -8,6 +8,8 @@ from __future__ import annotations
 import secrets
 import threading
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 
 import pytest
 from fakes import model_service
@@ -124,3 +126,101 @@ async def test_the_adapter_declares_what_it_can_compute_and_splits_usage_by_pric
     cached = await model.complete(prompt)
     assert cached.by_kind is not None and cached.by_kind.cache_read == 3
     assert cached.by_kind.tokens_in == cached.tokens_in, "the kinds add up to the total"
+
+
+@pytest.mark.parametrize(
+    ("usage", "tokens_in", "kinds"),
+    [
+        # The case of 2026-10-12: 8 000 writes reported at the top level of the usage.
+        (
+            {"prompt_tokens": 10_000, "cache_creation_input_tokens": 8_000},
+            10_000,
+            {"input": 2_000, "cache_write": 8_000},
+        ),
+        (
+            {"prompt_tokens": 10_000, "prompt_tokens_details": {"cache_write_tokens": 8_000}},
+            10_000,
+            {"input": 2_000, "cache_write": 8_000},
+        ),
+        (
+            {"prompt_tokens": 10_000, "cache_read_input_tokens": 6_000},
+            10_000,
+            {"input": 4_000, "cache_read": 6_000},
+        ),
+        (
+            {"prompt_tokens": 10_000, "prompt_tokens_details": {"cached_tokens": 6_000}},
+            10_000,
+            {"input": 4_000, "cache_read": 6_000},
+        ),
+        # Both shapes for the same tokens: booked once.
+        (
+            {
+                "prompt_tokens": 10_000,
+                "cache_read_input_tokens": 6_000,
+                "cache_creation_input_tokens": 1_000,
+                "prompt_tokens_details": {"cached_tokens": 6_000, "cache_write_tokens": 0},
+            },
+            10_000,
+            {"input": 3_000, "cache_read": 6_000, "cache_write": 1_000},
+        ),
+        # Cached tokens beyond the total: the total is the uncached input alone.
+        (
+            {"prompt_tokens": 2_000, "cache_creation_input_tokens": 8_000},
+            10_000,
+            {"input": 2_000, "cache_write": 8_000},
+        ),
+        ({"prompt_tokens": 10}, 10, {"input": 10}),
+    ],
+    ids=["top-write", "nested-write", "top-read", "nested-read", "both", "beyond", "none"],
+)
+def test_every_cached_token_is_booked_by_its_kind_in_either_shape(
+    usage: dict[str, object], tokens_in: int, kinds: dict[str, int]
+) -> None:
+    from taktus.adapters.driven.models.openai_compatible.client import _by_kind
+
+    assert _by_kind(usage) == (tokens_in, kinds)
+
+
+@pytest.mark.parametrize("shape", ["nested", "top"])
+async def test_a_completion_books_cache_writes_in_either_shape(
+    endpoint: tuple[str, model_service.Script], shape: str
+) -> None:
+    url, script = endpoint
+    script.shape, script.cached, script.written = shape, 1, 2
+    model = OpenAiCompatibleModel(url, "m", credential=Secret(KEY), timeout=5.0)
+    completion = await model.complete(Prompt(system="Be brief.", user="one two three four"))
+    assert completion.by_kind is not None
+    assert (completion.by_kind.cache_read, completion.by_kind.cache_write) == (1, 2)
+    assert completion.by_kind.tokens_in == completion.tokens_in
+
+
+async def test_the_operator_declares_the_price_kinds_the_endpoint_reports() -> None:
+    model = OpenAiCompatibleModel(
+        "http://127.0.0.1:9/v1", "m", usage_kinds=("input", "output", "cache_write")
+    )
+    assert model.calculability().usage_kinds == ("input", "output", "cache_write")
+    assert OpenAiCompatibleModel("http://127.0.0.1:9/v1", "m").calculability().usage_kinds == (
+        "input",
+        "output",
+    )
+
+
+async def test_a_rate_limit_passes_on_the_delay_its_retry_after_names(
+    endpoint: tuple[str, model_service.Script],
+) -> None:
+    url, script = endpoint
+    script.status = 429
+    model = OpenAiCompatibleModel(url, "m", credential=Secret(KEY), timeout=5.0)
+    script.retry_after = "30"
+    with pytest.raises(ModelAtLimit, match="Retry-After 30s") as seconds:
+        await model.complete(Prompt(user="x"))
+    assert seconds.value.retry_after_seconds == 30.0
+    script.retry_after = format_datetime(datetime.now(UTC) + timedelta(seconds=120), usegmt=True)
+    with pytest.raises(ModelAtLimit) as dated:
+        await model.complete(Prompt(user="x"))
+    assert dated.value.retry_after_seconds is not None
+    assert 100 <= dated.value.retry_after_seconds <= 120
+    script.retry_after = None
+    with pytest.raises(ModelAtLimit) as unnamed:
+        await model.complete(Prompt(user="x"))
+    assert unnamed.value.retry_after_seconds is None

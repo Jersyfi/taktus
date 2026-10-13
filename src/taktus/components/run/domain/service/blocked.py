@@ -141,6 +141,8 @@ def record(
         document["role"] = block.role
     if block.lacking is not None:
         document["lacking"] = block.lacking
+    if block.retry_after_seconds is not None:
+        document["retry_after_seconds"] = block.retry_after_seconds
     return document
 
 

@@ -23,6 +23,7 @@ generated at the root and names the prefix as a server variable.
 
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -70,6 +71,7 @@ from taktus.components.reporting.domain.service.rendering import repository_text
 from taktus.components.run.domain.model import Run
 from taktus.ports.connector import ConnectorError, Delivery, RefusalReason
 from taktus.ports.identity import Resolution
+from taktus.ports.persistence import Mark
 from taktus.shared.v1.capability import CAPABILITY_PATTERN
 
 VERSION = "0.1.0"
@@ -631,26 +633,51 @@ def _reads(services: RestServices) -> APIRouter:
 
     @router.get(
         "/runs",
-        summary="The runs you may see, newest first",
+        summary="The runs you may see, newest first, a page at a time",
         description="The account key in `Authorization: Bearer` proves the identity, and only "
         "there: a key in the URL is not read. The answer holds the runs of your identity's "
         "tenant that the visibility predicate lets you see — the same predicate as the stream "
-        "of changes (ADR-0055 §5).",
+        "of changes (ADR-0055 §5) — newest first, runs created at the same moment in "
+        "ascending id. A page reads at most `limit` runs; `next` is present when more follow, "
+        "and is passed back as `after` for the next page. A page may hold fewer runs than "
+        "`limit` where the predicate withholds some, and `next` still leads on (ADR-0094).",
         responses={
-            200: {"description": "A list of runs as the run component records them."},
+            200: {"description": "A page of runs as the run component records them."},
             **unauthenticated,
             **INVALID,
         },
     )
-    async def list_runs(authorization: str | None = Header(default=None)) -> JSONResponse:
+    async def list_runs(
+        authorization: str | None = Header(default=None),
+        limit: int = Query(
+            default=PAGE_DEFAULT,
+            ge=1,
+            le=PAGE_MAXIMUM,
+            description=f"How many runs a page reads at most; {PAGE_DEFAULT} unless given.",
+        ),
+        after: str | None = Query(
+            default=None,
+            min_length=1,
+            description="The `next` of the page before; the first page without it.",
+        ),
+    ) -> JSONResponse:
         who = await _authenticated(services, authorization)
         if who is None:
             return problem(401, needs_key)
+        mark = None if after is None else _mark(after)
+        if after is not None and mark is None:
+            return problem(422, "`after` is not the `next` of a page")
         reader = _reader(who)
         async with services.work.transaction(reader.tenant):
-            runs = [r for r in await services.runs.list(reader.tenant) if _shown(reader, r)]
-        runs.sort(key=lambda r: r.created_at, reverse=True)
-        return JSONResponse({"tenant": reader.tenant, "runs": [r.document() for r in runs]})
+            read = await services.runs.newest(reader.tenant, limit=limit + 1, after=mark)
+        page = read[:limit]
+        answer: dict[str, Any] = {
+            "tenant": reader.tenant,
+            "runs": [r.document() for r in page if _shown(reader, r)],
+        }
+        if len(read) > limit:
+            answer["next"] = _cursor(page[-1])
+        return JSONResponse(answer)
 
     @router.get(
         "/runs/{run_id}",
@@ -711,6 +738,29 @@ def _reads(services: RestServices) -> APIRouter:
 
 RECONNECT_MILLIS = 1000
 """How long a reader waits before it reconnects, as the stream tells it (ADR-0055 §6)."""
+
+
+PAGE_DEFAULT = 100
+"""How many runs a page of `GET /runs` reads when the request does not say (ADR-0094)."""
+PAGE_MAXIMUM = 500
+"""The most runs one page of `GET /runs` reads: what it answers within its bound (ADR-0094)."""
+
+
+def _cursor(run: Run) -> str:
+    """Where the next page starts, as the reader passes it back: opaque to them."""
+    return base64.urlsafe_b64encode(f"{run.created_at.isoformat()} {run.id}".encode()).decode()
+
+
+def _mark(cursor: str) -> Mark | None:
+    """The place a cursor names; None for one this surface did not hand out."""
+    try:
+        at, _, run_id = base64.urlsafe_b64decode(cursor.encode()).decode().partition(" ")
+        created = datetime.fromisoformat(at)
+    except ValueError:
+        return None
+    if not run_id or created.tzinfo is None:
+        return None
+    return Mark(created_at=created, id=run_id)
 
 
 def _reader(who: Resolution) -> Reader:

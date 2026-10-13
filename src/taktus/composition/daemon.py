@@ -144,7 +144,7 @@ from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.leadership import Leadership
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Repository, Stored, UnitOfWork
+from taktus.ports.persistence import Queried, Repository, Stored, UnitOfWork
 from taktus.shared.v1 import Command, Plan
 
 EXIT_CONFIGURATION = 2
@@ -165,7 +165,7 @@ class Wired:
     settings: Settings
     persistence: PostgresPersistence
     work: UnitOfWork
-    runs: Repository[Run]
+    runs: Queried[Run]
     ledger: Ledger
     provenance: ProvenanceQuery
     engine: RunEngine
