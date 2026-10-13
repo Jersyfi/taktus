@@ -112,6 +112,31 @@ async def test_every_completed_step_has_one_record_bound_to_its_ledger_entry() -
     assert verification.records == 4
 
 
+async def test_a_step_skipped_by_its_condition_has_a_record_and_the_chain_verifies() -> None:
+    """ADR-0088: a step whose `when` does not hold succeeds with a result that says why, and
+    its ledger entry's outcome is `skipped`. The record is bound to that entry, and the chain
+    verifies: it completed, without its act (found by P-03's reservation, ADR-0095)."""
+    h = Harness(
+        rule("prep", {"rule": "constant", "value": []}),
+        rule(
+            "reserve",
+            {
+                "rule": "constant",
+                "value": "reserved",
+                "when": [{"value": {"$from": "prep"}, "not_matches": r"^\[\]$"}],
+            },
+            after=("prep",),
+        ),
+    )
+    run = await h.start()
+    assert run.state is RunState.FINISHED
+    entries = await h.entries(run)
+    assert any(e.refs.step_id == "reserve" and e.outcome == "skipped" for e in entries)
+    verification = await query(h).verify(ProvenanceOfRun(run_id=run.id, tenant=TENANT))
+    assert verification.intact, verification.findings
+    assert verification.records == 2
+
+
 async def test_a_from_of_a_worker_step_lists_every_artifact_read() -> None:
     first = FakeWorker(script=(InnerStep("one", 1.0, (("a", b"1"), ("b", b"2"))),))
     h = Harness(

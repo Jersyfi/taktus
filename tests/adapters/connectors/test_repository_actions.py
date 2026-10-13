@@ -617,6 +617,120 @@ async def test_a_branch_without_files_carries_an_empty_marked_commit(service: Se
     assert missing["cause"] == "not_found"
 
 
+REFERENCES = {
+    "names": ["refs/register/NTC-0500", "refs/register/DEC-0500"],
+    "target": "main",
+    "message": "reserve",
+}
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_references_are_created_once_each_on_a_marked_commit_of_their_own(
+    service: Service,
+) -> None:
+    """ADR-0095: each reference points at a child of the target that carries the key. A second
+    connector with no memory of the first finds them and replays; another key is somebody
+    else's, and the conflict names the reference."""
+    key = "run_01:reserve:1-0123456789"
+    error, first = await call(
+        Connector(config(service)), "repository.refs.create", context("reserve", key), REFERENCES
+    )
+    assert not error, first
+    assert first["effect"]["replayed"] is False
+    assert first["effect"]["records"] == [
+        {"kind": "vcs.reference", "id": "refs/register/NTC-0500"},
+        {"kind": "vcs.reference", "id": "refs/register/DEC-0500"},
+    ]
+    references = {r["name"]: r["sha"] for r in first["output"]["references"]}
+    assert len(set(references.values())) == 2, "each on a commit of its own"
+    assert service.state()[REPOSITORY]["references"] == sorted(references)
+    assert service.state()[REPOSITORY]["branches"] == 1, "no branch is made"
+
+    error, again = await call(
+        Connector(config(service)), "repository.refs.create", context("reserve", key), REFERENCES
+    )
+    assert not error, again
+    assert again["effect"]["replayed"] is True
+    assert again["output"] == first["output"]
+
+    other = "run_01:reserve:2-0123456789"
+    error, conflict = await call(
+        Connector(config(service)), "repository.refs.create", context("reserve", other), REFERENCES
+    )
+    assert error
+    assert conflict["cause"] == "conflict"
+    assert conflict["effect"] == "none"
+    assert "refs/register/NTC-0500" in conflict["detail"]
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_a_reference_somebody_else_holds_stops_at_it_and_a_repeat_goes_on(
+    service: Service,
+) -> None:
+    """The references are created in order. One held by somebody else ends the call in
+    `conflict`, leaving those before it; a repeat with the same key finds them and stops at the
+    same reference again."""
+    held = "run_09:reserve:1-0123456789"
+    error, _ = await call(
+        Connector(config(service)),
+        "repository.refs.create",
+        context("reserve", held),
+        {"names": ["refs/register/NTC-0501"], "target": "main"},
+    )
+    assert not error
+    key = "run_01:reserve:1-0123456789"
+    given = {"names": ["refs/register/NTC-0502", "refs/register/NTC-0501"], "target": "main"}
+    for _ in range(2):
+        error, conflict = await call(
+            Connector(config(service)), "repository.refs.create", context("reserve", key), given
+        )
+        assert error
+        assert conflict["cause"] == "conflict"
+        assert "refs/register/NTC-0501" in conflict["detail"]
+    assert service.state()[REPOSITORY]["references"] == [
+        "refs/register/NTC-0501",
+        "refs/register/NTC-0502",
+    ]
+
+
+@pytest.mark.usefixtures("credentials")
+@pytest.mark.parametrize(
+    "given",
+    [
+        {"names": [], "target": "main"},
+        {"names": ["register/NTC-0500"], "target": "main"},
+        {"names": ["refs/NTC-0500"], "target": "main"},
+        {"names": ["refs/register/../heads/main"], "target": "main"},
+        {"names": [f"refs/many/{n}" for n in range(11)], "target": "main"},
+        {"names": ["refs/register/NTC-0500"]},
+    ],
+)
+async def test_references_that_are_not_fully_qualified_are_refused_before_any_request(
+    service: Service, given: Json
+) -> None:
+    error, refused = await call(
+        Connector(config(service)),
+        "repository.refs.create",
+        context("reserve", "run_01:reserve:1-0123456789"),
+        given,
+    )
+    assert error
+    assert refused["cause"] == "invalid"
+    assert service.state().get(REPOSITORY, {}).get("references", []) == []
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_a_reference_to_a_target_that_does_not_exist_is_not_found(service: Service) -> None:
+    error, missing = await call(
+        Connector(config(service)),
+        "repository.refs.create",
+        context("reserve", "run_01:reserve:1-0123456789"),
+        {"names": ["refs/register/NTC-0500"], "target": "nowhere"},
+    )
+    assert error
+    assert missing["cause"] == "not_found"
+
+
 @pytest.mark.usefixtures("credentials")
 async def test_a_refused_change_of_a_workflow_file_names_the_file(service: Service) -> None:
     """The service answers a tree that touches a workflow file with "not accessible" and

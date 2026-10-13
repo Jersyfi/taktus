@@ -3,7 +3,8 @@
 Five kinds are executable in this version. A `rule` step evaluates one of the built-in rules
 (`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
 of a backlog task, the backlog in its order, the roadmap held against the backlog, spam by
-fixed patterns, a contribution's class held to what may be answered, a text template — or
+fixed patterns, a contribution's class held to what may be answered, a text template, what a
+pattern names in a list of texts — or
 calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits for a duration
 through the clock, or for an external state read through a connector. A `worker`
 step hands a task to an execution unit behind the worker contract; an `ml` step does too, a
@@ -224,6 +225,37 @@ class TemplateRule(Value):
     values: dict[str, Any] = Field(default_factory=dict)
 
 
+class ExtractRule(Value):
+    """What a pattern names in a list of texts, less what it names in another (ADR-0095).
+    `values` and `excluding` are lists — nested lists are read as one — of texts, or of
+    entries with a `path` or a `name`, as a changeset's files and a directory listing carry
+    them. `pattern` is a regular expression with named groups, searched in each text; `text`
+    composes each match from its groups, `${group}`, as a `template` rule composes its text.
+
+    The result is `{"extracted": [...]}`: every distinct text composed from a match among
+    `values` that no match among `excluding` composes too, sorted. A list that names nothing is
+    an empty result, never a failure; an item that is neither a text nor such an entry fails
+    the step. The same lists give the same result every time: admissible for `exact`."""
+
+    rule: Literal["extract"]
+    values: Any
+    excluding: Any = None
+    pattern: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _pattern_names_what_the_text_uses(self) -> ExtractRule:
+        try:
+            compiled = re.compile(self.pattern)
+        except re.error as error:
+            raise ValueError(f"pattern {self.pattern!r} does not compile: {error}") from error
+        used = set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", self.text))
+        missing = used - set(compiled.groupindex)
+        if missing:
+            raise ValueError(f"text names {sorted(missing)}, which the pattern does not group")
+        return self
+
+
 class Expectation(Value):
     """What a reading must show: the part of the output `select` names, equal to something,
     matching a pattern, or not — the conditions of a `check`, over what was just read."""
@@ -269,6 +301,7 @@ type RuleWork = Annotated[
     | SpamRule
     | ClassificationRule
     | TemplateRule
+    | ExtractRule
     | ConnectorRule,
     Field(discriminator="rule"),
 ]
@@ -673,6 +706,8 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.answer, work.screened, work.versions]
     if isinstance(work, TemplateRule | LlmWork):
         return [work.values]
+    if isinstance(work, ExtractRule):
+        return [work.values, work.excluding]
     if isinstance(work, WaitWork) and work.until is not None:
         return [work.until.input]
     return []

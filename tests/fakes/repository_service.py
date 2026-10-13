@@ -40,6 +40,10 @@ What it enforces, because the connector's checks depend on it:
   number (`POST …/milestones` makes one), and is read with both, as the ready standard of a
   backlog reads them (issue #70). A directory reads as its immediate entries, each a `file` or a
   `dir`, and a branch moves to a later commit with `PATCH …/git/refs/heads/<name>`.
+- **References besides branches.** `POST …/git/refs` creates any `refs/<namespace>/<name>` once,
+  and refuses a second with 422 "Reference already exists", as the service does; `GET
+  …/git/ref/<namespace>/<name>` reads one. No pipeline runs for one, and `GET /_fake/state`
+  lists them by name.
 - **A pipeline per push.** Creating a reference creates one completed pipeline run for its
   commit, concluded `success` unless `POST /_fake/ci` said otherwise (`{"conclusion":
   "failure"}`, or `{"pending": true}` for a run that never completes), so that a process can
@@ -110,6 +114,8 @@ class Repository:
     comments: dict[int, list[Json]] = field(default_factory=dict)
     runs: dict[int, Json] = field(default_factory=dict)
     refs: dict[str, str] = field(default_factory=dict)  # branch name -> commit sha
+    # Any other reference, by its full name -> commit sha: no pipeline runs for one.
+    references: dict[str, str] = field(default_factory=dict)
     objects: dict[str, Json] = field(default_factory=dict)  # sha -> blob | tree | commit
     milestones: dict[int, Json] = field(default_factory=dict)
     created: dict[int, float] = field(default_factory=dict)  # number -> monotonic moment
@@ -291,6 +297,7 @@ class Store:
                 "comments": sum(len(c) for c in repo.comments.values()),
                 "runs": len(repo.runs),
                 "branches": len(repo.refs),
+                "references": sorted(repo.references),
                 "labels": sum(len(i.get("labels", [])) for i in repo.issues.values()),
             }
             for full_name, repo in self.repositories.items()
@@ -680,6 +687,15 @@ class Handler(BaseHTTPRequestHandler):
                 200, {"ref": f"refs/heads/{m.group(3)}", "object": {"type": "commit", "sha": sha}}
             )
             return
+        if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/git/ref/(.+)", path):
+            repo = store.repository(m.group(1), m.group(2))
+            name = f"refs/{m.group(3)}"
+            sha = repo.references.get(name)
+            if sha is None:
+                self._send(404, {"message": "Not Found"})
+                return
+            self._send(200, {"ref": name, "object": {"type": "commit", "sha": sha}})
+            return
         if m := re.fullmatch(r"/repos/([^/]+)/([^/]+)/branches/(.+)", path):
             repo = store.repository(m.group(1), m.group(2))
             sha = repo.refs.get(m.group(3))
@@ -864,10 +880,18 @@ class Handler(BaseHTTPRequestHandler):
             ref, sha = body.get("ref"), body.get("sha")
             if (
                 not isinstance(ref, str)
-                or not ref.startswith("refs/heads/")
+                or not ref.startswith("refs/")
+                or ref.count("/") < 2
                 or sha not in repo.objects
             ):
                 self._send(422, {"message": "Validation Failed"})
+                return
+            if not ref.startswith("refs/heads/"):
+                if ref in repo.references:
+                    self._send(422, {"message": "Reference already exists"})
+                    return
+                repo.references[ref] = sha
+                self._send(201, {"ref": ref, "object": {"type": "commit", "sha": sha}})
                 return
             name = ref.removeprefix("refs/heads/")
             if name in repo.refs:

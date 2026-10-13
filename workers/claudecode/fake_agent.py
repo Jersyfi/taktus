@@ -15,7 +15,8 @@ worker's mechanics (boundaries, consumption, refusal, stop, resume, authenticati
 agent's judgement. Two variables make it misbehave on purpose, so that the worker can be shown
 to handle it: `FAKE_AGENT_EXPIRE_AFTER=N` ends the run with an authentication error after N
 tool results, as an expired subscription token does; `FAKE_AGENT_WINDOW_AFTER=N` reports the
-subscription window as exhausted after N tool results.
+subscription window as exhausted after N tool results. `FAKE_AGENT_WRITE` adds files to the
+change (`plan()`).
 
 Its usage is fixed too, and it overruns: about 620 000 input tokens for the whole plan, ten
 times the worker's default estimate of 60 000 — the real agent used 1.8 to 4.3 times that
@@ -56,6 +57,17 @@ PLAN: list[tuple[str, Json]] = [
     ("Edit", {"file_path": "hello.txt", "old_string": "hello", "new_string": "hello, world"}),
     ("Bash", {"command": "pytest -q 2>/dev/null || printf 'checked\\n' > checked.txt"}),
 ]
+
+
+def plan() -> list[tuple[str, Json]]:
+    """The fixed plan, with one `Write` before the check for every file `FAKE_AGENT_WRITE`
+    names — a JSON object of path to content — so that a test can give the change a file of
+    its choosing, a record of a register among them."""
+    extra = json.loads(os.environ.get("FAKE_AGENT_WRITE") or "{}")
+    writes = [("Write", {"file_path": path, "content": text}) for path, text in extra.items()]
+    return [*PLAN[:-1], *writes, PLAN[-1]]
+
+
 FINAL = "Wrote notes/plan.md and hello.txt, edited the greeting, and ran the check."
 
 
@@ -153,7 +165,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     session_id = args.resume or args.session_id or str(uuid.uuid4())
-    emit({"type": "system", "subtype": "init", "session_id": session_id, "tools": list(dict(PLAN))})
+    emit(
+        {"type": "system", "subtype": "init", "session_id": session_id, "tools": list(dict(plan()))}
+    )
     if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")):
         emit(
             {
@@ -185,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         done = int(json.loads(session_path(session_id).read_text()).get("done", 0))
     allowed = {t.strip() for t in args.allowedTools.replace(" ", ",").split(",") if t.strip()}
     available = (
-        set(dict(PLAN))
+        set(dict(plan()))
         if args.tools == "default"
         else {t.strip() for t in args.tools.split(",") if t.strip()}
     )
@@ -196,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
     turns = 0
     results = 0
     total: Json = {}
-    for n, (tool, arguments) in enumerate(PLAN[done:], done + 1):
+    for n, (tool, arguments) in enumerate(plan()[done:], done + 1):
         if turns >= args.max_turns:
             break
         turns += 1

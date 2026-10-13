@@ -9,7 +9,8 @@ Where the lookup is exact and where it is bounded is stated per operation. A pul
 found by its head branch, which the service keeps unique among open pull requests. An issue is
 found among the most recently created ones and, above the newest number that list shows, by its
 number, one by one; a comment among all comments of its issue, page by page. A branch is found
-by its name, and the mark at the head commit says whether it is ours. A label is its own mark:
+by its name, and the mark at the head commit says whether it is ours; so is any other
+reference. A label is its own mark:
 the operation looks for the labels on the issue before adding any. A pipeline dispatch is found
 by nothing: the service answers with no identifier, which is why that operation declares
 `idempotency: none`.
@@ -692,13 +693,104 @@ async def _mode_along(api: Api, tree_sha: str, path: str) -> str | None:
 
 async def _ref(api: Api, name: str) -> str | None:
     """The sha a branch points at, or None when there is no such branch."""
+    return await _reference(api, f"refs/heads/{name}")
+
+
+async def _reference(api: Api, name: str) -> str | None:
+    """The sha a fully qualified reference points at, or None when there is no such reference.
+    The interface answers one reference by its exact name, as written."""
     try:
-        ref = await api.get(api.repo(f"git/ref/heads/{name}"))
+        ref = await api.get(api.repo(f"git/ref/{name.removeprefix('refs/')}"))
     except TargetError as error:
         if error.cause == "not_found":
             return None
         raise
+    if not isinstance(ref, dict):
+        return None
     return str(ref.get("object", {}).get("sha", "")) or None
+
+
+REFERENCE = re.compile(r"^refs(/[A-Za-z0-9_][A-Za-z0-9._-]*){2,}$")
+MAX_REFERENCES = 10
+"""The most references one `create_references` creates: three requests each at most, besides
+the two that resolve the target."""
+
+
+def _reference_names(input: Json) -> list[str]:
+    names = _paths(input, "names")
+    if not names:
+        raise invalid("names names at least one reference")
+    if len(names) > MAX_REFERENCES:
+        raise invalid(f"names names {len(names)} references; one call creates {MAX_REFERENCES}")
+    for name in names:
+        if REFERENCE.match(name) is None or name.endswith(".lock") or ".." in name:
+            raise invalid(
+                f"{name!r} is not a fully qualified reference: refs/<namespace>/<name>, of "
+                "letters, digits, '.', '_' and '-'"
+            )
+    return list(dict.fromkeys(names))
+
+
+async def create_references(api: Api, input: Json, key: str) -> Outcome:
+    """Lookup: each reference by its exact name, which the service keeps unique. Each points at
+    a commit of its own — a child of the target with the target's tree, that changes nothing —
+    whose message carries our key as a trailer: a reference found with our key is ours,
+    replayed. A reference found with another key, or none, is somebody else's, and the operation
+    ends in `conflict` naming it — the service would refuse it anyway. Creating a reference is
+    atomic on the service: of two callers that create the same name, exactly one succeeds, and
+    the other is answered `conflict` too. What makes a reference a reservation, a marker or
+    anything else is the caller's; this operation knows no namespace.
+
+    The references are created in the order given. A conflict on one leaves those before it
+    created; a repeat with the same key finds them and goes on to the next."""
+    names = _reference_names(input)
+    target = _str(input, "target")
+    message = _str(input, "message", optional=True) or "taktus: reference"
+    request: Json = {"names": names, "target": target, "message": message}
+    digest = digest_of(request)
+    records: list[Json] = []
+    shas: dict[str, str] = {}
+    created = False
+    parent: str | None = None
+    tree_sha = ""
+    for name in names:
+        existing = await _reference(api, name)
+        if existing is not None:
+            head = await api.get(api.repo(f"git/commits/{existing}"))
+            if trailer_of(head.get("message")) != key:
+                raise TargetError(
+                    "conflict",
+                    "none",
+                    False,
+                    f"reference {name!r} exists and was not created for this step",
+                )
+            shas[name] = existing
+            records.append({"kind": "vcs.reference", "id": name})
+            continue
+        if parent is None:
+            parent = target if SHA.match(target) else await _ref(api, target)
+            if parent is None:
+                raise TargetError("not_found", "none", False, f"target {target!r} does not exist")
+            commit = await api.get(api.repo(f"git/commits/{parent}"))
+            tree_sha = str(commit.get("tree", {}).get("sha", ""))
+        made = await api.post(
+            api.repo("git/commits"),
+            {
+                "message": trailed(f"{message.rstrip()}\n\n{name}", key),
+                "tree": tree_sha,
+                "parents": [parent],
+            },
+        )
+        sha = str(made["sha"])
+        await api.post(api.repo("git/refs"), {"ref": name, "sha": sha})
+        shas[name] = sha
+        records.append({"kind": "vcs.reference", "id": name})
+        created = True
+    output: Json = {
+        "target": target,
+        "references": [{"name": name, "sha": shas[name]} for name in names],
+    }
+    return Outcome(output, write_effect(records, digest, replayed=not created))
 
 
 def _files(input: Json) -> list[Json]:
@@ -860,6 +952,7 @@ OPERATIONS: dict[str, Operation] = {
     "repository.comments.create": create_comment,
     "channel.repo.reply": reply,
     "repository.branches.create": create_branch,
+    "repository.refs.create": create_references,
     "repository.labels.set": set_labels,
     "repository.files.read": read_file,
     "repository.files.read_many": read_many,

@@ -194,7 +194,10 @@ def wait_ready(process: subprocess.Popen[bytes], url: str, log: Path, what: str)
 
 
 @pytest.fixture
-def outside(tmp_path: Path) -> Iterator[Outside]:
+def outside(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Outside]:
+    """The fakes and the worker. Parametrized indirectly with a mapping of path to content, the
+    fake agent adds those files to its change (`FAKE_AGENT_WRITE`)."""
+    agent_writes: dict[str, str] = getattr(request, "param", None) or {}
     started: list[subprocess.Popen[bytes]] = []
     token = "tok-" + secrets.token_hex(12)
     agent_key = "key-" + secrets.token_hex(12)
@@ -281,10 +284,16 @@ def outside(tmp_path: Path) -> Iterator[Outside]:
                     "8",
                     "--estimate-currency",
                     "0.5",
+                    "--agent-env",
+                    "FAKE_AGENT_WRITE",
                 ],
                 stdout=handle,
                 stderr=subprocess.STDOUT,
-                env={**os.environ, "CODING_AGENT_API_KEY": agent_key},
+                env={
+                    **os.environ,
+                    "CODING_AGENT_API_KEY": agent_key,
+                    "FAKE_AGENT_WRITE": json.dumps(agent_writes),
+                },
             )
         started.append(worker)
         worker_url = f"http://127.0.0.1:{worker_port}"
@@ -552,6 +561,82 @@ def test_a_branch_left_by_an_earlier_attempt_stops_the_run_in_the_words_first_ru
     assert outside.state()[REPOSITORY]["pulls"] == 0  # type: ignore[index]
 
 
+# --- the numbers of the records a change adds (issues #382, #281) -------------------------------
+
+NOTICE = "docs/decisions/NTC-0500-a-notice-the-change-adds.md"
+RECORD_CHANGE = {
+    NOTICE: "# NTC-0500\n",
+    # A record `main` holds already (`backlog`): the change edits it, and its number is main's.
+    f"{RECORDS}/DEC-0999-an-open-decision.md": "# DEC-0999, edited\n",
+}
+
+
+@pytest.mark.parametrize("outside", [RECORD_CHANGE], indirect=True)
+def test_the_number_of_a_record_the_change_adds_is_reserved_before_the_branch(
+    outside: Outside, tmp_path: Path
+) -> None:
+    """ADR-0095: the run reserves `refs/register/NTC-0500` for the notice the change adds, on a
+    marked commit of its own, before it writes the branch — what the pipeline's register check
+    reads. The record the change edits keeps main's number and is not reserved."""
+    state_dir = tmp_path / "state"
+    tasks = backlog(outside)
+    output = run_bundle(
+        outside, state_dir, "P-03-implementation.yaml", *p03_inputs(outside, tasks.ready)
+    )
+    assert "state finished" in output, output
+    assert re.search(r"record-references\s+rule\s+exact\s+succeeded", output), output
+    writes = [line.split()[2:4] for line in output.splitlines() if "egress." in line]
+    assert writes == [
+        ["egress.write", "claim"],
+        ["egress.write", "reserve-records"],
+        ["egress.write", "create-branch"],
+        ["egress.write", "open-pr"],
+        ["egress.write", "label"],
+    ], output
+    assert outside.state()[REPOSITORY]["references"] == ["refs/register/NTC-0500"]  # type: ignore[index]
+    reserved = outside.get(f"/repos/{REPOSITORY}/git/ref/register/NTC-0500")
+    assert isinstance(reserved, dict)
+    commit = outside.get(f"/repos/{REPOSITORY}/git/commits/{reserved['object']['sha']}")
+    assert isinstance(commit, dict)
+    assert "Taktus-Idempotency-Key: taktus:run_" in commit["message"]
+    assert ":reserve-records:" in commit["message"]
+
+    branch = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
+    assert isinstance(branch, dict)
+    head = outside.get(f"/repos/{REPOSITORY}/git/commits/{branch['object']['sha']}")
+    assert isinstance(head, dict)
+    tree = outside.get(f"/repos/{REPOSITORY}/git/trees/{head['tree']['sha']}")
+    assert isinstance(tree, dict)
+    assert NOTICE in {entry["path"] for entry in tree["tree"]}
+
+
+@pytest.mark.parametrize("outside", [RECORD_CHANGE], indirect=True)
+def test_a_number_somebody_else_reserved_stops_the_run_before_the_branch(
+    outside: Outside, tmp_path: Path
+) -> None:
+    """Issue #281: a number the change took that another session reserved meanwhile is not
+    taken over. The run stops at the reservation with the reference named, and writes no
+    branch and no pull request; a person renumbers, or runs the issue again."""
+    state_dir = tmp_path / "state"
+    tasks = backlog(outside)
+    main = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/main")
+    assert isinstance(main, dict)
+    outside.send(
+        "POST",
+        f"/repos/{REPOSITORY}/git/refs",
+        {"ref": "refs/register/NTC-0500", "sha": main["object"]["sha"]},
+    )
+    inputs = p03_inputs(outside, tasks.ready)
+    output = run_bundle(outside, state_dir, "P-03-implementation.yaml", *inputs, expect=3)
+    taken = re.compile(
+        r"repository\.refs\.create failed: conflict .*'refs/register/NTC-0500' exists and was "
+        r"not created for this step"
+    )
+    assert any(taken.search(line) for line in output.splitlines()), output
+    assert outside.state()[REPOSITORY]["branches"] == 1, "only main"  # type: ignore[index]
+    assert outside.state()[REPOSITORY]["pulls"] == 0  # type: ignore[index]
+
+
 # --- P-01 Roadmap control (issue #71) ------------------------------------------------------------
 
 ROADMAP = """# Roadmap
@@ -716,7 +801,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@3",
     "P-02-refinement.yaml": "p02-refinement@4",
-    "P-03-implementation.yaml": "p03-implementation@7",
+    "P-03-implementation.yaml": "p03-implementation@8",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -728,12 +813,15 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "write-report",
         },
         "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@7": {
+        "p03-implementation@8": {
             "read-issue",
             "read-comments",
             "read-open-issues",
             "read-open-records",
             "claim",
+            "read-register",
+            "read-register-open",
+            "reserve-records",
             "create-branch",
             "wait-for-pipeline",
             "read-pipeline",
@@ -741,7 +829,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "label",
         },
     },
-    "worker.endpoint": {"p03-implementation@7": {"implement"}},
+    "worker.endpoint": {"p03-implementation@8": {"implement"}},
     "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""
