@@ -11,7 +11,9 @@ about, what was done, why that way and what to check (§7) · amended 2026-10-01
 fits no entry is decided in the direction of the vision (§1a), the derivability test, the
 register as precedent and the acceptance rate (§9) · amended 2026-10-01 (DEC-0040 to DEC-0042):
 a decision states how it follows its source, restoring a use case is mode 2 (§1a), the override
-rate is reviewed and counts only what was asked before it was answered (§9)
+rate is reviewed and counts only what was asked before it was answered (§9) · amended
+2026-10-13 (DEC-0189 rule 2): a behaviour change is a line of the pull request description, not
+a notice file (§2a, §9)
 
 ## Context
 ADR-0008 defines the decision request: the planned question about direction, with a fixed shape,
@@ -115,6 +117,17 @@ requires, in the record itself, the section *Why the gate had no value*: what th
 at, what it would have caught, the evidence that it caught nothing and could catch nothing. "It
 was in the way" is not evidence. The gate of §8 checks the shape and that the section names a
 gate; it cannot check the truth of the demonstration, and the reviewer can.
+
+*Amended 2026-10-13 (DEC-0189 rule 2).* **A behaviour change is a line, not a file.** In this
+repository a change of what the software does inside an agreed scope (kind `behaviour-change`,
+entry M2.4) is recorded as one line of the section `## Behaviour changes` of the pull request
+description: `- **Old:** what it did **New:** what it does **Reason:** why the scope needed it`.
+The description says what changed in any case, and a file repeated it. The section is `None`, a
+list of such lines, or absent. The gate of §8 holds every line to the three parts, and fails a
+notice of that kind that a branch adds, so that one change has one form. The notices of that
+kind written before stay in the register. Every other kind stays a file. A merged description
+cannot gain `**Overridden by:**`, so a decision that sets such a change aside names the pull
+request instead, in `**Overrides:** #NNN`.
 
 ### 3. Four categories
 Everything a pull request wants to tell the owner falls into exactly one of these.
@@ -279,6 +292,16 @@ answer:**` and is left out of the rate, because its recommendation was written k
 answer: the naive count showed 5 of 6 recommendations taken where the audit of 2026-10-01 found 1
 of 6.
 
+*Amended 2026-10-13 (DEC-0189 rule 2).* **Behaviour changes are counted from the pull
+requests.** `make status` reads the merged descriptions that carry `## Behaviour changes` from
+the host and counts their lines, and counts the decisions carrying `**Overrides:**` from the
+register. The `owner-list` workflow fetches the descriptions with its token and hands them to
+the generator as a file. Offline, the line says the changes were not counted. Reading `git log`
+instead was considered: the repository squash-merges with the branch's commit messages as the
+body, not the description, so the section is not there. A changelog written on merge was
+considered and not built: it is a stored list that a workflow rewrites on every merge
+(CLAUDE.md §9, DEC-0026, DEC-0027).
+
 ## Alternatives
 - **A checklist in CLAUDE.md, no tooling.** #1 was written under CLAUDE.md §8 and still failed. A
   rule that nothing checks is a hope.
@@ -323,6 +346,11 @@ notice's demonstration that a gate had no value, are checked for presence and fo
 gate, not for truth. A notice's kind is checked against the entry it cites, not against what
 the notice describes: a behaviour change filed under `restructuring` passes the gate and fails
 the reviewer. The draft rule holds on GitHub; a repository hosted elsewhere needs its equivalent.
+A line of `## Behaviour changes` is checked for its three parts, not for truth. Nothing sees a
+behaviour change the description left out, as nothing saw a notice left unwritten. The count of
+such lines needs the host: without network or without `gh` it is not made, and the host's search
+returns at most a thousand pull requests. A description edited after its merge is counted as it
+reads then.
 
 The reversed default holds where the vision gives a direction; whether it does is the session's
 judgement, which the owner reviews through the notices and the rate of overrides, not before.

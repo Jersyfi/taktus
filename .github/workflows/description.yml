@@ -44,7 +44,9 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
       # The four sections a reader can act on without the diff (ADR-0017 §7), the decisions it
-      # raises, and a BLOCKING one keeping the pull request a draft. A dependency bot's own
+      # raises, a BLOCKING one keeping the pull request a draft, and the lines of
+      # `## Behaviour changes` with old behaviour, new behaviour and reason, where the
+      # description has that section (M2.4, DEC-0189 rule 2). A dependency bot's own
       # description is not held to the shape (NTC-0013); the register is checked all the same.
       - name: decisions in the description
         env:

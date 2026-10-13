@@ -21,7 +21,12 @@ A **notice**, `NTC-NNNN`, is the record of a mode-2 decision (anchors.md §1): t
 decided, nobody approves, and the record states what was decided, on what evidence, what was
 considered and which entry permits it. Every notice carries a **kind** — `restructuring`,
 `test-strategy`, `gate-weakened`, `behaviour-change`, `unlisted` — so that the register reads by kind and
-a weakened gate is never buried among behaviour changes (DEC-0014). A notice that weakens a
+a weakened gate is never buried among behaviour changes (DEC-0014). In this register a
+behaviour change is no longer a file: since 2026-10-13 it is a line of the section
+`## Behaviour changes` of its pull request's description, with the old behaviour, the new one
+and the reason, and a decision that sets one aside names that pull request in
+`**Overrides:** #NNN` (DEC-0189 rule 2). `make status` counts both. The notices of that kind
+written before stay as they are. A notice that weakens a
 gate carries the demonstration that the gate had no value, in the record itself.
 
 A **needs request**, `NEED-NNNN`, is the record of something only the owner can provide — a
