@@ -215,6 +215,12 @@ generated (`make status`) and never stored in the file (DEC-0026).
   promise states where the promise ends**, in a section of that name; `make gate-adrs` fails
   one that promises without bounding.
 - **Documentation freshness is a CI gate.**
+- **CI checks what changed before a merge, and everything after it** (ADR-0096, DEC-0194).
+  Every commit on `main` runs everything. A red `main` is the first task of any session, and
+  nothing merges onto it except its repair. Once #390 lands, a draft is verified locally with
+  `make verify` and CI starts when the pull request is ready; once #391 lands, a pull request
+  merges without catching up with `main`. A flaky test is mended or quarantined by a
+  `gate-weakened` notice with a date, never rerun until green and forgotten.
 - **Everything in English** — code, comments, commits, documentation.
 - **Never delete without asking:** no volume, database, backup or process version history. Restores
   count as potentially destructive and follow the same rule.

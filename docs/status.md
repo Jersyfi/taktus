@@ -437,6 +437,13 @@ project's own instance sets them in its private values (`deploy/k8s/README.md` Â
 `tests/architecture` fails on a project process, its repository's path or its owner's name in
 `src/` or the chart's defaults.
 
+**The CI review** (2026-10-13). One `ci` run takes 26â€“27 minutes since 2026-10-11, and CI runs
+during half the time a pull request is open (`docs/research/2026-10-13-ci-review.md`). The owner
+accepted a method of five rings (DEC-0194, ADR-0096): CI checks what changed before a merge and
+everything after it, on every commit of `main`, and every commit on `main` will rehearse the
+self-development bundles. Phases 1 and 2 are `0.3.0` (#388 to #392); the ruleset's switch is the
+owner's (NEED-0026). Nothing of it is built yet.
+
 **The Warp outlook** (2026-10-13). Software factories such as Warp are far ahead where Taktus
 had placed its proof, so Taktus proves itself on a real operation instead (DEC-0195,
 `docs/research/2026-10-13-warp-review.md`): the second tenant is a business or, from 2026-11-01,
