@@ -113,6 +113,19 @@ class RegisterProcessVersionHandler:
             raise InvalidProcess(tuple(refusals))
         refused: autonomy.RaiseVerdict | None = None
         async with self._work.transaction(tenant):
+            stored = await self._versions.get(tenant, version.ref)
+            if stored is not None:
+                # A registered version never changes: the runs that name it, their ledger and
+                # their provenance, describe what it was. The same content again changes
+                # nothing; another content needs a version of its own (#377).
+                if _content(stored) == _content(version):
+                    return stored
+                raise InvalidProcess(
+                    (
+                        f"{version.ref} is registered with another content, and a registered "
+                        "version never changes: give the bundle a new version",
+                    )
+                )
             replaced = await self._replaced(tenant, version)
             raised = [
                 r for old in replaced for r in autonomy.raises(old.autonomy, version.autonomy)
@@ -352,3 +365,9 @@ def _describe(where: str, error: ValidationError) -> list[str]:
         message = item["msg"].removeprefix("Value error, ")
         out.append(f"{where}: {location + ': ' if location else ''}{message}")
     return out
+
+
+def _content(version: ProcessVersion) -> dict[str, Any]:
+    """What a version is, without who registered it and why: the same bundle registered again
+    by someone else is the same version."""
+    return version.model_dump(mode="json", exclude={"author", "reason"})
