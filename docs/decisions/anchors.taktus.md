@@ -190,3 +190,5 @@ On 2026-10-12 the owner adopted six working rules for the project's own records 
 M1.21 to M1.23 write the session's standing authority down once, M2.7 extends to a requirement
 that follows from an accepted feature or the roadmap, with a veto window of seven days, and
 M3.15 narrows accordingly. Rules 1, 2 and 6 change tools and hold once #314, #315 and #316 land.
+Rule 1 holds since #314: the `owner-list` workflow writes the list a pull request description
+ends with, and the description check no longer compares it with a hand copy.
