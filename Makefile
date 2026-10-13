@@ -36,7 +36,8 @@ PARALLEL ?= -n auto --maxprocesses=8
 
 # The gate directories run under their own targets; `make gates` runs every test exactly once.
 test: env ## Unit and domain tests — everything under tests/ that is not a gate; PARALLEL= runs them in one process
-	$(UV) run tools/gate.py test tests $(PARALLEL) $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
+	$(UV) run tools/gate.py test tests $(PARALLEL) -m 'not timing' $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
+	$(UV) run tools/gate.py timing tests -m timing $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
 
 # The images the container tests need (tests/images.py). Each is built only when its Dockerfile
 # or a file it copies changed; an unchanged one is not handed to the builder at all. The tests
