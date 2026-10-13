@@ -184,6 +184,9 @@ this way (ADR-0053).
   and the assignment fails with the agent's reason. A stop through the contract never does
   this.
 - **Choose its tools by judgement.** The frame chooses; the agent is denied, never persuaded.
+- **Go on past its limit of turns** (`--max-turns`). The agent ends with a result that names
+  an error and carries no text; the assignment fails with that error and the number of turns
+  as its reason, for instance "the agent ended with error_max_turns after 41 turn(s)" (#375).
 
 ## Fault injection
 
