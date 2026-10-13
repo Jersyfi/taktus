@@ -115,7 +115,7 @@ taktus/
 │   │       ├── connectors/bookstack/ # knowledge.pages against the wiki the guides are read in, behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/slack/    # the chat connector: chat.threads and channel.chat behind contracts/connector/v1; the product name lives only here
 │   │       ├── connectors/http/
-│   │       └── models/              # openai_compatible/: the model port over the chat-completions dialect; pool.py maps purposes
+│   │       └── models/              # openai_compatible/: the model port over the chat-completions dialect, cached input read nested or at the top of the usage, the price kinds declared as `TAKTUS_MODEL_USAGE_KINDS` says (composition/settings.py), a `429`'s `Retry-After` passed on (ADR-0005 sixth amendment, ADR-0043); pool.py maps purposes
 │   │
 │   ├── wire/                        # wire formats (SSE) shared by conformance and driven adapters
 │   ├── conformance/                 # the contract suite — a client of adapters, no part of the core; connector/ is its MCP half

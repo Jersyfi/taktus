@@ -273,6 +273,29 @@ of its quota (issue #370).
 - **A worker is unchanged.** Its error is the worker's, measured across every step it works
   on (point 4 of the second amendment, DEC-0034, DEC-0043).
 
+## Sixth amendment — every cached token is booked by its kind (2026-10-13)
+
+Money follows from the record (third amendment, point 3), so a token booked at the wrong kind
+is money recorded wrong. The adapter for the chat-completions dialect read cached input only
+nested in `prompt_tokens_details`. An endpoint that reports it at the top of the usage, as
+`cache_creation_input_tokens` and `cache_read_input_tokens`, had its writes booked as uncached
+input: 8 000 writes in a call of 10 000 input tokens were booked as 10 000 input and no write
+(issue #312, `docs/research/2026-10-12-devops-review.md` §G1). Where a write costs more than
+uncached input, the money recorded was too low. What follows is built.
+
+**1. Both shapes are read.** The adapter books input read from a cache and written to one
+wherever the endpoint reports it, nested or at the top of the usage. Where both shapes report a
+kind, they count the same tokens, and the larger count is booked once. Cached tokens that exceed
+`prompt_tokens` cannot be part of it; the total is then taken as the uncached input alone, and
+the input tokens as the sum. `contracts/model/v1` §5 states the rule, and the conformance suite
+reads the same rule.
+
+**2. The operator declares what the endpoint reports.** `TAKTUS_MODEL_USAGE_KINDS` names the
+price kinds the endpoint reports per call; unset, `input,output`. The adapter's declaration
+(`usage_kinds`, point 5 of the third amendment) is that list. Conformance check M-04 fails an
+endpoint that does not report a declared kind, so a declaration is held to what the endpoint
+does.
+
 ## Where this promise ends
 
 The first amendment states where the currency guarantee ends: a worker that reports money
@@ -309,3 +332,11 @@ boundary of it (#235).
 The fifth amendment calibrates a bound by its step, so the same operation called from two
 processes is calibrated twice, once in each. A step renamed in a new version starts again as
 a bound taken as given.
+
+The sixth amendment reads the two shapes known on 2026-10-13. A provider that reports cached
+input under another name has it booked as uncached input, and M-04 shows that only for a kind
+the operator declared. Where `prompt_tokens` excludes the cached tokens and is still larger than
+them, the rule cannot tell, and the cached tokens are taken out of it: the input is then booked
+too low. Which convention each endpoint in use follows is verified against it, not assumed. M-04
+checks the declaration when the suite runs, on a short call; a provider that stops reporting a
+kind later is not seen until the suite runs again.

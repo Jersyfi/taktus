@@ -421,7 +421,10 @@ project's own records follow six working rules (DEC-0189). The deadlock is fixed
 NTC-0201): the ledger's claim on a tenant's chain is its only lock, and every database
 connection carries `lock_timeout` and `idle_in_transaction_session_timeout`. Listing runs no longer blocks the
 process (#310): `GET /runs` answers a page, the overview counts runs by query, and 2 000 runs of
-ten steps each are answered in a twentieth of a second instead of 45 to 57 (ADR-0094, NTC-0202).
+ten steps each are answered in a twentieth of a second instead of 45 to 57 (ADR-0094, NTC-0202). Cache writes are
+booked by their kind in either shape an endpoint reports them, the operator declares the price
+kinds an endpoint reports and M-04 holds it to that, and a `429`'s `Retry-After` defers the step
+(#312, NTC-0206); which shape each provider in use returns is still to be verified against it.
 
 ## 2. The next pull requests
 

@@ -315,6 +315,10 @@ class ModelSettings:
     provider_limit: str = "unknown"
     """`TAKTUS_MODEL_PROVIDER_LIMIT`: what the provider enforces itself over a month — `hard`,
     `alert`, `none`, `unknown`. Information only; Taktus never relies on it."""
+    usage_kinds: tuple[str, ...] = ("input", "output")
+    """`TAKTUS_MODEL_USAGE_KINDS`: the price kinds the endpoint reports per call, comma-separated
+    — `input`, `output`, `cache_read`, `cache_write`. Money is recomputable exactly only from
+    kinds that are reported; conformance check M-04 holds the endpoint to this declaration."""
 
     def effective(self) -> list[tuple[str, str]]:
         credential = "" if self.credential is None else f"*** (from {self.credential_source})"
@@ -325,6 +329,7 @@ class ModelSettings:
             ("TAKTUS_MODEL_BILLING", self.billing),
             ("TAKTUS_MODEL_OUTPUT_CAP", self.output_cap),
             ("TAKTUS_MODEL_PROVIDER_LIMIT", self.provider_limit),
+            ("TAKTUS_MODEL_USAGE_KINDS", ",".join(self.usage_kinds)),
             ("TAKTUS_CREDENTIAL_MODEL_API_KEY", credential),
         ]
 
@@ -474,7 +479,23 @@ def load_model(configuration: Configuration) -> ModelSettings:
         provider_limit=reader.choice(
             "model.provider.limit", "unknown", ("hard", "alert", "none", "unknown")
         ),
+        usage_kinds=_usage_kinds(reader, configuration),
     )
+
+
+PRICE_KIND_NAMES = ("input", "output", "cache_read", "cache_write")
+
+
+def _usage_kinds(reader: _Reader, configuration: Configuration) -> tuple[str, ...]:
+    """The price kinds the operator declares the endpoint reports: known kinds, none twice."""
+    kinds = reader.names("model.usage.kinds", ("input", "output"))
+    unknown = [kind for kind in kinds if kind not in PRICE_KIND_NAMES]
+    if unknown:
+        raise ConfigurationError(
+            configuration.name("model.usage.kinds"),
+            f"{', '.join(unknown)} is not a price kind; one of {', '.join(PRICE_KIND_NAMES)}",
+        )
+    return kinds
 
 
 def load_connectors(configuration: Configuration) -> Mapping[str, str]:

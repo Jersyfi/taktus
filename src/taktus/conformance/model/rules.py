@@ -70,6 +70,49 @@ def dialect_bound(messages: Sequence[Json]) -> int:
     )
 
 
+READ_FIELDS = (("prompt_tokens_details", "cached_tokens"), (None, "cache_read_input_tokens"))
+"""Where an endpoint reports the input read from a cache: nested, or at the top of the usage."""
+WRITE_FIELDS = (
+    ("prompt_tokens_details", "cache_write_tokens"),
+    (None, "cache_creation_input_tokens"),
+)
+"""Where an endpoint reports the input written to a cache: nested, or at the top of the usage."""
+
+
+def dialect_usage(usage: Json) -> tuple[int, Json]:
+    """The chat-completions dialect's usage split by price kind (README §5): every input token,
+    and the input kinds the endpoint reports. A cache kind is reported where either of its
+    fields is present, even at zero; where both are, they count the same tokens, and the larger
+    count is taken once. Cached tokens that exceed `prompt_tokens` cannot be part of it: the
+    total is then the uncached input alone, and the input is the sum. The model adapter reads
+    the same rule; `tests/conformance` holds the two to each other."""
+    prompt = int(usage["prompt_tokens"])
+    read = _reported(usage, READ_FIELDS)
+    written = _reported(usage, WRITE_FIELDS)
+    cached = (read or 0) + (written or 0)
+    if cached > prompt:
+        tokens_in, uncached = prompt + cached, prompt
+    else:
+        tokens_in, uncached = prompt, prompt - cached
+    by_kind: Json = {"input": uncached}
+    if read is not None:
+        by_kind["cache_read"] = read
+    if written is not None:
+        by_kind["cache_write"] = written
+    return tokens_in, by_kind
+
+
+def _reported(usage: Json, fields: Sequence[tuple[str | None, str]]) -> int | None:
+    """The largest count any of the fields reports, or None when none of them is present."""
+    counts: list[int] = []
+    for parent, name in fields:
+        where = usage if parent is None else usage.get(parent)
+        if isinstance(where, dict) and name in where:
+            value = where[name]
+            counts.append(value if isinstance(value, int) and value > 0 else 0)
+    return max(counts) if counts else None
+
+
 def exchange_violations(exchange: Json) -> list[Violation]:
     """Every rule the exchange breaks: M-02, M-03, M-04."""
     declaration = exchange["declaration"]

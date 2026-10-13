@@ -190,7 +190,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 70, "every setting is in the startup log"
+    assert len(effective) == 71, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -250,6 +250,36 @@ def test_the_budget_settings_are_validated_and_the_price_table_read(tmp_path: Pa
         load_budget(EnvironmentConfiguration({"TAKTUS_PRICE_TABLE": str(table)})).table()
     with pytest.raises(ConfigurationError, match="TAKTUS_MODEL_BILLING"):
         settings(TAKTUS_MODEL_BILLING="per_mood")
+
+
+def test_the_operator_declares_the_price_kinds_the_model_endpoint_reports() -> None:
+    from taktus.composition.execution import model_pool
+    from taktus.composition.settings import load_model
+
+    def loaded(**env: str) -> tuple[str, ...]:
+        base = {"TAKTUS_MODEL_ENDPOINT": "http://127.0.0.1:9/v1", "TAKTUS_MODEL_NAME": "m"}
+        return load_model(EnvironmentConfiguration({**base, **env})).usage_kinds
+
+    assert loaded() == ("input", "output")
+    declared = loaded(TAKTUS_MODEL_USAGE_KINDS="input,output,cache_read,cache_write")
+    assert declared == ("input", "output", "cache_read", "cache_write")
+    model = load_model(
+        EnvironmentConfiguration(
+            {
+                "TAKTUS_MODEL_ENDPOINT": "http://127.0.0.1:9/v1",
+                "TAKTUS_MODEL_NAME": "m",
+                "TAKTUS_MODEL_USAGE_KINDS": "input,output,cache_write",
+            }
+        )
+    )
+    assert ("TAKTUS_MODEL_USAGE_KINDS", "input,output,cache_write") in model.effective()
+    member = model_pool(model).member("model.endpoint")
+    assert member is not None
+    assert member[1].calculability().usage_kinds == ("input", "output", "cache_write")
+    with pytest.raises(ConfigurationError, match="cache_hit is not a price kind"):
+        loaded(TAKTUS_MODEL_USAGE_KINDS="input,cache_hit")
+    with pytest.raises(ConfigurationError, match="twice"):
+        loaded(TAKTUS_MODEL_USAGE_KINDS="input,input")
 
 
 @pytest.mark.parametrize(

@@ -288,6 +288,9 @@ model:
   # This tenant's endpoint holds the limit (research [A4]; M-03 passed against it on 2026-10-01);
   # for another endpoint, run M-03 and set what it shows.
   outputCap: hard
+  # The price kinds the endpoint reports per call, comma-separated (input, output, cache_read,
+  # cache_write); empty: input,output. Conformance check M-04 holds the endpoint to it.
+  usageKinds: ""
 
 capacity:
   databaseVolumeMb: 0      # 0: derived from database.size
