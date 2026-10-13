@@ -205,6 +205,8 @@ connector is a driven adapter and the suite its client, and neither imports the 
 - a cluster client anywhere but the cluster execution adapter: its own client
   (`execution/kubernetes/api.py`) imported from outside `execution/kubernetes/`, or a cluster
   client library imported anywhere
+- a job of `ci.yml` without `timeout-minutes`, or the required check `gates` not needing every
+  other job of it (issue #388)
 
 ---
 

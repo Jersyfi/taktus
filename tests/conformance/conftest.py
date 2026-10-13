@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import itertools
 import json
 import os
 import random
@@ -113,11 +114,31 @@ class RunningWorker:
         return await run_suite(self.options())
 
 
+# Under pytest-xdist every worker hands out ports from a range of its own, below the kernel's
+# ephemeral range: a port is free when it is handed out and taken only when the adapter binds it,
+# and two workers asking the kernel in that gap could be given the same one (issue #388).
+PORT_BASE = 20000
+PORTS_PER_WORKER = 500
+_next_port = itertools.count()
+
+
 def free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-        return int(port)
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker is None:
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+            return int(port)
+    first = PORT_BASE + int(worker.removeprefix("gw")) * PORTS_PER_WORKER
+    for _ in range(PORTS_PER_WORKER):
+        port = first + next(_next_port) % PORTS_PER_WORKER
+        with socket.socket() as sock:
+            try:
+                sock.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+        return port
+    raise RuntimeError(f"no free port in {first}..{first + PORTS_PER_WORKER - 1} for {worker}")
 
 
 def faults() -> list[tuple[str, str]]:

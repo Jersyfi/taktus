@@ -26,7 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pytest", "pytest-asyncio", "testcontainers[postgres]",
+  "pytest", "pytest-asyncio", "pytest-xdist", "testcontainers[postgres]",
   "mypy", "types-jsonschema", "types-pyyaml", "ruff", "import-linter", "coverage",
 ]
 # The ML bench worker's libraries (workers/mlbench), at the exact versions its image installs, so

@@ -29,8 +29,18 @@ install: need-uv ## Create or refresh the environment
 	@touch $(ENV_STAMP)
 
 # The gate directories run under their own targets; `make gates` runs every test exactly once.
-test: env ## Unit and domain tests — everything under tests/ that is not a gate
-	$(UV) run tools/gate.py test tests $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
+# `make test` is two lanes, which CI runs as two jobs (issue #388). The integration tests share
+# one database and run in a lane of their own, serially; every other test runs spread over
+# WORKERS processes (pytest-xdist). WORKERS=0 runs them in one.
+WORKERS ?= auto
+
+test: test-units test-integration ## Unit and domain tests — everything under tests/ that is not a gate
+
+test-units: env ## The tests of `make test` outside tests/integration, spread over WORKERS processes (default auto)
+	$(UV) run tools/gate.py test-units --workers $(WORKERS) tests $(foreach g,architecture conformance governance exactness integration,--ignore=tests/$(g))
+
+test-integration: env ## The integration tests, serially: they share one database
+	$(UV) run tools/gate.py test-integration tests/integration
 
 # The images the container tests need (tests/images.py). Each is built only when its Dockerfile
 # or a file it copies changed; an unchanged one is not handed to the builder at all. The tests
@@ -45,8 +55,16 @@ gate-arch: env ## Adapter obligation, component boundaries, no product names in 
 	$(UV) run lint-imports
 	$(UV) run tools/gate.py architecture tests/architecture
 
-gate-conformance: env ## Contract conformance suite, both contracts: starts the reference worker and connector, runs the suite and the meta-tests, stops them
-	$(UV) run tools/gate.py conformance tests/conformance
+# CONTRACT=worker, connector or instance runs one lane of the suite, as CI does; `instance` is
+# the model contract and every file that is neither a worker's nor a connector's, so that a new
+# file always falls into a lane.
+CONFORMANCE_worker := $(wildcard tests/conformance/test_worker_*.py)
+CONFORMANCE_connector := $(wildcard tests/conformance/test_connector_*.py)
+CONFORMANCE_instance := $(filter-out $(CONFORMANCE_worker) $(CONFORMANCE_connector),$(wildcard tests/conformance/test_*.py))
+
+gate-conformance: env ## Contract conformance suite, every contract or CONTRACT=worker|connector|instance: starts the reference adapters, runs the suite and the meta-tests over WORKERS processes, stops them
+	$(if $(CONTRACT),$(if $(CONFORMANCE_$(CONTRACT)),,$(error CONTRACT must be worker, connector or instance)))
+	$(UV) run tools/gate.py conformance$(if $(CONTRACT),-$(CONTRACT)) --workers $(WORKERS) $(if $(CONTRACT),$(CONFORMANCE_$(CONTRACT)),tests/conformance)
 
 # The chart's tests (tests/governance/test_chart.py) render it with helm. `make helm` installs the
 # pinned version into .tools/bin, which the tests use first; without helm they skip and say so,
@@ -146,4 +164,4 @@ reserve: need-uv need-git ## Reserve a record number on the remote before writin
 
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web test ## Everything CI runs
 
-.PHONY: help doctor env install status register reserve usecases test images helm gate-web gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates
+.PHONY: help doctor env install status register reserve usecases test test-units test-integration images helm gate-web gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates

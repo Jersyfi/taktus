@@ -18,3 +18,9 @@ reason or the test that proves it.
 somewhere, and no default value of the chart, names the Taktus project — a process identifier of
 its bundles, its repository's path or its owner's name. The names are read from `blueprints/`,
 `LICENSE` and `.github/CODEOWNERS`. Comments and docstrings are exempt.
+
+`test_ci_runs_its_gates_as_lanes.py` holds the shape of `.github/workflows/ci.yml` (issue #388):
+every job has `timeout-minutes`; the required check `gates` needs every other job, always
+reports, and passes when each passed or was skipped; a superseded run is cancelled and a run on
+`main` never is. Until `ci.yml` is split into lanes the tests are expected to fail, strictly: the
+split itself turns the marker off.
