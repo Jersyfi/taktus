@@ -47,10 +47,11 @@ the claim that is hardest to verify, the thing the gates cannot see. How CLAUDE.
 ## Needed from the owner
 
 <!--
-The last section, always: the output of `make status`, verbatim — every open needs request and
-decision request, the most urgent first, with its date and issue, generated from the register
-of this branch. CI fails when this differs from what the register generates (ADR-0028,
-DEC-0026). The list is carried here and nowhere else: never paste it into docs/status.md.
+The last section, always: the output of `make status` — every open needs request and decision
+request, the most urgent first, with its date and issue, generated from the register of this
+branch. The `owner-list` workflow writes it here on every push and edit; nobody pastes it
+(ADR-0028, DEC-0189). The list is carried here and nowhere else: never paste it into
+docs/status.md.
 
 The pull request targets main. A change that needs another unmerged change waits for it to
 merge, then rebases on main; CI fails a pull request based on any other branch (DEC-0026).
