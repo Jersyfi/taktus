@@ -97,7 +97,7 @@ def bundle(version: str, *, extra: bool = False) -> dict[str, Any]:
 
 
 class World:
-    def __init__(self) -> None:
+    def __init__(self, change_process: str | None = "s07-change-in-dialogue") -> None:
         self.clock = Clock()
         self.ids = FakeIdentifiers()
         self.persistence = MemoryPersistence()
@@ -152,6 +152,7 @@ class World:
             work=self.persistence,
             clock=self.clock,
             ids=self.ids,
+            change_process=change_process,
         )
 
     async def setup(self) -> World:
@@ -266,3 +267,15 @@ async def test_a_change_asked_in_words_starts_s07_for_the_person() -> None:
     with pytest.raises(ProposalError) as unknown:
         await world.acts.ask(TENANT, "nothing", "add a step", WHO)
     assert unknown.value.kind == "unknown"
+
+
+async def test_without_a_named_change_process_no_request_in_words_is_taken() -> None:
+    """Which process turns words into a proposal is the operator's configuration, never a
+    default of the product (ADR-0092): with none named, the change is handed over as a bundle,
+    even where the tenant registered a process that could do it."""
+    world = await World(change_process=None).setup()
+    document = yaml.safe_load((S07 / "S-07-change-in-dialogue.yaml").read_text(encoding="utf-8"))
+    await world.register.execute(RegisterProcessVersion(document, tenant=TENANT, by=WHO))
+    with pytest.raises(ProposalError, match="TAKTUS_CHANGE_PROCESS") as unavailable:
+        await world.acts.ask(TENANT, "daily", "add a step", WHO)
+    assert unavailable.value.kind == "unavailable"

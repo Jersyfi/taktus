@@ -39,7 +39,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "6"
+version: "7"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -302,6 +302,12 @@ steps:
             run there — it needs the network, or a tool the workspace does not have — the
             summary names it and says why; no check is passed over in silence
           - no secret value is written into any file
+          # The run writes the branch as Taktus's own app, which may not change the pipeline's
+          # workflows (CREDENTIALS.md); the service refuses the whole change otherwise (#366).
+          - >
+            no file under .github/workflows/ is changed: the run that carries the change may not
+            write the repository's pipeline. Where the issue needs a change there, the summary
+            names it, file and exact change, for a person to make
           - >
             the change is small and touches what the issue names, and what the rules above
             require of any change

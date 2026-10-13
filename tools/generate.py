@@ -53,6 +53,7 @@ def web_fixtures() -> str:
         ProcessSummary,
         RunActivity,
         RunAtVersion,
+        RunCount,
         RunFacts,
         RunningStep,
         StepFacts,
@@ -171,27 +172,18 @@ def web_fixtures() -> str:
             ),
             ProcessSummary(id="quiet", name="Quiet", active_version="3", autonomy_level=4),
         ),
+        counts=(RunCount(tenant="default", process_version="example@1", working=1, waiting=1),),
         runs=(
             RunActivity(
                 id="run_example",
                 tenant="default",
                 process_version="example@1",
                 state="running",
-                working=True,
-                waiting=False,
                 running=tuple(
                     RunningStep(id=s.id, method=s.method, exactness=s.exactness)
                     for s in facts.steps
                     if s.state == "running"
                 ),
-            ),
-            RunActivity(
-                id="run_waiting",
-                tenant="default",
-                process_version="example@1",
-                state="waiting_human",
-                working=False,
-                waiting=True,
             ),
         ),
     )

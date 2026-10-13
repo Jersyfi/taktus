@@ -13,6 +13,8 @@ import yaml
 from .test_first_slice import PLAIN, taktusctl
 
 ROOT = Path(__file__).resolve().parents[2]
+MANIFEST = "docs/guides/guides.yaml"
+"""Where this repository declares its guides: its choice, given to the command (ADR-0092)."""
 
 GIT_IDENTITY = {
     "GIT_AUTHOR_NAME": "test",
@@ -47,7 +49,7 @@ def test_this_repository_declares_both_guides_and_every_page_renders() -> None:
     guides = {g["id"]: [p["id"] for p in g["pages"]] for g in manifest["guides"]}
     assert guides["administration"] == ["installing", "configuring", "operating", "restoring"]
     assert guides["use"]
-    done = cli("check", "--repository", str(ROOT))
+    done = cli("check", "--repository", str(ROOT), "--manifest", MANIFEST)
     assert done.returncode == 0, done.stderr
     rendered = [line.split()[0] for line in done.stdout.splitlines()[:-1]]
     assert rendered == [f"{g}/{p}" for g, pages in guides.items() for p in pages]
@@ -85,7 +87,9 @@ def test_publish_puts_the_guides_into_files_and_keeps_a_page_edited_there(
 ) -> None:
     repository = a_repository(tmp_path / "repository")
     target = tmp_path / "knowledge"
-    first = cli("publish", "--repository", str(repository), "--to", str(target))
+    first = cli(
+        "publish", "--repository", str(repository), "--to", str(target), "--manifest", MANIFEST
+    )
     assert first.returncode == 0, first.stderr
     page = target / "Handbook" / "Asking.md"
     contents = target / "Handbook" / "Contents.md"
@@ -96,7 +100,9 @@ def test_publish_puts_the_guides_into_files_and_keeps_a_page_edited_there(
     (repository / "ask.md").write_text("You ask in the chat, or by mail.\n", encoding="utf-8")
     git(repository, "commit", "--quiet", "-am", "second")
 
-    second = cli("publish", "--repository", str(repository), "--to", str(target))
+    second = cli(
+        "publish", "--repository", str(repository), "--to", str(target), "--manifest", MANIFEST
+    )
     assert second.returncode == 1, second.stderr
     assert "withheld outdated  Handbook/Asking" in second.stdout
     assert "-You ask in the chat, or by mail.\n+You ask in our chat.\n" in second.stdout
@@ -109,7 +115,23 @@ def test_a_guide_that_cannot_be_rendered_writes_nothing(tmp_path: Path) -> None:
     (repository / "ask.md").unlink()
     git(repository, "commit", "--quiet", "-am", "the source is gone")
     target = tmp_path / "knowledge"
-    done = cli("publish", "--repository", str(repository), "--to", str(target))
+    done = cli(
+        "publish", "--repository", str(repository), "--to", str(target), "--manifest", MANIFEST
+    )
     assert done.returncode == 2
     assert "ask.md does not exist" in done.stderr
     assert not target.exists()
+
+
+def test_without_a_named_manifest_nothing_is_rendered() -> None:
+    """The manifest's place is the repository's choice, never a default of the product
+    (ADR-0092 §1): without `--manifest` or `TAKTUS_GUIDES_MANIFEST` the command refuses."""
+    environment = {k: v for k, v in os.environ.items() if k != "TAKTUS_GUIDES_MANIFEST"}
+    done = subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
+        [taktusctl(), "guides", "check", "--repository", str(ROOT)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**environment, **PLAIN},
+    )
+    assert done.returncode == 2 and "--manifest" in done.stderr

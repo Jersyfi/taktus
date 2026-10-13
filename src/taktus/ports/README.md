@@ -6,7 +6,7 @@ never mirroring a tool (ADR-0016). Nothing here imports a component or a technol
 | Port | Purpose | Implemented by |
 |---|---|---|
 | `worker.py` | CONTRACT 1, the client side: the worker contract's shapes and the `Worker` protocol | `adapters/driven/workers/http/` |
-| `persistence.py` | `Repository[T]` for one aggregate kind, `LedgerStore` append-only (its `summary` counts one kind without reading the chain; `head`, `after` and `position` are what a reader resumes from), `UnitOfWork` — every call names its tenant and happens inside a transaction; `StateSize`, the state's size on disk | `adapters/driven/postgres/`; `adapters/driven/memory/` (development and test only); one suite checks both |
+| `persistence.py` | `Repository[T]` for one aggregate kind, and `Queried[T]` for one read newest first a page at a time, counted, or found by a field without reading every aggregate (ADR-0094), `LedgerStore` append-only (its `summary` counts one kind without reading the chain; `head`, `after` and `position` are what a reader resumes from), `UnitOfWork` — every call names its tenant and happens inside a transaction; `StateSize`, the state's size on disk | `adapters/driven/postgres/`; `adapters/driven/memory/` (development and test only); one suite checks both |
 | `ledger.py` | facts in, chained entries out, `verify` — one chain per tenant | `components/ledger` |
 | `configuration.py` | what an instance is told about itself, by key; `Secret` for what must not be shown | `adapters/driven/configuration/` |
 | `objectstore.py` | artifact bytes by digest | `adapters/driven/memory/` |

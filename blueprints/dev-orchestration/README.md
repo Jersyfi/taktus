@@ -62,13 +62,13 @@ ledger). P-02 never edits the issue and never adds the label `ready`: a person, 
 the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
 the same issue, it stops at the first check: nothing is written twice.
 
-**P-03 Implementation** (autonomy 4, eighteen steps): read the issue and its comments, compose
+**P-03 Implementation** (version 7, autonomy 4, eighteen steps): read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
 of open records on `main`, admit — the ready standard, and open, not a pull request, not claimed
 (`rule` `ready`, `exact`; a refusal names every reason) — claim the issue with the label
 `in-progress` (`rule`, outward), implement (`worker`, `tolerant`: the coding worker in a clone of
 the repository, with the issue's text as its task and its section "How it is verified" as the
-acceptance), name the branch, put the worker's changeset on it through the connector (`rule`,
+acceptance; it leaves the pipeline's workflow files to a person, which the app may not write, NTC-0203), name the branch, put the worker's changeset on it through the connector (`rule`,
 outward: one commit that carries the idempotency key), wait for the pipeline (`wait`, polling
 the pipeline's state), read the verdict, verify it is `success` (`rule`, `exact` — the pipeline's
 verdict, never the worker's opinion), compose the title, the closing section and the body, open the pull request

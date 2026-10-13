@@ -2,7 +2,8 @@
 
 **Status:** accepted · builds the overview of UC-6.10 (issue #191, DEC-0055) on the shape ADR-0063
 set for every level · amended 2026-10-12: every process is drawn as the cells of its active
-version, and the overview opens with its summary (§5; DEC-0185)
+version, and the overview opens with its summary (§5; DEC-0185) · amended 2026-10-12: the runs
+are counted by a query, not read one by one (§2, §4; ADR-0094, #310)
 
 ## Context
 UC-6.10's first level is *the overview*: the areas a reader may look into, the processes in
@@ -31,10 +32,12 @@ The run component defines two sets of run states, beside its state machine:
 - **working** — `planned`, `admitted`, `running`: the run has not ended and does not wait;
 - **waiting** — `waiting_human`, `halted`, `escalated`: the run has not ended and waits.
 
-A finished run is in neither. The composition root hands `reporting` each run with whether it
-works and whether it waits, by these two sets, and `reporting` counts them over the runs the
-reader may see. The same two sets give the same counts over the runs the read API returns; a
-test holds the two equal. No other figure appears on the overview.
+A finished run is in neither. The composition root counts each process version's runs by state
+where they are stored, and hands `reporting` how many of them work and how many wait, by these
+two sets. `reporting` adds up the counts the reader may see. Amended 2026-10-12 (ADR-0094): before,
+the composition root read every run of the tenant to count it. The same two sets give the same
+counts over the runs the read API returns; a test holds the two equal. No other figure appears
+on the overview.
 
 ### 3. Only a step running now moves
 Each process lists the steps its runs are running right now, each with its glyph with motion and
@@ -43,7 +46,9 @@ where no step runs draws no motion.
 
 ### 4. Visibility, links, and where the web app starts
 A process the reader may not see is absent, and so is every run of it; a run the reader may not
-see is neither drawn nor counted, by the same predicate as every other level. The overview is
+see is neither drawn nor counted, by the same predicate as every other level. A running step is
+drawn by `may_see` of its run. A count is asked of `may_count` once for the runs of one version;
+it never says yes where `may_see` would say no for a run among them (ADR-0094 §4). The overview is
 where the web app starts: `#/` follows the tenant's stream and reads `GET /levels/overview` again
 on every change. Each process leads down to its process level, each running step to its run
 level, and every level leads back to the overview.
@@ -75,7 +80,8 @@ apart. These are counts of what is drawn and the figures of §2; no other figure
 ## Consequences
 - The run component gains `WORKING` and `WAITING`.
 - The surface gains `GET /levels/overview`; `reporting` gains the overview and its port method;
-  the composition root reads every process, every version and every run of the tenant for it.
+  the composition root reads every process and every version of the tenant for it, the counts of
+  its runs, and the runs with a step running now (ADR-0094).
 - The web app's start page is the overview; the list of runs it showed before is gone, and
   with it the browser's own model of the runs from the stream.
 - The web app's fixtures gain an overview drawn by `reporting`.
@@ -85,8 +91,8 @@ There is one area per tenant until UC-1.4 records the organisation's structure; 
 large tenant sees every process of it in one list. The counts are of the runs the reader may
 see, and until UC-6.4 that is every run of the tenant. A run is counted by its state as recorded
 when the overview is read; a run that changed state since is counted again on the next change.
-The overview reads every process, version and run of the tenant on each read; a tenant with very
-many runs makes it slower, and a summary kept by the run component is left until a measurement
-asks for one. The export of UC-5.7 does not exist yet; the counts are held equal to the read
+The overview reads every process and version of the tenant on each read, and counts its runs in
+one query; a tenant with very many runs makes the query slower, far less than reading them did.
+A summary kept by the run component is left until a measurement asks for one (ADR-0094). The export of UC-5.7 does not exist yet; the counts are held equal to the read
 API's runs until it does. The overview shows no figure about a person, and has no field that
 could hold one.

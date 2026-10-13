@@ -198,7 +198,7 @@ async def test_an_untouched_page_keeps_its_digest_and_an_edit_is_kept() -> None:
 async def test_the_guides_are_published_into_the_wiki() -> None:
     """The guides of this checkout, published as `taktusctl guides publish` would publish them
     into a directory; then again, where nothing is to be written any more."""
-    manifest, source, pages = rendered(ROOT, "HEAD", None)
+    manifest, source, pages = rendered(ROOT, "HEAD", None, "docs/guides/guides.yaml")
     handler = PublishGuidesHandler(
         McpActionConnector(build_server(Config(target=TARGET)), timeout=60.0)
     )

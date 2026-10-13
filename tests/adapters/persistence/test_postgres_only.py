@@ -6,6 +6,7 @@ chain in sequence."""
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,7 +15,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from fakes import FakeClock
 from sqlalchemy import event, text
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import DBAPIError, ProgrammingError
 
 from adapters.persistence import samples
 from adapters.persistence.conftest import Backend
@@ -185,7 +186,7 @@ async def test_the_revision_check_names_what_is_missing(
     try:
         await check_schema(persistence.engine)
         head = head_revision()
-        assert await current_revision(persistence.engine) == head == "0051"
+        assert await current_revision(persistence.engine) == head == "0052"
         with sync_engine.begin() as connection:
             connection.execute(text("UPDATE alembic_version SET version_num = '0000'"))
         try:
@@ -247,3 +248,72 @@ async def test_the_database_reports_its_size(postgres: Backend) -> None:
     assert isinstance(postgres.work, PostgresPersistence)
     size = await postgres.work.state_bytes()
     assert size is not None and size > 0
+
+
+async def _new_tenant(persistence: PostgresPersistence) -> str:
+    tenant = f"t_{os.urandom(4).hex()}"
+    async with persistence.engine.begin() as connection:
+        await connection.execute(
+            text("SELECT set_config('taktus.tenant', :t, true)"), {"t": tenant}
+        )
+        await connection.execute(
+            text("INSERT INTO tenant (id, name, created_at) VALUES (:t, :t, now())"), {"t": tenant}
+        )
+    return tenant
+
+
+def _created(run_id: str) -> Fact:
+    return Fact(kind="run.created", refs=LedgerRefs(run_id=run_id))
+
+
+async def test_a_wait_for_the_chain_fails_after_the_lock_timeout(postgres_url: str) -> None:
+    """A transaction that holds a tenant's chain and does not end makes a second one wait for
+    the claim; the wait ends after `lock_timeout` with the server's reason, not never
+    (issue #309)."""
+    persistence = PostgresPersistence(postgres_url, pool_size=2, lock_timeout_seconds=0.3)
+    ledger = ChainedLedger(PostgresLedgerStore(persistence), FakeClock())
+    try:
+        tenant = await _new_tenant(persistence)
+        holding, let_go = asyncio.Event(), asyncio.Event()
+
+        async def hold() -> None:
+            async with persistence.transaction(tenant):
+                await ledger.record(tenant, _created("a"))
+                holding.set()
+                await let_go.wait()
+
+        holder = asyncio.create_task(hold())
+        await holding.wait()
+        async with asyncio.timeout(10):
+            with pytest.raises(DBAPIError, match="lock timeout"):
+                async with persistence.transaction(tenant):
+                    await ledger.record(tenant, _created("b"))
+        let_go.set()
+        await holder
+    finally:
+        await persistence.close()
+
+
+async def test_a_transaction_left_idle_is_ended_with_its_reason(postgres_url: str) -> None:
+    """A transaction that sits between two statements longer than
+    `idle_in_transaction_session_timeout` is ended by the server, and its locks with it; its
+    next statement fails and says why (issue #309)."""
+    persistence = PostgresPersistence(postgres_url, pool_size=2, idle_in_transaction_seconds=0.3)
+    ledger = ChainedLedger(PostgresLedgerStore(persistence), FakeClock())
+    try:
+        tenant = await _new_tenant(persistence)
+        with pytest.raises(DBAPIError, match="idle-in-transaction timeout"):
+            async with persistence.transaction(tenant):
+                await ledger.record(tenant, _created("a"))
+                await asyncio.sleep(1)
+                await ledger.record(tenant, _created("b"))
+        async with asyncio.timeout(10), persistence.transaction(tenant):
+            entry = await ledger.record(tenant, _created("c"))
+        assert entry.seq == 1, "the ended transaction's entry was never committed"
+    finally:
+        await persistence.close()
+
+
+def test_a_negative_timeout_is_refused() -> None:
+    with pytest.raises(ValueError, match="negative"):
+        PostgresPersistence("postgresql://localhost/x", lock_timeout_seconds=-1)

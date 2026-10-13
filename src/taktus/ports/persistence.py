@@ -23,7 +23,7 @@ an adapter nor the domain opens one.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Any, Protocol, Self
@@ -110,6 +110,44 @@ class Repository[T: Identified](Protocol):
         ...
 
     async def list(self, tenant: Tenant) -> Sequence[T]: ...
+
+
+class Mark(Value):
+    """A place in the newest-first order of a repository: the creation time and the id of the
+    last aggregate a reader received. The next page starts after it (ADR-0094)."""
+
+    created_at: datetime
+    id: str = Field(min_length=1)
+
+
+class Queried[T: Identified](Repository[T], Protocol):
+    """A repository that answers a reader in time proportional to what it returns, not to how
+    much it holds (ADR-0094). Its aggregates carry `created_at`. A field is named by its key in
+    the aggregate's document; `a.b` names the field `b` of every element of the list `a`. An
+    implementation answers for the fields its aggregate's storage can query and raises
+    `NotQueryable` for any other."""
+
+    async def newest(self, tenant: Tenant, *, limit: int, after: Mark | None = None) -> Sequence[T]:
+        """At most `limit` aggregates, newest first by `created_at`, ties in ascending `id`;
+        only those after `after` in that order when it is given."""
+        ...
+
+    async def count(self, tenant: Tenant, by: Sequence[str]) -> Mapping[tuple[Any, ...], int]:
+        """How many aggregates hold each combination of values of the fields `by` names, in
+        that order. Counted where they are stored: no aggregate is read."""
+        ...
+
+    async def having(self, tenant: Tenant, field: str, value: Any) -> Sequence[T]:
+        """The aggregates whose field holds `value`: a field equal to it, or a list with an
+        element whose field equals it."""
+        ...
+
+
+class NotQueryable(PersistenceError):
+    """A query names a field the aggregate's storage cannot query."""
+
+    def __init__(self, kind: str, field: str) -> None:
+        super().__init__(f"{kind}: {field!r} cannot be queried")
 
 
 class LedgerStore(Protocol):

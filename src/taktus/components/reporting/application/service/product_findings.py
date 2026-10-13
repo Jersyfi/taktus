@@ -59,14 +59,23 @@ def key_of(lack: Lack, occurrence: Occurrence, state: State) -> str:
 
 
 class ProductFindings:
-    def __init__(self, blocks: Blocks, sending: Sending | None = None) -> None:
+    def __init__(
+        self, blocks: Blocks, sending: Sending | None = None, *, shape: str | None = None
+    ) -> None:
+        """`shape` is the form a finding's issue takes, as its operator configured it
+        (`texts.form`); None, the product's plain shape."""
         self._blocks = blocks
         self._sending = sending
+        self._shape = shape
 
     @property
     def enabled(self) -> bool:
         """Whether this instance sends its findings, or only records and shows them."""
         return self._sending is not None
+
+    def shown(self, finding: Finding) -> str:
+        """The finding in the words it would be sent in, ready to send by hand."""
+        return texts.shown(finding, self._shape)
 
     async def findings(self, tenant: Tenant) -> tuple[Finding, ...]:
         """Every lack the tenant's blocks were for, each with its occurrences."""
@@ -100,7 +109,7 @@ class ProductFindings:
                     continue
                 key = key_of(lack, occurrence, state)
                 if reference is None:
-                    text = texts.opening(lack, occurrence, state)
+                    text = texts.opening(lack, occurrence, state, self._shape)
                     reference = await channel.open(tenant, texts.title(lack), text, key=key)
                     opened += 1
                     outcome = "opened"

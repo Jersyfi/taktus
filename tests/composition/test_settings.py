@@ -44,6 +44,8 @@ def test_defaults_are_the_self_hosting_shape() -> None:
     assert loaded.model.endpoint is None and loaded.model.purposes == ("*",)
     assert loaded.database.reveal() == URL
     assert loaded.database_source == "environment"
+    assert loaded.database_timeouts.lock_seconds == 30
+    assert loaded.database_timeouts.idle_in_transaction_seconds == 120
 
 
 def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
@@ -55,6 +57,8 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
                 "TAKTUS_DATABASE_URL_FILE": str(secret_file),
                 "TAKTUS_ROLES": "runner, api",
                 "TAKTUS_MIGRATE_ON_START": "true",
+                "TAKTUS_DATABASE_LOCK_TIMEOUT_SECONDS": "2.5",
+                "TAKTUS_DATABASE_IDLE_IN_TRANSACTION_SECONDS": "0",
                 "TAKTUS_HTTP_HOST": "0.0.0.0",  # noqa: S104 — a value under test, not a bind
                 "TAKTUS_HTTP_PORT": "9000",
                 "TAKTUS_PATH_PREFIX": "/taktus/",
@@ -68,6 +72,7 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
                 "TAKTUS_MODEL_NAME": "local-model",
                 "TAKTUS_MODEL_PURPOSES": "reasoning,triage",
                 "TAKTUS_STATE_DIR": str(tmp_path / "state"),
+                "TAKTUS_OBJECT_CACHE_MB": "0",
                 "TAKTUS_TENANTS": "default,acme",
                 "TAKTUS_INSTANCE": "runner-7",
                 "TAKTUS_SHUTDOWN_CEILING_SECONDS": "30",
@@ -84,6 +89,8 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
     assert loaded.roles == {Role.RUNNER, Role.API}
     assert loaded.database_source == f"file {secret_file}"
     assert loaded.migrate_on_start is True
+    assert loaded.database_timeouts.lock_seconds == 2.5
+    assert loaded.database_timeouts.idle_in_transaction_seconds == 0
     assert (loaded.http_host, loaded.http_port) == ("0.0.0.0", 9000)  # noqa: S104
     assert loaded.path_prefix == "/taktus"
     (worker,) = loaded.workers
@@ -96,6 +103,7 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
     assert loaded.model.endpoint == "http://models:8000/v1" and loaded.model.name == "local-model"
     assert loaded.model.purposes == ("reasoning", "triage") and loaded.model.credential is None
     assert loaded.state_dir == tmp_path / "state"
+    assert loaded.object_cache_mb == 0
     assert loaded.tenants == ("default", "acme")
     assert loaded.instance == "runner-7"
     assert loaded.shutdown_ceiling_seconds == 30 and loaded.lease_seconds == 10
@@ -111,6 +119,8 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
         ("TAKTUS_ROLES", "api,cook", "not a role"),
         ("TAKTUS_ROLES", "api,,runner", "empty entry"),
         ("TAKTUS_MIGRATE_ON_START", "maybe", "not true or false"),
+        ("TAKTUS_DATABASE_LOCK_TIMEOUT_SECONDS", "-1", "at least 0"),
+        ("TAKTUS_DATABASE_IDLE_IN_TRANSACTION_SECONDS", "long", "not a number"),
         ("TAKTUS_HTTP_PORT", "http", "not a whole number"),
         ("TAKTUS_HTTP_PORT", "70000", "between 1 and 65535"),
         ("TAKTUS_PATH_PREFIX", "taktus", "must start with /"),
@@ -137,6 +147,7 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
         ("TAKTUS_POLL_SECONDS", "fast", "not a number"),
         ("TAKTUS_RUNNER_CONCURRENCY", "-1", "at least 1"),
         ("TAKTUS_LIVE_STREAMS", "0", "at least 1"),
+        ("TAKTUS_OBJECT_CACHE_MB", "-1", "at least 0"),
         ("TAKTUS_OFFER_WINDOW_SECONDS", "0", "at least 1"),
         ("TAKTUS_LOG_LEVEL", "loud", "not one of"),
     ],
@@ -179,7 +190,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 67, "every setting is in the startup log"
+    assert len(effective) == 75, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -239,6 +250,69 @@ def test_the_budget_settings_are_validated_and_the_price_table_read(tmp_path: Pa
         load_budget(EnvironmentConfiguration({"TAKTUS_PRICE_TABLE": str(table)})).table()
     with pytest.raises(ConfigurationError, match="TAKTUS_MODEL_BILLING"):
         settings(TAKTUS_MODEL_BILLING="per_mood")
+
+
+def test_no_seed_by_default_and_a_seed_file_is_loaded_only_where_the_operator_names_it(
+    tmp_path: Path,
+) -> None:
+    """ADR-0092 §2: what was measured on one tenant enters another instance only as data its
+    operator chose to load; a fresh install is uncalibrated (DEC-0034)."""
+    from taktus.composition.settings import load_budget
+
+    assert settings().budget.seeds() == ()
+    assert dict(settings().effective())["TAKTUS_BUDGET_SEEDS"] == ""
+    project = Path(__file__).resolve().parents[2] / "docs" / "runs" / "first-run.seeds.yaml"
+    (seed,) = load_budget(EnvironmentConfiguration({"TAKTUS_BUDGET_SEEDS": str(project)})).seeds()
+    assert len(seed.observations) == 8 and "first-run.md" in seed.source
+    broken = tmp_path / "seeds.yaml"
+    broken.write_text("seeds: [{method: worker}]", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="TAKTUS_BUDGET_SEEDS"):
+        load_budget(EnvironmentConfiguration({"TAKTUS_BUDGET_SEEDS": str(broken)})).seeds()
+
+
+def test_a_findings_shape_is_the_operators_and_none_by_default(tmp_path: Path) -> None:
+    """ADR-0092: the issue a finding opens has no repository's form and no label unless the
+    operator configures them."""
+    plain = settings()
+    assert plain.findings.form() is None and plain.findings.labels == ()
+    form = tmp_path / "form.md"
+    form.write_text("## Lack\n\n$tried in $run", encoding="utf-8")
+    shaped = settings(TAKTUS_FINDINGS_FORM=str(form), TAKTUS_FINDINGS_LABELS="task, product")
+    assert shaped.findings.form() == "## Lack\n\n$tried in $run"
+    assert shaped.findings.labels == ("task", "product")
+    form.write_text("$tried for $customer", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="TAKTUS_FINDINGS_FORM"):
+        shaped.findings.form()
+
+
+def test_the_operator_declares_the_price_kinds_the_model_endpoint_reports() -> None:
+    from taktus.composition.execution import model_pool
+    from taktus.composition.settings import load_model
+
+    def loaded(**env: str) -> tuple[str, ...]:
+        base = {"TAKTUS_MODEL_ENDPOINT": "http://127.0.0.1:9/v1", "TAKTUS_MODEL_NAME": "m"}
+        return load_model(EnvironmentConfiguration({**base, **env})).usage_kinds
+
+    assert loaded() == ("input", "output")
+    declared = loaded(TAKTUS_MODEL_USAGE_KINDS="input,output,cache_read,cache_write")
+    assert declared == ("input", "output", "cache_read", "cache_write")
+    model = load_model(
+        EnvironmentConfiguration(
+            {
+                "TAKTUS_MODEL_ENDPOINT": "http://127.0.0.1:9/v1",
+                "TAKTUS_MODEL_NAME": "m",
+                "TAKTUS_MODEL_USAGE_KINDS": "input,output,cache_write",
+            }
+        )
+    )
+    assert ("TAKTUS_MODEL_USAGE_KINDS", "input,output,cache_write") in model.effective()
+    member = model_pool(model).member("model.endpoint")
+    assert member is not None
+    assert member[1].calculability().usage_kinds == ("input", "output", "cache_write")
+    with pytest.raises(ConfigurationError, match="cache_hit is not a price kind"):
+        loaded(TAKTUS_MODEL_USAGE_KINDS="input,cache_hit")
+    with pytest.raises(ConfigurationError, match="twice"):
+        loaded(TAKTUS_MODEL_USAGE_KINDS="input,input")
 
 
 @pytest.mark.parametrize(

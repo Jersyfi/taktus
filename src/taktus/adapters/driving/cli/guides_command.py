@@ -30,19 +30,25 @@ from taktus.components.knowledge.application.service import Publication, Publish
 from taktus.components.knowledge.domain.model import Manifest, Page, Source
 from taktus.components.knowledge.domain.service.render import RenderRefused, digest, render
 
-MANIFEST = "docs/guides/guides.yaml"
-"""Where the repository declares its guides."""
-
 EXIT_WITHHELD = 1
 EXIT_REFUSED = 2
 
 guides = typer.Typer(
-    help="The administration guide and the guide for users, generated from the repository.",
+    help="The administration guide and the guide for users, generated from a repository.",
     no_args_is_help=True,
 )
 
 Repository = Annotated[
-    Path, typer.Option("--repository", help="A checkout of the Taktus repository.")
+    Path, typer.Option("--repository", help="A checkout of the repository that holds the guides.")
+]
+ManifestPath = Annotated[
+    str,
+    typer.Option(
+        "--manifest",
+        envvar="TAKTUS_GUIDES_MANIFEST",
+        help="The path of the guides' manifest in the repository. There is no default: each "
+        "repository puts its manifest where it chooses (ADR-0092).",
+    ),
 ]
 Commit = Annotated[
     str, typer.Option("--commit", help="The commit the guides are rendered at: a ref or a hash.")
@@ -82,29 +88,33 @@ class Checkout:
 
 
 def rendered(
-    repository: Path, ref: str, places: list[str] | None
+    repository: Path, ref: str, places: list[str] | None, manifest_path: str
 ) -> tuple[Manifest, Source, tuple[Page, ...]]:
+    if not manifest_path.strip():
+        raise RenderRefused("no manifest is named: give --manifest or TAKTUS_GUIDES_MANIFEST")
     checkout = Checkout(Path(os.path.expanduser(repository)), ref)
-    text = checkout.read(MANIFEST)
+    text = checkout.read(manifest_path)
     if text is None:
-        raise RenderRefused(f"{MANIFEST} does not exist at {checkout.commit}")
+        raise RenderRefused(f"{manifest_path} does not exist at {checkout.commit}")
     try:
         manifest = Manifest.model_validate(yaml.safe_load(text))
     except (yaml.YAMLError, ValidationError) as error:
-        raise RenderRefused(f"{MANIFEST}: {error}") from error
-    source = Source(file=MANIFEST, digest=digest(text))
+        raise RenderRefused(f"{manifest_path}: {error}") from error
+    source = Source(file=manifest_path, digest=digest(text))
     pages = render(manifest, checkout.read, checkout.commit, _places(places))
     return manifest, source, pages
 
 
 @guides.command("check")
-def check(repository: Repository = Path("."), commit: Commit = "HEAD") -> None:
+def check(
+    manifest: ManifestPath, repository: Repository = Path("."), commit: Commit = "HEAD"
+) -> None:
     """Render every page from the repository and write nothing.
 
     Exit code 0: every page renders. Exit code 2: a page cannot be rendered; the reason is named.
     """
     try:
-        _, _, pages = rendered(repository, commit, None)
+        _, _, pages = rendered(repository, commit, None, manifest)
     except RenderRefused as error:
         typer.echo(f"refused: {error}", err=True)
         raise typer.Exit(code=EXIT_REFUSED) from error
@@ -124,6 +134,7 @@ def publish(
             "system of an organisation that has none.",
         ),
     ],
+    manifest_path: ManifestPath,
     repository: Repository = Path("."),
     commit: Commit = "HEAD",
     place: Places = None,
@@ -139,7 +150,7 @@ def publish(
     """
     wiring: Wiring = ctx.obj
     try:
-        manifest, source, pages = rendered(repository, commit, place)
+        manifest, source, pages = rendered(repository, commit, place, manifest_path)
         directory = Path(os.path.expanduser(to))
         publication = asyncio.run(_publish(wiring, directory, tenant, manifest, source, pages))
     except (RenderRefused, NotOperable) as error:

@@ -63,16 +63,20 @@ an issue, in the shape of the form `Task`, and stays for its turn.
 ## 5. Sessions in parallel
 
 - Claim before working; skip a claimed task.
-- Numbers of records — `DEC`, `NTC`, `NEED` — are taken from what `main` holds when you write
-  them. Before the final push, `git fetch origin main` and rebase. When `main` gained a record
-  with a number you used, renumber yours to the next free one, in the file name, the title, the
-  index and every reference, and push again.
+- Numbers of records — `DEC`, `NTC`, `NEED` — are reserved before the record is written:
+  `make reserve KIND=NTC` prints a number no other session holds. Write the record under it and
+  name it anywhere at once; it is never renumbered. A number taken by hand fails CI
+  (DEC-0189 rule 6).
+- The register's index is not edited: `make register` prints it from the records. Before the
+  final push, `git fetch origin main` and rebase as for any change.
 
 ## 6. Report
 
 The pull request is the report. Its description has the shape CI checks (ADR-0017 §7): what this
 is about, the decisions it raises by ID and category, what was done, why this way, what to check,
-and last the section *Needed from the owner*, which is the output of `make status`.
+and last the section *Needed from the owner*, which is the output of `make status`. The
+`owner-list` workflow writes it from the branch's register; a description opened without it
+gains it on its first run (DEC-0189 rule 1).
 
 The message that ends the session says, in a few lines: the issue and the pull request, whether
 CI is green, every record raised by ID, and what the owner must answer or provide — each with its

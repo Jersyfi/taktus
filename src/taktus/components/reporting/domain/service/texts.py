@@ -1,14 +1,17 @@
 """A product finding in words: the issue it opens and what each later report adds (UC-6.12).
 
-The issue has the sections of the issue form `Task`, so that the backlog reads it as it reads
-any other task (DEC-0051, `docs/process/README.md`): what must be achieved, how it is verified,
-where the boundary lies, the component, the source, and what blocks it. What a later occurrence
-adds is a comment on the same issue.
+The issue's body has the shape its operator configured (`form`, `TAKTUS_FINDINGS_FORM`): a
+text with fields the finding fills — what was tried, what was lacking, the cause, where in the
+product it lies, the run and the step. Without one it has the product's own plain shape
+(`PLAIN`). The shape of one repository's backlog is that repository's configuration, never the
+product's default (ADR-0092). Below the body, after a horizontal rule, the occurrences follow.
+What a later occurrence adds is a comment on the same issue.
 
-Every text is built from fixed sentences and the finding's identifiers, times, durations and
-counts, and from nothing else (ADR-0006). Each carries a *mark*, an HTML comment that is not
-shown, stating the lack, the occurrence, its state and the waiting reported. The marks are how
-a channel knows what it already holds, without any memory on the instance (`reported`).
+Every text is built from fixed sentences — the product's or the operator's form — and the
+finding's identifiers, times, durations and counts, and from nothing else (ADR-0006). Each
+carries a *mark*, an HTML comment that is not shown, stating the lack, the occurrence, its
+state and the waiting reported. The marks are how a channel knows what it already holds,
+without any memory on the instance (`reported`).
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from datetime import UTC
+from string import Template
 
 from taktus.components.reporting.domain.model.finding import (
     Finding,
@@ -46,11 +50,41 @@ _TRIED = {
         "does not offer it."
     ),
 }
-_COMPONENT = {
+_AREA = {
     "no_worker": "workers",
     "no_connector": "adapters",
     "operation_unsupported": "adapters",
 }
+
+FIELDS = ("tried", "lacking", "cause", "area", "run", "step")
+"""What a form may name, each as `$field`: the sentence of what the step tried, the identifier
+of what was lacking, the block's cause, where in the product it lies (`workers` or `adapters`),
+and the run and step of the first occurrence. `$$` is a dollar sign."""
+
+PLAIN = """An instance of Taktus met something the product lacks. $tried The step failed for it, \
+and its run waited until the step could start again.
+
+What would resolve it: the product offers `$lacking` among its $area, through an adapter or an \
+operation of one it has, or says why it does not.
+
+Where it was met: run `$run`, step `$step`, cause `$cause`, as the blocked-time accounts of the \
+instance record it (UC-6.12)."""
+"""The body of a finding where its operator configured no form: the product's own shape, which
+assumes no repository's backlog."""
+
+
+def form(text: str) -> str:
+    """A form, validated: a text that names only the fields a finding fills. A form that names
+    another, or writes a lone `$`, is a `ValueError` naming it."""
+    template = Template(text)
+    if not template.is_valid():
+        raise ValueError("a form writes `$` only before a field's name; `$$` is a dollar sign")
+    unknown = sorted(set(template.get_identifiers()) - set(FIELDS))
+    if unknown:
+        raise ValueError(f"a form names {', '.join(unknown)}; it may name only {', '.join(FIELDS)}")
+    if not text.strip():
+        raise ValueError("a form is empty")
+    return text
 
 
 def mark(lack: Lack, occurrence: Occurrence, state: State) -> str:
@@ -122,42 +156,20 @@ def _in_all(known: Mapping[str, Reported]) -> str:
     return text + (f", {open_} still waiting." if open_ else ".")
 
 
-def opening(lack: Lack, occurrence: Occurrence, state: State) -> str:
-    """The body of the issue a finding opens with its first occurrence."""
+def opening(lack: Lack, occurrence: Occurrence, state: State, shape: str | None = None) -> str:
+    """The body of the issue a finding opens with its first occurrence: `shape`, the form its
+    operator configured, filled — or the product's `PLAIN` — then the occurrence below a
+    rule."""
+    body = Template(PLAIN if shape is None else shape).substitute(
+        tried=_TRIED[lack.cause].format(lacking=lack.lacking),
+        lacking=lack.lacking,
+        cause=lack.cause,
+        area=_AREA[lack.cause],
+        run=occurrence.run_id,
+        step=occurrence.step_id,
+    )
     lines = [
-        "### What must be achieved",
-        "",
-        "An instance of Taktus met something the product lacks. "
-        + _TRIED[lack.cause].format(lacking=lack.lacking)
-        + " The step failed for it, and its run waited until the step could start again.",
-        "",
-        f"The product offers `{lack.lacking}`, through an adapter or an operation of one it has, "
-        "or this issue says why it does not.",
-        "",
-        "### How it is verified",
-        "",
-        f"A step that needs `{lack.lacking}` runs on an instance with the product's adapters "
-        f"configured, and its block `{lack.cause}` is not met again.",
-        "",
-        "### Where the boundary lies",
-        "",
-        "Not support: this finding enters the backlog and is taken in its turn. Not repair: the "
-        "instance reports, and the fix is a task of the product. Not a broken interface: an "
-        "adapter that stopped behaving as expected is a failure, reported through the "
-        "owner-facing channel.",
-        "",
-        "### Component",
-        "",
-        _COMPONENT[lack.cause],
-        "",
-        "### Source",
-        "",
-        f"The blocked-time accounts of an instance: run `{occurrence.run_id}`, step "
-        f"`{occurrence.step_id}`, cause `{lack.cause}` (UC-6.12).",
-        "",
-        "### Blocked by",
-        "",
-        "nothing",
+        body.rstrip(),
         "",
         "---",
         "",
@@ -194,7 +206,7 @@ def _as_reported(lack: Lack, occurrence: Occurrence, state: State) -> Reported:
     )
 
 
-def shown(finding: Finding) -> str:
+def shown(finding: Finding, shape: str | None = None) -> str:
     """The finding as its operator reads it on the instance, to send by hand where sending is
     not enabled: the issue's title and body for the first occurrence, then one line for each
     other occurrence."""
@@ -202,7 +214,7 @@ def shown(finding: Finding) -> str:
     lines = [
         title(finding.lack),
         "",
-        opening(finding.lack, first, "ended" if first.ended else "met"),
+        opening(finding.lack, first, "ended" if first.ended else "met", shape),
     ]
     for number, occurrence in enumerate(others, start=2):
         lines.append(

@@ -31,8 +31,9 @@ class LevelRecords(Protocol):
         ...
 
     async def overview(self, tenant: Tenant) -> OverviewFacts:
-        """Every process of the tenant and every run of it, each run with whether it works or
-        waits by the run component's own definition, and the steps it is running."""
+        """Every process of the tenant; per process version, how many of its runs work and how
+        many wait by the run component's own definitions, counted without reading a run; and
+        the runs with a step running now, with the steps they are running (ADR-0094)."""
         ...
 
     async def origin(self, tenant: Tenant, run_id: str, step_id: str) -> OriginFacts | None:

@@ -119,7 +119,7 @@ def closing(sources: list[Source] | tuple[Source, ...], commit: str) -> str:
     lines = [
         "---",
         "",
-        f"This page is generated from the Taktus repository at commit `{commit}`, from:",
+        f"This page is generated from the repository at commit `{commit}`, from:",
         "",
     ]
     for source in sources:

@@ -1,10 +1,11 @@
 """`taktusctl findings`: what this instance met that the product lacks (UC-6.12, ADR-0046).
 
 Every product finding the instance recorded in its blocked-time accounts, each in the words it
-would be sent in: a title, then the body of the issue in the shape of the issue form `Task`,
-then one line per further occurrence. An operator whose instance does not send findings copies
-one into an issue of the Taktus repository by hand. The text carries identifiers, causes,
-durations and counts only, and its mark lets a sending instance find the issue later.
+would be sent in: a title, then the body of the issue in the shape its operator configured
+(`TAKTUS_FINDINGS_FORM`), then one line per further occurrence. An operator whose instance does
+not send findings can send one by hand, wherever they report what the product lacks. The text
+carries identifiers, causes, durations and counts only, and its mark lets a sending instance
+find the issue later.
 """
 
 from __future__ import annotations
@@ -51,18 +52,21 @@ def findings(
         raise typer.Exit(code=2) from error
     if as_json:
         document = [
-            {**f.model_dump(mode="json"), "title": texts.title(f.lack), "text": texts.shown(f)}
-            for f in found
+            {**f.model_dump(mode="json"), "title": texts.title(f.lack), "text": text}
+            for f, text in found
         ]
         typer.echo(json.dumps(document, indent=2, ensure_ascii=False))
     elif not found:
         typer.echo("no product findings")
     else:
-        typer.echo(SEPARATOR.join(texts.shown(f) for f in found))
+        typer.echo(SEPARATOR.join(text for _, text in found))
 
 
-async def _findings(wiring: Wiring, state_dir: Path, tenant: str) -> tuple[Finding, ...]:
+async def _findings(
+    wiring: Wiring, state_dir: Path, tenant: str
+) -> tuple[tuple[Finding, str], ...]:
     async with wiring.services(state_dir=state_dir, worker_endpoint=DEFAULT_WORKER) as services:
         if services.findings is None:
             raise NotOperable("this wiring records no product findings")
-        return await services.findings.findings(tenant)
+        product = services.findings
+        return tuple((f, product.shown(f)) for f in await product.findings(tenant))

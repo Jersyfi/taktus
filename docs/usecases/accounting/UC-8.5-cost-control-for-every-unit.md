@@ -7,7 +7,7 @@ serves: [P7, P8, P14]
 state: building
 version: 0.2.0
 tests: [tests/components/accounting/test_cost.py::test_a_run_costs_what_its_tokens_cost_at_the_table_it_was_held_to, tests/components/accounting/test_cost.py::test_a_run_costs_its_tokens_plus_its_compute_seconds_at_the_table_it_was_held_to, tests/components/run/test_engine.py::test_admission_counts_what_earlier_steps_used, tests/components/run/test_budget.py::test_the_margin_absorbs_an_overrun_and_nothing_beyond_it, tests/components/run/test_budget.py::test_money_reported_per_assignment_is_held_as_an_estimate, tests/components/run/test_estimates.py::test_the_budget_says_what_it_can_promise_when_it_is_set, tests/components/run/test_estimates.py::test_a_step_whose_compute_at_the_table_would_cross_what_remains_is_not_admitted, tests/components/accounting/test_takt.py::test_a_run_is_weighed_at_the_table_in_force_when_it_started, tests/components/accounting/test_takt.py::test_the_takte_stand_beside_the_money_and_say_uncalibrated, tests/components/accounting/test_takt.py::test_another_table_recomputes_the_takte_from_the_ledger, tests/components/accounting/test_takt.py::test_what_the_table_does_not_weigh_is_named_never_counted_as_zero, tests/components/accounting/test_takt.py::test_the_takt_rate_of_a_tenant_is_its_takte_per_hour_over_the_window]
-adrs: {ADR-0005: c1a4c3f4cfb5, ADR-0010: e381de241d4a, ADR-0015: 3a42705e5561}
+adrs: {ADR-0005: 36cfa986883b, ADR-0010: e381de241d4a, ADR-0015: 3a42705e5561}
 supersedes: null
 ---
 

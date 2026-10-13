@@ -10,7 +10,10 @@ from taktus.shared.v1 import LedgerEntry
 
 class MemoryLedgerStore:
     """A list per tenant behind the ledger store port. Append-only by construction: nothing
-    here can replace or remove an entry. Single-instance by nature, so `last` needs no claim."""
+    here can replace or remove an entry. Single-instance by nature, but two transactions of one
+    process may still record into one chain at once: `last` claims the tenant's chain until the
+    transaction ends, as the database adapter's advisory lock does, so that the second reads
+    the first one's entries once they are committed."""
 
     def __init__(self, persistence: MemoryPersistence) -> None:
         self._persistence = persistence
@@ -27,6 +30,7 @@ class MemoryLedgerStore:
 
     async def last(self, tenant: Tenant) -> LedgerEntry | None:
         transaction = self._persistence.current(tenant)
+        await self._persistence.claim(transaction, f"ledger:{tenant}")
         if transaction.appended:
             return transaction.appended[-1]
         chain = self._persistence.chain(tenant)

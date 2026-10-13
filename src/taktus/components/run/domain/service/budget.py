@@ -8,9 +8,9 @@ the first step is admitted (`held`). The budget, the margin and the line are all
 **What a step reserves.** Admission debits the estimate, scaled by the measured error of the
 adapter that gave it (`reserve`). The scale is a statistic over pairs of estimate and actual —
 the ledger's `step.admitted` and `step.finished` entries of the same adapter and method — and
-for a worker nothing has measured yet, a seed: the first live run (`SEED`). A worker that
-underestimates earns a larger reservation automatically; one that overestimates keeps its own
-figure, never less (`factors`).
+for a worker nothing has measured yet, a seed its operator loaded (`seeds_of`) or, with none,
+the uncalibrated margin. A worker that underestimates earns a larger reservation automatically;
+one that overestimates keeps its own figure, never less (`factors`).
 
 **What a budget can promise.** A budget in a currency is only as strong as the provider allows
 (principle 8). `promise` derives, from the model adapters' declarations, the price table and the
@@ -82,6 +82,10 @@ class Observation(Value):
     method: Method
     estimate: ConsumptionQuantities
     actual: ConsumptionQuantities
+    step: str | None = None
+    """The process and step it was taken at, `<process>/<step>`: a bound — a counted prompt,
+    a declared demand — is calibrated by its own step, never by another operation of the same
+    adapter (#370)."""
 
 
 SCALED = ("tokens_in", "tokens_out", "quota_units", "compute_seconds")
@@ -143,46 +147,62 @@ class Seed:
     source: str
 
 
-def _first_run() -> Seed:
-    """The eight attempts of P-03 `implement` on 2026-09-23 (docs/runs/first-run.md §2): the
-    coding worker estimated the same configured constant every time and used this."""
-    estimate = ConsumptionQuantities(tokens_in=60_000, tokens_out=6_000, currency={"usd": 1.00})
-    actuals = (
-        (116_902, 106, 0.449),
-        (161_491, 122, 0.567),
-        (110_531, 84, 0.833),
-        (247_401, 192, 1.078),
-        (148_015, 128, 0.789),
-        (257_289, 195, 0.736),
-        (219_773, 157, 0.875),
-        (206_393, 170, 0.766),
-    )
-    return Seed(
-        method=Method.WORKER,
-        capabilities=frozenset({"code.read", "code.edit", "code.test", "shell.sandboxed"}),
-        observations=tuple(
-            Observation(
-                adapter="first-run",
-                method=Method.WORKER,
-                estimate=estimate,
-                actual=ConsumptionQuantities(
-                    tokens_in=tokens_in, tokens_out=tokens_out, currency={"usd": usd}
-                ),
+def seeds_of(document: object) -> tuple[Seed, ...]:
+    """The seeds a document holds, validated: the data an operator chose to load
+    (`TAKTUS_BUDGET_SEEDS`, ADR-0092 §2). The document is a mapping with `seeds`, a list; each
+    seed names its `method`, the `capabilities` a step must require for it to apply, its
+    `source` — where it was measured — and its `observations`, each an `estimate` and an
+    `actual` in the shape of `ConsumptionQuantities`. A document that is not this shape is a
+    `ValueError` naming what is wrong."""
+    if not isinstance(document, Mapping) or not isinstance(document.get("seeds"), list):
+        raise ValueError("a seed document is a mapping with `seeds`, a list")
+    found: list[Seed] = []
+    for number, entry in enumerate(document["seeds"], start=1):
+        if not isinstance(entry, Mapping):
+            raise ValueError(f"seed {number} is not a mapping")
+        source = entry.get("source")
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError(f"seed {number} names no `source`: where it was measured")
+        capabilities = entry.get("capabilities", [])
+        if not isinstance(capabilities, list) or not all(isinstance(c, str) for c in capabilities):
+            raise ValueError(f"seed {number}: `capabilities` is a list of capability names")
+        observed = entry.get("observations")
+        if not isinstance(observed, list) or not observed:
+            raise ValueError(f"seed {number} holds no `observations`")
+        try:
+            method = Method(str(entry.get("method")))
+            observations = tuple(
+                Observation(
+                    adapter=f"seed:{source}",
+                    method=method,
+                    estimate=ConsumptionQuantities.model_validate(pair["estimate"]),
+                    actual=ConsumptionQuantities.model_validate(pair["actual"]),
+                )
+                for pair in observed
             )
-            for tokens_in, tokens_out, usd in actuals
-        ),
-        source="docs/runs/first-run.md §2, P-03 implement, eight attempts on 2026-09-23",
-    )
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"seed {number}: {str(error)[:200]}") from error
+        found.append(
+            Seed(
+                method=method,
+                capabilities=frozenset(capabilities),
+                observations=observations,
+                source=source,
+            )
+        )
+    return tuple(found)
 
 
-SEED: tuple[Seed, ...] = (_first_run(),)
-"""The seeds this version ships. A seed is evidence, not configuration: it changes only with a
-measured run, recorded with its source."""
+SEED: tuple[Seed, ...] = ()
+"""The seeds the product ships: none. A seed is evidence measured on someone's runs, and what
+was measured on one tenant enters another only as data its operator chose to load
+(`seeds_of`, ADR-0092 §2). A fresh install therefore starts uncalibrated: twice the estimate
+(DEC-0034)."""
 
 
 UNCALIBRATED_MARGIN = 1.0
 """What a worker nothing has measured yet reserves beyond its estimate: 100 %, twice the estimate
-(DEC-0034). The only worker measured so far underestimated by a factor of two to four. Caution
+(DEC-0034). The first worker ever measured underestimated by a factor of two to four. Caution
 towards the unknown, loosening through data: after n observations the margin is 1/(n+1) of this
 — half after one, a third after two — down to `MARGIN_FLOOR`, and a worker whose measured error
 is larger reserves that instead."""
@@ -243,6 +263,7 @@ def scale_for(
     uncalibrated_margin: float = UNCALIBRATED_MARGIN,
     models: frozenset[str] = frozenset(),
     margin_floor: float = MARGIN_FLOOR,
+    step: str | None = None,
 ) -> tuple[dict[str, float], str]:
     """The factors for one adapter and method, and where they come from: the adapter's own
     observations when it has any, else a seed whose capabilities the step requires. A worker
@@ -265,6 +286,12 @@ def scale_for(
         history = [] if seed is None else list(seed.observations)
         source = "no observation yet" if seed is None else f"the seed from {seed.source}"
     if method is not Method.WORKER:
+        # A bound is calibrated by its own step: one operation of an adapter that underran
+        # its estimate threefold says nothing of another — a read of one page of comments of
+        # a branch written from twenty files (#370).
+        if step is not None and own:
+            history = [o for o in own if o.step == step]
+            source = f"{len(history[-WINDOW:])} observation(s) of {step} through {adapter}"
         return (factors(history), source) if history else ({}, "a bound, taken as given")
     # A worker's margin narrows with every observation: all of it with none, half with one, a
     # third with two — never below the floor, and never below what it has measured (DEC-0034,

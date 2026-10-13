@@ -12,6 +12,7 @@ the run component's own: what a step recorded it used, and the run's sum, `Run.c
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 from taktus.components.decision.domain.model import Request
 from taktus.components.process.domain.model import Process, ProcessVersion
@@ -25,14 +26,15 @@ from taktus.components.reporting.domain.model import (
     ProcessSummary,
     RunActivity,
     RunAtVersion,
+    RunCount,
     RunFacts,
     RunningStep,
     StepFacts,
     VersionRef,
     Wait,
 )
-from taktus.components.run.domain.model import WAITING, WORKING, Run, StepRun, StepState
-from taktus.ports.persistence import ProvenanceStore, Repository, Tenant, UnitOfWork
+from taktus.components.run.domain.model import WAITING, WORKING, Run, RunState, StepRun, StepState
+from taktus.ports.persistence import ProvenanceStore, Queried, Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import DecisionStatus, Provenance
 
 
@@ -42,7 +44,7 @@ class RepositoryLevelRecords:
     def __init__(
         self,
         work: UnitOfWork,
-        runs: Repository[Run],
+        runs: Queried[Run],
         processes: Repository[Process],
         versions: Repository[ProcessVersion],
         provenance: ProvenanceStore,
@@ -102,7 +104,7 @@ class RepositoryLevelRecords:
             found = next((v for v in known if v.version == chosen), None)
             if found is None:
                 return None
-            runs = [r for r in await self._runs.list(tenant) if r.process_version == found.ref]
+            runs = await self._runs.having(tenant, "process_version", found.ref)
         return ProcessFacts(
             id=found.process_id,
             tenant=tenant,
@@ -142,7 +144,8 @@ class RepositoryLevelRecords:
         async with self._work.transaction(tenant):
             processes = list(await self._processes.list(tenant))
             versions = {v.ref: v for v in await self._versions.list(tenant)}
-            runs = list(await self._runs.list(tenant))
+            counted = await self._runs.count(tenant, ("process_version", "state"))
+            running = await self._runs.having(tenant, "step_runs.state", str(StepState.RUNNING))
         summaries = []
         for process in processes:
             active = versions.get(f"{process.id}@{process.active_version}")
@@ -168,21 +171,44 @@ class RepositoryLevelRecords:
         return OverviewFacts(
             tenant=tenant,
             processes=tuple(summaries),
-            runs=tuple(activity_of(run) for run in runs),
+            counts=counts_of(tenant, counted),
+            runs=tuple(activity_of(run) for run in running),
         )
 
 
+def counts_of(tenant: Tenant, counted: Mapping[tuple[Any, ...], int]) -> tuple[RunCount, ...]:
+    """The runs of each process version counted by state, as the overview counts them: whether
+    a state works or waits is the run component's own definition, `WORKING` and `WAITING`. A
+    version whose runs have all ended counts zero of each (ADR-0067 §2, ADR-0094)."""
+    working: dict[str, int] = {}
+    waiting: dict[str, int] = {}
+    for (process_version, state), n in counted.items():
+        working.setdefault(process_version, 0)
+        waiting.setdefault(process_version, 0)
+        if RunState(state) in WORKING:
+            working[process_version] += n
+        elif RunState(state) in WAITING:
+            waiting[process_version] += n
+    return tuple(
+        RunCount(
+            tenant=tenant,
+            process_version=version,
+            working=working[version],
+            waiting=waiting[version],
+        )
+        for version in sorted(working)
+    )
+
+
 def activity_of(run: Run) -> RunActivity:
-    """A run as the overview counts it: whether it works or waits is the run component's own
-    definition, `WORKING` and `WAITING`."""
+    """A run with a step running now, as the overview draws it: each running step with how it
+    works, from the run's own copy of its steps."""
     plan = {step.id: step for step in run.steps}
     return RunActivity(
         id=run.id,
         tenant=run.tenant,
         process_version=run.process_version,
         state=str(run.state),
-        working=run.state in WORKING,
-        waiting=run.state in WAITING,
         rehearsal=run.rehearsal,
         running=tuple(
             RunningStep(

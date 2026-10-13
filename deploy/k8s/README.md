@@ -83,7 +83,7 @@ operator's. The parts that carry a decision:
 | `image.repository`, `image.tag`, `image.pullSecret` | the control plane image; the tag is a version, and `latest` or an empty tag fails the render |
 | `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002); the scheduler is elected, more than one is allowed and idle |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
-| `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall |
+| `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall. A role keeps at most `TAKTUS_OBJECT_CACHE_MB` of them in memory (default 64; set through `env`) |
 | `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6; `defaults.unitEnv` the variables a worker's own program needs to start, section 7 — configuration, never a secret), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none), `unitEnv` (`{}` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
 | `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE`. A credential of one of several workers has the parameter `worker.<worker>.credential.<name>`, and only that worker receives it |
 | `administration.platform`, `.administers` | the platform this instance runs on and, per credential parameter, the platforms it administers or `none` — `TAKTUS_PLATFORM`, `TAKTUS_ADMINISTERS` (ADR-0052). A process naming a credential that administers this platform, or one declared about nothing, is refused; with no platform nothing is checked |
@@ -92,8 +92,23 @@ operator's. The parts that carry a decision:
 | `ingress.*` | off unless `host` is given; `tls.secretName` names an existing certificate Secret, and then nothing is requested; only without it does `tls.issuer` ask the platform's certificate manager, by an annotation on the ingress. The stream of changes, `/changes`, is a long-lived `text/event-stream` response (ADR-0055): an ingress controller that buffers responses holds every change back until its buffer fills, and one that closes idle connections sooner than 15 seconds ends streams between heartbeats. Taktus sends `X-Accel-Buffering: no`; a controller that ignores it is told through `ingress.annotations`. Taktus cannot detect either |
 | `backup.*` | the database's scheduled backup (section 11, ADR-0087): off unless `enabled`; the backup image, released with the instance; the `schedule`, daily by default; `retentionDays`, 30 by default (DEC-0058); `recipient`, an `age` public key, empty for no encryption; the store's `endpoint`, `region`, `bucket`, `prefix`, and the Secret holding its credential with the key of its identifier and of its secret, mounted as files. It reaches the name service, the database and the store on `egressPorts` outside the excluded ranges; the database admits it |
 | `networkPolicy.*` | the name service, the API server's addresses, the ingress controller's namespace, and further egress rules for the hosts the control plane needs (section 5) |
-| `telemetry.otlp.*`, `model.*`, `capacity.*` | as their `TAKTUS_*` variables; `model.outputCap: hard` because this tenant's endpoint holds the limit (research [A4]; M-03 passed against it on 2026-10-01) — for another endpoint, run M-03 and set what it shows |
+| `telemetry.otlp.*`, `model.*`, `capacity.*` | as their `TAKTUS_*` variables; `model.outputCap` is `soft` by default, the setting's own default. An endpoint shown to hold the output limit — run M-03 against it — is set to `hard` in the operator's values. The Taktus project's own instance sets `hard`: M-03 passed against its endpoint on 2026-10-01 (research [A4]). That is its operator's value, not the chart's (ADR-0092); `model.usageKinds` the price kinds the endpoint reports, empty for `input,output` — M-04 holds the endpoint to it |
 | `env` | further non-secret `TAKTUS_*` settings — tenants, connectors; a `_FILE` variable here fails the render, because a secret goes through `credentials` |
+| `configFiles` | files of configuration a setting names by path, file name to content, mounted read-only at `/etc/taktus/files/<name>` in every role; the setting that reads one is set in `env`. A name that is not letters, digits, dots, hyphens and underscores fails the render. Never a secret. Empty by default |
+
+**What one tenant measured or shaped is its operator's value, never the chart's** (ADR-0092).
+The Taktus project's own instance is an example. Its operator's private values set:
+
+| Values | What they carry |
+|---|---|
+| `model.outputCap: hard` | M-03 passed against the project's endpoint on 2026-10-01 |
+| `configFiles.budget-seeds.yaml` from `docs/runs/first-run.seeds.yaml`, `env.TAKTUS_BUDGET_SEEDS: /etc/taktus/files/budget-seeds.yaml` | the calibration seed of the project's first live run |
+| `configFiles.finding-form.md` from `.github/finding-form.md`, `env.TAKTUS_FINDINGS_FORM: /etc/taktus/files/finding-form.md`, `env.TAKTUS_FINDINGS_LABELS: task` | the shape of the project's issue form `Task`, for findings sent with `connectors.repository.findings` |
+| `env.TAKTUS_CHANGE_PROCESS: s07-change-in-dialogue` | the project's process that turns a change in words into a proposal |
+
+`helm --set-file configFiles.budget-seeds\.yaml=docs/runs/first-run.seeds.yaml` reads a file
+into the values. `taktusctl guides` is told the project's manifest with
+`--manifest docs/guides/guides.yaml` or `TAKTUS_GUIDES_MANIFEST`.
 
 **Every secret is mounted as a file and read through `TAKTUS_<KEY>_FILE`** — never handed to a
 container as an environment variable, because variables leak into process listings and child
@@ -460,11 +475,14 @@ and all of its memory (section 7), so memory decides how many fit.
 backup is in the store and was restored from it on the workstation (`docs/runs/2026-10-11-the-first-restore.md`).
 The backup holds the database and not the state volume's artifacts; that is #322.
 
-**Waits:**
-
-- **a pull request P-03 opens on the installed instance**, showing Taktus's own app as its author
-  (#66, DEC-0063). It needs the coding agents' keys on the instance (NEED-0024) and the owner's
-  linked identity (NEED-0017).
+**A pull request P-03 opened on the installed instance** (#66, DEC-0063), on 2026-10-13: #373,
+authored by Taktus's own app, closing #278. The run cloned the repository through its unit's
+egress proxy, implemented the issue with the coding agent in a cluster unit, put the change on
+a branch through the connector, waited for the pipeline's verdict and opened the pull request.
+Four findings on the way were fixed first, each in a release candidate: the proxy's 407 named no
+scheme (#356), units the node had no room for failed their step (#358), a change of a workflow
+file was refused (#366), and a branch write was reserved by another operation's error (#370).
+The run is in `docs/runs/2026-10-13-the-instance-opens-its-own-pull-request.md`.
 
 ## 11. Backup and restore
 

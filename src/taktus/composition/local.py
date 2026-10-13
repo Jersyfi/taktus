@@ -107,6 +107,8 @@ from taktus.composition.settings import (
     load_budget,
     load_capacity,
     load_connectors,
+    load_database_timeouts,
+    load_findings,
     load_knowledge_directory,
     load_model,
     load_telemetry,
@@ -162,6 +164,8 @@ class LocalWiring:
             capacity = load_capacity(self._configuration)
             prices = budget.table()
             weights = budget.weights()
+            seeds = budget.seeds()
+            shape = load_findings(self._configuration).form()
             tenants = load_tenants(self._configuration)
             administration = load_administration(self._configuration)
             knowledge_directory = load_knowledge_directory(self._configuration)
@@ -226,6 +230,7 @@ class LocalWiring:
                         model_classes=budget.model_classes,
                         margin=budget.margin,
                         uncalibrated_margin=budget.uncalibrated_margin,
+                        seeds=seeds,
                         capacity=rules_of(capacity),
                         unit_memory_bytes=memory_demand(configured),
                     ),
@@ -352,7 +357,8 @@ class LocalWiring:
                 configure_owner_channel=owner.configure,
                 owner_channel=owner.channel,
                 findings=ProductFindings(
-                    RunBlocks(BlockedTime(ledger, objects, stores.work, runs))
+                    RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
+                    shape=shape,
                 ),
                 interfaces=broken_interfaces(ledger, stores.work, owner, clock),
                 measures=maturation.measures,
@@ -412,7 +418,15 @@ class LocalWiring:
             return
         url = database.reveal()
         try:
-            postgres = PostgresPersistence(url)
+            timeouts = load_database_timeouts(self._configuration)
+        except ConfigurationError as error:
+            raise NotOperable(str(error)) from error
+        try:
+            postgres = PostgresPersistence(
+                url,
+                lock_timeout_seconds=timeouts.lock_seconds,
+                idle_in_transaction_seconds=timeouts.idle_in_transaction_seconds,
+            )
         except ValueError as error:
             raise NotOperable(f"TAKTUS_DATABASE_URL: {error}") from error
         try:

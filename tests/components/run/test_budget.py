@@ -4,9 +4,12 @@ budget can promise for each billing basis. No I/O; every rule is a function of v
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+import yaml
 
 from taktus.components.run.domain.service import budget as b
 from taktus.ports.model import Calculability, PriceTable
@@ -63,29 +66,93 @@ def test_the_scale_is_the_worst_of_the_recent_window() -> None:
     assert b.factors(old + recent)["tokens_in"] == 2.0
 
 
-def test_the_first_run_seed_reserves_what_the_coding_worker_actually_used() -> None:
+ROOT = Path(__file__).resolve().parents[3]
+FIRST_RUN = ROOT / "docs" / "runs" / "first-run.seeds.yaml"
+CODING = ("code.read", "code.edit", "code.test", "shell.sandboxed")
+
+
+def first_run() -> tuple[b.Seed, ...]:
+    """The Taktus project's seed: data its tenant loads, never a default (ADR-0092 §2)."""
+    return b.seeds_of(yaml.safe_load(FIRST_RUN.read_text(encoding="utf-8")))
+
+
+def test_the_product_ships_no_seed_and_a_fresh_install_reserves_twice_the_estimate() -> None:
+    assert b.SEED == ()
+    scale, source = b.scale_for("worker.endpoint", Method.WORKER, CODING, observed=[])
+    assert "no observation yet" in source and "DEC-0034" in source
+    reservation = b.reserve(Q(tokens_in=60_000, tokens_out=6_000, currency={"usd": 1.0}), scale)
+    assert reservation.tokens_in == 120_000 and reservation.tokens_out == 12_000
+    assert reservation.currency == {"usd": 2.0}
+
+
+def test_a_loaded_seed_reserves_what_the_coding_worker_actually_used() -> None:
     scale, source = b.scale_for(
-        "worker.endpoint",
-        Method.WORKER,
-        ("code.read", "code.edit", "code.test", "shell.sandboxed"),
-        observed=[],
+        "worker.endpoint", Method.WORKER, CODING, observed=[], seeds=first_run()
     )
-    assert "first-run" in source
+    assert "first-run.md" in source
     reservation = b.reserve(Q(tokens_in=60_000, tokens_out=6_000, currency={"usd": 1.0}), scale)
     assert reservation.tokens_in == 257_289, "the largest input of the eight attempts"
     assert reservation.tokens_out == 6_667, "overestimated: only the margin of eight observations"
     assert reservation.currency == {"usd": pytest.approx(10 / 9)}, "attempt 4 would have fitted"
 
 
+@pytest.mark.parametrize(
+    ("document", "named"),
+    [
+        ([], "a mapping with `seeds`"),
+        ({"seeds": [{"method": "worker", "observations": [{}]}]}, "no `source`"),
+        ({"seeds": [{"method": "worker", "source": "s"}]}, "no `observations`"),
+        ({"seeds": [{"method": "guess", "source": "s", "observations": [{}]}]}, "seed 1"),
+        (
+            {"seeds": [{"method": "worker", "source": "s", "observations": [{"estimate": {}}]}]},
+            "seed 1",
+        ),
+    ],
+)
+def test_a_seed_document_that_is_not_one_is_refused_naming_why(
+    document: object, named: str
+) -> None:
+    with pytest.raises(ValueError, match=re.escape(named)):
+        b.seeds_of(document)
+
+
 def test_own_observations_replace_the_seed_and_other_capabilities_get_none() -> None:
     own = [observation(Q(tokens_in=100), Q(tokens_in=150), adapter="worker.endpoint")]
     capabilities = ("code.read", "code.edit", "code.test", "shell.sandboxed")
-    scale, source = b.scale_for("worker.endpoint", Method.WORKER, capabilities, own)
+    scale, source = b.scale_for(
+        "worker.endpoint", Method.WORKER, capabilities, own, seeds=first_run()
+    )
     assert scale["tokens_in"] == 1.5 and "worker.endpoint" in source
     scale, source = b.scale_for("worker.script", Method.WORKER, ("shell.script",), [])
     assert scale["compute_seconds"] == 2.0 and "DEC-0034" in source, "uncalibrated: twice"
     scale, source = b.scale_for("connector.repo", Method.RULE, (), [])
     assert scale == {} and "bound" in source, "a declared demand is taken as given"
+
+
+def test_a_bound_is_calibrated_by_its_own_step_not_by_its_adapter() -> None:
+    """On the instance, one read through the repository connector used three times its
+    estimate, and a branch write of twenty files was then reserved three times its own
+    estimate although it had used a fifth of it: the run halted one unit short (#370)."""
+
+    def through(step: str, estimate: int, actual: int) -> b.Observation:
+        return b.Observation(
+            adapter="connector.repo",
+            method=Method.RULE,
+            estimate=Q(quota_units=estimate),
+            actual=Q(quota_units=actual),
+            step=step,
+        )
+
+    observed = [through("p03/read-comments", 1, 3), through("p03/create-branch", 64, 14)]
+    scale, source = b.scale_for(
+        "connector.repo", Method.RULE, (), observed, step="p03/create-branch"
+    )
+    assert b.reserve(Q(quota_units=64), scale).quota_units == 64
+    assert "p03/create-branch" in source
+    scale, _ = b.scale_for("connector.repo", Method.RULE, (), observed, step="p03/read-comments")
+    assert b.reserve(Q(quota_units=1), scale).quota_units == 3, "its own error still counts"
+    scale, _ = b.scale_for("connector.repo", Method.RULE, (), observed, step="p01/write-report")
+    assert scale == {}, "a step never observed is a bound, taken as given"
 
 
 def test_an_uncalibrated_worker_reserves_twice_its_estimate_and_history_narrows_it() -> None:

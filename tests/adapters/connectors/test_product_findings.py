@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -53,6 +54,10 @@ from taktus.shared.v1 import (
 from .conftest import Service
 
 REPOSITORY = "acme/taktus"
+ROOT = Path(__file__).resolve().parents[3]
+FORM = texts.form((ROOT / ".github" / "finding-form.md").read_text(encoding="utf-8"))
+"""A configured form: the sections of one repository's issue form `Task`, which its operator
+gives the instance (`TAKTUS_FINDINGS_FORM`, ADR-0092)."""
 TENANT = "t"
 PERSON = "idn_operator"
 AT = datetime(2026, 10, 9, 9, 0, tzinfo=UTC)
@@ -107,10 +112,13 @@ class World:
     def findings(self, *, sending: bool = True) -> ProductFindings:
         """A fresh connector each time: a restart, with no memory of what was sent before."""
         config = Config(target=self.service.url, repository=REPOSITORY, timeout=5.0)
-        channel = RepositoryChannel(McpActionConnector(build_server(config), timeout=5.0))
+        channel = RepositoryChannel(
+            McpActionConnector(build_server(config), timeout=5.0), labels=("task",)
+        )
         return ProductFindings(
             RunBlocks(self.accounts),
             Sending(channel, self.ledger, self.objects, self.persistence) if sending else None,
+            shape=FORM,
         )
 
     async def start(self, process: str) -> Run:
@@ -169,7 +177,7 @@ async def test_one_lack_met_twice_is_one_issue_with_two_occurrences(service: Ser
     assert await w.findings().send(TENANT) == Sent(opened=1)
     (issue,) = await held(w)
     assert issue.open and texts.MARK in issue.texts[0]
-    assert missing_sections(issue.texts[0]) == [], "the issue has the form's sections"
+    assert missing_sections(issue.texts[0]) == [], "the issue has the configured form's sections"
     assert first.id in issue.texts[0] and "`review`" in issue.texts[0]
     assert "still waiting" in issue.texts[0]
 
@@ -229,6 +237,7 @@ async def test_an_instance_not_enabled_records_and_shows_and_sends_nothing(
     assert await findings.send(TENANT) == Sent()
     assert await held(w) == []
     (finding,) = await findings.findings(TENANT)
-    shown = texts.shown(finding)
+    shown = findings.shown(finding)
+    assert "### What must be achieved" in shown, "shown in the configured form"
     assert shown.startswith(f"Product finding: no worker offers {LACKING}")
     assert run.id in shown and PERSON not in shown and GOAL not in shown

@@ -52,7 +52,7 @@ from taktus.ports.connector import (
     Refusal,
 )
 from taktus.ports.ledger import Fact
-from taktus.ports.persistence import Repository, UnitOfWork
+from taktus.ports.persistence import Queried, Repository, UnitOfWork
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import Command, ExactnessClass, LedgerRefs, Method, Step
 
@@ -98,7 +98,7 @@ def refused(reason: str, detail: str = "as scripted") -> IntakeResult:
 @dataclass
 class Services:
     persistence: MemoryPersistence
-    runs: Repository[Run]
+    runs: Queried[Run]
     ledger: ChainedLedger
     events: Repository[IntakeEvent]
     intake: ReceiveIntakeHandler
@@ -205,7 +205,7 @@ def services(connector: ScriptedConnector | None = None) -> Services:
 
     decisions = decision_wiring(of, persistence, identity.ledger, clock, identity.directory)
     deliveries = RecordingDeliveries()
-    runs: Repository[Run] = MemoryRepository(persistence, Run)
+    runs: Queried[Run] = MemoryRepository(persistence, Run)
     owner = owner_channel_wiring(
         of,
         persistence,

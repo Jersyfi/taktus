@@ -144,7 +144,7 @@ from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.leadership import Leadership
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Repository, Stored, UnitOfWork
+from taktus.ports.persistence import Queried, Repository, Stored, UnitOfWork
 from taktus.shared.v1 import Command, Plan
 
 EXIT_CONFIGURATION = 2
@@ -165,7 +165,7 @@ class Wired:
     settings: Settings
     persistence: PostgresPersistence
     work: UnitOfWork
-    runs: Repository[Run]
+    runs: Queried[Run]
     ledger: Ledger
     provenance: ProvenanceQuery
     engine: RunEngine
@@ -271,7 +271,12 @@ async def wire(
             await upgrade(url)
         except Exception as error:
             raise NotOperable(f"the migrations failed against {described(url)}: {error}") from error
-    persistence = PostgresPersistence(url, pool_size=settings.runner_concurrency + 4)
+    persistence = PostgresPersistence(
+        url,
+        pool_size=settings.runner_concurrency + 4,
+        lock_timeout_seconds=settings.database_timeouts.lock_seconds,
+        idle_in_transaction_seconds=settings.database_timeouts.idle_in_transaction_seconds,
+    )
     try:
         try:
             await check_schema(persistence.engine)
@@ -309,7 +314,9 @@ async def wire(
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
-            objects = MemoryObjectStore(settings.state_dir / "objects")
+            objects = MemoryObjectStore(
+                settings.state_dir / "objects", cache_bytes=settings.object_cache_mb * 1024 * 1024
+            )
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
                 StaticWorkerPool(
@@ -325,6 +332,8 @@ async def wire(
             )
             prices = settings.budget.table()
             weights = settings.budget.weights()
+            seeds = settings.budget.seeds()
+            shape = settings.findings.form()
 
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
@@ -347,6 +356,7 @@ async def wire(
                         model_classes=settings.budget.model_classes,
                         margin=settings.budget.margin,
                         uncalibrated_margin=settings.budget.uncalibrated_margin,
+                        seeds=seeds,
                         capacity=rules_of(settings.capacity),
                         unit_memory_bytes=memory_demand(settings.workers),
                     ),
@@ -497,6 +507,7 @@ async def wire(
                 work=persistence,
                 clock=clock,
                 ids=ids,
+                change_process=settings.change_process,
             )
             # A change in dialogue read in the owner's conversation too (ADR-0091 §6).
             owner.answers.change_with(
@@ -594,11 +605,15 @@ async def wire(
                     None
                     if settings.findings_connector is None
                     else Sending(
-                        RepositoryChannel(McpActionConnector(settings.findings_connector)),
+                        RepositoryChannel(
+                            McpActionConnector(settings.findings_connector),
+                            labels=settings.findings.labels,
+                        ),
                         ledger,
                         objects,
                         persistence,
                     ),
+                    shape=shape,
                 ),
                 triggers=Triggers(
                     tenants=settings.tenants,

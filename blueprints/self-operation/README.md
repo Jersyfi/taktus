@@ -380,7 +380,8 @@ person reads the proposal, has it rehearsed and commissions it, or discards it (
 
 **Started by a person.** It has no trigger. `POST /processes/{id}/proposals` with the request in
 words starts one run, and the answer names it; the web app and the owner's chat ask the same way.
-Register it once:
+The instance starts it only where its operator names it: `TAKTUS_CHANGE_PROCESS=s07-change-in-dialogue`
+(ADR-0092). Register it once:
 
 ```bash
 uv run taktusctl submit --process blueprints/self-operation/processes/S-07-change-in-dialogue.yaml \

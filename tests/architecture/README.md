@@ -13,3 +13,8 @@ outside the cluster execution adapter.
 NTC-0169): no value type of the core and no table holds a quantity beside a field that names a
 person. A record of one act and a read of one's own are the two exceptions, each listed with its
 reason or the test that proves it.
+
+`test_no_project_in_the_product.py` holds ADR-0092 §4: no string the product's code can put
+somewhere, and no default value of the chart, names the Taktus project — a process identifier of
+its bundles, its repository's path or its owner's name. The names are read from `blueprints/`,
+`LICENSE` and `.github/CODEOWNERS`. Comments and docstrings are exempt.

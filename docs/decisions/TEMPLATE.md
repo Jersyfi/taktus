@@ -7,7 +7,8 @@
 **Provisional answer:** <NON-BLOCKING only: the answer the work continues on, and where it is marked. Delete this line for BLOCKING.>
 
 <!--
-Copy this file to docs/decisions/open/DEC-NNNN-<slug>.md, with the next free number.
+Copy this file to docs/decisions/open/DEC-NNNN-<slug>.md, with the number `make reserve KIND=DEC`
+reserved for it; never a number taken by hand (README.md, Numbers).
 Fill every section. Replace every <placeholder>; the gate fails on any that remains.
 Before writing: test the question against anchors.taktus.md. Only an entry of mode 3 or 4
 justifies a request; the owner wants a worked opinion with context, not a question.

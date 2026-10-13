@@ -115,6 +115,9 @@ data:
   {{- end }}
   TAKTUS_MODEL_BILLING: {{ $.Values.model.billing | quote }}
   TAKTUS_MODEL_OUTPUT_CAP: {{ $.Values.model.outputCap | quote }}
+  {{- with $.Values.model.usageKinds }}
+  TAKTUS_MODEL_USAGE_KINDS: {{ . | quote }}
+  {{- end }}
   {{- end }}
   TAKTUS_CAPACITY_DATABASE_VOLUME_MB: {{ include "taktus.databaseVolumeMb" . | quote }}
   TAKTUS_CAPACITY_STORAGE_EXPANDABLE: {{ .Values.capacity.storageExpandable | quote }}
@@ -157,3 +160,24 @@ data:
   {{- end }}
   {{ $name }}: {{ $value | quote }}
   {{- end }}
+{{- with .Values.configFiles }}
+---
+{{- /*
+Files of configuration a setting names by path (configFiles): mounted read-only at
+/etc/taktus/files/<name> in every role of the control plane. Never a secret.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "taktus.fullname" $ }}-files
+  namespace: {{ include "taktus.controlPlaneNamespace" $ }}
+  labels:
+    {{- include "taktus.labels" $ | nindent 4 }}
+data:
+  {{- range $name, $content := . }}
+  {{- if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9._-]*$" $name) }}
+  {{- fail (printf "configFiles: %q is not a file name: letters, digits, dots, hyphens and underscores" $name) }}
+  {{- end }}
+  {{ $name }}: {{ $content | quote }}
+  {{- end }}
+{{- end }}

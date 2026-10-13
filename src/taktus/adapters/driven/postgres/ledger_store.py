@@ -22,7 +22,12 @@ class PostgresLedgerStore:
     Several instances share one chain per tenant. `last` claims the chain with a transaction
     advisory lock before reading, so that a second instance's `last` waits until the first
     has appended and committed, and then reads that entry: two instances append in sequence
-    rather than fail on the primary key. The key `(tenant, seq)` remains the backstop."""
+    rather than fail on the primary key. The key `(tenant, seq)` remains the backstop.
+
+    The claim is the only one, for two transactions of one process as for two instances: each
+    transaction has its own connection, and a second `last` in the transaction that holds the
+    claim is granted at once. A wait for it ends after the persistence adapter's `lock_timeout`
+    with an error that says so (issue #309)."""
 
     def __init__(self, persistence: PostgresPersistence) -> None:
         self._persistence = persistence

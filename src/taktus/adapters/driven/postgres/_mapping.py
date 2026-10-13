@@ -14,17 +14,19 @@ inside the caller's transaction. Timestamps travel as ISO 8601 text in a documen
 
 from __future__ import annotations
 
+import asyncio
+import builtins
 from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
-from sqlalchemy import Table, delete, select
+from sqlalchemy import Table, and_, delete, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from taktus.adapters.driven.postgres import _schema as s
-from taktus.ports.persistence import Tenant
+from taktus.ports.persistence import Mark, NotQueryable, Tenant
 
 type Document = dict[str, Any]
 type Rows = list[Row[Any]]
@@ -40,6 +42,23 @@ class Mapper(Protocol):
     ) -> None: ...
 
     async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]: ...
+
+
+@runtime_checkable
+class QueriedMapper(Mapper, Protocol):
+    """A mapper that answers the queries of the port's `Queried` from its rows (ADR-0094)."""
+
+    async def newest(
+        self, connection: AsyncConnection, tenant: Tenant, limit: int, after: Mark | None
+    ) -> list[Document]: ...
+
+    async def count(
+        self, connection: AsyncConnection, tenant: Tenant, by: Sequence[str]
+    ) -> dict[tuple[Any, ...], int]: ...
+
+    async def having(
+        self, connection: AsyncConnection, tenant: Tenant, field: str, value: Any
+    ) -> list[Document]: ...
 
 
 # --- helpers --------------------------------------------------------------------------------------
@@ -520,24 +539,94 @@ class RunMapper:
 
     async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
         rows = await _all(connection, s.run, tenant, s.run.c.created_at, s.run.c.id)
-        step_runs, checkpoints, artifacts = await self._children(connection, tenant, None)
-        return [
-            self._from(
-                row,
-                [sr for sr in step_runs if sr.run_id == row.id],
-                [c for c in checkpoints if c.run_id == row.id],
-                [a for a in artifacts if a.run_id == row.id],
+        return await self._documents(connection, tenant, list(rows), every=True)
+
+    async def newest(
+        self, connection: AsyncConnection, tenant: Tenant, limit: int, after: Mark | None
+    ) -> builtins.list[Document]:
+        run = s.run.c
+        statement = select(s.run).where(run.tenant == tenant)
+        if after is not None:
+            statement = statement.where(
+                or_(
+                    run.created_at < after.created_at,
+                    and_(run.created_at == after.created_at, run.id > after.id),
+                )
             )
-            for row in rows
-        ]
+        statement = statement.order_by(run.created_at.desc(), run.id).limit(limit)
+        rows = list(await connection.execute(statement))
+        return await self._documents(connection, tenant, rows)
+
+    async def count(
+        self, connection: AsyncConnection, tenant: Tenant, by: Sequence[str]
+    ) -> dict[tuple[Any, ...], int]:
+        columns = [self._column(field) for field in by]
+        statement = (
+            select(*columns, func.count()).where(s.run.c.tenant == tenant).group_by(*columns)
+        )
+        return {tuple(row[:-1]): row[-1] for row in await connection.execute(statement)}
+
+    async def having(
+        self, connection: AsyncConnection, tenant: Tenant, field: str, value: Any
+    ) -> builtins.list[Document]:
+        head, _, rest = field.partition(".")
+        statement = select(s.run).where(s.run.c.tenant == tenant)
+        if not rest:
+            statement = statement.where(self._column(field) == value)
+        elif head == "step_runs" and rest in _STEP_RUN_FIELDS:
+            step_run = s.step_run.c
+            statement = statement.where(
+                exists().where(
+                    step_run.tenant == s.run.c.tenant,
+                    step_run.run_id == s.run.c.id,
+                    step_run[_STEP_RUN_FIELDS[rest]] == value,
+                )
+            )
+        else:
+            raise NotQueryable("run", field)
+        rows = list(await connection.execute(statement.order_by(s.run.c.created_at, s.run.c.id)))
+        return await self._documents(connection, tenant, rows)
+
+    @staticmethod
+    def _column(field: str) -> Any:
+        if field not in _RUN_FIELDS:
+            raise NotQueryable("run", field)
+        return s.run.c[field]
+
+    async def _documents(
+        self, connection: AsyncConnection, tenant: Tenant, rows: Rows, *, every: bool = False
+    ) -> builtins.list[Document]:
+        """The documents of the run rows given, in their order: their children read in one
+        query per table and grouped in one pass. With `every`, the rows are all the tenant's,
+        and the children are read without naming each run."""
+        if not rows:
+            return []
+        ids = None if every else [row.id for row in rows]
+        children = await self._children(connection, tenant, ids)
+        # Assembling thousands of documents is work for the processor alone: done in a thread,
+        # so that the event loop goes on serving, and renewing leases, meanwhile (#310).
+        return await asyncio.to_thread(self._assembled, rows, children)
+
+    def _assembled(self, rows: Rows, children: tuple[Rows, Rows, Rows]) -> builtins.list[Document]:
+        grouped: dict[str, tuple[Rows, Rows, Rows]] = {row.id: ([], [], []) for row in rows}
+        for position, of_kind in enumerate(children):
+            for child in of_kind:
+                found = grouped.get(child.run_id)
+                if found is not None:
+                    found[position].append(child)
+        return [self._from(row, *grouped[row.id]) for row in rows]
 
     @staticmethod
     async def _children(
-        connection: AsyncConnection, tenant: Tenant, run_id: str | None
+        connection: AsyncConnection, tenant: Tenant, run_ids: str | Sequence[str] | None
     ) -> tuple[Rows, Rows, Rows]:
         def scoped(table: Table) -> Any:
             statement = select(table).where(table.c.tenant == tenant)
-            return statement if run_id is None else statement.where(table.c.run_id == run_id)
+            if run_ids is None:
+                return statement
+            if isinstance(run_ids, str):
+                return statement.where(table.c.run_id == run_ids)
+            return statement.where(table.c.run_id.in_(run_ids))
 
         step_runs = await connection.execute(scoped(s.step_run).order_by(s.step_run.c.position))
         checkpoints = await connection.execute(scoped(s.checkpoint))
@@ -639,6 +728,21 @@ def _step_run_from(
             "anchoring": row.anchoring,
         }
     )
+
+
+_RUN_FIELDS = frozenset(
+    {"plan_id", "process_version", "identity", "autonomy_level", "rehearsal", "state", "cause"}
+)
+"""The fields of a run's document a query may name: the run row's own columns of one value."""
+
+_STEP_RUN_FIELDS = {
+    "step_id": "step_id",
+    "index": "position",
+    "method": "method",
+    "state": "state",
+    "adapter": "adapter",
+}
+"""The fields of a step run a query may name, by document key, with the column each is in."""
 
 
 # --- catalog --------------------------------------------------------------------------------------

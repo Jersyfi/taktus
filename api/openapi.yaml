@@ -537,12 +537,37 @@ paths:
     get:
       tags:
       - runs
-      summary: The runs you may see, newest first
+      summary: The runs you may see, newest first, a page at a time
       description: 'The account key in `Authorization: Bearer` proves the identity, and only there: a
         key in the URL is not read. The answer holds the runs of your identity''s tenant that the visibility
-        predicate lets you see — the same predicate as the stream of changes (ADR-0055 §5).'
+        predicate lets you see — the same predicate as the stream of changes (ADR-0055 §5) — newest first,
+        runs created at the same moment in ascending id. A page reads at most `limit` runs; `next` is
+        present when more follow, and is passed back as `after` for the next page. A page may hold fewer
+        runs than `limit` where the predicate withholds some, and `next` still leads on (ADR-0094).'
       operationId: list_runs_runs_get
       parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          description: How many runs a page reads at most; 100 unless given.
+          default: 100
+          title: Limit
+        description: How many runs a page reads at most; 100 unless given.
+      - name: after
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          description: The `next` of the page before; the first page without it.
+          title: After
+        description: The `next` of the page before; the first page without it.
       - name: authorization
         in: header
         required: false
@@ -553,7 +578,7 @@ paths:
           title: Authorization
       responses:
         '200':
-          description: A list of runs as the run component records them.
+          description: A page of runs as the run component records them.
           content:
             application/json:
               schema: {}
@@ -968,7 +993,7 @@ paths:
         '201':
           description: The proposal.
         '202':
-          description: 'Asked in words: the S-07 run that makes the proposal.'
+          description: 'Asked in words: the run that makes the proposal.'
         '400':
           description: The bundle would not register; every finding.
           content:
@@ -1356,7 +1381,8 @@ components:
           - type: 'null'
           title: Bundle
           description: The changed process bundle, as a document. Without it, `request` is turned into
-            a proposal by S-07, and the answer names that run (ADR-0091 §2).
+            a proposal by the process the instance names for it, and the answer names that run (ADR-0091
+            §2).
         request:
           anyOf:
           - type: string

@@ -10,8 +10,10 @@ bearer value accepted; anything else is 401. `POST /_fake/answer` changes the an
 finish reason for the calls that follow. The output limit a call sets (`max_tokens`) is held —
 the answer is cut to it and the finish reason is `length` — unless `ignore_limit` is set, which
 is the fault the model contract's M-03 must catch; `cached`, when set, is reported as input read
-from a cache. Standard library only; runnable as `python3 tests/fakes/model_service.py --port
-9300`.
+from a cache, and `written` as input written to one, in the `shape` set: `nested` in
+`prompt_tokens_details`, or at the `top` of the usage. `retry_after`, when set, is the
+`Retry-After` header of a scripted failure. Standard library only; runnable as
+`python3 tests/fakes/model_service.py --port 9300`.
 """
 
 from __future__ import annotations
@@ -38,6 +40,9 @@ class Script:
     status: int = 200
     ignore_limit: bool = False
     cached: int | None = None
+    written: int | None = None
+    shape: str = "nested"
+    retry_after: str | None = None
     requests: list[Json] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -49,9 +54,11 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         sys.stderr.write(f"fake-model {format % args}\n")
 
-    def _send(self, status: int, body: Json) -> None:
+    def _send(self, status: int, body: Json, headers: dict[str, str] | None = None) -> None:
         payload = json.dumps(body).encode()
         self.send_response(status)
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
@@ -86,7 +93,12 @@ class Handler(BaseHTTPRequestHandler):
         with self.script.lock:
             self.script.requests.append(body)
             if self.script.status != 200:
-                self._send(self.script.status, {"error": {"message": "scripted failure"}})
+                retry = self.script.retry_after
+                self._send(
+                    self.script.status,
+                    {"error": {"message": "scripted failure"}},
+                    None if retry is None else {"Retry-After": retry},
+                )
                 return
             messages = body.get("messages") or []
             user = next(
@@ -99,14 +111,25 @@ class Handler(BaseHTTPRequestHandler):
             if isinstance(limit, int) and len(words) > limit and not self.script.ignore_limit:
                 text, finish = " ".join(words[:limit]), "length"
             cached = self.script.cached
+            written = self.script.written
+            shape = self.script.shape
         prompt_tokens = sum(len(str(m.get("content", "")).split()) for m in messages)
         usage: Json = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": len(text.split()),
             "total_tokens": prompt_tokens + len(text.split()),
         }
+        cache: Json = {}
         if cached is not None:
-            usage["prompt_tokens_details"] = {"cached_tokens": min(cached, prompt_tokens)}
+            name = "cached_tokens" if shape == "nested" else "cache_read_input_tokens"
+            cache[name] = min(cached, prompt_tokens)
+        if written is not None:
+            name = "cache_write_tokens" if shape == "nested" else "cache_creation_input_tokens"
+            cache[name] = min(written, prompt_tokens - sum(cache.values()))
+        if cache and shape == "nested":
+            usage["prompt_tokens_details"] = cache
+        else:
+            usage.update(cache)
         self._send(
             200,
             {
