@@ -31,6 +31,7 @@ from taktus.components.reporting.domain.model.levels import (
     ProcessSummary,
     RunActivity,
     RunAtVersion,
+    RunCount,
     RunFacts,
     RunningStep,
     StepFacts,
@@ -39,6 +40,7 @@ from taktus.components.reporting.domain.model.levels import (
 )
 from taktus.components.reporting.domain.model.live import (
     Change,
+    CountedRuns,
     ProcessRef,
     Reader,
     RunRef,
@@ -70,6 +72,7 @@ __all__ = [
     "Blocked",
     "BrokenInterface",
     "Change",
+    "CountedRuns",
     "DecisionFacts",
     "Delivery",
     "DeliveryChannel",
@@ -103,6 +106,7 @@ __all__ = [
     "Reported",
     "RunActivity",
     "RunAtVersion",
+    "RunCount",
     "RunFacts",
     "RunRef",
     "RunningStep",

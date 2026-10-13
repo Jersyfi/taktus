@@ -25,7 +25,7 @@ from taktus.components.reporting.application.query import LevelQueries, ReportQu
 from taktus.components.reporting.domain.model import Change, Reader, Scope, Snapshot
 from taktus.components.run.domain.model import Run
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Repository, Tenant, UnitOfWork
+from taktus.ports.persistence import Queried, Tenant, UnitOfWork
 
 
 class StreamsFull(Exception):
@@ -106,7 +106,9 @@ class RestServices(Protocol):
         ...
 
     @property
-    def runs(self) -> Repository[Run]: ...
+    def runs(self) -> Queried[Run]:
+        """The runs, read a page at a time and counted where they are stored (ADR-0094)."""
+        ...
 
     @property
     def ledger(self) -> Ledger: ...

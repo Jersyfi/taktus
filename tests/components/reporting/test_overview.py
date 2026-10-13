@@ -11,6 +11,7 @@ import pytest
 
 from taktus.components.reporting.application.query import LevelQueries
 from taktus.components.reporting.domain.model import (
+    CountedRuns,
     OverviewFacts,
     PlannedStep,
     ProcessFacts,
@@ -18,6 +19,7 @@ from taktus.components.reporting.domain.model import (
     ProcessSummary,
     Reader,
     RunActivity,
+    RunCount,
     RunFacts,
     RunningStep,
     RunRef,
@@ -43,14 +45,29 @@ def activity(
     name: str, process: str, state: str, *running: RunningStep, tenant: str = "default"
 ) -> RunActivity:
     return RunActivity(
-        id=name,
-        tenant=tenant,
-        process_version=f"{process}@1",
-        state=state,
-        working=RunState(state) in WORKING,
-        waiting=RunState(state) in WAITING,
-        running=running,
+        id=name, tenant=tenant, process_version=f"{process}@1", state=state, running=running
     )
+
+
+def counted(runs: tuple[RunActivity, ...]) -> tuple[RunCount, ...]:
+    """What the composition root hands over for these runs: each version's runs counted by the
+    run component's definitions, without the runs themselves (ADR-0094)."""
+    counts: dict[tuple[str, str], RunCount] = {}
+    for run in runs:
+        key = (run.tenant, run.process_version)
+        found = counts.get(key, RunCount(tenant=run.tenant, process_version=run.process_version))
+        counts[key] = found.model_copy(
+            update={
+                "working": found.working + (RunState(run.state) in WORKING),
+                "waiting": found.waiting + (RunState(run.state) in WAITING),
+            }
+        )
+    return tuple(counts.values())
+
+
+def drawn(runs: tuple[RunActivity, ...]) -> tuple[RunActivity, ...]:
+    """The runs the composition root hands over one by one: those with a step running now."""
+    return tuple(run for run in runs if run.running)
 
 
 DRAFT = RunningStep(id="draft", method=Method.LLM, exactness=ExactnessClass.FREE)
@@ -64,7 +81,8 @@ def facts(*runs: RunActivity) -> OverviewFacts:
             ProcessSummary(id="invoices", name="Invoices", active_version="2", autonomy_level=2),
             ProcessSummary(id="orders", name="Orders", active_version="1", autonomy_level=3),
         ),
-        runs=runs,
+        counts=counted(runs),
+        runs=drawn(runs),
     )
 
 
@@ -128,7 +146,7 @@ def test_every_element_has_a_text_with_the_same_figures() -> None:
 
 
 def test_no_element_can_hold_a_person() -> None:
-    for kind in (AreaElement, ProcessSummaryElement, RunningStepElement, RunActivity):
+    for kind in (AreaElement, ProcessSummaryElement, RunningStepElement, RunActivity, RunCount):
         assert not {"identity", "actor", "person", "by", "decided_by"} & set(kind.model_fields)
 
 
@@ -151,26 +169,48 @@ class Records:
 async def test_a_process_or_run_the_predicate_withholds_is_absent_and_not_counted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    may_see, may_see_process = visibility.may_see, visibility.may_see_process
+    may_see, may_count, may_see_process = (
+        visibility.may_see,
+        visibility.may_count,
+        visibility.may_see_process,
+    )
 
     def runs(reader: Reader, ref: RunRef) -> bool:
-        return may_see(reader, ref) and ref.id != "r2"
+        return may_see(reader, ref) and ref.id != "r5"
+
+    def counts(reader: Reader, ref: CountedRuns) -> bool:
+        return may_count(reader, ref) and ref.process_version != "imports@1"
 
     def procs(reader: Reader, ref: ProcessRef) -> bool:
         return may_see_process(reader, ref) and ref.id != "orders"
 
     monkeypatch.setattr(visibility, "may_see", runs)
+    monkeypatch.setattr(visibility, "may_count", counts)
     monkeypatch.setattr(visibility, "may_see_process", procs)
     level = await LevelQueries(Records(BUSY)).overview(READER)
     found = processes(level)
-    assert "orders" not in found
-    assert (found["invoices"].working, found["invoices"].waiting) == (1, 0)
-    assert (level.areas[0].working, level.areas[0].waiting) == (2, 0)
+    assert "orders" not in found and "imports" not in found
+    assert (found["invoices"].working, found["invoices"].waiting) == (1, 1)
+    assert (level.areas[0].working, level.areas[0].waiting) == (1, 1)
+    assert [s.run for p in level.areas[0].processes for s in p.running] == ["r1"]
+
+
+@pytest.mark.parametrize("tenant", ["default", "other"])
+def test_a_count_is_never_shown_where_a_run_of_it_would_be_withheld(tenant: str) -> None:
+    """`may_count` answers for the runs of a version together; it may say yes only where
+    `may_see` says yes for each of them (ADR-0094)."""
+    for run in BUSY.runs:
+        ref = run.model_copy(update={"tenant": tenant})
+        together = CountedRuns(tenant=ref.tenant, process_version=ref.process_version)
+        alone = RunRef(id=ref.id, tenant=ref.tenant, process_version=ref.process_version)
+        if visibility.may_count(READER, together):
+            assert visibility.may_see(READER, alone)
 
 
 async def test_another_tenants_runs_are_not_counted() -> None:
+    other = activity("x1", "invoices", "running", DRAFT, tenant="other")
     elsewhere = BUSY.model_copy(
-        update={"runs": (*BUSY.runs, activity("x1", "invoices", "running", tenant="other"))}
+        update={"counts": (*BUSY.counts, *counted((other,))), "runs": (*BUSY.runs, other)}
     )
     level = await LevelQueries(Records(elsewhere)).overview(READER)
     assert processes(level)["invoices"].working == 1
@@ -194,7 +234,9 @@ def body(*runs: RunActivity) -> OverviewFacts:
         autonomy_level=2,
         steps=(READ, WRITE, PIPELINE),
     )
-    return OverviewFacts(tenant="default", processes=(invoices,), runs=runs)
+    return OverviewFacts(
+        tenant="default", processes=(invoices,), counts=counted(runs), runs=drawn(runs)
+    )
 
 
 def test_the_families_are_counted_in_words() -> None:

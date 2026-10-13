@@ -183,15 +183,13 @@ class RunningStep(Value):
 
 
 class RunActivity(Value):
-    """A run as the overview counts it. Whether it works or waits is the run component's own
-    definition (`WORKING`, `WAITING`), handed over as it is; a finished run does neither."""
+    """A run with a step running right now, as the overview draws it: each running step leads
+    down to its run. How many runs work and wait is counted apart, in `RunCount`."""
 
     id: str = Field(min_length=1)
     tenant: str = Field(min_length=1)
     process_version: str = Field(min_length=1)
     state: str = Field(min_length=1)
-    working: bool
-    waiting: bool
     rehearsal: bool = False
     running: tuple[RunningStep, ...] = ()
 
@@ -200,12 +198,31 @@ class RunActivity(Value):
         return self.process_version.rsplit("@", 1)[0]
 
 
+class RunCount(Value):
+    """How many runs of one process version work and how many wait right now, by the run
+    component's own definitions (`WORKING`, `WAITING`), counted where the runs are stored
+    (ADR-0067 §2, ADR-0094). A version whose runs have all ended counts zero of each, and is
+    still named: the overview lists its process."""
+
+    tenant: str = Field(min_length=1)
+    process_version: str = Field(min_length=1)
+    working: int = Field(default=0, ge=0)
+    waiting: int = Field(default=0, ge=0)
+
+    @property
+    def process(self) -> str:
+        return self.process_version.rsplit("@", 1)[0]
+
+
 class OverviewFacts(Value):
-    """Every process of a tenant and every run of it, as their components record them."""
+    """Every process of a tenant, how many of its runs work and wait, and the runs with a step
+    running now, as their components record them. No run is read to count it."""
 
     tenant: str = Field(min_length=1)
     processes: tuple[ProcessSummary, ...] = ()
+    counts: tuple[RunCount, ...] = ()
     runs: tuple[RunActivity, ...] = ()
+    """Only the runs with a step running now."""
 
 
 class OriginFacts(Value):

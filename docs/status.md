@@ -419,7 +419,9 @@ object cache without a bound, cache writes booked too cheaply, and project value
 defaults (ADR-0092). Migrations run beside the previous release from now on (ADR-0093). The
 project's own records follow six working rules (DEC-0189). The deadlock is fixed (#309,
 NTC-0201): the ledger's claim on a tenant's chain is its only lock, and every database
-connection carries `lock_timeout` and `idle_in_transaction_session_timeout`.
+connection carries `lock_timeout` and `idle_in_transaction_session_timeout`. Listing runs no longer blocks the
+process (#310): `GET /runs` answers a page, the overview counts runs by query, and 2 000 runs of
+ten steps each are answered in a twentieth of a second instead of 45 to 57 (ADR-0094, NTC-0202).
 
 ## 2. The next pull requests
 

@@ -82,3 +82,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0091](ADR-0091-a-person-changes-a-process-through-a-proposal-a-rehearsal-and-commissioning-and-rolls-it-back-as-a-new-version.md) | A person changes a process through a proposal, a rehearsal and commissioning, and rolls it back as a new version | accepted |
 | [0092](ADR-0092-the-taktus-project-is-one-tenant-among-others-and-nothing-of-it-is-product.md) | The Taktus project is one tenant among others, and nothing of it is product | accepted |
 | [0093](ADR-0093-every-migration-runs-beside-the-previous-release-and-readiness-accepts-a-range.md) | Every migration runs beside the previous release, and readiness accepts a range | accepted |
+| [0094](ADR-0094-runs-are-read-a-page-at-a-time-and-counted-where-they-are-stored.md) | Runs are read a page at a time, and counted where they are stored | accepted |

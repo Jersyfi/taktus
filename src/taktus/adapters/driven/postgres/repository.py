@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
-from taktus.adapters.driven.postgres._mapping import MAPPERS, Mapper
+from taktus.adapters.driven.postgres._mapping import MAPPERS, Mapper, QueriedMapper
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
-from taktus.ports.persistence import Stored, Tenant, WrongTenant
+from taktus.ports.persistence import Mark, NotQueryable, Stored, Tenant, WrongTenant
+
+THREADED = 50
+"""From how many documents on the aggregates are validated in a thread rather than on the loop."""
 
 
 def table_name(kind: type[Stored]) -> str:
@@ -15,7 +20,8 @@ def table_name(kind: type[Stored]) -> str:
 
 class PostgresRepository[T: Stored]:
     """The repository port for one aggregate: the class the composition root binds, stored as
-    its document through the mapper of the same name."""
+    its document through the mapper of the same name. The queries of `Queried` are answered
+    where the mapper offers them, and refused with `NotQueryable` where it does not."""
 
     def __init__(self, persistence: PostgresPersistence, kind: type[T]) -> None:
         name = table_name(kind)
@@ -40,5 +46,32 @@ class PostgresRepository[T: Stored]:
 
     async def list(self, tenant: Tenant) -> Sequence[T]:
         connection = self._persistence.connection(tenant)
-        documents = await self._mapper.list(connection, tenant)
-        return [self._kind.model_validate(document) for document in documents]
+        return await self._validated(await self._mapper.list(connection, tenant))
+
+    async def newest(self, tenant: Tenant, *, limit: int, after: Mark | None = None) -> Sequence[T]:
+        connection = self._persistence.connection(tenant)
+        documents = await self._queried("created_at").newest(connection, tenant, limit, after)
+        return await self._validated(documents)
+
+    async def count(self, tenant: Tenant, by: Sequence[str]) -> Mapping[tuple[Any, ...], int]:
+        connection = self._persistence.connection(tenant)
+        return await self._queried(", ".join(by)).count(connection, tenant, by)
+
+    async def having(self, tenant: Tenant, field: str, value: Any) -> Sequence[T]:
+        connection = self._persistence.connection(tenant)
+        documents = await self._queried(field).having(connection, tenant, field, value)
+        return await self._validated(documents)
+
+    async def _validated(self, documents: Sequence[dict[str, Any]]) -> Sequence[T]:
+        """The aggregates of many documents, validated in a thread so that the event loop goes
+        on serving meanwhile (#310); a few are validated where they are."""
+        if len(documents) < THREADED:
+            return [self._kind.model_validate(document) for document in documents]
+        return await asyncio.to_thread(
+            lambda: [self._kind.model_validate(document) for document in documents]
+        )
+
+    def _queried(self, field: str) -> QueriedMapper:
+        if not isinstance(self._mapper, QueriedMapper):
+            raise NotQueryable(self._kind.__name__, field)
+        return self._mapper
