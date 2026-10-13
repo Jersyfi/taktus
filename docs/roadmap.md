@@ -182,7 +182,9 @@ from it and kept consistent with it, never a second source of truth (#88, #197, 
 the DevOps review found: no deadlock between two ledger records, runs listed without blocking,
 an object cache with a bound, cache writes booked as such (#309, #310, #311, #312) · **nothing of
 the project as a product default** (ADR-0092) (#313) · the project's own records lighter
-(DEC-0189) (#314, #315, #316)
+(DEC-0189) (#314, #315, #316) · **CI that checks what changed before a merge and everything
+after it** (ADR-0096): parallel lanes under one check, path selection, drafts verified
+locally, merges without catching up behind a guard for `main` (#388, #389, #390, #391, #392)
 
 **Complete when** a process can be created, viewed, changed and rolled back entirely from the web app
 and chat, and you can see your own share of the waiting time.
@@ -197,7 +199,9 @@ versioned table (#327, #328) · `dev-orchestration` blueprint · **second tenant
 the first (#317, #318, #319) · waits that park the run, no read on a hot path that walks a
 tenant's ledger, writes of only what changed (#320, #321, #325) · a restore that brings the
 artifacts back, what needs action reaching a person, a small install profile (#322, #323, #326) ·
-no unit started per estimate, one egress gateway (#324) · a version rehearsed from the plan
+no unit started per estimate, one egress gateway (#324) · every commit on `main` rehearses
+the self-development bundles, tests selected by component, a nightly ring that is read (ADR-0096)
+(#393, #394, #395) · a version rehearsed from the plan
 dialogue (#329)
 
 **Complete when** a step moves from a language model to a trained model on Taktus's own proposal —
@@ -244,7 +248,8 @@ Contracts frozen and versioned · **licence decided, contributions opened** · a
 calibrated from real data across both use cases · community adapters in their own repositories,
 found in a catalogue with signatures and three tiers (#348) · GDPR tooling and generated
 compliance evidence · point-in-time recovery and recovery targets per install profile (#346) ·
-images scanned, signed and pinned (#347) · an A2A binding for the worker contract (#349)
+images scanned, signed and pinned (#347) · an A2A binding for the worker contract (#349) · a lane that fails a breaking change of a
+published contract (#396)
 
 **Complete when** a stranger builds an adapter without asking, and every condition of *The road
 to 1.0.0* below holds.
@@ -253,7 +258,7 @@ to 1.0.0* below holds.
 Thousands of tenants on one instance, an idle one costing nothing (#350) · an operator's
 lifecycle of its customers' tenants: create, suspend, export, close (#351) · each tenant's own
 model credentials, budgets per unit and the operator's margin (#352) · metrics for an operator,
-and fleet upgrades without downtime (#353) · the Taktus project's licensing and billing as
+and fleet upgrades without downtime (#353) · scale budgets as nightly regression limits (#397) · the Taktus project's licensing and billing as
 bundles of its own tenant (ADR-0092) (#354)
 
 **Complete when** one instance serves ten thousand tenants and an idle one makes no database

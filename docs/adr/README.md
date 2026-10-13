@@ -84,3 +84,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0093](ADR-0093-every-migration-runs-beside-the-previous-release-and-readiness-accepts-a-range.md) | Every migration runs beside the previous release, and readiness accepts a range | accepted |
 | [0094](ADR-0094-runs-are-read-a-page-at-a-time-and-counted-where-they-are-stored.md) | Runs are read a page at a time, and counted where they are stored | accepted |
 | [0095](ADR-0095-a-run-reserves-the-numbers-of-the-records-its-change-adds-through-the-connector.md) | A run reserves the numbers of the records its change adds, through the connector | accepted |
+| [0096](ADR-0096-ci-checks-what-changed-before-a-merge-and-everything-after-it.md) | CI checks what changed before a merge, and everything after it | accepted |
