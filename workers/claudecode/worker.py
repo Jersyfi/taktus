@@ -550,6 +550,10 @@ class _Run:
         resuming = self.body.get("context", {}).get("checkpoint_ref") is not None
         if resuming and self.workspace.is_dir():
             return True
+        if self.workspace.exists():
+            # An earlier attempt of the same assignment left it, with no checkpoint to continue
+            # from: this one starts in a clean workspace, never fails on the old one (#280).
+            shutil.rmtree(self.workspace)
         self.workspace.mkdir(parents=True, exist_ok=True)
         workspace = self.body.get("context", {}).get("workspace") or {}
         if workspace.get("kind") == "git" and workspace.get("location"):

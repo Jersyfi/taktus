@@ -155,8 +155,10 @@ the worker's refusal is the record.
 
 `context.workspace` of kind `git` with a `location` is cloned into `<state>/workspaces/<id>`
 (the branch `ref` if given), through the unit's proxy where the execution kind gives one — `git`
-receives the proxy variables, as the agent does (#306); any other kind starts empty. The workspace is made a repository if
-it is not one, and a baseline commit is made and tagged. The task's goal, acceptance and inputs
+receives the proxy variables, as the agent does (#306); any other kind starts empty. A
+workspace that an earlier attempt of the same assignment left is removed first, unless the
+assignment resumes from a checkpoint (#280). The workspace is made a repository if it is not
+one, and a baseline commit is made and tagged. The task's goal, acceptance and inputs
 become the agent's prompt. Every completed tool call that changed the workspace is committed and
 announced as an artifact `change-N` of kind `patch`; at the end, the artifact `summary` is the
 agent's own account of what it did, and the artifact `changeset` (`application/json`) is every
