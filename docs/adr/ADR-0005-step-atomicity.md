@@ -256,7 +256,24 @@ needs compute is refused.
 **What this changes in the first amendment's table.** Nothing in its rows. The currency row now
 covers compute seconds where the table prices them, held per step like compute itself.
 
-## Fifth amendment — every cached token is booked by its kind (2026-10-13)
+
+## Fifth amendment — a bound is calibrated by its own step (2026-10-13)
+
+A connector call, a counted prompt and a declared demand are estimated as a bound, and a
+call that needed more than its operation declared is a calibration signal (point 4 of the
+second amendment, and the bound below). The engine scaled such a bound by the largest error
+of any call through the same adapter. On the installed instance, one read through the
+repository connector used three times its estimate of one unit. A branch write that had
+used 14 of its 64 estimated units was then reserved 192, and the run halted one unit short
+of its quota (issue #370).
+
+- **A bound is calibrated by its own step.** The observations that scale it are those of the
+  same step of the same process, `<process>/<step>`, through the same adapter, over every
+  version of the process. A step never observed is a bound taken as given.
+- **A worker is unchanged.** Its error is the worker's, measured across every step it works
+  on (point 4 of the second amendment, DEC-0034, DEC-0043).
+
+## Sixth amendment — every cached token is booked by its kind (2026-10-13)
 
 Money follows from the record (third amendment, point 3), so a token booked at the wrong kind
 is money recorded wrong. The adapter for the chat-completions dialect read cached input only
@@ -312,7 +329,11 @@ hold them. The money of an `llm` step is held at its priced estimate while the s
 it finished, the running total does not count it yet. That is a finding against this ADR, not a
 boundary of it (#235).
 
-The fifth amendment reads the two shapes known on 2026-10-13. A provider that reports cached
+The fifth amendment calibrates a bound by its step, so the same operation called from two
+processes is calibrated twice, once in each. A step renamed in a new version starts again as
+a bound taken as given.
+
+The sixth amendment reads the two shapes known on 2026-10-13. A provider that reports cached
 input under another name has it booked as uncached input, and M-04 shows that only for a kind
 the operator declared. Where `prompt_tokens` excludes the cached tokens and is still larger than
 them, the rule cannot tell, and the cached tokens are taken out of it: the input is then booked

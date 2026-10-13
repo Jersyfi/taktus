@@ -224,8 +224,8 @@ generated (`make status`) and never stored in the file (DEC-0026).
   a decision, a need, a date — becomes a record under `docs/decisions/` and an issue assigned
   to him: a decision request (`DEC-NNNN`) or a needs request (`NEED-NNNN`), raised when it
   becomes foreseeable. Never only a line in a description. The description's last section,
-  *Needed from the owner*, is the output of `make status`; it is generated and checked, not
-  written (ADR-0028).
+  *Needed from the owner*, is the output of `make status`; the `owner-list` workflow writes it
+  from the branch's register on every push and edit, and nobody pastes it (ADR-0028, DEC-0189).
 - **Every pull request targets `main`.** A change that needs another, unmerged change waits
   for it to merge and is then rebased on `main`; it is never opened against the other
   change's branch. Squash merges discard the branch's history, so a stacked pull request

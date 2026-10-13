@@ -105,7 +105,7 @@ process version.
 A process is a **directed graph of steps**, not a script and not a prompt. Beside the graph a
 process carries its **autonomy statement** (ADR-0026): the level it runs at, why, and what is
 missing to go one level higher — or what forbids it. The statement is shown wherever the
-process is shown; a bundle with a bare level does not register.
+process is shown; a bundle with a bare level does not register. A registered version never changes: a bundle registered again with the same identifier, version and content is the stored version, and one with another content is refused until it names a new version, because every run, ledger entry and provenance record that names the version describes what it was (#377).
 
 ### 4.1 What a step carries
 

@@ -144,7 +144,7 @@ from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.leadership import Leadership
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Repository, Stored, UnitOfWork
+from taktus.ports.persistence import Queried, Repository, Stored, UnitOfWork
 from taktus.shared.v1 import Command, Plan
 
 EXIT_CONFIGURATION = 2
@@ -165,7 +165,7 @@ class Wired:
     settings: Settings
     persistence: PostgresPersistence
     work: UnitOfWork
-    runs: Repository[Run]
+    runs: Queried[Run]
     ledger: Ledger
     provenance: ProvenanceQuery
     engine: RunEngine
@@ -314,7 +314,9 @@ async def wire(
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
-            objects = MemoryObjectStore(settings.state_dir / "objects")
+            objects = MemoryObjectStore(
+                settings.state_dir / "objects", cache_bytes=settings.object_cache_mb * 1024 * 1024
+            )
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
                 StaticWorkerPool(

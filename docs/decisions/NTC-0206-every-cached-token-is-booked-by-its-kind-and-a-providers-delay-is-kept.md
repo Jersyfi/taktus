@@ -7,7 +7,7 @@
 
 ## 1. What was decided
 
-ADR-0005 (fifth amendment) and ADR-0043 (amendment of 2026-10-13) are the decision; this notice
+ADR-0005 (sixth amendment) and ADR-0043 (amendment of 2026-10-13) are the decision; this notice
 records the change of behaviour.
 
 1. **Cached input is booked wherever the endpoint reports it.** The model adapter books

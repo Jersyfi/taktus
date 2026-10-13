@@ -188,6 +188,23 @@ async def test_a_token_limit_halts_at_the_boundary_and_the_resume_continues(
     assert before and not before & after
 
 
+@pytest.mark.parametrize("late", [False, True], ids=["streamed", "in-the-total"])
+async def test_the_reported_output_is_every_message_once(
+    start_coding_worker: StartWorker, late: bool
+) -> None:
+    """The fake agent streams each of its seven messages in two lines; the first carries a
+    twentieth of the message's output, the last all of it — or, late, still the twentieth, and
+    only the session total in the final line holds the rest. Either way the worker reports the
+    output of every message once: 40 + n for the calls n = 1..6 and for the closing message
+    n = 99 — not the first line's, not both lines' (#278)."""
+    agent_env = {"FAKE_AGENT_LATE_USAGE": "1"} if late else {}
+    worker = start_coding_worker(auth="api-key", agent_env=agent_env)
+    events = await one_assignment(worker)
+    assert events[-1]["outcome"] == "succeeded"
+    reported = [e for e in events if e["type"] == "consumption.reported"]
+    assert sum(e.get("tokens_out", 0) for e in reported) == sum(40 + n for n in [*range(1, 7), 99])
+
+
 async def test_an_agent_within_its_estimate_leaves_w14_inconclusive(
     start_coding_worker: StartWorker,
 ) -> None:

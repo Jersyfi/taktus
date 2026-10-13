@@ -144,6 +144,40 @@ def test_no_module_holds_its_own_reference_to_the_predicate() -> None:
     holders = [
         str(path.relative_to(source))
         for path in source.rglob("*.py")
-        if re.search(r"import[^\n]*\bmay_see\b", path.read_text(encoding="utf-8"))
+        if re.search(r"import[^\n]*\bmay_(see|count)\b", path.read_text(encoding="utf-8"))
     ]
     assert holders == []
+
+
+async def test_the_runs_are_read_a_page_at_a_time_newest_first(client: Client) -> None:
+    """`GET /runs` reads at most `limit` runs; `next`, passed back as `after`, leads to the
+    next page until no run is left (ADR-0094, issue #310)."""
+    http, given, base = client
+    for n in range(1, 6):
+        await a_run(given, f"run_{n}")
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    whole = (await http.get(f"{base}/runs", headers=bearer(key))).json()
+    assert [r["id"] for r in whole["runs"]] == ["run_5", "run_4", "run_3", "run_2", "run_1"]
+    assert "next" not in whole, "one page holds them all under the default limit"
+    pages: list[list[str]] = []
+    params: dict[str, Any] = {"limit": 2}
+    for _ in range(5):
+        page = (await http.get(f"{base}/runs", params=params, headers=bearer(key))).json()
+        pages.append([r["id"] for r in page["runs"]])
+        if "next" not in page:
+            break
+        params = {"limit": 2, "after": page["next"]}
+    assert pages == [["run_5", "run_4"], ["run_3", "run_2"], ["run_1"]]
+    assert [r for p in pages for r in p] == [r["id"] for r in whole["runs"]]
+
+
+@pytest.mark.parametrize(
+    "params", [{"limit": 0}, {"limit": 501}, {"after": "not a cursor"}, {"after": "eA=="}]
+)
+async def test_a_page_that_cannot_be_read_is_422(client: Client, params: dict[str, Any]) -> None:
+    http, given, base = client
+    await a_run(given, "run_1")
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    answer = await http.get(f"{base}/runs", params=params, headers=bearer(key))
+    assert answer.status_code == 422, answer.text
+    assert answer.headers["content-type"] == "application/problem+json"

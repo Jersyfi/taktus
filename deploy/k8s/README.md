@@ -83,7 +83,7 @@ operator's. The parts that carry a decision:
 | `image.repository`, `image.tag`, `image.pullSecret` | the control plane image; the tag is a version, and `latest` or an empty tag fails the render |
 | `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002); the scheduler is elected, more than one is allowed and idle |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
-| `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall |
+| `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall. A role keeps at most `TAKTUS_OBJECT_CACHE_MB` of them in memory (default 64; set through `env`) |
 | `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6; `defaults.unitEnv` the variables a worker's own program needs to start, section 7 — configuration, never a secret), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none), `unitEnv` (`{}` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
 | `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE`. A credential of one of several workers has the parameter `worker.<worker>.credential.<name>`, and only that worker receives it |
 | `administration.platform`, `.administers` | the platform this instance runs on and, per credential parameter, the platforms it administers or `none` — `TAKTUS_PLATFORM`, `TAKTUS_ADMINISTERS` (ADR-0052). A process naming a credential that administers this platform, or one declared about nothing, is refused; with no platform nothing is checked |
@@ -460,11 +460,14 @@ and all of its memory (section 7), so memory decides how many fit.
 backup is in the store and was restored from it on the workstation (`docs/runs/2026-10-11-the-first-restore.md`).
 The backup holds the database and not the state volume's artifacts; that is #322.
 
-**Waits:**
-
-- **a pull request P-03 opens on the installed instance**, showing Taktus's own app as its author
-  (#66, DEC-0063). It needs the coding agents' keys on the instance (NEED-0024) and the owner's
-  linked identity (NEED-0017).
+**A pull request P-03 opened on the installed instance** (#66, DEC-0063), on 2026-10-13: #373,
+authored by Taktus's own app, closing #278. The run cloned the repository through its unit's
+egress proxy, implemented the issue with the coding agent in a cluster unit, put the change on
+a branch through the connector, waited for the pipeline's verdict and opened the pull request.
+Four findings on the way were fixed first, each in a release candidate: the proxy's 407 named no
+scheme (#356), units the node had no room for failed their step (#358), a change of a workflow
+file was refused (#366), and a branch write was reserved by another operation's error (#370).
+The run is in `docs/runs/2026-10-13-the-instance-opens-its-own-pull-request.md`.
 
 ## 11. Backup and restore
 

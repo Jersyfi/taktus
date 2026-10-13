@@ -372,6 +372,7 @@ run = Table(
     _at("updated_at"),
     PrimaryKeyConstraint("tenant", "id"),
     Index("run_state", "tenant", "state"),
+    Index("run_created", "tenant", "created_at", "id"),  # ADR-0094
 )
 
 step_run = Table(
@@ -404,6 +405,7 @@ step_run = Table(
     ForeignKeyConstraint(
         ["tenant", "run_id"], ["run.tenant", "run.id"], ondelete="CASCADE", name="step_run_run"
     ),
+    Index("step_run_state", "tenant", "state"),  # ADR-0094
 )
 
 checkpoint = Table(

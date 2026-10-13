@@ -43,6 +43,7 @@ from taktus.components.reporting.domain.model.levels import (
     ProcessSummary,
     RunActivity,
     RunAtVersion,
+    RunCount,
     RunFacts,
     RunningStep,
     StepFacts,
@@ -481,9 +482,11 @@ def _running_step(run: RunActivity, step: RunningStep) -> RunningStepElement:
     )
 
 
-def _summary(process: ProcessSummary, runs: list[RunActivity]) -> ProcessSummaryElement:
-    working = sum(1 for r in runs if r.working)
-    waiting = sum(1 for r in runs if r.waiting)
+def _summary(
+    process: ProcessSummary, counts: list[RunCount], runs: list[RunActivity]
+) -> ProcessSummaryElement:
+    working = sum(c.working for c in counts)
+    waiting = sum(c.waiting for c in counts)
     running = tuple(_running_step(r, s) for r in runs for s in r.running)
     version = f"@{process.active_version}" if process.active_version else ""
     level = (
@@ -507,18 +510,23 @@ def _summary(process: ProcessSummary, runs: list[RunActivity]) -> ProcessSummary
 
 
 def overview_level(facts: OverviewFacts) -> OverviewLevel:
-    """The overview of one tenant, from its processes and the runs handed with them. The runs
-    and processes are the ones the reader may see; which those are is the query's. Until the
-    organisation's structure is recorded (UC-1.4), the tenant is the one area (ADR-0067)."""
-    by_process: dict[str, list[RunActivity]] = {}
+    """The overview of one tenant, from its processes, the counts of their runs and the runs
+    with a step running now, handed with them. The counts, runs and processes are the ones the
+    reader may see; which those are is the query's. Until the organisation's structure is
+    recorded (UC-1.4), the tenant is the one area (ADR-0067)."""
+    counts_of: dict[str, list[RunCount]] = {}
+    for count in facts.counts:
+        counts_of.setdefault(count.process, []).append(count)
+    runs_of: dict[str, list[RunActivity]] = {}
     for run in facts.runs:
-        by_process.setdefault(run.process, []).append(run)
+        runs_of.setdefault(run.process, []).append(run)
     known = {p.id for p in facts.processes}
     processes = list(facts.processes) + [
-        ProcessSummary(id=pid, name=pid) for pid in sorted(by_process) if pid not in known
+        ProcessSummary(id=pid, name=pid) for pid in sorted({*counts_of, *runs_of} - known)
     ]
     summaries = tuple(
-        _summary(p, by_process.get(p.id, [])) for p in sorted(processes, key=lambda p: p.id)
+        _summary(p, counts_of.get(p.id, []), runs_of.get(p.id, []))
+        for p in sorted(processes, key=lambda p: p.id)
     )
     working = sum(s.working for s in summaries)
     waiting = sum(s.waiting for s in summaries)
