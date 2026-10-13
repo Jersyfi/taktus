@@ -69,7 +69,7 @@ The original chapter 11 listed nine questions for the owner. Their current state
 | The maturity threshold for autonomy level 3 | Kept at *verified* from level 3 |
 | Product names in the market chapter | Removed. `market.md` names categories, not products |
 | A lower bound for automatic skill approval | **Still open**: DEC-0028. Belongs with the skill lifecycle |
-| The second reference domain | Finance remains the reference domain for the virtual agent business and its legal anchors (definition UC-15.2). It is not on the roadmap yet: the second domain the roadmap schedules, `0.7.0`, is systems operation. Placing finance is part of migrating epic E15 |
+| The second reference domain | Finance remains the reference domain for the virtual agent business and its legal anchors (definition UC-15.2). Since DEC-0195 it is on the roadmap: the second domain of `0.7.0` is incoming invoice to payment release (#402); systems operation moved after `1.0.0` |
 | Who reviews the legal-anchor catalogue, and when | **Still open**: DEC-0029. Needed before any finance or personnel blueprint goes live |
 
 The two still open are carried as decision requests, DEC-0028 and DEC-0029, not as a chapter.

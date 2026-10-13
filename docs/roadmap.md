@@ -16,13 +16,18 @@ Taktus develops itself. That only works in this order.
 | **S0 — bootstrap** | a local coding session, issue-driven | the contracts exist as schema plus conformance suite |
 | **S1 — first run** | the same session builds `taktusd` | Taktus turns one of its own issues into a pull request that passes CI |
 | **S2 — self-maintenance** | Taktus, supervised | **14 days** with no human intervention in execution |
-| **S3 — second tenant** | Taktus orchestrates a second project | a milestone there is reached without intervention except at anchors |
+| **S3 — second tenant** | Taktus runs a real operation that is not software: a business, or the owner's household (DEC-0195) | a milestone there is reached without intervention except at anchors |
 | **S4 — level 4** | Taktus unattended | a release happens end to end |
 
 **S3 starts at `0.4.0`, not at `1.0.0`.** The reason is deliberate: versions `0.5` to `0.7` — value
 ledger, role-based views, level 4, the second blueprint — need operating data from a second tenant to
 be designed correctly. Taktus's own repository is an atypical subject: small, documentation-heavy,
 one contributor. Building the later versions on that alone means building them blind.
+
+Software is where Taktus develops itself, not where it proves itself: software factories are
+far ahead there, and what sets Taktus apart — exact steps, legal anchors, maturation from a
+language model to a rule — shows only in a real operation (DEC-0195,
+`docs/research/2026-10-13-warp-review.md`).
 
 The second tenant starts at autonomy level 1–2 (advise and propose only) for the first weeks, and
 rises only on evidence.
@@ -195,17 +200,18 @@ maturation with change proposals (#216, #217, #218, #229, #230) · model hub for
 the removal test can say *changed* through an adapter, not only a person (#154, #208, #209) · model routing:
 an ordered chain per purpose switched at the step boundary, and a price list imported into the
 versioned table (#327, #328) · `dev-orchestration` blueprint · **second tenant onboarded at level
-1–2**, created by a command, its locks unable to collide with another's, and served fairly beside
+1–2** — a real operation, not a software project (#400) —, created by a command, its locks unable to collide with another's, and served fairly beside
 the first (#317, #318, #319) · waits that park the run, no read on a hot path that walks a
 tenant's ledger, writes of only what changed (#320, #321, #325) · a restore that brings the
 artifacts back, what needs action reaching a person, a small install profile (#322, #323, #326) ·
 no unit started per estimate, one egress gateway (#324) · every commit on `main` rehearses
 the self-development bundles, tests selected by component, a nightly ring that is read (ADR-0096)
 (#393, #394, #395) · a version rehearsed from the plan
-dialogue (#329)
+dialogue (#329) · skills as `SKILL.md`, `AGENTS.md` read, bundles checked without an instance (#407)
 
 **Complete when** a step moves from a language model to a trained model on Taktus's own proposal —
-measurably cheaper and reproducible — and the second tenant produces its first milestone.
+measurably cheaper and reproducible, a step of the second tenant where its cases suffice — and the
+second tenant's first process has run four weeks at level 1–2, every proposal decided by a person.
 
 ### `0.5.0` — value and dependency measurable
 Value ledger with revert analysis · role-based views · principle 14 enforced in the data model:
@@ -220,22 +226,29 @@ the correction anchor, incidents delivered into the organisation's own tracking 
 UC-4.12, UC-6.8; ADR-0021 to ADR-0023) (#92) · upgrades without a gap in readiness (ADR-0093)
 (#330) · a role at every human step (#331) · one register of everything that acts, what breaks
 if an adapter goes, how a process really runs (#332, #333, #334) · a stage view, input checks as
-visible steps, outside participants through their own channel (#335, #336, #337)
+visible steps, outside participants through their own channel (#335, #336, #337) · a running step
+taken over under a lease (#404) · a first process in ten minutes (#405) · Taktus as an MCP server
+with rights per role (#406) · evaluation cases per process (#408) · the trace inside a step, live
+(#409)
 
-**Complete when** principles 6 and 13 are measured rather than asserted, and limit recommendations
-come with numbers.
+**Complete when** principles 6 and 13 are measured rather than asserted, limit recommendations
+come with numbers, and a person new to Taktus reaches a first rehearsed process in ten minutes.
 
 ### `0.6.0` — level 4
 Autonomy level 4 · skill lifecycle, with a floor for the number of passed evaluations before a
 skill is approved automatically, its value set from the evaluation data of `0.5.0` and higher for
 `exact` steps (DEC-0028) · the catalogue, its connectors in images of their own (#339) ·
 role-based agents · recurring decisions become rules on proposal · the organisation seen as value
-streams (#338) · what a person may ask Taktus for (#340)
+streams (#338) · what a person may ask Taktus for (#340) · the worker contract's outbound-only binding,
+steering and handover, before it freezes (#403) · vendors' MCP servers as connector candidates
+(#410) · a software factory as a worker (#411)
 
-**Complete when** a release happens end to end without intervention.
+**Complete when** a release happens end to end without intervention, and a process of the second
+tenant runs at level 3 with an enforced anchor (#401).
 
 ### `0.7.0` — second domain
-`it-operations` blueprint (#95) · connectors for operations and monitoring · autonomy per action
+`invoice-to-payment` blueprint: an incoming invoice read, matched, its amount `exact`, a payment
+released by a person (#402, DEC-0029 first) · connectors for documents and accounting · autonomy per action
 class in production use · one ledger chain per run, before the contracts freeze (#341) · **more
 than one node**: an object store port and a highly available profile (#342) · fairness and quotas
 per department inside a tenant (#343) · role profiles derived from the processes (#344) · BPMN in
@@ -259,7 +272,7 @@ Thousands of tenants on one instance, an idle one costing nothing (#350) · an o
 lifecycle of its customers' tenants: create, suspend, export, close (#351) · each tenant's own
 model credentials, budgets per unit and the operator's margin (#352) · metrics for an operator,
 and fleet upgrades without downtime (#353) · scale budgets as nightly regression limits (#397) · the Taktus project's licensing and billing as
-bundles of its own tenant (ADR-0092) (#354)
+bundles of its own tenant (ADR-0092) (#354) · the `it-operations` blueprint, moved here by DEC-0195 (#95)
 
 **Complete when** one instance serves ten thousand tenants and an idle one makes no database
 transaction, and an operator creates a customer's tenant, exports its usage for billing and

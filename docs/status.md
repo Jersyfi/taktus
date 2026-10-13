@@ -444,6 +444,13 @@ everything after it, on every commit of `main`, and every commit on `main` will 
 self-development bundles. Phases 1 and 2 are `0.3.0` (#388 to #392); the ruleset's switch is the
 owner's (NEED-0026). Nothing of it is built yet.
 
+**The Warp outlook** (2026-10-13). Software factories such as Warp are far ahead where Taktus
+had placed its proof, so Taktus proves itself on a real operation instead (DEC-0195,
+`docs/research/2026-10-13-warp-review.md`): the second tenant is a business or, from 2026-11-01,
+the owner's household (NEED-0027, #400); `0.6.0` adds a level-3 process of that tenant (#401);
+the second domain of `0.7.0` is incoming invoice to payment release (#402), and IT operations
+moved after `1.0.0` (#95). Ten features follow from the comparison (#403 to #411).
+
 ## 2. The next pull requests
 
 **The order of work is the backlog's** (DEC-0051): the repository's open issues, in milestones
@@ -510,7 +517,7 @@ rather than enforced, anything marked provisional.
 | Promise | Where it is made | State |
 |---|---|---|
 | the removal test is a conformance check, W-12 and C-10 | `contracts/worker/v1`, `contracts/connector/v1` | reported *pending* by both suites (DEC-0005); the test runs as the process S-01 instead. The conformance half is recorded since #93 (ADR-0044); no integration of Taktus's own instance has both halves yet, so none is *verified* there |
-| the removal test *exercises* the processes that use an integration | `blueprints/self-operation/`, S-01, ADR-0030 | it rehearses them: outward operations answer from the recording of their last real call. A process is rehearsed only once it has been called for real on that instance, so the weekly job, on fresh state, still resolves P-02 and P-03 statically; a worker step that may reach hosts — P-03's — is never rehearsed; the rehearsal has never run against a real recording (`docs/runs/README.md`) |
+| the removal test *exercises* the processes that use an integration | `blueprints/self-operation/`, S-01, ADR-0030 | it rehearses them: outward operations answer from the recording of their last real call. A process is rehearsed only once it has been called for real on that instance, so the weekly job, on fresh state, still resolves P-02 and P-03 statically; a worker step that may reach hosts — P-03's — is never rehearsed; on the installed instance, on 2026-10-13, S-01 rehearsed P-01 from its real report into #129: `write-report` ended `rehearsed`, no egress entry (#75, `docs/runs/2026-10-13-the-instance-opens-its-own-pull-request.md`) |
 | a budget is a budget | ADR-0005, third amendment | built, with three limits stated there: the overrun of the one inner step during which a total crossed the line is spent; money a worker reports only when an assignment ends cannot halt it, and it is held by its tokens. The margin has a floor of 10 % and resets with the model version (DEC-0043); an operator's explicit value below the floor holds and is said: a warning in the startup log, a line in the run's `budget.set` statement and in `taktusctl cost` (DEC-0047, NTC-0025). Never run live: what the next live run must measure — estimate against actual, a halt on a real reservation — is in `docs/runs/README.md` |
 | a budget says what the provider permits | `contracts/model/v1`, `docs/research/2026-09-30-what-providers-allow.md` | this tenant's endpoint holds its output limit: the research says so ([A4]) and M-03 passed against it on 2026-10-01; `tools/first_run.sh` derives the declaration with M-03 on every run, and the deployment sets it (`deploy/k8s/README.md`). The adapter's default for an endpoint nobody has checked stays `soft`; the research is dated and expires |
 | Taktus watches its platform | ADR-0031 | *Observe* built; *Propose* `0.5.0`, *Manage* `0.7.0`. On macOS memory is neither observed nor limited, and the process adapter refuses a job there unless an unenforced limit is accepted; the cluster's own quota is not seen until a cluster platform adapter exists; admission against free capacity has never run on the platform it is for — the next live run's list is `docs/runs/README.md` |
