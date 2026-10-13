@@ -156,7 +156,11 @@ what the vision and the owner's definition already require is mode 2, a `restora
 a new requirement stays mode 3 (DEC-0041). A session may spend on a credential the owner
 provided, to derive or verify a fact instead of asking, up to **USD 1 per task**, recorded as a
 `spend` notice; beyond that it is a request — a limit is a limit, for a session as for a run
-(M2.8, DEC-0049).
+(M2.8, DEC-0049). A change of what the software does inside an agreed scope (M2.4) is the one
+mode-2 decision that is not a notice file. It is a line of the section *Behaviour changes* of
+the pull request description, naming the old behaviour, the new one and the reason. The
+description check holds the line to that shape, and `make status` counts the lines of merged
+pull requests with the decisions that overrode one (DEC-0189 rule 2).
 
 Everything a pull request tells the owner is one of four categories (ADR-0017):
 
@@ -313,7 +317,8 @@ A misunderstood sentence in the documentation becomes wrong code later.
 8. introduced no secret value,
 9. carries an ADR if it has architectural effect, and the ADR states where its promise ends,
 10. names every decision it raises by ID and category near the top of its description, and
-    stays a draft while one is blocking; a mode-2 decision it made is a notice record; every
+    stays a draft while one is blocking; a mode-2 decision it made is a notice record, or a
+    line of *Behaviour changes* where it changed what the software does (M2.4); every
     need it makes foreseeable is a needs request with an issue, and its description ends with
     what is needed from the owner,
 11. leaves the gates true: a hole in a gate's coverage met on the way is a finding — a

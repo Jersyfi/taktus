@@ -53,6 +53,15 @@ record marked `**Written after the answer:**` and a mode-4 request are left out 
 line is part of the generated block, so the description carries it too. Nothing writes it into
 a file.
 
+The same line counts the behaviour changes (M2.4) and how many a decision overrode. Since
+DEC-0189 rule 2 such a change is a line of `## Behaviour changes` in its pull request's
+description, not a notice file, so the count reads the merged pull requests' descriptions: from
+`--merged FILE`, the host's answer a workflow fetched, or else by asking the host with `gh`.
+Where neither answers, the line says the changes were not counted; nothing is guessed. A
+decision that overrode one names its pull request in `**Overrides:** #NNN`, read from the
+register, so that count needs no network. The repository squash-merges with the branch's commit
+messages as the body, not the description, so `git log` does not carry the section.
+
 A register with nothing open generates "nothing is open" and says so. The last line is the
 duration.
 """
@@ -60,12 +69,15 @@ duration.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import check_decisions
 
 ROOT = Path(__file__).resolve().parent.parent
 STATUS = ROOT / "docs" / "status.md"
@@ -226,12 +238,12 @@ def open_records() -> list[Open]:
     return sorted(found, key=lambda record: record.urgency)
 
 
-def generated(records: list[Open]) -> str:
+def generated(records: list[Open], merged: list[str] | None = None) -> str:
     rows = [
         f"| {r.identifier} | {r.title} | {r.needed_by} | {r.kind} | {r.issue} |" for r in records
     ]
     listed = "\n".join([COLUMNS, *rows]) if records else NOTHING_OPEN
-    return listed + "\n\n" + acceptance()
+    return listed + "\n\n" + acceptance(merged)
 
 
 RECOMMENDED = re.compile(r"^### Option ([A-Z])\b[^\n]*\(recommended\)", re.MULTILINE)
@@ -247,17 +259,76 @@ REVIEW_EVERY = 20
 """After every twenty unlisted notices a request puts the override rate to the owner (DEC-0042)."""
 
 
-def acceptance() -> str:
+OVERRIDES = re.compile(r"^\*\*Overrides:\*\*(.*)$", re.MULTILINE)
+"""A decision that set aside a behaviour change names the pull request that carried it."""
+MERGED_SEARCH = [
+    "gh",
+    "pr",
+    "list",
+    "--state",
+    "merged",
+    "--search",
+    '"Behaviour changes" in:body',
+    "--limit",
+    "1000",
+    "--json",
+    "number,body",
+]
+"""The merged pull requests whose description may carry `## Behaviour changes` (DEC-0189 rule
+2). The host's search returns at most a thousand."""
+
+
+def merged_descriptions(path: Path | None) -> list[str] | None:
+    """The descriptions of the merged pull requests that may name a behaviour change: from the
+    file a workflow fetched them into, or from the host through `gh`. None where neither
+    answers: offline, without `gh`, without a token, or a file the fetch did not write."""
+    try:
+        if path is not None:
+            raw = path.read_text(encoding="utf-8")
+        else:
+            # A fixed executable and arguments assembled here, not from input.
+            raw = subprocess.run(  # noqa: S603
+                MERGED_SEARCH,
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30,
+            ).stdout
+        data = json.loads(raw)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, list):
+        return None
+    return [
+        item["body"]
+        for item in data
+        if isinstance(item, dict) and isinstance(item.get("body"), str)
+    ]
+
+
+def behaviour_changes(descriptions: list[str]) -> int:
+    """How many well-formed lines of `## Behaviour changes` the descriptions carry."""
+    total = 0
+    for body in descriptions:
+        parsed = check_decisions.behaviour_changes(body)
+        if parsed is not None:
+            total += len(parsed[0])
+    return total
+
+
+def acceptance(merged: list[str] | None = None) -> str:
     """The balance of asking and deciding alone (DEC-0039), from the register: for every
     request asked before it was answered, whether the owner chose the recommended option; for
     every notice, whether a later decision overrode it. Near 100 % accepted means too much is
     asked; many overridden notices mean too much is decided alone. A record written after the
     answer and a mode-4 request are left out (DEC-0042, DEC-0045); the count of unlisted notices
     says when the override rate is next put to the owner."""
-    answered = recommended = other = own = left_out = 0
+    answered = recommended = other = own = left_out = set_aside = 0
     for path in sorted(REGISTER.glob("DEC-*.md")):
         text = strip_comments(path.read_text(encoding="utf-8"))
         fields = header_fields(text)
+        set_aside += sum(len(ISSUE_REF.findall(m.group(1))) for m in OVERRIDES.finditer(text))
         if fields.get("Category") not in ("BLOCKING", "NON-BLOCKING"):
             continue
         if "\n## Outcome" not in text:
@@ -284,13 +355,24 @@ def acceptance() -> str:
         if fields.get("Kind") == "unlisted":
             unlisted += 1
     share = f" ({round(recommended * 100 / answered)} %)" if answered else ""
+    if merged is None:
+        lines = (
+            f"behaviour changes in merged pull requests not counted, the host could not be "
+            f"asked ({set_aside} overridden by a decision)"
+        )
+    else:
+        lines = (
+            f"of {behaviour_changes(merged)} behaviour change(s) in merged pull requests, "
+            f"{set_aside} overridden by a decision"
+        )
     review = (unlisted // REVIEW_EVERY + 1) * REVIEW_EVERY
     return (
         f"Acceptance: of {answered} request(s) asked before they were answered, {recommended} "
         f"took the recommended option{share}, {other} another option, {own} an answer of the "
         f"owner's own ({left_out} written after the answer or of mode 4, left out); of "
-        f"{notices} notice(s), {overridden} overridden by a later decision; {unlisted} decided "
-        f"under the reversed default, the override rate goes to the owner at {review}. Near "
+        f"{notices} notice(s), {overridden} overridden by a later decision; {lines}; "
+        f"{unlisted} decided under the reversed default, the override rate goes to the owner at "
+        f"{review}. Near "
         "100 % accepted means too much is asked; many overridden notices mean too much is "
         "decided alone (DEC-0039, DEC-0042)."
     )
@@ -524,6 +606,12 @@ def main(argv: list[str] | None = None) -> int:
         "--author", help="github.event.pull_request.user.login: who wrote the description"
     )
     parser.add_argument(
+        "--merged",
+        type=Path,
+        help="JSON of merged pull requests ([{number, body}]) to count behaviour changes from; "
+        "with --print and without it, `gh` asks the host",
+    )
+    parser.add_argument(
         "--print",
         dest="show",
         action="store_true",
@@ -532,11 +620,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     started = time.monotonic()
-    expected = generated(open_records())
-    if args.show:
-        print(printable(expected))
-        return 0
-    if args.write_pr_body is not None:
+    if args.show or args.write_pr_body is not None:
+        # The host is asked only where a person prints the list; the workflow that writes it
+        # into a description fetched the descriptions already and hands them over.
+        ask = args.merged is not None or args.show
+        expected = generated(open_records(), merged_descriptions(args.merged) if ask else None)
+        if args.show:
+            print(printable(expected))
+            return 0
         return write_pr_body(args.write_pr_body, expected, args.author)
 
     report = Report()

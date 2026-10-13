@@ -56,6 +56,9 @@ an issue, in the shape of the form `Task`, and stays for its turn.
   adjusted to become meetable.
 - A spend on the owner's credential to derive or verify a fact is allowed up to USD 1 for the
   whole task, recorded as a notice; beyond that it is a request (M2.8).
+- A change of what the software does inside the issue's scope (M2.4) is a line of the
+  description's section *Behaviour changes* — old behaviour, new behaviour, reason — and no
+  notice file (DEC-0189 rule 2). Every other mode-2 decision is still a notice.
 - **Merge when the pull request is green**: `make gates` locally, and every check in CI. The
   session merges its own pull request once every check is green, with no more running in
   parallel than CI carries, and never one that raises a `BLOCKING` request (M1.22, DEC-0189).
@@ -73,8 +76,9 @@ an issue, in the shape of the form `Task`, and stays for its turn.
 ## 6. Report
 
 The pull request is the report. Its description has the shape CI checks (ADR-0017 §7): what this
-is about, the decisions it raises by ID and category, what was done, why this way, what to check,
-and last the section *Needed from the owner*, which is the output of `make status`. The
+is about, the decisions it raises by ID and category, every change of what the software does
+inside an agreed scope as a line of *Behaviour changes* (M2.4, DEC-0189 rule 2), what was done,
+why this way, what to check, and last the section *Needed from the owner*, which is the output of `make status`. The
 `owner-list` workflow writes it from the branch's register; a description opened without it
 gains it on its first run (DEC-0189 rule 1).
 

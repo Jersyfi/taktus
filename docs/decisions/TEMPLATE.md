@@ -14,6 +14,8 @@ Before writing: test the question against anchors.taktus.md. Only an entry of mo
 justifies a request; the owner wants a worked opinion with context, not a question.
 The comprehension test: could a person decide this who has read neither the diff, nor the session,
 nor any ADR? If not, the request is not finished. Mechanism: docs/adr/ADR-0017.
+A decision that sets aside a behaviour change a merged pull request named under
+"Behaviour changes" gains the header line **Overrides:** #<that pull request> (DEC-0189 rule 2).
 -->
 
 ## 1. What this is about

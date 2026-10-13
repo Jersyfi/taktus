@@ -62,6 +62,13 @@ Checks:
    done", "Why this way" and "What to check", none empty and none a placeholder — so that a
    reviewer who has not read the diff can act on it (ADR-0017 §7). The gate sees that the four
    are there and filled, not that they are true or readable without the diff;
+5b. with --pr-body: a section "Behaviour changes", where the description has one, is "None" or
+   one line per change of what the software does inside an agreed scope (M2.4), each naming the
+   old behaviour, the new one and the reason (`BEHAVIOUR_SHAPE`); with --base, a notice of kind
+   behaviour-change the branch adds fails, because such a change is that line and no longer a
+   file (DEC-0189 rule 2). The gate sees that a line has the three parts, not that it is true,
+   nor that a change which needed a line got one. A decision that sets such a change aside names
+   its pull request in `**Overrides:** #NNN`, which the gate holds to naming one;
 6. with --draft false: no BLOCKING decision is open — a pull request with a BLOCKING decision
    stays a draft;
 7. with --forbid-open-blocking (push to main): no BLOCKING file is under open/ at all.
@@ -227,6 +234,22 @@ OWNERS_OWN = re.compile(r"^M4\.\d+$")
 # (ADR-0017 §7): what it is about, what was done, why that way, what the reviewer should check.
 DESCRIPTION = ["What this is about", "What was done", "Why this way", "What to check"]
 ISSUE_REF = re.compile(r"#\d+\b")
+# A change of what the software does inside an agreed scope (M2.4) is a line of a fixed section
+# of the pull request description, not a notice file (DEC-0189 rule 2). The section is optional;
+# where it is there, it says `None` or holds one line per change, each naming the old
+# behaviour, the new one and the reason.
+BEHAVIOUR_SECTION = "Behaviour changes"
+BEHAVIOUR_KIND = "behaviour-change"
+BEHAVIOUR_LINE = re.compile(
+    r"^[-*]\s+\*\*Old:\*\*(?P<old>.*?)\*\*New:\*\*(?P<new>.*?)\*\*Reason:\*\*(?P<reason>.*)$"
+)
+BEHAVIOUR_SHAPE = (
+    "`- **Old:** what it did **New:** what it does **Reason:** why the scope needed it`"
+)
+OVERRIDES = "Overrides"
+"""A decision that sets aside a behaviour change names the pull request that carried it, as
+`**Overrides:** #NNN`: a line of a merged description cannot gain `**Overridden by:**` the way a
+notice file does, so the override is counted from the decision (DEC-0042)."""
 
 type Check = Callable[[Document, list[str]], None]
 
@@ -452,6 +475,12 @@ def check_record(doc: Document, problems: list[str]) -> None:
     check_sections(doc, problems)
     if doc.category in DECISION_CATEGORIES:
         check_options(doc, problems)
+    overrides = doc.fields.get(OVERRIDES)
+    if overrides is not None and not ISSUE_REF.search(overrides):
+        problems.append(
+            f"`**{OVERRIDES}:**` names the pull request whose behaviour change the decision "
+            f"sets aside, as #NNN (DEC-0189 rule 2, DEC-0042): {overrides!r}"
+        )
     outcome = doc.sections.get(OUTCOME)
     if outcome is None:
         problems.append("`## Outcome` is missing: a record carries the answer and its date")
@@ -1130,6 +1159,86 @@ def check_description(body: str, report: Report) -> None:
         report.ok("the description says what, what was done, why, and what to check")
 
 
+@dataclass(frozen=True)
+class BehaviourChange:
+    old: str
+    new: str
+    reason: str
+
+
+def behaviour_changes(body: str) -> tuple[list[BehaviourChange], list[str]] | None:
+    """The lines of `## Behaviour changes` and what is wrong with any of them; None where the
+    description has no such section. `None` as the section's text names no change."""
+    section = next(
+        (text for name, text in description_sections(body) if name.lower() == "behaviour changes"),
+        None,
+    )
+    if section is None:
+        return None
+    if section.lower() == "none":
+        return [], []
+    found: list[BehaviourChange] = []
+    problems: list[str] = []
+    for line in (line.strip() for line in section.splitlines() if line.strip()):
+        match = BEHAVIOUR_LINE.match(line)
+        if match is None:
+            problems.append(f"not a behaviour change ({BEHAVIOUR_SHAPE}): {line!r}")
+            continue
+        parts = {name: value.strip() for name, value in match.groupdict().items()}
+        empty = [name for name, value in parts.items() if not value]
+        if empty:
+            labels = ", ".join(f"**{name.title()}:**" for name in empty)
+            problems.append(f"says nothing after {labels}: {line!r}")
+        elif hit := PLACEHOLDER.search(strip_code(line)):
+            problems.append(f"keeps a placeholder {hit.group(0)!r}: {line!r}")
+        elif parts["old"] == parts["new"]:
+            problems.append(f"the old behaviour and the new one are the same: {line!r}")
+        else:
+            found.append(BehaviourChange(**parts))
+    return found, problems
+
+
+def check_behaviour_changes(body: str, report: Report) -> None:
+    """`## Behaviour changes`, where the description has it, is `None` or one line per change
+    with the old behaviour, the new one and the reason (M2.4, DEC-0189 rule 2)."""
+    print("behaviour changes")
+    parsed = behaviour_changes(body)
+    if parsed is None:
+        report.ok(f"no `## {BEHAVIOUR_SECTION}`: the change names none")
+        return
+    found, problems = parsed
+    for problem in problems:
+        report.fail(f"## {BEHAVIOUR_SECTION}", problem)
+    if not problems:
+        report.ok(f"{len(found)} behaviour change(s), each with old, new and reason")
+
+
+def check_no_behaviour_notice(report: Report, notices: list[Document], base: str) -> None:
+    """A notice of kind behaviour-change the branch adds fails: since DEC-0189 rule 2 the change
+    is a line of the description, and a second form would split what `make status` counts.
+    The notices written before stay as they are."""
+    print("behaviour changes are lines, not notices")
+    try:
+        held = base_identifiers(base)
+    except subprocess.CalledProcessError as error:
+        report.fail("base", f"{base} cannot be read: {error.stderr.strip()}")
+        return
+    added = [
+        doc
+        for doc in notices
+        if doc.identifier not in held and doc.fields.get("Kind") == BEHAVIOUR_KIND
+    ]
+    for doc in added:
+        report.fail(
+            doc.rel,
+            f"a notice of kind {BEHAVIOUR_KIND} added against {base}; a behaviour change is a "
+            f"line of `## {BEHAVIOUR_SECTION}` in the pull request description, "
+            f"{BEHAVIOUR_SHAPE} (M2.4, DEC-0189 rule 2)",
+        )
+    if not added:
+        report.ok(f"no notice of kind {BEHAVIOUR_KIND} added against {base}")
+
+
 def check_pull_request(
     body: str, draft: bool | None, open_docs: list[Document], report: Report
 ) -> None:
@@ -1246,6 +1355,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.base is not None:
         added = [*open_docs, *records, *notices, *open_needs, *provided_needs]
         check_reserved(report, added, args.base, args.remote)
+        check_no_behaviour_notice(report, notices, args.base)
     check_credentials(report, [*open_needs, *provided_needs])
     check_references(report, open_needs, provided_needs, open_docs)
     if args.pr_body is not None and written_by_a_dependency_bot(args.author):
@@ -1258,6 +1368,7 @@ def main(argv: list[str] | None = None) -> int:
         body = args.pr_body.read_text(encoding="utf-8")
         check_description(body, report)
         check_pull_request(body, args.draft, open_docs, report)
+        check_behaviour_changes(body, report)
     if args.forbid_open_blocking:
         for doc in open_docs:
             if doc.category == "BLOCKING":
