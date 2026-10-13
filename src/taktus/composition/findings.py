@@ -1,16 +1,19 @@
 """The product finding, wired (UC-6.12, ADR-0046): the run's accounts as the blocks a finding
-reads, and the Taktus repository as the channel it is sent through.
+reads, and a repository as the channel it is sent through.
 
 `RunBlocks` reads the run's blocked-time accounts — every block that ended, and every block still
 open on its step run — and hands them to the reporting component in its own shape. The two
 components never import each other; this is where they meet.
 
 `RepositoryChannel` sends through a connector that serves `repository.issues` and
-`repository.comments` on the Taktus repository. A finding is an issue labelled `task`, and every
-later report a comment on it. Taktus writes as itself (ADR-0033): the call carries Taktus's own
-identity and references the credential the connector declares for actions. The connector is the
-one `TAKTUS_FINDINGS_CONNECTOR` names; an instance whose operator did not name one sends nothing
-and shows its findings to the operator instead (`taktusctl findings`).
+`repository.comments` on the repository its operator configured it for. A finding is an issue,
+opened with the labels its operator configured (`TAKTUS_FINDINGS_LABELS`, none by default), and
+every later report a comment on it. Which repository, which labels and which shape are the
+operator's configuration, never one project's (ADR-0092). Taktus writes as itself (ADR-0033):
+the call carries Taktus's own identity and references the credential the connector declares for
+actions. The connector is the one `TAKTUS_FINDINGS_CONNECTOR` names; an instance whose operator
+did not name one sends nothing and shows its findings to the operator instead
+(`taktusctl findings`).
 """
 
 from __future__ import annotations
@@ -35,8 +38,6 @@ TAKTUS = "taktus"
 """The identity Taktus acts as on its own behalf (ADR-0033)."""
 READ_KEY = "taktus:finding:read"
 """A read changes nothing; the contract asks every call for a key, so a read carries this one."""
-LABELS = ("task",)
-"""A finding is a task of the backlog (DEC-0051): the form's label, and no other."""
 ADAPTER = "findings.repository"
 INTERVAL_SECONDS = 600
 """How often the scheduler sends findings: a block that waits is waiting minutes at least, and
@@ -77,11 +78,14 @@ class RunBlocks:
 
 
 class RepositoryChannel:
-    """The Taktus repository, reached through one connector."""
+    """The repository findings go to, reached through one connector, which names it."""
 
-    def __init__(self, connector: ActionConnector, *, name: str = ADAPTER) -> None:
+    def __init__(
+        self, connector: ActionConnector, *, name: str = ADAPTER, labels: Sequence[str] = ()
+    ) -> None:
         self._connector = connector
         self._name = name
+        self._labels = tuple(labels)
         self._credentials: tuple[CredentialReference, ...] | None = None
 
     @property
@@ -114,7 +118,7 @@ class RepositoryChannel:
         created = await self._call(
             tenant,
             "repository.issues.create",
-            {"title": title, "body": body, "labels": list(LABELS)},
+            {"title": title, "body": body, "labels": list(self._labels)},
             key,
         )
         return str(created["number"])

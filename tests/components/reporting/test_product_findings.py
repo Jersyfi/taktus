@@ -7,6 +7,7 @@ repository does — by the texts and their marks. The run against the fake repos
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -193,3 +194,41 @@ async def test_without_a_channel_nothing_is_sent_and_the_finding_is_shown() -> N
     shown = texts.shown(finding)
     assert shown.splitlines()[0] == "Product finding: no worker offers code.review"
     assert "Occurrence 2: run `run_2`" in shown
+
+
+# --- the shape -------------------------------------------------------------------------------
+
+
+async def test_without_a_form_a_finding_has_the_products_plain_shape() -> None:
+    """No repository's backlog is the product's default (ADR-0092): the plain shape names no
+    section of an issue form, and the occurrences follow below a rule with the mark."""
+    channel = Channel()
+    product = ProductFindings(Source([blocked("run_1")]), sending(channel))
+    assert await product.send(TENANT) == Sent(opened=1)
+    (body,) = channel.issues["1"].texts
+    assert "###" not in body and "Blocked by" not in body
+    assert "`code.review`" in body and "run `run_1`, step `review`" in body
+    assert "\n---\n" in body and texts.reported([body])[0].lack
+
+
+async def test_a_configured_form_is_filled_and_keeps_the_mark() -> None:
+    shape = texts.form("## Lack\n\n$tried\n\n## Where\n\n$area: $lacking in $run/$step ($cause)")
+    channel = Channel()
+    product = ProductFindings(Source([blocked("run_1")]), sending(channel), shape=shape)
+    assert await product.send(TENANT) == Sent(opened=1)
+    (body,) = channel.issues["1"].texts
+    assert body.startswith("## Lack\n\nA step needed a worker that offers `code.review`.")
+    assert "workers: code.review in run_1/review (no_worker)" in body
+    assert texts.reported([body])[0].occurrence
+    (finding,) = await product.findings(TENANT)
+    assert product.shown(finding).splitlines()[2] == "## Lack"
+
+
+@pytest.mark.parametrize(
+    ("text", "named"),
+    [("$tried and $customer", "customer"), ("a lone $ sign", "`$$`"), ("  ", "empty")],
+)
+def test_a_form_that_names_anything_but_the_fields_is_refused(text: str, named: str) -> None:
+    """A form fills identifiers, causes and names only (ADR-0006): nothing else can enter."""
+    with pytest.raises(ValueError, match=re.escape(named)):
+        texts.form(text)

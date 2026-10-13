@@ -4,7 +4,8 @@
 # repository, or one section of it named by its heading exactly as the file writes it; `heading`
 # gives the section another heading in the page, where its own would mislead there. A page
 # says what its parts say and nothing more: the repository is the source, the guides are
-# rendered from it (`taktusctl guides check`, `taktusctl guides publish`).
+# rendered from it (`taktusctl guides check`, `taktusctl guides publish`, each given this file's
+# path with `--manifest docs/guides/guides.yaml`: the product assumes no place for it, ADR-0092).
 #
 # `place` is where a guide goes in the organisation's knowledge system, one name per level,
 # unless the organisation configures another (`--place GUIDE=LEVEL/LEVEL`). Every guide also

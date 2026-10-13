@@ -35,7 +35,8 @@ class ProposeBody(BaseModel):
     bundle: dict[str, Any] | None = Field(
         default=None,
         description="The changed process bundle, as a document. Without it, `request` is turned "
-        "into a proposal by S-07, and the answer names that run (ADR-0091 §2).",
+        "into a proposal by the process the instance names for it, and the answer names that "
+        "run (ADR-0091 §2).",
     )
     request: str | None = Field(
         default=None, min_length=1, description="The words the change was asked for in."
@@ -67,7 +68,7 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
         "registration would give, and nothing is kept (ADR-0091 §1).",
         responses={
             201: {"description": "The proposal."},
-            202: {"description": "Asked in words: the S-07 run that makes the proposal."},
+            202: {"description": "Asked in words: the run that makes the proposal."},
             400: {"description": "The bundle would not register; every finding.", **PROBLEM},
             **common,
         },

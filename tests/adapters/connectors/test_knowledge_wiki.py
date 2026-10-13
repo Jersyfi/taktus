@@ -306,7 +306,7 @@ async def test_the_guides_are_published_once_and_then_kept(wiki: Wiki) -> None:
     """The guides of this repository through the connector, as `taktusctl guides publish`
     would put them into a directory: every page created; published again, every page kept,
     although the wiki changed every text it stored."""
-    manifest, source, pages = rendered(ROOT, "HEAD", None)
+    manifest, source, pages = rendered(ROOT, "HEAD", None, "docs/guides/guides.yaml")
     handler = PublishGuidesHandler(
         McpActionConnector(build_server(Config(target=wiki.url, timeout=5.0)), timeout=10.0)
     )

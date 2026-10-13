@@ -579,6 +579,44 @@ def test_the_platform_and_each_credentials_declaration_are_configuration() -> No
     assert "TAKTUS_PLATFORM" not in plain["data"] and "TAKTUS_ADMINISTERS" not in plain["data"]
 
 
+def test_a_file_of_configuration_is_mounted_into_every_role_and_none_by_default() -> None:
+    """ADR-0092: what one tenant measured or shaped — a seed, a finding's form — reaches an
+    instance as a file its operator gives, never as a default of the chart."""
+    plain = render()
+    assert [c["metadata"]["name"] for c in of_kind(plain, "ConfigMap")] == ["taktus-config"]
+    documents = render(
+        "configFiles.seeds\\.yaml=the-seeds",
+        "env.TAKTUS_BUDGET_SEEDS=/etc/taktus/files/seeds.yaml",
+    )
+    config, files = sorted(of_kind(documents, "ConfigMap"), key=lambda c: c["metadata"]["name"])
+    assert files["data"] == {"seeds.yaml": "the-seeds"}
+    assert config["data"]["TAKTUS_BUDGET_SEEDS"] == "/etc/taktus/files/seeds.yaml"
+    roles = [
+        d for d in of_kind(documents, "Deployment") if "taktus-role" in d["metadata"]["labels"]
+    ]
+    assert len(roles) == 4
+    for role in roles:
+        spec = role["spec"]["template"]["spec"]
+        assert {"name": "config-files", "configMap": {"name": files["metadata"]["name"]}} in spec[
+            "volumes"
+        ]
+        (container,) = spec["containers"]
+        assert {
+            "name": "config-files",
+            "mountPath": "/etc/taktus/files",
+            "readOnly": True,
+        } in container["volumeMounts"]
+    assert "is not a file name" in render_fails("configFiles._a=x")
+
+
+def test_the_model_output_cap_is_soft_unless_the_operator_sets_it() -> None:
+    """ADR-0092 §2: a limit measured on one endpoint is that operator's value, not the chart's."""
+    [config] = of_kind(
+        render("model.endpoint=https://models.example.net/v1", "model.name=m"), "ConfigMap"
+    )
+    assert config["data"]["TAKTUS_MODEL_OUTPUT_CAP"] == "soft"
+
+
 def test_the_ingress_is_off_unless_a_host_is_given(rendered: list[dict[str, Any]]) -> None:
     assert of_kind(rendered, "Ingress") == []
 

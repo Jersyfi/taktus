@@ -55,9 +55,6 @@ from taktus.shared.v1 import Command, Intent, LedgerRefs, ReplyTo
 CHANNEL = "channel.web"
 """The channel a change in dialogue arrives on; the chat's acts arrive on their own (ADR-0069)."""
 
-CHANGE_IN_DIALOGUE = "s07-change-in-dialogue"
-"""The process that turns a request in words into a proposal (`blueprints/self-operation/`)."""
-
 
 class ProposalActs:
     def __init__(
@@ -75,8 +72,14 @@ class ProposalActs:
         work: UnitOfWork,
         clock: Clock,
         ids: Identifiers,
+        change_process: str | None = None,
     ) -> None:
+        """`change_process` is the process that turns a request in words into a proposal, as
+        the operator names it (`TAKTUS_CHANGE_PROCESS`); None, the default: no request in words
+        is taken, and a changed bundle is handed over instead. Which process does it is a
+        tenant's bundle, never the product's default (ADR-0092)."""
         self._proposals = proposals
+        self._change_process = change_process
         self._processes = processes
         self._versions = versions
         self._runs = runs
@@ -90,23 +93,31 @@ class ProposalActs:
         self._ids = ids
 
     async def ask(self, tenant: Tenant, process_id: str, request: str, by: str) -> Run:
-        """A change asked for in words: a run of S-07 for the process (ADR-0091 §2), which keeps
-        a proposal once the model's bundle passes validation. The run acts for whoever asked."""
+        """A change asked for in words: a run of the configured change process for the process
+        (ADR-0091 §2), which keeps a proposal once the model's bundle passes validation. The run
+        acts for whoever asked."""
+        changing = self._change_process
         async with self._work.transaction(tenant):
             target = await self._processes.get(tenant, process_id)
-            s07 = await self._processes.get(tenant, CHANGE_IN_DIALOGUE)
+            change = None if changing is None else await self._processes.get(tenant, changing)
             version = (
                 None
-                if s07 is None or s07.active_version is None
-                else await self._versions.get(tenant, f"{s07.id}@{s07.active_version}")
+                if change is None or change.active_version is None
+                else await self._versions.get(tenant, f"{change.id}@{change.active_version}")
             )
         if target is None or target.active_version is None:
             raise ProposalError("unknown", f"no process {process_id!r}")
+        if changing is None:
+            raise ProposalError(
+                "unavailable",
+                "no process turns a request in words into a proposal on this instance "
+                "(TAKTUS_CHANGE_PROCESS): hand over the changed bundle instead",
+            )
         if version is None or version.limits is None:
             raise ProposalError(
                 "unavailable",
-                f"{CHANGE_IN_DIALOGUE} is not registered on this instance: hand over the changed "
-                "bundle instead",
+                f"{changing} is not registered on this instance: hand over the changed bundle "
+                "instead",
             )
         placed = await self._identities.identity(tenant, by)
         if placed is None:
