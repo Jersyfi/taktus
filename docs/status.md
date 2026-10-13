@@ -444,6 +444,13 @@ everything after it, on every commit of `main`, and every commit on `main` will 
 self-development bundles. Phases 1 and 2 are `0.3.0` (#388 to #392); the ruleset's switch is the
 owner's (NEED-0026). Nothing of it is built yet.
 
+**The Warp outlook** (2026-10-13). Software factories such as Warp are far ahead where Taktus
+had placed its proof, so Taktus proves itself on a real operation instead (DEC-0195,
+`docs/research/2026-10-13-warp-review.md`): the second tenant is a business or, from 2026-11-01,
+the owner's household (NEED-0027, #400); `0.6.0` adds a level-3 process of that tenant (#401);
+the second domain of `0.7.0` is incoming invoice to payment release (#402), and IT operations
+moved after `1.0.0` (#95). Ten features follow from the comparison (#403 to #411).
+
 ## 2. The next pull requests
 
 **The order of work is the backlog's** (DEC-0051): the repository's open issues, in milestones
