@@ -62,13 +62,13 @@ ledger). P-02 never edits the issue and never adds the label `ready`: a person, 
 the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
 the same issue, it stops at the first check: nothing is written twice.
 
-**P-03 Implementation** (version 7, autonomy 4, eighteen steps): read the issue and its comments, compose
+**P-03 Implementation** (version 8, autonomy 4, twenty-two steps): read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
 of open records on `main`, admit — the ready standard, and open, not a pull request, not claimed
 (`rule` `ready`, `exact`; a refusal names every reason) — claim the issue with the label
 `in-progress` (`rule`, outward), implement (`worker`, `tolerant`: the coding worker in a clone of
 the repository, with the issue's text as its task and its section "How it is verified" as the
-acceptance; it leaves the pipeline's workflow files to a person, which the app may not write, NTC-0203), name the branch, put the worker's changeset on it through the connector (`rule`,
+acceptance; it leaves the pipeline's workflow files to a person, which the app may not write, NTC-0203), reserve the numbers of the records the change adds — read the records `main` holds, derive the references `refs/register/<PREFIX>-<NNNN>` of every record the changeset writes under `docs/decisions/` that `main` does not hold (`rule` `extract`, `exact`), and create them (`rule`, outward, skipped when there is none; a number somebody else holds stops the run, naming the reference, ADR-0095) — name the branch, put the worker's changeset on it through the connector (`rule`,
 outward: one commit that carries the idempotency key), wait for the pipeline (`wait`, polling
 the pipeline's state), read the verdict, verify it is `success` (`rule`, `exact` — the pipeline's
 verdict, never the worker's opinion), compose the title, the closing section and the body, open the pull request
@@ -208,19 +208,24 @@ a person applies by reading.
    for so that every condition under "How it is verified" holds, within "Where the boundary
    lies", following the repository's own rules for a change; run its checks (`make gates`
    here). Write the pull request description in the shape the repository asks for.
-5. **branch-name** and **create-branch** (person) — push the change as branch
+5. **read-register**, **read-register-open**, **record-references** and **reserve-records**
+   (person) — for every record the change adds under `docs/decisions/` whose number `main`
+   does not hold, reserve the number: `make reserve ID=<PREFIX>-<NNNN>`. If it is taken, take
+   the next free one with `make reserve KIND=<PREFIX>` and renumber the record and every
+   mention of it before pushing.
+6. **branch-name** and **create-branch** (person) — push the change as branch
    `taktus/issue-<n>`. A branch of that name left by an earlier attempt is either the run's to
    resume or deleted first; never push over it unseen.
-6. **wait-for-pipeline** and **read-pipeline** (person) — wait until the pipeline for the
+7. **wait-for-pipeline** and **read-pipeline** (person) — wait until the pipeline for the
    branch has a verdict, and read it.
-7. **verify** — the verdict is `success`. If not, go back to step 4.
-8. **pull-request-title**, **pull-request-body** and **open-pr** (person) — open the pull
+8. **verify** — the verdict is `success`. If not, go back to step 4.
+9. **pull-request-title**, **pull-request-body** and **open-pr** (person) — open the pull
    request against `main`, titled with the issue's title and `(#<n>)`, its description
    starting `Closes #<n>.` and ending with the section the repository generates
    (`make status` here).
-9. **label** (person) — add the label `taktus` when the change was made by a run that stopped
-   after `implement`, so that a reader sees where it came from; a change the person made
-   carries no label.
+10. **label** (person) — add the label `taktus` when the change was made by a run that stopped
+    after `implement`, so that a reader sees where it came from; a change the person made
+    carries no label.
 
 Merging stays with the person who reviews, as it does when Taktus runs the process.
 

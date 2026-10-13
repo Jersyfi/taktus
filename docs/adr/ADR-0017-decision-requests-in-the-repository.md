@@ -338,7 +338,7 @@ reserved passes it. The second of those two to merge is stopped by the check tha
 used once. A
 reservation needs the remote: a session without one cannot reserve, and writes its record once
 it can. A process that writes records through the host's interface instead of `git` creates the
-same ref through that interface; nothing here builds that for P-03 yet. For a pull request description it checks that the four sections of §7 are there,
+same ref through that interface; P-03 does so since ADR-0095. For a pull request description it checks that the four sections of §7 are there,
 filled and in order; it cannot check that they are readable without the diff. It cannot check that a request is decidable by a person who has read neither the
 diff nor the session — that is a reviewer's judgement — and it cannot check that a question
 tested against the anchor page was tested honestly. A notice's evidence, and a `gate-weakened`

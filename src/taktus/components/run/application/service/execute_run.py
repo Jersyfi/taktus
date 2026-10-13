@@ -137,6 +137,7 @@ from taktus.components.run.domain.model import (
     ConnectorRule,
     ConstantRule,
     Control,
+    ExtractRule,
     LlmWork,
     MlWork,
     NoConnector,
@@ -1748,6 +1749,9 @@ class RunEngine:
         if isinstance(work, TemplateRule):
             (values,), read = await self._resolved(run, [work.values])
             return rules.template(work, values), Trace(inputs=read), None, None
+        if isinstance(work, ExtractRule):
+            (values, excluding), read = await self._resolved(run, [work.values, work.excluding])
+            return rules.extract(work, values, excluding), Trace(inputs=read), None, None
         if isinstance(work, ConnectorRule):
             return await self._connector_call(run, step_run, work, span)
         if isinstance(work, LlmWork):

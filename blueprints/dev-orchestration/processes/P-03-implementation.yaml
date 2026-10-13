@@ -31,6 +31,14 @@
 # `repository.*` and the worker configured for `code.*` are what the capabilities resolve to;
 # no product is named here.
 #
+# A record of this repository's register that the change adds — a decision, a notice, a needs
+# request — carries a number that must be reserved on the repository before the branch is
+# written (DEC-0189 rule 6), and the pipeline fails one that is not. The worker cannot reserve:
+# its workspace has no right to push. So the run reserves, as `make reserve` would, through the
+# connector: it derives the references from the paths the changeset adds, less the records
+# `main` already holds, and creates them before it writes the branch. A number somebody else
+# holds stops the run there, with the reference named (ADR-0095, issues #382 and #281).
+#
 # Every step an integration serves — a connector call, a wait on a connector, the worker, the
 # model — names a person as its fallback for when that integration is unavailable (issue #90).
 # The engine does not switch to the person: the step fails or is refused, and the run escalates
@@ -39,7 +47,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "7"
+version: "8"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -308,6 +316,17 @@ steps:
             no file under .github/workflows/ is changed: the run that carries the change may not
             write the repository's pipeline. Where the issue needs a change there, the summary
             names it, file and exact change, for a person to make
+          # The repository's own rule for a record's number is `make reserve`, which pushes a
+          # reference; the workspace cannot push, so the run reserves what the change adds
+          # (ADR-0095). The index of the register is generated, never written (issue #281).
+          - >
+            a record the change adds to the register under docs/decisions/ — a decision, a
+            notice, a needs request — takes the next number free of its kind: one above the
+            highest that a record on the base or a reservation holds, and the reservations are
+            the references the clone's remote lists under refs/register/
+            (`git ls-remote origin 'refs/register/*'`). The workspace does not reserve it; the
+            run does, before it writes the branch. No row of the register's index is written or
+            replaced: the index is generated
           - >
             the change is small and touches what the issue names, and what the rules above
             require of any change
@@ -358,6 +377,102 @@ steps:
       values:
         issue: { $input: issue }
 
+  # The records `main` holds, read after the worker's change: a record the change edits or moves
+  # keeps the number it has there, and needs no reservation.
+  - id: read-register
+    method: rule
+    reason: the records the base holds, read from the system of record when the change is made
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.files is unavailable
+      to: human
+    depends_on: [implement]
+    work:
+      rule: connector
+      operation: repository.files.list
+      input:
+        path: docs/decisions
+        ref: main
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: read-register-open
+    method: rule
+    reason: the open records the base holds, read from the system of record when the change is made
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.files is unavailable
+      to: human
+    depends_on: [implement]
+    work:
+      rule: connector
+      operation: repository.files.list
+      input:
+        path: { $input: records_path }
+        ref: main
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
+  - id: record-references
+    method: rule
+    reason: >
+      the references that reserve the numbers of the records the change adds: every record the
+      changeset writes under the register, by its identifier, less the identifiers the base
+      holds — the comparison the pipeline's register check makes (DEC-0189 rule 6)
+    rejected:
+      - method: worker
+        why: >
+          the worker cannot see who holds a number when the branch is written, and a list it
+          wrote would be its opinion; the changeset and the base are read
+      - method: llm
+        why: a fixed pattern over paths needs no model
+    exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the references to reserve }
+    depends_on: [implement, read-register, read-register-open]
+    work:
+      rule: extract
+      values: { $from: implement, $artifact: changeset, $select: files }
+      excluding:
+        - { $from: read-register, $select: output.entries }
+        - { $from: read-register-open, $select: output.entries }
+      pattern: '^docs/decisions/(?:open/)?(?P<identifier>(?:DEC|NTC|NEED)-[0-9]{4})-[a-z0-9-]+\.md$'
+      text: refs/register/${identifier}
+
+  - id: reserve-records
+    method: rule
+    reason: >
+      each number the change adds is reserved on the repository before the branch is written,
+      as `make reserve` reserves it — a reference created once, atomically, by whoever comes
+      first. A number somebody else holds is a conflict that names the reference, and the run
+      stops before anything is written; a change without a new record skips the step
+    rejected:
+      - method: worker
+        why: a worker that pushes has a credential to the repository and writes outward past the ledger
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.refs is unavailable
+      to: human
+    depends_on: [record-references]
+    work:
+      when:
+        - value: { $from: record-references, $select: extracted }
+          not_matches: '^\[\]$'
+      rule: connector
+      operation: repository.refs.create
+      input:
+        names: { $from: record-references, $select: extracted }
+        target: main
+        message: reserved by P-03 for a record its change adds
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+
   - id: create-branch
     method: rule
     reason: >
@@ -371,7 +486,7 @@ steps:
     fallback:
       when: the connector serving repository.branches is unavailable
       to: human
-    depends_on: [implement, branch-name]
+    depends_on: [implement, branch-name, reserve-records]
     work:
       rule: connector
       operation: repository.branches.create

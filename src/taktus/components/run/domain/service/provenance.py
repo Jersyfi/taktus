@@ -28,6 +28,10 @@ from taktus.shared.v1 import (
 
 FINISHED = "step.finished"
 SUCCEEDED = "succeeded"
+SETTLED = frozenset({"skipped", "declined"})
+"""The outcomes of a step that succeeded without its act (ADR-0088): skipped because its
+`when` did not hold, or declined by the person it asked. Its result is the reason, and it has a
+record like any step that completed."""
 
 # The bound of ADR-0021 §4, with identifiers of at most 64 characters: the fixed part of a
 # record, what each input adds, what each output adds — as a JSON document.
@@ -207,8 +211,10 @@ def _against_ledger(provenance: Provenance, entry: LedgerEntry | None) -> list[s
         return [f"{where}: names ledger entry {provenance.ledger_seq}, which does not exist"]
     findings: list[str] = []
     # A rehearsal's outward step completes from a recording, and its entry says so (ADR-0030).
-    completed = entry.outcome == SUCCEEDED or (
-        entry.outcome == REHEARSED and entry.rehearsal is True
+    completed = (
+        entry.outcome == SUCCEEDED
+        or entry.outcome in SETTLED
+        or (entry.outcome == REHEARSED and entry.rehearsal is True)
     )
     if entry.kind != FINISHED or not completed:
         findings.append(

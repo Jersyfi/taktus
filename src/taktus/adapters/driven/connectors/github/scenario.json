@@ -20,6 +20,10 @@
       }
     },
     {
+      "operation": "repository.refs.create",
+      "input": { "names": ["refs/conformance/{{shared}}"], "target": "main", "message": "conformance {{shared}}" }
+    },
+    {
       "operation": "repository.pullrequests.open",
       "input": {
         "head": "conformance/{{shared}}",

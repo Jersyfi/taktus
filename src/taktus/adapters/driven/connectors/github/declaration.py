@@ -34,6 +34,7 @@ CAPABILITIES = [
     "repository.pipelines",
     "repository.comments",
     "repository.branches",
+    "repository.refs",
     "repository.labels",
     "repository.files",
     "repository.members",
@@ -143,6 +144,18 @@ OPERATIONS: list[Json] = [
         "`false` plain; an unmarked file keeps the mode it has in the base, and one the base "
         "does not have is a plain file. The commit message carries the idempotency key as a "
         "trailer; a repeat finds the branch and the mark at its head.",
+    },
+    {
+        "name": "repository.refs.create",
+        "demand": {"quota_units": 32},
+        "capability": "repository.refs",
+        "effect": "write",
+        "idempotency": "marked",
+        "summary": "Create up to ten fully qualified references, `refs/<namespace>/<name>`, "
+        "each on a commit of its own: a child of `target` with the target's tree, whose message "
+        "carries the idempotency key as a trailer. A repeat finds each reference and the mark "
+        "at it; a reference that exists without the mark is somebody else's: `conflict`, "
+        "naming it.",
     },
     {
         "name": "repository.issues.close",

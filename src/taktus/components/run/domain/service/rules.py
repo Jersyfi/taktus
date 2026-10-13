@@ -18,6 +18,7 @@ from taktus.components.run.domain.model.work import (
     Condition,
     ConstantRule,
     Expectation,
+    ExtractRule,
     ReadyRule,
     RoadmapRule,
     SpamRule,
@@ -283,6 +284,48 @@ def template(rule: TemplateRule, values: dict[str, Any]) -> str:
         raise RuleFailed(
             f"the template names {error.args[0]!r}, which the values do not carry"
         ) from error
+
+
+def extract(rule: ExtractRule, values: Any, excluding: Any) -> dict[str, Any]:
+    """Every distinct text the rule composes from a match among `values` that no match among
+    `excluding` composes too, sorted (ADR-0095)."""
+    pattern = re.compile(rule.pattern)
+    found = _composed(rule, pattern, values, "values")
+    left_out = _composed(rule, pattern, excluding, "excluding")
+    return {"extracted": sorted(found - left_out)}
+
+
+def _composed(rule: ExtractRule, pattern: re.Pattern[str], items: Any, what: str) -> set[str]:
+    composed: set[str] = set()
+    for text in _texts(items, what):
+        match = pattern.search(text)
+        if match is not None:
+            groups = {name: value or "" for name, value in match.groupdict().items()}
+            composed.add(Template(rule.text).substitute(groups))
+    return composed
+
+
+def _texts(items: Any, what: str) -> list[str]:
+    """The texts of a list: its strings, the `path` or else the `name` of its entries, and the
+    same of every list nested in it. Nothing given is nothing."""
+    if items is None:
+        return []
+    if not isinstance(items, list | tuple):
+        raise RuleFailed(f"{what} is not a list: {_short(items)}")
+    texts: list[str] = []
+    for item in items:
+        if isinstance(item, str):
+            texts.append(item)
+        elif isinstance(item, list | tuple):
+            texts.extend(_texts(item, what))
+        elif isinstance(item, Mapping) and isinstance(item.get("path", item.get("name")), str):
+            texts.append(str(item.get("path", item.get("name"))))
+        else:
+            raise RuleFailed(
+                f"an item of {what} is neither a text nor an entry with a path or a name: "
+                f"{_short(item)}"
+            )
+    return texts
 
 
 def _short(value: Any) -> str:

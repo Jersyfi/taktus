@@ -205,7 +205,9 @@ authentication error after N tool results, `FAKE_AGENT_WINDOW_AFTER=N` makes it 
 exhausted window; `--agent-env` passes those through. Its usage is fixed and overruns the
 worker's default estimate — about 620 000 input tokens against 60 000, where the real agent
 used 1.8 to 4.3 times the estimate in the first live run — so that the suite's `tight` run
-can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales every token count. The real agent is run with
+can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales every token count, and
+`FAKE_AGENT_WRITE`, a JSON object of path to content, adds those files to its change, so that a
+process test can give a change a file of its choosing. The real agent is run with
 `--agent claude` (the default), and a live run needs a credential the operator supplies.
 
 ## The agent's version
