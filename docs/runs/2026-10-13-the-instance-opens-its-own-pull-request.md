@@ -64,13 +64,16 @@ since #358 their steps wait for room instead of failing.
 
 ### Row 4 — the rehearsal
 
-**Not yet measured.** S-01 for `connector.channel.repo` (`run_4cc450d0ad9757d28eea`) ended
-`changed` and rehearsed nothing: P-01 and P-02 write a comment, and
+**Measured, on the evening of 2026-10-13.** The first S-01 run for `connector.channel.repo`
+(`run_4cc450d0ad9757d28eea`) rehearsed nothing: P-01 and P-02 write a comment, and
 `repository.comments.create` had never been called for real on the instance, so no recording
-exists. P-03 is never rehearsed: its worker reaches hosts (ADR-0030). The first real P-01 run
-(`run_8dcdc6951ec07a05f99c`) halted before its comment: its quota of 40 units is the whole
-reserve of its uncalibrated `read-issues` (DEC-0192, #363). Once P-01 writes its report, S-01
-answers from that recording.
+existed. P-01's quota held it before its comment (DEC-0192). With version 4 and a quota of 60
+units, P-01 ran for real (`run_1c11100257daecbb9b93`) and wrote its report into #129 as
+Taktus's own app. S-01 then ran again (`run_99b7b3bd78d46ff3b3dd`): `removal.tested` with the
+verdict `changed`. Its rehearsals of P-01, of version 3 and of version 4
+(`run_bf535a39c6fc16504b37`, `run_a2c2a0df30a1ae4d9d5e`), finished their step `write-report`
+with the outcome `rehearsed`, answered from that recording, and the ledger holds no egress
+entry of any rehearsal run. P-03 is never rehearsed: its worker reaches hosts (ADR-0030).
 
 ## What it cost
 
