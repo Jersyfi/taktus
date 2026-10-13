@@ -513,7 +513,9 @@ class _Run:
         self.index = assignment.step_index
         self.last_checkpoint: str | None = self.body.get("context", {}).get("checkpoint_ref")
         self.deferred: list[Json] = []
-        self.usage_seen: set[str] = set()
+        # Per message, the tokens already counted for it; all messages' tokens counted so far.
+        self.usage_seen: dict[str, tuple[int, int]] = {}
+        self.streamed = (0, 0)
         # Tokens of messages whose usage arrived before a call to attribute them to: they go
         # to the next step, so that none is lost.
         self.unattributed = (0, 0)
@@ -817,8 +819,8 @@ class _Run:
     def _on_assistant(self, event: Json, process: subprocess.Popen[str]) -> str | None:
         message = event.get("message") or {}
         tokens_in, tokens_out = self._usage_of(message)
-        # A message is streamed in several lines; its usage is counted with the first, which
-        # may carry text only. Until a call claims them, the tokens wait.
+        # A message is streamed in several lines; a line may carry text only. Until a call
+        # claims them, the tokens wait.
         tokens_in += self.unattributed[0]
         tokens_out += self.unattributed[1]
         self.unattributed = (tokens_in, tokens_out)
@@ -1058,18 +1060,28 @@ class _Run:
         return commit or None
 
     def _usage_of(self, message: Json) -> tuple[int, int]:
-        """The tokens of a message, once: the agent streams a message in several lines that all
-        carry the same usage."""
+        """The tokens of a message not yet counted. The agent streams a message in several
+        lines that all carry its usage so far: the output grows from line to line, and an
+        early line holds a fraction of it (#278). A message counts once, at its highest."""
         identifier = str(message.get("id") or "")
         usage = message.get("usage") or {}
-        if not identifier or identifier in self.usage_seen or not usage:
+        if not identifier or not usage:
             return 0, 0
-        self.usage_seen.add(identifier)
-        tokens_in = sum(
-            int(usage.get(name) or 0)
-            for name in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
-        )
-        return tokens_in, int(usage.get("output_tokens") or 0)
+        tokens_in, tokens_out = _tokens_of(usage)
+        counted_in, counted_out = self.usage_seen.get(identifier, (0, 0))
+        self.usage_seen[identifier] = (max(counted_in, tokens_in), max(counted_out, tokens_out))
+        new = (max(0, tokens_in - counted_in), max(0, tokens_out - counted_out))
+        self.streamed = (self.streamed[0] + new[0], self.streamed[1] + new[1])
+        return new
+
+    def _remainder_of(self, result: Json) -> tuple[int, int]:
+        """What the agent's session total in its final line holds beyond what the stream
+        showed: the output of messages whose last line came before their last token."""
+        usage = result.get("usage")
+        if not isinstance(usage, dict):
+            return 0, 0
+        tokens_in, tokens_out = _tokens_of(usage)
+        return max(0, tokens_in - self.streamed[0]), max(0, tokens_out - self.streamed[1])
 
     def _capability_of(self, tool: str, arguments: Json) -> str:
         capability = TOOL_CAPABILITY.get(tool, f"tool.{tool.lower()}")
@@ -1109,7 +1121,7 @@ class _Run:
         if ended_by == "result" and not result.get("is_error"):
             self._finish_succeeded(result, text)
             return
-        cause = text or stderr.strip()[-400:] or f"the agent exited with {returncode}"
+        cause = _cause_of(result, stderr, returncode)
         if AUTH_FAILURE.search(cause):
             self._finish_stopped(f"authentication failed or expired: {cause[:200]}")
             return
@@ -1126,15 +1138,17 @@ class _Run:
     def _finish_succeeded(self, result: Json, text: str) -> None:
         a = self.a
         self.index += 1
+        remainder = self._remainder_of(result)
         step = Step(
             index=self.index,
             step_id=f"step-{self.index}",
             tool="report",
             capability="code.read",
             kind="report",
-            # The closing message calls no tool; its tokens are this step's.
-            tokens_in=self.unattributed[0],
-            tokens_out=self.unattributed[1],
+            # The closing message calls no tool; its tokens are this step's, and so is what
+            # the session total holds beyond the stream.
+            tokens_in=self.unattributed[0] + remainder[0],
+            tokens_out=self.unattributed[1] + remainder[1],
             began=time.monotonic(),
         )
         self.unattributed = (0, 0)
@@ -1272,6 +1286,32 @@ def _artifact_event(assignment: Assignment, produced: Produced, step_id: str | N
     if step_id is not None:
         event["step_id"] = step_id
     return event
+
+
+def _cause_of(result: Json, stderr: str, returncode: int | None) -> str:
+    """Why the agent ended without success: its result's text, else the error its result
+    names — a limit of turns ends with a subtype and no text (#375) — else its error stream,
+    else its exit code."""
+    text = str(result.get("result") or "")
+    if text:
+        return text
+    subtype = str(result.get("subtype") or "")
+    if result.get("is_error") or subtype.startswith("error"):
+        turns = result.get("num_turns")
+        after = f" after {turns} turn(s)" if isinstance(turns, int) else ""
+        named = f"the agent ended with {subtype or 'an error'}{after}"
+        tail = stderr.strip()[-200:]
+        return f"{named}: {tail}" if tail else named
+    return stderr.strip()[-400:] or f"the agent exited with {returncode}"
+
+
+def _tokens_of(usage: Json) -> tuple[int, int]:
+    """Input, the cached tokens too, and output of a usage block."""
+    tokens_in = sum(
+        int(usage.get(name) or 0)
+        for name in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+    )
+    return tokens_in, int(usage.get("output_tokens") or 0)
 
 
 def _summary_of(tool: str, arguments: Json) -> str:

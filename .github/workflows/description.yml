@@ -6,6 +6,8 @@ name: description
 # push could never turn its check green — a gate that cannot be satisfied by doing the right
 # thing (NTC-0013). This workflow reads the description from the event, which carries the text
 # as it is after the edit, and runs only what depends on it; every code gate stays in `ci`.
+# The last section, what is needed from the owner, is not checked here: the `owner-list`
+# workflow writes it from the branch's register (DEC-0189 rule 1).
 on:
   pull_request:
     types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft]
@@ -51,14 +53,4 @@ jobs:
           uv run tools/check_decisions.py
           --pr-body "$RUNNER_TEMP/pr-body.md"
           --draft ${{ github.event.pull_request.draft }}
-          --author "$AUTHOR"
-      # The last section, what is needed from the owner, as the branch's register generates it
-      # (ADR-0028, DEC-0026).
-      - name: status in the description
-        env:
-          AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: >
-          uv run tools/check_status.py
-          --base origin/${{ github.base_ref }}
-          --pr-body "$RUNNER_TEMP/pr-body.md"
           --author "$AUTHOR"

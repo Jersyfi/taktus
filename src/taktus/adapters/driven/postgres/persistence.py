@@ -39,14 +39,41 @@ class Open:
     connection: AsyncConnection
 
 
+LOCK_TIMEOUT_SECONDS = 30.0
+"""How long a statement waits for a lock by default before it fails (`lock_timeout`)."""
+IDLE_IN_TRANSACTION_SECONDS = 120.0
+"""How long a transaction may sit between two statements by default before the server ends its
+session (`idle_in_transaction_session_timeout`)."""
+
+
 class PostgresPersistence:
-    def __init__(self, url: str, *, pool_size: int = 5) -> None:
-        # Timestamps come back in UTC whatever the server's zone, so that the ledger hashes,
-        # which cover the timestamp's text, recompute after a round trip.
+    def __init__(
+        self,
+        url: str,
+        *,
+        pool_size: int = 5,
+        lock_timeout_seconds: float = LOCK_TIMEOUT_SECONDS,
+        idle_in_transaction_seconds: float = IDLE_IN_TRANSACTION_SECONDS,
+    ) -> None:
+        """Every connection is opened with three session settings. Timestamps come back in UTC
+        whatever the server's zone, so that the ledger hashes, which cover the timestamp's
+        text, recompute after a round trip. A statement that waits for a lock — the ledger's
+        claim on a tenant's chain among them — fails after `lock_timeout_seconds` with
+        `lock_timeout`'s error, instead of waiting for good. A transaction left open without a
+        statement for `idle_in_transaction_seconds` is ended by the server, which releases its
+        locks; its next statement fails with the reason (issue #309). 0 disables either."""
+        options = " ".join(
+            (
+                "-c timezone=UTC",
+                f"-c lock_timeout={_milliseconds(lock_timeout_seconds)}",
+                "-c idle_in_transaction_session_timeout="
+                f"{_milliseconds(idle_in_transaction_seconds)}",
+            )
+        )
         self._engine: AsyncEngine = create_async_engine(
             for_sqlalchemy(url),
             pool_size=pool_size,
-            connect_args={"options": "-c timezone=UTC"},
+            connect_args={"options": options},
         )
         self._current: ContextVar[Open | None] = ContextVar("transaction", default=None)
 
@@ -100,6 +127,12 @@ class PostgresPersistence:
         if open_.tenant != tenant:
             raise WrongTenant(tenant, open_.tenant)
         return open_.connection
+
+
+def _milliseconds(seconds: float) -> int:
+    if seconds < 0:
+        raise ValueError(f"a timeout of {seconds:g} s is negative; 0 disables it")
+    return round(seconds * 1000)
 
 
 async def _aborted(connection: AsyncConnection) -> bool:

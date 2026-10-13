@@ -72,7 +72,9 @@ an issue, in the shape of the form `Task`, and stays for its turn.
 
 The pull request is the report. Its description has the shape CI checks (ADR-0017 §7): what this
 is about, the decisions it raises by ID and category, what was done, why this way, what to check,
-and last the section *Needed from the owner*, which is the output of `make status`.
+and last the section *Needed from the owner*, which is the output of `make status`. The
+`owner-list` workflow writes it from the branch's register; a description opened without it
+gains it on its first run (DEC-0189 rule 1).
 
 The message that ends the session says, in a few lines: the issue and the pull request, whether
 CI is green, every record raised by ID, and what the owner must answer or provide — each with its

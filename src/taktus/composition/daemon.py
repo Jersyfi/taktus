@@ -271,7 +271,12 @@ async def wire(
             await upgrade(url)
         except Exception as error:
             raise NotOperable(f"the migrations failed against {described(url)}: {error}") from error
-    persistence = PostgresPersistence(url, pool_size=settings.runner_concurrency + 4)
+    persistence = PostgresPersistence(
+        url,
+        pool_size=settings.runner_concurrency + 4,
+        lock_timeout_seconds=settings.database_timeouts.lock_seconds,
+        idle_in_transaction_seconds=settings.database_timeouts.idle_in_transaction_seconds,
+    )
     try:
         try:
             await check_schema(persistence.engine)
@@ -309,7 +314,9 @@ async def wire(
             # The loopback connector is in the pool the engine resolves from and needs the
             # engine; it is created first and bound last (composition/loopback.py).
             loopback = LoopbackConnector()
-            objects = MemoryObjectStore(settings.state_dir / "objects")
+            objects = MemoryObjectStore(
+                settings.state_dir / "objects", cache_bytes=settings.object_cache_mb * 1024 * 1024
+            )
             recordings = RecordedResponses(runs, persistence, objects)
             pools = Pools(
                 StaticWorkerPool(

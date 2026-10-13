@@ -7,7 +7,7 @@ serves: [P4, P11, P14]
 state: building
 version: 0.3.0
 tests: [tests/composition/test_contributions.py::test_an_issue_an_unknown_sender_opens_starts_the_triage_for_its_owner, tests/composition/test_contributions.py::test_a_pull_request_from_outside_starts_the_triage_too, tests/composition/test_contributions.py::test_a_contribution_delivered_twice_starts_the_triage_once, tests/composition/test_contributions.py::test_a_contribution_is_never_completed_into_a_command_of_its_sender, tests/components/run/test_triage_rules.py::test_spam_is_what_a_pattern_finds_case_blind_and_nothing_else, tests/components/run/test_triage_rules.py::test_a_defect_or_a_feature_names_a_planned_version_and_a_summary, tests/integration/test_triage.py::test_spam_is_closed_with_its_reason_and_nobody_is_asked, tests/integration/test_triage.py::test_a_feature_approved_by_the_owner_stays_open_in_its_version, tests/integration/test_triage.py::test_a_declined_pull_request_is_closed_with_the_owner_s_words_and_never_merged, tests/integration/test_triage.py::test_the_ledger_never_names_the_sender, tests/governance/test_process_asks.py::test_a_step_that_asks_is_asked_at_every_level]
-adrs: {ADR-0012: 2116f271375d, ADR-0040: 9d4e8c625856, ADR-0042: bfc76a4a3797, ADR-0048: da64f1fa1ccb, ADR-0088: 655238bb8152}
+adrs: {ADR-0012: 2116f271375d, ADR-0040: 9d4e8c625856, ADR-0042: bfc76a4a3797, ADR-0048: 46ce91536fd5, ADR-0088: 655238bb8152}
 supersedes: null
 ---
 

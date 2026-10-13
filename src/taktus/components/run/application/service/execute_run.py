@@ -1945,6 +1945,7 @@ class RunEngine:
                 self._options.seeds,
                 self._options.uncalibrated_margin,
                 budgeting.models_of(demand.quantities),
+                step=_step_key(run.process_version, step.id),
             )
         )
         reservation = budgeting.reserve(demand.quantities, scale)
@@ -2084,6 +2085,7 @@ class RunEngine:
                         method=entry.method,
                         estimate=estimate,
                         actual=entry.consumption,
+                        step=_step_key(entry.refs.process_version, step_id),
                     )
                 )
         return observed
@@ -2547,10 +2549,14 @@ class RunEngine:
 
         # 1 + 2: estimate and admit, before anything starts. A worker that cannot answer — an
         # execution unit that does not start, an endpoint that does not answer — fails the
-        # step with that cause; the run escalates and nothing is left half done.
+        # step with that cause; the run escalates and nothing is left half done. A worker at
+        # capacity while it estimates — a platform without room for its unit — makes the step
+        # wait, as at the hand-over (ADR-0037 §6).
         try:
             async with self._telemetry.span("worker.estimate", call):
                 estimate = await worker.estimate(assignment.estimate_request())
+        except WorkerAtCapacity as error:
+            return await self._full(run, step_run, work, adapter, resuming, span, error)
         except WorkerError as error:
             return await self._unavailable(run, step_run, adapter, span, error)
         demand = ConsumptionQuantities.model_validate(
@@ -3462,3 +3468,11 @@ def _credential_names(work: Work) -> list[str]:
     if isinstance(work, WaitWork) and work.until is not None:
         return [c.name for c in work.until.credentials]
     return []
+
+
+def _step_key(process_version: str | None, step_id: str) -> str | None:
+    """`<process>/<step>`: the same step of every version of a process, the key a bound is
+    calibrated by (#370)."""
+    if process_version is None:
+        return None
+    return f"{process_version.split('@', 1)[0]}/{step_id}"

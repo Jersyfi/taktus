@@ -2,7 +2,9 @@
 
 **Status:** accepted · amended 2026-09-30 (DEC-0021): which changes change the state · extends ADR-0017 with a fifth record kind and a status report the owner
 does not have to ask for · amended 2026-09-29 by DEC-0026 and DEC-0027: the status file
-stores neither the generated list nor a line every pull request rewrites (§3)
+stores neither the generated list nor a line every pull request rewrites (§3) · amended
+2026-10-13 by DEC-0189: automation writes the list into the description instead of a check
+comparing a pasted copy (§3)
 
 ## Context
 Pull request #1 buried four open questions at the end of a long description, and the owner could
@@ -152,9 +154,16 @@ to the state.
 
 **The pull request description carries the list.** Its last section, `## Needed from the
 owner`, is what `make status` prints for that branch, so that the owner sees what is needed
-without opening a file. CI generates the list from the branch's register and fails when the
-description differs from it. The description is the one place the list is carried: it
-belongs to one branch and is never merged with another.
+without opening a file. The `owner-list` workflow generates the list from the branch's
+register and writes it into the description on every push and every edit. The description is
+the one place the list is carried: it belongs to one branch and is never merged with another.
+
+*Amended 2026-10-13 (DEC-0189 rule 1).* Until then a person pasted the list and CI failed a
+description whose copy differed from what the register generated. 47 of 76 failures of that
+check were a copy that had gone stale, most often because another pull request had merged a
+record in between. The owner decided that the list is written by automation instead. The
+description check still fails a description without its four sections (ADR-0017 §7); it no
+longer compares the last section with anything.
 
 ### 4. The working rule
 CLAUDE.md §9 gains the rule that this ADR exists for: **a note in a pull request is not a
@@ -211,3 +220,10 @@ Since DEC-0021 the gate sees the four kinds of file that change the state, and n
 item completed in code alone: a pull request that finishes an item without touching the
 roadmap, a record, an ADR or a contract passes it, and its description is where a reviewer
 checks whether the status should have moved.
+
+Since DEC-0189 the list in a description is as current as the last push to the branch or the
+last edit of the description. A record that reaches `main` later does not change an open pull
+request's list until its next push. A pull request from a fork is not written to, because its
+run holds no token that may write. The workflow reads the description and writes it back
+seconds later; an edit a person saves in between is lost and has to be made again. Nothing
+checks that the section is still there after a person's edit; the next run writes it back.

@@ -61,6 +61,50 @@ async def test_object_store_is_content_addressed(tmp_path: Path) -> None:
     assert await store.get(ZERO) is None
 
 
+async def test_the_object_cache_stays_bounded_and_every_object_stays_readable(
+    tmp_path: Path,
+) -> None:
+    """#311: with a directory, memory holds at most the configured bytes however many objects
+    pass through, and every object is read back by its digest from the directory."""
+    size, limit = 64 * 1024, 256 * 1024
+    store = MemoryObjectStore(tmp_path / "objects", cache_bytes=limit)
+    written = {await store.put(bytes([i]) * size): bytes([i]) * size for i in range(40)}
+    assert store.cached_bytes <= limit, "writing more than the limit"
+    for digest, content in written.items():
+        assert await store.get(digest) == content
+        assert store.cached_bytes <= limit, "reading more than the limit"
+    restarted = MemoryObjectStore(tmp_path / "objects", cache_bytes=limit)
+    for digest, content in written.items():
+        assert await restarted.get(digest) == content, "read from disk after a restart"
+    assert restarted.cached_bytes <= limit
+
+    none = MemoryObjectStore(tmp_path / "objects", cache_bytes=0)
+    for digest, content in written.items():
+        assert await none.get(digest) == content
+    assert none.cached_bytes == 0, "a cache of 0 keeps nothing"
+
+    larger = MemoryObjectStore(tmp_path / "objects", cache_bytes=size - 1)
+    assert await larger.get(next(iter(written))) is not None
+    assert larger.cached_bytes == 0, "an object larger than the cache is never cached"
+
+
+async def test_the_object_cache_evicts_the_least_recently_used(tmp_path: Path) -> None:
+    store = MemoryObjectStore(tmp_path / "objects", cache_bytes=2)
+    a, b = await store.put(b"a"), await store.put(b"b")
+    assert await store.get(a) == b"a"  # a is now the most recently used
+    c = await store.put(b"c")  # b leaves
+    (tmp_path / "objects" / b.removeprefix("sha256:")).unlink()
+    assert await store.get(b) is None, "b was evicted, so its deleted file is the only copy"
+    (tmp_path / "objects" / a.removeprefix("sha256:")).unlink()
+    assert await store.get(a) == b"a" and await store.get(c) == b"c"
+
+
+async def test_without_a_directory_every_object_is_kept() -> None:
+    store = MemoryObjectStore(cache_bytes=0)
+    digest = await store.put(b"only here")
+    assert await store.get(digest) == b"only here"
+
+
 async def test_the_snapshot_size_is_the_state_size(tmp_path: Path) -> None:
     """The `StateSize` port over the development store: nothing on disk without a snapshot,
     and the snapshot files' size with one, growing as entries are committed."""

@@ -34,6 +34,7 @@ from typing import Self
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.ports.execution import (
     Execution,
+    ExecutionAtCapacity,
     ExecutionError,
     ExecutionRefused,
     ExecutionUnit,
@@ -51,6 +52,7 @@ from taktus.ports.worker import (
     EstimateRequest,
     Event,
     StopRequest,
+    WorkerAtCapacity,
     WorkerError,
 )
 from taktus.shared.v1 import Artifact, AutonomyLevel
@@ -165,6 +167,10 @@ class LaunchedWorker:
         context = self._execution.launch(request)
         try:
             job = await context.__aenter__()
+        except ExecutionAtCapacity as error:
+            # The platform is the launched worker's capacity: without room it is full, and
+            # the step waits as for any worker at capacity (ADR-0037 §6).
+            raise WorkerAtCapacity(f"the execution unit could not be placed: {error}") from error
         except (ExecutionRefused, ExecutionError) as error:
             raise WorkerError(f"the execution unit could not be started: {error}") from error
         worker = HttpWorker(

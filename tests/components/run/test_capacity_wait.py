@@ -79,6 +79,27 @@ async def test_a_worker_at_capacity_makes_the_step_wait_and_a_later_try_succeeds
     assert await h.verify()
 
 
+async def test_a_worker_at_capacity_while_it_estimates_makes_the_step_wait() -> None:
+    """A launched worker estimates in a unit of its own; a platform without room for it is the
+    worker at capacity, and the step waits as at the hand-over (ADR-0037 §6, #358)."""
+    fake = FakeWorker(estimate_full_for=1, script=(InnerStep("one", 1.0),))
+    h = Harness(waiting_worker(), workers=[fake])
+
+    run = await h.start()
+    assert run.state is RunState.HALTED and run.cause is Cause.CAPACITY
+    do = run.step_run("do")
+    assert do.state is StepState.STOPPED and do.waits == 1
+    assert fake.estimates == [] and fake.assignments == []
+
+    run = await h.resume(run)
+    assert run.state is RunState.FINISHED
+    assert run.step_run("do").state is StepState.SUCCEEDED
+    kinds = await h.kinds(run)
+    assert kinds.count("step.waiting:do:at_capacity") == 1
+    assert not [k for k in kinds if k.startswith(("run.escalated", "step.finished:do:failed"))]
+    assert await h.verify()
+
+
 async def test_a_wait_beyond_the_step_s_ceiling_escalates_with_the_cause() -> None:
     fake = FakeWorker(full_for=1000)
     h = Harness(waiting_worker(ceiling=30), workers=[fake])

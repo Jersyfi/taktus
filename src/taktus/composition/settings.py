@@ -682,10 +682,47 @@ def load_tenants(configuration: Configuration) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True)
+class DatabaseTimeouts:
+    """How long the database lets a transaction wait or idle before it fails it with a reason
+    (issue #309). Set on every connection the persistence adapter opens."""
+
+    lock_seconds: float
+    """`TAKTUS_DATABASE_LOCK_TIMEOUT_SECONDS` (30): how long a statement waits for a lock —
+    the ledger's claim on a tenant's chain among them — before it fails (`lock_timeout`).
+    0 waits for good."""
+    idle_in_transaction_seconds: float
+    """`TAKTUS_DATABASE_IDLE_IN_TRANSACTION_SECONDS` (120): how long a transaction may sit
+    between two statements before the server ends its session and releases its locks
+    (`idle_in_transaction_session_timeout`). 0 lets it sit for good."""
+
+    def effective(self) -> list[tuple[str, str]]:
+        return [
+            ("TAKTUS_DATABASE_LOCK_TIMEOUT_SECONDS", f"{self.lock_seconds:g}"),
+            (
+                "TAKTUS_DATABASE_IDLE_IN_TRANSACTION_SECONDS",
+                f"{self.idle_in_transaction_seconds:g}",
+            ),
+        ]
+
+
+def load_database_timeouts(configuration: Configuration) -> DatabaseTimeouts:
+    """The database's timeouts alone: `taktusctl` opens the database with them too."""
+    reader = _Reader(configuration)
+    return DatabaseTimeouts(
+        lock_seconds=reader.number("database.lock.timeout.seconds", 30.0, low=0.0),
+        idle_in_transaction_seconds=reader.number(
+            "database.idle.in.transaction.seconds", 120.0, low=0.0
+        ),
+    )
+
+
+@dataclass(frozen=True)
 class Settings:
     roles: frozenset[Role]
     database: Secret
     """The database URL; the whole of it is a secret (CREDENTIALS.md)."""
+    database_timeouts: DatabaseTimeouts
+    """How long a statement waits for a lock and a transaction idles before either fails."""
     database_source: str
     """Where the database URL came from, for the startup log: `environment` or `file <path>`."""
     migrate_on_start: bool
@@ -720,6 +757,9 @@ class Settings:
     on the instance and shown to the operator."""
     state_dir: Path
     """Where artifact bytes are written."""
+    object_cache_mb: int
+    """How many MiB of artifact bytes the object store keeps in memory at most: the objects used
+    most recently. Every object stays readable from `state_dir`. 0 keeps none (#311)."""
     tenants: tuple[str, ...]
     """The tenants this instance serves: the runner claims work for each of them in turn, and
     the identity component places senders in them and nowhere else."""
@@ -750,6 +790,7 @@ class Settings:
         return [
             ("TAKTUS_ROLES", ",".join(sorted(r.value for r in self.roles))),
             ("TAKTUS_DATABASE_URL", f"{self.database} (from {self.database_source})"),
+            *self.database_timeouts.effective(),
             ("TAKTUS_MIGRATE_ON_START", str(self.migrate_on_start).lower()),
             ("TAKTUS_HTTP_HOST", self.http_host),
             ("TAKTUS_HTTP_PORT", str(self.http_port)),
@@ -776,6 +817,7 @@ class Settings:
                 ),
             ),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
+            ("TAKTUS_OBJECT_CACHE_MB", str(self.object_cache_mb)),
             ("TAKTUS_TENANTS", ",".join(self.tenants)),
             ("TAKTUS_INSTANCE", self.instance),
             ("TAKTUS_SHUTDOWN_CEILING_SECONDS", str(self.shutdown_ceiling_seconds)),
@@ -809,6 +851,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
     return Settings(
         roles=reader.roles(),
         database=database,
+        database_timeouts=load_database_timeouts(configuration),
         database_source=configuration.source("database.url") or "environment",
         migrate_on_start=reader.flag("migrate.on.start", False),
         http_host=reader.text("http.host", "127.0.0.1"),
@@ -825,6 +868,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         knowledge_directory=load_knowledge_directory(configuration),
         findings_connector=reader.url("findings.connector", "") or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
+        object_cache_mb=reader.integer("object.cache.mb", 64, low=0),
         tenants=load_tenants(configuration),
         instance=reader.text("instance", default_instance),
         shutdown_ceiling_seconds=reader.integer("shutdown.ceiling.seconds", 300, low=1),
