@@ -7,7 +7,8 @@
 **Foreseeable since:** <the pull request in which the need became foreseeable; the same as Raised in when it was raised in time>
 
 <!--
-Copy this file to docs/decisions/open/NEED-NNNN-<slug>.md, with the next free needs number.
+Copy this file to docs/decisions/open/NEED-NNNN-<slug>.md, with the number `make reserve KIND=NEED`
+reserved for it; never a number taken by hand (README.md, Numbers).
 Fill every section. Replace every <placeholder>; the gate fails on any that remains.
 A need is something only the owner can provide: a credential, an account, access to a system,
 a purchase, an action on a server, information about an environment. It is not a decision —
