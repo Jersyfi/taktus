@@ -10,6 +10,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.components.run.application.service import ResumeRun
 from taktus.components.run.domain.model import Cause, RunState, StepState
@@ -114,6 +116,7 @@ async def test_the_process_adapter_is_refused_at_level_3_and_the_run_escalates(
     assert not list((tmp_path / "state" / "units").glob("*/job-asg_*.log"))
 
 
+@pytest.mark.timing
 async def test_a_unit_that_exceeds_its_wall_clock_is_killed_and_the_step_fails_with_the_cause(
     tmp_path: Path,
 ) -> None:

@@ -26,7 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "pytest", "pytest-asyncio", "testcontainers[postgres]",
+  "pytest", "pytest-asyncio", "pytest-xdist", "testcontainers[postgres]",
   "mypy", "types-jsonschema", "types-pyyaml", "ruff", "import-linter", "coverage",
 ]
 # The ML bench worker's libraries (workers/mlbench), at the exact versions its image installs, so
@@ -70,3 +70,6 @@ testpaths = ["tests"]
 # Every skip says why in the summary, so that a test that needs a cluster or Docker and did not
 # run is visible in every log, CI's included, instead of passing quietly.
 addopts = "-rs"
+# A test that asserts a bound on wall-clock time runs alone, after the suite that spreads over
+# the cores: other processes on the same cores would move its measurement (ADR-0096).
+markers = ["timing: asserts a bound on wall-clock time; `make test` runs it in one process"]

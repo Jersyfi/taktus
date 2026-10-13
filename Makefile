@@ -28,9 +28,16 @@ install: need-uv ## Create or refresh the environment
 	$(UV) sync --all-extras
 	@touch $(ENV_STAMP)
 
+# The two slow suites spread over the machine's cores (`pytest-xdist`, ADR-0096): each worker
+# process starts its own workers, connectors and PostgreSQL container, so no test shares state
+# with one in another process. `PARALLEL=` runs them in one process; the cap keeps a large
+# machine from starting a database per core.
+PARALLEL ?= -n auto --maxprocesses=8
+
 # The gate directories run under their own targets; `make gates` runs every test exactly once.
-test: env ## Unit and domain tests — everything under tests/ that is not a gate
-	$(UV) run tools/gate.py test tests $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
+test: env ## Unit and domain tests — everything under tests/ that is not a gate; PARALLEL= runs them in one process
+	$(UV) run tools/gate.py test tests $(PARALLEL) -m 'not timing' $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
+	$(UV) run tools/gate.py timing tests -m timing $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
 
 # The images the container tests need (tests/images.py). Each is built only when its Dockerfile
 # or a file it copies changed; an unchanged one is not handed to the builder at all. The tests
@@ -46,7 +53,7 @@ gate-arch: env ## Adapter obligation, component boundaries, no product names in 
 	$(UV) run tools/gate.py architecture tests/architecture
 
 gate-conformance: env ## Contract conformance suite, both contracts: starts the reference worker and connector, runs the suite and the meta-tests, stops them
-	$(UV) run tools/gate.py conformance tests/conformance
+	$(UV) run tools/gate.py conformance tests/conformance $(PARALLEL)
 
 # The chart's tests (tests/governance/test_chart.py) render it with helm. `make helm` installs the
 # pinned version into .tools/bin, which the tests use first; without helm they skip and say so,

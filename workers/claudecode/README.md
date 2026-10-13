@@ -262,6 +262,6 @@ directory is not.
 | `--agent` | `CODING_AGENT_COMMAND` | the agent's command line; default `claude` |
 | `--model` | `CODING_AGENT_MODEL` | passed to the agent as `--model` |
 | `--agent-env` | `CODING_AGENT_ENV` | names of variables passed on to the agent |
-| `--max-turns` | | the agent's turn limit per assignment (default 50) |
+| `--max-turns` | `CODING_AGENT_MAX_TURNS` | the agent's turn limit per assignment (default 50); an operator sets it for a cluster unit through `execution.defaults.unitEnv` (ADR-0090), as the project's instance does with 150 (DEC-0193) |
 | `--estimate-tokens-in`, `--estimate-tokens-out`, `--estimate-currency`, `--estimate-steps`, `--estimate-wall-seconds` | | the estimate |
 | `--port`, `--state-dir` | `TAKTUS_UNIT_PORT`, `TAKTUS_UNIT_STATE_DIR` | the launch convention |
