@@ -1555,7 +1555,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="names of variables of this worker's environment passed on to the agent, comma "
         "separated (CODING_AGENT_ENV); the credential needs no entry here",
     )
-    parser.add_argument("--max-turns", type=int, default=50)
+    parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=int(os.environ.get("CODING_AGENT_MAX_TURNS") or 50),
+        help="the agent's limit of turns per assignment (CODING_AGENT_MAX_TURNS); default 50",
+    )
     parser.add_argument("--currency", default="usd", help="the currency the agent reports in")
     parser.add_argument("--estimate-tokens-in", type=int, default=60000)
     parser.add_argument("--estimate-tokens-out", type=int, default=6000)
