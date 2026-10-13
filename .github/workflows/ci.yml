@@ -37,9 +37,12 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       # What a pull request's description says is checked by the `description` workflow, which
       # also runs when a description is edited (NTC-0013). Here: the register itself.
+      # Against the base, every record the pull request adds carries a number reserved on the
+      # repository (`make reserve`, DEC-0189 rule 6). Listing the reservations reads the public
+      # repository and needs no write permission.
       - name: decisions
         if: github.event_name == 'pull_request'
-        run: uv run tools/check_decisions.py
+        run: uv run tools/check_decisions.py --base origin/${{ github.base_ref }}
       - name: decisions (main)
         if: github.event_name != 'pull_request'
         run: uv run tools/check_decisions.py --forbid-open-blocking

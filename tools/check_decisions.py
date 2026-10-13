@@ -16,12 +16,17 @@ Checks:
    pages, the register — and why none of them answers it (the derivability test);
 2. every record under docs/decisions/ has the same shape plus an Outcome with a date and an
    answer (or, for a DEFECT, what it now says; for a NOTE, why it is a note);
-3. a number is used once, and never both under open/ and as a record;
-4. every record is listed in docs/decisions/README.md, in its own table — a decision under
-   Decisions, a notice under Notices, a provided need under Needs;
+3. a number is used once, and never both under open/ and as a record; with `--base`, every
+   record the branch adds against the base carries a number reserved on the remote
+   (`tools/reserve.py`, `make reserve`), so that two branches never take the same one
+   (DEC-0189 rule 6);
+4. the register's index is stored nowhere a pull request edits: docs/decisions/README.md holds
+   no row of it and points at `make register`, which prints it from the records (`--index`),
+   each record in its own table — a decision under Decisions, a notice under Notices, a
+   provided need under Needs (DEC-0189 rule 6, DEC-0026);
 4a. every notice (NTC-NNNN, a mode-2 record, ADR-0017 §2a) has its header — a mode-2 entry of
    anchors.taktus.md that exists, the kind that entry names there, a date, the pull request —
-   the four sections in order, no placeholder, and is listed in the index; a notice of kind
+   the four sections in order, no placeholder; a notice of kind
    gate-weakened (a gate weakened or removed, entry M2.3) additionally carries the section
    "Why the gate had no value", which names the gate; a notice of kind unlisted (a situation that
    fit no entry, decided in the direction of the vision, entry M2.6) carries the section "The
@@ -36,8 +41,8 @@ Checks:
    header — a kind from the vocabulary, the pull request, an issue, a date, the pull request in
    which it became foreseeable — the seven sections in order, no empty section, no placeholder,
    and section 5 says what it must never be; a provided need has an Outcome with the date it
-   was provided, how it was confirmed and where it was recorded, and is listed in the index; a
-   need closed because another took its place says so in `**Superseded by:**`;
+   was provided, how it was confirmed and where it was recorded; a need closed because another
+   took its place says so in `**Superseded by:**`;
 4c. every credential the software reads is covered: every row of CREDENTIALS.md names the needs
    request under which the owner provides the parameter, or `none` with the reason; every
    needs request a row names has a file; every `<NAME>_FILE` variable the code names is
@@ -75,6 +80,8 @@ A register with nothing in it reports green and says so. The last line is the du
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import re
 import subprocess
 import sys
@@ -83,6 +90,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
+
+import reserve
 
 ROOT = Path(__file__).resolve().parent.parent
 REGISTER = ROOT / "docs" / "decisions"
@@ -252,17 +261,13 @@ class Document:
     def rel(self) -> str:
         return str(self.path.relative_to(ROOT))
 
+    @property
+    def identifier(self) -> str:
+        """`DEC-0042`, `NTC-0007` or `NEED-0003`: the prefix of the file name and the number."""
+        return f"{self.path.name.split('-', 1)[0]}-{self.number}"
+
 
 # --- parsing -------------------------------------------------------------------------------------
-
-
-def index_section(heading: str) -> str:
-    """The part of the register's index under `## <heading>`: a record is listed in its own
-    table — a notice under Notices, a need under Needs, a decision under Decisions — so that the
-    index reads by kind and a row filed in the wrong table is found."""
-    text = INDEX.read_text(encoding="utf-8") if INDEX.exists() else ""
-    found = re.search(rf"^## {re.escape(heading)}\s*$(.*?)(?=^## |\Z)", text, re.M | re.S)
-    return found[1] if found else ""
 
 
 def strip_comments(text: str) -> str:
@@ -562,16 +567,6 @@ def check_notices(report: Report) -> list[Document]:
             report.ok(rel)
     if not notices:
         report.ok("no notices yet")
-        return notices
-    index = index_section("Notices")
-    unlisted = [doc for doc in notices if doc.path.name not in index]
-    if unlisted:
-        report.fail(
-            str(INDEX.relative_to(ROOT)),
-            "not listed under Notices: " + ", ".join(doc.path.name for doc in unlisted),
-        )
-    else:
-        report.ok(f"{INDEX.relative_to(ROOT)} lists every notice under Notices")
     return notices
 
 
@@ -673,16 +668,6 @@ def check_needs(report: Report) -> tuple[list[Document], list[Document]]:
         if doc.number in seen:
             report.fail(doc.rel, f"NEED-{doc.number} is also {seen[doc.number]}")
         seen[doc.number] = doc.rel
-    if provided:
-        index = index_section("Needs")
-        unlisted = [doc for doc in provided if doc.path.name not in index]
-        if unlisted:
-            report.fail(
-                str(INDEX.relative_to(ROOT)),
-                "not listed under Needs: " + ", ".join(doc.path.name for doc in unlisted),
-            )
-        else:
-            report.ok(f"{INDEX.relative_to(ROOT)} lists every provided need under Needs")
     return open_needs, provided
 
 
@@ -923,17 +908,158 @@ def check_register(report: Report) -> tuple[list[Document], list[Document]]:
         if doc.number in open_numbers:
             report.fail(doc.rel, "its record exists, but the file is still under open/")
 
-    if records:
-        index = index_section("Decisions")
-        unlisted = [doc for doc in records if doc.path.name not in index]
-        if unlisted:
-            report.fail(
-                str(INDEX.relative_to(ROOT)),
-                "not listed under Decisions: " + ", ".join(doc.path.name for doc in unlisted),
-            )
-        else:
-            report.ok(f"{INDEX.relative_to(ROOT)} lists every record under Decisions")
     return open_docs, records
+
+
+# --- the index ----------------------------------------------------------------------------------
+
+STORED_ROW = re.compile(r"^\|.*\]\((?:DEC|NTC|NEED)-\d{4}-[a-z0-9-]+\.md\)", re.MULTILINE)
+"""A table row linking a record: a row of an index stored by hand."""
+INDEX_POINTER = "`make register`"
+SUMMARY = 160
+"""The length at which a summary in the printed index is cut, at a word."""
+
+
+def summary(text: str) -> str:
+    """The first sentence of `text` on one line, cut at a word after SUMMARY characters."""
+    line = " ".join(strip_comments(text).split())
+    sentence = re.split(r"(?<=[.;])\s", line, maxsplit=1)[0]
+    if len(sentence) > SUMMARY:
+        sentence = sentence[:SUMMARY].rsplit(" ", 1)[0] + " [...]"
+    return sentence.replace("|", "\\|")
+
+
+def row(doc: Document, *cells: str) -> str:
+    link = f"[{doc.number}]({doc.path.name})"
+    return "| " + " | ".join([link, doc.title.replace("|", "\\|"), *cells]) + " |"
+
+
+def decision_outcome(doc: Document) -> str:
+    found = outcome_fields(doc.sections.get(OUTCOME, ""))
+    when = found.get("Decided") or found.get("Corrected") or found.get("Recorded") or ""
+    what = found.get("Answer") or found.get("What it now says") or found.get("Why this is a note")
+    return f"{when}: {summary(what)}" if what else when
+
+
+def need_outcome(doc: Document) -> str:
+    found = outcome_fields(doc.sections.get(OUTCOME, ""))
+    if replaced := found.get(SUPERSEDED_FIELD):
+        return f"superseded by {summary(replaced)}"
+    return f"provided {summary(found.get('Provided', ''))}"
+
+
+def index_text(records: list[Document], notices: list[Document], needs: list[Document]) -> str:
+    """The register's index, generated from the records and printed by `make register`: every
+    provided need, every notice and every record, each in its own table. It is stored nowhere a
+    pull request edits, so that two pull requests that each add a record never conflict on it
+    (DEC-0189 rule 6, DEC-0026). What is open is `make status`."""
+    lines = [
+        "# The register's index",
+        "",
+        "Generated from docs/decisions/ by `make register`; what is open is `make status`.",
+        "",
+        "## Needs",
+        "",
+        "| NEED | Title | Kind | Outcome |",
+        "|---|---|---|---|",
+        *(row(d, f"`{d.fields.get('Kind', '')}`", need_outcome(d)) for d in needs),
+        "",
+        "## Notices",
+        "",
+        "| NTC | Title | Entry | Kind | Decided | What was decided |",
+        "|---|---|---|---|---|---|",
+        *(
+            row(
+                d,
+                d.fields.get("Mode entry", ""),
+                f"`{d.fields.get('Kind', '')}`",
+                d.fields.get("Decided", ""),
+                summary(d.sections.get(NOTICE_SECTIONS[0], "")),
+            )
+            for d in notices
+        ),
+        "",
+        "## Decisions",
+        "",
+        "| DEC | Title | Category | Outcome |",
+        "|---|---|---|---|",
+        *(row(d, d.category, decision_outcome(d)) for d in records),
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def check_index(report: Report) -> None:
+    """The index is generated, never stored: a row kept by hand in docs/decisions/README.md is
+    the line two pull requests that each add a record conflict on (DEC-0189 rule 6)."""
+    print("index")
+    rel = str(INDEX.relative_to(ROOT))
+    text = INDEX.read_text(encoding="utf-8") if INDEX.exists() else ""
+    if not text:
+        report.fail(rel, "missing; it says what the register is and where its index is printed")
+    elif found := STORED_ROW.search(text):
+        report.fail(
+            rel,
+            f"stores a row of the index ({found.group(0)[:60]!r}); the index is printed by "
+            f"{INDEX_POINTER} from the records and stored nowhere a pull request edits, because "
+            "two pull requests that each add a row conflict on it (DEC-0189 rule 6)",
+        )
+    elif INDEX_POINTER not in text:
+        report.fail(rel, f"does not say where the index is ({INDEX_POINTER})")
+    else:
+        report.ok(f"{rel} stores no index and points at {INDEX_POINTER}")
+
+
+# --- reserved numbers ----------------------------------------------------------------------------
+
+
+def base_identifiers(base: str) -> set[str]:
+    """The identifiers of the records, open or closed, the base holds."""
+    # A fixed executable and arguments assembled here; the base is a ref name git resolves.
+    listed = subprocess.run(  # noqa: S603
+        ["git", "ls-tree", "-r", "--name-only", base, "--", "docs/decisions"],  # noqa: S607
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return {
+        f"{match.group(1)}-{match.group(2)}"
+        for name in listed.splitlines()
+        if (match := reserve.RECORD.search(name))
+    }
+
+
+def check_reserved(report: Report, docs: list[Document], base: str, remote: str) -> None:
+    """Every record the branch adds carries a number reserved on the remote (DEC-0189 rule 6):
+    a reservation is created once, atomically, so two branches never hold the same number, and
+    whichever merges first, the other merges without renumbering."""
+    print("reserved numbers")
+    try:
+        held = base_identifiers(base)
+    except subprocess.CalledProcessError as error:
+        report.fail("base", f"{base} cannot be read: {error.stderr.strip()}")
+        return
+    added = sorted({doc.identifier for doc in docs} - held)
+    if not added:
+        report.ok(f"no record added against {base}")
+        return
+    try:
+        reserved = reserve.reservations(remote, ROOT)
+    except reserve.ReservationError as error:
+        report.fail(remote, f"the reservations cannot be listed: {error}")
+        return
+    for identifier in added:
+        if identifier in reserved:
+            report.ok(f"{identifier} is reserved on {remote}")
+        else:
+            kind = identifier.split("-")[0]
+            report.fail(
+                identifier,
+                f"added against {base} without a reservation on {remote}; a number taken by "
+                f"hand collides with another branch's. `make reserve KIND={kind}` gives a free "
+                f"one, `make reserve ID={identifier}` reserves this one if nobody holds it "
+                "(DEC-0189 rule 6)",
+            )
 
 
 # --- pull request --------------------------------------------------------------------------------
@@ -1087,6 +1213,16 @@ def main(argv: list[str] | None = None) -> int:
         "--author", help="github.event.pull_request.user.login: who wrote the description"
     )
     parser.add_argument(
+        "--base",
+        help="with it, every record added against this commit must carry a reserved number",
+    )
+    parser.add_argument("--remote", default="origin", help="where the reservations are")
+    parser.add_argument(
+        "--index",
+        action="store_true",
+        help="print the register's index, generated from the records, and exit (make register)",
+    )
+    parser.add_argument(
         "--forbid-open-blocking",
         action="store_true",
         help="fail on any BLOCKING file under open/ (use on the main branch)",
@@ -1095,10 +1231,21 @@ def main(argv: list[str] | None = None) -> int:
 
     started = time.monotonic()
     report = Report()
+    if args.index:
+        with contextlib.redirect_stdout(io.StringIO()):
+            _, records = check_register(Report())
+            notices = check_notices(Report())
+            _, provided_needs = check_needs(Report())
+        print(index_text(records, notices, provided_needs), end="")
+        return 0
     open_docs, records = check_register(report)
     notices = check_notices(report)
+    check_index(report)
     check_override_review(report, notices, [*open_docs, *records])
     open_needs, provided_needs = check_needs(report)
+    if args.base is not None:
+        added = [*open_docs, *records, *notices, *open_needs, *provided_needs]
+        check_reserved(report, added, args.base, args.remote)
     check_credentials(report, [*open_needs, *provided_needs])
     check_references(report, open_needs, provided_needs, open_docs)
     if args.pr_body is not None and written_by_a_dependency_bot(args.author):

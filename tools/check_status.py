@@ -21,8 +21,9 @@ Checks:
 3. the file stores no line that every pull request rewrites: no `**As of:**` date and no running
    `**Decided since …**` list. Both were edited by every pull request that touched the file, so
    any two such pull requests conflicted on them (DEC-0027). The date of the status is the date
-   of its last commit; what was decided when is the register's index. A decision the status
-   has not accounted for is caught by check 5, because every record lives under docs/decisions/;
+   of its last commit; what was decided when is the register's index (`make register`). A
+   decision the status has not accounted for is caught by check 5, because every record lives
+   under docs/decisions/;
 4. section 3 stores no list: it points at `make status`, which prints what the register
    generates — every open need and decision request, the most urgent first. A generated list
    in a committed file conflicts between any two pull requests that touch the register, and
@@ -354,7 +355,7 @@ def check_shape(text: str, report: Report) -> dict[str, str]:
         problems.append(
             f"`**{match.group(1)}:**` is a line every pull request rewrites, and two pull "
             "requests conflict on it; the date is the file's last commit, and what was decided "
-            "when is docs/decisions/README.md (DEC-0027)"
+            "when is the register's index, printed by `make register` (DEC-0027)"
         )
     found = sections(text)
     present = list(found)

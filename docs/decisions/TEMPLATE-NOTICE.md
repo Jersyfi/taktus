@@ -6,7 +6,8 @@
 **Raised in:** <link to the pull request>
 
 <!--
-Copy this file to docs/decisions/NTC-NNNN-<slug>.md, with the next free notice number.
+Copy this file to docs/decisions/NTC-NNNN-<slug>.md, with the number `make reserve KIND=NTC`
+reserved for it; never a number taken by hand (README.md, Numbers).
 Fill every section. Replace every <placeholder>; the gate fails on any that remains.
 A notice is a mode-2 record (anchors.md §1): the session decided, nobody approves, and the
 record says what was decided and on what evidence. It is not a note in a pull request — a

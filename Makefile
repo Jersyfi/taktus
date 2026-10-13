@@ -66,8 +66,8 @@ gate-docs: need-uv need-git ## A contract or behaviour change must touch its doc
 gate-secrets: need-gitleaks ## No secret value may ever enter this public repository
 	gitleaks detect --no-banner --redact
 
-gate-decisions: need-uv ## Decision requests are complete, recorded, and a blocking one keeps its pull request a draft; notices have their evidence
-	$(UV) run tools/check_decisions.py
+gate-decisions: need-uv ## Decision requests are complete, recorded, and a blocking one keeps its pull request a draft; notices have their evidence; the index is stored nowhere; with BASE, every record added carries a reserved number
+	$(UV) run tools/check_decisions.py $(if $(BASE),--base $(BASE))
 
 gate-adrs: need-uv ## Every ADR that makes a promise states where the promise ends
 	$(UV) run tools/check_adrs.py
@@ -138,6 +138,12 @@ generate: env ## Regenerate what is generated and committed: api/openapi.yaml fr
 status: need-uv ## Print what is needed from the owner, from the register: the last section of every pull request description (DEC-0026)
 	@$(UV) run tools/check_status.py --print
 
+register: need-uv ## Print the register's index, generated from the records: every provided need, notice and record (DEC-0189 rule 6)
+	@$(UV) run tools/check_decisions.py --index
+
+reserve: need-uv need-git ## Reserve a record number on the remote before writing the record: KIND=DEC|NTC|NEED the next free one, ID=NTC-0207 exactly that one (DEC-0189 rule 6)
+	@$(UV) run tools/reserve.py $(if $(ID),--id $(ID),--kind $(KIND))
+
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web test ## Everything CI runs
 
-.PHONY: help doctor env install status usecases test images helm gate-web gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates
+.PHONY: help doctor env install status register reserve usecases test images helm gate-web gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates

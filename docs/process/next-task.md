@@ -63,10 +63,12 @@ an issue, in the shape of the form `Task`, and stays for its turn.
 ## 5. Sessions in parallel
 
 - Claim before working; skip a claimed task.
-- Numbers of records — `DEC`, `NTC`, `NEED` — are taken from what `main` holds when you write
-  them. Before the final push, `git fetch origin main` and rebase. When `main` gained a record
-  with a number you used, renumber yours to the next free one, in the file name, the title, the
-  index and every reference, and push again.
+- Numbers of records — `DEC`, `NTC`, `NEED` — are reserved before the record is written:
+  `make reserve KIND=NTC` prints a number no other session holds. Write the record under it and
+  name it anywhere at once; it is never renumbered. A number taken by hand fails CI
+  (DEC-0189 rule 6).
+- The register's index is not edited: `make register` prints it from the records. Before the
+  final push, `git fetch origin main` and rebase as for any change.
 
 ## 6. Report
 
