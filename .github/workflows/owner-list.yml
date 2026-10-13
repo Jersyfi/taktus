@@ -1,0 +1,76 @@
+name: owner list
+
+# The last section of a pull request description, `## Needed from the owner`, written from the
+# branch's register instead of pasted by a person (DEC-0189 rule 1, ADR-0028 §3). Until then a
+# person ran `make status` and pasted its output, and the `description` workflow failed a copy
+# that had gone stale: 47 of 76 failures of that check were such a copy. This workflow
+# generates the list on every push and every edit of the description and writes it into the
+# description when it differs. An edit made with the workflow's own token starts no workflow,
+# so the write does not run this workflow again.
+#
+# Trust. The trigger is `pull_request`, never `pull_request_target`: the code that runs is the
+# branch's own, so it may run only where the branch's author could already change this file.
+# - A pull request from a fork is skipped (the `if` below). GitHub gives such a run a read-only
+#   token whatever this file asks for, so the write would fail; the repository takes no
+#   third-party contributions anyway (ADR-0012).
+# - On a branch of this repository, the author has write access and could change this workflow
+#   itself; running the branch's generator gives them nothing they did not have.
+# - The token stays out of the branch's code all the same: the checkout keeps no credentials,
+#   and only the two steps that call the host's interface receive the token. The step that
+#   runs the branch's generator has none.
+# - The description travels as a file, never through the shell's command line, so no text in
+#   it is ever executed.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: owner-list-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  write:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+      # Read now, not from the event: an edit made since the event is kept. Taken from the JSON
+      # as it is, so that no newline is added on the way.
+      - name: the description as it is
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPO/pulls/$PR" > "$RUNNER_TEMP/pull.json"
+          python3 -c 'import json, sys; open(sys.argv[2], "w", encoding="utf-8").write(json.load(open(sys.argv[1], encoding="utf-8"))["body"] or "")' \
+            "$RUNNER_TEMP/pull.json" "$RUNNER_TEMP/body.md"
+          cp "$RUNNER_TEMP/body.md" "$RUNNER_TEMP/before.md"
+      - name: the list from the branch's register
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: >
+          uv run tools/check_status.py
+          --write-pr-body "$RUNNER_TEMP/body.md"
+          --author "$AUTHOR"
+      - name: the description written back when it changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if cmp -s "$RUNNER_TEMP/before.md" "$RUNNER_TEMP/body.md"; then
+            echo "unchanged"
+            exit 0
+          fi
+          python3 -c 'import json, sys; json.dump({"body": open(sys.argv[1], encoding="utf-8").read()}, sys.stdout)' \
+            "$RUNNER_TEMP/body.md" > "$RUNNER_TEMP/patch.json"
+          gh api -X PATCH "repos/$REPO/pulls/$PR" --input "$RUNNER_TEMP/patch.json" --jq .html_url
