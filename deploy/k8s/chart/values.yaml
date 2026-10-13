@@ -56,6 +56,13 @@ logLevel: info
 # `credentials`.
 env: {}
 
+# Files of configuration that a setting names by path: file name → content. Each is mounted
+# read-only at /etc/taktus/files/<name> in every role, and the setting that reads it is set in
+# `env` — a calibration seed (TAKTUS_BUDGET_SEEDS), the form of a product finding
+# (TAKTUS_FINDINGS_FORM). `helm --set-file configFiles.<name>=<path>` reads one from a file.
+# Never a secret: a secret goes into `credentials`. Empty: none.
+configFiles: {}
+
 # Where artifact bytes are written (TAKTUS_STATE_DIR): one volume, shared by every role. The
 # volume binds to one node on a node-local storage class, as the database's does (README §9).
 state:
@@ -285,9 +292,10 @@ model:
   name: ""
   purposes: ""
   billing: per_token
-  # This tenant's endpoint holds the limit (research [A4]; M-03 passed against it on 2026-10-01);
-  # for another endpoint, run M-03 and set what it shows.
-  outputCap: hard
+  # Whether the endpoint's provider holds the output limit a call sets: `hard`, `soft` or
+  # `none` (TAKTUS_MODEL_OUTPUT_CAP). `soft` unless the provider is shown to hold it: run M-03
+  # against the endpoint and set what it shows.
+  outputCap: soft
   # The price kinds the endpoint reports per call, comma-separated (input, output, cache_read,
   # cache_write); empty: input,output. Conformance check M-04 holds the endpoint to it.
   usageKinds: ""

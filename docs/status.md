@@ -186,7 +186,7 @@ sections an issue lacks, as a comment (issue #70, NTC-0040). P-01 Roadmap contro
 bundle too: it holds the roadmap against the open issues by the issue numbers each roadmap item
 now names, and reports every item without an issue, every issue its milestone does not name and
 every `ready` label on content that fails the standard, with the backlog's order computed by
-the code `make backlog` runs (issue #71, NTC-0048, NTC-0049). Its daily trigger carries its inputs, and its reports go to #129, so an instance's scheduler can run it every day (NTC-0045). It changes nothing. The owner chose the
+the code `make backlog` runs (issue #71, NTC-0048, NTC-0049). Its daily trigger carries its inputs, and its reports go to #129, so an instance's scheduler can run it every day (NTC-0045). It changes nothing. Its first real run on the instance, on 2026-10-13, halted at `read-issues`: the step's uncalibrated reserve alone is its whole quota of 40 units; the quota is the owner's (DEC-0192, #363). The owner chose the
 rule for that reconciliation over a model's matching, as the blueprint first described it
 (DEC-0080).
 
@@ -428,7 +428,13 @@ process (#310): `GET /runs` answers a page, the overview counts runs by query, a
 ten steps each are answered in a twentieth of a second instead of 45 to 57 (ADR-0094, NTC-0202). Cache writes are
 booked by their kind in either shape an endpoint reports them, the operator declares the price
 kinds an endpoint reports and M-04 holds it to that, and a `429`'s `Retry-After` defers the step
-(#312, NTC-0206); which shape each provider in use returns is still to be verified against it.
+(#312, NTC-0206); the endpoint in use reports no cached input in either shape, and is declared `input,output` (NTC-0208).
+The project's values are no longer product defaults (#313, NTC-0205, ADR-0092 amended): the calibration seed,
+the guides manifest's path, the chart's output limit, a finding's form and labels, and the
+process that turns a change in words into a proposal are each a setting its operator sets. The
+project's own instance sets them in its private values (`deploy/k8s/README.md` §2), and
+`tests/architecture` fails on a project process, its repository's path or its owner's name in
+`src/` or the chart's defaults.
 
 ## 2. The next pull requests
 

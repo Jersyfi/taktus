@@ -332,6 +332,8 @@ async def wire(
             )
             prices = settings.budget.table()
             weights = settings.budget.weights()
+            seeds = settings.budget.seeds()
+            shape = settings.findings.form()
 
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
@@ -354,6 +356,7 @@ async def wire(
                         model_classes=settings.budget.model_classes,
                         margin=settings.budget.margin,
                         uncalibrated_margin=settings.budget.uncalibrated_margin,
+                        seeds=seeds,
                         capacity=rules_of(settings.capacity),
                         unit_memory_bytes=memory_demand(settings.workers),
                     ),
@@ -504,6 +507,7 @@ async def wire(
                 work=persistence,
                 clock=clock,
                 ids=ids,
+                change_process=settings.change_process,
             )
             # A change in dialogue read in the owner's conversation too (ADR-0091 §6).
             owner.answers.change_with(
@@ -601,11 +605,15 @@ async def wire(
                     None
                     if settings.findings_connector is None
                     else Sending(
-                        RepositoryChannel(McpActionConnector(settings.findings_connector)),
+                        RepositoryChannel(
+                            McpActionConnector(settings.findings_connector),
+                            labels=settings.findings.labels,
+                        ),
                         ledger,
                         objects,
                         persistence,
                     ),
+                    shape=shape,
                 ),
                 triggers=Triggers(
                     tenants=settings.tenants,

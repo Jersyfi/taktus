@@ -88,6 +88,11 @@ spec:
               mountPath: /var/lib/taktus
             - name: tmp
               mountPath: /tmp
+            {{- if $root.Values.configFiles }}
+            - name: config-files
+              mountPath: /etc/taktus/files
+              readOnly: true
+            {{- end }}
             {{- range $files }}
             - name: {{ .volume }}
               mountPath: {{ .dir }}
@@ -99,6 +104,11 @@ spec:
             claimName: {{ include "taktus.fullname" $root }}-state
         - name: tmp
           emptyDir: {}
+        {{- if $root.Values.configFiles }}
+        - name: config-files
+          configMap:
+            name: {{ include "taktus.fullname" $root }}-files
+        {{- end }}
         {{- range $files }}
         - name: {{ .volume }}
           secret:

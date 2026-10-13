@@ -190,7 +190,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 71, "every setting is in the startup log"
+    assert len(effective) == 75, "every setting is in the startup log"
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:
@@ -250,6 +250,39 @@ def test_the_budget_settings_are_validated_and_the_price_table_read(tmp_path: Pa
         load_budget(EnvironmentConfiguration({"TAKTUS_PRICE_TABLE": str(table)})).table()
     with pytest.raises(ConfigurationError, match="TAKTUS_MODEL_BILLING"):
         settings(TAKTUS_MODEL_BILLING="per_mood")
+
+
+def test_no_seed_by_default_and_a_seed_file_is_loaded_only_where_the_operator_names_it(
+    tmp_path: Path,
+) -> None:
+    """ADR-0092 §2: what was measured on one tenant enters another instance only as data its
+    operator chose to load; a fresh install is uncalibrated (DEC-0034)."""
+    from taktus.composition.settings import load_budget
+
+    assert settings().budget.seeds() == ()
+    assert dict(settings().effective())["TAKTUS_BUDGET_SEEDS"] == ""
+    project = Path(__file__).resolve().parents[2] / "docs" / "runs" / "first-run.seeds.yaml"
+    (seed,) = load_budget(EnvironmentConfiguration({"TAKTUS_BUDGET_SEEDS": str(project)})).seeds()
+    assert len(seed.observations) == 8 and "first-run.md" in seed.source
+    broken = tmp_path / "seeds.yaml"
+    broken.write_text("seeds: [{method: worker}]", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="TAKTUS_BUDGET_SEEDS"):
+        load_budget(EnvironmentConfiguration({"TAKTUS_BUDGET_SEEDS": str(broken)})).seeds()
+
+
+def test_a_findings_shape_is_the_operators_and_none_by_default(tmp_path: Path) -> None:
+    """ADR-0092: the issue a finding opens has no repository's form and no label unless the
+    operator configures them."""
+    plain = settings()
+    assert plain.findings.form() is None and plain.findings.labels == ()
+    form = tmp_path / "form.md"
+    form.write_text("## Lack\n\n$tried in $run", encoding="utf-8")
+    shaped = settings(TAKTUS_FINDINGS_FORM=str(form), TAKTUS_FINDINGS_LABELS="task, product")
+    assert shaped.findings.form() == "## Lack\n\n$tried in $run"
+    assert shaped.findings.labels == ("task", "product")
+    form.write_text("$tried for $customer", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="TAKTUS_FINDINGS_FORM"):
+        shaped.findings.form()
 
 
 def test_the_operator_declares_the_price_kinds_the_model_endpoint_reports() -> None:

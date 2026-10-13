@@ -92,13 +92,20 @@ async def a_run_that_lacks_a_worker(state_dir: Path) -> Run:
     )
 
 
-def findings(state_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
+FORM = Path(__file__).resolve().parents[2] / ".github" / "finding-form.md"
+"""One repository's form, configured by its operator (ADR-0092)."""
+
+
+def findings(
+    state_dir: Path, *args: str, form: Path | None = None
+) -> subprocess.CompletedProcess[str]:
     inherited = {k: v for k, v in os.environ.items() if not k.startswith("TAKTUS_")}
+    shape = {} if form is None else {"TAKTUS_FINDINGS_FORM": str(form)}
     return subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
         [taktusctl(), "findings", *args],
         capture_output=True,
         text=True,
-        env={**inherited, **PLAIN, "TAKTUS_STATE_DIR": str(state_dir)},
+        env={**inherited, **PLAIN, "TAKTUS_STATE_DIR": str(state_dir), **shape},
         check=False,
     )
 
@@ -114,8 +121,14 @@ def test_the_operator_sees_each_finding_ready_to_send_by_hand(tmp_path: Path) ->
     assert shown.returncode == 0, shown.stderr
     title, _, body = shown.stdout.partition("\n\n")
     assert title == "Product finding: no worker offers code.review"
-    assert missing_sections(body) == [], "the body has the form's sections"
+    assert "###" not in body, "without a form: the product's plain shape"
     assert run.id in body and PERSON not in shown.stdout
+
+    shaped = findings(state, form=FORM)
+    assert shaped.returncode == 0, shaped.stderr
+    _, _, body = shaped.stdout.partition("\n\n")
+    assert missing_sections(body) == [], "the body has the configured form's sections"
+    assert run.id in body and PERSON not in shaped.stdout
 
     (document,) = json.loads(findings(state, "--json").stdout)
     assert document["lack"] == {"cause": "no_worker", "lacking": "code.review"}

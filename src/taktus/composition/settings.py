@@ -17,8 +17,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+import yaml
 from pydantic import TypeAdapter, ValidationError
 
+from taktus.components.reporting.domain.service import texts
 from taktus.components.run.domain.service import budget as budgeting
 from taktus.conformance.contracts import contracts_root
 from taktus.ports.administration import NONE, Administration
@@ -351,6 +353,12 @@ class BudgetSettings:
     """`TAKTUS_BUDGET_UNCALIBRATED_MARGIN`: what a worker with no calibration history reserves
     beyond its estimate — 1.0, twice the estimate, by default (DEC-0034). A value below the
     floor of 0.1 holds, and is said (`below_floor`, DEC-0047)."""
+    seeds_file: Path | None = None
+    """`TAKTUS_BUDGET_SEEDS`: a file of calibration seeds — observations measured elsewhere
+    that a worker nothing has measured here yet is reserved by (`budgeting.seeds_of`). Absent,
+    the default: no seed, and such a worker reserves the uncalibrated margin (DEC-0034). What
+    was measured on one tenant's runs enters another instance only as data its operator chose
+    to load here (ADR-0092 §2)."""
     model_classes: Mapping[str, str] = field(default_factory=dict)
     """`TAKTUS_TAKT_MODEL_CLASSES`: which class of the weighting table each model is in, as
     `model=class` pairs, comma-separated — `fake-model@1=medium`. A model in no class has its
@@ -379,11 +387,25 @@ class BudgetSettings:
                 f"PriceTable): {str(error)[:200]}",
             ) from error
 
+    def seeds(self) -> tuple[budgeting.Seed, ...]:
+        """The seeds the file holds, validated; none when no file is configured."""
+        if self.seeds_file is None:
+            return ()
+        try:
+            document = yaml.safe_load(self.seeds_file.read_text(encoding="utf-8"))
+            return budgeting.seeds_of(document)
+        except (OSError, ValueError, yaml.YAMLError) as error:
+            raise ConfigurationError(
+                "TAKTUS_BUDGET_SEEDS",
+                f"{self.seeds_file} is not a file of calibration seeds: {str(error)[:200]}",
+            ) from error
+
     def effective(self) -> list[tuple[str, str]]:
         return [
             ("TAKTUS_PRICE_TABLE", "" if self.price_table is None else str(self.price_table)),
             ("TAKTUS_BUDGET_MARGIN", f"{self.margin:g}"),
             ("TAKTUS_BUDGET_UNCALIBRATED_MARGIN", f"{self.uncalibrated_margin:g}"),
+            ("TAKTUS_BUDGET_SEEDS", "" if self.seeds_file is None else str(self.seeds_file)),
             (
                 "TAKTUS_TAKT_MODEL_CLASSES",
                 ",".join(f"{m}={c}" for m, c in sorted(self.model_classes.items())),
@@ -428,6 +450,7 @@ DEFAULT_UNCALIBRATED_MARGIN = 1.0
 def load_budget(configuration: Configuration) -> BudgetSettings:
     reader = _Reader(configuration)
     table = reader.text("price.table", "") or None
+    seeds = reader.text("budget.seeds", "") or None
     margin = reader.number("budget.margin", DEFAULT_MARGIN, low=0.0)
     if margin > 0.9:
         raise ConfigurationError(
@@ -440,6 +463,7 @@ def load_budget(configuration: Configuration) -> BudgetSettings:
         uncalibrated_margin=reader.number(
             "budget.uncalibrated.margin", DEFAULT_UNCALIBRATED_MARGIN, low=0.0
         ),
+        seeds_file=None if seeds is None else Path(seeds).expanduser(),
         model_classes=_model_classes(
             configuration.name("takt.model.classes"), reader.names("takt.model.classes", ())
         ),
@@ -697,6 +721,50 @@ def load_knowledge_directory(configuration: Configuration) -> Path | None:
     return Path(value).expanduser() if value else None
 
 
+@dataclass(frozen=True)
+class FindingsShape:
+    """The shape of the issue a product finding opens (UC-6.12, ADR-0046): its operator's
+    configuration, never one repository's form as the product's default (ADR-0092)."""
+
+    form_file: Path | None = None
+    """`TAKTUS_FINDINGS_FORM`: a file holding the body's form — text with the fields a finding
+    fills, `$tried`, `$lacking`, `$cause`, `$area`, `$run` and `$step` (`texts.form`). Absent,
+    the default: the product's plain shape."""
+    labels: tuple[str, ...] = ()
+    """`TAKTUS_FINDINGS_LABELS`: the labels a finding's issue is opened with, comma-separated;
+    none by default."""
+
+    def form(self) -> str | None:
+        """The form the file holds, validated; None when no file is configured."""
+        if self.form_file is None:
+            return None
+        try:
+            return texts.form(self.form_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise ConfigurationError(
+                "TAKTUS_FINDINGS_FORM",
+                f"{self.form_file} is not a form of a finding: {str(error)[:200]}",
+            ) from error
+
+    def effective(self) -> list[tuple[str, str]]:
+        return [
+            ("TAKTUS_FINDINGS_FORM", "" if self.form_file is None else str(self.form_file)),
+            ("TAKTUS_FINDINGS_LABELS", ",".join(self.labels)),
+        ]
+
+
+def load_findings(configuration: Configuration) -> FindingsShape:
+    """The shape of a finding's issue; `taktusctl findings` reads it too."""
+    reader = _Reader(configuration)
+    form = reader.text("findings.form", "").strip()
+    labels = (
+        ()
+        if not reader.text("findings.labels", "").strip()
+        else reader.names("findings.labels", ())
+    )
+    return FindingsShape(form_file=Path(form).expanduser() if form else None, labels=labels)
+
+
 def load_tenants(configuration: Configuration) -> tuple[str, ...]:
     """`TAKTUS_TENANTS`: the tenants an instance serves; `taktusctl capacity` reads it too."""
     return _Reader(configuration).names("tenants", (DEFAULT_TENANT,))
@@ -773,9 +841,16 @@ class Settings:
     """The directory the instance serves `knowledge.pages` over, where the organisation keeps
     no wiki (UC-13.6); None when it serves none."""
     findings_connector: str | None
-    """The MCP URL of the connector through which product findings go to the Taktus repository
-    (UC-6.12, ADR-0046). None: the operator did not enable it, and findings are only recorded
-    on the instance and shown to the operator."""
+    """The MCP URL of the connector through which product findings go to the repository its
+    operator chose (UC-6.12, ADR-0046). None: the operator did not enable it, and findings are
+    only recorded on the instance and shown to the operator."""
+    findings: FindingsShape
+    """The shape of the issue a finding opens: its form and its labels."""
+    change_process: str | None
+    """`TAKTUS_CHANGE_PROCESS`: the process that turns a change asked for in words into a
+    proposal (UC-4.15, ADR-0091 §2), by its identifier. None, the default: no request in words
+    is taken, and a person hands over the changed bundle. Which process does it is a tenant's
+    bundle, never a default of the product (ADR-0092)."""
     state_dir: Path
     """Where artifact bytes are written."""
     object_cache_mb: int
@@ -830,6 +905,8 @@ class Settings:
             ("TAKTUS_TRIAGE", ",".join(f"{c}={p}" for c, p in self.triage.items())),
             ("TAKTUS_KNOWLEDGE_DIRECTORY", str(self.knowledge_directory or "")),
             ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
+            *self.findings.effective(),
+            ("TAKTUS_CHANGE_PROCESS", self.change_process or ""),
             ("TAKTUS_PLATFORM", self.administration.platform or ""),
             (
                 "TAKTUS_ADMINISTERS",
@@ -888,6 +965,8 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         administration=load_administration(configuration),
         knowledge_directory=load_knowledge_directory(configuration),
         findings_connector=reader.url("findings.connector", "") or None,
+        findings=load_findings(configuration),
+        change_process=reader.text("change.process", "").strip() or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         object_cache_mb=reader.integer("object.cache.mb", 64, low=0),
         tenants=load_tenants(configuration),
@@ -1069,7 +1148,7 @@ class _Reader:
         return frozenset(chosen)
 
     def triage(self) -> Mapping[str, str]:
-        """`channel.repo=p05-triage`: a channel capability, an equals sign, the identifier of
+        """`channel.repo=triage`: a channel capability, an equals sign, the identifier of
         the process that triages an unknown sender's contribution on it (ADR-0088)."""
         name, value = self._raw("triage")
         if value is None:
@@ -1080,7 +1159,7 @@ class _Reader:
             if not separator or not capability or not process:
                 raise ConfigurationError(
                     name,
-                    f"{entry!r} is not capability=process (for example channel.repo=p05-triage)",
+                    f"{entry!r} is not capability=process (for example channel.repo=triage)",
                 )
             if "." not in capability or capability != capability.lower():
                 raise ConfigurationError(
