@@ -296,6 +296,9 @@ model:
   # `none` (TAKTUS_MODEL_OUTPUT_CAP). `soft` unless the provider is shown to hold it: run M-03
   # against the endpoint and set what it shows.
   outputCap: soft
+  # The price kinds the endpoint reports per call, comma-separated (input, output, cache_read,
+  # cache_write); empty: input,output. Conformance check M-04 holds the endpoint to it.
+  usageKinds: ""
 
 capacity:
   databaseVolumeMb: 0      # 0: derived from database.size

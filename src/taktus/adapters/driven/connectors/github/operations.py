@@ -547,6 +547,27 @@ def _comment_records(comment: Json, number: int) -> list[Json]:
     ]
 
 
+WORKFLOWS = ".github/workflows/"
+
+
+def _workflows_named(error: TargetError, paths: list[str]) -> TargetError:
+    """The service refuses a tree that touches its pipeline's workflow files to an identity
+    without the right to change them, and says only "not accessible". Name the files, so that
+    the reason reaches whoever reads the failure (issue #366)."""
+    workflows = sorted(path for path in paths if path.startswith(WORKFLOWS))
+    if error.cause != "forbidden" or not workflows:
+        return error
+    return TargetError(
+        error.cause,
+        error.effect,
+        error.retryable,
+        f"{error.detail}; the change touches the pipeline's workflow files "
+        f"({', '.join(workflows)}), which the service lets only an identity with the right to "
+        "change workflows write",
+        error.status,
+    )
+
+
 async def create_branch(api: Api, input: Json, key: str) -> Outcome:
     """Lookup: the branch by name, which the service keeps unique. The commit at its head
     carries our key as a trailer: ours, replayed. A branch of that name whose head carries
@@ -592,7 +613,10 @@ async def create_branch(api: Api, input: Json, key: str) -> Outcome:
         {"path": path, "mode": FILE_MODE, "type": "blob", "sha": None} for path in deleted
     )
     if entries:
-        tree = await api.post(api.repo("git/trees"), {"base_tree": tree_sha, "tree": entries})
+        try:
+            tree = await api.post(api.repo("git/trees"), {"base_tree": tree_sha, "tree": entries})
+        except TargetError as error:
+            raise _workflows_named(error, [str(entry["path"]) for entry in entries]) from None
         tree_sha = str(tree["sha"])
     commit = await api.post(
         api.repo("git/commits"),

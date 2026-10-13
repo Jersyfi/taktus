@@ -129,6 +129,32 @@ def test_own_observations_replace_the_seed_and_other_capabilities_get_none() -> 
     assert scale == {} and "bound" in source, "a declared demand is taken as given"
 
 
+def test_a_bound_is_calibrated_by_its_own_step_not_by_its_adapter() -> None:
+    """On the instance, one read through the repository connector used three times its
+    estimate, and a branch write of twenty files was then reserved three times its own
+    estimate although it had used a fifth of it: the run halted one unit short (#370)."""
+
+    def through(step: str, estimate: int, actual: int) -> b.Observation:
+        return b.Observation(
+            adapter="connector.repo",
+            method=Method.RULE,
+            estimate=Q(quota_units=estimate),
+            actual=Q(quota_units=actual),
+            step=step,
+        )
+
+    observed = [through("p03/read-comments", 1, 3), through("p03/create-branch", 64, 14)]
+    scale, source = b.scale_for(
+        "connector.repo", Method.RULE, (), observed, step="p03/create-branch"
+    )
+    assert b.reserve(Q(quota_units=64), scale).quota_units == 64
+    assert "p03/create-branch" in source
+    scale, _ = b.scale_for("connector.repo", Method.RULE, (), observed, step="p03/read-comments")
+    assert b.reserve(Q(quota_units=1), scale).quota_units == 3, "its own error still counts"
+    scale, _ = b.scale_for("connector.repo", Method.RULE, (), observed, step="p01/write-report")
+    assert scale == {}, "a step never observed is a bound, taken as given"
+
+
 def test_an_uncalibrated_worker_reserves_twice_its_estimate_and_history_narrows_it() -> None:
     """DEC-0034: caution towards the unknown, loosening through data."""
     estimate = Q(

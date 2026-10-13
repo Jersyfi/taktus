@@ -82,6 +82,10 @@ class Observation(Value):
     method: Method
     estimate: ConsumptionQuantities
     actual: ConsumptionQuantities
+    step: str | None = None
+    """The process and step it was taken at, `<process>/<step>`: a bound — a counted prompt,
+    a declared demand — is calibrated by its own step, never by another operation of the same
+    adapter (#370)."""
 
 
 SCALED = ("tokens_in", "tokens_out", "quota_units", "compute_seconds")
@@ -259,6 +263,7 @@ def scale_for(
     uncalibrated_margin: float = UNCALIBRATED_MARGIN,
     models: frozenset[str] = frozenset(),
     margin_floor: float = MARGIN_FLOOR,
+    step: str | None = None,
 ) -> tuple[dict[str, float], str]:
     """The factors for one adapter and method, and where they come from: the adapter's own
     observations when it has any, else a seed whose capabilities the step requires. A worker
@@ -281,6 +286,12 @@ def scale_for(
         history = [] if seed is None else list(seed.observations)
         source = "no observation yet" if seed is None else f"the seed from {seed.source}"
     if method is not Method.WORKER:
+        # A bound is calibrated by its own step: one operation of an adapter that underran
+        # its estimate threefold says nothing of another — a read of one page of comments of
+        # a branch written from twenty files (#370).
+        if step is not None and own:
+            history = [o for o in own if o.step == step]
+            source = f"{len(history[-WINDOW:])} observation(s) of {step} through {adapter}"
         return (factors(history), source) if history else ({}, "a bound, taken as given")
     # A worker's margin narrows with every observation: all of it with none, half with one, a
     # third with two — never below the floor, and never below what it has measured (DEC-0034,

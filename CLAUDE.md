@@ -224,8 +224,8 @@ generated (`make status`) and never stored in the file (DEC-0026).
   a decision, a need, a date — becomes a record under `docs/decisions/` and an issue assigned
   to him: a decision request (`DEC-NNNN`) or a needs request (`NEED-NNNN`), raised when it
   becomes foreseeable. Never only a line in a description. The description's last section,
-  *Needed from the owner*, is the output of `make status`; it is generated and checked, not
-  written (ADR-0028).
+  *Needed from the owner*, is the output of `make status`; the `owner-list` workflow writes it
+  from the branch's register on every push and edit, and nobody pastes it (ADR-0028, DEC-0189).
 - **Every pull request targets `main`.** A change that needs another, unmerged change waits
   for it to merge and is then rebased on `main`; it is never opened against the other
   change's branch. Squash merges discard the branch's history, so a stacked pull request
@@ -238,6 +238,11 @@ generated (`make status`) and never stored in the file (DEC-0026).
   conflict (DEC-0026). **No file carries a line that every pull request must rewrite** — a
   stored date, a running list of what changed since last time. Two pull requests then conflict
   on it whatever else they do; the history already holds both (DEC-0027).
+- **A record's number is reserved before the record is written.** `make reserve KIND=DEC`,
+  `NTC` or `NEED` takes a number on the repository's remote that no other session can take; the
+  record keeps it and is never renumbered. The register's index is printed by `make register`
+  and stored nowhere. Two pull requests that each add a record merge in either order without a
+  conflict; CI fails a record whose number nobody reserved (DEC-0189 rule 6).
 - **Every pull request description can be acted on without the diff.** It states what the
   change is about, what was done, why that way, and what the reviewer should check, in four
   sections of those names (ADR-0017 §7). CI fails a description without them.

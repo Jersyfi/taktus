@@ -47,11 +47,16 @@ a `report` step whose artifact is that text.
 **Tokens come per step.** Every assistant message of the agent carries the tokens it used
 (input, cache creation, cache read, output); the worker attributes them to the step the
 message's tool call starts and reports `tokens_in` and `tokens_out` in `consumption.reported`
-before the next step starts (W-04). The agent streams one message in several lines, and the
-usage is counted once, with the first line. When that line carries text and the call comes in a
-later line, the tokens wait for the call. A message that calls no tool — the closing summary —
-gives its tokens to the `report` step. Until this was so, a message whose text came before its
-call was reported with zero tokens.
+before the next step starts (W-04). The agent streams one message in several lines. Each line
+carries the message's usage so far, and the output grows from line to line. A message is
+counted once, at its highest count: what a later line adds goes to the step the line belongs to.
+When a line carries text and the call comes in a later line, the tokens wait for the call. A
+message that calls no tool — the closing summary — gives its tokens to the `report` step. So
+does whatever the session total in the agent's final line holds beyond what the stream showed.
+Until this was so, a message whose text came before its call was reported with zero tokens. In
+the live run of #74 the worker counted each message at its first line and reported a twentieth
+of the output its agent used (#278). An assignment that ends before the final line — stopped
+at a limit, a window or a stop — has only the stream's count.
 
 **Money comes only at the end.** The agent reports `total_cost_usd` once, with its final
 result. The worker reports it as `currency` on the last step, after that step's boundary and
@@ -179,6 +184,9 @@ this way (ADR-0053).
   and the assignment fails with the agent's reason. A stop through the contract never does
   this.
 - **Choose its tools by judgement.** The frame chooses; the agent is denied, never persuaded.
+- **Go on past its limit of turns** (`--max-turns`). The agent ends with a result that names
+  an error and carries no text; the assignment fails with that error and the number of turns
+  as its reason, for instance "the agent ended with error_max_turns after 41 turn(s)" (#375).
 
 ## Fault injection
 

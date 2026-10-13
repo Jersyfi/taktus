@@ -115,6 +115,9 @@ data:
   {{- end }}
   TAKTUS_MODEL_BILLING: {{ $.Values.model.billing | quote }}
   TAKTUS_MODEL_OUTPUT_CAP: {{ $.Values.model.outputCap | quote }}
+  {{- with $.Values.model.usageKinds }}
+  TAKTUS_MODEL_USAGE_KINDS: {{ . | quote }}
+  {{- end }}
   {{- end }}
   TAKTUS_CAPACITY_DATABASE_VOLUME_MB: {{ include "taktus.databaseVolumeMb" . | quote }}
   TAKTUS_CAPACITY_STORAGE_EXPANDABLE: {{ .Values.capacity.storageExpandable | quote }}

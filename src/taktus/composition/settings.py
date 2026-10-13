@@ -317,6 +317,10 @@ class ModelSettings:
     provider_limit: str = "unknown"
     """`TAKTUS_MODEL_PROVIDER_LIMIT`: what the provider enforces itself over a month — `hard`,
     `alert`, `none`, `unknown`. Information only; Taktus never relies on it."""
+    usage_kinds: tuple[str, ...] = ("input", "output")
+    """`TAKTUS_MODEL_USAGE_KINDS`: the price kinds the endpoint reports per call, comma-separated
+    — `input`, `output`, `cache_read`, `cache_write`. Money is recomputable exactly only from
+    kinds that are reported; conformance check M-04 holds the endpoint to this declaration."""
 
     def effective(self) -> list[tuple[str, str]]:
         credential = "" if self.credential is None else f"*** (from {self.credential_source})"
@@ -327,6 +331,7 @@ class ModelSettings:
             ("TAKTUS_MODEL_BILLING", self.billing),
             ("TAKTUS_MODEL_OUTPUT_CAP", self.output_cap),
             ("TAKTUS_MODEL_PROVIDER_LIMIT", self.provider_limit),
+            ("TAKTUS_MODEL_USAGE_KINDS", ",".join(self.usage_kinds)),
             ("TAKTUS_CREDENTIAL_MODEL_API_KEY", credential),
         ]
 
@@ -498,7 +503,23 @@ def load_model(configuration: Configuration) -> ModelSettings:
         provider_limit=reader.choice(
             "model.provider.limit", "unknown", ("hard", "alert", "none", "unknown")
         ),
+        usage_kinds=_usage_kinds(reader, configuration),
     )
+
+
+PRICE_KIND_NAMES = ("input", "output", "cache_read", "cache_write")
+
+
+def _usage_kinds(reader: _Reader, configuration: Configuration) -> tuple[str, ...]:
+    """The price kinds the operator declares the endpoint reports: known kinds, none twice."""
+    kinds = reader.names("model.usage.kinds", ("input", "output"))
+    unknown = [kind for kind in kinds if kind not in PRICE_KIND_NAMES]
+    if unknown:
+        raise ConfigurationError(
+            configuration.name("model.usage.kinds"),
+            f"{', '.join(unknown)} is not a price kind; one of {', '.join(PRICE_KIND_NAMES)}",
+        )
+    return kinds
 
 
 def load_connectors(configuration: Configuration) -> Mapping[str, str]:
@@ -832,6 +853,9 @@ class Settings:
     bundle, never a default of the product (ADR-0092)."""
     state_dir: Path
     """Where artifact bytes are written."""
+    object_cache_mb: int
+    """How many MiB of artifact bytes the object store keeps in memory at most: the objects used
+    most recently. Every object stays readable from `state_dir`. 0 keeps none (#311)."""
     tenants: tuple[str, ...]
     """The tenants this instance serves: the runner claims work for each of them in turn, and
     the identity component places senders in them and nowhere else."""
@@ -891,6 +915,7 @@ class Settings:
                 ),
             ),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
+            ("TAKTUS_OBJECT_CACHE_MB", str(self.object_cache_mb)),
             ("TAKTUS_TENANTS", ",".join(self.tenants)),
             ("TAKTUS_INSTANCE", self.instance),
             ("TAKTUS_SHUTDOWN_CEILING_SECONDS", str(self.shutdown_ceiling_seconds)),
@@ -943,6 +968,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         findings=load_findings(configuration),
         change_process=reader.text("change.process", "").strip() or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
+        object_cache_mb=reader.integer("object.cache.mb", 64, low=0),
         tenants=load_tenants(configuration),
         instance=reader.text("instance", default_instance),
         shutdown_ceiling_seconds=reader.integer("shutdown.ceiling.seconds", 300, low=1),

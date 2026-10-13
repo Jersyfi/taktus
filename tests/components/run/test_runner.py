@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 from fakes import FakeIdentifiers, FakeWorker, HeldObjects, InnerStep
 from fakes.maturity import VERIFIED
+from fakes.model import FakeModel
 
 from taktus.adapters.driven.clock import SystemClock
 from taktus.adapters.driven.memory import (
@@ -28,6 +29,7 @@ from taktus.adapters.driven.memory import (
     MemoryQueue,
     MemoryRepository,
 )
+from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
@@ -92,14 +94,33 @@ def work(id: str, *, ceiling: int | None = None) -> tuple[Step, dict[str, Any]]:
     return step, document
 
 
+def llm(id: str) -> tuple[Step, dict[str, Any]]:
+    """A step a model answers."""
+    step = Step(
+        id=id,
+        method=Method.LLM,
+        reason="r",
+        rejected=(),
+        exactness=ExactnessClass.SOURCED,
+        fallback=Fallback(when="x", to=Method.HUMAN),
+    )
+    return step, {"purpose": "reasoning", "prompt": "Say yes.", "values": {}}
+
+
 class World:
     """One persistence, one queue, one engine — and as many runners as a test starts on it,
     the way several processes would share one database."""
 
     def __init__(
-        self, *, lease_seconds: int = 60, max_attempts: int = 5, worker: FakeWorker | None = None
+        self,
+        *,
+        lease_seconds: int = 60,
+        max_attempts: int = 5,
+        worker: FakeWorker | None = None,
+        model: FakeModel | None = None,
     ) -> None:
         self.worker = worker or FakeWorker()
+        self.model = model or FakeModel(answer="yes")
         self.clock = SystemClock()
         self.ids = FakeIdentifiers()
         self.persistence = MemoryPersistence()
@@ -122,6 +143,7 @@ class World:
             ledger=self.ledger,
             provenance=self.provenance,
             workers=StaticWorkerPool([("worker.fake", self.worker)]),
+            models=StaticModelPool([("model.fake", ["reasoning"], self.model, "fake-model@1")]),
             clock=self.clock,
             ids=self.ids,
             telemetry=NoTelemetry(),
@@ -513,6 +535,23 @@ async def test_a_waiting_run_s_job_is_deferred_and_not_counted_as_a_failed_attem
     await until(lambda: len(runner.outcomes) == 5)
     await world.stop(runner)
     assert [o.disposition for o in runner.outcomes] == ["deferred"] * 4 + ["completed"]
+    assert (await world.stored(run.id)).state is RunState.FINISHED
+
+
+async def test_a_provider_s_retry_after_defers_the_job_by_that_delay() -> None:
+    """A model's provider at its rate limit that names a delay in `Retry-After`: the job is
+    deferred by that delay, not by the runner's own first delay (ADR-0043, amendment)."""
+    world = World(model=FakeModel(answer="yes", at_limit=1, retry_after=0.5))
+    run = await world.submit(llm("draft"))
+    runner = world.runner("r1", wait_first=0.02, wait_cap=0.02)
+    await until(lambda: len(runner.outcomes) == 1)
+    assert runner.outcomes[0].disposition == "deferred"
+    await asyncio.sleep(0.2)
+    assert len(runner.outcomes) == 1, "deferred by the provider's delay, not the runner's"
+    assert await world.claimable() == [], "not claimable before the provider's delay"
+    await until(lambda: len(runner.outcomes) == 2)
+    await world.stop(runner)
+    assert [o.disposition for o in runner.outcomes] == ["deferred", "completed"]
     assert (await world.stored(run.id)).state is RunState.FINISHED
 
 

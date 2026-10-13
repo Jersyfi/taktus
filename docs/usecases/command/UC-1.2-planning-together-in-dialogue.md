@@ -7,7 +7,7 @@ serves: [P2, P10]
 state: building
 version: 0.3.0
 tests: [tests/components/command/test_commission.py::test_commissioning_is_a_recorded_act]
-adrs: {ADR-0005: c1a4c3f4cfb5, ADR-0026: ccc4bd1f5423}
+adrs: {ADR-0005: 36cfa986883b, ADR-0026: ccc4bd1f5423}
 supersedes: null
 ---
 

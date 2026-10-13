@@ -170,9 +170,24 @@ Section 4 is the one #1 lacked and the reason its questions could not be answere
 - `docs/decisions/DEC-NNNN-<slug>.md` — a closed record: an answered request, a DEFECT record, or
   a question that was raised as a decision and reclassified as a NOTE.
 - `docs/decisions/NTC-NNNN-<slug>.md` — a notice, the record of a mode-2 decision (§2a).
-- `docs/decisions/README.md` — the register index; every record and every notice is listed there.
+- `docs/decisions/README.md` — what the register is; the index of every record is printed by
+  `make register`, generated from the files, and stored nowhere.
 - Numbers are assigned once, in sequence, across open files and records, and never reused. A
   record keeps the number of the request it closes. Notices have a sequence of their own.
+- A number is reserved before its record is written, by creating the ref
+  `refs/register/<PREFIX>-<NNNN>` on the repository's remote (`make reserve`).
+
+*Amended 2026-10-13 (DEC-0189 rule 6, #316).* Until then the index was three tables in
+`docs/decisions/README.md`, and a session took the next number from what `main` held. Two
+sessions working in parallel took the same number, or added a row at the same place: five
+renumberings and one overwritten row up to 2026-10-12. Now the index is generated on demand,
+and a number is reserved on the remote. The host creates a ref once, so of two sessions that
+try the same number exactly one gets it. A record keeps its number from the moment it is
+written; nothing renames it on merge. A number reserved and never written leaves a gap, and a
+gap means nothing. The other way the rule offered, a placeholder renamed to a number when the
+pull request merges, was not built. `main` accepts a change only through a pull request, so a
+rename on merge needs a second pull request for every merge. And a placeholder cannot be named
+in an issue, a commit or the owner's answer before it merges.
 
 A plain NOTE gets no file: it lives in the pull request description. A question that was raised
 as a decision and then reclassified gets a record, so that the register carries the precedent.
@@ -188,7 +203,8 @@ When an answer arrives, in whatever channel:
 1. the answer, its date, the reasoning given, and a link to the pull request or issue are written
    into the file as an `## Outcome` section, and the file moves from `docs/decisions/open/` to
    `docs/decisions/` — the same commit deletes the open file and creates the record;
-2. the record is listed in `docs/decisions/README.md`;
+2. the record appears in the index `make register` prints, with nothing to edit (amended
+   2026-10-13, §5);
 3. the issue is closed with a reference to the record;
 4. a BLOCKING pull request leaves draft only then.
 
@@ -226,12 +242,14 @@ quoted.
 - `tools/check_decisions.py`, run as `make gate-decisions`, part of `make gates` and of CI. It fails
   when an open request misses a section or keeps a placeholder; when a decision named in the pull
   request description has no file; when a record lacks an outcome or a date; when a file remains
-  under `open/` although its record exists; when a record is missing from the index. For
-  notices: when the header lacks a mode-2 entry that `anchors.taktus.md` defines, a kind, a
-  date or the pull request; when the kind is not the one the entry names on that page; when a
-  section is missing, empty or out of order, or keeps a placeholder; when a `gate-weakened`
-  notice lacks *Why the gate had no value* or that section names no gate; when a notice is
-  missing from the index.
+  under `open/` although its record exists; when `docs/decisions/README.md` stores a row of
+  the index; when, against the base of a pull request, a record the branch adds carries a
+  number nobody reserved. For notices: when the header lacks a mode-2 entry that
+  `anchors.taktus.md` defines, a kind, a date or the pull request; when the kind is not the
+  one the entry names on that page; when a section is missing, empty or out of order, or keeps
+  a placeholder; when a `gate-weakened` notice lacks *Why the gate had no value* or that
+  section names no gate. Until 2026-10-13 it failed a record missing from the stored index;
+  the index is generated since and cannot miss one (§5).
 - The `decisions` CI job passes the pull request body and the draft flag to the same tool, which
   fails when a BLOCKING decision is named and the pull request is not a draft, and when the
   description lacks one of the four sections of §7 — about, done, why, check — or leaves one
@@ -288,8 +306,16 @@ of 6.
 
 ## Where this promise ends
 
-The gate checks shape: sections present, fields filled, a date, an index entry, a draft flag
-that matches. For a pull request description it checks that the four sections of §7 are there,
+The gate checks shape: sections present, fields filled, a date, a draft flag that matches.
+
+A reservation keeps two sessions off the same number only when both reserve. The gate catches a
+number taken by hand in a pull request's CI, against the reservations the remote lists; it does
+not see who reserved a number, so a session that writes under a number another session
+reserved passes it. The second of those two to merge is stopped by the check that a number is
+used once. A
+reservation needs the remote: a session without one cannot reserve, and writes its record once
+it can. A process that writes records through the host's interface instead of `git` creates the
+same ref through that interface; nothing here builds that for P-03 yet. For a pull request description it checks that the four sections of §7 are there,
 filled and in order; it cannot check that they are readable without the diff. It cannot check that a request is decidable by a person who has read neither the
 diff nor the session — that is a reviewer's judgement — and it cannot check that a question
 tested against the anchor page was tested honestly. A notice's evidence, and a `gate-weakened`

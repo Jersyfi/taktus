@@ -16,6 +16,8 @@ class FakeModel(Model):
     unreachable: str | None = None
     at_limit: int = 0
     """Answer the next so many calls at the provider's rate limit, as a 429 does."""
+    retry_after: float | None = None
+    """The delay such an answer names in its `Retry-After`, in seconds; None for none."""
     prompts: list[Prompt] = field(default_factory=list)
     declaration: Calculability = field(
         default_factory=lambda: Calculability(
@@ -42,7 +44,9 @@ class FakeModel(Model):
             raise ModelError(self.unreachable)
         if self.at_limit > 0:
             self.at_limit -= 1
-            raise ModelAtLimit("the provider's rate limit is reached")
+            raise ModelAtLimit(
+                "the provider's rate limit is reached", retry_after_seconds=self.retry_after
+            )
         tokens_in = _words(prompt)
         tokens_out = len(self.answer.split())
         return Completion(

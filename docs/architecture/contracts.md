@@ -117,10 +117,10 @@ is why it is the basis and why no vendor's own extensions are used.
 | **Report the tokens used** and **which model answered** | tokens are counted per step (ADR-0005); a variable method is reproducible only at a pinned version, so the answering model goes into the provenance (ADR-0021) |
 | **Say why it stopped** — the end of the answer, or the output limit | an answer cut off at the limit does not leave the step |
 | **Take a bearer credential at the call, or none** | a local endpoint needs none; a vendor's key is a parameter (`CREDENTIALS.md`) |
-| **Say when the provider is at its rate limit** — apart from every other refusal | nothing was produced and the call may be made again: the step waits at its boundary instead of failing, booked to `limit.provider` (ADR-0043). The port's `ModelAtLimit`; the adapter raises it for `429` |
+| **Say when the provider is at its rate limit** — apart from every other refusal | nothing was produced and the call may be made again: the step waits at its boundary instead of failing, booked to `limit.provider` (ADR-0043). The port's `ModelAtLimit`; the adapter raises it for `429`, with the delay its `Retry-After` asks for |
 
 | **Declare what it can compute before a call** — how it counts input, whether its output limit is hard, which price kinds it reports, how its provider bills | a budget is only as strong as the provider permits; the run derives from the declaration what it can promise and says so when the budget is set (ADR-0005, third amendment) |
-| **Report the tokens by price kind** where the provider does — uncached input, cache read, cache write, output | money is computed from the record at a versioned price table (ADR-0010) |
+| **Report the tokens by price kind** where the provider does — uncached input, cache read, cache write, output | money is computed from the record at a versioned price table (ADR-0010). The adapter reads cached tokens nested in `prompt_tokens_details` and at the top level of the usage (`contracts/model/v1` §5) |
 
 The contract is a schema with a conformance suite (`contracts/model/v1`): the declaration
 (`Calculability`), the usage of one call, the price table, the weighting table of the Takt, and the checks M-01 to M-04 —
@@ -128,7 +128,8 @@ The contract is a schema with a conformance suite (`contracts/model/v1`): the de
 (`src/taktus/ports/model.py`) and its one adapter (`adapters/driven/models/openai_compatible/`),
 configured by `TAKTUS_MODEL_ENDPOINT`, `TAKTUS_MODEL_NAME` and `TAKTUS_MODEL_PURPOSES` — one model,
 for the purposes it is named for or for all — and by `TAKTUS_MODEL_BILLING`,
-`TAKTUS_MODEL_OUTPUT_CAP` and `TAKTUS_MODEL_PROVIDER_LIMIT`, what its provider permits; it is
+`TAKTUS_MODEL_OUTPUT_CAP`, `TAKTUS_MODEL_PROVIDER_LIMIT` and `TAKTUS_MODEL_USAGE_KINDS`, what its
+provider permits and reports; it is
 recorded in the ledger as `model.endpoint`. Over the dialect it counts input as an upper bound
 (the contract's §3). A process names a *purpose* (`reasoning`, `triage`), never a product
 (ADR-0003). `tests/adapters/models` proves the adapter against a fake of the endpoint, and
