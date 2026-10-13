@@ -136,7 +136,7 @@ generate: env ## Regenerate what is generated and committed: api/openapi.yaml fr
 	$(UV) run python tools/generate.py
 
 status: need-uv ## Print what is needed from the owner, from the register: the last section of every pull request description (DEC-0026)
-	@$(UV) run tools/check_status.py --print
+	@$(UV) run tools/check_status.py --print --ask-host
 
 register: need-uv ## Print the register's index, generated from the records: every provided need, notice and record (DEC-0189 rule 6)
 	@$(UV) run tools/check_decisions.py --index

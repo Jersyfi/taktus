@@ -54,12 +54,26 @@ jobs:
           python3 -c 'import json, sys; open(sys.argv[2], "w", encoding="utf-8").write(json.load(open(sys.argv[1], encoding="utf-8"))["body"] or "")' \
             "$RUNNER_TEMP/pull.json" "$RUNNER_TEMP/body.md"
           cp "$RUNNER_TEMP/body.md" "$RUNNER_TEMP/before.md"
+      # The merged descriptions that may carry `## Behaviour changes`, so that the acceptance
+      # line counts them (DEC-0189 rule 2, DEC-0042). Fetched here, with the token, and handed to
+      # the generator as a file; the generator itself gets no token. A failed fetch writes no
+      # file, and the line then says the changes were not counted.
+      - name: the merged descriptions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr list --repo "$REPO" --state merged --search '"Behaviour changes" in:body' \
+            --limit 1000 --json number,body > "$RUNNER_TEMP/merged.part" \
+            && mv "$RUNNER_TEMP/merged.part" "$RUNNER_TEMP/merged.json" \
+            || echo "the merged descriptions could not be fetched; behaviour changes not counted"
       - name: the list from the branch's register
         env:
           AUTHOR: ${{ github.event.pull_request.user.login }}
         run: >
           uv run tools/check_status.py
           --write-pr-body "$RUNNER_TEMP/body.md"
+          --merged "$RUNNER_TEMP/merged.json"
           --author "$AUTHOR"
       - name: the description written back when it changed
         env:

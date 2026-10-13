@@ -1,7 +1,7 @@
 # NTC-NNNN — <title: what was decided, in five words>
 
 **Mode entry:** <M2.N, the entry of anchors.taktus.md mode 2 that permits deciding this alone>
-**Kind:** <the kind that entry names in anchors.taktus.md: restructuring, test-strategy, gate-weakened or behaviour-change>
+**Kind:** <the kind that entry names in anchors.taktus.md: restructuring, test-strategy, gate-weakened, unlisted, restoration or spend>
 **Decided:** <YYYY-MM-DD>
 **Raised in:** <link to the pull request>
 
@@ -19,6 +19,9 @@ a weakened or removed gate, it is "Why the gate had no value"; for unlisted (ent
 situation that fit no entry and was decided in the direction of the vision, it is "The entry it
 proposes", naming an entry (M<mode>.<n>) for the anchor page (DEC-0039). A notice the owner later
 overrides with a decision gains the header line **Overridden by:** DEC-NNNN.
+A behaviour change (M2.4) is no notice here: it is a line of the section "Behaviour changes" of
+the pull request description, and the gate fails a notice of that kind a branch adds
+(DEC-0189 rule 2).
 Mechanism: docs/adr/ADR-0017 §2a.
 -->
 

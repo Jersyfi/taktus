@@ -23,7 +23,22 @@ Either the single word "None", or one line per decision, nothing else:
 Every line needs a file under docs/decisions/open/. A BLOCKING line keeps this pull request a
 draft; CI fails otherwise. Test the question against docs/decisions/anchors.taktus.md first:
 only an entry of mode 3 or 4 justifies a request. A mode-2 decision is a notice record
-(docs/decisions/NTC-NNNN-<slug>.md), named under "Notes".
+(docs/decisions/NTC-NNNN-<slug>.md), named under "Notes", except a behaviour change: that is a
+line of the next section.
+-->
+
+## Behaviour changes
+
+None
+
+<!--
+Either the single word "None", or one line per change of what the software does inside an
+agreed scope (M2.4 of docs/decisions/anchors.taktus.md), nothing else:
+- **Old:** <what it did> **New:** <what it does now> **Reason:** <why the scope needed it>
+Such a change is this line, not a notice file (DEC-0189 rule 2); `make status` counts the lines
+of merged pull requests. A change that breaks a contract, moves a limit or an autonomy level, or
+says something public is not M2.4 but a request. CI checks every line the section holds
+(tools/check_decisions.py).
 -->
 
 ## What was done
