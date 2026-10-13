@@ -426,7 +426,7 @@ process (#310): `GET /runs` answers a page, the overview counts runs by query, a
 ten steps each are answered in a twentieth of a second instead of 45 to 57 (ADR-0094, NTC-0202). Cache writes are
 booked by their kind in either shape an endpoint reports them, the operator declares the price
 kinds an endpoint reports and M-04 holds it to that, and a `429`'s `Retry-After` defers the step
-(#312, NTC-0206); which shape each provider in use returns is still to be verified against it.
+(#312, NTC-0206); the endpoint in use reports no cached input in either shape, and is declared `input,output` (NTC-0208).
 
 ## 2. The next pull requests
 
