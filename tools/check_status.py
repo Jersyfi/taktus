@@ -56,8 +56,13 @@ a file.
 The same line counts the behaviour changes (M2.4) and how many a decision overrode. Since
 DEC-0189 rule 2 such a change is a line of `## Behaviour changes` in its pull request's
 description, not a notice file, so the count reads the merged pull requests' descriptions: from
-`--merged FILE`, the host's answer a workflow fetched, or else by asking the host with `gh`.
-Where neither answers, the line says the changes were not counted; nothing is guessed. A
+`--merged FILE`, the host's answer a workflow fetched, or with `--ask-host` (`make status`)
+by asking the host with `gh`. Without either, and where neither answers, the line says the
+changes were not counted; nothing is guessed. `--print` alone asks nothing: P-03's worker runs
+it in a copy of the repository that holds this file alone, without network, and its output must
+be what the same tree generates (W-18). For the same reason the file imports nothing of the
+repository's: the line's shape is `tools/check_decisions.py`'s, repeated here, and a test holds
+the two to the same answer. A
 decision that overrode one names its pull request in `**Overrides:** #NNN`, read from the
 register, so that count needs no network. The repository squash-merges with the branch's commit
 messages as the body, not the description, so `git log` does not carry the section.
@@ -76,8 +81,6 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-
-import check_decisions
 
 ROOT = Path(__file__).resolve().parent.parent
 STATUS = ROOT / "docs" / "status.md"
@@ -307,14 +310,35 @@ def merged_descriptions(path: Path | None) -> list[str] | None:
     ]
 
 
+BEHAVIOUR_HEADING = "## behaviour changes"
+BEHAVIOUR_LINE = re.compile(
+    r"^[-*]\s+\*\*Old:\*\*(?P<old>.*?)\*\*New:\*\*(?P<new>.*?)\*\*Reason:\*\*(?P<reason>.*)$"
+)
+"""The shape `tools/check_decisions.py` holds a line of `## Behaviour changes` to (DEC-0189 rule
+2), repeated so that this file runs alone; `tests/tools/test_behaviour_changes.py` holds the two
+to the same count."""
+
+
+def behaviour_lines(body: str) -> int:
+    """How many lines of a description's `## Behaviour changes` the description check accepts."""
+    count = 0
+    inside = False
+    for raw in strip_comments(body).splitlines():
+        if raw.startswith("## "):
+            inside = raw.strip().lower() == BEHAVIOUR_HEADING
+            continue
+        match = BEHAVIOUR_LINE.match(raw.strip()) if inside else None
+        if match is None:
+            continue
+        old, new, reason = (part.strip() for part in match.groups())
+        if old and new and reason and old != new and not PLACEHOLDER.search(strip_code(raw)):
+            count += 1
+    return count
+
+
 def behaviour_changes(descriptions: list[str]) -> int:
     """How many well-formed lines of `## Behaviour changes` the descriptions carry."""
-    total = 0
-    for body in descriptions:
-        parsed = check_decisions.behaviour_changes(body)
-        if parsed is not None:
-            total += len(parsed[0])
-    return total
+    return sum(behaviour_lines(body) for body in descriptions)
 
 
 def acceptance(merged: list[str] | None = None) -> str:
@@ -608,8 +632,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--merged",
         type=Path,
-        help="JSON of merged pull requests ([{number, body}]) to count behaviour changes from; "
-        "with --print and without it, `gh` asks the host",
+        help="JSON of merged pull requests ([{number, body}]) to count behaviour changes from",
+    )
+    parser.add_argument(
+        "--ask-host",
+        action="store_true",
+        help="without --merged, ask the host with `gh` for the merged descriptions (make status)",
     )
     parser.add_argument(
         "--print",
@@ -621,9 +649,10 @@ def main(argv: list[str] | None = None) -> int:
 
     started = time.monotonic()
     if args.show or args.write_pr_body is not None:
-        # The host is asked only where a person prints the list; the workflow that writes it
-        # into a description fetched the descriptions already and hands them over.
-        ask = args.merged is not None or args.show
+        # The host is asked only where a person prints the list (`make status`); the workflow
+        # that writes it into a description fetched the descriptions already and hands them
+        # over, and P-03's worker prints it offline, from the tree alone.
+        ask = args.merged is not None or args.ask_host
         expected = generated(open_records(), merged_descriptions(args.merged) if ask else None)
         if args.show:
             print(printable(expected))

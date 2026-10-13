@@ -208,3 +208,44 @@ def test_the_host_unreachable_is_not_counted(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(check_status.subprocess, "run", unreachable)
     assert check_status.merged_descriptions(None) is None
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        LINE,
+        f"{LINE}\n{LINE}",
+        "None",
+        "- the retry waits now",
+        "- **Old:** a **New:** a **Reason:** c",
+        "- **Old:** a **New:** b **Reason:** TODO",
+        "- **Old:** **New:** b **Reason:** c",
+        f"<!--\n{LINE}\n-->",
+        f"{LINE}\n- not a line",
+    ],
+)
+def test_status_counts_what_the_description_check_accepts(changes: str) -> None:
+    """`check_status.py` runs alone in P-03's workspace and so repeats the line's shape; the
+    two tools agree on every line."""
+    body = BASE.format(changes=changes)
+    parsed = check_decisions.behaviour_changes(body)
+    accepted = len(parsed[0]) if parsed is not None else 0
+    assert check_status.behaviour_lines(body) == accepted
+
+
+def test_status_runs_alone_and_prints_offline(tmp_path: Path) -> None:
+    """P-03's worker runs `python3 tools/check_status.py --print` in a tree that holds this file
+    alone; it imports nothing of the repository's and asks no host."""
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "check_status.py").write_bytes(
+        (ROOT / "tools" / "check_status.py").read_bytes()
+    )
+    printed = subprocess.run(
+        [sys.executable, "tools/check_status.py", "--print"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PATH": "/nonexistent"},
+    ).stdout
+    assert "behaviour changes in merged pull requests not counted" in printed
