@@ -93,3 +93,11 @@ cause `limit`. Issue #87 needs P-01 to run there on its own.
 "DEC-0192: Option A.", "DEC-0192: Option B." or "DEC-0192: Option C." — in issue
 [#363](https://github.com/Jersyfi/taktus/issues/363). A free-text answer is read back as an
 interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-13
+**Answer:** Option A. "DEC-0192: Option A." (the owner's words, in conversation).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** P-01's quota becomes 60 units, in a new version of its bundle (a registered version never changes, NTC-0207).
+**Recorded in:** this pull request
