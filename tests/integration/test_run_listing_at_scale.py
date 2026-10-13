@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+import pytest
 from sqlalchemy import text
 
 from taktus.adapters.driven.postgres import _schema as schema
@@ -142,6 +143,7 @@ async def measured[T](call: Callable[[], Awaitable[T]]) -> tuple[T, float, float
     return answer, took, longest
 
 
+@pytest.mark.timing
 async def test_two_thousand_runs_are_listed_in_time_without_stalling_the_loop(
     instances: Callable[..., Instance], chosen: str
 ) -> None:

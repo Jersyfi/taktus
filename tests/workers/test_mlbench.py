@@ -181,7 +181,9 @@ def ml_bench(tmp_path: Path) -> Iterator[Bench]:
         )
     endpoint = f"http://127.0.0.1:{port}"
     try:
-        deadline = time.monotonic() + 20
+        # How long the bench may take to start, not a bound the test measures: importing its
+        # libraries on a machine whose cores run the rest of the suite (ADR-0096) took over 20 s.
+        deadline = time.monotonic() + 60
         while True:
             assert process.poll() is None, log.read_text()
             try:

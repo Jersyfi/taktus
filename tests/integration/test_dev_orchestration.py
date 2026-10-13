@@ -799,14 +799,14 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 # --- the takeover of every integration step (issue #90) ---------------------------------------
 
 BUNDLES = {
-    "P-01-roadmap-control.yaml": "p01-roadmap-control@3",
+    "P-01-roadmap-control.yaml": "p01-roadmap-control@4",
     "P-02-refinement.yaml": "p02-refinement@4",
     "P-03-implementation.yaml": "p03-implementation@8",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
     REPOSITORY_CONNECTOR: {
-        "p01-roadmap-control@3": {
+        "p01-roadmap-control@4": {
             "read-roadmap",
             "read-issues",
             "read-open-records",

@@ -1,4 +1,4 @@
-"""A coding assignment that fails says why (#375).
+"""A coding assignment that fails says why (#375), and how long it may go on (DEC-0193).
 
 The agent's last line is a result. One that ends on the agent's own limit of turns carries an
 error subtype and no text, and the worker read only the text and the error stream: the run on
@@ -12,6 +12,8 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType
+
+import pytest
 
 WORKER = Path(__file__).resolve().parents[2] / "workers" / "claudecode" / "worker.py"
 
@@ -43,3 +45,17 @@ def test_a_result_text_and_the_error_stream_still_come_first_and_last() -> None:
         worker._cause_of({"subtype": "error_during_execution", "is_error": True}, "boom\n", 1)
         == "the agent ended with error_during_execution: boom"
     )
+
+
+def test_the_limit_of_turns_is_read_from_the_units_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An operator raises the agent's limit of turns for a cluster unit through the unit's
+    settings (ADR-0090), as the project's instance does (DEC-0193). The flag still wins."""
+    worker = load()
+    monkeypatch.setenv("CODING_AGENT_AUTH", "api-key")
+    monkeypatch.delenv("CODING_AGENT_MAX_TURNS", raising=False)
+    assert worker.parse_args([]).max_turns == 50
+    monkeypatch.setenv("CODING_AGENT_MAX_TURNS", "150")
+    assert worker.parse_args([]).max_turns == 150
+    assert worker.parse_args(["--max-turns", "20"]).max_turns == 20

@@ -29,7 +29,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p01-roadmap-control
-version: "3"
+version: "4"
 name: P-01 Roadmap control
 autonomy:
   level: 3
@@ -81,7 +81,9 @@ inputs:
 # Connector calls are counted in requests: two for the roadmap, up to twenty for the issues,
 # two for the directory and three for the comment.
 limits:
-  quota: { units: 40 }
+  # Raised from 40 by DEC-0192: an uncalibrated step reserves twice its estimate, and
+  # read-issues alone reserved the whole 40.
+  quota: { units: 60 }
 
 steps:
   - id: read-roadmap

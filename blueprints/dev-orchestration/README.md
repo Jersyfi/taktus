@@ -39,7 +39,7 @@ same way (issue #70). The backlog's order — earliest milestone, then priority,
 number — is in the same module, `backlog()`, which `make backlog` prints from and P-01's rule
 `backlog` runs (issue #71).
 
-**P-01 Roadmap control** (autonomy 3, seven steps, no model): read the roadmap on `main`
+**P-01 Roadmap control** (version 4, autonomy 3, seven steps, no model, a quota of 60 units — DEC-0192): read the roadmap on `main`
 (`rule`, connector read, with the commit it was read at), read the open issues to the last page
 (a reading that stopped short fails) and the directory of open records (`rule`, connector
 reads), order the backlog (`rule` `backlog`, `exact` — the groups and the order `make backlog`
