@@ -89,3 +89,11 @@ two weeks, in which the instance implements the backlog on its own, cannot start
 "DEC-0193: Option A.", "DEC-0193: Option B." or "DEC-0193: Option C." — in issue
 [#384](https://github.com/Jersyfi/taktus/issues/384). A free-text answer is read back as an
 interpretation and confirmed before it is acted on.
+
+## Outcome
+
+**Decided:** 2026-10-13
+**Answer:** Option A. "DEC-0193: Option A." (the owner's words, in conversation).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:** the instance's coding agent may take up to 150 turns per assignment. The coding worker reads its limit from a setting of its unit, which the operator sets through `execution.defaults.unitEnv` (ADR-0090); the product's default stays 50.
+**Recorded in:** this pull request
