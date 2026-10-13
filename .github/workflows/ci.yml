@@ -2,6 +2,11 @@ name: ci
 
 # CI validates. CI never deploys.
 #
+# Every check runs where it costs least, and every lane is a job of its own, so that a run takes
+# as long as its slowest lane rather than all of them together (ADR-0096). The ruleset requires
+# one check, `gates`: an aggregate that needs every job, passes when each one passed, and always
+# reports.
+#
 # Pushes to `taktus/**` run the same gates as a pull request: P-03 Implementation puts a change
 # on such a branch and reads the pipeline's verdict before it opens the pull request
 # (blueprints/dev-orchestration/processes/P-03-implementation.yaml), so the verdict must exist
@@ -11,6 +16,12 @@ on:
   push:
     branches: [main, "taktus/**"]
 
+# A newer push to a pull request or a `taktus/**` branch cancels the run it supersedes. A run on
+# `main` is never cancelled: every commit there is checked in full (ADR-0096 §5).
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 permissions:
   contents: read
 
@@ -19,6 +30,7 @@ jobs:
   # own dependencies (PEP 723 header), so this job stays green independently of the Python gates.
   contracts:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -30,6 +42,7 @@ jobs:
   # `description` workflow's, which runs on an edit too.
   decisions:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,7 +64,7 @@ jobs:
       - name: architecture decision records
         run: make gate-adrs
       # The vision layer holds together and every principle is served by a use case. Plain
-      # Markdown, standard library; the use cases themselves are checked in the gates job, which
+      # Markdown, standard library; the use cases themselves are checked in the static job, which
       # has the project environment their named tests need.
       - name: vision
         run: make gate-vision
@@ -71,6 +84,7 @@ jobs:
   # its build. It needs Node and not the Python environment; here the gate may not skip.
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -83,8 +97,11 @@ jobs:
           TAKTUS_REQUIRE_NODE: "1"
         run: make gate-web
 
-  gates:
+  # Everything that reads the code rather than running it: secrets, lint and types, the
+  # architecture, the chart, governance, exactness, documentation, the register and the use cases.
+  static:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
@@ -109,9 +126,6 @@ jobs:
 
       - name: architecture
         run: make gate-arch
-
-      - name: conformance
-        run: make gate-conformance
 
       # The chart is linted and rendered with the pinned helm, and its manifests are read back by
       # the governance tests (tests/governance/test_chart.py); here they may not skip.
@@ -146,8 +160,46 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || (github.ref == 'refs/heads/main' && github.event.before || 'origin/main') }}
         run: make gate-usecases BASE="$BASE"
 
-      # The runner has Docker; the PostgreSQL tests run in a container and may not skip here.
+  # The conformance suite of every contract. Each test starts its own worker or connector
+  # process, so the tests spread over the runner's cores (`pytest-xdist`).
+  conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - name: conformance
+        run: make gate-conformance
+
+  # Unit, domain and integration tests. The runner has Docker; the PostgreSQL tests run in a
+  # container and may not skip here. The test images are built once before the tests spread
+  # over the cores, so that no two processes build the same image.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - name: images
+        run: make images
       - name: test
         env:
           TAKTUS_REQUIRE_DATABASE: "1"
         run: make test
+
+  # The one check the ruleset requires. It needs every job above, fails unless each one
+  # succeeded, and always reports — a job that failed, was cancelled or timed out fails it.
+  gates:
+    if: always()
+    needs: [contracts, decisions, web, static, conformance, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every lane passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' > /dev/null
