@@ -59,3 +59,28 @@ def test_the_limit_of_turns_is_read_from_the_units_settings(
     monkeypatch.setenv("CODING_AGENT_MAX_TURNS", "150")
     assert worker.parse_args([]).max_turns == 150
     assert worker.parse_args(["--max-turns", "20"]).max_turns == 20
+
+
+def test_the_agent_is_offered_only_the_tools_its_frame_allows() -> None:
+    """A tool offered and then refused ends the assignment (W-07): three runs on the instance
+    ended on a web fetch they were offered and not allowed (#424)."""
+    from types import SimpleNamespace
+
+    worker = load()
+    run = object.__new__(worker._Run)
+    run.frame = {
+        "allowed_tools": ["code.read", "code.edit", "code.test", "shell.sandboxed"],
+        "allowed_hosts": ["github.com"],
+    }
+    run.fault = None
+    run.body = {"context": {}}
+    run.worker = SimpleNamespace(
+        agent_command=["claude"], options=SimpleNamespace(max_turns=150, model=None)
+    )
+    run.a = SimpleNamespace(session_id="s-1")
+    run._prompt = lambda resuming: "the task"
+    arguments = run._agent_arguments()
+    offered = arguments[arguments.index("--tools") + 1].split(",")
+    allowed = arguments[arguments.index("--allowedTools") + 1].split(",")
+    assert "WebFetch" not in offered
+    assert offered == allowed
