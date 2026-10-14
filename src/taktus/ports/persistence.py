@@ -67,6 +67,16 @@ class SpoiltTransaction(PersistenceError):
         )
 
 
+class UnreadableState(PersistenceError):
+    """A file of stored state does not read as this version's documents: it is in an earlier
+    format, or no longer what was written. The stores do not migrate it."""
+
+    def __init__(self, path: str, reason: str) -> None:
+        super().__init__(f"{path} cannot be read: {reason}")
+        self.path = path
+        self.reason = reason
+
+
 class DuplicateSequence(PersistenceError):
     """An entry was appended under a sequence number the tenant's chain already has."""
 
