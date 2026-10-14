@@ -62,4 +62,4 @@ It prints `false`.
 **Provided:** 2026-10-15
 **Confirmed by:** the command of section 7 prints `false`; the required check `gates` is unchanged, and the ruleset has no bypass actor.
 **How it was provided:** the owner switched the setting off and said so in conversation on 2026-10-15. It was switched off before #391 is merged, earlier than section 3 planned. Until #391's guard exists, nothing holds a merge while `main` is red; a red `main` stays the first task of any session, and nothing merges onto it but its repair (CLAUDE.md §9).
-**Recorded in:** the pull request that records NEED-0026 as provided
+**Recorded in:** [#453](https://github.com/Jersyfi/taktus/pull/453)
