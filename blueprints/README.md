@@ -17,6 +17,7 @@ none of them.
 | Blueprint | What it is | State |
 |---|---|---|
 | [`dev-orchestration`](dev-orchestration/README.md) | product development, unattended — use case UC-01 | three of eleven processes run as bundles |
+| [`software-operations`](software-operations/README.md) | operating a software business, introduced in stages — use case UC-03, the second tenant | a description; stage 0 at `0.4.0` |
 | [`self-operation`](self-operation/README.md) | what Taktus runs for itself, on itself | S-01 the removal test runs weekly |
 | [`it-operations`](it-operations/README.md) | systems operation, unattended — use case UC-02 — and its reference assistant, the IT service chat (UC-12.2) | a description; the roadmap's `0.7.0` |
 | [`finance`](finance/README.md) | the finance reference domain under legal anchors — UC-15.2 | a description; not on the roadmap |
