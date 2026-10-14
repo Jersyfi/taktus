@@ -454,6 +454,15 @@ the owner's household (NEED-0027, #400); `0.6.0` adds a level-3 process of that 
 the second domain of `0.7.0` is incoming invoice to payment release (#402), and IT operations
 moved after `1.0.0` (#95). Ten features follow from the comparison (#403 to #411).
 
+**The second tenant** (2026-10-14). The business's catalogue arrived before the date, so plan B
+does not start (NEED-0027 provided, DEC-0199). The second tenant is a small software business:
+96 use cases in eleven areas, introduced in six stages from a daily report to a business that
+runs without staff in normal operation. UC-03 (`docs/usecases/AF-03-software-operations.md`)
+maps every use case to a process and a target level; nine function-level use cases state what no
+use case required yet (NTC-0210). Stage 0 is `0.4.0` (#400), stage 5 is `1.0.0` (#440), and
+`1.0.0` is not complete without it. Nothing of it is built. What the catalogue did not say —
+the business's systems, volumes, roles and where its data may go — is NEED-0028 (#426).
+
 ## 2. The next pull requests
 
 **The order of work is the backlog's** (DEC-0051): the repository's open issues, in milestones
