@@ -3,7 +3,7 @@
 **Mode entry:** M2.7
 **Kind:** restoration
 **Decided:** 2026-10-14
-**Raised in:** the pull request that records DEC-0199
+**Raised in:** [#442](https://github.com/Jersyfi/taktus/pull/442)
 **How it follows:** the owner accepted on 2026-10-14 that Taktus fully supports a software business's catalogue of use cases by `1.0.0`, with its introduction path (DEC-0199). The catalogue lists thirteen requirements on the tool that carries it, a rule for rising and falling between autonomy stages, a path in six stages and a list of what stays with a person. Nine of these are required by no use case yet. Each new use case below states one of them as a condition, and adds nothing the catalogue does not ask for; where the catalogue meets a principle, the principle bounds it.
 
 ## 1. What was decided

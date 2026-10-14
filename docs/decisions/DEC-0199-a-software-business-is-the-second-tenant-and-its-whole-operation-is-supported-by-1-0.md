@@ -127,4 +127,4 @@ the correction first.
 - the project's own development with P-01 to P-03;
 - DEC-0029, which must still be answered before `0.7.0`.
 
-**Recorded in:** this pull request
+**Recorded in:** [#442](https://github.com/Jersyfi/taktus/pull/442)

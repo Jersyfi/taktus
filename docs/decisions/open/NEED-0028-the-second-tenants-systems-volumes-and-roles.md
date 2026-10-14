@@ -1,7 +1,7 @@
 # NEED-0028 — The second tenant's systems, volumes and roles
 
 **Kind:** information
-**Raised in:** the pull request that records DEC-0199
+**Raised in:** [#442](https://github.com/Jersyfi/taktus/pull/442)
 **Issue:** [#426](https://github.com/Jersyfi/taktus/issues/426)
 **Needed by:** 2026-10-31
 **Foreseeable since:** DEC-0199, the day the business's catalogue arrived without the systems it uses
