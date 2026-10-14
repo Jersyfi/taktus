@@ -64,8 +64,8 @@ AGENT_EXIT_GRACE = 10.0
 DEFAULT_CEILING = 300
 AFTER_TIMEOUT = 300  # seconds the task's command after the work may run
 
-# What the agent's tools mean in the contract's terms. `--tools` gives the agent exactly these;
-# the frame's allowed_tools chooses which of them are approved at the moment of the call.
+# What the agent's tools mean in the contract's terms. The frame's allowed_tools chooses which of
+# them the agent is offered (`--tools`) and approved (`--allowedTools`); none other is offered.
 TOOL_CAPABILITY: dict[str, str] = {
     "Read": "code.read",
     "Grep": "code.read",
@@ -685,8 +685,10 @@ class _Run:
             "--verbose",
             "--permission-mode",
             "dontAsk",
+            # Only the frame's tools are offered: a tool offered and then refused ends the
+            # assignment (W-07), and three runs on the instance ended so on web.fetch.
             "--tools",
-            ",".join(TOOL_CAPABILITY),
+            ",".join(approved) or "conformance.nothing",
             "--allowedTools",
             ",".join(approved) or "conformance.nothing",
             "--max-turns",

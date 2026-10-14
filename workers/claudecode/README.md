@@ -134,9 +134,11 @@ configuration and never a secret: the credential itself stays a credential (ADR-
 
 ### The frame
 
-The agent is given every tool this worker maps (`--tools`), may use exactly those the frame
-allows (`--allowedTools`, in its don't-ask permission mode), and is denied the rest by its own
-permission system at the moment of the call. The worker sees the attempt in the stream, emits
+The agent is offered only the tools the frame allows (`--tools`) and may use exactly those
+(`--allowedTools`, in its don't-ask permission mode). Until 2026-10-14 it was offered every tool
+this worker maps; it then called one the frame did not allow, and three runs on the instance
+ended so (#424). A call outside the frame is still refused by the agent's own permission system
+at the moment of the call. The worker sees the attempt in the stream, emits
 `tool.called` with `refused: true`, ends the agent and finishes the assignment `failed` (W-07).
 Hosts the same way: a `web.fetch` names the URL's host, and a host outside `allowed_hosts` is
 refused (W-13); with no allowed host, fetching is not approved at all. What the agent runs in
