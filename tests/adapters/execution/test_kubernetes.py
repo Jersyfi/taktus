@@ -13,6 +13,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
@@ -707,5 +708,6 @@ async def test_a_client_that_negotiates_the_scheme_reaches_through_the_proxy(
             stderr=asyncio.subprocess.PIPE,
         )
         _, error = await git.communicate()
-    assert b"407" not in error
+    # A word, not a substring: the target's random port may contain "407" (#450).
+    assert re.search(rb"\b407\b", error) is None, error
     assert requests and b"/repository.git/info/refs" in requests[0]
