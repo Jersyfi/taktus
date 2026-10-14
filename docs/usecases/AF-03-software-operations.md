@@ -33,6 +33,12 @@ products (CLAUDE.md §6). Another software business can instantiate it.
 the anchors, the roles and the people stay in the tenant's own configuration, on its instance
 (ADR-0092). The systems themselves are NEED-0028.
 
+**The business hosts and operates Taktus itself** (DEC-0201). It installs and upgrades its
+instance from the documentation, and a person of the business opens each stage. The project
+never acts on its instance and never receives its data. What the business meets that the
+product lacks reaches this repository as a product finding, once its operator enables it
+(UC-6.12, #446). Every connector it needs is built in this repository, as product.
+
 **Taktus keeps no second truth** (non-goals). Code work stays in the business's repository
 service. Customer cases stay in its helpdesk or its customer system. Bookkeeping stays in its
 accounting system. Taktus holds runs, incidents and decision requests, and links to the place
@@ -300,8 +306,10 @@ repetition) and UC-9.6 (the introduction path).
 ## 8. The capabilities it needs
 
 Every outward access goes through an adapter named by capability (CLAUDE.md §6). Which system
-serves each one is the tenant's (NEED-0028). Many systems ship a server of their own on the
-protocol connectors use; those become connector candidates (#410).
+serves each one is the tenant's (NEED-0028). Connectors over open standards are built before the
+systems are known (#441). Many systems ship a server of their own on the protocol connectors
+use; those become connector candidates (#410). A connector for each system the business names
+follows (#447).
 
 | Capability | For | Available |
 |---|---|---|
@@ -326,6 +334,9 @@ protocol connectors use; those become connector candidates (#410).
 
 `1.0.0` is complete only when all of the following hold (DEC-0199):
 
+- the business installed its instance from the documentation, and upgraded it at every
+  release since without losing a run and without the project's help (#445);
+- every connector it uses is part of this repository and passes the conformance suite;
 - every process of §4 is registered for the tenant and runs in production;
 - every process has reached its target level, or Taktus has proposed the raise with the
   evidence UC-7.1 and UC-7.5 ask for; a person of the business may decline it;
