@@ -27,7 +27,10 @@ from fakes.maturity import configurations, write_verified
 
 from taktus.adapters.driving.cli.wiring import Services
 from taktus.components.command.application.service import CommissionPlan
-from taktus.components.process.application.service.register_version import RegisterProcessVersion
+from taktus.components.process.application.service.register_version import (
+    RegisterProcessVersion,
+    parse_bundle,
+)
 from taktus.components.run.application.service import ConfirmSteps, ResumeRun, StartRun
 from taktus.components.run.domain.model import Cause, Run, RunState, StepState
 from taktus.composition.local import LocalWiring
@@ -38,6 +41,7 @@ from .conftest import reference_worker
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE = ROOT / "examples" / "processes" / "six-times-seven.yaml"
+P03 = ROOT / "blueprints" / "dev-orchestration" / "processes" / "P-03-implementation.yaml"
 TENANT = "test"
 
 
@@ -330,6 +334,32 @@ def test_taktusctl_run_refuses_an_invalid_bundle(tmp_path: Path) -> None:
     assert completed.returncode == 2
     assert "is not a valid process" in completed.stderr
     assert "exact" in completed.stderr
+
+
+def test_taktusctl_run_refuses_a_state_in_an_earlier_format(tmp_path: Path) -> None:
+    """A snapshot holding a process version whose trigger filter is a string, as it was before
+    filters became mappings: one line naming the file and the way out, exit 2, no traceback
+    (#283). The snapshot is development state and is not migrated."""
+    state = tmp_path / "state"
+    added_by_command_line(taktusctl(), "idn_test", None, "--state-dir", str(state))
+    with P03.open(encoding="utf-8") as handle:
+        document = parse_bundle(yaml.safe_load(handle)).document()
+    document["triggers"][0]["filter"] = "label:to-taktus"
+    stored = state / "processversion.json"
+    stored.write_text(json.dumps({"default": [document]}), encoding="utf-8")
+    completed = subprocess.run(  # noqa: S603
+        [taktusctl(), "run", "--process", str(EXAMPLE), "--state-dir", str(state)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **PLAIN},
+    )
+    assert completed.returncode == 2, completed.stdout + completed.stderr
+    assert "Traceback" not in completed.stderr
+    [line] = completed.stderr.strip().splitlines()
+    assert str(stored) in line
+    assert "triggers.0.filter" in line
+    assert f"move {state} aside or start fresh" in line
 
 
 @pytest.mark.parametrize("missing", ["--process"])

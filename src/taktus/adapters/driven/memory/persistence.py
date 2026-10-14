@@ -17,7 +17,9 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, Self
+
+from pydantic import ValidationError
 
 from taktus.adapters.driven.memory import _snapshot
 from taktus.ports.persistence import (
@@ -26,6 +28,7 @@ from taktus.ports.persistence import (
     SpoiltTransaction,
     Stored,
     Tenant,
+    UnreadableState,
     WrongTenant,
 )
 from taktus.shared.v1 import LedgerEntry, Provenance
@@ -57,12 +60,8 @@ class MemoryPersistence:
         self._current: ContextVar[Transaction | None] = ContextVar("transaction", default=None)
         self._claims: dict[str, asyncio.Lock] = {}
         if snapshot_dir is not None:
-            stored = _snapshot.read(snapshot_dir / f"{LEDGER}.json") or {}
-            for tenant, documents in stored.items():
-                self._ledger[tenant] = [LedgerEntry.model_validate(d) for d in documents]
-            stored = _snapshot.read(snapshot_dir / f"{PROVENANCE}.json") or {}
-            for tenant, documents in stored.items():
-                self._provenance[tenant] = [Provenance.model_validate(d) for d in documents]
+            self._ledger = _read(snapshot_dir / f"{LEDGER}.json", LedgerEntry)
+            self._provenance = _read(snapshot_dir / f"{PROVENANCE}.json", Provenance)
 
     # --- the unit of work ----------------------------------------------------------------------
 
@@ -163,8 +162,30 @@ class MemoryPersistence:
         """Read a kind's snapshot, once, when its repository is created."""
         if self._snapshot_dir is None or kind in self._tables:
             return
-        self._tables[kind] = {}
-        stored = _snapshot.read(self._snapshot_dir / f"{kind}.json") or {}
-        for tenant, documents in stored.items():
-            items = [model.model_validate(d) for d in documents]
-            self._tables[kind][tenant] = {item.id: item for item in items}
+        stored = _read(self._snapshot_dir / f"{kind}.json", model)
+        self._tables[kind] = {
+            tenant: {item.id: item for item in items} for tenant, items in stored.items()
+        }
+
+
+class _Validated(Protocol):
+    @classmethod
+    def model_validate(cls, obj: Any) -> Self: ...
+
+
+def _read[T: _Validated](path: Path, model: type[T]) -> dict[Tenant, list[T]]:
+    """A snapshot file's documents by tenant. One this version cannot read — an earlier
+    format, or a file that is not what was written — is refused naming the file; a snapshot
+    is development state and is not migrated."""
+    try:
+        stored = _snapshot.read(path) or {}
+        return {
+            tenant: [model.model_validate(d) for d in documents]
+            for tenant, documents in stored.items()
+        }
+    except ValidationError as error:
+        first = error.errors()[0]
+        where = ".".join(str(part) for part in first["loc"])
+        raise UnreadableState(str(path), f"{where}: {first['msg']}") from error
+    except (ValueError, TypeError, AttributeError) as error:
+        raise UnreadableState(str(path), str(error) or type(error).__name__) from error

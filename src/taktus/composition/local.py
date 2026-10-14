@@ -123,6 +123,7 @@ from taktus.ports.persistence import (
     StateSize,
     Stored,
     UnitOfWork,
+    UnreadableState,
 )
 from taktus.ports.queue import Queue
 from taktus.shared.v1 import Command, Plan
@@ -402,19 +403,28 @@ class LocalWiring:
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         if database is None:
-            memory = MemoryPersistence(state_dir)
+            # A snapshot in an earlier format is refused in one line, never migrated: it is
+            # development state (#283). A store reads its file when it is first created.
+            try:
+                memory = MemoryPersistence(state_dir)
 
-            def in_memory[T: Stored](kind: type[T]) -> Repository[T]:
-                return MemoryRepository(memory, kind)
+                def in_memory[T: Stored](kind: type[T]) -> Repository[T]:
+                    return MemoryRepository(memory, kind)
 
-            yield Stores(
-                work=memory,
-                of=in_memory,
-                ledger_store=MemoryLedgerStore(memory),
-                provenance_store=MemoryProvenanceStore(memory),
-                storage=f"memory with a snapshot under {state_dir} — development only, "
-                "not durable; set TAKTUS_DATABASE_URL for a database",
-            )
+                yield Stores(
+                    work=memory,
+                    of=in_memory,
+                    ledger_store=MemoryLedgerStore(memory),
+                    provenance_store=MemoryProvenanceStore(memory),
+                    storage=f"memory with a snapshot under {state_dir} — development only, "
+                    "not durable; set TAKTUS_DATABASE_URL for a database",
+                )
+            except UnreadableState as error:
+                raise NotOperable(
+                    f"{error.path} is development state in a format this version does not "
+                    f"read ({error.reason}); move {state_dir} aside or start fresh with another "
+                    "--state-dir"
+                ) from error
             return
         url = database.reveal()
         try:
