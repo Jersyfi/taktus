@@ -20,7 +20,8 @@ definition is complete, so that an old reference stays findable.
   and a pointer to what replaced it.
 - **Blueprint-level cases** — one whole business function run by Taktus — are numbered
   `UC-<nn>` with two digits and no dot, and live with their blueprint: `UC-01` is
-  `AF-01-dev-orchestration.md`, `UC-02` is `AF-02-it-operations.md`.
+  `AF-01-dev-orchestration.md`, `UC-02` is `AF-02-it-operations.md`, `UC-03` is
+  `AF-03-software-operations.md`.
 
 ## Where the definition and the repository disagree
 
@@ -65,7 +66,16 @@ next free number of its area: `UC-6.11` the owner-facing channel; `UC-6.12` the 
 `UC-13.6` readable documentation beyond the repository. Numbered when a task needed a requirement
 no use case stated, the next free number of its area: `UC-4.14` a process starts on what happens
 in a tool (#76, DEC-0124); `UC-1.9` a contribution from a person Taktus does not know is triaged
-for the owner (#245, DEC-0175); `UC-4.15` a person changes a process in dialogue, and rolls it back (DEC-0186).
+for the owner (#245, DEC-0175); `UC-4.15` a person changes a process in dialogue, and rolls it back (DEC-0186). Numbered for the
+software business the owner accepted as the second tenant (DEC-0199, NTC-0210), each the next
+free number of its area: `UC-4.16` an expected run that does not happen is an incident;
+`UC-4.17` deadlines and response limits are rules of the process; `UC-4.18` a change is held to
+its evaluation cases, and drift is measured; `UC-6.13` signals against corridors; `UC-7.5`
+corrections are counted, and a level falls by rule; `UC-7.6` an outward message is labelled,
+checked and held; `UC-7.7` a step sees only the data of its case; `UC-8.12` a cap on open work
+and a stop to repetition; `UC-9.6` introduced in stages, each opened on evidence. The
+blueprint-level `UC-03` was numbered with them. Issue #402 had named its own future case
+`AF-03`; that case, if it is needed, is `UC-04`.
 
 ## Numbers of the definition with no file of their own
 
