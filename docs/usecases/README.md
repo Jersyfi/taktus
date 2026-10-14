@@ -19,6 +19,7 @@ at which autonomy, with which anchors. One file per blueprint, numbered `UC-<nn>
 |---|---|---|---|
 | UC-01 | product development, unattended | [AF-01-dev-orchestration.md](AF-01-dev-orchestration.md) | `0.4.0` |
 | UC-02 | systems operation, unattended | [AF-02-it-operations.md](AF-02-it-operations.md) | after `1.0.0` |
+| UC-03 | operating a software business, introduced in stages — the second tenant | [AF-03-software-operations.md](AF-03-software-operations.md) | `0.4.0` to `1.0.0` |
 
 **Function-level cases** describe one thing Taktus does, for every blueprint, as a
 requirement the implementation is held to. They are numbered `UC-<area>.<case>` and filed by

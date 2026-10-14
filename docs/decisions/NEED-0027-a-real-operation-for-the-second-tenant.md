@@ -60,3 +60,10 @@ and starts #400.
 
 The issue carries the answer. Once #400 has started, the second tenant appears in the tenant
 list of the instance (`taktusctl tenants list`, #318), by its display name only.
+
+## Outcome
+
+**Provided:** 2026-10-14
+**Confirmed by:** the session read the business's catalogue on 2026-10-14: eleven areas, 96 use cases, autonomy stages, a path in six stages, a list of what stays with a person and thirteen requirements on the tool. The owner's answer is DEC-0199. The catalogue is not in this repository.
+**How it was provided:** way 1, before the date. Plan B does not start. The catalogue names no systems and no volumes; these, the roles and where the tenant's instance runs are NEED-0028.
+**Recorded in:** the pull request that records DEC-0199
