@@ -27,7 +27,15 @@ step whose compute has no price under a currency budget is refused, never admitt
 **Where a worker must stop.** The reservation, grown by the run's margin, is the worker's hard
 ceiling (`grow`, `ceiling`), and never more than what is left of the whole budget: the worker
 halts at its next boundary when its running total would cross it (W-14). The margin is what
-absorbs a step that overruns its estimate; with no margin the ceiling is the reservation.
+absorbs a step that overruns its estimate; with no margin the ceiling is the reservation. Money
+is the exception: a worker's ceiling in a currency is what is left of the run's money, because
+the money is what a person granted the run, and a step halted below it would break off work the
+person already paid for (ADR-0005, seventh amendment, DEC-0202).
+
+**What a worker step reserves, at most.** A worker step whose own estimate fits what is left
+but whose calibrated reservation does not is admitted with the reservation cut to what is left
+(`capped`): the worker halts at its ceiling, so the calibration no longer has to keep that room
+free, and a step that would fit is never refused for another step's error (seventh amendment).
 """
 
 from __future__ import annotations
@@ -308,6 +316,31 @@ def scale_for(
     )
 
 
+def capped(reservation: ConsumptionQuantities, left: Limits | None) -> ConsumptionQuantities:
+    """The reservation with every quantity a limit bounds cut to what is left of it: what a
+    worker step whose own estimate fits reserves when its calibrated reservation does not
+    (seventh amendment). The worker halts at its ceiling, never more than what is left, so the
+    run's line holds without the room the calibration would have kept free."""
+    if left is None:
+        return reservation
+    cut: dict[str, object] = {}
+    if left.tokens is not None:
+        for name in ("tokens_in", "tokens_out"):
+            value, limit = getattr(reservation, name), getattr(left.tokens, name)
+            if value is not None and limit is not None:
+                cut[name] = min(value, limit)
+    if left.quota is not None and reservation.quota_units is not None:
+        cut["quota_units"] = min(reservation.quota_units, left.quota.units)
+    if left.compute is not None and reservation.compute_seconds is not None:
+        cut["compute_seconds"] = min(reservation.compute_seconds, left.compute.seconds)
+    if left.currency is not None and reservation.currency:
+        cut["currency"] = {
+            code: min(amount, left.currency[code]) if code in left.currency else amount
+            for code, amount in reservation.currency.items()
+        }
+    return reservation.model_copy(update=cut)
+
+
 # --- the ceiling a worker is given ------------------------------------------------------------
 
 
@@ -332,22 +365,23 @@ def ceiling(
     per_second: tuple[str, float] | None = None,
 ) -> Limits:
     """What a worker may use: its reservation, for every kind the budget limits, and never
-    more than what is left. The worker halts at its next boundary when its running total
-    would cross it (W-14). `per_second` is the currency and the price of a second of the
+    more than what is left; in a currency, what is left of the run's money (seventh
+    amendment). The worker halts at its next boundary when its running total would cross it
+    (W-14). `per_second` is the currency and the price of a second of the
     reservation's resource class where a currency budget holds compute money. The worker is
     then given a compute ceiling even where the budget sets none: the seconds the money left
     would buy, and never more than its reservation. A worker halts on the compute it reports,
     not on money it does not report (ADR-0005, fourth amendment)."""
     currency = None
     if budget.currency is not None:
+        # Money is the run's, not the step's: a worker may use what is left of it, and halts
+        # at its boundary before it crosses that (ADR-0005, seventh amendment, DEC-0202).
         currency = {
-            code: min(
-                (reservation.currency or {}).get(code, math.inf),
-                math.inf if left is None or left.currency is None else left.currency.get(code, 0),
-            )
-            for code in budget.currency
+            code: amount
+            if left is None
+            else (0.0 if left.currency is None else left.currency.get(code, 0.0))
+            for code, amount in budget.currency.items()
         }
-        currency = {code: value for code, value in currency.items() if math.isfinite(value)}
     quota = None
     if budget.quota is not None:
         units = min(
@@ -549,8 +583,10 @@ def _currency(
             kind="currency",
             how=ESTIMATE,
             reason=", ".join(by_assignment)
-            + " report money only when an assignment ends; within one the running total is "
-            "their reservation, and the spend can exceed it by one inner step",
+            + " run on workers: one that reports money per step halts at what is left of the "
+            "run's money, and the spend can exceed it by one inner step; one that reports money "
+            "only when an assignment ends is held to its estimate before it starts, and can "
+            "exceed it by its error",
         )
     return Promise(
         kind="currency",

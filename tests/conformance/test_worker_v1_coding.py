@@ -216,3 +216,72 @@ async def test_an_agent_within_its_estimate_leaves_w14_inconclusive(
     assert w14.status is Status.INCONCLUSIVE, report.render()
     assert "never exceeded the estimate" in w14.observed
     assert report.failed == []
+
+
+async def test_money_is_reported_per_step_and_a_money_limit_halts_at_the_boundary(
+    start_coding_worker: StartWorker,
+) -> None:
+    """Every step reports its tokens per model and price kind, and their money at the worker's
+    price table; the running total of money is held at every boundary (DEC-0202). With the
+    fake agent's usage a hundredfold, its steps cost about 0.29, 0.36 and 0.43 usd at the
+    prices of the model it names: under 1 usd the worker halts at the boundary of the third,
+    names the limit `currency`, and keeps the checkpoint. The resume continues from it."""
+    worker = start_coding_worker(auth="api-key", agent_env={"FAKE_AGENT_USAGE_FACTOR": "100"})
+    events = await one_assignment(worker, limits={"currency": {"usd": 1.0}})
+    finished = events[-1]
+    assert finished["outcome"] == "stopped" and finished["limit"] == "currency", finished
+    reported = [e for e in events if e["type"] == "consumption.reported"]
+    assert all("currency" in e for e in reported), "money at every boundary"
+    agent = [e for e in reported if e.get("tokens_by_model")]
+    assert agent and all(set(e["tokens_by_model"]) == {"claude-haiku-4-5-20251001"} for e in agent)
+    first = agent[0]["tokens_by_model"]["claude-haiku-4-5-20251001"]
+    assert first == {"input": 300, "cache_read": 500000, "cache_write": 110000, "output": 4100}
+    assert agent[0]["currency"]["usd"] == round((300 + 50000 + 220000 + 20500) / 1e6, 6)
+    money = [e["currency"]["usd"] for e in reported]
+    assert sum(money) >= 1.0 and sum(money[:-1]) < 1.0, "halted at the boundary that reached it"
+    boundaries = [e for e in events if e["type"] == "step.boundary"]
+    assert boundaries[-1]["checkpoint_ref"] == finished["checkpoint_ref"]
+    assert boundaries[-1]["seq"] == finished["seq"] - 1, "no step started after the boundary"
+    resumed = await one_assignment(
+        worker, assignment_id="asg_resume03", checkpoint_ref=finished["checkpoint_ref"]
+    )
+    assert resumed[-1]["outcome"] == "succeeded"
+    before = {e["artifact_id"] for e in events if e["type"] == "artifact.produced"}
+    after = {e["artifact_id"] for e in resumed if e["type"] == "artifact.produced"}
+    assert before and not before & after
+
+
+async def test_an_agent_at_its_limit_of_turns_stops_at_its_boundary_and_resumes(
+    start_coding_worker: StartWorker,
+) -> None:
+    """#380: the agent ends on its limit of turns, two here, with an error and no text. The
+    assignment ends `stopped` at the last boundary with its checkpoint, not `failed`, names no
+    limit of the assignment's, and reports the money the agent's result holds beyond its
+    steps. Each resume continues the same session for two more turns until the work is done;
+    nothing is done or announced twice."""
+    worker = start_coding_worker(auth="api-key", agent_env={"CODING_AGENT_MAX_TURNS": "2"})
+    events = await one_assignment(worker)
+    finished = events[-1]
+    assert finished["outcome"] == "stopped", finished
+    assert "limit" not in finished and "limit of 2 turns" in finished["reason"]
+    boundaries = [e for e in events if e["type"] == "step.boundary"]
+    assert boundaries[-1]["checkpoint_ref"] == finished["checkpoint_ref"]
+    reported = [e for e in events if e["type"] == "consumption.reported"]
+    priced = sum(e["currency"]["usd"] for e in reported[:-1])
+    assert reported[-1]["currency"]["usd"] == round(0.04 - priced, 6), "the agent's own total"
+    seen = {e["artifact_id"] for e in events if e["type"] == "artifact.produced"}
+    outcomes = []
+    checkpoint = finished["checkpoint_ref"]
+    for n in range(1, 4):
+        resumed = await one_assignment(
+            worker, assignment_id=f"asg_turns{n:02d}", checkpoint_ref=checkpoint
+        )
+        produced = {e["artifact_id"] for e in resumed if e["type"] == "artifact.produced"}
+        assert not produced & seen, "nothing announced twice"
+        seen |= produced
+        outcomes.append(resumed[-1]["outcome"])
+        if resumed[-1]["outcome"] != "stopped":
+            break
+        checkpoint = resumed[-1]["checkpoint_ref"]
+    assert outcomes == ["stopped", "succeeded"], outcomes
+    assert {"summary", "changeset"} <= seen and any(i.startswith("change-") for i in seen)

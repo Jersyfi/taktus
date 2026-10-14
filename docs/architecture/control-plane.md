@@ -151,8 +151,11 @@ follow:
   A worker receives its reservation as its `limits`, and halts at its next
   boundary before crossing them (W-14). The overrun of the one inner step during which a total
   crossed the line is the residual; the reservation exists to absorb it (ADR-0005, third amendment;
-  DEC-0035). For money reported only when an assignment ends — the coding worker's — the worker
-  cannot halt on it and is held by the tokens it reports per step. A currency budget holds the
+  DEC-0035). Money is the run's: a worker's currency ceiling is what is left of the run's
+  money, and a worker step whose own estimate fits is admitted with its reservation cut to what
+  is left. The coding worker prices its tokens per step and halts on that money; a worker that
+  reports money only when an assignment ends cannot halt on it (ADR-0005, seventh amendment,
+  DEC-0202). A currency budget holds the
   money of compute seconds at the run's price table, and gives a worker the compute ceiling that
   money buys; under it, compute the table does not price is refused, not admitted as free
   (ADR-0005, fourth amendment). When a budget is set, the run
@@ -368,8 +371,9 @@ Admission control works against all applicable limits at once: budget in currenc
 window, a provider rate limit, available compute. If the estimate does not fit, the step does not
 start, and the block is recorded with cause and duration in the blocked-time account
 ([throughput.md](throughput.md)). The line holds for the kinds reported per step — tokens,
-quota, compute — up to one inner step's overrun, and only up to the estimate for currency
-reported per assignment (ADR-0005, amendments).
+quota, compute, and money where a worker reports it per step, as the coding worker does — up to
+one inner step's overrun, and only up to the estimate for currency reported per assignment
+(ADR-0005, amendments).
 
 What a step used is recorded raw, with language-model tokens **per model and per price kind** —
 uncached input, output, cache read, cache write. Money is that record at a versioned price

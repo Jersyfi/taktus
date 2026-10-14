@@ -62,7 +62,7 @@ ledger). P-02 never edits the issue and never adds the label `ready`: a person, 
 the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
 the same issue, it stops at the first check: nothing is written twice.
 
-**P-03 Implementation** (version 9, autonomy 4, twenty-seven steps, three of them on escalation): it starts when an
+**P-03 Implementation** (version 10, autonomy 4, twenty-seven steps, three of them on escalation): it starts when an
 issue is handed to Taktus, the label `to-taktus` added (DEC-0197), not on the label `ready`. Read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
 of open records on `main`, admit — the ready standard, and open, not a pull request, not
@@ -85,6 +85,11 @@ output (issue #34). The worker generates it: after its change it runs `tools/che
 --print` in its workspace, the tree the branch will carry, and a template puts what it printed
 under the section's heading (DEC-0037, ADR-0053). A run started by hand may hand the section in
 as the input `closing_section` instead. Nothing writes to the base branch: a person merges.
+A run may spend USD 4, all of it on the coding step: the worker prices its tokens at every
+boundary and halts there before that is crossed, and an agent that reaches its limit of turns
+stops at its last boundary the same way. Either keeps its work and its claim; nothing restarts
+the run, and a person resumes it with a raised limit from its checkpoint, changes the task, or
+gives it back (DEC-0202, ADR-0005 seventh amendment).
 
 Every step carries its method, the reason, the alternatives rejected, a fallback where the
 method can vary, and its exactness class; `tests/exactness` holds the `exact` steps to rules.
@@ -241,6 +246,16 @@ Merging stays with the person who reviews, as it does when Taktus runs the proce
 **give-back**, **give-back-notice** and **announce-give-back** (person) — run only when a step
 after the claim failed and the work stops there: remove the label `in-progress` from the issue,
 and comment which step failed and why. Not after the pull request is open.
+
+**When `implement` halted** — at the run's money (cause `limit`) or at the agent's limit of turns
+(the step `stopped`, its reason naming the turns) — the run keeps its claim and its checkpoint,
+and nothing continues it. `taktusctl cost <run>` shows what it spent. The person decides one of
+three. *Resume*: for more money, copy the bundle, raise `limits.currency`, give the copy a
+version of its own, and run `taktusctl run --process <copy> --resume <run>`; for more turns,
+resume with the same bundle. The step continues from its checkpoint in the same workspace, not
+from the start; on a cluster that workspace lives in the units' state claim
+(`execution.stateClaim`). *Change the task*: edit the issue, give the task back, and hand it
+over again. *Give it back*: remove `in-progress` and say why, as above.
 
 ### P-05 Triage of contributions
 
