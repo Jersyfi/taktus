@@ -219,8 +219,9 @@ generated (`make status`) and never stored in the file (DEC-0026).
 - **CI checks what changed before a merge, and everything after it** (ADR-0096, DEC-0194).
   Every commit on `main` runs everything. A red `main` is the first task of any session, and
   nothing merges onto it except its repair. Once #390 lands, a draft is verified locally with
-  `make verify` and CI starts when the pull request is ready; once #391 lands, a pull request
-  merges without catching up with `main`. A flaky test is mended or quarantined by a
+  `make verify` and CI starts when the pull request is ready. A pull request merges without
+  catching up with `main` since 2026-10-15 (NEED-0026); until #391 lands, no guard holds a merge
+  while `main` is red, so a session checks `main` before it merges. A flaky test is mended or quarantined by a
   `gate-weakened` notice with a date, never rerun until green and forgotten.
 - **Everything in English** — code, comments, commits, documentation.
 - **Never delete without asking:** no volume, database, backup or process version history. Restores
