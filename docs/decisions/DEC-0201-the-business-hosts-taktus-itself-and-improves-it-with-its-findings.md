@@ -98,4 +98,4 @@ possible; his feedback, findings and bugs should make Taktus better.)
 **What it does not change:** DEC-0199's reading; the licence's timing (DEC-0044); ADR-0013 D —
 a version Taktus built is deployed by a person, here the business.
 
-**Recorded in:** this pull request
+**Recorded in:** [#450](https://github.com/Jersyfi/taktus/pull/450)

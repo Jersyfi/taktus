@@ -1,7 +1,7 @@
 # NEED-0029 — A written right for the business to run Taktus
 
 **Kind:** action
-**Raised in:** the pull request that records DEC-0201
+**Raised in:** [#450](https://github.com/Jersyfi/taktus/pull/450)
 **Issue:** [#444](https://github.com/Jersyfi/taktus/issues/444)
 **Needed by:** 2026-10-31
 **Foreseeable since:** DEC-0201, where the owner decided that the business hosts Taktus itself
