@@ -24,6 +24,7 @@ that is `sourced` or `tolerant` is only reproducible at a pinned version.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -171,13 +172,28 @@ class Priced(Value):
         return not self.unpriced
 
 
+SNAPSHOT_DATE = re.compile(r"-\d{8}$")
+"""The date a provider appends to a model's name for one snapshot of it: `-20251001`."""
+
+
+def entry_for[T](model: str, entries: Mapping[str, T]) -> T | None:
+    """A table's entry for a model as the endpoint named it: the entry under that very name,
+    else the entry under the name without its snapshot date. A worker records the model as its
+    agent named it, dated, where a table names the model undated (#279); an entry for the dated
+    name wins."""
+    if model in entries:
+        return entries[model]
+    return entries.get(SNAPSHOT_DATE.sub("", model))
+
+
 def price(tokens: Mapping[str, PriceKinds], table: PriceTable) -> Priced:
-    """The money these tokens cost at the table: every kind of every model at its price. A
-    model or a kind the table does not price is named in `unpriced`, never counted as free."""
+    """The money these tokens cost at the table: every kind of every model at its price, a
+    dated model at its undated entry where the table has no dated one (`entry_for`). A model
+    or a kind the table does not price is named in `unpriced`, never counted as free."""
     amount = 0.0
     unpriced: list[str] = []
     for model, kinds in sorted(tokens.items()):
-        prices = table.prices.get(model)
+        prices = entry_for(model, table.prices)
         for kind in ("input", "output", "cache_read", "cache_write"):
             count = getattr(kinds, kind)
             if not count:

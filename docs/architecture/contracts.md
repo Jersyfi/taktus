@@ -120,7 +120,7 @@ is why it is the basis and why no vendor's own extensions are used.
 | **Say when the provider is at its rate limit** — apart from every other refusal | nothing was produced and the call may be made again: the step waits at its boundary instead of failing, booked to `limit.provider` (ADR-0043). The port's `ModelAtLimit`; the adapter raises it for `429`, with the delay its `Retry-After` asks for |
 
 | **Declare what it can compute before a call** — how it counts input, whether its output limit is hard, which price kinds it reports, how its provider bills | a budget is only as strong as the provider permits; the run derives from the declaration what it can promise and says so when the budget is set (ADR-0005, third amendment) |
-| **Report the tokens by price kind** where the provider does — uncached input, cache read, cache write, output | money is computed from the record at a versioned price table (ADR-0010). The adapter reads cached tokens nested in `prompt_tokens_details` and at the top level of the usage (`contracts/model/v1` §5) |
+| **Report the tokens by price kind** where the provider does — uncached input, cache read, cache write, output | money is computed from the record at a versioned price table (ADR-0010). The adapter reads cached tokens nested in `prompt_tokens_details` and at the top level of the usage (`contracts/model/v1` §5). The record names the model as the endpoint named it; a dated name is priced at the table's undated entry where it has no dated one (§6) |
 
 The contract is a schema with a conformance suite (`contracts/model/v1`): the declaration
 (`Calculability`), the usage of one call, the price table, the weighting table of the Takt, and the checks M-01 to M-04 —

@@ -62,7 +62,7 @@ ledger). P-02 never edits the issue and never adds the label `ready`: a person, 
 the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
 the same issue, it stops at the first check: nothing is written twice.
 
-**P-03 Implementation** (version 11, autonomy 4, twenty-eight steps, three of them on escalation): it starts when an
+**P-03 Implementation** (version 12, autonomy 4, twenty-eight steps, three of them on escalation): it starts when an
 issue is handed to Taktus, the label `to-taktus` added (DEC-0197), not on the label `ready`. Read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
 of open records on `main`, admit — the ready standard, and open, not a pull request, not
@@ -84,7 +84,8 @@ failed and why (`rule` `template`, and `rule`, outward); a run refused at admiss
 fails at `label` with its pull request open, gives nothing back. The body is the worker's summary between what
 the template fixes: `Closes #N` and Taktus's own statement before it, and after it the section
 the repository generates for the end of every description — a copy is a rule, not a model's
-output (issue #34). The worker generates it: after its change it runs `tools/check_status.py
+output (issue #34). The template adds no heading of its own: the summary is written in the shape
+the repository asks of a description, so each section is there once (issue #282). The worker generates it: after its change it runs `tools/check_status.py
 --print` in its workspace, the tree the branch will carry, and a template puts what it printed
 under the section's heading (DEC-0037, ADR-0053). A run started by hand may hand the section in
 as the input `closing_section` instead. Nothing writes to the base branch: a person merges.
@@ -324,8 +325,8 @@ enforced.
   records, `docs/decisions/open` here — the clone URL, the one host the step lets the worker reach (its own service's hosts are the operator's, ADR-0089), the name of the coding
   worker's credential. `closing_section` is optional: the section the repository generates for
   the end of every pull request description, verbatim with its heading. Left out, the worker
-  generates it after its change (ADR-0053); `tools/first_run.sh` still hands it in, from
-  `tools/check_status.py --print` on `main`. P-03's trigger reacts to the label `to-taktus`, which hands
+  generates it after its change (ADR-0053); `tools/first_run.sh` no longer hands it in, since
+  a copy generated when the run started is stale by the time the pull request opens (issue #282). P-03's trigger reacts to the label `to-taktus`, which hands
   an issue to Taktus (DEC-0197), and gives every required input, the issue from the event
   (NTC-0112). The label must exist in the repository.
 - **The pipeline on a branch.** P-03 reads the pipeline's verdict before it opens the pull

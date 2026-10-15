@@ -92,8 +92,10 @@ What is built of this page (ADR-0010, amendment of 2026-09-30):
   one the run's budget statement names by digest: `taktusctl cost <run>` prints it, or prices
   the same breakdown at another table with `--prices`. The money is the tokens per model and
   kind plus the compute seconds per resource class, with both parts shown (ADR-0010, second
-  amendment). A model, a kind or a resource class without a price is named, never counted as
-  free; so is a table that prices no compute. A currency budget holds compute money at the
+  amendment). A model named with a snapshot date, as a coding agent names it, is priced at
+  the table's entry for the undated name where the table has none for the dated one; its
+  model class is found the same way (`contracts/model/v1` §6). A model, a kind or a resource
+  class without a price is named, never counted as free; so is a table that prices no compute. A currency budget holds compute money at the
   same table during the run, and refuses compute the table does not price (ADR-0005, fourth
   amendment). A run held with an uncalibrated margin an operator set below the floor
   says so beside its money, as its budget statement does (DEC-0047).

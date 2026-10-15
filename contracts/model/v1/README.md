@@ -131,6 +131,11 @@ table does not price is unpriced, never free. The operator configures the table
 (`TAKTUS_PRICE_TABLE`); the repository ships no prices, because they are a provider's and
 change without notice.
 
+A model is looked up under the name the endpoint gave it. A provider may append a snapshot date
+to that name, as in `-20251001`. Where the table has no entry under the dated name, the model
+is priced at the entry under the name without the date. An entry under the dated name wins. The
+model classes of the weighting table (§7) are looked up the same way (#279).
+
 A table may also price a second of compute per resource class, under `compute`. That is what a
 step on a worker costs, so that a trained model's cost per case can be compared with a language
 model's at the same table (ADR-0084). A class without a price is unpriced, never free. The field

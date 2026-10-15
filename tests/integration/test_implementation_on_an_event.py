@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -192,7 +193,7 @@ async def test_an_issue_handed_over_becomes_a_pull_request_that_ends_with_the_br
     await linked(wired, tenant)
     await verified_adapters(wired, tenant, outside)
     version = await registered(wired, tenant, the_bundle(outside))
-    assert version.ref == "p03-implementation@11"
+    assert version.ref == "p03-implementation@12"
 
     clock.current += timedelta(minutes=1)
     hand(outside, tasks.ready)
@@ -231,6 +232,8 @@ async def test_an_issue_handed_over_becomes_a_pull_request_that_ends_with_the_br
     described = body.split("<!-- taktus-idempotency-key")[0]
     assert described.endswith(closing + "\n"), described[-600:]
     assert described.index("Wrote notes/plan.md") < described.index(closing)
+    headings = re.findall(r"^## .+$", described, re.MULTILINE)
+    assert len(headings) == len(set(headings)), "each section once (#282)"
 
     # The description check of the repository passes on that branch.
     (tmp_path / "body.md").write_text(body, encoding="utf-8")

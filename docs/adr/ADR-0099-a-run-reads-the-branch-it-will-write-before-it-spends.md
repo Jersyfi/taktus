@@ -46,7 +46,7 @@ failure states it before the check that did not hold. This is how a refusal name
 and what a person does, without a rule that knows about branches.
 
 ### 4. P-03 reads the branch after its claim and before the coding step
-P-03, version 11, names the branch right after admission and reads it in the step `read-branch`,
+P-03, version 12, names the branch right after admission and reads it in the step `read-branch`,
 after the claim and before `implement`. The read passes the key of `create-branch` and expects
 `free`. A branch the run did not make stops the run there, before anything is spent. The reason
 names the branch, its head and the key at it, and says that a person looks at the branch,

@@ -40,7 +40,13 @@
 # request description, verbatim with its heading. Without it the worker generates the section:
 # after its change it runs the repository's generator in its workspace — the tree the branch
 # will carry, which is what the checks compare against — and the run appends what it printed
-# under the section's heading (DEC-0037, ADR-0053). The connector configured for
+# under the section's heading (DEC-0037, ADR-0053). A section handed in when the run starts is
+# as old as the run: in #274 it no longer matched an hour later (issue #282).
+#
+# The pull request description is the worker's summary, written in the shape the repository
+# asks of a description, between what the run fixes: `Closes #N` and Taktus's own statement
+# before it, and the closing section after it. The run adds no heading of its own, so each
+# section is there once (issue #282). The connector configured for
 # `repository.*` and the worker configured for `code.*` are what the capabilities resolve to;
 # no product is named here.
 #
@@ -60,7 +66,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "11"
+version: "12"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -117,14 +123,13 @@ inputs:
   # The run itself cannot generate it: the block is derived from files of the repository by the
   # repository's own code, and a template composes, it does not compute. So the worker runs
   # that code after its change, as a command of its task (`after`), and the run appends what it
-  # printed. Whoever starts the run by hand may still hand the section in, generated from the
-  # base branch, the way a person pastes the output of the repository's command into a
-  # description they open by hand; given, it is what the description ends with.
+  # printed. Whoever starts the run by hand may still hand the section in (ADR-0053); given, it
+  # is what the description ends with, as current as when it was generated (issue #282).
   closing_section:
     description: >
       the section the repository generates for the end of every pull request description,
-      verbatim with its heading, from the base branch; empty when the repository generates none.
-      Left out, the worker's generated section stands in for it
+      verbatim with its heading; empty when the repository generates none. Left out, the
+      worker's section, generated on the change's tree, stands in for it
     example: "## Generated\n\nNothing is open."
     required: false
 
@@ -720,21 +725,16 @@ steps:
       rule: template
       # What Taktus says about itself comes first, not last: a repository whose checks read the
       # description read its *last* section, and that section is the one the repository
-      # generates, appended here after the summary (DEC-0025, issue #34).
+      # generates, appended here after the summary (DEC-0025, issue #34). The template adds no
+      # heading of its own: the summary is written in the shape the repository asks of a
+      # description, and a heading here as well put sections into #274 twice (issue #282).
       text: |
         Closes #${issue}.
 
         *Opened by Taktus, process P-03 Implementation: the change was made by a coding worker
         in an isolated workspace, put on this branch by the run, and the pipeline's verdict was
-        read before this pull request was opened. A person merges. A run raises no decision
-        request — a process has no way to — so the section below is `None`, and a question this
-        change turns out to raise is raised by the person who reviews it.*
-
-        ## Decisions required
-
-        None
-
-        ## What this delivers
+        read before this pull request was opened. A person merges. What follows is the worker's
+        summary, and the last section is the one the repository generates.*
 
         ${summary}
 
