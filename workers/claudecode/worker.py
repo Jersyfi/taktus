@@ -247,6 +247,8 @@ class Step:
     by_model: dict[str, dict[str, int]] = field(default_factory=dict)
     """The tokens of the messages attributed to this step, per model and price kind."""
     refused: bool = False
+    call_id: str | None = None
+    """The agent's id of the call, which its result names."""
 
     @property
     def tokens_in(self) -> int:
@@ -255,6 +257,18 @@ class Step:
     @property
     def tokens_out(self) -> int:
         return sum(k.get("output", 0) for k in self.by_model.values())
+
+
+@dataclass
+class Call:
+    """A call the agent made while another of its calls was still the running step: several
+    calls in one message, made in parallel. It becomes a step once the one before it has
+    reached its boundary (W-04)."""
+
+    call_id: str | None
+    tool: str
+    arguments: Json
+    by_model: dict[str, dict[str, int]]
 
 
 # --- the worker ---------------------------------------------------------------------------------
@@ -555,6 +569,10 @@ class _Run:
         }
         self.halted: tuple[str, str] | None = None  # the limit kind and why
         self.current: Step | None = None
+        # Calls made while `current` runs, in the agent's order, and those of them whose result
+        # has arrived already: each becomes a step of its own once the one before has closed.
+        self.waiting: list[Call] = []
+        self.answered: set[str] = set()
         self.last_step_id: str | None = None
         self.last_text = ""
         self.result: Json | None = None
@@ -891,92 +909,146 @@ class _Run:
                 self.last_text = block["text"]
             if block.get("type") != "tool_use":
                 continue
-            tool = str(block.get("name"))
-            arguments = block.get("input") or {}
-            capability = self._capability_of(tool, arguments)
-            self.index += 1
-            step = Step(
-                index=self.index,
-                step_id=f"step-{self.index}",
-                tool=tool,
-                capability=capability,
-                kind=STEP_KIND.get(tool, "tool"),
-                began=time.monotonic(),
+            call_id = block.get("id")
+            call = Call(
+                call_id=call_id if isinstance(call_id, str) else None,
+                tool=str(block.get("name")),
+                arguments=block.get("input") or {},
                 by_model=self.unattributed,
             )
             self.unattributed = {}  # the message's tokens go to its first call
-            summary = f"{tool}: {_summary_of(tool, arguments)}"
-            with self.a.lock:
+            if self.current is not None:
+                # A call made while another runs: the agent calls in parallel. It becomes a
+                # step once the running one has reached its boundary, so that every step
+                # reports its consumption before the next starts (W-04).
+                self.waiting.append(call)
+                continue
+            if (ended := self._start(call, process)) is not None:
+                return ended
+        return None
+
+    def _start(self, call: Call, process: subprocess.Popen[str] | None) -> str | None:
+        """One call of the agent becomes the running step: `step.started`, then `tool.called`,
+        refused where the frame does not allow it. Returns why the assignment ends now, or
+        None."""
+        tool = call.tool
+        arguments = call.arguments
+        capability = self._capability_of(tool, arguments)
+        self.index += 1
+        step = Step(
+            index=self.index,
+            step_id=f"step-{self.index}",
+            tool=tool,
+            capability=capability,
+            kind=STEP_KIND.get(tool, "tool"),
+            began=time.monotonic(),
+            by_model=call.by_model,
+            call_id=call.call_id,
+        )
+        summary = f"{tool}: {_summary_of(tool, arguments)}"
+        with self.a.lock:
+            self.worker._emit(
+                self.a,
+                {
+                    "type": "step.started",
+                    "step_id": step.step_id,
+                    "kind": step.kind,
+                    "summary": summary[:200],
+                },
+            )
+        digest = (
+            json.dumps(arguments, sort_keys=True) if self.fault == "W-09" else digest_of(arguments)
+        )
+        called: Json = {
+            "type": "tool.called",
+            "step_id": step.step_id,
+            "tool": capability,
+            "arguments_digest": digest,
+        }
+        host = _host_of(tool, arguments)
+        if host is not None:
+            called["host"] = host
+        refused_tool = outside_frame(capability, self.frame) and self.fault != "W-07"
+        refused_host = (
+            host is not None and host_outside_frame(host, self.frame) and self.fault != "W-13"
+        )
+        if refused_tool or refused_host:
+            step.refused = True
+            called["refused"] = True
+            called["reason"] = (
+                f"{capability} is outside the frame's allowed_tools"
+                if refused_tool
+                else f"{host} is not in the frame's allowed_hosts"
+            )
+        with self.a.lock:
+            self.worker._emit(self.a, called)
+            if self.fault == "W-08-event":
                 self.worker._emit(
                     self.a,
                     {
-                        "type": "step.started",
+                        "type": "step.progress",
                         "step_id": step.step_id,
-                        "kind": step.kind,
-                        "summary": summary[:200],
+                        "message": f"using {self.worker.credential_value()}",  # the fault
                     },
                 )
-            digest = (
-                json.dumps(arguments, sort_keys=True)
-                if self.fault == "W-09"
-                else digest_of(arguments)
-            )
-            call: Json = {
-                "type": "tool.called",
-                "step_id": step.step_id,
-                "tool": capability,
-                "arguments_digest": digest,
-            }
-            host = _host_of(tool, arguments)
-            if host is not None:
-                call["host"] = host
-            refused_tool = outside_frame(capability, self.frame) and self.fault != "W-07"
-            refused_host = (
-                host is not None and host_outside_frame(host, self.frame) and self.fault != "W-13"
-            )
-            if refused_tool or refused_host:
-                step.refused = True
-                call["refused"] = True
-                call["reason"] = (
-                    f"{capability} is outside the frame's allowed_tools"
-                    if refused_tool
-                    else f"{host} is not in the frame's allowed_hosts"
-                )
-            with self.a.lock:
-                self.worker._emit(self.a, call)
-                if self.fault == "W-08-event":
-                    self.worker._emit(
-                        self.a,
-                        {
-                            "type": "step.progress",
-                            "step_id": step.step_id,
-                            "message": f"using {self.worker.credential_value()}",  # the fault
-                        },
-                    )
-            self.current = step
-            self.last_step_id = step.step_id
-            if step.refused:
-                # The agent's own permission system denies the call; this worker does not
-                # wait to see: the step is over, the assignment fails at its boundary.
+        self.current = step
+        self.last_step_id = step.step_id
+        if step.refused:
+            # The agent's own permission system denies the call; this worker does not
+            # wait to see: the step is over, the assignment fails at its boundary.
+            if process is not None:
                 _end(process)
-                self._close_step(step, "refused")
-                self.worker._finish(
-                    self.a,
-                    "failed",
-                    reason=f"the agent called {capability}, which the frame does not allow",
-                )
-                return "refused"
+            self._close_step(step, "refused")
+            self.worker._finish(
+                self.a,
+                "failed",
+                reason=f"the agent called {capability}, which the frame does not allow",
+            )
+            return "refused"
         return None
 
     def _on_tool_result(self, event: Json, process: subprocess.Popen[str]) -> str | None:
         content = (event.get("message") or {}).get("content")
-        if not isinstance(content, list) or not any(
-            isinstance(b, dict) and b.get("type") == "tool_result" for b in content
-        ):
+        if not isinstance(content, list):
             return None
-        step = self.current
-        if step is None:
-            return None
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+            call_id = block.get("tool_use_id")
+            step = self.current
+            if step is None:
+                continue
+            if isinstance(call_id, str) and step.call_id not in (None, call_id):
+                if any(c.call_id == call_id for c in self.waiting):
+                    self.answered.add(call_id)  # a call that waits finished first
+                continue
+            if (ended := self._boundary(step, process)) is not None:
+                return ended
+            if (ended := self._next(process)) is not None:
+                return ended
+        return None
+
+    def _next(self, process: subprocess.Popen[str]) -> str | None:
+        """The calls that waited for the running step, each started in the agent's order; one
+        whose result arrived already is closed at once. Returns why the assignment ends now,
+        or None."""
+        while self.waiting and self.current is None:
+            call = self.waiting.pop(0)
+            if (ended := self._start(call, process)) is not None:
+                return ended
+            if call.call_id is None or call.call_id not in self.answered:
+                return None
+            self.answered.discard(call.call_id)
+            step = self.current
+            if step is None:
+                return None
+            if (ended := self._boundary(step, process)) is not None:
+                return ended
+        return None
+
+    def _boundary(self, step: Step, process: subprocess.Popen[str]) -> str | None:
+        """The running step's result arrived: its boundary, and whether the assignment ends
+        there — on a stop, at a limit. Returns why it ends, or None."""
         self.current = None
         self._close_step(step, "done")
         if self.fault == "W-10" and step.index == self.a.step_index + 1:
@@ -1199,6 +1271,17 @@ class _Run:
             # left in the workspace is the boundary it reached.
             self._close_step(self.current, "done")
             self.current = None
+        while self.waiting and a.status != "finished":
+            # Calls it made in parallel and that never became steps: each one now, unless a
+            # limit is reached (W-14).
+            if self.fault != "W-14" and self._over_ceiling() is not None:
+                break
+            if self._start(self.waiting.pop(0), None) is not None or self.current is None:
+                break
+            self._close_step(self.current, "done")
+            self.current = None
+        if a.status == "finished":
+            return
         if ended_by == "result" and not result.get("is_error"):
             self._finish_succeeded(result, text)
             return

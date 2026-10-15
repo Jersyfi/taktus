@@ -30,6 +30,14 @@ step count and the artifacts announced so far, under `<state>/checkpoints/`. An 
 resumes from it continues the same session (`--resume`) in the same workspace and announces
 no artifact it announced before (W-11).
 
+The agent may make several calls in one message, all before any result: it calls tools in
+parallel. Each call is still a step of its own, in the order the agent made them. The first is
+the running step; the others wait. Once the running step's result arrives and its boundary is
+emitted, with its consumption, the next waiting call starts as a step; one whose result came
+first is closed at once. A message's tokens go to its first call. Until 2026-10-15 a second
+call replaced the first as the running step, and the first never reported its consumption: the
+suite against the real agent failed W-04 on the instance.
+
 A stop is real at that point: the worker waits for the running call's result, ends the agent,
 and finishes `stopped` with that boundary's checkpoint (W-06). The agent may have started its
 next call before it was ended; whatever it left in the workspace stays there uncommitted, and
