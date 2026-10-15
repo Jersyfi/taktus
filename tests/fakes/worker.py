@@ -14,6 +14,11 @@ many it turned away.
 `inner_seconds` makes every inner step take that long, in real time, so that assignments of
 several runs overlap.
 
+`estimate_usd` makes it a worker that consumes money instead of compute, as the coding worker
+does: it estimates that much in `usd` for an assignment, every inner step reports its `usd`,
+and it halts at the first boundary where its running total has reached the money its limits
+carry (W-14).
+
 The stream can be read again from any `seq` (`after`): the script is replayed and every event
 up to it skipped, without calling `on_event` for it. An assignment id the worker holds already
 is refused as the contract's 409 (`AssignmentExists`); one it never received is unknown to
@@ -61,6 +66,8 @@ class InnerStep:
     step_id: str
     compute_seconds: float = 1.0
     artifacts: tuple[tuple[str, bytes], ...] = ()
+    usd: float = 0.0
+    """The money the step reports, by a worker that consumes money (`estimate_usd`)."""
 
 
 @dataclass
@@ -80,6 +87,7 @@ class FakeWorker:
     full_for: int = 0
     estimate_full_for: int = 0
     inner_seconds: float = 0.0
+    estimate_usd: float | None = None
     peak: int = 0
     refused: int = 0
     on_assign: Callable[[Assignment], Awaitable[None]] | None = None
@@ -100,7 +108,9 @@ class FakeWorker:
             contract="worker/v1",
             version=self.version,
             capabilities=self.capabilities_offered,
-            consumption=ConsumptionDeclaration(
+            consumption=ConsumptionDeclaration(kinds=("currency",), currencies=("usd",))
+            if self.estimate_usd is not None
+            else ConsumptionDeclaration(
                 kinds=("compute",), resource_classes=(self.resource_class,)
             ),
             supports=Supports(
@@ -121,6 +131,13 @@ class FakeWorker:
             raise WorkerAtCapacity("no room for the probe")
         self.estimates.append(request)
         start = self._start_index(request.context.checkpoint_ref)
+        if self.estimate_usd is not None:
+            return Estimate(
+                confidence=Confidence.LOW,
+                currency={"usd": self.estimate_usd},
+                wall_seconds=1,
+                steps=len(self.script) - start,
+            )
         return Estimate(
             confidence=Confidence.LOW,
             compute_seconds=self.estimate_seconds * (len(self.script) - start),
@@ -202,6 +219,8 @@ class FakeWorker:
             return event
 
         start = self._start_index(assignment.context.checkpoint_ref)
+        money = 0.0
+        ceiling = (assignment.limits.currency or {}).get("usd")
         for index in range(start, len(self.script)):
             inner = self.script[index]
             if self.inner_seconds:
@@ -239,21 +258,49 @@ class FakeWorker:
                         size_bytes=len(content),
                     )
                 )
-            yield await emit(
-                ConsumptionReported(
-                    **base(),
-                    type="consumption.reported",
-                    step_id=inner.step_id,
-                    compute_seconds=inner.compute_seconds,
-                    resource_class=self.resource_class,
+            if self.estimate_usd is not None:
+                money += inner.usd
+                yield await emit(
+                    ConsumptionReported(
+                        **base(),
+                        type="consumption.reported",
+                        step_id=inner.step_id,
+                        currency={"usd": inner.usd},
+                    )
                 )
-            )
+            else:
+                yield await emit(
+                    ConsumptionReported(
+                        **base(),
+                        type="consumption.reported",
+                        step_id=inner.step_id,
+                        compute_seconds=inner.compute_seconds,
+                        resource_class=self.resource_class,
+                    )
+                )
             checkpoint = f"ckpt/{assignment_id}/{index}"
             yield await emit(
                 StepBoundary(
                     **base(), type="step.boundary", step_id=inner.step_id, checkpoint_ref=checkpoint
                 )
             )
+            if (
+                self.estimate_usd is not None
+                and ceiling is not None
+                and money >= ceiling
+                and index < len(self.script) - 1
+            ):
+                yield await emit(
+                    AssignmentFinished(
+                        **base(),
+                        type="assignment.finished",
+                        outcome=Outcome.STOPPED,
+                        checkpoint_ref=checkpoint,
+                        reason=f"the running total of {money:g} usd has reached {ceiling:g}",
+                        limit="currency",
+                    )
+                )
+                return
             if self.halt_on_limit is not None and index < len(self.script) - 1:
                 yield await emit(
                     AssignmentFinished(

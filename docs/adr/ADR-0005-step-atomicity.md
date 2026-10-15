@@ -10,7 +10,9 @@ worker's margin has a floor of 10 % and its history resets with its model versio
 amended 2026-10-08 (DEC-0047, NTC-0025): an operator's margin below the floor is said where it is
 set and in every report that relies on it (point 6) · amended 2026-10-11 (NTC-0188): a currency
 budget holds the money of compute seconds at the run's price table, and refuses compute the table
-does not price (§*Fourth amendment*)
+does not price (§*Fourth amendment*) · amended 2026-10-15 (DEC-0202): a worker that reports money
+per step halts at what is left of the run's money, and a worker step whose estimate fits is
+never refused for its calibrated error (§*Seventh amendment*)
 
 ## Context
 A limit enforced by aborting destroys work and money at the same time: the tokens are spent and the
@@ -296,6 +298,56 @@ price kinds the endpoint reports per call; unset, `input,output`. The adapter's 
 endpoint that does not report a declared kind, so a declaration is held to what the endpoint
 does.
 
+## Seventh amendment — a run's money halts a coding step while it runs (2026-10-15)
+
+On 2026-10-14 one P-03 run on the instance used 17.4 million input tokens, about USD 10, against
+its limit of USD 5. The coding worker reported money only with the agent's final result, and an
+assignment that did not succeed reported none, so the limit was held against an estimate of
+USD 1 and nothing else. The owner answered DEC-0202: a limit the worker halts at during the run,
+and one that never makes money go into runs that then break off in the middle. What follows is
+built.
+
+**1. The coding worker reports money per step.** It prices every step's tokens, per model and
+price kind, at a price table of its own in the contract's shape (`workers/claudecode/README.md`,
+*Consumption*), and reports the money with the step. What the agent's own total holds beyond
+that arrives with its final result, on the last step. The first amendment's currency row then
+holds for this worker as the tokens row does: the running total is known at every boundary. The
+worker halts there once it has reached its currency limit (W-14). The worker contract does not
+change: `currency` was always allowed per step.
+
+**2. A worker's money ceiling is what is left of the run's money.** Until now a worker's limits
+were its reservation, grown by the margin. For money that halted a step at the worker's
+calibrated error — USD 1.78 on the instance's history — although the person had granted the
+run USD 5, and the step needed a person to continue what the run could pay for. Money is the
+one kind a person sets for a run as a whole. So a worker's ceiling in a currency is what is left
+of the run's money; its ceilings in tokens, quota and compute stay its reservation (third and
+fourth amendments). The steps of a run execute one after another, so no other step shares what
+is left while a worker uses it. The line still yields by one inner step, as the third amendment
+says, and never more.
+
+**3. A worker step whose own estimate fits is admitted.** Calibration scales a worker's estimate
+by its worst error over twenty observations. One step that used four times its estimate made
+every later step of that worker reserve four times as much, and a step resumed under a raised
+limit could be refused although its own estimate fitted. Now a worker step whose calibrated
+reservation does not fit what is left, but whose estimate does, is admitted with its
+reservation cut to what is left in each kind, recorded as `step.reserved` with the outcome
+`capped`. The worker halts at its ceiling, which is never more than what is left. The room the
+calibration kept free is then kept by the halt instead. A step whose own estimate does not fit
+is refused as before.
+
+**Why this holds "a budget is a budget".** The second amendment's promise is that the run never
+spends past its line by more than one inner step. Points 2 and 3 move what a single step may use
+inside that line; they do not move the line. What they give up is the reservation's second
+purpose, room for later steps: a step may now use money a later step needed, and the later step
+is then refused at admission. The run halts at a boundary with its work kept, which is where
+DEC-0202 wants a person to decide, instead of inside the step.
+
+**4. A run halted at its money keeps its work and its claim.** It halts with cause `limit`, the
+step `stopped` with its checkpoint; a runner completes its job, and nothing continues it. A
+person resumes it with a raised limit, and the step continues from its checkpoint, or gives
+the task back (ADR-0097). An agent that ends on its limit of turns ends its assignment `stopped`
+at its last boundary the same way (#380).
+
 ## Where this promise ends
 
 The first amendment states where the currency guarantee ends: a worker that reports money
@@ -340,3 +392,15 @@ them, the rule cannot tell, and the cached tokens are taken out of it: the input
 too low. Which convention each endpoint in use follows is verified against it, not assumed. M-04
 checks the declaration when the suite runs, on a short call; a provider that stops reporting a
 kind later is not seen until the suite runs again.
+
+The seventh amendment holds the coding worker's money at its own price table. A price the
+provider changed and the table did not follow is held at the old price until an operator
+replaces the table; the agent's own total corrects the record only when its final result
+arrives, and only upwards. A model the table does not name is held at the dearest price in it,
+which halts early. Where the agent's total for a resumed session counts the earlier assignments
+too, the correction reports more than this assignment spent; it errs towards the limit. A worker
+that reports money only when an assignment ends is admitted at its estimate where its
+calibrated reservation would not fit, and can overspend by its error, as the first amendment
+says. A step that uses what is left of the money can leave a later step without any; the later
+step is refused, and the run halts. An agent's limit of turns is the worker's configuration, not
+a limit of the assignment, so a step stopped on it halts its run with cause `stop`.

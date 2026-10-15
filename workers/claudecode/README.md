@@ -45,8 +45,9 @@ a `report` step whose artifact is that text.
 ### Consumption
 
 **Tokens come per step.** Every assistant message of the agent carries the tokens it used
-(input, cache creation, cache read, output); the worker attributes them to the step the
-message's tool call starts and reports `tokens_in` and `tokens_out` in `consumption.reported`
+(input, cache creation, cache read, output) and names its model; the worker attributes them to
+the step the message's tool call starts and reports `tokens_in`, `tokens_out` and
+`tokens_by_model` — per model as the agent names it, per price kind — in `consumption.reported`
 before the next step starts (W-04). The agent streams one message in several lines. Each line
 carries the message's usage so far, and the output grows from line to line. A message is
 counted once, at its highest count: what a later line adds goes to the step the line belongs to.
@@ -58,23 +59,34 @@ the live run of #74 the worker counted each message at its first line and report
 of the output its agent used (#278). An assignment that ends before the final line — stopped
 at a limit, a window or a stop — has only the stream's count.
 
-**Money comes only at the end.** The agent reports `total_cost_usd` once, with its final
-result. The worker reports it as `currency` on the last step, after that step's boundary and
-before `assignment.finished`. This is a real limitation, not a detail: admission control on a
-currency limit works against the estimate, not against a running total — a run cannot be
-stopped by its cost mid-assignment, only refused before it starts. Tokens are exact per step;
-money is settled per assignment.
+**Money comes per step, at the worker's price table** (DEC-0202). The agent reports money only
+once, `total_cost_usd` with its final result, and an assignment that ends otherwise reported
+none: the run for #277 used about USD 10 against a limit of USD 5. So in `api-key` mode the
+worker prices every step's tokens itself, per model and price kind, at its price table, and
+reports the money as `currency` with the step. The table is `prices.json` in this directory, in
+the shape of `contracts/model/v1`'s `PriceTable`: the provider's published prices, a cache write
+at the one-hour lifetime the agent uses (twice the input price), so that a step is priced at
+most at what it costs. A model the table names with or without its snapshot date is priced at
+its prices; one it does not name, at the dearest price of each kind in the table — unpriced is
+never free, and a limit then halts early rather than late. The operator replaces the table with
+`--price-table` (`CODING_AGENT_PRICE_TABLE`, a file or the table as JSON); a new price is a new
+table version, and the worker's log names the version at its start. A table in another currency
+than the worker reports stops the worker at its start. When the agent's final result arrives,
+what its own total holds beyond the priced steps is reported on the last step, after its
+boundary and before `assignment.finished`; that holds for an assignment that ends `stopped` or
+`failed` with a result, too. A total below the priced steps reports nothing more: the steps'
+money stands.
 
 **The limits are the ceiling while the agent runs.** At every boundary the worker holds its
-running total against the limits it can see per turn: `limits.tokens` (input and output apart)
-and, in `session` mode, `limits.quota` in turns. Once one is reached, the worker ends the agent
-there, as it does for a stop, and the assignment ends `stopped` with that boundary's checkpoint,
-`limit` naming the kind, and the numbers in `reason` (W-14). The resumed assignment continues
-the same session. The worker cannot know what the agent's next call will use, so it halts on
-what was reported, not on an expectation. The call that crossed the limit has already run; it
-is the one step the limit yields by. A currency limit is held against the estimate before the
-start and never while running, because the money arrives with the final result. A budget that
-must hold while the agent runs is given in tokens.
+running total against the limits: `limits.currency` in its currency, in `api-key` mode;
+`limits.tokens`, input and output apart; and, in `session` mode, `limits.quota` in turns. Once
+one is reached, the worker ends the agent there, as it does for a stop, and the assignment ends
+`stopped` with that boundary's checkpoint, `limit` naming the kind, and the numbers in `reason`
+(W-14). The resumed assignment continues the same session in the same workspace. The worker
+cannot know what the agent's next call will use, so it halts on what was reported, not on an
+expectation. The call that crossed the limit has already run; it is the one step the limit
+yields by, a few cents for a turn of the instance's runs. The control plane gives the worker
+what is left of the run's money as its currency limit (ADR-0005, seventh amendment).
 
 **Subscription quota is a proxy.** In `session` mode the worker declares consumption kind
 `quota` with a five-hour window and the unit `turns`, and reports one unit per step. The agent
@@ -182,15 +194,21 @@ this way (ADR-0053).
 
 - **Stop inside a tool call.** A boundary lies after a call's result; a shell command that runs
   for an hour is one step, and a stop waits for it up to the ceiling.
-- **Cost per step.** See *Consumption*: money is known at the end only.
+- **Know its money exactly while it runs.** See *Consumption*: per step the money is the
+  worker's table's, and the agent's own figure arrives with its final result. A price the
+  provider changed and the table did not follow is money held at the old price until the table
+  is replaced.
 - **Guarantee a resumable session after a hard kill.** A session ended inside a call may leave
   the agent's transcript with a call and no result; the agent's `--resume` may then refuse it,
   and the assignment fails with the agent's reason. A stop through the contract never does
   this.
 - **Choose its tools by judgement.** The frame chooses; the agent is denied, never persuaded.
 - **Go on past its limit of turns** (`--max-turns`). The agent ends with a result that names
-  an error and carries no text; the assignment fails with that error and the number of turns
-  as its reason, for instance "the agent ended with error_max_turns after 41 turn(s)" (#375).
+  the error `error_max_turns` and carries no text. The assignment ends `stopped` at the last
+  boundary the agent reached, with its checkpoint and the turns in its reason, and names no
+  `limit`, because turns are not one of the assignment's limits (#380). The work is kept; a
+  resume continues the same session for as many turns again. Until #380 it failed, and seven
+  of fifteen coding steps on the instance lost their work so.
 
 ## Fault injection
 
@@ -211,7 +229,8 @@ worker's default estimate — about 620 000 input tokens against 60 000, where t
 used 1.8 to 4.3 times the estimate in the first live run — so that the suite's `tight` run
 can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales every token count, and
 `FAKE_AGENT_WRITE`, a JSON object of path to content, adds those files to its change, so that a
-process test can give a change a file of its choosing. The real agent is run with
+process test can give a change a file of its choosing. Its messages name a model the price
+table prices, and it ends on `--max-turns` as the real agent does. The real agent is run with
 `--agent claude` (the default), and a live run needs a credential the operator supplies.
 
 ## The agent's version
@@ -247,8 +266,8 @@ the agent at the pinned version (*The agent's version*). It needs the
 agent's key in a file (`TAKTUS_CREDENTIAL_CODING_AGENT_API_KEY_FILE`) and the cap per run
 (`LIVE_SPEND_CAP_USD`); without either it skips and says which.
 
-The cap becomes a budget in tokens, because money arrives only with the final result (see
-*Consumption*). It is converted at the dearest rate the agent was measured at in the first live
+The cap is held as money, priced per step (see *Consumption*), and also as tokens, which hold
+even where the table's prices were wrong. It is converted at the dearest rate the agent was measured at in the first live
 run, rounded up to USD 8 per million input tokens. A quarter of that line is held back for the
 one call the limit yields by; the rest is the worker's ceiling, and the worker's estimate is set
 so that the run reserves exactly that ceiling (NTC-0028). The run's ledger, its output, the
@@ -265,5 +284,6 @@ directory is not.
 | `--model` | `CODING_AGENT_MODEL` | passed to the agent as `--model` |
 | `--agent-env` | `CODING_AGENT_ENV` | names of variables passed on to the agent |
 | `--max-turns` | `CODING_AGENT_MAX_TURNS` | the agent's turn limit per assignment (default 50); an operator sets it for a cluster unit through `execution.defaults.unitEnv` (ADR-0090), as the project's instance does with 150 (DEC-0193) |
+| `--price-table` | `CODING_AGENT_PRICE_TABLE` | the price table every step's tokens are priced at: a file, or the table as JSON; default `prices.json` beside the worker |
 | `--estimate-tokens-in`, `--estimate-tokens-out`, `--estimate-currency`, `--estimate-steps`, `--estimate-wall-seconds` | | the estimate |
 | `--port`, `--state-dir` | `TAKTUS_UNIT_PORT`, `TAKTUS_UNIT_STATE_DIR` | the launch convention |

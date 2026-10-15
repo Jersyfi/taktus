@@ -56,7 +56,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "9"
+version: "10"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -124,8 +124,14 @@ inputs:
     example: "## Generated\n\nNothing is open."
     required: false
 
-# The worker's estimate is admitted against the currency and the quota; its tokens are counted
-# per step, its money at the end (ADR-0005, amendment). Connector calls count in requests.
+# The money is what the coding step may spend; no other step spends any. The worker prices its
+# tokens at every boundary and halts there before the run's money is crossed, keeping its
+# checkpoint; the run halts with cause `limit`, nothing restarts it, and a person resumes it
+# with a raised limit from that checkpoint, or gives the task back (DEC-0202, ADR-0005 seventh
+# amendment). The limit stays USD 5, the owner's figure (DEC-0203): finished coding steps on the
+# instance cost USD 0.69 to 1.78, so none would have been halted, and a step that runs away stops
+# at half of the USD 10 the run for #277 spent. Version 9 held USD 5 only against the worker's
+# estimate, because the money came at the end. Connector calls count in requests.
 limits:
   currency: { usd: 5.0 }
   quota: { units: 200 }

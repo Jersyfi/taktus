@@ -28,6 +28,11 @@ Every message is streamed in several lines whose usage grows, as the real agent'
 first line carries a twentieth of the message's output, the last all of it. The final line
 carries the session's total. `FAKE_AGENT_LATE_USAGE=1` keeps every
 line at the fraction, so that only the total holds the rest.
+
+Every message names its model, as the real agent's does: `--model`, or `MODEL` below, which the
+worker's price table prices. A run that reaches `--max-turns` with its plan unfinished ends as
+the real agent's does: a result with the subtype `error_max_turns`, no text, and exit code 1
+(#375, #380); its session keeps what it did, so that `--resume` continues after it.
 """
 
 from __future__ import annotations
@@ -69,6 +74,8 @@ def plan() -> list[tuple[str, Json]]:
 
 
 FINAL = "Wrote notes/plan.md and hello.txt, edited the greeting, and ran the check."
+MODEL = "claude-haiku-4-5-20251001"
+"""The model a message names where `--model` names none: as the real agent names it, dated."""
 
 
 def emit(line: Json) -> None:
@@ -99,7 +106,13 @@ def add(total: Json, used: Json) -> Json:
 def message(message_id: str, blocks: list[Json], used: Json, session_id: str) -> Json:
     return {
         "type": "assistant",
-        "message": {"id": message_id, "role": "assistant", "content": blocks, "usage": used},
+        "message": {
+            "id": message_id,
+            "model": os.environ.get("FAKE_AGENT_MODEL") or MODEL,
+            "role": "assistant",
+            "content": blocks,
+            "usage": used,
+        },
         "session_id": session_id,
     }
 
@@ -163,6 +176,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--resume", default=None)
     parser.add_argument("--model", default=None)
     args = parser.parse_args(argv)
+    if args.model:
+        os.environ["FAKE_AGENT_MODEL"] = args.model
 
     session_id = args.resume or args.session_id or str(uuid.uuid4())
     emit(
@@ -212,7 +227,18 @@ def main(argv: list[str] | None = None) -> int:
     total: Json = {}
     for n, (tool, arguments) in enumerate(plan()[done:], done + 1):
         if turns >= args.max_turns:
-            break
+            emit(
+                {
+                    "type": "result",
+                    "subtype": "error_max_turns",
+                    "is_error": True,
+                    "session_id": session_id,
+                    "num_turns": turns,
+                    "total_cost_usd": round(0.02 * turns, 4),
+                    "usage": total,
+                }
+            )
+            return 1
         turns += 1
         message_id = f"msg_fake{n:04d}"
         call_id = f"toolu_fake{n:04d}"

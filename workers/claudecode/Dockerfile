@@ -33,7 +33,7 @@ RUN apt-get update \
 # of the image it was installed from.
 COPY --from=agent /usr/local/lib/node_modules/@anthropic-ai /opt/agent/@anthropic-ai
 RUN ln -s /opt/agent/@anthropic-ai/claude-code/bin/claude.exe /usr/local/bin/claude
-COPY --chown=unit:unit workers/claudecode/worker.py /app/worker.py
+COPY --chown=unit:unit workers/claudecode/worker.py workers/claudecode/prices.json /app/
 USER unit
 WORKDIR /app
 VOLUME ["/var/lib/taktus/unit"]

@@ -11,12 +11,14 @@ not do by itself, this worker does around it (README.md in this directory says h
   `step.boundary` is emitted. A stop lands there: the agent is ended, the checkpoint taken from
   what the agent actually left behind, and a resumed assignment continues the same session in
   the same workspace and announces no artifact twice;
-- **consumption per step**: the tokens the agent reports for the message that made the call;
-  the money it reports only at the end, attributed to the last step;
+- **consumption per step**: the tokens the agent reports for the message that made the call,
+  per model and price kind, and their money at this worker's price table (`prices.json`); what
+  the agent's own total at the end holds beyond that, attributed to the last step;
 - **the limits as a ceiling**: at every boundary the running total is held against the
-  limits; once a limit of tokens or quota is reached, the agent is ended there and the
-  assignment ends `stopped` with the checkpoint and the limit named. Money is known only at
-  the end and cannot halt a running assignment;
+  limits; once a limit of money, tokens or quota is reached, the agent is ended there and the
+  assignment ends `stopped` with the checkpoint and the limit named;
+- **the agent's limit of turns**: an agent that ends on it ends the assignment `stopped` at
+  its last boundary, resumable, never `failed` (#380);
 - **authentication**: by API key or by a subscription token, chosen at start (`--auth`) and
   supplied under the credential name the assignment carries; a session that expires mid-run
   halts at the last boundary with the cause, and is neither retried nor abandoned;
@@ -63,6 +65,11 @@ MAX_CONCURRENT = 2
 AGENT_EXIT_GRACE = 10.0
 DEFAULT_CEILING = 300
 AFTER_TIMEOUT = 300  # seconds the task's command after the work may run
+PRICES = Path(__file__).resolve().with_name("prices.json")
+PRICE_KINDS = ("input", "cache_read", "cache_write", "output")
+INPUT_KINDS = ("input", "cache_read", "cache_write")
+TURN_LIMIT = "error_max_turns"  # the subtype of the agent's result when its turns ran out
+DATED = re.compile(r"-\d{8}$")  # a model's snapshot date, as the agent names the model
 
 # What the agent's tools mean in the contract's terms. The frame's allowed_tools chooses which of
 # them the agent is offered (`--tools`) and approved (`--allowedTools`); none other is offered.
@@ -233,10 +240,18 @@ class Step:
     tool: str
     capability: str
     kind: str
-    tokens_in: int
-    tokens_out: int
     began: float
+    by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+    """The tokens of the messages attributed to this step, per model and price kind."""
     refused: bool = False
+
+    @property
+    def tokens_in(self) -> int:
+        return sum(k.get(n, 0) for k in self.by_model.values() for n in INPUT_KINDS)
+
+    @property
+    def tokens_out(self) -> int:
+        return sum(k.get("output", 0) for k in self.by_model.values())
 
 
 # --- the worker ---------------------------------------------------------------------------------
@@ -254,6 +269,12 @@ class Worker:
             (self.state_dir / sub).mkdir(parents=True, exist_ok=True)
         self.assignments: dict[str, Assignment] = {}
         self.lock = threading.Lock()
+        self.prices: Json = load_prices(getattr(options, "price_table", None))
+        if options.auth == "api-key" and self.prices["currency"] != options.currency:
+            raise ValueError(
+                f"the price table prices in {self.prices['currency']}, and this worker reports "
+                f"{options.currency}"
+            )
 
     # -- declarations --
 
@@ -513,14 +534,22 @@ class _Run:
         self.index = assignment.step_index
         self.last_checkpoint: str | None = self.body.get("context", {}).get("checkpoint_ref")
         self.deferred: list[Json] = []
-        # Per message, the tokens already counted for it; all messages' tokens counted so far.
-        self.usage_seen: dict[str, tuple[int, int]] = {}
-        self.streamed = (0, 0)
+        # Per message, the tokens already counted for it, by price kind; all messages' tokens
+        # counted so far, by price kind; the model the agent named last.
+        self.usage_seen: dict[str, dict[str, int]] = {}
+        self.streamed: dict[str, int] = {}
+        self.last_model = worker.options.model or "unknown"
         # Tokens of messages whose usage arrived before a call to attribute them to: they go
         # to the next step, so that none is lost.
-        self.unattributed = (0, 0)
-        # What this assignment has consumed so far, per quantity the limits can bound.
-        self.used: dict[str, float] = {"tokens_in": 0.0, "tokens_out": 0.0, "quota_units": 0.0}
+        self.unattributed: dict[str, dict[str, int]] = {}
+        # What this assignment has consumed so far, per quantity the limits can bound; money
+        # at this worker's price table (`prices.json`).
+        self.used: dict[str, float] = {
+            "tokens_in": 0.0,
+            "tokens_out": 0.0,
+            "quota_units": 0.0,
+            "currency": 0.0,
+        }
         self.halted: tuple[str, str] | None = None  # the limit kind and why
         self.current: Step | None = None
         self.last_step_id: str | None = None
@@ -614,8 +643,6 @@ class _Run:
             tool="hosts",
             capability="web.fetch",
             kind="plan",
-            tokens_in=0,
-            tokens_out=0,
             began=time.monotonic(),
         )
         with self.a.lock:
@@ -824,12 +851,9 @@ class _Run:
 
     def _on_assistant(self, event: Json, process: subprocess.Popen[str]) -> str | None:
         message = event.get("message") or {}
-        tokens_in, tokens_out = self._usage_of(message)
         # A message is streamed in several lines; a line may carry text only. Until a call
         # claims them, the tokens wait.
-        tokens_in += self.unattributed[0]
-        tokens_out += self.unattributed[1]
-        self.unattributed = (tokens_in, tokens_out)
+        self.unattributed = _merged(self.unattributed, self._usage_of(message))
         for block in message.get("content") or []:
             if block.get("type") == "text" and isinstance(block.get("text"), str):
                 self.last_text = block["text"]
@@ -845,12 +869,10 @@ class _Run:
                 tool=tool,
                 capability=capability,
                 kind=STEP_KIND.get(tool, "tool"),
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
                 began=time.monotonic(),
+                by_model=self.unattributed,
             )
-            tokens_in, tokens_out = 0, 0  # the message's tokens go to its first call
-            self.unattributed = (0, 0)
+            self.unattributed = {}  # the message's tokens go to its first call
             summary = f"{tool}: {_summary_of(tool, arguments)}"
             with self.a.lock:
                 self.worker._emit(
@@ -943,21 +965,25 @@ class _Run:
     def _over_ceiling(self) -> tuple[str, str] | None:
         """The limits are the worker's hard ceiling (W-14). This worker cannot know what the
         agent's next call will use, so it holds the running total itself against each limit
-        at every boundary: reached, and nothing more starts. What it can hold per turn is
-        tokens and quota; money arrives only with the agent's final result. The limit kind
-        and the reason, or None."""
+        at every boundary: reached, and nothing more starts. It holds money — the tokens of
+        every step at its price table — tokens and, in `session` mode, quota (DEC-0202). The
+        limit kind and the reason, or None."""
         limits = self.body["limits"]
         bounds: list[tuple[str, str, float]] = [
             ("tokens", f"tokens_{d}", float(limits["tokens"][d]))
             for d in ("in", "out")
             if d in (limits.get("tokens") or {})
         ]
+        code = self.worker.options.currency
+        if self.worker.auth == "api-key" and code in (limits.get("currency") or {}):
+            bounds.append(("currency", "currency", float(limits["currency"][code])))
         if "quota" in limits and self.worker.auth == "session":
             bounds.append(("quota", "quota_units", float(limits["quota"]["units"])))
         for kind, quantity, ceiling in bounds:
             if self.used[quantity] >= ceiling:
+                named = code if quantity == "currency" else quantity
                 return kind, (
-                    f"the running total of {self.used[quantity]:g} {quantity} has reached the "
+                    f"the running total of {self.used[quantity]:g} {named} has reached the "
                     f"limit of {ceiling:g}; halted at the boundary of {self.last_step_id}"
                 )
         return None
@@ -975,10 +1001,21 @@ class _Run:
             "tokens_in": step.tokens_in,
             "tokens_out": step.tokens_out,
         }
+        if step.by_model:
+            consumption["tokens_by_model"] = {
+                model: {kind: kinds.get(kind, 0) for kind in PRICE_KINDS}
+                for model, kinds in step.by_model.items()
+            }
         if self.worker.auth == "session":
             consumption["quota_units"] = 1
-        for quantity in self.used:
+        else:
+            # The money of the step's tokens at the price table, at every boundary: what the
+            # running total is held against a currency limit with (DEC-0202).
+            money = round(money_of(step.by_model, self.worker.prices), 6)
+            consumption["currency"] = {self.worker.options.currency: money}
+        for quantity in ("tokens_in", "tokens_out", "quota_units"):
             self.used[quantity] += float(consumption.get(quantity, 0))
+        self.used["currency"] += sum((consumption.get("currency") or {}).values())
         with a.lock:
             if self.fault == "W-04":
                 self.deferred.append(consumption)
@@ -1065,29 +1102,35 @@ class _Run:
             self.worker._emit(self.a, _artifact_event(self.a, produced, step.step_id))
         return commit or None
 
-    def _usage_of(self, message: Json) -> tuple[int, int]:
-        """The tokens of a message not yet counted. The agent streams a message in several
-        lines that all carry its usage so far: the output grows from line to line, and an
-        early line holds a fraction of it (#278). A message counts once, at its highest."""
+    def _usage_of(self, message: Json) -> dict[str, dict[str, int]]:
+        """The tokens of a message not yet counted, by price kind, under the model the
+        message names. The agent streams a message in several lines that all carry its usage
+        so far: the output grows from line to line, and an early line holds a fraction of it
+        (#278). A message counts once, at its highest."""
         identifier = str(message.get("id") or "")
         usage = message.get("usage") or {}
         if not identifier or not usage:
-            return 0, 0
-        tokens_in, tokens_out = _tokens_of(usage)
-        counted_in, counted_out = self.usage_seen.get(identifier, (0, 0))
-        self.usage_seen[identifier] = (max(counted_in, tokens_in), max(counted_out, tokens_out))
-        new = (max(0, tokens_in - counted_in), max(0, tokens_out - counted_out))
-        self.streamed = (self.streamed[0] + new[0], self.streamed[1] + new[1])
-        return new
+            return {}
+        model = message.get("model")
+        if isinstance(model, str) and model.strip():
+            self.last_model = model.strip()
+        kinds = _kinds_of(usage)
+        counted = self.usage_seen.get(identifier, {})
+        self.usage_seen[identifier] = {k: max(counted.get(k, 0), kinds[k]) for k in PRICE_KINDS}
+        new = {k: max(0, kinds[k] - counted.get(k, 0)) for k in PRICE_KINDS}
+        self.streamed = {k: self.streamed.get(k, 0) + new[k] for k in PRICE_KINDS}
+        return {self.last_model: new} if any(new.values()) else {}
 
-    def _remainder_of(self, result: Json) -> tuple[int, int]:
+    def _remainder_of(self, result: Json) -> dict[str, dict[str, int]]:
         """What the agent's session total in its final line holds beyond what the stream
-        showed: the output of messages whose last line came before their last token."""
+        showed: the output of messages whose last line came before their last token, under
+        the model the agent named last."""
         usage = result.get("usage")
         if not isinstance(usage, dict):
-            return 0, 0
-        tokens_in, tokens_out = _tokens_of(usage)
-        return max(0, tokens_in - self.streamed[0]), max(0, tokens_out - self.streamed[1])
+            return {}
+        kinds = _kinds_of(usage)
+        new = {k: max(0, kinds[k] - self.streamed.get(k, 0)) for k in PRICE_KINDS}
+        return {self.last_model: new} if any(new.values()) else {}
 
     def _capability_of(self, tool: str, arguments: Json) -> str:
         capability = TOOL_CAPABILITY.get(tool, f"tool.{tool.lower()}")
@@ -1127,11 +1170,48 @@ class _Run:
         if ended_by == "result" and not result.get("is_error"):
             self._finish_succeeded(result, text)
             return
+        self._settle(result)
+        if result.get("subtype") == TURN_LIMIT:
+            # The agent's own limit of turns bounds the work, not its outcome: what it did up
+            # to its last boundary is kept, and a resume continues there (#380).
+            turns = result.get("num_turns")
+            self._finish_stopped(
+                f"the agent reached its limit of {self.worker.options.max_turns} turns"
+                + (f" after {turns} turn(s)" if isinstance(turns, int) else "")
+                + "; resumable from its last boundary"
+            )
+            return
         cause = _cause_of(result, stderr, returncode)
         if AUTH_FAILURE.search(cause):
             self._finish_stopped(f"authentication failed or expired: {cause[:200]}")
             return
         self.worker._finish(a, "failed", reason=cause[:400])
+
+    def _settlement(self, result: Json) -> float | None:
+        """What the agent's own money for this assignment holds beyond the money priced per
+        step, never below zero: the step prices are this worker's table, the total is the
+        agent's. None where the agent named no money or the worker reports none."""
+        cost = result.get("total_cost_usd")
+        if self.worker.auth != "api-key" or not isinstance(cost, int | float):
+            return None
+        return round(max(0.0, float(cost) - self.used["currency"]), 6)
+
+    def _settle(self, result: Json) -> None:
+        """An assignment that ends with the agent's result and without success still reports
+        what that result holds beyond its steps' money, on its last step (#277)."""
+        settled = self._settlement(result)
+        if not settled or self.last_step_id is None:
+            return
+        self.used["currency"] += settled
+        with self.a.lock:
+            self.worker._emit(
+                self.a,
+                {
+                    "type": "consumption.reported",
+                    "step_id": self.last_step_id,
+                    "currency": {self.worker.options.currency: settled},
+                },
+            )
 
     def _finish_stopped(self, why: str, *, limit: str | None = None) -> None:
         if self.last_checkpoint is None:
@@ -1151,13 +1231,12 @@ class _Run:
             tool="report",
             capability="code.read",
             kind="report",
+            began=time.monotonic(),
             # The closing message calls no tool; its tokens are this step's, and so is what
             # the session total holds beyond the stream.
-            tokens_in=self.unattributed[0] + remainder[0],
-            tokens_out=self.unattributed[1] + remainder[1],
-            began=time.monotonic(),
+            by_model=_merged(self.unattributed, remainder),
         )
-        self.unattributed = (0, 0)
+        self.unattributed = {}
         with a.lock:
             self.worker._emit(
                 a,
@@ -1181,11 +1260,12 @@ class _Run:
                 a.produced.append(changeset)
                 self.worker._emit(a, _artifact_event(a, changeset, step.step_id))
         self._close_step(step, "report")
-        # What the agent settles up only at the end: the money, attributed to the last step.
+        # What the agent settles up only at the end: the money its own total holds beyond the
+        # money priced per step, attributed to the last step.
         settlement: Json = {"type": "consumption.reported", "step_id": step.step_id}
-        cost = result.get("total_cost_usd")
-        if self.worker.auth == "api-key" and isinstance(cost, int | float):
-            settlement["currency"] = {self.worker.options.currency: round(float(cost), 6)}
+        settled = self._settlement(result)
+        if settled is not None:
+            settlement["currency"] = {self.worker.options.currency: settled}
         else:
             settlement["tokens_out"] = 0
         with a.lock:
@@ -1218,8 +1298,6 @@ class _Run:
             tool="after",
             capability="shell.sandboxed",
             kind="shell",
-            tokens_in=0,
-            tokens_out=0,
             began=time.monotonic(),
         )
         with a.lock:
@@ -1311,13 +1389,76 @@ def _cause_of(result: Json, stderr: str, returncode: int | None) -> str:
     return stderr.strip()[-400:] or f"the agent exited with {returncode}"
 
 
-def _tokens_of(usage: Json) -> tuple[int, int]:
-    """Input, the cached tokens too, and output of a usage block."""
-    tokens_in = sum(
-        int(usage.get(name) or 0)
-        for name in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
-    )
-    return tokens_in, int(usage.get("output_tokens") or 0)
+def _kinds_of(usage: Json) -> dict[str, int]:
+    """A usage block by price kind: uncached input, input read from the cache, input written
+    to it, output."""
+    return {
+        "input": int(usage.get("input_tokens") or 0),
+        "cache_read": int(usage.get("cache_read_input_tokens") or 0),
+        "cache_write": int(usage.get("cache_creation_input_tokens") or 0),
+        "output": int(usage.get("output_tokens") or 0),
+    }
+
+
+def _merged(
+    one: dict[str, dict[str, int]], other: dict[str, dict[str, int]]
+) -> dict[str, dict[str, int]]:
+    """Two counts of tokens per model and price kind, added."""
+    out = {model: dict(kinds) for model, kinds in one.items()}
+    for model, kinds in other.items():
+        into = out.setdefault(model, {})
+        for kind, count in kinds.items():
+            into[kind] = into.get(kind, 0) + count
+    return out
+
+
+def load_prices(source: str | None) -> Json:
+    """The price table the worker prices tokens with, in the shape of
+    contracts/model/v1/Model.json#/$defs/PriceTable: from `source` — a file, or the table
+    itself as JSON — or from `prices.json` beside this file. A `ValueError` names what is
+    wrong."""
+    try:
+        if source and source.lstrip().startswith("{"):
+            table = json.loads(source)
+        else:
+            table = json.loads(Path(source or PRICES).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError(f"the price table cannot be read: {error}") from error
+    if not isinstance(table, dict) or not isinstance(table.get("prices"), dict):
+        raise ValueError("the price table has no `prices`")
+    unit = table.get("unit_tokens")
+    if not isinstance(unit, int) or unit < 1:
+        raise ValueError("the price table's `unit_tokens` is not a positive integer")
+    if not isinstance(table.get("currency"), str) or not table["prices"]:
+        raise ValueError("the price table names no currency, or no model")
+    for model, prices in table["prices"].items():
+        if not isinstance(prices, dict) or not all(
+            kind in PRICE_KINDS and isinstance(price, int | float) and price >= 0
+            for kind, price in prices.items()
+        ):
+            raise ValueError(f"the price table's prices of {model!r} are not price kinds")
+    return table
+
+
+def prices_of(model: str, table: Json) -> tuple[dict[str, float], bool]:
+    """The prices of one model per kind, and whether the table names it — as the agent names
+    it, or without its snapshot date. A model the table does not name is priced at the
+    dearest price of every kind in the table: unpriced is never free, and a limit held at a
+    price too high halts early rather than late."""
+    prices: dict[str, dict[str, float]] = table["prices"]
+    for name in (model, DATED.sub("", model)):
+        if name in prices:
+            return {k: float(prices[name].get(k, 0.0)) for k in PRICE_KINDS}, True
+    return {k: max(float(p.get(k, 0.0)) for p in prices.values()) for k in PRICE_KINDS}, False
+
+
+def money_of(by_model: dict[str, dict[str, int]], table: Json) -> float:
+    """The money of tokens per model and kind at the price table."""
+    total = 0.0
+    for model, kinds in by_model.items():
+        prices, _ = prices_of(model, table)
+        total += sum(kinds.get(k, 0) * prices[k] for k in PRICE_KINDS)
+    return total / int(table["unit_tokens"])
 
 
 def _summary_of(tool: str, arguments: Json) -> str:
@@ -1564,6 +1705,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="the agent's limit of turns per assignment (CODING_AGENT_MAX_TURNS); default 50",
     )
     parser.add_argument("--currency", default="usd", help="the currency the agent reports in")
+    parser.add_argument(
+        "--price-table",
+        default=os.environ.get("CODING_AGENT_PRICE_TABLE") or None,
+        help="the price table the tokens of every step are priced at (CODING_AGENT_PRICE_TABLE): "
+        "a file, or the table as JSON; default prices.json beside this file",
+    )
     parser.add_argument("--estimate-tokens-in", type=int, default=60000)
     parser.add_argument("--estimate-tokens-out", type=int, default=6000)
     parser.add_argument("--estimate-currency", type=float, default=1.0)
@@ -1593,13 +1740,18 @@ def main(argv: list[str] | None = None) -> int:
     if shutil.which("git") is None:
         sys.stderr.write("coding-worker: git is not on the path; the workspace needs it\n")
         return 2
-    Handler.worker = Worker(args)
+    try:
+        Handler.worker = Worker(args)
+    except ValueError as error:
+        sys.stderr.write(f"coding-worker: {error}\n")
+        return 2
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.daemon_threads = True
     fault = f", fault {args.fault}" if args.fault else ""
     log(
         f"listening on http://{args.host}:{server.server_port} auth {args.auth} credential "
-        f"{Handler.worker.credential_name}{fault}"
+        f"{Handler.worker.credential_name} price table {Handler.worker.prices.get('version')}"
+        f"{fault}"
     )
     try:
         server.serve_forever()

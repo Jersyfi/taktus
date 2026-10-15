@@ -545,7 +545,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
-    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@9`", announced)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@10`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -589,6 +589,15 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     ]
     assert all(e["content_digest"].startswith("sha256:") for e in egress)
     assert "DOES NOT VERIFY" not in output
+
+    # The coding step's money came with its steps, priced at the worker's table for the model
+    # its agent named, and was held against the run's USD 5 (DEC-0202, DEC-0203).
+    (coded,) = [
+        e for e in ledger if e["kind"] == "step.finished" and e["refs"]["step_id"] == "implement"
+    ]
+    used = coded["consumption"]
+    assert 0 < used["currency"]["usd"] < 5.0, used
+    assert list(used["tokens_by_model"]) == ["claude-haiku-4-5-20251001"], used
 
     # A second run on the same issue finds it claimed and takes nothing up.
     output = run_bundle(outside, state_dir, p03, *p03_inputs(outside, tasks.ready), expect=3)
@@ -871,7 +880,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@4",
     "P-02-refinement.yaml": "p02-refinement@4",
-    "P-03-implementation.yaml": "p03-implementation@9",
+    "P-03-implementation.yaml": "p03-implementation@10",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -883,7 +892,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "write-report",
         },
         "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@9": {
+        "p03-implementation@10": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -902,7 +911,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@9": {"implement"}},
+    "worker.endpoint": {"p03-implementation@10": {"implement"}},
     "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""

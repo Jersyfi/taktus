@@ -2023,7 +2023,18 @@ class RunEngine:
         reservation = budgeting.reserve(demand.quantities, scale)
         line = self._line(run)
         spent = self._spent(_released(run, step_run.step_id))
-        verdict = admit(self._priced(run, reservation), remaining(line, spent), line)
+        left = remaining(line, spent)
+        verdict = admit(self._priced(run, reservation), left, line)
+        capped = (
+            not verdict.fits
+            and step.method is Method.WORKER
+            and admit(self._priced(run, demand.quantities), left, line).fits
+        )
+        if capped:
+            # The worker's own estimate fits; only its calibrated error does not. It reserves
+            # what is left and halts at its ceiling, never past the line (seventh amendment).
+            reservation = budgeting.capped(reservation, left)
+            verdict = admit(self._priced(run, reservation), left, line)
         refused = (
             await self._platform_refuses(self._options.unit_memory_bytes)
             if step.method is Method.WORKER and verdict.fits
@@ -2082,7 +2093,9 @@ class RunEngine:
         )
         run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
         if reservation != demand.quantities:
-            run = await self._commit(run, "step.reserved", step=step_run, outcome="calibrated")
+            run = await self._commit(
+                run, "step.reserved", step=step_run, outcome="capped" if capped else "calibrated"
+            )
         return run, step_run, True
 
     async def _platform_refuses(self, memory_bytes: int | None) -> str | None:
