@@ -332,3 +332,43 @@ async def test_a_worker_that_offers_what_the_frame_took_out_and_does_not_refuse_
     worker = fetching(start_coding_worker(fault=fault, agent_env=FETCHED))
     report = await worker.run_suite()
     assert {c.id for c in report.failed} == {fault}, report.render()
+
+
+PARALLEL = {"FAKE_AGENT_PARALLEL": "1"}
+"""The agent makes two calls in one message, both before either result, as the real agent did
+on the instance on 2026-10-15: the suite failed W-04 for the first call of such a pair."""
+
+
+@pytest.mark.parametrize("order", ["1", "reversed"], ids=["in-order", "reversed"])
+async def test_calls_made_in_parallel_are_steps_one_after_the_other(
+    start_coding_worker: StartWorker, order: str
+) -> None:
+    """A message with two calls was two steps open at once: the second call replaced the first
+    as the running step, the first result closed the second, and the first never reported its
+    consumption (W-04). Each call is a step of its own, in the agent's order: the next starts
+    once the one before has reported its consumption and reached its boundary, also where
+    the later call's result arrives first."""
+    worker = fetching(start_coding_worker(agent_env={**FETCHED, "FAKE_AGENT_PARALLEL": order}))
+    report = await worker.run_suite()
+    assert report.failed == [] and report.inconclusive == [], report.render()
+    events = await one_assignment(worker)
+    assert events[-1]["outcome"] == "succeeded"
+    started = [e["step_id"] for e in events if e["type"] == "step.started"]
+    reported = [e["step_id"] for e in events if e["type"] == "consumption.reported"]
+    assert started == reported[: len(started)], "every step reports before the next starts"
+    tools = [e["summary"].split(":")[0] for e in events if e["type"] == "step.started"]
+    plan = ["WebFetch", "Glob", "Write", "Bash", "Read", "Edit", "Bash"]
+    assert tools[1:8] == plan, "every call of the agent a step, in the agent's order"
+
+
+async def test_a_stop_between_calls_made_in_parallel_lands_on_a_boundary(
+    start_coding_worker: StartWorker,
+) -> None:
+    """With two calls in every message, the suite's stop still lands on a boundary with its
+    checkpoint (W-06), and the resume from it announces nothing twice (W-11): a call that
+    waits for the running step is no step yet, and a stop there leaves it unannounced."""
+    worker = start_coding_worker(agent_env=PARALLEL)
+    report = await worker.run_suite()
+    assert report.failed == [], report.render()
+    runs = {r.purpose: r for r in report.runs}
+    assert runs["stopped"].outcome == "stopped" and runs["resumed"].outcome == "succeeded"

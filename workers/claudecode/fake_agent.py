@@ -20,7 +20,9 @@ agent's judgement. Two variables make it misbehave on purpose, so that the worke
 to handle it: `FAKE_AGENT_EXPIRE_AFTER=N` ends the run with an authentication error after N
 tool results, as an expired subscription token does; `FAKE_AGENT_WINDOW_AFTER=N` reports the
 subscription window as exhausted after N tool results. `FAKE_AGENT_WRITE` adds files to the
-change (`plan()`).
+change (`plan()`). `FAKE_AGENT_PARALLEL=1` makes two calls per message, as the real agent does
+when it calls tools in parallel: both calls come first, each in a line of its own, then both
+results — with `reversed`, the second call's result first.
 
 Its usage is fixed too, and it overruns: about 620 000 input tokens for the whole plan, ten
 times the worker's default estimate of 60 000 — the real agent used 1.8 to 4.3 times that
@@ -124,12 +126,18 @@ def message(message_id: str, blocks: list[Json], used: Json, session_id: str) ->
     }
 
 
-def stream(message_id: str, text: str, last: Json, full: Json, session_id: str) -> None:
-    """One message in two lines: its text with the usage so far, then its last block with all
-    of it — or, with `FAKE_AGENT_LATE_USAGE`, still the usage so far."""
+def stream(
+    message_id: str, text: str, last: Json | list[Json], full: Json, session_id: str
+) -> None:
+    """One message in a line per block: its text with the usage so far, then each further
+    block, the last with all of it — or, with `FAKE_AGENT_LATE_USAGE`, still the usage so
+    far. Several tool calls in one message come as several lines, as the real agent's do."""
     late = bool(os.environ.get("FAKE_AGENT_LATE_USAGE"))
+    blocks = last if isinstance(last, list) else [last]
     emit(message(message_id, [{"type": "text", "text": text}], partial(full), session_id))
-    emit(message(message_id, [last], partial(full) if late else full, session_id))
+    for i, block in enumerate(blocks, 1):
+        final = i == len(blocks) and not late
+        emit(message(message_id, [block], full if final else partial(full), session_id))
 
 
 def perform(tool: str, arguments: Json) -> tuple[str, bool]:
@@ -232,9 +240,17 @@ def main(argv: list[str] | None = None) -> int:
     turns = 0
     results = 0
     total: Json = {}
-    for n, (tool, arguments) in enumerate(plan()[done:], done + 1):
-        if tool not in available:
-            continue  # a tool it is not offered is one it does not know: it never calls it
+    # A tool it is not offered is one it does not know: it never calls it.
+    remaining = [
+        (n, tool, arguments)
+        for n, (tool, arguments) in enumerate(plan()[done:], done + 1)
+        if tool in available
+    ]
+    width = 2 if os.environ.get("FAKE_AGENT_PARALLEL") else 1
+    finished = done
+    denied = False
+    while remaining and not denied:
+        batch, remaining = remaining[:width], remaining[width:]
         if turns >= args.max_turns:
             emit(
                 {
@@ -249,53 +265,62 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         turns += 1
-        message_id = f"msg_fake{n:04d}"
-        call_id = f"toolu_fake{n:04d}"
-        call = {"type": "tool_use", "id": call_id, "name": tool, "input": arguments}
-        stream(message_id, f"Step {n}: {tool}.", call, usage(n), session_id)
-        total = add(total, usage(n))
-        time.sleep(pace)
-        if tool not in allowed:
-            text, is_error = DENIED.format(tool=tool), True
-        else:
-            text, is_error = perform(tool, arguments)
-        result: Json = {"tool_use_id": call_id, "type": "tool_result", "content": text}
-        if is_error:
-            result["is_error"] = True
-        emit(
-            {
-                "type": "user",
-                "message": {"role": "user", "content": [result]},
-                "session_id": session_id,
-            }
-        )
-        results += 1
-        session_path(session_id).write_text(json.dumps({"done": n}))
-        if expire_after and results >= expire_after:
+        first = batch[0][0]
+        calls = [
+            {"type": "tool_use", "id": f"toolu_fake{n:04d}", "name": tool, "input": arguments}
+            for n, tool, arguments in batch
+        ]
+        names = " and ".join(tool for _, tool, _ in batch)
+        stream(f"msg_fake{first:04d}", f"Step {first}: {names}.", calls, usage(first), session_id)
+        total = add(total, usage(first))
+        pairs = list(zip(batch, calls, strict=True))
+        if os.environ.get("FAKE_AGENT_PARALLEL") == "reversed":
+            pairs.reverse()  # the later call finishes first, and its result comes first
+        for (n, tool, arguments), call in pairs:
+            time.sleep(pace)
+            if tool not in allowed:
+                text, is_error = DENIED.format(tool=tool), True
+            else:
+                text, is_error = perform(tool, arguments)
+            result: Json = {"tool_use_id": call["id"], "type": "tool_result", "content": text}
+            if is_error:
+                result["is_error"] = True
             emit(
                 {
-                    "type": "result",
-                    "subtype": "error",
-                    "is_error": True,
-                    "result": "OAuth token expired · Please run /login",
-                    "session_id": session_id,
-                    "num_turns": turns,
-                    "total_cost_usd": 0.01 * turns,
-                }
-            )
-            return 1
-        if window_after and results >= window_after:
-            emit(
-                {
-                    "type": "rate_limit_event",
-                    "rate_limit_info": {"status": "rejected", "rateLimitType": "five_hour"},
+                    "type": "user",
+                    "message": {"role": "user", "content": [result]},
                     "session_id": session_id,
                 }
             )
-            time.sleep(5)  # the real agent would wait for the window; the worker ends it
-            return 1
-        if is_error and "denied" in text:
-            break  # the real agent may try another way; this one gives up
+            results += 1
+            finished = max(finished, n)
+            session_path(session_id).write_text(json.dumps({"done": finished}))
+            if expire_after and results >= expire_after:
+                emit(
+                    {
+                        "type": "result",
+                        "subtype": "error",
+                        "is_error": True,
+                        "result": "OAuth token expired · Please run /login",
+                        "session_id": session_id,
+                        "num_turns": turns,
+                        "total_cost_usd": 0.01 * turns,
+                    }
+                )
+                return 1
+            if window_after and results >= window_after:
+                emit(
+                    {
+                        "type": "rate_limit_event",
+                        "rate_limit_info": {"status": "rejected", "rateLimitType": "five_hour"},
+                        "session_id": session_id,
+                    }
+                )
+                time.sleep(5)  # the real agent would wait for the window; the worker ends it
+                return 1
+            if is_error and "denied" in text:
+                denied = True  # the real agent may try another way; this one gives up
+                break
     stream("msg_fakefinal", "Done.", {"type": "text", "text": FINAL}, usage(99), session_id)
     total = add(total, usage(99))
     emit(
