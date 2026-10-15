@@ -18,9 +18,9 @@ from the business, through you:
    errors, payments, invoices, pull requests.
 3. **Roles.** Who releases money, who answers legal matters, who approves which classes of reply,
    who reads the daily report. Roles first; one contact person for decision requests.
-4. **Where its data may go.** Whether the tenant runs on your instance beside the project's
-   tenant, or on an instance of the business's own; and which model providers may receive its
-   data.
+4. **Where its data may go.** The business hosts Taktus itself (DEC-0201). Needed: on what it
+   hosts — a Kubernetes cluster or a single machine with containers — and which model providers
+   may receive its data.
 5. **Additions.** Anything the business wants to keep with a person beyond the catalogue's list,
    and any threshold it wants stricter.
 
@@ -29,8 +29,8 @@ from the business, through you:
 Processes name capabilities, never products. A connector for a capability can only be chosen
 or built once the system behind it is known. Stage 0 of UC-03 needs error tracking, mail and
 the repository service; stage 1 needs cloud billing, payment providers and the model
-providers' credit. #400 cannot register the tenant's processes without the roles and the place
-it runs.
+providers' credit. #400 cannot register the tenant's processes without the roles, and the install guide (#445)
+must cover the platform the business hosts on.
 
 ## 3. By when
 
@@ -48,8 +48,8 @@ routines for pull requests. The other processes wait for this need.
 3. Answer in the issue with the sentence "NEED-0028: in the private note". Nothing else goes into
    the issue.
 
-No credential is needed yet. Each connector raises its own credential need when it is built,
-through `CREDENTIALS.md`.
+No credential is needed from the business, now or later: it runs its own instance and keeps its
+credentials there (DEC-0201). `CREDENTIALS.md` describes each parameter a connector reads.
 
 ## 5. What it must never be
 
@@ -60,8 +60,9 @@ there and writes the tenant's configuration into the tenant's instance, never in
 
 ## 6. What happens next
 
-Tell the session "NEED-0028: in the private note". It reads the note, configures the tenant on
-its instance (#318), raises one credential need per connector stage 0 needs, and starts #400.
+Tell the session "NEED-0028: in the private note". It reads the note, builds the connectors
+for the named systems (#447) and checks the install guide against the business's platform
+(#445). The business configures its own instance; credentials stay with the business.
 
 ## 7. How to confirm
 
