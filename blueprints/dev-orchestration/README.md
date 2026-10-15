@@ -85,7 +85,7 @@ output (issue #34). The worker generates it: after its change it runs `tools/che
 --print` in its workspace, the tree the branch will carry, and a template puts what it printed
 under the section's heading (DEC-0037, ADR-0053). A run started by hand may hand the section in
 as the input `closing_section` instead. Nothing writes to the base branch: a person merges.
-A run may spend USD 4, all of it on the coding step: the worker prices its tokens at every
+A run may spend USD 5 (DEC-0203), all of it on the coding step: the worker prices its tokens at every
 boundary and halts there before that is crossed, and an agent that reaches its limit of turns
 stops at its last boundary the same way. Either keeps its work and its claim; nothing restarts
 the run, and a person resumes it with a raised limit from its checkpoint, changes the task, or

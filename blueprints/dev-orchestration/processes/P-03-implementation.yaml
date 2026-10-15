@@ -128,14 +128,12 @@ inputs:
 # tokens at every boundary and halts there before the run's money is crossed, keeping its
 # checkpoint; the run halts with cause `limit`, nothing restarts it, and a person resumes it
 # with a raised limit from that checkpoint, or gives the task back (DEC-0202, ADR-0005 seventh
-# amendment). USD 4 is twice the dearest coding step that finished on the instance — USD 1.78
-# for 3.03 million input tokens, of finished steps between USD 0.69 and 1.78 — rounded up:
-# no step that finished there would have been halted, and a step that runs away stops at less
-# than half of the USD 10 the run for #277 spent. Version 9 said USD 5 and was held only
-# against the worker's estimate, because the money came at the end. Connector calls count in
-# requests.
+# amendment). The limit stays USD 5, the owner's figure (DEC-0203): finished coding steps on the
+# instance cost USD 0.69 to 1.78, so none would have been halted, and a step that runs away stops
+# at half of the USD 10 the run for #277 spent. Version 9 held USD 5 only against the worker's
+# estimate, because the money came at the end. Connector calls count in requests.
 limits:
-  currency: { usd: 4.0 }
+  currency: { usd: 5.0 }
   quota: { units: 200 }
 
 steps:

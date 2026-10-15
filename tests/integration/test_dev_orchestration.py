@@ -591,12 +591,12 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     assert "DOES NOT VERIFY" not in output
 
     # The coding step's money came with its steps, priced at the worker's table for the model
-    # its agent named, and was held against the run's USD 4 (DEC-0202).
+    # its agent named, and was held against the run's USD 5 (DEC-0202, DEC-0203).
     (coded,) = [
         e for e in ledger if e["kind"] == "step.finished" and e["refs"]["step_id"] == "implement"
     ]
     used = coded["consumption"]
-    assert 0 < used["currency"]["usd"] < 4.0, used
+    assert 0 < used["currency"]["usd"] < 5.0, used
     assert list(used["tokens_by_model"]) == ["claude-haiku-4-5-20251001"], used
 
     # A second run on the same issue finds it claimed and takes nothing up.
