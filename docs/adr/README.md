@@ -21,7 +21,7 @@ bounding. The section states the boundary; it does not point at it.
 | [0004](ADR-0004-method-selection.md) | Method selection: which kind of AI per step | accepted |
 | [0005](ADR-0005-step-atomicity.md) | Step atomicity and admission control | accepted, amended (DEC-0012), amended 2026-09-30 (DEC-0035) |
 | [0006](ADR-0006-ledger.md) | The ledger as a content-free hash chain | accepted |
-| [0007](ADR-0007-worker-contract.md) | Worker contract over HTTP and SSE | accepted |
+| [0007](ADR-0007-worker-contract.md) | Worker contract over HTTP and SSE | accepted, extended by 0098 |
 | [0008](ADR-0008-decision-request.md) | Decision requests and strategic anchors | accepted, extended by 0022 |
 | [0009](ADR-0009-adapter-monorepo.md) | Adapters in the main repository until 1.0.0 | accepted |
 | [0010](ADR-0010-accounting.md) | The Takt as a unit of orchestrated work | **proposed**, amended 2026-09-30 |
@@ -86,3 +86,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0095](ADR-0095-a-run-reserves-the-numbers-of-the-records-its-change-adds-through-the-connector.md) | A run reserves the numbers of the records its change adds, through the connector | accepted |
 | [0096](ADR-0096-ci-checks-what-changed-before-a-merge-and-everything-after-it.md) | CI checks what changed before a merge, and everything after it | accepted |
 | [0097](ADR-0097-a-process-names-the-steps-that-run-when-its-run-escalates.md) | A process names the steps that run when its run escalates | accepted |
+| [0098](ADR-0098-a-worker-states-what-it-put-within-reach-and-the-suite-sees-a-frame-enforced-by-not-offering.md) | A worker states what it put within reach, and the suite sees a frame enforced by not offering | accepted |

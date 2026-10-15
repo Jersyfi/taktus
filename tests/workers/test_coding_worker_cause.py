@@ -84,3 +84,25 @@ def test_the_agent_is_offered_only_the_tools_its_frame_allows() -> None:
     allowed = arguments[arguments.index("--allowedTools") + 1].split(",")
     assert "WebFetch" not in offered
     assert offered == allowed
+
+
+def test_the_worker_states_the_reach_it_offers() -> None:
+    """`reach.stated` reads the offer in the contract's terms (ADR-0098): a `Bash` call is
+    `shell.sandboxed`, or `code.test` where the frame allows it; with no fetch offered, the
+    only hosts a call can name are the task's, which the worker holds against the frame
+    itself; with a fetch offered, the hosts are bounded at the call and not stated."""
+    worker = load()
+    run = object.__new__(worker._Run)
+    run.fault = None
+    run.body = {"task": {"goal": "g"}, "context": {}}
+    run.frame = {"allowed_tools": ["code.read", "code.test"], "allowed_hosts": ["repo.example"]}
+    assert run._reach() == {
+        "type": "reach.stated",
+        "tools": ["code.read", "code.test", "shell.sandboxed"],
+        "hosts": [],
+    }
+    run.body = {"task": {"goal": "g", "inputs": {"hosts": ["repo.example"]}}, "context": {}}
+    assert run._reach()["tools"] == ["code.read", "code.test", "shell.sandboxed", "web.fetch"]
+    assert run._reach()["hosts"] == ["repo.example"]
+    run.frame = {"allowed_tools": ["code.read", "web.fetch"], "allowed_hosts": ["repo.example"]}
+    assert run._reach() == {"type": "reach.stated", "tools": ["code.read", "web.fetch"]}

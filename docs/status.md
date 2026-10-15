@@ -308,6 +308,14 @@ branch that did not exist. Since #300 (NTC-0199, ADR-0024 amended) the connector
 issue's repeat at once and its shipped scenario runs against the real service; from a
 workstation it passed C-01 to C-09 there. The instance's scenario points at it or follows it.
 
+**A frame kept by not offering is seen by the worker suite** (ADR-0098). Since #425 the coding
+worker offers its agent only the frame's tools, and the suite against the real agent on the
+instance ended *incomplete* on 2026-10-15: W-07 and W-13 saw no refusal, because nothing was
+attempted. A worker now may state what it put within reach, as the event `reach.stated`, and the
+two checks pass on a statement that leaves the withdrawn tool or host out where no call to it
+occurred. The coding worker states it; proven against its fake agent. Recording the instance's
+coding worker again is the operator's run, after the release that carries this change.
+
 **What an instance meets that the product lacks becomes an issue** (#86, `0.2.0`, ADR-0046). A step
 that fails because no configured worker, connector or operation offers what it needs now carries a
 block until it can start, booked to `wait.dependency` (NTC-0098). A rule makes one finding per lack

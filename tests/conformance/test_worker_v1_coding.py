@@ -13,6 +13,7 @@ named a live test that did not exist (DEC-0046).
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -285,3 +286,49 @@ async def test_an_agent_at_its_limit_of_turns_stops_at_its_boundary_and_resumes(
         checkpoint = resumed[-1]["checkpoint_ref"]
     assert outcomes == ["stopped", "succeeded"], outcomes
     assert {"summary", "changeset"} <= seen and any(i.startswith("change-") for i in seen)
+
+
+FETCHED = {"FAKE_AGENT_FETCH": f"https://{HOST}/index.json"}
+"""The agent fetches a page of the host the suite allows, as the real agent did on the instance:
+the host is named by the agent's call, not by the task (#424)."""
+
+
+def fetching(worker: RunningWorker) -> RunningWorker:
+    """The suite run against an agent that reaches its host itself: a task that names no host,
+    and the host the suite allows in `main` and withdraws in `narrowed-hosts`."""
+    task = {k: v for k, v in TASK.items() if k != "inputs"}
+    return replace(worker, task=task, hosts=(HOST,))
+
+
+async def test_a_tool_and_a_host_not_offered_pass_by_the_stated_reach(
+    start_coding_worker: StartWorker,
+) -> None:
+    """Since #425 the agent is offered only the frame's tools, and no fetch where no host may
+    be reached. In the narrowed runs it therefore never calls the fetch the suite withdrew, and
+    no refusal can be observed: the suite ended `incomplete` against the real agent. The worker
+    states its reach before the work begins (ADR-0098), and W-07 and W-13 pass on that
+    statement and on the absence of any call to what it leaves out."""
+    worker = fetching(start_coding_worker(agent_env=FETCHED))
+    report = await worker.run_suite()
+    assert report.failed == [] and report.inconclusive == [], report.render()
+    checks = {c.id: c for c in report.checks}
+    assert "did not offer 'web.fetch'" in checks["W-07"].observed, checks["W-07"].observed
+    assert f"did not put {HOST!r} within reach" in checks["W-13"].observed
+    runs = {r.purpose: r for r in report.runs}
+    assert runs["narrowed"].outcome == "succeeded"
+    assert runs["narrowed-hosts"].outcome == "succeeded"
+    events = await one_assignment(worker)
+    assert events[0]["type"] == "reach.stated" and "web.fetch" in events[0]["tools"]
+    assert "hosts" not in events[0], "a fetch is offered: the hosts are bounded at the call"
+
+
+@pytest.mark.parametrize("fault", ["W-07", "W-13"])
+async def test_a_worker_that_offers_what_the_frame_took_out_and_does_not_refuse_still_fails(
+    start_coding_worker: StartWorker, fault: str
+) -> None:
+    """The statement passes a check only where it leaves the tool or the host out and no call
+    to it occurred. A worker that offers the withdrawn fetch, states so, and lets the agent's
+    call through unrefused fails the check exactly as before (#424)."""
+    worker = fetching(start_coding_worker(fault=fault, agent_env=FETCHED))
+    report = await worker.run_suite()
+    assert {c.id for c in report.failed} == {fault}, report.render()

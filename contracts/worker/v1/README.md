@@ -176,6 +176,7 @@ everything after it. A worker honours both.
 
 | Type | Required content |
 |---|---|
+| `reach.stated` | `tools` — every capability a call of this assignment can be made under; optionally `hosts` — every host a call can name. Optional, at most once, before the first `step.started` |
 | `step.started` | `step_id`, `kind`, `summary` — `kind` names the class of work in one token: `plan`, `edit`, `test`, `shell`, `epoch` |
 | `step.progress` | `step_id`, `message`; optionally `progress: {current, total, unit}` for work measured in units such as epochs |
 | `tool.called` | `tool` (a capability), `arguments_digest` (**`sha256:` + hex, never in clear**); `host` when the call reaches a host over the network; `refused: true` with a `reason` when the tool or the host lies outside the frame |
@@ -197,6 +198,18 @@ A tool outside `allowed_tools` is **refused, not ignored**: the worker emits `to
 `tool.called` names the `host`, carries `refused: true`, and the host is not reached. That is how
 a refusal becomes visible to the ledger — and how a worker that ignores an empty list is caught,
 because reaching a host without naming it is not an option the contract offers.
+
+**A worker may state what it put within reach.** A worker that does not offer its work every
+tool — a coding agent given only the frame's tools — cannot refuse a call that is never made.
+It says so instead: once, before the first `step.started`, it emits `reach.stated`. `tools`
+names every capability a call of this assignment can be made under, refused or not. `hosts`,
+when present, names every host a call can name; when absent, the worker bounds the hosts only
+at the moment of a call. A capability or a host the statement leaves out cannot be called or
+reached at all, so no `tool.called` names one, not even a refused one. The statement is
+optional: a worker that offers every tool and refuses at the call states nothing. A tool or a
+host the frame does not allow, left out of the statement and called nowhere, is how checks
+W-07 and W-13 see a frame enforced by not offering. The suite cannot see a statement that is
+false about a call never made (ADR-0098).
 
 ---
 
@@ -262,13 +275,13 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 | W-04 | `consumption.reported` appears per step, not only at the end |
 | W-05 | `step.boundary` appears at least once per assignment |
 | W-06 | `stop` takes effect at a step boundary with a checkpoint set |
-| W-07 | a tool outside `allowed_tools` is refused, not ignored |
+| W-07 | a tool outside `allowed_tools` is refused, not ignored — or, where the worker states its reach, left out of `reach.stated` and never called; a call outside the statement fails |
 | W-08 | no credential appears in an event, artifact or log |
 | W-09 | `tool.called` transmits arguments hashed, never in clear |
 | W-10 | exceeding `limits` yields `rejected` **before** starting, not an abort afterwards |
 | W-11 | resuming from a checkpoint produces no duplicate artifact |
 | W-12 | the adapter passes the removal test: removing it breaks no process |
-| W-13 | a host outside `allowed_hosts` is refused, not ignored |
+| W-13 | a host outside `allowed_hosts` is refused, not ignored — or, where `reach.stated` names hosts, left out of them and never named by a call; a call that names another fails |
 | W-14 | a running total that would cross `limits` halts the assignment at its next step boundary: no step starts once the reported running total of a limited kind has reached its limit, and the assignment ends `stopped` with a checkpoint and names the `limit` |
 | W-15 | a worker holding `max_concurrent_assignments` answers one more `POST /v1/assignments` with `503` and a problem body, and records nothing of it |
 | W-16 | `GET /v1/assignments/{id}` of an id the worker never received answers `404` with a problem body |

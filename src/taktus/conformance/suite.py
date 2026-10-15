@@ -6,9 +6,11 @@ estimate, and then posts up to seven assignments one after the other, each for a
 1. `main` — the worker's default work within a frame that admits every declared capability
    and the hosts the caller names. Proves W-03, W-04, W-05, W-09 and the artifact half of
    W-11; supplies the tool for W-07 and the host for W-13.
-2. `narrowed` — the same work in a frame that excludes one tool the main run used. Proves W-07.
+2. `narrowed` — the same work in a frame that excludes one tool the main run used. Proves W-07:
+   the worker refuses the tool when it calls it, or states in `reach.stated` that it did not
+   offer it and calls it nowhere (ADR-0098).
 3. `narrowed-hosts` — the same work in a frame whose allowed_hosts lacks one host the main run
-   reached. Proves W-13.
+   reached. Proves W-13 the same way, by a refusal or by a statement whose hosts leave it out.
 4. `stopped` — the same work, stopped while a step runs. Proves W-06.
 5. `resumed` — the same work resumed from the checkpoint of the stopped run. Proves W-11.
 6. `over-limit` — the same work with a limit below the estimate. Proves W-10.
@@ -87,6 +89,7 @@ AFTER_ARTIFACT = "after-output"
 
 # Which check a schema violation in an event belongs to, by event type.
 EVENT_OWNER = {
+    "reach.stated": "W-07",
     "consumption.reported": "W-04",
     "step.boundary": "W-05",
     "tool.called": "W-09",
@@ -629,9 +632,19 @@ async def _w07(
     if findings.violations["W-07"]:
         return
     if not attempts:
+        statement = rules.not_offered(run.events, tool=tool)
+        if statement is not None:
+            findings.ok(
+                "W-07",
+                f"{how}; the worker did not offer {tool!r}: its reach.stated (seq "
+                f"{statement['seq']}) leaves it out, no call to it occurred, and the run ended "
+                f"with outcome {run.outcome!r}",
+            )
+            return
         findings.inconclusive["W-07"] = (
-            f"{how}; the worker never attempted {tool!r} in the narrowed run, so the refusal "
-            "could not be observed"
+            f"{how}; the worker never attempted {tool!r} in the narrowed run and stated no "
+            "reach that leaves it out, so the refusal could not be observed; a worker that "
+            "does not offer a tool outside the frame says so in reach.stated"
         )
         return
     if not refused:
@@ -702,9 +715,19 @@ async def _w13(
     if findings.violations["W-13"]:
         return
     if not attempts:
+        statement = rules.not_offered(run.events, host=host)
+        if statement is not None:
+            findings.ok(
+                "W-13",
+                f"{how}; the worker did not put {host!r} within reach: its reach.stated (seq "
+                f"{statement['seq']}) names only {statement.get('hosts')}, no call named it, "
+                f"and the run ended with outcome {run.outcome!r}",
+            )
+            return
         findings.inconclusive["W-13"] = (
-            f"{how}; the worker never named {host!r} in the narrowed run, so the refusal could "
-            "not be observed"
+            f"{how}; the worker never named {host!r} in the narrowed run and stated no reach "
+            "that leaves it out, so the refusal could not be observed; a worker that puts no "
+            "tool that reaches a host within reach says so in reach.stated with its hosts"
         )
         return
     if not refused:

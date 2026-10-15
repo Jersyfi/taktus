@@ -430,6 +430,7 @@
         "type": {
           "type": "string",
           "enum": [
+            "reach.stated",
             "step.started",
             "step.progress",
             "tool.called",
@@ -442,6 +443,28 @@
         }
       },
       "required": ["assignment_id", "seq", "ts", "type"]
+    },
+
+    "ReachStated": {
+      "title": "ReachStated",
+      "description": "What the worker put within reach of this assignment's work, stated once, before the first step.started. tools names every capability a call of this assignment can be made under, refused or not: a capability not named cannot be called at all. hosts, when present, names every host a call of this assignment can name: a host not named cannot be reached at all; absent, the worker bounds the hosts only at the moment of a call. A tool.called outside the statement makes it false. The statement is optional: a worker that offers its work every tool and refuses at the call states nothing. It lets the conformance suite see a tool or a host taken out of the frame as not offered, where no call to it was attempted (W-07, W-13).",
+      "type": "object",
+      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "properties": {
+        "type": { "const": "reach.stated" },
+        "tools": {
+          "type": "array",
+          "items": { "$ref": "../../shared/v1/Capability.json" },
+          "uniqueItems": true
+        },
+        "hosts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Host" },
+          "uniqueItems": true
+        }
+      },
+      "required": ["tools"],
+      "unevaluatedProperties": false
     },
 
     "StepStarted": {
@@ -608,6 +631,7 @@
       "description": "One message on GET /v1/assignments/{id}/events. On the wire: the SSE id field carries seq, the SSE event field carries type, the SSE data field carries this object as one line of JSON.",
       "type": "object",
       "oneOf": [
+        { "$ref": "#/$defs/ReachStated" },
         { "$ref": "#/$defs/StepStarted" },
         { "$ref": "#/$defs/StepProgress" },
         { "$ref": "#/$defs/ToolCalled" },
