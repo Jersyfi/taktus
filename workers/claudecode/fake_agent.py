@@ -16,13 +16,15 @@ approved (`--allowedTools`) it calls, and is denied.
 
 What it does not do is think: the plan is fixed. That is the point — the gate proves the
 worker's mechanics (boundaries, consumption, refusal, stop, resume, authentication), not the
-agent's judgement. Two variables make it misbehave on purpose, so that the worker can be shown
+agent's judgement. Three variables make it misbehave on purpose, so that the worker can be shown
 to handle it: `FAKE_AGENT_EXPIRE_AFTER=N` ends the run with an authentication error after N
 tool results, as an expired subscription token does; `FAKE_AGENT_WINDOW_AFTER=N` reports the
-subscription window as exhausted after N tool results. `FAKE_AGENT_WRITE` adds files to the
-change (`plan()`). `FAKE_AGENT_PARALLEL=1` makes two calls per message, as the real agent does
-when it calls tools in parallel: both calls come first, each in a line of its own, then both
-results — with `reversed`, the second call's result first.
+subscription window as exhausted after N tool results; `FAKE_AGENT_HANG_AFTER=N` writes the text
+of its next message after N tool results, with the message's usage, and then works on it without
+end, so that a stop lands inside a message whose call never comes (#277). `FAKE_AGENT_WRITE`
+adds files to the change (`plan()`). `FAKE_AGENT_PARALLEL=1` makes two calls per message, as
+the real agent does when it calls tools in parallel: both calls come first, each in a line of
+its own, then both results — with `reversed`, the second call's result first.
 
 Its usage is fixed too, and it overruns: about 620 000 input tokens for the whole plan, ten
 times the worker's default estimate of 60 000 — the real agent used 1.8 to 4.3 times that
@@ -236,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
     # A resumed run stands for "the operator supplied a working token": it does not expire.
     expire_after = 0 if args.resume else int(os.environ.get("FAKE_AGENT_EXPIRE_AFTER") or 0)
     window_after = int(os.environ.get("FAKE_AGENT_WINDOW_AFTER") or 0)
+    hang_after = int(os.environ.get("FAKE_AGENT_HANG_AFTER") or 0)
     pace = float(os.environ.get("FAKE_AGENT_STEP_SECONDS") or 0.15)
     turns = 0
     results = 0
@@ -251,6 +254,12 @@ def main(argv: list[str] | None = None) -> int:
     denied = False
     while remaining and not denied:
         batch, remaining = remaining[:width], remaining[width:]
+        if hang_after and results >= hang_after:
+            n = batch[0][0]
+            text = {"type": "text", "text": f"Step {n}: thinking."}
+            emit(message(f"msg_fake{n:04d}", [text], usage(n), session_id))
+            time.sleep(600)  # the worker ends it
+            return 1
         if turns >= args.max_turns:
             emit(
                 {

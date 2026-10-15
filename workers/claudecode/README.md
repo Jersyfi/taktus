@@ -85,6 +85,15 @@ boundary and before `assignment.finished`; that holds for an assignment that end
 `failed` with a result, too. A total below the priced steps reports nothing more: the steps'
 money stands.
 
+**An assignment that ends without its result still reports what it cost** (#277). The tokens a
+step claims are reported at its boundary. Some tokens no step claims: a message the agent was
+still writing when it was stopped, ended at a limit or killed, and calls it made in parallel
+that never became steps. The worker reports them on the last step, with their money at the
+price table, before `assignment.finished`. In the live run of #74 a coding step stopped after
+seven minutes reported 925 229 input tokens and no money, though it cost about USD 1, and the
+run's currency budget counted nothing of it. An assignment that ends before its first step has
+no step to report on, and reports nothing.
+
 **The limits are the ceiling while the agent runs.** At every boundary the worker holds its
 running total against the limits: `limits.currency` in its currency, in `api-key` mode;
 `limits.tokens`, input and output apart; and, in `session` mode, `limits.quota` in turns. Once

@@ -372,3 +372,68 @@ async def test_a_stop_between_calls_made_in_parallel_lands_on_a_boundary(
     assert report.failed == [], report.render()
     runs = {r.purpose: r for r in report.runs}
     assert runs["stopped"].outcome == "stopped" and runs["resumed"].outcome == "succeeded"
+
+
+async def test_a_stop_inside_a_message_counts_the_money_of_its_tokens(
+    start_coding_worker: StartWorker,
+) -> None:
+    """#277: the agent has written the text of its third message and works on, its call not
+    yet made, when the stop arrives. No boundary follows, and the worker ends the agent at the
+    stop's ceiling. The message's tokens belong to no step; the worker still reports them on
+    the last step, with their money at its price table, so that the run's currency budget
+    counts what the assignment cost — before the agent's result, which never comes."""
+    worker = start_coding_worker(
+        auth="api-key",
+        agent_env={"FAKE_AGENT_USAGE_FACTOR": "100", "FAKE_AGENT_HANG_AFTER": "2"},
+    )
+    assignment_id = "asg_coding_hang"
+    async with WorkerClient(worker.endpoint, timeout=90.0, idle_timeout=30.0) as client:
+        declared = (await client.get("/v1/capabilities")).json or {}
+        accepted = await client.post(
+            "/v1/assignments",
+            {
+                "assignment_id": assignment_id,
+                "task": dict(TASK),
+                "context": {},
+                "frame": {
+                    "autonomy_level": 2,
+                    "allowed_tools": list(declared["capabilities"]),
+                    "allowed_hosts": [HOST],
+                    "max_steps": 40,
+                },
+                "limits": {"currency": {"usd": 5.0}},
+                "credentials": [{"name": worker.credential_name, "injected_as": "env"}],
+                "callback": {"events": "sse"},
+            },
+        )
+        assert accepted.status == 201, accepted.text
+        calls_closed = 0
+
+        async def on_event(event: Json) -> None:
+            # At the boundary of the agent's second call, which the worker has passed when the
+            # event arrives: the third message is being written, and no boundary follows.
+            nonlocal calls_closed
+            if event["type"] == "consumption.reported" and event.get("tokens_by_model"):
+                calls_closed += 1
+            elif event["type"] == "step.boundary" and calls_closed == 2:
+                calls_closed += 1
+                await client.post(
+                    f"/v1/assignments/{assignment_id}/stop",
+                    {"reason": "a test stops the assignment", "ceiling_seconds": 1},
+                )
+
+        stream = await client.stream(assignment_id, on_event=on_event)
+    assert not stream.problems, stream.problems
+    events = stream.events
+    finished = events[-1]
+    assert finished["type"] == "assignment.finished", finished
+    reported = [e for e in events if e["type"] == "consumption.reported"]
+    unclaimed = reported[-1]
+    third = {"input": 300, "cache_read": 1500000, "cache_write": 130000, "output": 4300}
+    assert unclaimed["tokens_by_model"] == {"claude-haiku-4-5-20251001": third}, unclaimed
+    assert unclaimed["currency"]["usd"] == round((300 + 150000 + 260000 + 21500) / 1e6, 6)
+    started = [e["step_id"] for e in events if e["type"] == "step.started"]
+    assert unclaimed["step_id"] == started[-1], "reported on the last step, in time (W-04)"
+    # What the budget counts: the money of all three messages, the cut-off one with them.
+    counted = sum(e.get("currency", {}).get("usd", 0.0) for e in reported)
+    assert counted == pytest.approx(0.2908 + 0.3613 + 0.4318)
