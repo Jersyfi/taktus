@@ -597,6 +597,54 @@ async def test_a_branch_created_for_a_step_is_created_once_across_a_restart(
 
 
 @pytest.mark.usefixtures("credentials")
+async def test_a_branch_is_read_with_the_key_at_its_head_and_whether_it_is_free(
+    service: Service,
+) -> None:
+    """ADR-0099: the lookup `repository.branches.create` makes, without acting. No branch is
+    free; a branch whose head carries the given key is free, as a create under that key would
+    replay; one that carries another key, or none, is not."""
+    connector = Connector(config(service))
+    mine = "run_01:create-branch:1-0123456789"
+
+    async def read(name: str, key: str | None) -> Json:
+        input = {"name": name} if key is None else {"name": name, "key": key}
+        error, result = await call(
+            connector, "repository.branches.read", context("read-branch", KEY), input
+        )
+        assert not error, result
+        assert result["effect"] == {"kind": "read"}
+        output: Json = result["output"]
+        return output
+
+    absent = await read("taktus/issue-412", mine)
+    assert absent == {
+        "name": "taktus/issue-412",
+        "exists": False,
+        "sha": None,
+        "key": None,
+        "free": True,
+    }
+
+    error, made = await call(
+        connector, "repository.branches.create", context("create-branch", mine), BRANCH_INPUT
+    )
+    assert not error, made
+    own = await read("taktus/issue-412", mine)
+    assert own["exists"] is True and own["free"] is True
+    assert own["sha"] == made["output"]["sha"]
+    assert own["key"] == mine
+    other = await read("taktus/issue-412", "run_02:create-branch:1-0123456789")
+    assert other["exists"] is True and other["free"] is False
+    assert other["key"] == mine, "the key at the head, whoever asks"
+    assert (await read("taktus/issue-412", None))["free"] is False
+
+    service.branch(REPOSITORY, "pushed-by-a-person")
+    pushed = await read("pushed-by-a-person", mine)
+    assert pushed["exists"] is True and pushed["key"] is None and pushed["free"] is False
+    assert service.state()[REPOSITORY]["branches"] == 3, "reading created nothing"
+
+
+@pytest.mark.usefixtures("credentials")
 async def test_a_branch_without_files_carries_an_empty_marked_commit(service: Service) -> None:
     key = "run_01:bare:1-0123456789"
     error, result = await call(

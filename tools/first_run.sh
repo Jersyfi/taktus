@@ -36,8 +36,8 @@
 # takes only an issue handed to Taktus: a person adds the label `to-taktus` too (DEC-0197).
 #
 # The branch P-03 creates, taktus/issue-<n>, carries the idempotency key of the run that made
-# it. A new run has a new key, so a branch left by an earlier attempt makes the new run end
-# `conflict` at create-branch — after it has paid for the coding step. The script looks for
+# it. A new run has a new key, so a branch left by an earlier attempt stops the new run at
+# read-branch, before its coding step spends anything (ADR-0099). The script looks for
 # that branch before it starts anything and stops with the two ways on: resume the run that
 # made it, or delete the branch and start again. It never deletes a branch itself.
 #
@@ -102,8 +102,9 @@ set -eu
 # P-02 refused the issue because it has nothing to write: an earlier run of P-02 wrote its
 # comment (`admit`), or the issue carries every section of the ready standard (`missing`).
 P02_ALREADY_REFINED="(admit +rule +exact +failed .*condition 1 does not hold: .*Written by Taktus, process P-02 Refinement'?, which it must not|missing +rule +exact +failed .*carries every section already)"
-# P-03 found the branch it would create, carrying another run's key.
-P03_LEFTOVER_BRANCH="repository\.branches\.create failed: conflict .*exists and was not created for this step"
+# P-03 found the branch it would create, carrying another run's key: at read-branch, before the
+# coding step (version 11, ADR-0099), or at create-branch (an older version, or a later attempt).
+P03_LEFTOVER_BRANCH="(repository\.branches\.read did not show .*exists and this run did not make it|repository\.branches\.create failed: conflict .*exists and was not created for this step)"
 
 usage="usage: tools/first_run.sh <issue number> [--only P-02|P-03 | --from P-02|P-03] [--resume RUN_ID [--approve STEP]...] [--level 1|2|3] [--quota N]"
 
@@ -244,8 +245,8 @@ leftover_branch() {
     fi
     {
         echo "first_run: the branch $branch exists on $repository, left by an earlier attempt${made_by:+ (run $made_by)}."
-        echo "  It carries that run's idempotency key, so a new run of P-03 would end 'conflict' at"
-        echo "  create-branch, after paying for the coding step. Two ways on:"
+        echo "  It carries that run's idempotency key, so a new run of P-03 stops at read-branch,"
+        echo "  before its coding step. Two ways on:"
         echo "  - resume the run that made it; its state must be on this machine, under $state:"
         echo "        tools/first_run.sh $issue --only P-03 --resume ${made_by:-<run id>}"
         echo "  - or delete the branch on the repository, and start again:"

@@ -32,8 +32,10 @@ from fakes.maturity import configurations, verified
 from taktus.adapters.driven.postgres import PostgresOutbox, PostgresRepository
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.domain.model import IntakeEvent
-from taktus.components.run.domain.model import RunState
+from taktus.components.run.domain.model import RunState, StepState
 from taktus.composition.daemon import Wired
+from taktus.composition.reactions import run_id_of
+from taktus.ports.connector import idempotency_key
 from taktus.ports.outbox import INTAKE_ACCEPTED
 
 from .test_dev_orchestration import BLUEPRINT, REPOSITORY, Outside, backlog, hand, outside
@@ -190,7 +192,7 @@ async def test_an_issue_handed_over_becomes_a_pull_request_that_ends_with_the_br
     await linked(wired, tenant)
     await verified_adapters(wired, tenant, outside)
     version = await registered(wired, tenant, the_bundle(outside))
-    assert version.ref == "p03-implementation@10"
+    assert version.ref == "p03-implementation@11"
 
     clock.current += timedelta(minutes=1)
     hand(outside, tasks.ready)
@@ -234,3 +236,74 @@ async def test_an_issue_handed_over_becomes_a_pull_request_that_ends_with_the_br
     (tmp_path / "body.md").write_text(body, encoding="utf-8")
     checked = description_check(tree, tmp_path / "body.md")
     assert checked.returncode == 0, checked.stdout + checked.stderr
+
+
+def branch_of_run(outside: Outside, branch: str, key: str) -> str:
+    """A branch whose head commit carries `key` as its trailer, as `create-branch` writes it:
+    what a run finds when what it would write is already its own. Returns the head's sha."""
+    repo = f"/repos/{REPOSITORY}"
+    main = outside.get(f"{repo}/git/ref/heads/main")
+    assert isinstance(main, dict)
+    head = outside.get(f"{repo}/git/commits/{main['object']['sha']}")
+    assert isinstance(head, dict)
+    commit = outside.send(
+        "POST",
+        f"{repo}/git/commits",
+        {
+            "message": f"Write a greeting\n\nTaktus-Idempotency-Key: {key}\n",
+            "tree": head["tree"]["sha"],
+            "parents": [main["object"]["sha"]],
+        },
+    )
+    outside.send("POST", f"{repo}/git/refs", {"ref": f"refs/heads/{branch}", "sha": commit["sha"]})
+    return str(commit["sha"])
+
+
+async def test_a_branch_that_is_the_runs_own_lets_the_run_go_on_and_is_replayed(
+    daemons: Callable[..., Daemon], tenant: str, outside: Outside
+) -> None:
+    """ADR-0099: the branch read before the coding step is free when its head carries the key
+    `create-branch` will write under: the run's own, as a run that started again under the
+    same identifier finds it. The run implements, and `create-branch` replays the branch instead
+    of ending in `conflict`. The run's identifier is derived from the delivery (ADR-0048 §4), so
+    the branch can be made before the run starts."""
+    tasks = backlog(outside)
+    generator = (Path(outside.clone_url) / GENERATOR).read_text(encoding="utf-8")
+    outside.commit_on_main({GENERATOR: generator})
+    clock = ManualClock(datetime.now(UTC))
+    daemon = await daemons(
+        "all",
+        clock,
+        TAKTUS_WORKER=outside.worker_url,
+        TAKTUS_CONNECTORS=f"channel.repo={outside.connector_url}",
+    ).start()
+    assert daemon.wired is not None
+    wired = daemon.wired
+    await linked(wired, tenant)
+    await verified_adapters(wired, tenant, outside)
+    version = await registered(wired, tenant, the_bundle(outside))
+
+    run_id = run_id_of(tenant, "p03-implementation", f"dlv_taktus_{tasks.ready}")
+    branch = f"taktus/issue-{tasks.ready}"
+    sha = branch_of_run(outside, branch, idempotency_key(run_id, "create-branch", 1))
+
+    clock.current += timedelta(minutes=1)
+    hand(outside, tasks.ready)
+    await handed_over(wired, tenant, tasks.ready, clock.now())
+
+    async def ended() -> bool:
+        runs = await runs_of(wired, tenant, version.ref)
+        return len(runs) == 1 and runs[0].state in (RunState.FINISHED, RunState.ESCALATED)
+
+    await eventually(ended, seconds=180)
+    (run,) = await runs_of(wired, tenant, version.ref)
+    assert run.id == run_id
+    assert run.state is RunState.FINISHED, run
+    assert run.step_run("read-branch").state is StepState.SUCCEEDED
+    assert run.step_run("implement").state is StepState.SUCCEEDED
+    async with wired.work.transaction(tenant):
+        entries = await wired.ledger.entries(tenant, run.id)
+    (made,) = [e for e in entries if e.kind == "egress.write" and e.refs.step_id == "create-branch"]
+    assert made.outcome == "replayed", made
+    ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/{branch}")
+    assert isinstance(ref, dict) and ref["object"]["sha"] == sha, "the branch was not rewritten"

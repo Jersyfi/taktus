@@ -545,7 +545,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
-    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@10`", announced)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@11`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -605,36 +605,55 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     assert outside.state()[REPOSITORY]["pulls"] == 1  # type: ignore[index]
 
 
-def test_a_branch_left_by_an_earlier_attempt_stops_the_run_in_the_words_first_run_reads(
+def test_a_branch_left_by_an_earlier_attempt_stops_the_run_before_the_coding_step(
     outside: Outside, tmp_path: Path
 ) -> None:
     """A ready issue whose branch `taktus/issue-<n>` already exists without this run's key, as
-    an earlier attempt after a defect leaves it: the run ends `conflict` at create-branch,
-    opens nothing, and says so in the words `tools/first_run.sh` looks for (issue #30). It
-    escalates after its claim, so it gives the claim back and says why (ADR-0097)."""
+    an earlier attempt that gave the issue back leaves it (#256, 2026-10-15): the run reads the
+    branch after its claim and stops there, before the coding step spends anything (DEC-0202,
+    ADR-0099). The worker is never assigned, nothing is written but the claim and its giving
+    back, and the reason names the branch and what a person does, in the words
+    `tools/first_run.sh` looks for. It escalates after its claim, so it gives the claim back
+    and says why (ADR-0097)."""
     state_dir = tmp_path / "state"
     tasks = backlog(outside)
     hand(outside, tasks.ready)
     main = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/main")
     assert isinstance(main, dict)
+    branch = f"taktus/issue-{tasks.ready}"
     outside.send(
         "POST",
         f"/repos/{REPOSITORY}/git/refs",
-        {"ref": f"refs/heads/taktus/issue-{tasks.ready}", "sha": main["object"]["sha"]},
+        {"ref": f"refs/heads/{branch}", "sha": main["object"]["sha"]},
     )
     inputs = p03_inputs(outside, tasks.ready)
     output = run_bundle(outside, state_dir, "P-03-implementation.yaml", *inputs, expect=3)
+    assert re.search(r"read-branch\s+rule\s+sourced\s+failed", output), output
+    assert f"the branch {branch} exists and this run did not make it" in output, output
+    assert "deletes or renames it, and hands the task over again" in output, output
     leftover = first_run_pattern("P03_LEFTOVER_BRANCH")
     assert any(leftover.search(line) for line in output.splitlines()), output
+
+    # Nothing was spent: the coding step never started, and no worker was assigned.
+    ledger = json.loads((state_dir / "ledger.json").read_text())["default"]
+    assert not [e for e in ledger if e["refs"].get("step_id") == "implement"]
+    assert not list((tmp_path / "worker-state" / "workspaces").iterdir()), "never assigned"
     assert outside.state()[REPOSITORY]["pulls"] == 0  # type: ignore[index]
+    assert outside.state()[REPOSITORY]["branches"] == 2, "main and the old one"  # type: ignore[index]
+
     assert outside.labels(tasks.ready) == ["priority:high", "ready", "task", "to-taktus"]
     took, gave_back = comments_on(outside, tasks.ready)
     assert took.startswith("Taktus took this issue: run `run_")
     assert gave_back.startswith("Taktus gives this issue back: run `run_")
-    assert "stopped at the step `create-branch`" in gave_back
-    assert "conflict" in gave_back, "the failed step's own reason"
+    assert "stopped at the step `read-branch`" in gave_back
+    assert f"the branch {branch} exists and this run did not make it" in gave_back
     writes = [line.split()[2:4] for line in output.splitlines() if "egress." in line]
-    assert writes[-2:] == [["egress.write", "give-back"], ["egress.write", "announce-give-back"]]
+    assert writes == [
+        ["egress.write", "claim"],
+        ["egress.write", "announce-claim"],
+        ["egress.write", "give-back"],
+        ["egress.write", "announce-give-back"],
+    ], output
 
 
 # --- the numbers of the records a change adds (issues #382, #281) -------------------------------
@@ -880,7 +899,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@4",
     "P-02-refinement.yaml": "p02-refinement@4",
-    "P-03-implementation.yaml": "p03-implementation@10",
+    "P-03-implementation.yaml": "p03-implementation@11",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -892,13 +911,14 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "write-report",
         },
         "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@10": {
+        "p03-implementation@11": {
             "read-issue",
             "read-comments",
             "read-open-issues",
             "read-open-records",
             "claim",
             "announce-claim",
+            "read-branch",
             "read-register",
             "read-register-open",
             "reserve-records",
@@ -911,7 +931,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@10": {"implement"}},
+    "worker.endpoint": {"p03-implementation@11": {"implement"}},
     "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""
