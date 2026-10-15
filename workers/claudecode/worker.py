@@ -1253,6 +1253,8 @@ class _Run:
         a = self.a
         if a.status == "finished":
             return
+        if ended_by in ("stopped", "limit", "window"):
+            self._report_unclaimed()
         if ended_by == "stopped":
             self._finish_stopped("stop requested; the assignment ended at the boundary")
             return
@@ -1285,6 +1287,7 @@ class _Run:
         if ended_by == "result" and not result.get("is_error"):
             self._finish_succeeded(result, text)
             return
+        self._report_unclaimed()
         self._settle(result)
         if result.get("subtype") == TURN_LIMIT:
             # The agent's own limit of turns bounds the work, not its outcome: what it did up
@@ -1301,6 +1304,40 @@ class _Run:
             self._finish_stopped(f"authentication failed or expired: {cause[:200]}")
             return
         self.worker._finish(a, "failed", reason=cause[:400])
+
+    def _report_unclaimed(self) -> None:
+        """An assignment that ends without its result still reports the tokens the stream
+        showed and no step claimed: a message cut off before its call, calls made in parallel
+        that never became steps. They go to its last step, priced as every step's are, so that
+        what the assignment cost is counted (#277). Where no step was reached, there is no
+        step to report them on."""
+        by_model = self.unattributed
+        for call in self.waiting:
+            by_model = _merged(by_model, call.by_model)
+            call.by_model = {}
+        self.unattributed = {}
+        if not by_model or self.last_step_id is None:
+            return
+        tokens_in = sum(k.get(n, 0) for k in by_model.values() for n in INPUT_KINDS)
+        tokens_out = sum(k.get("output", 0) for k in by_model.values())
+        consumption: Json = {
+            "type": "consumption.reported",
+            "step_id": self.last_step_id,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "tokens_by_model": {
+                model: {kind: kinds.get(kind, 0) for kind in PRICE_KINDS}
+                for model, kinds in by_model.items()
+            },
+        }
+        if self.worker.auth != "session":
+            money = round(money_of(by_model, self.worker.prices), 6)
+            consumption["currency"] = {self.worker.options.currency: money}
+        self.used["tokens_in"] += tokens_in
+        self.used["tokens_out"] += tokens_out
+        self.used["currency"] += sum((consumption.get("currency") or {}).values())
+        with self.a.lock:
+            self.worker._emit(self.a, consumption)
 
     def _settlement(self, result: Json) -> float | None:
         """What the agent's own money for this assignment holds beyond the money priced per
