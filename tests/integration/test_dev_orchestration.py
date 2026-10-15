@@ -598,6 +598,40 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     used = coded["consumption"]
     assert 0 < used["currency"]["usd"] < 5.0, used
     assert list(used["tokens_by_model"]) == ["claude-haiku-4-5-20251001"], used
+    assert set(used["tokens_by_model"]["claude-haiku-4-5-20251001"]) == {
+        "input",
+        "cache_read",
+        "cache_write",
+        "output",
+    }, used
+
+    # `taktusctl cost` prices those tokens and weighs them: the model as the agent named it,
+    # dated, at the undated entries an operator's tables hold (#279).
+    shown = subprocess.run(  # noqa: S603 — our own entry point
+        [
+            taktusctl(),
+            "cost",
+            coded["refs"]["run_id"],
+            "--json",
+            "--prices",
+            str(CODING_WORKER.parent / "prices.json"),
+            "--model-classes",
+            "claude-haiku-4-5=medium",
+        ],
+        capture_output=True,
+        text=True,
+        env=outside.environment(state_dir),
+        check=False,
+        timeout=60,
+    )
+    assert shown.returncode in (0, 1), shown.stdout + shown.stderr
+    cost = json.loads(shown.stdout)
+    assert cost["meter"]["tokens_unattributed"] == 0, cost
+    assert list(cost["meter"]["tokens"]) == ["claude-haiku-4-5-20251001"], cost
+    assert cost["tokens_amount"] > 0, cost
+    assert not [m for m in cost["unpriced"] if "token" in m or "claude" in m], cost
+    assert cost["takt"]["tokens"] > 0, cost
+    assert not [m for m in cost["unweighed"] if "token" in m or "claude" in m], cost
 
     # A second run on the same issue finds it claimed and takes nothing up.
     output = run_bundle(outside, state_dir, p03, *p03_inputs(outside, tasks.ready), expect=3)

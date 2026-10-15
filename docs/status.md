@@ -202,7 +202,8 @@ the coding worker, and twice the estimate for a worker nothing has measured yet 
 reserved against the budget. A worker receives its reservation as its limits, and halts at its
 next boundary before crossing
 them (check W-14, in both reference workers, with a fault each). Tokens are recorded per model
-and per price kind, a versioned price table prices them and the compute seconds per resource
+and per price kind — the coding worker's under the model as its agent names it, dated, which a
+table prices and weighs at its undated entry (#279) — a versioned price table prices them and the compute seconds per resource
 class, and `taktusctl cost <run>` recomputes a run's money from the ledger, naming what the
 table does not price (#230). A currency budget holds that compute money during the run, and
 refuses compute its table does not price (#232, NTC-0188). Every model adapter declares what it can compute before a call;

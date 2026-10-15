@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from typing import Literal
 
 from taktus.components.accounting.domain.service.metering import Meter
-from taktus.ports.model import WeightingTable
+from taktus.ports.model import WeightingTable, entry_for
 from taktus.shared.v1 import Method, Value
 
 WEIGHED_ELSEWHERE = frozenset({"llm", "ml", "neural", "worker"})
@@ -48,11 +48,12 @@ def calibration(calibrated: bool) -> Literal["calibrated", "uncalibrated"]:
 
 def weigh(used: Meter, table: WeightingTable, model_classes: Mapping[str, str]) -> Takt:
     """The Takte of the breakdown at the table, with every model weighed at the factor of the
-    class `model_classes` puts it in."""
+    class `model_classes` puts it in — a dated model in the class of its undated name where
+    no class names the dated one (`entry_for`)."""
     unweighed: list[str] = []
     tokens = 0.0
     for model, kinds in sorted(used.tokens.items()):
-        model_class = model_classes.get(model)
+        model_class = entry_for(model, model_classes)
         factor = None if model_class is None else table.model_classes.get(model_class)
         counted = sum(
             getattr(kinds, kind) or 0 for kind in ("input", "output", "cache_read", "cache_write")
