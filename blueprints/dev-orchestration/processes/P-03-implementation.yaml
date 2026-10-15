@@ -27,6 +27,10 @@
 # removes and adds it to hand it to Taktus again. A run that escalates before the claim, or at
 # the last step, when the pull request is open, gives nothing back.
 #
+# Before the coding step spends anything, the run reads the branch it will create. A branch of
+# that name it did not make stops the run there, naming the branch: a person looks at it,
+# deletes or renames it, and hands the task over again (ADR-0099, DEC-0202).
+#
 # Inputs: `issue`, the issue's number; `records_path`, the directory of the base branch that
 # holds the open decision and needs records; `repository_url`, where the worker clones from;
 # `repository_host`, the one host the step lets the worker reach (the clone's; the hosts its own
@@ -62,7 +66,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "11"
+version: "12"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -340,6 +344,57 @@ steps:
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }
 
+  - id: branch-name
+    method: rule
+    reason: the branch is named by the issue, deterministically
+    rejected: []
+    exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the branch name }
+    depends_on: [admit]
+    work:
+      rule: template
+      text: taktus/issue-${issue}
+      values:
+        issue: { $input: issue }
+
+  # A branch of that name that this run did not make — one an earlier attempt left, its pipeline
+  # red, or one a person pushed — would end the run in `conflict` at `create-branch`, after the
+  # coding step has spent the run's money (2026-10-15, #256). So the run reads the branch before
+  # it spends, and stops there while it is not free (DEC-0202). Free means no branch of that name,
+  # or one whose head carries the key `create-branch` will write under: the run's own, which
+  # `create-branch` replays. The read comes after the claim, so that the escalation gives the
+  # claim back and the reason reaches the issue in its comment (ADR-0097, ADR-0099).
+  - id: read-branch
+    method: rule
+    reason: >
+      the branch the run will create is read before the coding step spends anything; one this
+      run did not make stops the run here, naming the branch and what a person does, and a
+      resume reads it again
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.branches is unavailable
+      to: human
+    depends_on: [claim, branch-name]
+    work:
+      rule: connector
+      operation: repository.branches.read
+      input:
+        name: { $from: branch-name }
+        key: { $run: keys.create-branch }
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - select: free
+          equals: true
+          says: >-
+            the branch ${name} exists and this run did not make it (head ${sha}, key ${key}).
+            Nothing was spent on the coding step. A person looks at the branch, deletes or
+            renames it, and hands the task over again
+
   - id: implement
     method: worker
     reason: >
@@ -358,7 +413,7 @@ steps:
         pipeline is red
       to: human
     requires: [code.read, code.edit, code.test, shell.sandboxed]
-    depends_on: [claim, context]
+    depends_on: [claim, context, read-branch]
     work:
       task:
         goal: >
@@ -431,20 +486,6 @@ steps:
         - { $input: repository_host }
       credentials:
         - { name: { $input: coding_credential }, injected_as: env }
-
-  - id: branch-name
-    method: rule
-    reason: the branch is named by the issue, deterministically
-    rejected: []
-    exactness: exact
-    checks:   # provisional: DEC-0173
-      - { kind: recomputation, subject: the branch name }
-    depends_on: [admit]
-    work:
-      rule: template
-      text: taktus/issue-${issue}
-      values:
-        issue: { $input: issue }
 
   # The records `main` holds, read after the worker's change: a record the change edits or moves
   # keeps the number it has there, and needs no reservation.

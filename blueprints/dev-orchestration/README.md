@@ -62,16 +62,19 @@ ledger). P-02 never edits the issue and never adds the label `ready`: a person, 
 the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
 the same issue, it stops at the first check: nothing is written twice.
 
-**P-03 Implementation** (version 10, autonomy 4, twenty-seven steps, three of them on escalation): it starts when an
+**P-03 Implementation** (version 12, autonomy 4, twenty-eight steps, three of them on escalation): it starts when an
 issue is handed to Taktus, the label `to-taktus` added (DEC-0197), not on the label `ready`. Read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
 of open records on `main`, admit — the ready standard, and open, not a pull request, not
 labelled as no work, not claimed, labelled `to-taktus`, and no ADR named under "Blocked by"
 (`rule` `ready`, `exact`; a refusal names every reason) — claim the issue with the label
 `in-progress` (`rule`, outward), say so in a comment that names the run (`rule` `template`, and
-`rule`, outward), implement (`worker`, `tolerant`: the coding worker in a clone of
+`rule`, outward), name the branch and read it (`rule`, a read: a branch of that name the run did
+not make stops the run here, before the coding step spends anything, naming the branch; free
+means none exists, or its head carries the key `create-branch` will write under, ADR-0099),
+implement (`worker`, `tolerant`: the coding worker in a clone of
 the repository, with the issue's text as its task and its section "How it is verified" as the
-acceptance; it leaves the pipeline's workflow files to a person, which the app may not write, NTC-0203), reserve the numbers of the records the change adds — read the records `main` holds, derive the references `refs/register/<PREFIX>-<NNNN>` of every record the changeset writes under `docs/decisions/` that `main` does not hold (`rule` `extract`, `exact`), and create them (`rule`, outward, skipped when there is none; a number somebody else holds stops the run, naming the reference, ADR-0095) — name the branch, put the worker's changeset on it through the connector (`rule`,
+acceptance; it leaves the pipeline's workflow files to a person, which the app may not write, NTC-0203), reserve the numbers of the records the change adds — read the records `main` holds, derive the references `refs/register/<PREFIX>-<NNNN>` of every record the changeset writes under `docs/decisions/` that `main` does not hold (`rule` `extract`, `exact`), and create them (`rule`, outward, skipped when there is none; a number somebody else holds stops the run, naming the reference, ADR-0095) — put the worker's changeset on the branch through the connector (`rule`,
 outward: one commit that carries the idempotency key), wait for the pipeline (`wait`, polling
 the pipeline's state), read the verdict, verify it is `success` (`rule`, `exact` — the pipeline's
 verdict, never the worker's opinion), compose the title, the closing section and the body, open the pull request
@@ -99,7 +102,7 @@ names, provisional under DEC-0173 (ADR-0082); `uv run taktusctl exactness --proc
 prints what each process's checks cover and what would slip through.
 Every step an integration serves — a connector call, the wait on the pipeline, the worker, the
 model — also names a person as its fallback, under a condition that says the integration is
-unavailable (issue #90). That is twenty-two steps: the twenty repository steps, `implement` and
+unavailable (issue #90). That is twenty-three steps: the twenty-one repository steps, `implement` and
 `refine`. The engine does not switch to the person on its own. The step fails or is refused, the
 run escalates or halts there, and a person does the step, or the rest of the process, by hand
 as the section below says. The removal test (S-01) reads the declaration, and its verdict for the
@@ -219,6 +222,11 @@ a person applies by reading.
    note why.
 3. **claim** (person) — add the label `in-progress` to the issue.
    **claim-notice** and **announce-claim** (person) — comment on the issue that you took it.
+   **branch-name** and **read-branch** (person) — look for a branch `taktus/issue-<n>` on the
+   repository. If one exists and is not the one you are continuing — its head commit's
+   `Taktus-Idempotency-Key:` trailer names another run, or it has none — stop before any work:
+   look at the branch, delete or rename it, give the claim back as below, and hand the task over
+   again.
 4. **implement** (person) — in a clone, on a branch from `main`, make the change the issue asks
    for so that every condition under "How it is verified" holds, within "Where the boundary
    lies", following the repository's own rules for a change; run its checks (`make gates`
@@ -228,9 +236,8 @@ a person applies by reading.
    does not hold, reserve the number: `make reserve ID=<PREFIX>-<NNNN>`. If it is taken, take
    the next free one with `make reserve KIND=<PREFIX>` and renumber the record and every
    mention of it before pushing.
-6. **branch-name** and **create-branch** (person) — push the change as branch
-   `taktus/issue-<n>`. A branch of that name left by an earlier attempt is either the run's to
-   resume or deleted first; never push over it unseen.
+6. **create-branch** (person) — push the change as branch `taktus/issue-<n>`, which step 3
+   found free; never push over a branch unseen.
 7. **wait-for-pipeline** and **read-pipeline** (person) — wait until the pipeline for the
    branch has a verdict, and read it.
 8. **verify** — the verdict is `success`. If not, go back to step 4.

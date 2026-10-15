@@ -10,9 +10,11 @@ found by its head branch, which the service keeps unique among open pull request
 found among the most recently created ones and, above the newest number that list shows, by its
 number, one by one; a comment among all comments of its issue, page by page. A branch is found
 by its name, and the mark at the head commit says whether it is ours; so is any other
-reference. A label is its own mark: the operation looks for the labels on the issue before
-adding any, and before removing any. A pipeline dispatch is found by nothing: the service
-answers with no identifier, which is why that operation declares `idempotency: none`.
+reference. `repository.branches.read` answers the same lookup without acting, so that a run
+can see before it spends whether the branch it will create is free. A label is its own mark:
+the operation looks for the labels on the issue before adding any, and before removing any.
+A pipeline dispatch is found by nothing: the service answers with no identifier, which is why
+that operation declares `idempotency: none`.
 
 Every function takes the service, the operation's input and the idempotency key, and returns an
 `Outcome`: the operation's output and the effect report. Faults of the service arrive as
@@ -628,6 +630,26 @@ async def create_branch(api: Api, input: Json, key: str) -> Outcome:
     return Outcome(output, write_effect(_branch_records(output), digest, replayed=False))
 
 
+async def read_branch(api: Api, input: Json, key: str) -> Outcome:
+    """A branch by its name: whether it exists, the commit at its head, and the idempotency key
+    that commit carries as a trailer, or null. Given a `key`, `free` says whether
+    `repository.branches.create` under that key would create the branch or find it as its own:
+    no branch of that name exists, or its head carries exactly that key. Without one, `free`
+    says only that no such branch exists. Nothing here judges whose a branch is beyond the key
+    at its head: a branch somebody pushed onto after the marked commit is not free."""
+    name = _str(input, "name")
+    wanted = _str(input, "key", optional=True)
+    sha = await _ref(api, name)
+    if sha is None:
+        output: Json = {"name": name, "exists": False, "sha": None, "key": None, "free": True}
+        return Outcome(output, read_effect())
+    head = await api.get(api.repo(f"git/commits/{sha}"))
+    carried = trailer_of(head.get("message"))
+    free = bool(wanted) and carried == wanted
+    output = {"name": name, "exists": True, "sha": sha, "key": carried, "free": free}
+    return Outcome(output, read_effect())
+
+
 def _mode_of(file: Json, modes: dict[str, str]) -> str:
     """The mode a file is written with: what its input says, else what the base has, else a
     plain file."""
@@ -990,6 +1012,7 @@ OPERATIONS: dict[str, Operation] = {
     "repository.comments.list": list_comments,
     "repository.comments.create": create_comment,
     "channel.repo.reply": reply,
+    "repository.branches.read": read_branch,
     "repository.branches.create": create_branch,
     "repository.refs.create": create_references,
     "repository.labels.set": set_labels,

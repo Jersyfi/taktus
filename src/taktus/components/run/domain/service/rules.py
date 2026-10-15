@@ -202,7 +202,26 @@ def unmet(expectation: Expectation, output: Any) -> str | None:
         ),
         value,
     )
-    return None if why is None else f"{expectation.select}: {why}"
+    if why is None:
+        return None
+    if expectation.says is None:
+        return f"{expectation.select}: {why}"
+    return f"{_said(expectation.says, output)} ({expectation.select}: {why})"
+
+
+def _said(text: str, output: Any) -> str:
+    """`text` with each `${name}` replaced by that field of the reading; a name the reading
+    does not carry stays as written."""
+    fields = output if isinstance(output, Mapping) else {}
+
+    def value(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name not in fields:
+            return match.group(0)
+        found = fields[name]
+        return found if isinstance(found, str) else json.dumps(found, ensure_ascii=False)
+
+    return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", value, text)
 
 
 def _violated(condition: Condition, value: Any) -> str | None:

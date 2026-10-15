@@ -12,6 +12,7 @@ from pydantic import Field, model_validator
 from taktus.components.run.domain.model.block import OpenBlock
 from taktus.components.run.domain.model.errors import IllegalTransition, UnsupportedWork
 from taktus.components.run.domain.model.work import escalation_steps
+from taktus.ports.connector import idempotency_key
 from taktus.ports.worker import AssignmentId, Limits
 from taktus.shared.v1 import (
     Artifact,
@@ -406,7 +407,9 @@ class Run(Value):
 
     def record(self) -> dict[str, Any]:
         """What a `$run` reference reads (ADR-0097): the run's identifier, its process version,
-        and the step that failed with its reason, or null while none has."""
+        the step that failed with its reason, or null while none has, and per step the
+        idempotency key its current attempt carries — the first attempt's while it has not
+        started (ADR-0099)."""
         failed = self.failed()
         return {
             "id": self.id,
@@ -414,6 +417,9 @@ class Run(Value):
             "failed": None
             if failed is None
             else {"step": failed.step_id, "reason": failed.reason or ""},
+            "keys": {
+                s.step_id: idempotency_key(self.id, s.step_id, s.attempt) for s in self.step_runs
+            },
         }
 
     def waiting(self) -> tuple[StepRun, ...]:

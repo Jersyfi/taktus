@@ -87,3 +87,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0096](ADR-0096-ci-checks-what-changed-before-a-merge-and-everything-after-it.md) | CI checks what changed before a merge, and everything after it | accepted |
 | [0097](ADR-0097-a-process-names-the-steps-that-run-when-its-run-escalates.md) | A process names the steps that run when its run escalates | accepted |
 | [0098](ADR-0098-a-worker-states-what-it-put-within-reach-and-the-suite-sees-a-frame-enforced-by-not-offering.md) | A worker states what it put within reach, and the suite sees a frame enforced by not offering | accepted |
+| [0099](ADR-0099-a-run-reads-the-branch-it-will-write-before-it-spends.md) | A run reads the branch it will write before it spends | accepted |

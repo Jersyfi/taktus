@@ -441,6 +441,27 @@ async def test_a_reading_that_is_not_as_expected_fails_its_step_and_a_resume_rea
     assert record.step_id == "pipeline"
 
 
+async def test_a_reading_asks_with_a_later_steps_key_and_says_what_its_failure_means() -> None:
+    """ADR-0099: `$run: keys.<step>` is the key the later step's attempt will carry, so that a
+    reading before it can ask whether what it will write is already its own; an expectation's
+    `says` is stated with the reading's fields before the check that did not hold, and the
+    later step never runs."""
+    step, work = call("look", READ, {"id": "branch", "key": {"$run": "keys.write"}})
+    says = "the branch ${name} is not free (key ${key}); ${missing} stays"
+    work = {**work, "expect": [{"select": "free", "equals": True, "says": says}]}
+    h = ConnectorHarness((step, work), call("write", WRITE, {"title": "x"}, after=("look",)))
+    h.connector.reads["branch"] = {"name": "taktus/issue-7", "key": None, "free": False}
+    run = await h.start()
+    assert run.state is RunState.ESCALATED
+    ((operation, _, input),) = h.connector.calls
+    assert operation == READ
+    assert input["key"] == f"taktus:{run.id}:write:1"
+    reason = run.step_run("look").reason or ""
+    assert "the branch taktus/issue-7 is not free (key null); ${missing} stays" in reason
+    assert "(free: expected 'true', found 'false')" in reason
+    assert run.step_run("write").state is StepState.PLANNED
+
+
 async def test_an_expectation_on_a_write_is_refused() -> None:
     from taktus.components.run.domain.model import UnsupportedWork
 

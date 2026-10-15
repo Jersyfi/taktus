@@ -26,8 +26,11 @@ connector call's `input`, the values of a template, a check or a prompt — an o
 - `{"$input": "<name>"}` — one of the run's inputs, given when the run starts
   (`taktusctl run --input`), optionally with `$select` as well;
 - `{"$run": "<part>"}` — a part of the run's own record, resolved when the step runs: `id`,
-  `process_version`, and `failed` — the step that failed and its reason, `{"step", "reason"}`,
-  or null while none has (ADR-0097);
+  `process_version`, `failed` — the step that failed and its reason, `{"step", "reason"}`,
+  or null while none has (ADR-0097) — and `keys.<step-id>`, the idempotency key that step's
+  current attempt carries to a connector, the first attempt's while it has not started, so
+  that an earlier step can ask whether what a later one will write is already its own
+  (ADR-0099);
 - `{"$input": "<name>", "$otherwise": <value>}` — that input where the run was given it, and
   the value otherwise. The value may itself be a `$from` reference: an input the bundle
   declares `required: false` can then stand in for what a step produces, so that whoever
@@ -268,12 +271,19 @@ class ExtractRule(Value):
 
 class Expectation(Value):
     """What a reading must show: the part of the output `select` names, equal to something,
-    matching a pattern, or not — the conditions of a `check`, over what was just read."""
+    matching a pattern, or not — the conditions of a `check`, over what was just read.
+
+    `says` is what a reading that does not show it means, for whoever reads the failure: a
+    person who must act on it, from the run's output or the comment a process writes. Each
+    `${name}` in it is replaced by that field of the reading, as a template inserts a value; a
+    name the reading does not carry stays as written. The failure states it before the check
+    that did not hold (ADR-0099)."""
 
     select: str = Field(min_length=1)
     equals: Any | None = None
     matches: str | None = None
     not_matches: str | None = None
+    says: str | None = Field(default=None, min_length=1)
 
 
 class ConnectorRule(Value):

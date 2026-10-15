@@ -134,6 +134,16 @@ OPERATIONS: list[Json] = [
         "like a comment: a repeat finds it.",
     },
     {
+        "name": "repository.branches.read",
+        "demand": {"quota_units": 2},
+        "capability": "repository.branches",
+        "effect": "read",
+        "summary": "Read a branch by name: whether it exists, the commit at its head, and the "
+        "idempotency key that commit carries, or null. Given a `key`, `free` says whether "
+        "`repository.branches.create` under that key would create the branch or find it as its "
+        "own; without one, whether no branch of that name exists.",
+    },
+    {
         "name": "repository.branches.create",
         "demand": {"quota_units": 64},
         "capability": "repository.branches",
