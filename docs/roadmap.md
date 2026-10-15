@@ -209,8 +209,10 @@ an ordered chain per purpose switched at the step boundary, and a price list imp
 versioned table (#327, #328) · `dev-orchestration` blueprint · **second tenant onboarded at stage 0
 of UC-03**: a software business's daily report and first routines at level 1–2 (#400,
 DEC-0199) —, an expected run that does not happen as an incident, signals against corridors,
-corrections counted and a level that falls by rule (#427, #428, #429), connectors for the
-tenant's first capabilities (#441) —, created by a command, its locks unable to collide with another's, and served fairly beside
+corrections counted and a level that falls by rule (#427, #428, #429), connectors over open
+standards and vendors' own connector servers (#441, #410), the business installing and upgrading
+its own instance from the documentation, and its findings reaching this repository (#445,
+#446, DEC-0201) —, created by a command, its locks unable to collide with another's, and served fairly beside
 the first (#317, #318, #319) · waits that park the run, no read on a hot path that walks a
 tenant's ledger, writes of only what changed (#320, #321, #325) · a restore that brings the
 artifacts back, what needs action reaching a person, a small install profile (#322, #323, #326) ·
@@ -243,7 +245,7 @@ with rights per role (#406) · evaluation cases per process (#408) · the trace 
 (#409) · **stage 1 of the second tenant**, operation without handwork (#437), with deadlines as
 rules of the process, evaluations as a gate and against drift, data scoped to the case, a cap
 on open work, the introduction path in stages and a stop per adapter (#430, #431, #432, #433,
-#434, #436)
+#434, #436), and connectors for the systems the business names (#447)
 
 **Complete when** principles 6 and 13 are measured rather than asserted, limit recommendations
 come with numbers, a person new to Taktus reaches a first rehearsed process in ten minutes, and
@@ -255,8 +257,7 @@ skill is approved automatically, its value set from the evaluation data of `0.5.
 `exact` steps (DEC-0028) · the catalogue, its connectors in images of their own (#339) ·
 role-based agents · recurring decisions become rules on proposal · the organisation seen as value
 streams (#338) · what a person may ask Taktus for (#340) · the worker contract's outbound-only binding,
-steering and handover, before it freezes (#403) · vendors' MCP servers as connector candidates
-(#410) · a software factory as a worker (#411) · outward messages labelled, checked
+steering and handover, before it freezes (#403) · a software factory as a worker (#411) · outward messages labelled, checked
 independently and held (#435) · stages 2 and 3 of the second tenant: its customer contact on its
 own and its releases without people (#401, #438)
 

@@ -463,6 +463,9 @@ maps every use case to a process and a target level; nine function-level use cas
 use case required yet (NTC-0210). Stage 0 is `0.4.0` (#400), stage 5 is `1.0.0` (#440), and
 `1.0.0` is not complete without it. Nothing of it is built. What the catalogue did not say —
 the business's systems, volumes, roles and where its data may go — is NEED-0028 (#426).
+The business hosts Taktus itself, opens its stages itself, and its findings improve the product;
+every connector it needs is built here (DEC-0201). Running Taktus needs the owner's written
+permission first, because the licence is not decided (NEED-0029, #444).
 
 ## 2. The next pull requests
 
