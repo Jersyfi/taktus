@@ -26,17 +26,18 @@ and fail one of the stream rules in `src/taktus/conformance/rules.py`, which
 | W-04 | every step that started has a `consumption.reported` before the next step starts |
 | W-05 | at least one `step.boundary`, unless the assignment was rejected |
 | W-06 | after the last `step.boundary` no step starts; `stopped` carries that boundary's `checkpoint_ref` |
-| W-07 | a `tool.called` outside `allowed_tools` has `refused: true` |
+| W-07 | a `tool.called` outside `allowed_tools` has `refused: true`; a `reach.stated` comes once, before the first step, and every `tool.called` names a capability it names |
 | W-10 | an estimate above `limits` yields a stream of exactly one event, `assignment.finished` with `rejected` |
 | W-11 | no two `artifact.produced` share a digest or an `artifact_id` |
-| W-13 | a `tool.called` whose `host` is outside `allowed_hosts` has `refused: true` |
+| W-13 | a `tool.called` whose `host` is outside `allowed_hosts` has `refused: true`; where `reach.stated` names hosts, every `host` is one of them |
 | W-14 | no step starts once the reported running total of a limited quantity has reached its limit; `limit` in `assignment.finished` comes with `stopped`, names a kind the limits set, and the checkpoint is the last boundary's |
 | W-18 | a succeeded assignment whose task names a command after the work carries the artifact it names, and no step starts after it |
 
 `transcript/valid/` holds both proof cases of the README — a shell script with no AI at all and a
 training run that holds a GPU and is stopped at an epoch boundary — plus a rejection, a resume,
-a coding run halted at the boundary where its input tokens reached their limit, and a coding run
-whose task names a command after the work.
+a coding run halted at the boundary where its input tokens reached their limit, a coding run
+whose task names a command after the work, and a coding run that states its reach before it
+begins.
 
 ## Capacity probes
 

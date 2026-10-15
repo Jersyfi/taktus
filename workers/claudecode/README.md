@@ -157,6 +157,17 @@ refused (W-13); with no allowed host, fetching is not approved at all. What the 
 a shell can reach whatever the network allows — the container adapter's allowlist is the wall,
 the worker's refusal is the record.
 
+A tool the agent is not offered is one it never calls, so no refusal of it can be seen. The
+worker therefore states what it offers, before the first step of every assignment, as
+`reach.stated` (contract §4, ADR-0098). `tools` is the offer in the contract's terms: the
+capabilities of the agent's tools below, `code.test` beside `shell.sandboxed` where the frame
+allows it, and `web.fetch` where the task names hosts the worker holds against the frame itself.
+`hosts` is stated only where no fetch is offered: then the hosts the task names are the only
+ones a call can name. With a fetch offered, the agent may name any host, and the hosts are held
+at the moment of the call. The conformance suite reads the statement: a fetch the frame took
+out, left out of the statement and called nowhere, passes W-07 and W-13. Before the statement,
+the suite against the real agent ended `incomplete` on both.
+
 | Capability | The agent's tools |
 |---|---|
 | `code.read` | Read, Grep, Glob |

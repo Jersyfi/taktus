@@ -87,7 +87,8 @@ REQUIREMENTS: dict[str, str] = {
     "step.boundary and then assignment.finished with outcome stopped and the same checkpoint_ref; "
     "no step starts after that boundary; GET /v1/assignments/{id} agrees",
     "W-07": "a tool.called for a tool outside allowed_tools carries refused: true and is not "
-    "executed",
+    "executed; a worker that states its reach does so once, in reach.stated before the first "
+    "step, and makes no call under a capability the statement does not name",
     "W-08": "a credential referenced by name in the assignment never appears — as its value — in "
     "any event, in any artifact, in the assignment state, or in the worker's log",
     "W-09": "every tool.called carries arguments_digest as sha256: followed by 64 lowercase hex "
@@ -101,7 +102,7 @@ REQUIREMENTS: dict[str, str] = {
     "W-12": "removing the adapter changes quality or cost but breaks no process",
     "W-13": "a tool.called that reaches a host names it in host; a host outside the frame's "
     "allowed_hosts carries refused: true and is not reached — an absent or empty list allows "
-    "no host at all",
+    "no host at all; a worker whose reach.stated names hosts makes no call that names another",
     "W-14": "no step starts once the reported running total of a limited kind has reached its "
     "limit; an assignment halted by a limit ends stopped at the boundary it is at, with that "
     "boundary's checkpoint_ref, and names the limit in assignment.finished",
@@ -280,6 +281,86 @@ def limit_violations(
     return out
 
 
+def stated_reach(events: Sequence[Json]) -> Json | None:
+    """The worker's statement of what it put within reach of the assignment's work, the first
+    `reach.stated` of the stream, or None when it states nothing (ADR-0098)."""
+    return next((e for e in events if e.get("type") == "reach.stated"), None)
+
+
+def not_offered(
+    events: Sequence[Json], *, tool: str | None = None, host: str | None = None
+) -> Json | None:
+    """The statement that leaves `tool` or `host` out of the assignment's reach, or None.
+
+    A tool is out of reach when the statement does not name it; a host only when the statement
+    names hosts and not this one, since a statement without `hosts` bounds them only at the
+    moment of a call. A worker that states nothing has said nothing, and None is the answer.
+    A statement contradicted by a call is not believed: the stream rule reports the call, and
+    this answers None."""
+    statement = stated_reach(events)
+    if statement is None:
+        return None
+    calls = [e for e in events if e.get("type") == "tool.called"]
+    if tool is not None:
+        if tool in statement.get("tools", []) or any(c.get("tool") == tool for c in calls):
+            return None
+    if host is not None:
+        hosts = statement.get("hosts")
+        if hosts is None or host in hosts or any(c.get("host") == host for c in calls):
+            return None
+    return statement
+
+
+def reach_violations(events: Sequence[Json]) -> list[Violation]:
+    """W-07 and W-13 against the worker's own statement of its reach: stated once, before the
+    first step, and true of every call the stream shows. A call outside it is a violation even
+    when it was refused, since the statement said no such call could be made."""
+    statements = [e for e in events if e.get("type") == "reach.stated"]
+    if not statements:
+        return []
+    out: list[Violation] = []
+    statement = statements[0]
+    if len(statements) > 1:
+        out.append(
+            Violation(
+                "W-07",
+                f"reach.stated appears {len(statements)} times (seq "
+                f"{[e.get('seq') for e in statements]}); it is stated once",
+            )
+        )
+    first_step = next((e for e in events if e.get("type") == "step.started"), None)
+    if first_step is not None and statement.get("seq", 0) > first_step.get("seq", 0):
+        out.append(
+            Violation(
+                "W-07",
+                f"reach.stated (seq {statement.get('seq')}) comes after the first step.started "
+                f"(seq {first_step.get('seq')}); it is stated before the work begins",
+            )
+        )
+    tools = set(statement.get("tools", []))
+    hosts = statement.get("hosts")
+    for call in (e for e in events if e.get("type") == "tool.called"):
+        tool = call.get("tool", "")
+        if tool not in tools:
+            out.append(
+                Violation(
+                    "W-07",
+                    f"tool {tool!r} was called (seq {call.get('seq')}) but reach.stated "
+                    f"(seq {statement.get('seq')}) does not name it",
+                )
+            )
+        host = call.get("host")
+        if host is not None and hosts is not None and host not in hosts:
+            out.append(
+                Violation(
+                    "W-13",
+                    f"host {host!r} was named by a call (seq {call.get('seq')}) but reach.stated "
+                    f"(seq {statement.get('seq')}) names only {sorted(hosts)}",
+                )
+            )
+    return out
+
+
 def stream_violations(
     assignment: Json,
     estimate: Json | None,
@@ -380,6 +461,7 @@ def stream_violations(
                 )
             )
 
+    out.extend(reach_violations(events))
     out.extend(artifact_violations(events))
     out.extend(after_violations(assignment, events, str(outcome)))
     return out

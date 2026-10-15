@@ -64,6 +64,7 @@ class Outcome(StrEnum):
 
 
 type EventType = Literal[
+    "reach.stated",
     "step.started",
     "step.progress",
     "tool.called",
@@ -322,6 +323,25 @@ class EventBase(Value):
     type: EventType
 
 
+class ReachStated(EventBase):
+    """What the worker put within reach of the assignment's work, stated once before the first
+    step: every capability a call can be made under, and, where the worker bounds them in
+    advance, every host a call can name. Optional; a call outside it makes it false (ADR-0098).
+    """
+
+    type: Literal["reach.stated"]
+    tools: tuple[Capability, ...]
+    hosts: tuple[Host, ...] | None = None
+
+    @model_validator(mode="after")
+    def _unique(self) -> ReachStated:
+        if len(set(self.tools)) != len(self.tools):
+            raise ValueError("tools lists a capability twice")
+        if self.hosts is not None and len(set(self.hosts)) != len(self.hosts):
+            raise ValueError("hosts lists a host twice")
+        return self
+
+
 class StepStarted(EventBase):
     type: Literal["step.started"]
     step_id: WorkerStepId
@@ -413,7 +433,8 @@ class AssignmentFinished(EventBase):
 
 
 type Event = Annotated[
-    StepStarted
+    ReachStated
+    | StepStarted
     | StepProgress
     | ToolCalled
     | DecisionMade

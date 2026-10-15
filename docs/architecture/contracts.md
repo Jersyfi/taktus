@@ -32,7 +32,7 @@ not the bottleneck here; adapter variety is.
 | **Estimate demand before starting** and **signal step boundaries** | admission control; stopping without data loss |
 | **Hand over artifacts** — code, documents, structured data, model files | a result is data, not prose |
 | **Accept credentials at runtime, never store them** | secret safety |
-| **Least privilege** — only the tools the process allows | permission model |
+| **Least privilege** — only the tools the process allows; a worker that offers its work only those may state so, once, as `reach.stated` (ADR-0098), and the core reads the event and acts on nothing in it | permission model |
 | **Declare capabilities** — what this worker can do, and optionally its own version | processes reference capabilities, never product names; the version is recorded in the provenance of every result (ADR-0021) |
 
 Full specification: [`contracts/worker/v1/README.md`](../../contracts/worker/v1/README.md).

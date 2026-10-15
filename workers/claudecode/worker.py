@@ -22,9 +22,12 @@ not do by itself, this worker does around it (README.md in this directory says h
 - **authentication**: by API key or by a subscription token, chosen at start (`--auth`) and
   supplied under the credential name the assignment carries; a session that expires mid-run
   halts at the last boundary with the cause, and is neither retried nor abandoned;
-- **the frame**: the agent sees every tool this worker maps, may use exactly those the frame
-  allows, and is denied the rest at the moment of the call by its own permission system; a
-  denied call is emitted as `tool.called` with `refused: true` and ends the assignment.
+- **the frame**: the agent is offered only the tools the frame allows, and no fetch where no
+  host may be reached (#425); the worker states that reach at the start of every assignment
+  as `reach.stated` (ADR-0098). A call the frame does not allow — a host outside the frame,
+  a shell command under `code.test` alone — is denied at the moment of the call by the
+  agent's own permission system, emitted as `tool.called` with `refused: true`, and ends the
+  assignment.
 
 Fault injection (`--fault NAME`) makes this worker violate exactly one conformance check, so
 that the suite can be shown to catch it here too. `--agent` names the agent's command line; the
@@ -131,7 +134,7 @@ FAULTS: dict[str, str] = {
     "W-09": "tool.called carries the tool's arguments in clear instead of their sha256",
     "W-10": "an estimate above the limits is accepted; the assignment fails after its first step",
     "W-11": "a resumed assignment produces the artifacts from before its checkpoint again",
-    "W-13": "a host outside allowed_hosts is reached and reported without refused: true",
+    "W-13": "a host outside allowed_hosts is offered, reached and reported without refused: true",
     "W-14": "the limits are ignored once running: the agent goes on after the total reached them",
     "W-15": "an assignment beyond max_concurrent_assignments is accepted instead of answered 503",
     "W-16": "the state of an id never received is answered 200, accepted, instead of 404",
@@ -571,6 +574,8 @@ class _Run:
         log(f"assignment {a.id} started at step {self.index + 1} (lineage {a.lineage})")
         if not self._prepare_workspace():
             return
+        with a.lock:
+            self.worker._emit(a, self._reach())
         if not self._hosts_admitted():
             return
         self._run_agent()
@@ -691,7 +696,9 @@ class _Run:
 
     # -- the agent --
 
-    def _agent_arguments(self) -> list[str]:
+    def _offered(self) -> list[str]:
+        """The agent's tools this assignment offers it: those of the frame's capabilities, and
+        no fetch where no host may be reached. The agent cannot call any other."""
         allowed = set(self.frame.get("allowed_tools", []))
         if self.fault == "W-07":
             allowed = set(CAPABILITIES)  # the frame is not passed on: the fault
@@ -700,8 +707,33 @@ class _Run:
             for tool, capability in TOOL_CAPABILITY.items()
             if capability in allowed or (tool == "Bash" and "code.test" in allowed)
         ]
-        if not self.frame.get("allowed_hosts") and "WebFetch" in approved:
+        no_host = not self.frame.get("allowed_hosts") and self.fault != "W-13"
+        if no_host and "WebFetch" in approved:
             approved.remove("WebFetch")  # no host may be reached: nothing to fetch from
+        return approved
+
+    def _reach(self) -> Json:
+        """`reach.stated`: every capability a call of this assignment can be made under, and,
+        where no fetch is offered, every host a call can name (ADR-0098). It is what
+        `_offered` gives the agent, read in the contract's terms, and what this worker calls
+        itself: the hosts the task names, under `web.fetch` (`_hosts_admitted`). A `Bash`
+        call is `shell.sandboxed`, or `code.test` where the frame allows it (`_capability_of`).
+        """
+        offered = self._offered()
+        allowed = set(self.frame.get("allowed_tools", []))
+        task_hosts = hosts_of(self.body["task"])
+        tools = {TOOL_CAPABILITY[tool] for tool in offered}
+        if "Bash" in offered and "code.test" in allowed:
+            tools.add("code.test")
+        if task_hosts:
+            tools.add("web.fetch")
+        reach: Json = {"type": "reach.stated", "tools": sorted(tools)}
+        if "WebFetch" not in offered:
+            reach["hosts"] = task_hosts  # the agent names none: no tool of it reaches one
+        return reach
+
+    def _agent_arguments(self) -> list[str]:
+        approved = self._offered()
         resuming = self.body.get("context", {}).get("checkpoint_ref") is not None
         arguments = [
             *self.worker.agent_command,

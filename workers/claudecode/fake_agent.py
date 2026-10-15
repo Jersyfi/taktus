@@ -10,6 +10,10 @@ It really does what its tool calls say — writes and edits files, runs shell co
 the worker's boundaries and patches are real, and it keeps its session under
 `CLAUDE_CONFIG_DIR`, so that `--resume` continues where it stopped.
 
+It is offered the tools `--tools` names, as the real agent is, and never calls another: a
+step of its plan whose tool it is not offered is left out. A tool it is offered and not
+approved (`--allowedTools`) it calls, and is denied.
+
 What it does not do is think: the plan is fixed. That is the point — the gate proves the
 worker's mechanics (boundaries, consumption, refusal, stop, resume, authentication), not the
 agent's judgement. Two variables make it misbehave on purpose, so that the worker can be shown
@@ -67,10 +71,13 @@ PLAN: list[tuple[str, Json]] = [
 def plan() -> list[tuple[str, Json]]:
     """The fixed plan, with one `Write` before the check for every file `FAKE_AGENT_WRITE`
     names — a JSON object of path to content — so that a test can give the change a file of
-    its choosing, a record of a register among them."""
+    its choosing, a record of a register among them. `FAKE_AGENT_FETCH` names a URL the plan
+    fetches first, as the real agent fetched a page on the instance (#424)."""
     extra = json.loads(os.environ.get("FAKE_AGENT_WRITE") or "{}")
     writes = [("Write", {"file_path": path, "content": text}) for path, text in extra.items()]
-    return [*PLAN[:-1], *writes, PLAN[-1]]
+    fetch = os.environ.get("FAKE_AGENT_FETCH")
+    fetches = [("WebFetch", {"url": fetch, "prompt": "read it"})] if fetch else []
+    return [*fetches, *PLAN[:-1], *writes, PLAN[-1]]
 
 
 FINAL = "Wrote notes/plan.md and hello.txt, edited the greeting, and ran the check."
@@ -226,6 +233,8 @@ def main(argv: list[str] | None = None) -> int:
     results = 0
     total: Json = {}
     for n, (tool, arguments) in enumerate(plan()[done:], done + 1):
+        if tool not in available:
+            continue  # a tool it is not offered is one it does not know: it never calls it
         if turns >= args.max_turns:
             emit(
                 {
@@ -246,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         stream(message_id, f"Step {n}: {tool}.", call, usage(n), session_id)
         total = add(total, usage(n))
         time.sleep(pace)
-        if tool not in available or tool not in allowed:
+        if tool not in allowed:
             text, is_error = DENIED.format(tool=tool), True
         else:
             text, is_error = perform(tool, arguments)
