@@ -42,12 +42,11 @@
 # made it, or delete the branch and start again. It never deletes a branch itself.
 #
 # P-03's pull request description ends with the section this repository generates for every
-# description, `## Needed from the owner` (ADR-0028). The script generates it from the register
-# of `main` — the base P-03 branches from — with `tools/check_status.py --print`, and hands it
-# to the run as the input `closing_section`; the run appends it after the worker's summary, by
-# a template. A language model never writes it (issue #34). The input is optional since #77: a
-# run started without it ends with what the worker's run of the generator printed on the
-# change's tree (ADR-0053).
+# description, `## Needed from the owner` (ADR-0028). The script hands no copy of it in: the
+# worker runs the generator on the change's tree once its work is done, and the run appends what
+# it printed after the worker's summary, by a template (ADR-0053). A language model never writes
+# it (issue #34). A copy the script generated from `main` when the run started had gone stale by
+# the time the pull request opened (#274, issue #282).
 #
 # What it needs, as parameters (CREDENTIALS.md); no value is ever an argument or a line here.
 # Every credential is named the one way the repository names credentials, `credential.<name>`
@@ -254,22 +253,6 @@ leftover_branch() {
     } >&2
 }
 
-# The section every pull request description of this repository ends with, generated from the
-# register of main — the base P-03 branches from — rather than from whatever this checkout
-# holds. main is fetched first; if that fails, the origin/main last fetched is used, and without
-# one this checkout.
-closing_section() {
-    GIT_TERMINAL_PROMPT=0 git fetch --quiet origin main 2>/dev/null ||
-        echo "first_run: could not fetch main; the closing section comes from the last fetched origin/main" >&2
-    ref=origin/main
-    git rev-parse --verify --quiet "$ref^{commit}" >/dev/null || ref=HEAD
-    scratch="$(mktemp -d)"
-    git archive "$ref" tools/check_status.py docs/decisions/open | tar -x -C "$scratch"
-    block="$(python3 "$scratch/tools/check_status.py" --print)"
-    rm -rf "$scratch"
-    printf '## Needed from the owner\n\n%s\n' "$block"
-}
-
 state="${TAKTUS_STATE_DIR:-$HOME/.cache/taktus/taktusctl}"
 logs="$state/first-run"
 mkdir -p "$logs"
@@ -447,10 +430,9 @@ if [ "$run_p03" = yes ]; then
         # shellcheck disable=SC2086 # one word per approval
         set -- --resume "$resume" $approvals
     else
-        closing="$(closing_section)"
         set -- --input "issue=$issue" --input "records_path=docs/decisions/open" \
             --input "repository_url=$clone_url" --input "repository_host=$host" \
-            --input "coding_credential=$coding_credential" --input "closing_section=$closing"
+            --input "coding_credential=$coding_credential"
     fi
     status=0
     run_bundle P-03 --process "$p03_process" "$@" || status=$?
