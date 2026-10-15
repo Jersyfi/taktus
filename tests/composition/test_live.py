@@ -270,7 +270,9 @@ async def test_a_change_carries_no_content_figure_or_person(world: World) -> Non
         "rehearsal",
         "state",
     }
-    assert "idn_ada" not in str(document) and "1.5" not in str(document)
+    # The timestamp is left out of the search: its digits may contain "1.5" (#450).
+    rest = str({key: value for key, value in document.items() if key != "recorded_at"})
+    assert "idn_ada" not in rest and "1.5" not in rest
 
 
 # --- the signal wakes; the interval read makes a lost one good -----------------------------------
