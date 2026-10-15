@@ -24,7 +24,7 @@ from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run, RunState
 from taktus.composition.settings import WEIGHTING_TABLES, weighting_table_in_force
 from taktus.conformance.contracts import contracts_root
-from taktus.ports.model import WeightingTable
+from taktus.ports.model import WeightingTable, price
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import PriceKinds
 
@@ -204,6 +204,26 @@ def test_a_meter_names_every_quantity_its_table_leaves_out() -> None:
         "1 human step(s): table 0 gives the method no weight",
         "2 wait step(s): table 0 gives the method no weight",
     ), "an llm or worker step is weighed by what it used, not counted again"
+
+
+def test_a_dated_model_is_priced_and_weighed_at_its_undated_entry() -> None:
+    """A worker records the model as its agent named it, dated; the tables name it undated
+    (#279). An entry for the dated name wins; a name that differs otherwise is not matched."""
+    dated = "fake-model-20251001"
+    table = TABLE.model_copy(
+        update={"prices": {"fake-model": {"input": 1.0, "output": 5.0, "cache_read": 0.1}}}
+    )
+    tokens = {dated: PriceKinds(input=1_000_000, cache_read=2_000_000, output=100_000)}
+    priced = price(tokens, table)
+    assert priced.amount == pytest.approx(1.0 + 0.2 + 0.5) and priced.complete
+    takt = weigh(Meter(tokens=tokens), V0, {"fake-model": "medium"})
+    assert takt.tokens == pytest.approx(1000 * 0.25 + 2000 * 0.025 + 100 * 1.0)
+    assert takt.unweighed == ()
+
+    exact = table.model_copy(update={"prices": {**table.prices, dated: {"input": 2.0}}})
+    assert price({dated: PriceKinds(input=1_000_000)}, exact).amount == pytest.approx(2.0)
+    other = price({"fake-model-2": PriceKinds(input=1)}, table)
+    assert other.unpriced == ("fake-model-2 input",)
 
 
 async def test_a_run_started_without_a_table_says_its_takt_is_unknown() -> None:
