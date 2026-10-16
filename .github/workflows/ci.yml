@@ -34,7 +34,7 @@ jobs:
   # runs too. `static` and `decisions` always run; the others when a path they claim changed. A
   # push to `main` runs every lane: every commit there is checked in full.
   select:
-    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+    if: ${{ !((github.event_name == 'pull_request' && github.event.pull_request.draft) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -75,7 +75,7 @@ jobs:
   # request's description says — and the draft flag a BLOCKING decision requires — is the
   # `description` workflow's, which runs on an edit too.
   decisions:
-    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+    if: ${{ !((github.event_name == 'pull_request' && github.event.pull_request.draft) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -137,7 +137,7 @@ jobs:
   # Everything that reads the code rather than running it: secrets, lint and types, the
   # architecture, the chart, governance, exactness, documentation, the register and the use cases.
   static:
-    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+    if: ${{ !((github.event_name == 'pull_request' && github.event.pull_request.draft) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -238,7 +238,7 @@ jobs:
   # `main` is red, only a repair merges — a revert, or a pull request naming
   # `Mends main: <sha>`. When the host does not answer, the guard fails: nothing merges blind.
   gates:
-    name: ${{ (github.event_name == 'pull_request' && github.event.pull_request.draft) && 'gates (draft)' || 'gates' }}
+    name: ${{ (github.event_name == 'pull_request' && github.event.pull_request.draft) && 'gates (draft)' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/')) && 'gates (checked on push)' || 'gates' }}
     if: always()
     needs: [select, contracts, decisions, web, static, conformance, test]
     runs-on: ubuntu-latest
@@ -251,12 +251,18 @@ jobs:
       - name: a draft is verified locally
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
         run: echo "A draft runs no lane; \`make verify\` checks it, and CI starts when it is ready."
+      # P-03 pushes its branch, reads the verdict of that push's run and only then opens its
+      # pull request (#390). The commit is not checked a second time: the required `gates` on it
+      # is the push run's, and this run reports under another name.
+      - name: a branch of Taktus's app was checked on its push
+        if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) && (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/')) }}
+        run: echo "The push run of this commit carries its gates."
       - uses: actions/checkout@v4
-        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+        if: ${{ !((github.event_name == 'pull_request' && github.event.pull_request.draft) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/'))) }}
         with:
           persist-credentials: false
       - name: every lane passed
-        if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+        if: ${{ !((github.event_name == 'pull_request' && github.event.pull_request.draft) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/'))) }}
         env:
           RESULTS: ${{ toJSON(needs) }}
         run: |
@@ -268,9 +274,10 @@ jobs:
 
       # The description is read now, so that a `Mends main:` added since the push counts when
       # the run is repeated. Title and description reach the tool as files and variables, never
-      # in a command line.
+      # in a command line. A push to a branch of Taktus's app is guarded too, with no title and
+      # no description: its pull request runs no lane of its own.
       - name: main is green, or this pull request mends it
-        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+        if: ${{ (github.event_name == 'pull_request' && !((github.event_name == 'pull_request' && github.event.pull_request.draft) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/')))) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/taktus/')) }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -279,6 +286,10 @@ jobs:
         run: |
           gh api "repos/$REPO/actions/workflows/ci.yml/runs?branch=main&event=push&per_page=10" \
             > "$RUNNER_TEMP/runs.json" || : > "$RUNNER_TEMP/runs.json"
-          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > "$RUNNER_TEMP/body.md" || :
+          if [ -n "$PR" ]; then
+            gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > "$RUNNER_TEMP/body.md" || :
+          else
+            : > "$RUNNER_TEMP/body.md"
+          fi
           python3 tools/ci_watch.py guard --runs "$RUNNER_TEMP/runs.json" --title "$TITLE" \
             --body-file "$RUNNER_TEMP/body.md"
