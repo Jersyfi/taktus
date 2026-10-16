@@ -278,7 +278,7 @@ used 1.8 to 4.3 times the estimate in the first live run — so that the suite's
 can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales every token count, and
 `FAKE_AGENT_WRITE`, a JSON object of path to content, adds those files to its change, so that a
 process test can give a change a file of its choosing. Its messages name a model the price
-table prices, and it ends on `--max-turns` as the real agent does. The real agent is run with
+table prices, and it ends on `--max-turns` as the real agent does. It writes its session, whole and at once, before it streams a tool's result: the worker may end it at the boundary that result opens, and `--resume` must then find every call it made (#389). The real agent is run with
 `--agent claude` (the default), and a live run needs a credential the operator supplies.
 
 ## The agent's version
