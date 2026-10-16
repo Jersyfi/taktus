@@ -5,7 +5,7 @@ component: process
 epic: E4
 serves: [P6, P7]
 state: specified
-version: 0.3.0
+version: 0.4.0
 tests: []
 adrs: {ADR-0011: f25413d512b9, ADR-0029: 37c061ef032a}
 supersedes: null

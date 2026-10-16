@@ -5,7 +5,7 @@ component: command
 epic: E1
 serves: [P2, P6]
 state: specified
-version: 0.3.0
+version: 0.5.0
 tests: []
 adrs: {}
 supersedes: null
