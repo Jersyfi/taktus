@@ -20,7 +20,12 @@ import pytest
 import yaml
 from fakes.identity import added_by_command_line
 
-from taktus.adapters.driving.cli.resume_command import RaiseRefused, ceiling_of, raised
+from taktus.adapters.driving.cli.resume_command import (
+    RaiseRefused,
+    ceiling_of,
+    raised,
+    raised_quota,
+)
 from taktus.ports.worker import Limits
 
 from .test_first_slice import EXAMPLE, PLAIN, taktusctl
@@ -94,7 +99,7 @@ def test_a_halted_run_continues_with_its_limit_raised_and_no_version_registered(
         check=False,
     )
     assert resumed.returncode == 3, resumed.stdout + resumed.stderr
-    assert "{'usd': 1.0} -> {'usd': 2.5}, raised by idn_test" in resumed.stdout
+    assert "'currency': {'usd': 2.5}" in resumed.stdout and "raised by idn_test" in resumed.stdout
     after = ledger(state)
     raised_entries = [e for e in after if e["kind"] == "budget.set"]
     assert len(raised_entries) == len(before) + 1
@@ -140,3 +145,15 @@ def test_a_raise_is_held_to_the_ceiling_and_to_the_runs_currency() -> None:
         raised(LIMIT, Decimal("0"), ceiling_of("8 usd"))
     with pytest.raises(RaiseRefused, match="amount and a currency"):
         ceiling_of("8")
+
+
+def test_a_quota_raise_is_held_to_its_ceiling() -> None:
+    """DEC-0208: a run halted at its quota continues with more units, never past the ceiling."""
+    limits = Limits.model_validate({"currency": {"usd": 5.0}, "quota": {"units": 200}})
+    assert raised_quota(limits, Decimal("50"), Decimal("400")).quota.units == 250  # type: ignore[union-attr]
+    with pytest.raises(RaiseRefused, match="exceed the ceiling"):
+        raised_quota(limits, Decimal("250"), Decimal("400"))
+    with pytest.raises(RaiseRefused, match="without a ceiling"):
+        raised_quota(limits, Decimal("50"), None)
+    with pytest.raises(RaiseRefused, match="no quota"):
+        raised_quota(LIMIT, Decimal("50"), Decimal("400"))

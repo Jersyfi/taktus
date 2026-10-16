@@ -178,7 +178,8 @@ budget on resume lets it continue. A person raises it with `taktusctl resume --r
 AMOUNT --reason TEXT`: the run's own money limit grows by the amount, no bundle is read and no
 version registered, and the `budget.set` statement names the limit before and the reason. The
 raise is held to the ceiling the operator sets in `TAKTUS_RAISE_CEILING`, an amount and its
-currency; without one no raise is admitted (#458, DEC-0202). A worker step
+currency; without one no raise is admitted (#458, DEC-0202). `--raise-quota UNITS` raises its
+quota the same way, held to `TAKTUS_RAISE_CEILING_QUOTA` (DEC-0208). A worker step
 stopped mid-way ends with the worker's checkpoint, and the resumed assignment starts from it.
 
 Every state change is one transaction with the ledger entry that describes it: the run as it

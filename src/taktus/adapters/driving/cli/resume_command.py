@@ -1,4 +1,4 @@
-"""`taktusctl resume`: a halted run continues, with its money limit raised by a stated amount.
+"""`taktusctl resume`: a halted run continues, with its money or quota limit raised by an amount.
 
 A run that halted at its money keeps its work and its claim (ADR-0005 §4, DEC-0202); a person
 decides whether it continues. This is that decision in one command (#458):
@@ -11,8 +11,9 @@ bundle is read and no version is registered: the process's active version stays 
 The ledger's `budget.set` names the statement that holds the limit before, the limit now and
 the reason; its actor is the identity that raised it. A raise is held: the run's limit may not
 exceed the ceiling the operator sets in `TAKTUS_RAISE_CEILING`, an amount and its currency
-("10 usd"), and without one no raise is admitted. A run halted on an instance is found in the
-database the daemon reads.
+("10 usd"), and without one no raise is admitted. `--raise-quota UNITS` raises the run's quota
+the same way, held to `TAKTUS_RAISE_CEILING_QUOTA`, a number of units (DEC-0208). A run halted on
+an instance is found in the database the daemon reads.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ from taktus.components.run.domain.model import Run, RunError, RunState
 from taktus.ports.worker import Limits, WorkerError
 
 CEILING = "TAKTUS_RAISE_CEILING"
+QUOTA_CEILING = "TAKTUS_RAISE_CEILING_QUOTA"
 
 
 class RaiseRefused(Exception):
@@ -75,15 +77,29 @@ def raised(budget: Limits, amount: Decimal, ceiling: tuple[Decimal, str] | None)
     return budget.model_copy(update={"currency": currency})
 
 
+def raised_quota(budget: Limits, units: Decimal, ceiling: Decimal | None) -> Limits:
+    """The run's limit with its quota raised by `units`, held to the ceiling."""
+    if ceiling is None:
+        raise RaiseRefused(
+            f"no raise of the quota without a ceiling: the operator sets {QUOTA_CEILING}"
+        )
+    if units <= 0:
+        raise RaiseRefused("a raise is a positive amount")
+    if budget.quota is None:
+        raise RaiseRefused("the run's limit holds no quota to raise")
+    now = Decimal(str(budget.quota.units)) + units
+    if now > ceiling:
+        raise RaiseRefused(
+            f"{now} quota units would exceed the ceiling of {ceiling} ({QUOTA_CEILING})"
+        )
+    return budget.model_copy(
+        update={"quota": budget.quota.model_copy(update={"units": float(now)})}
+    )
+
+
 def resume(
     ctx: typer.Context,
     run_id: Annotated[str, typer.Option("--run", help="The halted run to continue.")],
-    raise_by: Annotated[
-        str,
-        typer.Option(
-            "--raise", help="Raise the run's money limit by this amount, in its currency."
-        ),
-    ],
     reason: Annotated[
         str, typer.Option("--reason", help="Why the limit is raised; kept in the statement.")
     ],
@@ -110,16 +126,32 @@ def resume(
     tenant: Annotated[
         str, typer.Option("--tenant", envvar="TAKTUS_TENANT", help="The tenant of the run.")
     ] = DEFAULT_TENANT,
+    raise_by: Annotated[
+        str | None,
+        typer.Option(
+            "--raise", help="Raise the run's money limit by this amount, in its currency."
+        ),
+    ] = None,
+    raise_quota: Annotated[
+        str | None,
+        typer.Option("--raise-quota", help="Raise the run's quota limit by this many units."),
+    ] = None,
 ) -> None:
-    """Continue a halted run with its money limit raised by a stated amount.
+    """Continue a halted run with its money or quota limit raised by a stated amount.
 
     Exit code 0: the run finished. Exit code 3: it halted, escalated or waits again. Exit code 2:
     the raise is refused, or there is no such run or no database.
     """
     wiring: Wiring = ctx.obj
+    if raise_by is None and raise_quota is None:
+        typer.echo("error: name what is raised: --raise, --raise-quota or both", err=True)
+        raise typer.Exit(code=2)
     try:
-        amount = Decimal(raise_by)
-        ceiling = ceiling_of(os.environ.get(CEILING))
+        amount = Decimal(raise_by) if raise_by is not None else None
+        units = Decimal(raise_quota) if raise_quota is not None else None
+        ceiling = ceiling_of(os.environ.get(CEILING)) if amount is not None else None
+        configured = os.environ.get(QUOTA_CEILING)
+        quota_ceiling = Decimal(configured) if configured else None
     except (InvalidOperation, RaiseRefused) as error:
         typer.echo(f"error: not an amount: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -133,8 +165,8 @@ def resume(
                 Path(os.path.expanduser(state_dir)),
                 worker,
                 run_id,
-                amount,
-                ceiling,
+                (amount, ceiling),
+                (units, quota_ceiling),
                 reason,
                 identity,
                 tenant,
@@ -152,8 +184,8 @@ async def _resume(
     state_dir: Path,
     worker: str,
     run_id: str,
-    amount: Decimal,
-    ceiling: tuple[Decimal, str] | None,
+    money: tuple[Decimal | None, tuple[Decimal, str] | None],
+    quota: tuple[Decimal | None, Decimal | None],
     reason: str,
     identity: str | None,
     tenant: str,
@@ -166,10 +198,14 @@ async def _resume(
             raise RunError(f"no run {run_id!r} in tenant {tenant!r}")
         if found.state is not RunState.HALTED:
             raise RaiseRefused(f"run {run_id} is {found.state.value}, not halted")
-        budget = raised(found.budget, amount, ceiling)
+        budget = found.budget
+        if money[0] is not None:
+            budget = raised(budget, money[0], money[1])
+        if quota[0] is not None:
+            budget = raised_quota(budget, quota[0], quota[1])
         typer.echo(
-            f"run {run_id}: limit {dict(found.budget.currency or {})} -> "
-            f"{dict(budget.currency or {})}, raised by {placed.identity}"
+            f"run {run_id}: limit {found.budget.document()} -> {budget.document()}, "
+            f"raised by {placed.identity}"
         )
         return await services.engine.resume(
             ResumeRun(
