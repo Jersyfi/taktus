@@ -193,7 +193,7 @@ async def test_an_issue_handed_over_becomes_a_pull_request_that_ends_with_the_br
     await linked(wired, tenant)
     await verified_adapters(wired, tenant, outside)
     version = await registered(wired, tenant, the_bundle(outside))
-    assert version.ref == "p03-implementation@13"
+    assert version.ref == "p03-implementation@14"
 
     clock.current += timedelta(minutes=1)
     hand(outside, tasks.ready)
