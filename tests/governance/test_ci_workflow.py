@@ -38,7 +38,19 @@ def test_the_required_check_needs_every_other_job_and_always_reports() -> None:
     assert gates["if"] == "always()", "a skipped aggregate would satisfy the ruleset"
     assert set(gates["needs"]) == set(jobs) - {REQUIRED}, gates["needs"]
     lanes = next(step for step in gates["steps"] if step.get("name") == "every lane passed")
-    assert 'all(.[]; .result == "success")' in lanes["run"], lanes
+    # A lane not selected is skipped and passes, but only when the selection itself succeeded:
+    # a failed `select` skips every lane, and must not read as green (#390).
+    assert '.select.result == "success"' in lanes["run"], lanes
+    assert 'all(.[]; .result == "success" or .result == "skipped")' in lanes["run"], lanes
+
+
+def test_every_selectable_lane_runs_only_when_the_change_selects_it() -> None:
+    jobs = load(CI)["jobs"]
+    for lane in ("contracts", "web", "conformance", "test"):
+        assert jobs[lane]["needs"] == "select", lane
+        assert jobs[lane]["if"] == f"needs.select.outputs.{lane} == 'true'", lane
+    for always in ("static", "decisions"):
+        assert "if" not in jobs[always], f"{always} always runs"
 
 
 def test_the_last_step_on_a_pull_request_is_the_guard_of_main() -> None:
