@@ -1,3 +1,5 @@
+"""The object store in memory, for development and tests."""
+
 from __future__ import annotations
 
 import asyncio

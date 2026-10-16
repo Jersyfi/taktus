@@ -1,3 +1,5 @@
+"""The ledger store in memory, for development and tests: one chain per tenant."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence

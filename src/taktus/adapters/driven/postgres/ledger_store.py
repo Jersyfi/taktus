@@ -1,3 +1,5 @@
+"""The ledger store over PostgreSQL: one chain per tenant, appended and read in order."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
