@@ -41,7 +41,8 @@ act — the agent's reasoning, its plan, its messages — are no steps.
 Before the agent starts, the hosts the task says it needs (`task.inputs.hosts`) are held against
 the frame as a step of their own (W-13). The agent reaches a host from a command it runs, so
 the step's tool is `shell.sandboxed`. At the end, the agent's last message is the `report`
-step, whose artifacts are the `summary` and the `changeset`, as the first coding worker's are.
+step, whose artifacts are the `summary` and the `changeset`, as the first coding worker's are —
+the changeset naming as its `source` the commit the workspace was cloned from (#496).
 
 ### Consumption
 

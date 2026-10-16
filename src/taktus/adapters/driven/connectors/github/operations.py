@@ -595,9 +595,7 @@ async def create_branch(api: Api, input: Json, key: str) -> Outcome:
         raise TargetError(
             "conflict", "none", False, f"branch {name!r} exists and was not created for this step"
         )
-    base_sha = await _ref(api, base)
-    if base_sha is None:
-        raise TargetError("not_found", "none", False, f"base branch {base!r} does not exist")
+    base_sha = await _base(api, base)
     base_commit = await api.get(api.repo(f"git/commits/{base_sha}"))
     tree_sha = str(base_commit.get("tree", {}).get("sha", ""))
     unflagged = [str(file["path"]) for file in files if "executable" not in file]
@@ -710,6 +708,29 @@ async def _mode_along(api: Api, tree_sha: str, path: str) -> str | None:
             return None
         return await _mode_along(api, str(entry.get("sha", "")), "/".join(rest))
     return None
+
+
+COMMIT = re.compile(r"^[0-9a-f]{40}$")
+
+
+async def _base(api: Api, base: str) -> str:
+    """The commit a branch is made from: a branch's head, or a commit named by its full sha —
+    the one a worker's workspace was cloned from, so that the change lands on the base it was
+    made against and nothing the branch gained meanwhile is reverted (#496)."""
+    sha = await _ref(api, base)
+    if sha is not None:
+        return sha
+    if COMMIT.match(base):
+        try:
+            await api.get(api.repo(f"git/commits/{base}"))
+        except TargetError as error:
+            if error.cause == "not_found":
+                raise TargetError(
+                    "not_found", "none", False, f"base commit {base} does not exist"
+                ) from error
+            raise
+        return base
+    raise TargetError("not_found", "none", False, f"base branch {base!r} does not exist")
 
 
 async def _ref(api: Api, name: str) -> str | None:

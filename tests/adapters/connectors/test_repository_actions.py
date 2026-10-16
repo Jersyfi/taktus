@@ -665,6 +665,41 @@ async def test_a_branch_without_files_carries_an_empty_marked_commit(service: Se
     assert missing["cause"] == "not_found"
 
 
+@pytest.mark.usefixtures("credentials")
+async def test_a_branch_is_made_from_the_commit_a_workspace_was_cloned_from(
+    service: Service,
+) -> None:
+    """#496: the base may be a commit by its full sha — the one the worker's workspace was
+    cloned from — so that the change lands on the base it was made against. A commit the
+    service does not have is `not_found`, as a missing branch is."""
+    headers = {"Authorization": f"Bearer {service.write_value}"}
+    async with httpx.AsyncClient(base_url=service.url, headers=headers, timeout=5.0) as http:
+        main = await http.get(f"/repos/{REPOSITORY}/git/ref/heads/main")
+    sha = main.json()["object"]["sha"]
+    key = "run_01:from-clone:1-0123456789"
+    error, result = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("from-clone", key),
+        {"name": "taktus/from-clone", "base": sha},
+    )
+    assert not error, result
+    assert result["output"]["base"] == sha
+    async with httpx.AsyncClient(base_url=service.url, headers=headers, timeout=5.0) as http:
+        commit = (
+            await http.get(f"/repos/{REPOSITORY}/git/commits/{result['output']['sha']}")
+        ).json()
+    assert [p["sha"] for p in commit["parents"]] == [sha], "the branch starts at that commit"
+    error, missing = await call(
+        Connector(config(service)),
+        "repository.branches.create",
+        context("from-clone", "run_01:from-clone:2-0123456789"),
+        {"name": "taktus/from-nowhere", "base": "f" * 40},
+    )
+    assert error
+    assert missing["cause"] == "not_found"
+
+
 REFERENCES = {
     "names": ["refs/register/NTC-0500", "refs/register/DEC-0500"],
     "target": "main",

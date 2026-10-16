@@ -18,7 +18,6 @@ written here directly, as in `test_event_reactions.py`.
 from __future__ import annotations
 
 import base64
-import os
 import re
 import subprocess
 import sys
@@ -71,14 +70,7 @@ OPEN_RECORD = (
 def on_both_sides(outside: Outside, path: str, content: str) -> None:
     """Put a file on `main` of the hosting service, which the branch is made from, and of the
     clone the worker works in: the two are one repository."""
-    outside.commit_on_main({path: content})
-    origin = Path(outside.clone_url)
-    (origin / path).parent.mkdir(parents=True, exist_ok=True)
-    (origin / path).write_text(content, encoding="utf-8")
-    for command in (["git", "add", "-A"], ["git", "commit", "--quiet", "-m", path]):
-        subprocess.run(  # noqa: S603 — git with fixed arguments in the test's own repository
-            command, cwd=origin, env={**os.environ, **GIT}, check=True, capture_output=True
-        )
+    outside.commit_on_main({path: content})  # on the service and in the clone (#496)
 
 
 def the_bundle(outside: Outside) -> dict[str, Any]:
@@ -193,7 +185,7 @@ async def test_an_issue_handed_over_becomes_a_pull_request_that_ends_with_the_br
     await linked(wired, tenant)
     await verified_adapters(wired, tenant, outside)
     version = await registered(wired, tenant, the_bundle(outside))
-    assert version.ref == "p03-implementation@15"
+    assert version.ref == "p03-implementation@16"
 
     clock.current += timedelta(minutes=1)
     hand(outside, tasks.ready)

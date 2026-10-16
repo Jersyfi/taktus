@@ -149,8 +149,9 @@ OPERATIONS: list[Json] = [
         "capability": "repository.branches",
         "effect": "write",
         "idempotency": "marked",
-        "summary": "Create a branch from a base with one commit on it that carries the given "
-        "files, or none. A file marked `executable: true` is written executable, one marked "
+        "summary": "Create a branch from a base — a branch by name, or a commit by its full "
+        "sha — with one commit on it that carries the given files, or none. A file marked "
+        "`executable: true` is written executable, one marked "
         "`false` plain; an unmarked file keeps the mode it has in the base, and one the base "
         "does not have is a plain file. The commit message carries the idempotency key as a "
         "trailer; a repeat finds the branch and the mark at its head.",

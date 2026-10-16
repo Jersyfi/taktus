@@ -40,6 +40,9 @@ What it enforces, because the connector's checks depend on it:
   number (`POST …/milestones` makes one), and is read with both, as the ready standard of a
   backlog reads them (issue #70). A directory reads as its immediate entries, each a `file` or a
   `dir`, and a branch moves to a later commit with `PATCH …/git/refs/heads/<name>`.
+- **The commit a clone was made from.** `POST /_fake/clone` with `{"repository", "sha"}` makes the
+  head of `main` known under the sha of a local clone, so that a branch can be made from it
+  (#496).
 - **References besides branches.** `POST …/git/refs` creates any `refs/<namespace>/<name>` once,
   and refuses a second with 422 "Reference already exists", as the service does; `GET
   …/git/ref/<namespace>/<name>` reads one. No pipeline runs for one, and `GET /_fake/state`
@@ -467,6 +470,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         url = urlparse(self.path)
         body = self._body()  # always read, so that a keep-alive connection stays in step
+        if url.path == "/_fake/clone":
+            # The commit a worker's workspace was cloned from, made known under its own sha: the
+            # head of `main` as it is now. On the service the clone and the branches share one
+            # history; here the clone is a local repository, and this joins the two (#496).
+            with self.store.lock:
+                repo = self.store.repository(*str(body["repository"]).split("/", 1))
+                head = dict(repo.objects[repo.refs["main"]])
+                sha = str(body["sha"])
+                repo.objects[sha] = {**head, "sha": sha}
+            self._send(200, {"sha": sha})
+            return
         if url.path == "/_fake/reset":
             with self.store.lock:
                 self.store.repositories.clear()
