@@ -7,7 +7,6 @@ same file either way.
 
 from __future__ import annotations
 
-import socket
 import subprocess
 import sys
 import time
@@ -16,6 +15,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from fakes.ports import free_port
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "script" / "worker.py"
@@ -28,12 +28,6 @@ def identity(monkeypatch: pytest.MonkeyPatch) -> None:
     (`fakes.identity.added_by_command_line`). These tests are about the run, not about who is
     asking; a test that is about the identity deletes the variable itself."""
     monkeypatch.setenv("TAKTUS_IDENTITY", "idn_test")
-
-
-def free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
 
 
 @pytest.fixture

@@ -23,7 +23,6 @@ import hmac
 import json
 import os
 import secrets
-import socket
 import subprocess
 import sys
 import time
@@ -36,6 +35,7 @@ import httpx
 import pytest
 from fakes import FakeClock, FakeIdentifiers
 from fakes.identity import Directory, directory
+from fakes.ports import free_port
 
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
@@ -71,12 +71,6 @@ type Json = dict[str, Any]
 
 
 # --- two connectors, each a process -------------------------------------------------------------
-
-
-def free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
 
 
 def wait_ready(process: subprocess.Popen[bytes], url: str, log: Path) -> None:

@@ -20,7 +20,7 @@ FROM node:22-bookworm-slim AS agent
 COPY workers/claudecode/agent-version /tmp/agent-version
 RUN version="$(cat /tmp/agent-version)" \
     && printf '%s' "$version" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' \
-    && npm install -g "@anthropic-ai/claude-code@${version}" && npm cache clean --force
+    && npm install -g --fetch-timeout=30000 --fetch-retries=5 "@anthropic-ai/claude-code@${version}" && npm cache clean --force
 
 FROM python:3.13-slim-bookworm
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \

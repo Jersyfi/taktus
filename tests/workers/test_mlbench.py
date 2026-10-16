@@ -26,7 +26,6 @@ import io
 import json
 import os
 import secrets
-import socket
 import subprocess
 import sys
 import threading
@@ -41,6 +40,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fakes.ports import free_port
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKER = ROOT / "workers" / "mlbench" / "worker.py"
@@ -140,12 +140,6 @@ class Bench:
                 if e["type"] == "artifact.produced"
             }
         return events[-1], events, artifacts
-
-
-def free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
 
 
 class QuietFiles(SimpleHTTPRequestHandler):

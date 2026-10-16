@@ -16,7 +16,10 @@
 FROM node:24-bookworm-slim AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# A request that stalls is given up after 30 s and retried, where npm waits five minutes by
+# default: longer than tests/images.py lets a build stay silent, so a stalled download stopped
+# the build instead of being retried (#360).
+RUN npm ci --no-audit --no-fund --fetch-timeout=30000 --fetch-retries=5
 COPY web ./
 RUN npm run build
 

@@ -18,7 +18,6 @@ import json
 import os
 import random
 import secrets
-import socket
 import subprocess
 import sys
 import threading
@@ -33,6 +32,7 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fakes.ports import free_port
 
 from taktus.adapters.driven.clock import SystemClock
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
@@ -111,13 +111,6 @@ class RunningWorker:
 
     async def run_suite(self) -> Report:
         return await run_suite(self.options())
-
-
-def free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-        return int(port)
 
 
 def faults() -> list[tuple[str, str]]:
