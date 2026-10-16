@@ -204,7 +204,10 @@ exactly the job's hosts — `frame.allowed_hosts`, and for an assignment the wor
 hosts (ADR-0089) — and answers 403 to every other host, an empty list reaching nothing (this is where DEC-0008's field becomes a wall); one named volume per unit for its
 state and no other mount, the engine's socket never among them. The adapter speaks the
 engine's HTTP API over its socket — Docker or Podman — so that the control plane image needs
-no client. `tests/adapters/execution/test_container.py` proves every one of these from inside
+no client. Where the egress container publishes the unit's port on the host, the engine
+chooses the host port from its own record, which does not see a port another program holds;
+a start the engine refuses with `address already in use` is repeated, up to five times, and
+the engine chooses again. `tests/adapters/execution/test_container.py` proves every one of these from inside
 a job, and `tests/integration/test_launched_container.py` runs a process through it, stops it
 at a boundary and resumes it in a new container.
 

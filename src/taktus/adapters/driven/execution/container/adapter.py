@@ -81,6 +81,33 @@ OOM_RECORD = b"taktus-launch: oom_kill "
 out-of-memory kills rose while it ran."""
 
 
+PORT_TAKEN = "address already in use"
+"""What the engine says when the host port it chose for a published port is held by a process
+it does not know of."""
+PUBLISH_ATTEMPTS = 5
+
+
+async def start_publishing(engine: Engine, container: str) -> None:
+    """Start a container that publishes a port on a host port the engine chooses. The engine
+    picks the port from its own record of what it handed out, which does not see a socket
+    another process holds: on a host where other programs listen on ports of the same range,
+    the start fails with `address already in use`. Each further start makes the
+    engine choose again, so the start is repeated a few times on exactly that answer; any other
+    refusal, or the last one, is raised as it came."""
+    for attempt in range(1, PUBLISH_ATTEMPTS + 1):
+        try:
+            await engine.start(container)
+            return
+        except EngineError as error:
+            if PORT_TAKEN not in str(error) or attempt == PUBLISH_ATTEMPTS:
+                raise
+            log.warning(
+                "the host port the engine chose is taken; starting again",
+                container=container,
+                attempt=attempt,
+            )
+
+
 def memory_kill_recorded(log: bytes) -> bool:
     """Whether the launcher found the kernel's record of an out-of-memory kill in the log."""
     return any(line.startswith(OOM_RECORD) for line in log.splitlines())
@@ -228,7 +255,10 @@ class ContainerExecution:
         }
         egress = await engine.create_container(names.egress, egress_config)
         await engine.put_file(egress, EGRESS_SCRIPT, (HERE / "egress.py").read_bytes(), mode=0o644)
-        await engine.start(egress)
+        if publish:
+            await start_publishing(engine, egress)
+        else:
+            await engine.start(egress)
         await engine.connect(network, egress)
 
         # The unit's container: the image's own command behind the launcher, a tmpfs for the

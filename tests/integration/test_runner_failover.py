@@ -6,7 +6,9 @@ seconds. While they execute, the test reads the job table every few milliseconds
 for every job, who held its claim and since when.
 
 Once some runs are done and runner A holds a run whose worker step has persisted an inner
-boundary, A is killed: SIGKILL, no shutdown, no chance to halt or release anything. Then:
+boundary, A is killed: SIGKILL, no shutdown, no chance to halt or release anything. What A
+left is read once the database has no session of A's left: a commit A sent just before it
+died is carried out after it died (issue #389). Then:
 
 - every run finishes;
 - the load was spread: both runners held claims, and neither ever held more jobs than its
@@ -19,9 +21,10 @@ boundary, A is killed: SIGKILL, no shutdown, no chance to halt or release anythi
   from the worker's checkpoint, and every output of that step exists once;
 - no step that had finished was started again. A worker step whose assignment A had handed
   over was adopted by B, never handed over or started again: the ledger names one assignment
-  for it (ADR-0038, NTC-0074). Any other step A had started was started again, and a step A had
-  only admitted was started once, by B (NTC-0046). In a run nobody interrupted every step
-  started exactly once;
+  for it (ADR-0038, NTC-0074). A hand-over A recorded but never saw accepted was adopted, or,
+  had it not reached the worker, posted again under the same id and started once, by B. Any
+  other step A had started was started again, and a step A had only admitted was started once,
+  by B (NTC-0046). In a run nobody interrupted every step started exactly once;
 - the ledger chain verifies, and the provenance chain of every run verifies against its run
   and its ledger entries.
 
@@ -62,6 +65,9 @@ RUNS = 20
 CONCURRENCY = 2
 LEASE_SECONDS = 5
 """The shortest lease the daemon accepts; a runner renews it every third of that."""
+SESSION = f"taktusd-{TENANT}-{{name}}"
+"""The application name each runner's database sessions carry (libpq's `PGAPPNAME`): what
+tells the test, after the kill, whether a session of A's is still being served."""
 
 
 def bundle(n: int) -> dict[str, Any]:
@@ -163,6 +169,32 @@ async def job_rows(database: Database) -> list[Any]:
         return list(result)
 
 
+async def sessions_of(database: Database, application_name: str) -> int:
+    """How many server sessions carry `application_name`: those of a runner still served."""
+    async with database.persistence.engine.connect() as connection:
+        result = await connection.execute(
+            text("SELECT count(*) FROM pg_stat_activity WHERE application_name = :name"),
+            {"name": application_name},
+        )
+        return int(result.scalar_one())
+
+
+async def settled(database: Database, application_name: str) -> None:
+    """Until no server session of a killed runner is left. A SIGKILL ends the process, not
+    what the server already received from it: a COMMIT the runner sent just before it died is
+    carried out by its session after the process is gone, and the session ends only when it
+    reads the closed connection after that. Read before then, what A left lacks its last
+    commit, and a step A finished looks as if it were still in flight (issue #389)."""
+    try:
+        async with asyncio.timeout(30):
+            while True:
+                if not await sessions_of(database, application_name):
+                    return
+                await asyncio.sleep(0.02)
+    except TimeoutError:
+        raise AssertionError(f"the sessions of {application_name} outlived it by 30 s") from None
+
+
 async def describe(database: Database, run_ids: list[str], claims: Claims) -> str:
     """What every run and every claim looked like, for a failure message."""
     lines = []
@@ -222,7 +254,12 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
         for name in ("a", "b"):
             port = free_port()
             processes[name] = await daemon(
-                {**environment, "TAKTUS_HTTP_PORT": str(port), "TAKTUS_INSTANCE": name},
+                {
+                    **environment,
+                    "TAKTUS_HTTP_PORT": str(port),
+                    "TAKTUS_INSTANCE": name,
+                    "PGAPPNAME": SESSION.format(name=name),
+                },
                 logs[name],
             )
             await wait_ready(port, processes[name])
@@ -249,7 +286,13 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
                         if stored is None or stored.state is not RunState.RUNNING:
                             continue
                         compute = stored.step_run("compute")
-                        if compute.state is StepState.RUNNING and compute.checkpoint is not None:
+                        # In its first half: A goes on working until the kill lands, and a step
+                        # chosen at its last output can finish producing before then.
+                        if (
+                            compute.state is StepState.RUNNING
+                            and compute.checkpoint is not None
+                            and len(compute.artifacts) <= COMMANDS // 2
+                        ):
                             victim = stored
                             break
                     else:
@@ -259,8 +302,10 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
                 "runner a never held a run inside its worker step after four were done:\n"
                 + await describe(database, run_ids, claims)
             ) from None
+        assert await sessions_of(database, SESSION.format(name="a")), "A's sessions are named"
         processes["a"].kill()
         assert await processes["a"].wait() == -signal.SIGKILL
+        await settled(database, SESSION.format(name="a"))
 
         # What A left behind: its claims, frozen at its last renewal, and the victim's step in
         # flight with its boundary.
@@ -278,7 +323,10 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
         compute = interrupted[victim.id].step_run("compute")
         assert compute.state is StepState.RUNNING and compute.checkpoint is not None
         produced_before = [a.id for a in compute.artifacts]
-        assert 0 < len(produced_before) < COMMANDS, "killed inside the step, at a boundary"
+        assert 0 < len(produced_before) < COMMANDS, (
+            f"killed inside the step, at a boundary: {len(produced_before)} of {COMMANDS} "
+            f"produced, {len(victim.step_run('compute').artifacts)} when chosen"
+        )
         before = {run_id: await database.entries(run_id) for run_id in orphaned}
         assert await database.verifies(), "nothing A wrote broke the chain"
 
@@ -365,7 +413,17 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
                 adopted = [
                     e.refs.step_id for e in entries[len(earlier) :] if e.kind == "step.adopted"
                 ]
-                assert adopted == ([in_flight.step_id] if handed else []), (
+                # A hand-over that A recorded and never saw accepted — it wrote no start — may
+                # not have reached the worker. A worker that does not know it has nothing to
+                # adopt, and B posts it again under its own id (ADR-0038 §2).
+                possible = (
+                    [[in_flight.step_id]]
+                    if handed and in_flight.state is StepState.RUNNING
+                    else [[in_flight.step_id], []]
+                    if handed
+                    else [[]]
+                )
+                assert adopted in possible, (
                     f"run {run_id}: adopted {adopted}; in flight at the kill "
                     f"{None if in_flight is None else (in_flight.step_id, in_flight.state)}"
                 )
@@ -380,7 +438,7 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
                     f"run {run_id}: started more than once {again}; in flight at the kill "
                     f"{None if in_flight is None else (in_flight.step_id, in_flight.state)}"
                 )
-                if in_flight is not None and not restarted and not handed:
+                if in_flight is not None and not restarted and not adopted:
                     by_b = [
                         e.refs.step_id for e in entries[len(earlier) :] if e.kind == "step.started"
                     ]
