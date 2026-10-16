@@ -1,3 +1,5 @@
+"""A repository per aggregate in memory, for development and tests."""
+
 from __future__ import annotations
 
 import builtins

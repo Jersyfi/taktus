@@ -18,3 +18,7 @@ reason or the test that proves it.
 somewhere, and no default value of the chart, names the Taktus project — a process identifier of
 its bundles, its repository's path or its owner's name. The names are read from `blueprints/`,
 `LICENSE` and `.github/CODEOWNERS`. Comments and docstrings are exempt.
+
+`test_every_module_states_what_it_is.py` holds every module under `src/taktus` to a docstring:
+`make tree` prints the tree of the source from them, in place of the hand-kept tree of
+`docs/architecture/project-structure.md` (#392).
