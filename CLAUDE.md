@@ -185,9 +185,10 @@ owner can provide — a credential, an account, access, a purchase, an action on
 information about an environment (ADR-0028). It is raised when the need becomes **foreseeable**,
 not when it blocks, with a date and the steps; raising it is mode 2 (M2.5), providing it is the
 owner's act. Every row of `CREDENTIALS.md` names the need it is provided under, and the gate
-fails a credential the code reads without one. `docs/status.md` is the one file that says where
-the project stands and what is needed from the owner. A pull request that touches a milestone
-item, a need, a decision or a contract updates it; one that fixes a defect does not (DEC-0021),
+fails a credential the code reads without one. `docs/status.md` is the one place that says where
+the project stands and what is needed from the owner; each milestone's account is a file of its
+own under `docs/status/` (#392). A pull request that touches a milestone item, a need, a
+decision or a contract updates the status; one that fixes a defect does not (DEC-0021),
 and `make gate-status` fails one that should have and did not. The list of what is open is
 generated (`make status`) and never stored in the file (DEC-0026).
 

@@ -1,3 +1,5 @@
+"""Telemetry that records nothing, for tests and for an instance without an exporter."""
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator

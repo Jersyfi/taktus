@@ -1,3 +1,5 @@
+"""A repository per aggregate over PostgreSQL, through the document mapping of `_mapping.py`."""
+
 from __future__ import annotations
 
 import asyncio
