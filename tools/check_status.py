@@ -33,6 +33,11 @@ Checks:
    a milestone item, a need, a decision or a contract — docs/roadmap.md, a record under
    docs/decisions/ or an ADR, a file under contracts/ — and not when it fixes a defect: the
    record of a documentation defect alone does not count (the owner's answer to DEC-0021).
+   A change to a file under docs/status/ counts as a change to the status;
+6. section 1 keeps no milestone's account: each milestone's is `docs/status/<x.y.z>.md`, which
+   starts with `# Status of \`x.y.z\`` naming a milestone of docs/roadmap.md and is named in
+   section 1; `docs/status/project.md` is how the project is run. Two pull requests on
+   different milestones then never edit the same paragraph (#392).
 
 `--write-pr-body FILE` writes the list into a pull request description, held in FILE, and
 checks nothing (the `owner-list` workflow, DEC-0189 rule 1). The list is the description's last
@@ -129,6 +134,7 @@ def counts(path: str) -> bool:
 
 
 STATUS_PATH = "docs/status.md"
+STATUS_DIR = "docs/status/"
 DEPENDENCY_BOTS = frozenset({"dependabot[bot]"})
 """The same authors `tools/check_decisions.py` names, for the same reason (NTC-0013)."""
 
@@ -504,6 +510,29 @@ def check_milestone(found: dict[str, str], report: Report) -> None:
         )
 
 
+def check_milestone_files(found: dict[str, str], report: Report) -> None:
+    print("a file per milestone")
+    body = found.get(SECTIONS[0], "")
+    roadmap = ROADMAP.read_text(encoding="utf-8") if ROADMAP.exists() else ""
+    folder = ROOT / STATUS_DIR
+    files = sorted(folder.glob("*.md")) if folder.is_dir() else []
+    for path in files:
+        rel = f"{STATUS_DIR}{path.name}"
+        if path.name == "project.md":
+            report.ok(f"{rel}: how the project is run")
+            continue
+        version = path.stem
+        first = path.read_text(encoding="utf-8").split("\n", 1)[0]
+        if not first.startswith(f"# Status of `{version}`"):
+            report.fail(rel, f"does not start with `# Status of \\`{version}\\``")
+        elif not re.search(rf"^### `{re.escape(version)}`", roadmap, re.MULTILINE):
+            report.fail(rel, f"`{version}` is not a milestone heading of docs/roadmap.md")
+        elif rel not in body:
+            report.fail(STATUS_PATH, f"section 1 does not name {rel}")
+        else:
+            report.ok(f"{rel}: the account of `{version}`, named in section 1")
+
+
 def check_pointer(found: dict[str, str], report: Report) -> None:
     print("needed from the owner")
     body = found.get(SECTIONS[2], "")
@@ -529,8 +558,8 @@ def check_freshness(base: str | None, report: Report) -> None:
     state = sorted(path for path in changed if counts(path))
     if not state:
         report.ok(f"nothing that changes the state of the project changed against {resolved}")
-    elif STATUS_PATH in changed:
-        report.ok(f"{len(state)} state-changing file(s) against {resolved}, and {STATUS_PATH} too")
+    elif STATUS_PATH in changed or any(path.startswith(STATUS_DIR) for path in changed):
+        report.ok(f"{len(state)} state-changing file(s) against {resolved}, and the status too")
     else:
         report.fail(
             STATUS_PATH,
@@ -666,6 +695,7 @@ def main(argv: list[str] | None = None) -> int:
         text = STATUS.read_text(encoding="utf-8")
         found = check_shape(text, report)
         check_milestone(found, report)
+        check_milestone_files(found, report)
         check_pointer(found, report)
     check_freshness(args.base, report)
     print()

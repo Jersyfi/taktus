@@ -200,3 +200,29 @@ def test_the_writer_leaves_a_dependency_bots_description_alone(tmp_path: Path) -
 
 def test_both_tools_name_the_same_dependency_bots() -> None:
     assert check_decisions.DEPENDENCY_BOTS == check_status.DEPENDENCY_BOTS
+
+
+def milestone_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first_line: str) -> int:
+    """A repository with one milestone in the roadmap and its file under docs/status/ (#392)."""
+    (tmp_path / "docs" / "status").mkdir(parents=True)
+    roadmap = tmp_path / "docs" / "roadmap.md"
+    roadmap.write_text("### `0.2.0` — governance\n", encoding="utf-8")
+    (tmp_path / "docs" / "status" / "0.2.0.md").write_text(first_line + "\n", encoding="utf-8")
+    monkeypatch.setattr(check_status, "ROOT", tmp_path)
+    monkeypatch.setattr(check_status, "ROADMAP", roadmap)
+    report = check_status.Report()
+    section = {check_status.SECTIONS[0]: "Where `0.2.0` stands: `docs/status/0.2.0.md`."}
+    check_status.check_milestone_files(section, report)
+    return len(report.failures)
+
+
+def test_a_milestone_keeps_its_account_in_a_file_of_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert milestone_files(tmp_path, monkeypatch, "# Status of `0.2.0` — governance") == 0
+
+
+def test_a_milestone_file_that_names_another_milestone_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert milestone_files(tmp_path, monkeypatch, "# Status of `0.9.0`") == 1

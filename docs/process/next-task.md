@@ -11,7 +11,8 @@ documentation defect: correct it and record it (M1.4).
 ## 1. Read
 
 1. `CLAUDE.md`, all of it.
-2. `docs/status.md`: where the project stands.
+2. `docs/status.md`: where the project stands, and the file under `docs/status/` of the
+   milestone the task belongs to.
 3. `docs/decisions/anchors.md` and `docs/decisions/anchors.taktus.md`: which questions are yours
    and which are the owner's.
 
