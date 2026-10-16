@@ -1,3 +1,8 @@
+"""The clock, identifiers and randomness of the system.
+
+The only place the core's time and chance come from.
+"""
+
 from __future__ import annotations
 
 import asyncio

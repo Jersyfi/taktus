@@ -1,3 +1,5 @@
+"""The provenance store in memory, for development and tests."""
+
 from __future__ import annotations
 
 from collections import deque

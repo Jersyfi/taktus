@@ -1,3 +1,5 @@
+"""The provenance store over PostgreSQL: one record per completed step, never changed."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
