@@ -5,7 +5,6 @@
 **Raised in:** the pull request that records it, on 2026-10-16, when every issue of `0.3.0` was closed
 **Issue:** [#500](https://github.com/Jersyfi/taktus/issues/500)
 **Needed by:** 2026-10-23
-**Provisional answer:** Option A. The session moves the use cases no task builds to later milestones (M1.7) and verifies what `0.3.0` built on the instance; the milestone stays open until the answer.
 
 ## 1. What this is about
 
@@ -70,3 +69,19 @@ Closing `0.3.0` on the host. Nothing else.
 ## 7. How to answer
 
 In #500: "DEC-0209: Option A" or "DEC-0209: Option B".
+
+## Outcome
+
+**Decided:** 2026-10-16
+**Answer:** Option A. "DEC-0209: Option A, mach weiter" (the owner's words: Option A, go on).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:**
+
+- `0.3.0` completes when a process can be viewed, changed and rolled back entirely from the web app and chat, and a person sees their own share of the waiting time.
+- "Created", with UC-4.1, moves to `0.4.0`.
+- The session moves the seven other use cases no task builds (M1.7):
+  - to `0.4.0`, which the second tenant needs: UC-4.2 (the diagram), UC-1.4 (the organisation's structure) and UC-10.2 (administration);
+  - to `0.5.0`, with the value ledger and role-based views: UC-1.5, UC-1.8, UC-5.5 and UC-6.5.
+- The session verifies what `0.3.0` built before it closes the milestone.
+
+**Recorded in:** this pull request

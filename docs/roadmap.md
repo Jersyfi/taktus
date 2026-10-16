@@ -204,8 +204,9 @@ the project as a product default** (ADR-0092) (#313) · the project's own record
 after it** (ADR-0096): parallel lanes under one check, path selection, drafts verified
 locally, merges without catching up behind a guard for `main` (#388, #389, #390, #391, #392)
 
-**Complete when** a process can be created, viewed, changed and rolled back entirely from the web app
-and chat, and you can see your own share of the waiting time.
+**Complete when** a process can be viewed, changed and rolled back entirely from the web app and
+chat, and you can see your own share of the waiting time. Creating one from a description
+(UC-4.1) moved to `0.4.0` (DEC-0209).
 
 ### `0.4.0` — the ML bench and the second tenant
 `mlbench` worker doing real work: training, evaluation, embeddings, classical ML (#89, #210) · method
@@ -225,7 +226,8 @@ artifacts back, what needs action reaching a person, a small install profile (#3
 no unit started per estimate, one egress gateway (#324) · every commit on `main` rehearses
 the self-development bundles, tests selected by component, a nightly ring that is read (ADR-0096)
 (#393, #394, #395) · a version rehearsed from the plan
-dialogue (#329) · skills as `SKILL.md`, `AGENTS.md` read, bundles checked without an instance (#407)
+dialogue (#329) · skills as `SKILL.md`, `AGENTS.md` read, bundles checked without an instance (#407) · **a process
+created from a description**, from the web app and chat (UC-4.1, moved from `0.3.0`, DEC-0209)
 
 **Complete when** a step moves from a language model to a trained model on Taktus's own proposal —
 measurably cheaper and reproducible, a step of the second tenant where its cases suffice — and stage 0 of the

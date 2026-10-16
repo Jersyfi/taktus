@@ -5,7 +5,7 @@ component: identity
 epic: E1
 serves: [P1, P6, P7]
 state: specified
-version: 0.3.0
+version: 0.4.0
 tests: []
 adrs: {ADR-0020: 406f1ca33b50}
 supersedes: null
