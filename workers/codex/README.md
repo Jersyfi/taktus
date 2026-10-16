@@ -147,7 +147,12 @@ that changed the workspace is committed and announced as an artifact `change-N` 
 `patch`, and at the end the `summary` and the `changeset` are
 published. A task that names `after` gains one last step: the worker — not the agent — runs its
 command in the workspace without a shell and without a credential, and publishes its standard
-output as the artifact the task names (W-18).
+output as the artifact the task names (W-18). A task that names `before` gains one first step:
+the worker runs that command in the prepared workspace before the agent starts, the same way,
+and publishes what it wrote to both outputs as the artifact the task names, also when it
+fails. A command that fails ends the assignment before the agent starts; what it left in the
+workspace is committed into the baseline and is not part of the change. It and the agent find
+their caches under `<state>/cache` (`XDG_CACHE_HOME`, ADR-0100).
 
 ## What it cannot do
 

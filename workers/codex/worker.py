@@ -70,6 +70,7 @@ MAX_CONCURRENT = 2
 AGENT_EXIT_GRACE = 10.0
 DEFAULT_CEILING = 300
 AFTER_TIMEOUT = 300  # seconds the task's command after the work may run
+BEFORE_TIMEOUT = 900  # seconds the task's command before the work may run (ADR-0100)
 
 CAPABILITIES = ["code.read", "code.edit", "code.test", "shell.sandboxed"]
 # What changes the workspace: the agent's sandbox is writable only when the frame allows one.
@@ -123,7 +124,8 @@ FAULTS: dict[str, str] = {
     "W-15": "an assignment beyond max_concurrent_assignments is accepted instead of answered 503",
     "W-16": "the state of an id never received is answered 200, accepted, instead of 404",
     "W-17": "an assignment whose id is held is accepted again as a second one instead of 409",
-    "W-18": "the task's command after the work is ignored: it never runs and nothing is published",
+    "W-18": "the task's commands before and after the work are ignored: they never run and "
+    "nothing is published",
 }
 
 
@@ -579,6 +581,9 @@ class _Run:
         self.last_text = ""
         self.turn: Json | None = None
         self.failure: str | None = None
+        # Whether this assignment prepared its workspace afresh, rather than continuing in the
+        # one an earlier attempt left: only then does the command before the work run.
+        self.fresh = False
 
     # -- setup --
 
@@ -594,6 +599,8 @@ class _Run:
         log(f"assignment {a.id} started at step {self.index + 1} (lineage {a.lineage})")
         if not self._prepare_workspace():
             return
+        if not self._before():
+            return
         if not self._hosts_admitted():
             return
         self.worker.log_in()
@@ -606,6 +613,7 @@ class _Run:
         resuming = self.body.get("context", {}).get("checkpoint_ref") is not None
         if resuming and self.workspace.is_dir():
             return True
+        self.fresh = True
         if self.workspace.exists():
             # An earlier attempt of the same assignment left it, with no checkpoint to continue
             # from: this one starts in a clean workspace, never fails on the old one (#280).
@@ -655,6 +663,62 @@ class _Run:
         return subprocess.run(  # noqa: S603 — git with fixed arguments in the workspace
             command, cwd=self.workspace, env=env, capture_output=True, text=True, check=check
         )
+
+    def _before(self) -> bool:
+        """The task's command before the work (contracts/worker/v1 §3, W-18, ADR-0100), as the
+        first step: run in the prepared workspace, so that the agent finds there what the
+        repository's own checks need. What it wrote is published as the artifact the task
+        names, also when it failed. The workspace it leaves is the baseline the change is
+        measured from. The command is not the agent's: no model is involved. False when it
+        failed the assignment."""
+        a = self.a
+        before = self.body["task"].get("before")
+        if not isinstance(before, dict) or self.fault == "W-18" or not self.fresh:
+            return True
+        self.index += 1
+        step = Step(
+            index=self.index,
+            step_id=f"step-{self.index}",
+            tool="before",
+            capability="shell.sandboxed",
+            kind="shell",
+            tokens=Tokens(),
+            began=time.monotonic(),
+        )
+        with a.lock:
+            self.worker._emit(
+                a,
+                {
+                    "type": "step.started",
+                    "step_id": step.step_id,
+                    "kind": step.kind,
+                    "summary": "the command before the work",
+                },
+            )
+        argv = tuple(str(p) for p in before["command"])
+        output, failure = run_before(argv, self.workspace, self.worker.state_dir)
+        named = str(before["artifact"])
+        if not any(p.artifact_id == named for p in a.inherited):
+            produced = Produced(named, "output", "text/plain", output)
+            with a.lock:
+                a.produced.append(produced)
+                self.worker._emit(a, _artifact_event(a, produced, step.step_id))
+        if failure is None:
+            # What the command left — an environment, a cache — is the workspace the work
+            # starts from, not the work's change.
+            self._git(["git", "add", "-A"])
+            self._git(["git", "commit", "--quiet", "--allow-empty", "-m", "taktus: prepared"])
+            self._git(["git", "tag", "--force", BASELINE_TAG], check=False)
+        self.last_step_id = step.step_id
+        self._close_step(step, "before")
+        log(
+            f"assignment {a.id}: the command before the work took "
+            f"{time.monotonic() - step.began:.1f}s" + (f" and failed: {failure}" if failure else "")
+        )
+        if failure is not None:
+            self.worker._finish(a, "failed", reason=failure)
+            return False
+        return True
 
     def _hosts_admitted(self) -> bool:
         """The hosts the task says it needs, held against the frame before the agent starts,
@@ -784,6 +848,9 @@ class _Run:
         # own login is used.
         env["CODEX_HOME"] = str(self.worker.agent_home)
         env["CI"] = "1"
+        # The caches the command before the work filled, so that what the agent runs in the
+        # workspace finds them (ADR-0100).
+        env["XDG_CACHE_HOME"] = str(cache_of(self.worker.state_dir))
         if self.worker.auth == "api-key":
             # The credential travels under the assignment's name and reaches the agent under
             # the variable it reads; nothing else of this worker's environment does.
@@ -1407,6 +1474,47 @@ def _only_reads(script: str) -> bool:
         if program not in READING:
             return False
     return True
+
+
+def run_before(argv: tuple[str, ...], workspace: Path, state: Path) -> tuple[bytes, str | None]:
+    """Run the task's command before the work in the workspace: a program and its arguments,
+    without a shell, with no credential in its environment. It reaches the network through the
+    unit's proxy, where the execution kind gives one, as git does; the proxy admits the frame's
+    hosts (ADR-0089). Its caches live under the worker's state, `XDG_CACHE_HOME`, so that a
+    later assignment on the same state finds what an earlier one fetched. What it wrote to its
+    standard output and error output, in order, and why it failed or None."""
+    keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
+    environment = {k: os.environ[k] for k in (*keep, *GIT_PROXY_VARIABLES) if k in os.environ}
+    environment["XDG_CACHE_HOME"] = str(cache_of(state))
+    try:
+        completed = subprocess.run(  # noqa: S603 — the task's own command, by design
+            list(argv),
+            cwd=workspace,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            timeout=BEFORE_TIMEOUT,
+            check=False,
+            env=environment,
+        )
+    except subprocess.TimeoutExpired as error:
+        output = error.output if isinstance(error.output, bytes) else b""
+        return output, f"the command before the work exceeded {BEFORE_TIMEOUT}s"
+    except OSError as error:
+        return b"", f"the command before the work could not be started: {error.strerror}"
+    if completed.returncode != 0:
+        tail = completed.stdout.decode(errors="replace").strip()[-300:]
+        return completed.stdout, (
+            f"the command before the work exited with {completed.returncode}"
+            + (f": {tail}" if tail else "")
+        )
+    return completed.stdout, None
+
+
+def cache_of(state: Path) -> Path:
+    """Where the commands of an assignment keep their caches: under the worker's state, which a
+    unit keeps on its claim across assignments."""
+    return state / "cache"
 
 
 def run_after(argv: tuple[str, ...], workspace: Path) -> tuple[bytes, str | None]:

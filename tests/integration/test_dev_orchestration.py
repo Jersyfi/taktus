@@ -72,6 +72,8 @@ from .test_removal_test import TENANT, result_of, run_removal
 BLUEPRINT = ROOT / "blueprints" / "dev-orchestration" / "processes"
 FAKE_SERVICE = ROOT / "tests" / "fakes" / "repository_service.py"
 CODING_WORKER = ROOT / "workers" / "claudecode" / "worker.py"
+SETUP_RECORD = "setup.json"
+"""What the fake package manager saw, beside the test's other files (`fake_package_manager`)."""
 FAKE_AGENT = ROOT / "workers" / "claudecode" / "fake_agent.py"
 FIRST_RUN = ROOT / "tools" / "first_run.sh"
 REPOSITORY = "acme/product"
@@ -193,6 +195,33 @@ def wait_ready(process: subprocess.Popen[bytes], url: str, log: Path, what: str)
     raise RuntimeError(f"the {what} did not become ready; see {log.read_text()[-2000:]}")
 
 
+def fake_package_manager(tmp_path: Path) -> Path:
+    """A directory with a stand-in for the package manager P-03's command before the work names
+    (`uv`, ADR-0100): it records its arguments and what of the environment it was given, leaves
+    an environment in the workspace as the real one does, and says so. The real one would need
+    the package index and a lock file the fake repository does not have."""
+    directory = tmp_path / "bin"
+    directory.mkdir()
+    program = directory / "uv"
+    record = tmp_path / SETUP_RECORD
+    program.write_text(
+        f"""#!{sys.executable}
+import json, os, pathlib, sys
+pathlib.Path(".venv").mkdir(exist_ok=True)
+pathlib.Path(".venv/installed").write_text("ruff mypy pytest\\n")
+pathlib.Path({str(record)!r}).write_text(json.dumps({{
+    "arguments": sys.argv[1:],
+    "credential": any("API_KEY" in k or "CREDENTIAL" in k for k in os.environ),
+    "cache": os.environ.get("XDG_CACHE_HOME", ""),
+}}))
+print("Installed 3 packages")
+""",
+        encoding="utf-8",
+    )
+    program.chmod(0o755)
+    return directory
+
+
 @pytest.fixture
 def outside(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Outside]:
     """The fakes and the worker. Parametrized indirectly with a mapping of path to content, the
@@ -291,6 +320,7 @@ def outside(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Outside]
                 stderr=subprocess.STDOUT,
                 env={
                     **os.environ,
+                    "PATH": f"{fake_package_manager(tmp_path)}{os.pathsep}{os.environ['PATH']}",
                     "CODING_AGENT_API_KEY": agent_key,
                     "FAKE_AGENT_WRITE": json.dumps(agent_writes),
                 },
@@ -522,6 +552,13 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         assert f"{step:<20} rule       exact     succeeded" in output, output
     assert "implement            worker     tolerant  succeeded" in output, output
     assert "wait-for-pipeline    wait       -         succeeded" in output, output
+    # Before the agent started, the worker prepared the workspace with the command the bundle
+    # names, with no credential and its caches under the worker's state (ADR-0100). What it left
+    # there is not part of the change: the branch below carries no `.venv`.
+    setup = json.loads((tmp_path / SETUP_RECORD).read_text(encoding="utf-8"))
+    assert setup["arguments"] == ["sync", "--all-extras", "--frozen"], setup
+    assert setup["credential"] is False, setup
+    assert setup["cache"].endswith("worker-state/cache"), setup
     writes = [
         line.split()[2:4]
         for line in output.splitlines()
@@ -545,7 +582,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
-    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@12`", announced)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@13`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -933,7 +970,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@4",
     "P-02-refinement.yaml": "p02-refinement@4",
-    "P-03-implementation.yaml": "p03-implementation@12",
+    "P-03-implementation.yaml": "p03-implementation@13",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -945,7 +982,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "write-report",
         },
         "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@12": {
+        "p03-implementation@13": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -965,7 +1002,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@12": {"implement"}},
+    "worker.endpoint": {"p03-implementation@13": {"implement"}},
     "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""

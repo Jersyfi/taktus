@@ -136,6 +136,18 @@ and the worker gives it no credential. A command that exits with anything but 0 
 assignment, and the artifact is not produced. A resumed assignment whose checkpoint lies after
 that artifact does not run it again. Check W-18 holds a worker to this (ADR-0053).
 
+**A command before the work.** `task.before` names a command the worker runs in its prepared
+workspace before the work starts, as the assignment's first step: what makes the workspace able
+to run its own checks, such as installing a project's dependencies. `command` is a program and
+its arguments, run without a shell and given no credential, and `artifact` the `artifact_id`
+under which what it wrote to its standard output and its error output is published, as
+`text/plain`, whether it succeeded or not. A command that exits with anything but 0 fails the
+assignment, and the work does not start. What the command leaves in the workspace is part of
+the workspace the work starts from, not part of the work's change. It reaches the network as
+far as the frame's `allowed_hosts` reach and no further: the hosts it needs are hosts of the
+frame. A resumed assignment that continues in the workspace it left does not run it again.
+Check W-18 holds a worker to this as well (ADR-0100).
+
 **Credentials travel as names.** The execution adapter injects the value into the worker's
 environment at runtime; the value never passes through this contract, never appears in an event, an
 artifact or a log, and is never stored by the worker. A worker that violates this fails conformance.
@@ -286,7 +298,7 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 | W-15 | a worker holding `max_concurrent_assignments` answers one more `POST /v1/assignments` with `503` and a problem body, and records nothing of it |
 | W-16 | `GET /v1/assignments/{id}` of an id the worker never received answers `404` with a problem body |
 | W-17 | a `POST /v1/assignments` whose id the worker already holds, running or finished, answers `409` with a problem body and starts nothing: the assignment of that id stays the first |
-| W-18 | a task's command after the work runs as the last step, after every step of the work; its standard output is the artifact the task names, byte for byte; a command that exits with anything but 0 fails the assignment without that artifact |
+| W-18 | a task's command after the work runs as the last step, after every step of the work; its standard output is the artifact the task names, byte for byte; a command that exits with anything but 0 fails the assignment without that artifact. A task's command before the work runs as the first step, before every step of the work; its output is the artifact the task names; a command that exits with anything but 0 fails the assignment, and no step of the work starts |
 
 The suite runs W-01 to W-11 and W-13 to W-18 against a live worker and reports W-12 as *pending*: the removal test
 takes the adapter out of running processes, which a suite talking to one endpoint cannot do, and

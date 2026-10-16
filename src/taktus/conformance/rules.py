@@ -45,7 +45,8 @@ CHECKS: dict[str, str] = {
     "W-16": "the state of an assignment id the worker never received answers 404",
     "W-17": "an assignment whose id the worker holds answers 409 and starts no second one",
     "W-18": "a task's command after the work runs once the work is done, and its standard "
-    "output is the artifact it names, byte for byte",
+    "output is the artifact it names, byte for byte; a task's command before the work runs "
+    "first, and the work starts only when it succeeded",
 }
 
 # Where the README states each rule. A failure cites this so that the reader can look it up.
@@ -120,7 +121,11 @@ REQUIREMENTS: dict[str, str] = {
     "workspace as its last step, after every step of the work: a succeeded assignment carries "
     "exactly one artifact.produced with the artifact_id the task names, no step starts after "
     "it, and its bytes are the command's standard output; a command that exits with anything "
-    "but 0 fails the assignment, and the artifact is not produced",
+    "but 0 fails the assignment, and the artifact is not produced. An assignment whose task "
+    "names a command before the work runs it as its first step, before every step of the work: "
+    "a succeeded assignment carries the artifact.produced with the artifact_id the task names, "
+    "produced by its first step, and its bytes are what the command wrote; a command that exits "
+    "with anything but 0 fails the assignment, and no step of the work starts",
 }
 
 CATALOGUE = Catalogue.build(
@@ -464,7 +469,44 @@ def stream_violations(
     out.extend(reach_violations(events))
     out.extend(artifact_violations(events))
     out.extend(after_violations(assignment, events, str(outcome)))
+    out.extend(before_violations(assignment, events, str(outcome)))
     return out
+
+
+def before_violations(assignment: Json, events: Sequence[Json], outcome: str) -> list[Violation]:
+    """W-18 within one stream, its other half: the command before the work is the assignment's
+    first step. A succeeded assignment carries the artifact the task names, produced by the
+    first step that started. A resumed assignment that continues in its workspace does not run
+    the command again, so a resumed stream is not held to it. That the bytes are what the
+    command wrote, and that a failing command stops the work, only a live run can show."""
+    before = (assignment.get("task") or {}).get("before")
+    if not isinstance(before, dict) or outcome != "succeeded":
+        return []
+    if (assignment.get("context") or {}).get("checkpoint_ref") is not None:
+        return []
+    named = before.get("artifact")
+    produced = [
+        e for e in events if e.get("type") == "artifact.produced" and e.get("artifact_id") == named
+    ]
+    if not produced:
+        return [
+            Violation(
+                "W-18",
+                f"the assignment succeeded without the artifact {named!r} that its command "
+                "before the work names",
+            )
+        ]
+    first = next((e.get("step_id") for e in events if e.get("type") == "step.started"), None)
+    if produced[0].get("step_id") != first:
+        return [
+            Violation(
+                "W-18",
+                f"the artifact {named!r} of the command before the work was produced by step "
+                f"{produced[0].get('step_id')!r} (seq {produced[0].get('seq')}), not by the "
+                f"first step {first!r}: the work started before the command ran",
+            )
+        ]
+    return []
 
 
 def after_violations(assignment: Json, events: Sequence[Json], outcome: str) -> list[Violation]:

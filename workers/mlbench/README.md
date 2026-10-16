@@ -70,7 +70,7 @@ Everything the reference worker does, it does too: an estimate, a resumable even
 consumption in `compute` seconds of its resource class after every step, a boundary and a
 checkpoint after every step, a stop that lands on the boundary, refusal of a tool or a host
 outside the frame, rejection before the start when the limits do not fit, a halt at the next
-boundary when the running total would cross them, the task's command after the work, `503` at
+boundary when the running total would cross them, the task's commands before and after the work, `503` at
 capacity, `404` for an id never received, `409` for one held. Its faults are those of the
 reference worker (`--list-faults`), each proven to fail exactly its check
 (`tests/conformance/test_worker_v1_mlbench.py`).

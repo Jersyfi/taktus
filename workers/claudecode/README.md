@@ -218,6 +218,26 @@ but 0 publishes nothing and the assignment ends `failed` with the exit status an
 it wrote to its error output (W-18). P-03 runs the repository's generator of the closing section
 this way (ADR-0053).
 
+A task that names `before` gains one first step, before the agent starts: the worker runs its
+`command` in the prepared workspace the same way — without a shell, with no credential — for at
+most fifteen minutes. What it writes to its standard output and error output becomes the
+artifact `before.artifact`, of kind `output`, also when it fails. A command that exits with
+anything but 0 ends the assignment `failed` with the exit status and the end of its output, and
+the agent never starts, so no money is spent on it. What the command left in the workspace is
+committed into the baseline: it is where the work starts from, not part of the changeset. The
+step reports no tokens and no money. A resumed assignment that continues in its workspace does
+not run the command again (W-18, ADR-0100).
+
+This is how a workspace gets what the repository's own checks need. The image carries two
+generic tools for it, `uv` and `make`; the repository's linters and test runners are its own, and
+its command installs them, at the versions its lock file holds. The command reaches the network
+through the unit's proxy, which admits the frame's hosts: the package index it installs from is
+a host of the step's frame, named by the bundle. The command and the agent find their caches
+under `<state>/cache` (`XDG_CACHE_HOME`), on the unit's state claim, so that a later assignment
+links what an earlier one fetched instead of fetching it again. P-03 prepares the workspace this
+way with `uv sync --all-extras --frozen`: about half a minute and half a gigabyte the first time,
+a few seconds once the cache holds it.
+
 ## What it cannot do
 
 - **Stop inside a tool call.** A boundary lies after a call's result; a shell command that runs

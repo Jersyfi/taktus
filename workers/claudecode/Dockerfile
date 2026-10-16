@@ -1,5 +1,8 @@
-# The coding worker's own image: a Python for the worker, git for the workspace, and the
-# agent's command-line interface. Nothing from the control plane (DEC-0011).
+# The coding worker's own image: a Python for the worker, git for the workspace, the agent's
+# command-line interface, and two generic tools a task's command before the work prepares a
+# workspace with: `uv`, a Python package manager, and `make` (ADR-0100). Nothing from the
+# control plane (DEC-0011), and nothing of one repository's toolchain: a repository installs its
+# own linters and test runners with its command before the work (ADR-0092).
 #
 # Built from the repository root:  docker build -f workers/claudecode/Dockerfile -t taktus-worker-coding .
 #
@@ -24,7 +27,7 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     TAKTUS_UNIT_PORT=9000 TAKTUS_UNIT_STATE_DIR=/var/lib/taktus/unit \
     CODING_AGENT_COMMAND=claude
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ca-certificates \
+    && apt-get install -y --no-install-recommends git ca-certificates make \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system unit \
     && useradd --system --gid unit --home-dir /home/unit --create-home unit \
@@ -33,6 +36,8 @@ RUN apt-get update \
 # of the image it was installed from.
 COPY --from=agent /usr/local/lib/node_modules/@anthropic-ai /opt/agent/@anthropic-ai
 RUN ln -s /opt/agent/@anthropic-ai/claude-code/bin/claude.exe /usr/local/bin/claude
+# uv at one exact version: its two binaries and nothing else of its image.
+COPY --from=ghcr.io/astral-sh/uv:0.12.15 /uv /uvx /usr/local/bin/
 COPY --chown=unit:unit workers/claudecode/worker.py workers/claudecode/prices.json /app/
 USER unit
 WORKDIR /app

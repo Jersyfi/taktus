@@ -79,7 +79,8 @@ FAULTS: dict[str, str] = {
     "W-15": "an assignment beyond max_concurrent_assignments is accepted instead of answered 503",
     "W-16": "the state of an id never received is answered 200, accepted, instead of 404",
     "W-17": "an assignment whose id is held is accepted again as a second one instead of 409",
-    "W-18": "the task's command after the work is ignored: it never runs and nothing is published",
+    "W-18": "the task's commands before and after the work are ignored: they never run and "
+    "nothing is published",
 }
 
 
@@ -121,8 +122,11 @@ class PlannedStep:
     artifacts: tuple[ArtifactSpec, ...] = ()
     progress: tuple[int, int] | None = None  # (current, total) in epochs
     argv: tuple[str, ...] | None = None
-    """A program and its arguments, run without a shell: the task's command after the work. Its
-    artifact is produced only when it exits with 0."""
+    """A program and its arguments, run without a shell: the task's command before or after the
+    work. The artifact of the command after the work is produced only when it exits with 0."""
+    before: bool = False
+    """The task's command before the work: its error output is part of its artifact, which is
+    produced whether it succeeded or not (ADR-0100)."""
 
 
 def quick_plan(step_seconds: float) -> list[PlannedStep]:
@@ -186,8 +190,25 @@ def longrun_plan(epochs: int, epoch_seconds: float) -> list[PlannedStep]:
 
 def plan_for(task: Json, profile: str, options: argparse.Namespace) -> list[PlannedStep]:
     """The steps of an assignment: the work — the commands the task carries, else the
-    profile's — and then the task's command after the work, when it names one (W-18)."""
+    profile's — preceded by the task's command before the work and followed by its command
+    after the work, when it names them (W-18, ADR-0100)."""
     steps = work_for(task, profile, options)
+    before = task.get("before")
+    if isinstance(before, dict) and options.fault != "W-18":
+        argv = tuple(str(part) for part in before.get("command") or ())
+        steps.insert(
+            0,
+            PlannedStep(
+                "before",
+                "shell",
+                "the command before the work",
+                " ".join(argv),
+                0.0,
+                (ArtifactSpec(str(before.get("artifact")), "output", "text/plain"),),
+                argv=argv,
+                before=True,
+            ),
+        )
     after = task.get("after")
     if isinstance(after, dict) and options.fault != "W-18":
         argv = tuple(str(part) for part in after.get("command") or ())
@@ -584,7 +605,7 @@ class Worker:
                 )
             else:
                 if step.argv is not None:
-                    output, failure = run_program(step.argv)
+                    output, failure = run_program(step.argv, before=step.before)
                 else:
                     output, failure = run_command(step.command)
                 if self.fault == "W-08-log" and credential:
@@ -615,8 +636,9 @@ class Worker:
             remaining = step.seconds - (time.monotonic() - began)
             if remaining > 0 and not refused:
                 time.sleep(remaining)
-            # The command after the work publishes its output only when it succeeded (W-18).
-            if not refused and (failure is None or step.argv is None):
+            # The command after the work publishes its output only when it succeeded (W-18); the
+            # command before the work publishes it either way (ADR-0100).
+            if not refused and (failure is None or step.argv is None or step.before):
                 self._produce(assignment, step, output, credential)
             consumption: Json = {
                 "type": "consumption.reported",
@@ -784,25 +806,32 @@ def run_command(command: str) -> tuple[bytes, str | None]:
     return completed.stdout, None
 
 
-def run_program(argv: tuple[str, ...]) -> tuple[bytes, str | None]:
-    """Run the task's command after the work: a program and its arguments, without a shell,
-    with no credential in its environment (contracts/worker/v1 §3)."""
+def run_program(argv: tuple[str, ...], *, before: bool = False) -> tuple[bytes, str | None]:
+    """Run the task's command before or after the work: a program and its arguments, without a
+    shell, with no credential in its environment (contracts/worker/v1 §3). After the work, its
+    standard output; before it, its standard output and error output in order."""
     keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
     environment = {k: os.environ[k] for k in keep if k in os.environ}
+    which = "before" if before else "after"
     try:
         completed = subprocess.run(  # noqa: S603 — the task's own command, by design
             list(argv),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT if before else subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
             timeout=COMMAND_TIMEOUT,
             check=False,
             env=environment,
         )
     except subprocess.TimeoutExpired:
-        return b"", f"the command after the work exceeded {COMMAND_TIMEOUT}s"
+        return b"", f"the command {which} the work exceeded {COMMAND_TIMEOUT}s"
     except OSError as error:
-        return b"", f"the command after the work could not be started: {error.strerror}"
+        return b"", f"the command {which} the work could not be started: {error.strerror}"
     if completed.returncode != 0:
-        return completed.stdout, f"the command after the work exited with {completed.returncode}"
+        return (
+            completed.stdout,
+            f"the command {which} the work exited with {completed.returncode}",
+        )
     return completed.stdout, None
 
 

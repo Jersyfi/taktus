@@ -80,6 +80,11 @@ that boundary's `checkpoint_ref`.
 standard output becomes the artifact `after.artifact`, of kind `output`, byte for byte. A command
 that exits with anything but 0 publishes nothing and the assignment ends `failed` (W-18).
 
+**The command before the work.** A task that names `before` gains one first step, `before`, of
+kind `shell`, run the same way. What it writes to its standard output and error output becomes
+the artifact `before.artifact`, also when it fails. A command that exits with anything but 0
+ends the assignment `failed`, and no step of the work starts (W-18, ADR-0100).
+
 **Limits.** The compute limit is this worker's hard ceiling while it runs, too (W-14). It keeps
 the running total of the compute seconds it has reported. After every boundary it adds the next
 step's expected seconds; if the sum would exceed `limits.compute.seconds`, the next step does
@@ -122,7 +127,7 @@ that check and only on that check.
 | `W-11` | W-11 | produces the artifacts from before a checkpoint again after resuming |
 | `W-13` | W-13 | reaches a host outside `allowed_hosts` and reports it without `refused: true` |
 | `W-14` | W-14 | ignores the limits once running: keeps starting steps after the running total reached them |
-| `W-18` | W-18 | ignores the task's command after the work: it never runs and nothing is published |
+| `W-18` | W-18 | ignores the task's commands before and after the work: they never run and nothing is published |
 
 W-12, the removal test, has no fault: it is not something a worker does at runtime.
 

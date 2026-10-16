@@ -62,7 +62,7 @@ ledger). P-02 never edits the issue and never adds the label `ready`: a person, 
 the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
 the same issue, it stops at the first check: nothing is written twice.
 
-**P-03 Implementation** (version 12, autonomy 4, twenty-eight steps, three of them on escalation): it starts when an
+**P-03 Implementation** (version 13, autonomy 4, twenty-eight steps, three of them on escalation): it starts when an
 issue is handed to Taktus, the label `to-taktus` added (DEC-0197), not on the label `ready`. Read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
 of open records on `main`, admit — the ready standard, and open, not a pull request, not
@@ -74,7 +74,7 @@ not make stops the run here, before the coding step spends anything, naming the 
 means none exists, or its head carries the key `create-branch` will write under, ADR-0099),
 implement (`worker`, `tolerant`: the coding worker in a clone of
 the repository, with the issue's text as its task and its section "How it is verified" as the
-acceptance; it leaves the pipeline's workflow files to a person, which the app may not write, NTC-0203), reserve the numbers of the records the change adds — read the records `main` holds, derive the references `refs/register/<PREFIX>-<NNNN>` of every record the changeset writes under `docs/decisions/` that `main` does not hold (`rule` `extract`, `exact`), and create them (`rule`, outward, skipped when there is none; a number somebody else holds stops the run, naming the reference, ADR-0095) — put the worker's changeset on the branch through the connector (`rule`,
+acceptance; before the agent starts, the worker installs the repository's environment from its lock file, from the package index the step's frame admits, so that the agent runs the repository's checks in the workspace, ADR-0100; it leaves the pipeline's workflow files to a person, which the app may not write, NTC-0203), reserve the numbers of the records the change adds — read the records `main` holds, derive the references `refs/register/<PREFIX>-<NNNN>` of every record the changeset writes under `docs/decisions/` that `main` does not hold (`rule` `extract`, `exact`), and create them (`rule`, outward, skipped when there is none; a number somebody else holds stops the run, naming the reference, ADR-0095) — put the worker's changeset on the branch through the connector (`rule`,
 outward: one commit that carries the idempotency key), wait for the pipeline (`wait`, polling
 the pipeline's state), read the verdict, verify it is `success` (`rule`, `exact` — the pipeline's
 verdict, never the worker's opinion), compose the title, the closing section and the body, open the pull request

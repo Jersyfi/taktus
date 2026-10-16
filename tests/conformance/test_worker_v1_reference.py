@@ -37,6 +37,8 @@ async def test_reference_worker_passes(start_worker: StartWorker, profile: str) 
         "repeated",
         "after-command",
         "after-command-failing",
+        "before-command",
+        "before-command-failing",
     }
     held = [r for r in report.runs if r.purpose == "held"]
     assert len(held) == 4, "the reference worker declares four places by default"
@@ -50,6 +52,7 @@ async def test_reference_worker_passes(start_worker: StartWorker, profile: str) 
     assert any("while it was finished answered 409" in line for line in repeats), repeats
     w18 = next(c for c in report.checks if c.id == "W-18")
     assert "byte for byte" in w18.observed and "exited with 1" in w18.observed
+    assert any("command before the work ran first" in line for line in w18.details), w18.details
 
 
 async def test_report_is_machine_readable_and_claims_no_verification(
