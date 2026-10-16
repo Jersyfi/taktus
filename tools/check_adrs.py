@@ -16,7 +16,7 @@ section `## Where this promise ends`, and this gate fails one that does not.
 Checks, per `docs/adr/ADR-NNNN-*.md`:
 
 1. the first line is `# ADR-NNNN — Title` and a `**Status:**` line follows;
-2. the ADR is listed in `docs/adr/README.md`;
+2. (since #392, see 6.)
 3. an ADR that *promises* — its prose, outside code and outside the section itself, carries a
    promise marker such as "never", "always", "guarantee", "immutable", "at most", "exactly",
    "cannot", "must" — has the section `## Where this promise ends`, as the last section;
@@ -31,6 +31,11 @@ with no ADR reports green and says so.
    `CREDENTIALS.md`, `README.md`, resolves to a file `docs/adr/ADR-NNNN-*.md`. NEED-0024 cited
    an ADR nobody wrote and every gate passed it (DEC-0178). Whether the reference names the right
    ADR is not checked, only that the ADR exists.
+
+6. `docs/adr/README.md` stores no row of the index and points at `make adrs`, which prints the
+   index with `--index`, generated from the ADRs: number, title, the first part of the status
+   line, and what other ADRs say they extend, amend or supersede in theirs. A stored index
+   conflicted whenever two pull requests each added an ADR (#392, DEC-0026).
 """
 
 from __future__ import annotations
@@ -63,6 +68,18 @@ REFERENCE_DIRS = ("docs", "src", "tools", "blueprints", "deploy", "contracts", "
 REFERENCE_FILES = ("CLAUDE.md", "CREDENTIALS.md", "README.md")
 REFERENCE_SUFFIXES = frozenset({".md", ".py", ".yaml", ".yml"})
 REFERENCE = re.compile(r"\bADR-(\d{4})\b")
+STORED_ROW = re.compile(r"^\| \[\d{4}\]\(", re.MULTILINE)
+RELATION = re.compile(r"\b(adds to|extends|amends|supersedes|replaces)\s+ADR-(\d{4})", re.I)
+PAST = {"adds to": "extended", "extends": "extended", "amends": "amended",
+        "supersedes": "superseded", "replaces": "superseded"}  # fmt: skip
+# Relations the later ADR's status line does not state; carried over from the index that was
+# kept by hand until #392.
+UNSTATED = {
+    "0003": ["extended by 0030 (a fourth verdict)"],
+    "0027": ["extended by 0030"],
+    "0035": ["amended by 0040"],
+    "0084": ["made reachable by 0086"],
+}
 
 
 @dataclass
@@ -102,7 +119,7 @@ def sections(text: str) -> list[tuple[str, str]]:
     return found
 
 
-def check(root: Path, path: Path, index: str, report: Report) -> None:
+def check(root: Path, path: Path, report: Report) -> None:
     rel = str(path.relative_to(root))
     problems: list[str] = []
     text = path.read_text(encoding="utf-8")
@@ -118,8 +135,6 @@ def check(root: Path, path: Path, index: str, report: Report) -> None:
         problems.append(f"file name says ADR-{name.group(1)}, title says ADR-{title.group(1)}")
     if not any(STATUS.match(line) for line in lines[1:6]):
         problems.append("no `**Status:**` line after the title")
-    if path.name not in index:
-        problems.append("not listed in docs/adr/README.md")
 
     parts = sections(text)
     ends = [body for heading, body in parts if heading == SECTION]
@@ -209,20 +224,69 @@ def check_references(root: Path, report: Report) -> None:
         report.ok("every ADR named in the repository has its file")
 
 
+def index_rows(adrs: Path) -> list[str]:
+    """The index of `docs/adr/README.md`, one table row per ADR, generated from the ADRs."""
+    entries: list[tuple[str, str, str, str]] = []
+    related: dict[str, list[str]] = {n: list(r) for n, r in UNSTATED.items()}
+    for path in sorted(adrs.glob("ADR-*.md")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        title = TITLE.match(lines[0]) if lines else None
+        if title is None:
+            continue
+        number = title.group(1)
+        status = next((line for line in lines[1:6] if STATUS.match(line)), "")
+        status = status.removeprefix("**Status:**").strip()
+        for found in RELATION.finditer(status):
+            past = PAST[found.group(1).lower()]
+            related.setdefault(found.group(2), []).append(f"{past} by {number}")
+        first, *later = status.split(" · ")
+        short = first.split(" (")[0].rstrip(" ,") if len(first) > 60 else first
+        if "amended" not in short and any(part.startswith("amended") for part in later):
+            short += ", amended"
+        entries.append((number, path.name, title.group(2), short))
+    rows = ["| ADR | Title | Status | Related |", "|---|---|---|---|"]
+    for number, name, title, short in entries:
+        rows.append(
+            f"| [{number}]({name}) | {title} | {short} | {'; '.join(related.get(number, []))} |"
+        )
+    return rows
+
+
+def check_index(index_path: Path, report: Report) -> None:
+    """The README stores no row of the index and points at the command that prints it."""
+    rel = "docs/adr/README.md"
+    if not index_path.exists():
+        report.fail(rel, "missing")
+        return
+    text = index_path.read_text(encoding="utf-8")
+    if STORED_ROW.search(text):
+        report.fail(rel, "stores rows of the index; `make adrs` prints it (#392, DEC-0026)")
+    elif "make adrs" not in text:
+        report.fail(rel, "does not point at `make adrs`, which prints the index")
+    else:
+        report.ok(rel + " stores no index and points at `make adrs`")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=Path, default=ROOT, help="the repository's root")
-    root: Path = parser.parse_args(argv).root
+    parser.add_argument("--index", action="store_true", help="print the index and check nothing")
+    args = parser.parse_args(argv)
+    root: Path = args.root
     adrs = root / "docs" / "adr"
     index_path = adrs / "README.md"
+    if args.index:
+        print("\n".join(index_rows(adrs)))
+        return 0
     report = Report()
     print("architecture decision records")
-    index = index_path.read_text(encoding="utf-8") if index_path.exists() else ""
     paths = sorted(adrs.glob("ADR-*.md")) if adrs.is_dir() else []
     if not paths:
         report.ok("no ADR yet — nothing to check, reporting green")
+    else:
+        check_index(index_path, report)
     for path in paths:
-        check(root, path, index, report)
+        check(root, path, report)
     print()
     print("references to architecture decision records")
     check_references(root, report)
