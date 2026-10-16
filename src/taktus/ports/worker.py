@@ -143,11 +143,23 @@ class AfterCommand(Value):
     artifact: str = Field(pattern=r"^[a-z][a-z0-9_.-]*$")
 
 
+class BeforeCommand(Value):
+    """A command the worker runs in its prepared workspace before the work starts, as the
+    assignment's first step. What it writes to its standard output and error output becomes the
+    artifact `artifact` names, whether it succeeds or not; an exit status other than 0 fails the
+    assignment before the work starts (contracts/worker/v1 §3, W-18, ADR-0100). A program and
+    its arguments, run without a shell, given no credential; it reaches the frame's hosts."""
+
+    command: tuple[Annotated[str, StringConstraints(min_length=1)], ...] = Field(min_length=1)
+    artifact: str = Field(pattern=r"^[a-z][a-z0-9_.-]*$")
+
+
 class Task(Value):
     goal: str = Field(min_length=1)
     acceptance: tuple[Annotated[str, StringConstraints(min_length=1)], ...] = Field(min_length=1)
     # The inputs' shape belongs to the task; the contract says `type: object` and no more.
     inputs: dict[str, Any] | None = None
+    before: BeforeCommand | None = None
     after: AfterCommand | None = None
 
 

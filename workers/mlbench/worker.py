@@ -97,7 +97,8 @@ FAULTS: dict[str, str] = {
     "W-15": "an assignment beyond max_concurrent_assignments is accepted instead of answered 503",
     "W-16": "the state of an id never received is answered 200, accepted, instead of 404",
     "W-17": "an assignment whose id is held is accepted again as a second one instead of 409",
-    "W-18": "the task's command after the work is ignored: it never runs and nothing is published",
+    "W-18": "the task's commands before and after the work are ignored: they never run and "
+    "nothing is published",
 }
 
 
@@ -263,8 +264,9 @@ class PlannedStep:
     tool: str | None
     seconds: float  # expected compute seconds, before the estimate factor
     epoch: int | None = None
-    argv: tuple[str, ...] | None = None  # the task's command after the work
-    artifact: str | None = None  # the artifact the command after the work fills
+    argv: tuple[str, ...] | None = None  # the task's command before or after the work
+    artifact: str | None = None  # the artifact that command fills
+    before: bool = False  # the command before the work (ADR-0100)
 
 
 def plan_for(task: Json, job: Job, floor: float) -> list[PlannedStep]:
@@ -294,6 +296,21 @@ def plan_for(task: Json, job: Job, floor: float) -> list[PlannedStep]:
     else:
         steps.append(
             PlannedStep("predict", "predict", "apply the model to the rows", PREDICT, load)
+        )
+    before = task.get("before")
+    if isinstance(before, dict):
+        steps.insert(
+            0,
+            PlannedStep(
+                "before",
+                "shell",
+                "the command before the work",
+                None,
+                0.0,
+                argv=tuple(str(p) for p in before.get("command") or ()),
+                artifact=str(before.get("artifact")),
+                before=True,
+            ),
         )
     after = task.get("after")
     if isinstance(after, dict):
@@ -740,7 +757,15 @@ class Worker:
         if job is None:  # a rejected assignment never runs
             raise StepFailed("the task could not be read")
         if step.argv is not None:
-            output, failure = run_after(step.argv)
+            output, failure = run_after(step.argv, before=step.before)
+            if step.before:
+                # The command before the work publishes what it wrote either way (ADR-0100).
+                self._produce(
+                    assignment, step, str(step.artifact), "output", "text/plain", output, None
+                )
+                if failure is not None:
+                    raise StepFailed(failure)
+                return
             if failure is not None:
                 raise StepFailed(failure)
             self._produce(
@@ -1070,25 +1095,32 @@ def fetch(uri: str, limit: int) -> bytes:
     return data
 
 
-def run_after(argv: tuple[str, ...]) -> tuple[bytes, str | None]:
-    """Run the task's command after the work: a program and its arguments, without a shell,
-    with no credential in its environment (contracts/worker/v1 §3)."""
+def run_after(argv: tuple[str, ...], *, before: bool = False) -> tuple[bytes, str | None]:
+    """Run the task's command before or after the work: a program and its arguments, without
+    a shell, with no credential in its environment (contracts/worker/v1 §3). After the work,
+    its standard output; before it, its standard output and error output in order."""
     keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
     environment = {k: os.environ[k] for k in keep if k in os.environ}
+    which = "before" if before else "after"
     try:
         completed = subprocess.run(  # noqa: S603 — the task's own command, by design
             list(argv),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT if before else subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
             timeout=AFTER_TIMEOUT,
             check=False,
             env=environment,
         )
     except subprocess.TimeoutExpired:
-        return b"", f"the command after the work exceeded {AFTER_TIMEOUT}s"
+        return b"", f"the command {which} the work exceeded {AFTER_TIMEOUT}s"
     except OSError as error:
-        return b"", f"the command after the work could not be started: {error.strerror}"
+        return b"", f"the command {which} the work could not be started: {error.strerror}"
     if completed.returncode != 0:
-        return completed.stdout, f"the command after the work exited with {completed.returncode}"
+        return (
+            completed.stdout,
+            f"the command {which} the work exited with {completed.returncode}",
+        )
     return completed.stdout, None
 
 

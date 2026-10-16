@@ -88,3 +88,4 @@ bounding. The section states the boundary; it does not point at it.
 | [0097](ADR-0097-a-process-names-the-steps-that-run-when-its-run-escalates.md) | A process names the steps that run when its run escalates | accepted |
 | [0098](ADR-0098-a-worker-states-what-it-put-within-reach-and-the-suite-sees-a-frame-enforced-by-not-offering.md) | A worker states what it put within reach, and the suite sees a frame enforced by not offering | accepted |
 | [0099](ADR-0099-a-run-reads-the-branch-it-will-write-before-it-spends.md) | A run reads the branch it will write before it spends | accepted |
+| [0100](ADR-0100-a-task-names-a-command-the-worker-runs-before-the-work.md) | A task names a command the worker runs before the work | accepted |

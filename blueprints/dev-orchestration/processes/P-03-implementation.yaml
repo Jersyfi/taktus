@@ -33,8 +33,9 @@
 #
 # Inputs: `issue`, the issue's number; `records_path`, the directory of the base branch that
 # holds the open decision and needs records; `repository_url`, where the worker clones from;
-# `repository_host`, the one host the step lets the worker reach (the clone's; the hosts its own
-# service needs are configured for the worker, ADR-0089); `coding_credential`, the
+# `repository_host`, the clone's host, which the step lets the worker reach beside the package
+# index its workspace is prepared from (the hosts its own service needs are configured for the
+# worker, ADR-0089); `coding_credential`, the
 # name of the credential the coding worker's authentication needs (its README);
 # `closing_section`, optional, the section the repository generates for the end of every pull
 # request description, verbatim with its heading. Without it the worker generates the section:
@@ -49,6 +50,12 @@
 # section is there once (issue #282). The connector configured for
 # `repository.*` and the worker configured for `code.*` are what the capabilities resolve to;
 # no product is named here.
+#
+# Before the agent starts, the worker prepares the workspace so that the repository's own checks
+# run in it: the command the step names under `before` installs the project's environment from
+# its lock file, and the step's frame admits the package index it fetches from (ADR-0100). The
+# agent then runs the linter, the type checker and the tests before the pipeline does, instead
+# of a run ending on a red pipeline after it paid (#466, #256).
 #
 # A record of this repository's register that the change adds — a decision, a notice, a needs
 # request — carries a number that must be reserved on the repository before the branch is
@@ -66,7 +73,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "12"
+version: "13"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -114,7 +121,7 @@ inputs:
     description: where the coding worker clones the repository from
     example: https://repo.example/owner/name.git
   repository_host:
-    description: the one host the worker may reach — the clone's
+    description: the clone's host, which the worker may reach
     example: repo.example
   coding_credential:
     description: the name of the credential the coding worker's authentication needs
@@ -429,10 +436,15 @@ steps:
             the repository's own rules for a change are met: whatever its contribution
             documentation requires of every change, which the repository states and the
             workspace carries
+          # The workspace was prepared by the command before the work, below: these commands
+          # run there (ADR-0100).
           - >
-            the repository's own checks are run in the workspace and pass. Where one cannot be
-            run there — it needs the network, or a tool the workspace does not have — the
-            summary names it and says why; no check is passed over in silence
+            the repository's own checks are run in the workspace and pass: at least
+            `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy`, and
+            `uv run pytest` on the tests of what the change touches, all of which the workspace
+            has. Where one cannot be run there — it needs a container engine, a cluster or a
+            host the workspace cannot reach — the summary names it and says why; no check is
+            passed over in silence
           - no secret value is written into any file
           # The run writes the branch as Taktus's own app, which may not change the pipeline's
           # workflows (CREDENTIALS.md); the service refuses the whole change otherwise (#366).
@@ -472,6 +484,14 @@ steps:
           issue: { $input: issue }
           title: { $from: read-issue, $select: output.title }
           context: { $from: context }
+        # The repository's environment — its linter, type checker and test runner, at the
+        # versions its lock file holds — installed in the workspace by the worker, not by the
+        # agent, before the agent starts (ADR-0100). This repository's value: the worker's image
+        # carries `uv`, the bundle says what it installs. What it printed is the artifact
+        # `setup`; a failure fails the step before any money is spent on the model.
+        before:
+          command: [uv, sync, --all-extras, --frozen]
+          artifact: setup
         # The repository's generator of the closing section, run by the worker — not by the
         # agent, and with no model — once the work is done, in the workspace: the tree the
         # branch will carry. What it prints is the artifact `closing`, byte for byte (W-18).
@@ -484,6 +504,10 @@ steps:
         location: { $input: repository_url }
       allowed_hosts:
         - { $input: repository_host }
+        # The package index the command before the work installs from: this repository's
+        # lock file names its index and the host its files are served from (ADR-0100).
+        - pypi.org
+        - files.pythonhosted.org
       credentials:
         - { name: { $input: coding_credential }, injected_as: env }
 

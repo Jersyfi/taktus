@@ -27,6 +27,7 @@ not the bottleneck here; adapter variety is.
 | Capability | Why it is required |
 |---|---|
 | **Accept an assignment** — task, context, frame, autonomy level | governance reaches into execution |
+| **Run the task's own commands around the work** — one before it, which prepares the workspace, and one after it, whose output is an artifact; never a model's (ADR-0053, ADR-0100) | a fixed operation stays fixed, and a workspace can run its repository's checks |
 | **Stream events** — progress, decisions, tool calls | ledger and status queries |
 | **Report consumption per step** — tokens, compute seconds, resource class | accounting in normalised units |
 | **Estimate demand before starting** and **signal step boundaries** | admission control; stopping without data loss |

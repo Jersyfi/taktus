@@ -39,7 +39,10 @@ suite stops every assignment of this probe and reads its stream to the end.
 Then the same work twice with a command after it (W-18): `after-command` prints a value only
 this run knows, which must come back as the artifact the task names, byte for byte, after every
 step of the work; `after-command-failing` exits with 1, which must fail the assignment without
-that artifact.
+that artifact. Then the same work twice with a command before it: `before-command` prints a
+value only this run knows, which must come back as the artifact the task names, produced by the
+first step, with the work after it; `before-command-failing` exits with 1, which must fail the
+assignment before any step of the work starts.
 
 W-08 scans everything the suite saw for the value of the credential it referenced by name. W-12
 is reported as pending: the removal test needs processes, and the suite has none.
@@ -86,6 +89,7 @@ DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 GENEROUS = 1_000_000
 MAX_HELD = 16
 AFTER_ARTIFACT = "after-output"
+BEFORE_ARTIFACT = "before-output"
 
 # Which check a schema violation in an event belongs to, by event type.
 EVENT_OWNER = {
@@ -195,6 +199,7 @@ async def run_suite(options: SuiteOptions) -> Report:
             await _w15(client, options, capabilities, declared, fitting, findings, runs)
             await _w17(client, options, main, declared, fitting, findings, runs)
             await _w18(client, options, declared, fitting, estimate, findings, runs)
+            await _w18_before(client, options, declared, fitting, estimate, findings, runs)
         except httpx.HTTPError as error:
             report.notes.append(f"the worker at {options.endpoint} stopped answering: {error!r}")
             if not findings.evidence["W-01"]:
@@ -301,12 +306,15 @@ def _assignment(
     hosts: Sequence[str] | None = None,
     checkpoint_ref: str | None = None,
     after: Json | None = None,
+    before: Json | None = None,
 ) -> Json:
     """`hosts` None means the hosts the caller named; a list is exactly that list, which is how
     the narrowed run withdraws one. The list is always sent: the affirmative form is the
     contract's, and an empty list is the explicit "nothing". `after` is the task's command
-    after the work (W-18), added to whichever task is sent."""
+    after the work (W-18), added to whichever task is sent; `before` the command before it."""
     task: Json = dict(options.task or DEFAULT_TASK)
+    if before is not None:
+        task["before"] = before
     if after is not None:
         task["after"] = after
     context: Json = {"workspace": {"kind": "none"}}
@@ -389,11 +397,18 @@ async def _run(
     checkpoint_ref: str | None = None,
     stop_on_step: str | bool | None = False,
     after: Json | None = None,
+    before: Json | None = None,
 ) -> Run:
     """Post an assignment and read its stream to the end. `stop_on_step` names the step at
     whose start a stop is requested; None means the first step; False means never."""
     assignment = _assignment(
-        options, allowed, limits, hosts=hosts, checkpoint_ref=checkpoint_ref, after=after
+        options,
+        allowed,
+        limits,
+        hosts=hosts,
+        checkpoint_ref=checkpoint_ref,
+        after=after,
+        before=before,
     )
     accepted = await client.post("/v1/assignments", assignment)
     run = Run(purpose, assignment, accepted, Stream(status=0))
@@ -1399,6 +1414,96 @@ async def _w18(
             "W-18",
             f"the command after the work ran last and its output came back as {AFTER_ARTIFACT!r} "
             "byte for byte; a command that exited with 1 failed the assignment without it",
+        )
+
+
+async def _w18_before(
+    client: WorkerClient,
+    options: SuiteOptions,
+    declared: list[str],
+    limits: Json,
+    estimate: Json | None,
+    findings: Findings,
+    runs: list[Run],
+) -> None:
+    """The same work twice with a command before it (ADR-0100). The first prints a value only
+    this run knows, which must come back as the named artifact, produced by the first step,
+    with the work's steps after it. The second exits with 1, which must fail the assignment
+    with no step after the command's. Both commands are POSIX utilities: `printf` and `false`."""
+    nonce = "taktus-conformance-" + secrets.token_hex(8)
+    expected = f"{nonce}\n".encode()
+    printed = await _run(
+        client,
+        options,
+        "before-command",
+        declared,
+        limits,
+        before={"command": ["printf", "%s\\n", nonce], "artifact": BEFORE_ARTIFACT},
+    )
+    runs.append(printed)
+    await _judge(client, printed, estimate, findings)
+    where = f"before-command run {printed.id}"
+    if printed.outcome != "succeeded":
+        finished = printed.events[-1] if printed.events else {}
+        findings.fail(
+            "W-18",
+            f"{where}: with a command before the work, the assignment ended with outcome "
+            f"{printed.outcome!r}"
+            + (f": {finished.get('reason')}" if finished.get("reason") else ""),
+        )
+        return
+    content = printed.artifact_bytes.get(BEFORE_ARTIFACT)
+    if content is None:
+        if not findings.failed("W-18"):
+            findings.fail("W-18", f"{where}: the artifact {BEFORE_ARTIFACT!r} could not be fetched")
+        return
+    if content != expected:
+        findings.fail(
+            "W-18",
+            f"{where}: the artifact {BEFORE_ARTIFACT!r} is {content[:80]!r}, the command printed "
+            f"{expected!r}",
+        )
+        return
+    started = [e.get("step_id") for e in printed.events if e.get("type") == "step.started"]
+    if len(started) < 2:
+        findings.fail(
+            "W-18",
+            f"{where}: no step of the work started after the command before it; steps {started}",
+        )
+        return
+
+    failing = await _run(
+        client,
+        options,
+        "before-command-failing",
+        declared,
+        limits,
+        before={"command": ["false"], "artifact": BEFORE_ARTIFACT},
+    )
+    runs.append(failing)
+    await _judge(client, failing, estimate, findings)
+    where = f"before-command-failing run {failing.id}"
+    if failing.outcome != "failed":
+        findings.fail(
+            "W-18",
+            f"{where}: a command before the work that exits with 1 must fail the assignment; it "
+            f"ended with outcome {failing.outcome!r}",
+        )
+        return
+    started = [e.get("step_id") for e in failing.events if e.get("type") == "step.started"]
+    if len(started) > 1:
+        findings.fail(
+            "W-18",
+            f"{where}: the command before the work exited with 1 and the work started all the "
+            f"same: steps {started}",
+        )
+        return
+    if not findings.failed("W-18"):
+        findings.ok(
+            "W-18",
+            f"the command before the work ran first and its output came back as "
+            f"{BEFORE_ARTIFACT!r}; a command before the work that exited with 1 failed the "
+            "assignment before the work started",
         )
 
 
