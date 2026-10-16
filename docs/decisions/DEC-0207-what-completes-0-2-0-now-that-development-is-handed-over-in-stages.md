@@ -5,7 +5,6 @@
 **Raised in:** the pull request that records DEC-0206, while rewriting #87 to the stages of DEC-0197
 **Issue:** [#483](https://github.com/Jersyfi/taktus/issues/483)
 **Needed by:** 2026-10-23
-**Provisional answer:** Option A. #87 is rewritten to it, and the session works towards it; the roadmap's sentence is left as it is until the answer.
 
 ## 1. What this is about
 
@@ -59,3 +58,17 @@ Nothing is blocked: work continues on Option A. The roadmap's sentence waits for
 ## 7. How to answer
 
 In #483: "DEC-0207: Option A" or "DEC-0207: Option B", or a figure other than USD 3.
+
+## Outcome
+
+**Decided:** 2026-10-16
+**Answer:** Option A. "DEC-0207: Option A, mach weiter" (the owner's words: Option A, go on).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:**
+
+- `0.2.0` is complete when stage 0 has met its measures and stage 1 has then run two weeks within them.
+- Stage 0's measures are 10 handed tasks, at least 80 % merged without rework, and at most USD 3 per merged pull request.
+- The 14 days with no intervention move to `0.6.0`.
+- `docs/roadmap.md` and #87 say so.
+
+**Recorded in:** this pull request
