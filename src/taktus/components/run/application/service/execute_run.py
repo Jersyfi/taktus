@@ -2900,8 +2900,16 @@ class RunEngine:
         run, step_run = await self._open_block(
             run, step_run, waiting.ACCOUNT, block.AT_CAPACITY, since=since
         )
+        # The worker did not take the assignment: none is open, and nothing is asked about it
+        # when the run is resumed. Left open, a launched worker without a unit for it could
+        # not be asked, and the resumed step failed (#486).
         step_run = step_run.model_copy(
-            update={"adapter": adapter, "waiting_since": since, "waits": waits}
+            update={
+                "adapter": adapter,
+                "waiting_since": since,
+                "waits": waits,
+                "assignment_open": False,
+            }
         )
         ceiling = self._ceiling(work)
         if waiting.over(since, now, ceiling):
