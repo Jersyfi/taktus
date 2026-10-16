@@ -25,18 +25,24 @@ Checks, per `docs/adr/ADR-NNNN-*.md`:
 
 An ADR without a promise marker may omit the section; the gate says so per file. A directory
 with no ADR reports green and says so.
+
+5. every `ADR-NNNN` named in a tracked Markdown, Python or YAML file under `docs/`, `src/`,
+   `tools/`, `blueprints/`, `deploy/`, `contracts/`, `tests/`, or in `CLAUDE.md`,
+   `CREDENTIALS.md`, `README.md`, resolves to a file `docs/adr/ADR-NNNN-*.md`. NEED-0024 cited
+   an ADR nobody wrote and every gate passed it (DEC-0178). Whether the reference names the right
+   ADR is not checked, only that the ADR exists.
 """
 
 from __future__ import annotations
 
+import argparse
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ADRS = ROOT / "docs" / "adr"
-INDEX = ADRS / "README.md"
 
 SECTION = "Where this promise ends"
 TITLE = re.compile(r"^# ADR-(\d{4}) — (.+)$")
@@ -52,6 +58,11 @@ PROMISE = re.compile(
 SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
 MIN_SENTENCES = 3
 POINTER_ONLY = re.compile(r"^\s*(?:see|refer to)\b", re.IGNORECASE)
+# Where a reference to an ADR is resolved: these directories and files, these suffixes.
+REFERENCE_DIRS = ("docs", "src", "tools", "blueprints", "deploy", "contracts", "tests")
+REFERENCE_FILES = ("CLAUDE.md", "CREDENTIALS.md", "README.md")
+REFERENCE_SUFFIXES = frozenset({".md", ".py", ".yaml", ".yml"})
+REFERENCE = re.compile(r"\bADR-(\d{4})\b")
 
 
 @dataclass
@@ -91,8 +102,8 @@ def sections(text: str) -> list[tuple[str, str]]:
     return found
 
 
-def check(path: Path, index: str, report: Report) -> None:
-    rel = str(path.relative_to(ROOT))
+def check(root: Path, path: Path, index: str, report: Report) -> None:
+    rel = str(path.relative_to(root))
     problems: list[str] = []
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
@@ -108,7 +119,7 @@ def check(path: Path, index: str, report: Report) -> None:
     if not any(STATUS.match(line) for line in lines[1:6]):
         problems.append("no `**Status:**` line after the title")
     if path.name not in index:
-        problems.append(f"not listed in {INDEX.relative_to(ROOT)}")
+        problems.append("not listed in docs/adr/README.md")
 
     parts = sections(text)
     ends = [body for heading, body in parts if heading == SECTION]
@@ -143,15 +154,78 @@ def check(path: Path, index: str, report: Report) -> None:
         report.ok(rel + ("" if ends else " (no promise made; section optional)"))
 
 
-def main() -> int:
+def tracked(root: Path) -> list[Path]:
+    """The files a reference is resolved in: tracked by Git, or every file outside a repository."""
+
+    def git(*args: str) -> str:
+        # A fixed executable name and arguments assembled here, not from input: nothing untrusted.
+        return subprocess.run(  # noqa: S603
+            ["git", *args],  # noqa: S607
+            cwd=root, capture_output=True, text=True, check=True,
+        ).stdout  # fmt: skip
+
+    try:
+        top, listed = git("rev-parse", "--show-toplevel").strip(), git("ls-files", "-z")
+    except (OSError, subprocess.CalledProcessError):
+        top, listed = "", ""
+    if top and Path(top).resolve() == root.resolve():
+        names = [name for name in listed.split("\0") if name]
+    else:
+        names = [str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()]
+    paths = []
+    for name in sorted(names):
+        parts = Path(name).parts
+        if Path(name).suffix not in REFERENCE_SUFFIXES:
+            continue
+        if name in REFERENCE_FILES or (len(parts) > 1 and parts[0] in REFERENCE_DIRS):
+            paths.append(root / name)
+    return paths
+
+
+def check_references(root: Path, report: Report) -> None:
+    """Every `ADR-NNNN` named in a reference file has its file under `docs/adr/`."""
+    adrs = root / "docs" / "adr"
+    numbers = {
+        m.group(1)
+        for p in (adrs.glob("ADR-*.md") if adrs.is_dir() else [])
+        if (m := re.match(r"ADR-(\d{4})-", p.name))
+    }
+    dangling = 0
+    for path in tracked(root):
+        if not path.is_file():
+            continue
+        rel = str(path.relative_to(root))
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for number, line in enumerate(text.splitlines(), start=1):
+            for found in REFERENCE.finditer(line):
+                if found.group(1) not in numbers:
+                    dangling += 1
+                    report.fail(
+                        f"{rel}:{number}",
+                        f"names ADR-{found.group(1)}, and no docs/adr/ADR-{found.group(1)}-*.md "
+                        "exists",
+                    )
+    if not dangling:
+        report.ok("every ADR named in the repository has its file")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--root", type=Path, default=ROOT, help="the repository's root")
+    root: Path = parser.parse_args(argv).root
+    adrs = root / "docs" / "adr"
+    index_path = adrs / "README.md"
     report = Report()
     print("architecture decision records")
-    index = INDEX.read_text(encoding="utf-8") if INDEX.exists() else ""
-    paths = sorted(ADRS.glob("ADR-*.md")) if ADRS.is_dir() else []
+    index = index_path.read_text(encoding="utf-8") if index_path.exists() else ""
+    paths = sorted(adrs.glob("ADR-*.md")) if adrs.is_dir() else []
     if not paths:
         report.ok("no ADR yet — nothing to check, reporting green")
     for path in paths:
-        check(path, index, report)
+        check(root, path, index, report)
+    print()
+    print("references to architecture decision records")
+    check_references(root, report)
     print()
     if report.failures:
         print(f"{report.passed} passed, {len(report.failures)} failed")

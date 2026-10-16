@@ -6,8 +6,8 @@
 
 ## 1. What this is about
 
-NEED-0024 said that the coding worker runs as a job in the cluster "(ADR-0034,
-`deploy/k8s/README.md` §7)". There is no ADR-0034: the register of ADRs skips that number, and no
+NEED-0024 said that the coding worker runs as a job in the cluster "(ADR 0034,
+`deploy/k8s/README.md` §7)". There is no ADR numbered 0034: the register of ADRs skips that number, and no
 file under `docs/adr/` carries it. Issue #244 repeated the reference as its source. The cluster
 execution adapter is specified in `deploy/k8s/README.md` §7, and the `kubernetes` row of
 ADR-0002's table is the decision it implements.
@@ -41,7 +41,7 @@ Nothing to answer. To object: "Reopen DEC-0178" in an issue.
 ## Outcome
 
 **Corrected:** 2026-10-11
-**What was wrong:** NEED-0024 cited ADR-0034 for the cluster execution adapter, and no ADR-0034 exists.
+**What was wrong:** NEED-0024 cited an ADR numbered 0034 for the cluster execution adapter, and no such ADR exists.
 **Why it was wrong:** the reference was written from memory of a number, and no gate resolves ADR references.
 **What it now says:** NEED-0024 cites ADR-0002 and `deploy/k8s/README.md` §7.
 **What changed in substance:** nothing; the adapter and its specification are what they were.
