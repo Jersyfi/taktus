@@ -220,9 +220,12 @@ generated (`make status`) and never stored in the file (DEC-0026).
   Every commit on `main` runs everything. A red `main` is the first task of any session, and
   nothing merges onto it except its repair. Once #390 lands, a draft is verified locally with
   `make verify` and CI starts when the pull request is ready. A pull request merges without
-  catching up with `main` since 2026-10-15 (NEED-0026); until #391 lands, no guard holds a merge
-  while `main` is red, so a session checks `main` before it merges. A flaky test is mended or quarantined by a
-  `gate-weakened` notice with a date, never rerun until green and forgotten.
+  catching up with `main` since 2026-10-15 (NEED-0026). While the newest run on `main` is red,
+  the required check fails every pull request except a revert or one naming `Mends main: <sha>`;
+  after every run a workflow repeats a failure once, records a repeat that passed in the issue
+  "Flake register", and opens "main is red" when `main` failed its repeat (#391). A flaky test
+  is mended or quarantined by a `gate-weakened` notice with a date, never rerun until green and
+  forgotten.
 - **Everything in English** — code, comments, commits, documentation.
 - **Never delete without asking:** no volume, database, backup or process version history. Restores
   count as potentially destructive and follow the same rule.

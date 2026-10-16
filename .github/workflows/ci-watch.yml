@@ -1,0 +1,123 @@
+name: ci watch
+
+# What follows every finished run of `ci` (ADR-0096 §5, #391). `tools/ci_watch.py decide` says
+# what; this workflow does it with the host.
+# - A first attempt that failed is repeated once, and this job waits for the repeat. A repeat
+#   that passes is a flake: the tests the failed attempt named are added to the issue
+#   "Flake register" with the date, never hidden. A repeat that fails on `main` opens or updates
+#   the issue "main is red", which `docs/process/next-task.md` takes before any other task.
+# - A run on `main` that passes closes "main is red".
+# The repeat is waited for here, not taken from its own event: an event of a later attempt is
+# ignored, so that nothing is recorded twice.
+#
+# Trust. `workflow_run` runs this file as it is on the default branch, never a pull request's
+# version of it, so a branch cannot change what runs with these permissions. The run's fields
+# reach the shell only through the environment and files, never in a command line.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: ci-watch-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  follow:
+    if: github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-latest
+    # The repeat of a full run is waited for: about three times the slowest green run.
+    timeout-minutes: 60
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      ID: ${{ github.event.workflow_run.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: what follows
+        id: first
+        env:
+          RUN: ${{ toJSON(github.event.workflow_run) }}
+        run: |
+          printf '%s' "$RUN" > "$RUNNER_TEMP/run.json"
+          echo "action=$(python3 tools/ci_watch.py decide --run "$RUNNER_TEMP/run.json")" >> "$GITHUB_OUTPUT"
+
+      - name: repeat once, and wait for the repeat
+        id: repeat
+        if: steps.first.outputs.action == 'rerun'
+        run: |
+          gh run rerun "$ID" --failed --repo "$REPO"
+          sleep 15
+          gh run watch "$ID" --repo "$REPO" --interval 60 > /dev/null || true
+          gh api "repos/$REPO/actions/runs/$ID" > "$RUNNER_TEMP/repeat.json"
+          echo "action=$(python3 tools/ci_watch.py decide --run "$RUNNER_TEMP/repeat.json")" >> "$GITHUB_OUTPUT"
+
+      - name: the flake register
+        if: steps.repeat.outputs.action == 'flake'
+        run: |
+          gh run view "$ID" --repo "$REPO" --attempt 1 --log-failed > "$RUNNER_TEMP/log.txt" || true
+          python3 tools/ci_watch.py failed-tests --log "$RUNNER_TEMP/log.txt" > "$RUNNER_TEMP/tests.txt"
+          issue=$(gh issue list --repo "$REPO" --state open --search 'in:title "Flake register"' \
+            --json number,title --jq '.[] | select(.title == "Flake register") | .number' | head -n 1)
+          if [ -z "$issue" ]; then
+            printf '%s\n' \
+              "Every run of \`ci\` that failed and passed on its repeat, with the tests it named (ADR-0096 §5)." \
+              "A test that appears here is mended, or quarantined by a \`gate-weakened\` notice with a date; it is never only rerun." \
+              > "$RUNNER_TEMP/register.md"
+            issue=$(gh issue create --repo "$REPO" --title "Flake register" --label task \
+              --body-file "$RUNNER_TEMP/register.md" | grep -oE '[0-9]+$')
+          fi
+          python3 - "$RUNNER_TEMP/repeat.json" "$RUNNER_TEMP/tests.txt" > "$RUNNER_TEMP/entry.md" <<'EOF'
+          import json, sys
+          run = json.load(open(sys.argv[1], encoding="utf-8"))
+          tests = [t for t in open(sys.argv[2], encoding="utf-8").read().splitlines() if t]
+          print(f"{run['updated_at'][:10]}: [run {run['id']}]({run['html_url']}) on `{run['head_branch']}` "
+                f"at {run['head_sha'][:12]} failed, and passed on its repeat.")
+          print("\n".join(f"- `{t}`" for t in tests) or "- no test named; the log says which step failed")
+          EOF
+          gh issue comment "$issue" --repo "$REPO" --body-file "$RUNNER_TEMP/entry.md"
+
+      - name: main is red
+        if: steps.repeat.outputs.action == 'main-red'
+        run: |
+          gh run view "$ID" --repo "$REPO" --log-failed > "$RUNNER_TEMP/log.txt" || true
+          python3 tools/ci_watch.py failed-tests --log "$RUNNER_TEMP/log.txt" > "$RUNNER_TEMP/tests.txt"
+          python3 - "$RUNNER_TEMP/repeat.json" "$RUNNER_TEMP/tests.txt" > "$RUNNER_TEMP/red.md" <<'EOF'
+          import json, sys
+          run = json.load(open(sys.argv[1], encoding="utf-8"))
+          tests = [t for t in open(sys.argv[2], encoding="utf-8").read().splitlines() if t]
+          print(f"[Run {run['id']}]({run['html_url']}) on `main` at {run['head_sha'][:12]} failed, "
+                "and failed again on its repeat.")
+          print("\n".join(f"- `{t}`" for t in tests) or "- no test named; the log says which step failed")
+          print("\nMending it is the task before any other (docs/process/next-task.md). Only its "
+                "repair merges: a pull request that names `Mends main: <sha>`, or a revert.")
+          EOF
+          issue=$(gh issue list --repo "$REPO" --state open --search 'in:title "main is red"' \
+            --json number,title --jq '.[] | select(.title == "main is red") | .number' | head -n 1)
+          if [ -z "$issue" ]; then
+            gh issue create --repo "$REPO" --title "main is red" --label task --label priority:high \
+              --body-file "$RUNNER_TEMP/red.md"
+          else
+            gh issue comment "$issue" --repo "$REPO" --body-file "$RUNNER_TEMP/red.md"
+          fi
+
+      - name: main is green
+        if: >-
+          steps.first.outputs.action == 'main-green' ||
+          (steps.repeat.outputs.action == 'flake' &&
+           github.event.workflow_run.head_branch == 'main' &&
+           github.event.workflow_run.event == 'push')
+        run: |
+          for issue in $(gh issue list --repo "$REPO" --state open --search 'in:title "main is red"' \
+              --json number,title --jq '.[] | select(.title == "main is red") | .number'); do
+            gh issue close "$issue" --repo "$REPO" --comment "main is green again: run $ID."
+          done

@@ -454,8 +454,10 @@ during half the time a pull request is open (`docs/research/2026-10-13-ci-review
 accepted a method of five rings (DEC-0194, ADR-0096): CI checks what changed before a merge and
 everything after it, on every commit of `main`, and every commit on `main` will rehearse the
 self-development bundles. Phases 1 and 2 are `0.3.0` (#388 to #392); since 2026-10-15 the
-ruleset no longer requires a branch to catch up with `main` (NEED-0026), before #391's guard
-exists. Nothing else of it is built yet.
+ruleset no longer requires a branch to catch up with `main` (NEED-0026). #388 runs the lanes in
+parallel under one required check; #391 adds the guard that holds every pull request but a
+repair while `main` is red, and the workflow that repeats a failed run once, keeps the flake
+register as an issue and opens "main is red".
 
 **The Warp outlook** (2026-10-13). Software factories such as Warp are far ahead where Taktus
 had placed its proof, so Taktus proves itself on a real operation instead (DEC-0195,
