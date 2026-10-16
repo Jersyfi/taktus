@@ -41,3 +41,10 @@ The session switches P-03 on, which it switched off on 2026-10-16 for #74's run.
 ## 7. How to confirm
 
 A coding step finishes on the instance again. The session records it in #490.
+
+## Outcome
+
+**Provided:** 2026-10-16
+**Confirmed by:** after the owner raised the limit, the coding step of `run_d59db1876a4b8641c65c` (#74's live run) was answered by the provider and used USD 4.69 over two assignments. The first assignment halted at its money and the second ran for an hour. The provider's refusal of 16:36 did not come again.
+**How it was provided:** the owner raised the workspace's monthly usage limit to USD 100, and said so in conversation: "Limit ist auf 100$ angehoben".
+**Recorded in:** the pull request that raised this need
