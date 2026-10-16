@@ -37,8 +37,28 @@ def test_the_required_check_needs_every_other_job_and_always_reports() -> None:
     gates = jobs[REQUIRED]
     assert gates["if"] == "always()", "a skipped aggregate would satisfy the ruleset"
     assert set(gates["needs"]) == set(jobs) - {REQUIRED}, gates["needs"]
-    script = gates["steps"][-1]["run"]
-    assert 'all(.[]; .result == "success")' in script, script
+    lanes = next(step for step in gates["steps"] if step.get("name") == "every lane passed")
+    assert 'all(.[]; .result == "success")' in lanes["run"], lanes
+
+
+def test_the_last_step_on_a_pull_request_is_the_guard_of_main() -> None:
+    """While `main` is red only its repair merges (ADR-0096 §5, #391); the guard decides from
+    what the host answers, and fails when it answers nothing (tests/tools/test_ci_watch.py)."""
+    gates = load(CI)["jobs"][REQUIRED]
+    last = gates["steps"][-1]
+    assert last["if"] == "github.event_name == 'pull_request'", last
+    assert "tools/ci_watch.py guard" in last["run"], last
+    assert gates["permissions"]["actions"] == "read", "the guard reads the runs on main"
+
+
+def test_every_finished_run_of_ci_is_followed() -> None:
+    """The automaton after every run: a repeat, the flake register, 'main is red' (#391)."""
+    watch = load(WORKFLOWS / "ci-watch.yml")
+    assert watch["on"] == {"workflow_run": {"workflows": ["ci"], "types": ["completed"]}}
+    assert watch["permissions"] == {}, "every permission is the job's own"
+    names = [step.get("name") for step in watch["jobs"]["follow"]["steps"]]
+    for step in ("repeat once, and wait for the repeat", "the flake register", "main is red"):
+        assert step in names, names
 
 
 def test_a_superseded_run_is_cancelled_and_a_run_on_main_never() -> None:
