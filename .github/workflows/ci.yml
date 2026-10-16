@@ -26,9 +26,38 @@ permissions:
   contents: read
 
 jobs:
+  # Which lanes this change runs (ADR-0096 §3, #390): `tools/lanes.py`, the code `make verify`
+  # runs too. `static` and `decisions` always run; the others when a path they claim changed. A
+  # push to `main` runs every lane: every commit there is checked in full.
+  select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      contracts: ${{ steps.lanes.outputs.contracts }}
+      web: ${{ steps.lanes.outputs.web }}
+      conformance: ${{ steps.lanes.outputs.conformance }}
+      test: ${{ steps.lanes.outputs.test }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: the lanes this change selects
+        id: lanes
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'origin/main' }}
+          EVERYTHING: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+        run: |
+          if [ "$EVERYTHING" = "true" ]; then
+            python3 tools/lanes.py --all --github-output "$GITHUB_OUTPUT"
+          else
+            python3 tools/lanes.py --base "$BASE" --github-output "$GITHUB_OUTPUT"
+          fi
+
   # The contracts are language-neutral and need no installed project: the validator brings its
   # own dependencies (PEP 723 header), so this job stays green independently of the Python gates.
   contracts:
+    needs: select
+    if: needs.select.outputs.contracts == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -83,6 +112,8 @@ jobs:
   # The web app under web/ (ADR-0063): its packages from the lock file, its types, its tests and
   # its build. It needs Node and not the Python environment; here the gate may not skip.
   web:
+    needs: select
+    if: needs.select.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -164,6 +195,8 @@ jobs:
   # The conformance suite of every contract. Each test starts its own worker or connector
   # process, so the tests spread over the runner's cores (`pytest-xdist`).
   conformance:
+    needs: select
+    if: needs.select.outputs.conformance == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -177,6 +210,8 @@ jobs:
   # container and may not skip here. The test images are built once before the tests spread
   # over the cores, so that no two processes build the same image.
   test:
+    needs: select
+    if: needs.select.outputs.test == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -197,7 +232,7 @@ jobs:
   # `Mends main: <sha>`. When the host does not answer, the guard fails: nothing merges blind.
   gates:
     if: always()
-    needs: [contracts, decisions, web, static, conformance, test]
+    needs: [select, contracts, decisions, web, static, conformance, test]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -214,7 +249,10 @@ jobs:
           RESULTS: ${{ toJSON(needs) }}
         run: |
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' > /dev/null
+          # A lane the change did not select is skipped, and passes; one that failed, was
+          # cancelled or timed out fails the check, and so does a selection that did not succeed.
+          echo "$RESULTS" | jq -e '.select.result == "success"' > /dev/null
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' > /dev/null
 
       # The description is read now, so that a `Mends main:` added since the push counts when
       # the run is repeated. Title and description reach the tool as files and variables, never
