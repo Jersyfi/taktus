@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import os
+import uuid
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -99,7 +99,9 @@ class Daemon:
 
 @pytest.fixture
 async def tenant(postgres_url: str) -> AsyncIterator[str]:
-    name = f"triggers-{os.getpid()}-{free_port()}"
+    # A port is not unique: the system hands a freed one out again, and the tenant rows of earlier
+    # tests stay in the database, so two tests of one process collided on `tenant_pkey`.
+    name = f"triggers-{uuid.uuid4().hex}"
     persistence = PostgresPersistence(postgres_url)
     try:
         async with persistence.engine.begin() as connection:

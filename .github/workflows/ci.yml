@@ -110,13 +110,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The repository is public. A finding is handled as rotate-first,
-      # never as a false positive to silence. The action needs the workflow's own token to read
-      # the commits of a pull request; that token is created by GitHub per run, not stored here.
+      # The repository is public. A finding is handled as rotate-first, never as a false
+      # positive to silence. The range is the one this run's event names, so that every commit
+      # of it is in the clone (#389); the scan first proves it finds a planted key.
       - name: secrets
-        uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: tools/install_gitleaks.sh && tools/scan_secrets.sh "$BASE" "$HEAD"
 
       - uses: astral-sh/setup-uv@v5
       - run: make install
