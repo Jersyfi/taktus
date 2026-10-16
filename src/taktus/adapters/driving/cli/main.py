@@ -50,6 +50,7 @@ from taktus.adapters.driving.cli import (
     interfaces_command,
     maturation_command,
     owner_channel_command,
+    resume_command,
     run_command,
     submit_command,
 )
@@ -75,6 +76,7 @@ app.add_typer(conformance, name="conformance")
 conformance.command("record")(conformance_command.record)
 app.command("run")(run_command.run)
 app.command("submit")(submit_command.submit)
+app.command("resume")(resume_command.resume)
 app.command("deactivate")(deactivate_command.deactivate)
 app.command("exactness")(exactness_command.exactness)
 app.command("capacity")(capacity_command.capacity)

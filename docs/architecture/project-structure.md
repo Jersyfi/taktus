@@ -251,6 +251,7 @@ role it would tie the core to a model stack and the removal test would be lost.
   entries after its own position, filtered when they are sent by the reader's key as it is then.
   A reader that reconnects to another process resumes from its position. Proven with two `api`
   processes, with the notification and without it (`tests/integration/test_live_changes.py`).
+- **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays.
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread
   of the process, no longer scans it: 2 000 runs read at once paused the event loop half as long
