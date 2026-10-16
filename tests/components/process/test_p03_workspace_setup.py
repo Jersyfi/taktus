@@ -25,7 +25,7 @@ PACKAGE_INDEX = ("pypi.org", "files.pythonhosted.org")
 
 def implement() -> dict[str, Any]:
     bundle = yaml.safe_load(P03.read_text(encoding="utf-8"))
-    assert bundle["version"] == "13"
+    assert int(bundle["version"]) >= 13, "the workspace setup came with version 13 (ADR-0100)"
     (step,) = [s for s in bundle["steps"] if s["id"] == "implement"]
     work: dict[str, Any] = step["work"]
     return work

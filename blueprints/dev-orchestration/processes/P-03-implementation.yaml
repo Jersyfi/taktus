@@ -73,7 +73,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "13"
+version: "14"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -650,7 +650,10 @@ steps:
           - { name: REPOSITORY_TOKEN, injected_as: env }
         select: state
         expect: [success, failure]
-        poll_seconds: 30
+        # Once a minute: the step reserves its worst case, a call per poll until the timeout,
+        # and at 30 s that was 162 of the run's 200 quota units for a wait that used 26; a run
+        # whose branch took more than usual was refused the wait by one unit (#472, 2026-10-16).
+        poll_seconds: 60
         timeout_seconds: 2400
 
   - id: read-pipeline
