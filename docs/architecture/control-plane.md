@@ -174,7 +174,11 @@ In code, `src/taktus/components/run/` does exactly this around every step, whate
 estimate, reserve against what remains of the run's line, run, persist checkpoint, artifacts and
 raw consumption, then honour a pending stop at the boundary. A step rejected by admission control
 halts the run with cause `limit`, one without an estimate with cause `no_estimate`; a raised
-budget on resume lets it continue. A worker step
+budget on resume lets it continue. A person raises it with `taktusctl resume --run RUN --raise
+AMOUNT --reason TEXT`: the run's own money limit grows by the amount, no bundle is read and no
+version registered, and the `budget.set` statement names the limit before and the reason. The
+raise is held to the ceiling the operator sets in `TAKTUS_RAISE_CEILING`, an amount and its
+currency; without one no raise is admitted (#458, DEC-0202). A worker step
 stopped mid-way ends with the worker's checkpoint, and the resumed assignment starts from it.
 
 Every state change is one transaction with the ledger entry that describes it: the run as it

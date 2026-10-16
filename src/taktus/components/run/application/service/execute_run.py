@@ -338,6 +338,9 @@ class ResumeRun:
     actor: str
     tenant: Tenant
     budget: Limits | None = None  # a changed limit; None keeps the run's
+    reason: str | None = None
+    """Why the limit changed, in the person's words: kept in the budget statement the ledger's
+    `budget.set` names, never in the ledger itself (ADR-0006, #458)."""
     stop_after: int | None = None
     on_claim: bool = False
     """Resumed because a runner claimed the run's job. A runner can die after the run's last
@@ -569,8 +572,11 @@ class RunEngine:
             if command.on_claim and _ended(run):
                 return run
             if command.budget is not None and command.budget != run.budget:
+                before = run.budget
                 run = run.model_copy(update={"budget": command.budget})
-                await self._state_budget(run, command.actor)
+                await self._state_budget(
+                    run, command.actor, changed_from=before, reason=command.reason
+                )
             if run.state is RunState.WAITING_HUMAN:
                 # A decision applied while nobody continued the run takes effect here.
                 run, declined = await self._apply_decisions(run)
@@ -638,7 +644,14 @@ class RunEngine:
         async with self._work.transaction(tenant):
             return await self._runs.get(tenant, run_id) is not None
 
-    async def _state_budget(self, run: Run, actor: str | None) -> None:
+    async def _state_budget(
+        self,
+        run: Run,
+        actor: str | None,
+        *,
+        changed_from: Limits | None = None,
+        reason: str | None = None,
+    ) -> None:
         """Say what the budget can promise when it is set, not afterwards (principle 8): the
         budget, the margin, the line the run is held to, how each limited kind is held and
         why, the price table money is computed at, the weighting table the Takt is computed
@@ -699,6 +712,9 @@ class RunEngine:
                 "below_floor": budgeting.below_floor(self._options.uncalibrated_margin),
             },
         }
+        if changed_from is not None:
+            # A limit changed on resume: from what, and why — who changed it is the entry's actor.
+            statement["changed"] = {"from": changed_from.document(), "reason": reason}
         digest = await self._objects.put(_canonical(statement))
         async with self._work.transaction(run.tenant):
             await self._fence(run)
