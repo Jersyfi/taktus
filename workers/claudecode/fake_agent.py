@@ -173,6 +173,14 @@ def perform(tool: str, arguments: Json) -> tuple[str, bool]:
     return f"unknown tool {tool}", True
 
 
+def save_session(session_id: str, done: int) -> None:
+    """Replace the session at once, so that an agent ended at any moment leaves a whole one."""
+    path = session_path(session_id)
+    partial = path.with_suffix(".partial")
+    partial.write_text(json.dumps({"done": done}))
+    os.replace(partial, path)
+
+
 def session_path(session_id: str) -> Path:
     directory = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "sessions"
     directory.mkdir(parents=True, exist_ok=True)
@@ -294,6 +302,11 @@ def main(argv: list[str] | None = None) -> int:
             result: Json = {"tool_use_id": call["id"], "type": "tool_result", "content": text}
             if is_error:
                 result["is_error"] = True
+            finished = max(finished, n)
+            # The session holds the call before its result is streamed: the worker ends the
+            # agent at the boundary that result opens, and a session written after it was lost
+            # or, cut off mid-write, left empty, so that the resume failed (#389).
+            save_session(session_id, finished)
             emit(
                 {
                     "type": "user",
@@ -302,8 +315,6 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
             results += 1
-            finished = max(finished, n)
-            session_path(session_id).write_text(json.dumps({"done": finished}))
             if expire_after and results >= expire_after:
                 emit(
                     {
