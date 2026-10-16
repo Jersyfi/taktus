@@ -48,7 +48,11 @@ PLAN: list[tuple[str, Json]] = [
     ("update", {"path": "hello.txt", "old": "hello", "new": "hello, world"}),
     ("command", {"command": "pytest -q 2>/dev/null || printf 'checked\\n' > checked.txt"}),
 ]
-FINAL = "Wrote notes/plan.md and hello.txt, changed the greeting, and ran the check."
+# A summary proposes the type of the pull request's title, as P-03 asks of it (ADR-0101).
+FINAL = (
+    "<!-- commit-type: feat -->\n"
+    "Wrote notes/plan.md and hello.txt, changed the greeting, and ran the check."
+)
 MODEL = "fake-coding-model"
 
 

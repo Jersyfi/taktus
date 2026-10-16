@@ -95,6 +95,7 @@ again, which starts a new run.
 | `to-taktus` | the task is handed to Taktus: P-03 takes it, and every session skips it (DEC-0197) |
 | `taktus` | on a pull request: Taktus opened it; it hands nothing over |
 | `priority:high`, `priority:normal`, `priority:low` | the order within a milestone; exactly one per task |
+| `type:<type>` | optional: the Conventional Commits type — `feat`, `fix`, `docs`, … — of the pull request P-03 opens for the task, where a person wants to decide it (ADR-0101) |
 | `task` | an issue made from the form `Task` |
 | `report` | the issue carries a process's reports, such as P-01's; it is not work |
 

@@ -84,7 +84,11 @@ def plan() -> list[tuple[str, Json]]:
     return [*fetches, *PLAN[:-1], *writes, PLAN[-1]]
 
 
-FINAL = "Wrote notes/plan.md and hello.txt, edited the greeting, and ran the check."
+# A summary proposes the type of the pull request's title, as P-03 asks of it (ADR-0101).
+FINAL = (
+    "<!-- commit-type: feat -->\n"
+    "Wrote notes/plan.md and hello.txt, edited the greeting, and ran the check."
+)
 MODEL = "claude-haiku-4-5-20251001"
 """The model a message names where `--model` names none: as the real agent names it, dated."""
 

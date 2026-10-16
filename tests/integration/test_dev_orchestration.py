@@ -621,7 +621,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
-    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@16`", announced)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@17`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -642,7 +642,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
     assert isinstance(pulls, list) and len(pulls) == 1
     pull = pulls[0]
     assert pull["head"]["ref"] == f"taktus/issue-{tasks.ready}" and pull["base"]["ref"] == "main"
-    assert pull["title"] == f"Write a greeting (#{tasks.ready})"
+    assert pull["title"] == f"feat: write a greeting (#{tasks.ready})", "the proposed type"
     assert f"Closes #{tasks.ready}." in pull["body"]
     assert "Opened by Taktus, process P-03" in pull["body"]
     assert "Wrote notes/plan.md" in pull["body"], "the worker's own summary"
@@ -1009,7 +1009,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@4",
     "P-02-refinement.yaml": "p02-refinement@4",
-    "P-03-implementation.yaml": "p03-implementation@16",
+    "P-03-implementation.yaml": "p03-implementation@17",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -1021,7 +1021,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "write-report",
         },
         "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@16": {
+        "p03-implementation@17": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -1041,7 +1041,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@16": {"implement"}},
+    "worker.endpoint": {"p03-implementation@17": {"implement"}},
     "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""
