@@ -43,7 +43,9 @@ def entries(directory: Path) -> list[Path]:
         p
         for p in directory.iterdir()
         if not p.name.startswith((".", "__pycache__"))
-        and ((p.is_dir() and any(p.rglob("*.py"))) or (p.suffix == ".py" and p.name != "__init__.py"))
+        and (
+            (p.is_dir() and any(p.rglob("*.py"))) or (p.suffix == ".py" and p.name != "__init__.py")
+        )
     ]
     return sorted(children, key=lambda p: (p.is_file(), p.name))
 
