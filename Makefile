@@ -1,6 +1,9 @@
 .DEFAULT_GOAL := help
 UV ?= uv
 
+# Every target is declared .PHONY beside itself: one shared list was a line every pull request
+# that adds a target rewrote, and two such pull requests conflicted on it (DEC-0027, #392).
+.PHONY: help
 help: ## Show targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-20s\033[0m %s\n",$$1,$$2}'
 
@@ -10,6 +13,7 @@ help: ## Show targets
 need-%:
 	@tools/preflight.sh $*
 
+.PHONY: doctor
 doctor: ## Report the tooling state; non-zero if a required tool is missing
 	@tools/preflight.sh --doctor
 
@@ -22,8 +26,10 @@ $(ENV_STAMP): pyproject.toml uv.lock | need-uv
 	$(UV) sync --all-extras
 	@touch $@
 
+.PHONY: env
 env: $(ENV_STAMP) ## Ensure the project environment is installed and current
 
+.PHONY: install
 install: need-uv ## Create or refresh the environment
 	$(UV) sync --all-extras
 	@touch $(ENV_STAMP)
@@ -35,6 +41,7 @@ install: need-uv ## Create or refresh the environment
 PARALLEL ?= -n auto --maxprocesses=8
 
 # The gate directories run under their own targets; `make gates` runs every test exactly once.
+.PHONY: test
 test: env ## Unit and domain tests — everything under tests/ that is not a gate; PARALLEL= runs them in one process
 	$(UV) run tools/gate.py test tests $(PARALLEL) -m 'not timing' $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
 	$(UV) run tools/gate.py timing tests -m timing $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
@@ -42,60 +49,76 @@ test: env ## Unit and domain tests — everything under tests/ that is not a gat
 # The images the container tests need (tests/images.py). Each is built only when its Dockerfile
 # or a file it copies changed; an unchanged one is not handed to the builder at all. The tests
 # build them the same way on first use; this target does it ahead, with each build's time.
+.PHONY: images
 images: env need-docker ## Build the test images whose content changed; REBUILD=1 builds them all
 	$(UV) run python tests/images.py $(if $(REBUILD),--rebuild)
 
+.PHONY: gate-contracts
 gate-contracts: need-uv ## Schemas are valid 2020-12, examples validate, must-fail examples fail
 	$(UV) run tools/validate_contracts.py
 
+.PHONY: gate-arch
 gate-arch: env ## Adapter obligation, component boundaries, no product names in the core
 	$(UV) run lint-imports
 	$(UV) run tools/gate.py architecture tests/architecture
 
+.PHONY: gate-conformance
 gate-conformance: env ## Contract conformance suite, both contracts: starts the reference worker and connector, runs the suite and the meta-tests, stops them
 	$(UV) run tools/gate.py conformance tests/conformance $(PARALLEL)
 
 # The chart's tests (tests/governance/test_chart.py) render it with helm. `make helm` installs the
 # pinned version into .tools/bin, which the tests use first; without helm they skip and say so,
 # and CI, which runs this target, sets TAKTUS_REQUIRE_HELM so that they cannot.
+.PHONY: helm
 helm: ## Install the pinned helm into .tools/bin, for the chart's tests (deploy/k8s/chart)
 	tools/install_helm.sh
 
+.PHONY: gate-governance
 gate-governance: env ## Anchors hold, limits never breach, least privilege; the chart, rendered with helm (`make helm`), and the image workflow
 	$(UV) run tools/gate.py governance tests/governance
 
+.PHONY: gate-exactness
 gate-exactness: env ## `exact` steps never take their final value from a variable method
 	$(UV) run tools/gate.py exactness tests/exactness
 
+.PHONY: gate-docs
 gate-docs: need-uv need-git ## A contract or behaviour change must touch its documentation
 	$(UV) run tools/checkdocs.py $(if $(BASE),--base $(BASE))
 
+.PHONY: gate-secrets
 gate-secrets: need-gitleaks ## No secret value may ever enter this public repository
 	gitleaks detect --no-banner --redact
 
+.PHONY: gate-decisions
 gate-decisions: need-uv ## Decision requests are complete, recorded, and a blocking one keeps its pull request a draft; notices have their evidence; the index is stored nowhere; with BASE, every record added carries a reserved number
 	$(UV) run tools/check_decisions.py $(if $(BASE),--base $(BASE))
 
+.PHONY: gate-adrs
 gate-adrs: need-uv ## Every ADR that makes a promise states where the promise ends
 	$(UV) run tools/check_adrs.py
 
+.PHONY: gate-status
 gate-status: need-uv ## docs/status.md is current: its shape, its milestone, no line every pull request rewrites, section 3 pointing at `make status` rather than storing a list, and touched by every change to the state of the project
 	$(UV) run tools/check_status.py $(if $(BASE),--base $(BASE))
 
+.PHONY: gate-vision
 gate-vision: need-uv ## The vision layer holds together — the fourteen principles as CLAUDE.md names them, each with why and what it forbids — and every principle is served by a use case
 	$(UV) run tools/check_vision.py
 
 # The use case gate runs the named tests of a `verified` use case, so it needs the project
 # environment: `uv run python` rather than `uv run <script>`, which would isolate the script.
+.PHONY: gate-web
 gate-web: ## The web app under web/: packages from the lock file, types, tests, build; skips without Node and says so, unless TAKTUS_REQUIRE_NODE is set
 	@tools/web.sh
 
+.PHONY: gate-usecases
 gate-usecases: env ## Every use case has a state, a verification condition and a principle; built names tests, verified ones are green; no ADR moved under one unchecked; no requirement changed where it is implemented
 	$(UV) run python tools/check_usecases.py $(if $(BASE),--base $(BASE))
 
 backlog: need-uv ## Print the backlog in the order a session takes it, every unready issue with its reasons; NEXT=1 the next one, ANSWERS=1 the owner's answers to record first (DEC-0051)
 	$(UV) run tools/backlog.py $(if $(NEXT),--next) $(if $(ANSWERS),--answers)
 
+.PHONY: usecases
 usecases: env ## Print every use case with its component, state and version
 	@$(UV) run python tools/check_usecases.py --print
 
@@ -103,9 +126,11 @@ usecases: env ## Print every use case with its component, state and version
 # nothing here deletes data without asking (CLAUDE.md §9).
 COMPOSE_DEV := deploy/docker/compose.dev.yml
 
+.PHONY: db-up
 db-up: need-docker ## Start the development database and wait until it accepts connections
 	docker compose -f $(COMPOSE_DEV) up --detach --wait
 
+.PHONY: db-down
 db-down: need-docker ## Stop the development database; its data volume stays
 	docker compose -f $(COMPOSE_DEV) down
 
@@ -117,53 +142,66 @@ db-down: need-docker ## Stop the development database; its data volume stays
 COMPOSE := deploy/docker/compose.yml
 COMPOSE_WORKER := deploy/docker/compose.reference-worker.yml
 
+.PHONY: up
 up: need-docker ## Bring Taktus up: two containers, migrations applied, ready
 	deploy/docker/secrets.sh
 	docker compose -f $(COMPOSE) up --build --detach --wait
 
+.PHONY: up-dev
 up-dev: need-docker ## The same, plus the reference worker in its own image, for development
 	deploy/docker/secrets.sh
 	docker compose -f $(COMPOSE) -f $(COMPOSE_WORKER) up --build --detach --wait
 
+.PHONY: down
 down: need-docker ## Stop the containers, with or without the reference worker; the volumes stay
 	docker compose -f $(COMPOSE) -f $(COMPOSE_WORKER) down
 
+.PHONY: verify-compose
 verify-compose: need-docker ## From nothing: up with the reference worker, the control plane image checked for worker code, a run end to end, the container killed and restarted, the run resumed
 	deploy/docker/verify.sh
 
+.PHONY: migrate
 migrate: env ## Bring the database named by TAKTUS_DATABASE_URL to the current schema
 	$(UV) run alembic -c migrations/alembic.ini upgrade head
 
+.PHONY: lint
 lint: env ## Static analysis and types, of the product and of the Python tools under tools/
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
 	$(UV) run mypy
 
+.PHONY: generate
 generate: env ## Regenerate what is generated and committed: api/openapi.yaml from the REST interface, the web app's test fixtures from reporting (tools/README.md)
 	$(UV) run python tools/generate.py
 
+.PHONY: status
 status: need-uv ## Print what is needed from the owner, from the register: the last section of every pull request description (DEC-0026)
 	@$(UV) run tools/check_status.py --print --ask-host
 
+.PHONY: check
 check: need-uv ## The fast local check before a commit: lint, types, architecture, documentation and register gates, and the unit tests (under 60 s)
 	$(MAKE) lint gate-arch gate-docs gate-decisions gate-adrs gate-status
 	$(UV) run pytest -q -p no:randomly tests/components tests/tools tests/contract
 
+.PHONY: verify
 verify: need-uv need-git ## What CI would select for this change, against BASE (default origin/main); stamps the commit when all passes on a clean tree (ADR-0096 §4)
 	@tools/verify.sh
 
+.PHONY: adrs
 adrs: need-uv ## Print the index of the ADRs, generated from docs/adr/ (#392)
 	@$(UV) run tools/check_adrs.py --index
 
+.PHONY: tree
 tree: need-uv ## Print the tree of src/taktus, every module with the first sentence of its docstring (#392)
 	@$(UV) run tools/tree.py
 
+.PHONY: register
 register: need-uv ## Print the register's index, generated from the records: every provided need, notice and record (DEC-0189 rule 6)
 	@$(UV) run tools/check_decisions.py --index
 
+.PHONY: reserve
 reserve: need-uv need-git ## Reserve a record number on the remote before writing the record: KIND=DEC|NTC|NEED the next free one, ID=NTC-0207 exactly that one (DEC-0189 rule 6)
 	@$(UV) run tools/reserve.py $(if $(ID),--id $(ID),--kind $(KIND))
 
+.PHONY: gates
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web test ## Everything CI runs
-
-.PHONY: help doctor env install check verify status adrs tree register reserve usecases test images helm gate-web gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates
