@@ -27,7 +27,7 @@ def repository(root: Path, reference: str, where: str = "docs/notes.md") -> None
     (adrs / "ADR-0001-a-decision.md").write_text(
         "# ADR-0001 — A decision\n\n**Status:** accepted\n\nThe decision.\n", encoding="utf-8"
     )
-    (adrs / "README.md").write_text("[0001](ADR-0001-a-decision.md)\n", encoding="utf-8")
+    (adrs / "README.md").write_text("The index: `make adrs`.\n", encoding="utf-8")
     target = root / where
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(f"First line.\nAs {reference} decided.\n", encoding="utf-8")
@@ -52,3 +52,26 @@ def test_a_missing_reference_fails_naming_file_and_line(
 def test_a_reference_outside_the_resolved_places_is_not_read(tmp_path: Path) -> None:
     repository(tmp_path, MISSING, "web/notes.md")
     assert check_adrs.main(["--root", str(tmp_path)]) == 0
+
+
+def test_a_stored_row_of_the_index_fails(tmp_path: Path) -> None:
+    repository(tmp_path, "ADR-0001")
+    (tmp_path / "docs" / "adr" / "README.md").write_text(
+        "`make adrs`\n\n| [0001](ADR-0001-a-decision.md) | A decision | accepted |\n",
+        encoding="utf-8",
+    )
+    assert check_adrs.main(["--root", str(tmp_path)]) == 1
+
+
+def test_the_index_is_generated_with_what_later_adrs_say_of_earlier_ones(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repository(tmp_path, "ADR-0001")
+    (tmp_path / "docs" / "adr" / "ADR-0002-more.md").write_text(
+        "# ADR-0002 — More\n\n**Status:** accepted · extends ADR-0001 with more\n",
+        encoding="utf-8",
+    )
+    assert check_adrs.main(["--root", str(tmp_path), "--index"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[2] == "| [0001](ADR-0001-a-decision.md) | A decision | accepted | extended by 0002 |"
+    assert out[3] == "| [0002](ADR-0002-more.md) | More | accepted |  |"

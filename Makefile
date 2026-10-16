@@ -145,6 +145,16 @@ generate: env ## Regenerate what is generated and committed: api/openapi.yaml fr
 status: need-uv ## Print what is needed from the owner, from the register: the last section of every pull request description (DEC-0026)
 	@$(UV) run tools/check_status.py --print --ask-host
 
+check: need-uv ## The fast local check before a commit: lint, types, architecture, documentation and register gates, and the unit tests (under 60 s)
+	$(MAKE) lint gate-arch gate-docs gate-decisions gate-adrs gate-status
+	$(UV) run pytest -q -p no:randomly tests/components tests/tools tests/contract
+
+verify: need-uv need-git ## What CI would select for this change, against BASE (default origin/main); stamps the commit when all passes on a clean tree (ADR-0096 §4)
+	@tools/verify.sh
+
+adrs: need-uv ## Print the index of the ADRs, generated from docs/adr/ (#392)
+	@$(UV) run tools/check_adrs.py --index
+
 tree: need-uv ## Print the tree of src/taktus, every module with the first sentence of its docstring (#392)
 	@$(UV) run tools/tree.py
 
@@ -156,4 +166,4 @@ reserve: need-uv need-git ## Reserve a record number on the remote before writin
 
 gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web test ## Everything CI runs
 
-.PHONY: help doctor env install status tree register reserve usecases test images helm gate-web gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates
+.PHONY: help doctor env install check verify status adrs tree register reserve usecases test images helm gate-web gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases db-up db-down up up-dev down verify-compose migrate lint generate gates
