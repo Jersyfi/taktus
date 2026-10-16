@@ -287,7 +287,7 @@ The agent is pinned to one exact version, written in one file: `agent-version` i
 directory. Today it is 2.1.295. The image installs that version and no other; a build whose file
 names `latest`, a tag or a range fails. A release therefore carries the version the file names
 at the release's tag, and two builds of one tag carry the same agent. The live test installs the
-same version from the same file, so that it checks what a release ships.
+same version from the same file, so that it checks what a release ships. npm gives up a request that stalls after 30 s and retries it five times, rather than waiting five minutes, longer than a build in the tests may stay silent (#360).
 `tests/governance/test_image_workflow.py` holds the image, the release workflow and the live job
 to the file, and fails on anything but one exact version.
 

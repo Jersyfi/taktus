@@ -41,7 +41,6 @@ import json
 import math
 import os
 import shutil
-import socket
 import subprocess
 import sys
 import time
@@ -54,6 +53,7 @@ import httpx
 import pytest
 import yaml
 from fakes.identity import added_by_command_line
+from fakes.ports import free_port
 
 from taktus.components.run.domain.service.budget import Seed, scale_for, seeds_of
 from taktus.shared.v1 import Method
@@ -262,12 +262,6 @@ def step_of(entry: Json) -> str | None:
 
 def is_step(entry: Json, kind: str) -> bool:
     return bool(entry["kind"] == kind and step_of(entry) == "write-file")
-
-
-def free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
 
 
 def taktusctl() -> str:

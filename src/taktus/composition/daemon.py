@@ -16,6 +16,7 @@ proves it with a real signal.
 from __future__ import annotations
 
 import asyncio
+import gc
 import os
 import signal
 import socket
@@ -682,6 +683,12 @@ async def serve(
                 instance=settings.instance,
                 database=described(settings.database.reveal()),
             )
+            # What the start left alive — the modules, the wiring — lives as long as the
+            # process. Frozen, the collector no longer scans it on every full collection, which
+            # stops every thread of the process: 2 000 runs read at once paused the event loop
+            # 0.12 s locally and 0.6 to 0.7 s on a CI runner, half of it for these (#360).
+            gc.collect()
+            gc.freeze()
             tasks = _start_roles(wired, stop)
             server = await _start_http(wired, stop)
             await stop.wait()

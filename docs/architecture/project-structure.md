@@ -251,6 +251,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   entries after its own position, filtered when they are sent by the reader's key as it is then.
   A reader that reconnects to another process resumes from its position. Proven with two `api`
   processes, with the notification and without it (`tests/integration/test_live_changes.py`).
+- **Memory once started.** Once wired, the daemon collects and freezes what its start left
+  alive — the modules, the wiring — so that a full garbage collection, which stops every thread
+  of the process, no longer scans it: 2 000 runs read at once paused the event loop half as long
+  (#360).
 - **Shutdown** is the same for every role: on SIGTERM the HTTP surface stops, the runner claims
   nothing more, every running run is asked to stop at its next step boundary and the running
   worker step may finish up to `TAKTUS_SHUTDOWN_CEILING_SECONDS`, the claims are released, the
