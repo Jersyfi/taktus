@@ -12,6 +12,7 @@ share one worker — is in `test_runner.py`.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from typing import Any
 
 from fakes import FakeWorker, InnerStep
@@ -19,6 +20,7 @@ from fakes import FakeWorker, InnerStep
 from taktus.components.run.application.service import EngineOptions
 from taktus.components.run.domain.model import Cause, RunState, StepState
 from taktus.components.run.domain.service import waiting
+from taktus.ports.worker import AssignmentId, AssignmentState, WorkerError
 from taktus.shared.v1 import Step
 
 from .test_engine import Harness, worker
@@ -156,3 +158,34 @@ async def test_an_escalated_wait_resumes_as_a_fresh_wait() -> None:
     assert run.step_run("do").waits == 1
     run = await h.resume(run)
     assert run.state is RunState.FINISHED
+
+
+@dataclass
+class LaunchedLike(FakeWorker):
+    """A launched worker: an assignment it holds no unit for cannot be asked about — it answers
+    with an error, not with "unknown" — as `adapters/driven/workers/launched.py` does."""
+
+    asked: list[str] = field(default_factory=list)
+
+    async def state(self, assignment_id: AssignmentId) -> AssignmentState:
+        self.asked.append(assignment_id)
+        if assignment_id not in self._states:
+            raise WorkerError(f"no execution unit is running for assignment {assignment_id}")
+        return await super().state(assignment_id)
+
+
+async def test_an_assignment_refused_at_capacity_is_handed_over_again_not_asked_about() -> None:
+    """The worker did not take the assignment, so none is open: the resumed step hands it over
+    again instead of asking a launched worker that holds no unit for it, and failing (#486)."""
+    fake = LaunchedLike(full_for=1, script=(InnerStep("one", 1.0),))
+    h = Harness(waiting_worker(), workers=[fake])
+
+    run = await h.start()
+    assert run.state is RunState.HALTED and run.cause is Cause.CAPACITY
+    assert run.step_run("do").assignment_open is False, "the worker took nothing"
+
+    run = await h.resume(run)
+    assert run.state is RunState.FINISHED, (run.cause, run.reason)
+    assert run.step_run("do").state is StepState.SUCCEEDED
+    assert fake.asked == [], "nothing was asked about an assignment the worker never took"
+    assert len(fake.assignments) == 1

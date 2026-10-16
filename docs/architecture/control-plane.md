@@ -228,7 +228,9 @@ ceiling, releases the claims and exits; the next runner resumes at that boundary
 
 **A worker at capacity.** A worker answers a new assignment with `503` when it holds as many as
 it declares. That is no failure: nothing started. The step goes back to the boundary it was
-admitted from, the run halts there with cause `capacity`, and the runner *defers* the job —
+admitted from with no assignment open — the worker took none, so a resume hands one over again
+rather than asking about it (#486) — the run halts there with cause `capacity`, and the runner
+*defers* the job —
 claimable again after a delay that doubles with every answer of the same wait, up to a minute,
 and not counted as a failed attempt. The next runner to claim it asks the worker again. The
 worker's own answer decides whether it has a free place; no runner counts a worker's
