@@ -219,8 +219,10 @@ generated (`make status`) and never stored in the file (DEC-0026).
 - **Documentation freshness is a CI gate.**
 - **CI checks what changed before a merge, and everything after it** (ADR-0096, DEC-0194).
   Every commit on `main` runs everything. A red `main` is the first task of any session, and
-  nothing merges onto it except its repair. Once #390 lands, a draft is verified locally with
-  `make verify` and CI starts when the pull request is ready. A pull request merges without
+  nothing merges onto it except its repair. A pull request is opened as a draft and verified
+  locally: `make check` before a commit, `make verify` before *ready*, which a session hook
+  (`.claude/settings.json`) refuses unless `make verify` stamped the pushed head; CI runs a
+  change's lanes from *ready* on, and nothing on a draft. A pull request merges without
   catching up with `main` since 2026-10-15 (NEED-0026). While the newest run on `main` is red,
   the required check fails every pull request except a revert or one naming `Mends main: <sha>`;
   after every run a workflow repeats a failure once, records a repeat that passed in the issue

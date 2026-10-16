@@ -14,6 +14,7 @@ CI = WORKFLOWS / "ci.yml"
 # The check the ruleset of `main` requires. Renaming it would leave the ruleset waiting for a
 # check that no longer reports.
 REQUIRED = "gates"
+DRAFT = "github.event_name == 'pull_request' && github.event.pull_request.draft"
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -50,7 +51,20 @@ def test_every_selectable_lane_runs_only_when_the_change_selects_it() -> None:
         assert jobs[lane]["needs"] == "select", lane
         assert jobs[lane]["if"] == f"needs.select.outputs.{lane} == 'true'", lane
     for always in ("static", "decisions"):
-        assert "if" not in jobs[always], f"{always} always runs"
+        assert jobs[always]["if"] == NOT_ON_A_DRAFT, f"{always} runs on everything but a draft"
+
+
+NOT_ON_A_DRAFT = "${{ !(" + DRAFT + ") }}"
+
+
+def test_a_draft_runs_no_lane_and_never_satisfies_the_ruleset() -> None:
+    """A draft is verified locally (`make verify`); CI starts when it is ready (ADR-0096 §4,
+    #390). Its aggregate reports under another name, which the ruleset does not require."""
+    document = load(CI)
+    assert "ready_for_review" in document["on"]["pull_request"]["types"]
+    jobs = document["jobs"]
+    assert jobs["select"]["if"] == NOT_ON_A_DRAFT
+    assert jobs[REQUIRED]["name"] == "${{ (" + DRAFT + ") && 'gates (draft)' || 'gates' }}"
 
 
 def test_the_last_step_on_a_pull_request_is_the_guard_of_main() -> None:
@@ -58,7 +72,9 @@ def test_the_last_step_on_a_pull_request_is_the_guard_of_main() -> None:
     what the host answers, and fails when it answers nothing (tests/tools/test_ci_watch.py)."""
     gates = load(CI)["jobs"][REQUIRED]
     last = gates["steps"][-1]
-    assert last["if"] == "github.event_name == 'pull_request'", last
+    assert last["if"] == (
+        "${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}"
+    ), last
     assert "tools/ci_watch.py guard" in last["run"], last
     assert gates["permissions"]["actions"] == "read", "the guard reads the runs on main"
 

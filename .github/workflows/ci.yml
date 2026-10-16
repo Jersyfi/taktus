@@ -11,8 +11,12 @@ name: ci
 # on such a branch and reads the pipeline's verdict before it opens the pull request
 # (blueprints/dev-orchestration/processes/P-03-implementation.yaml), so the verdict must exist
 # for a branch without one.
+# A draft runs no lane (ADR-0096 §4, #390): it is verified locally with `make verify`, and CI
+# starts when it is marked ready. Its aggregate reports as `gates (draft)`, which the ruleset
+# does not require, so a draft never satisfies it.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main, "taktus/**"]
 
@@ -30,6 +34,7 @@ jobs:
   # runs too. `static` and `decisions` always run; the others when a path they claim changed. A
   # push to `main` runs every lane: every commit there is checked in full.
   select:
+    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -70,6 +75,7 @@ jobs:
   # request's description says — and the draft flag a BLOCKING decision requires — is the
   # `description` workflow's, which runs on an edit too.
   decisions:
+    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -131,6 +137,7 @@ jobs:
   # Everything that reads the code rather than running it: secrets, lint and types, the
   # architecture, the chart, governance, exactness, documentation, the register and the use cases.
   static:
+    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -231,6 +238,7 @@ jobs:
   # `main` is red, only a repair merges — a revert, or a pull request naming
   # `Mends main: <sha>`. When the host does not answer, the guard fails: nothing merges blind.
   gates:
+    name: ${{ (github.event_name == 'pull_request' && github.event.pull_request.draft) && 'gates (draft)' || 'gates' }}
     if: always()
     needs: [select, contracts, decisions, web, static, conformance, test]
     runs-on: ubuntu-latest
@@ -240,11 +248,15 @@ jobs:
       contents: read
       pull-requests: read
     steps:
+      - name: a draft is verified locally
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
+        run: echo "A draft runs no lane; \`make verify\` checks it, and CI starts when it is ready."
       - uses: actions/checkout@v4
-        if: github.event_name == 'pull_request'
+        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
         with:
           persist-credentials: false
       - name: every lane passed
+        if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
         env:
           RESULTS: ${{ toJSON(needs) }}
         run: |
@@ -258,7 +270,7 @@ jobs:
       # the run is repeated. Title and description reach the tool as files and variables, never
       # in a command line.
       - name: main is green, or this pull request mends it
-        if: github.event_name == 'pull_request'
+        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}

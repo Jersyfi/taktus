@@ -65,11 +65,13 @@ an issue, in the shape of the form `Task`, and stays for its turn.
 - A change of what the software does inside the issue's scope (M2.4) is a line of the
   description's section *Behaviour changes* — old behaviour, new behaviour, reason — and no
   notice file (DEC-0189 rule 2). Every other mode-2 decision is still a notice.
-- **Merge when the pull request is green**: `make gates` locally, and every check in CI. The
+- **Verify, then mark ready.** A pull request is opened as a draft, and a draft runs no CI.
+  `make check` (under a minute) runs before each commit; `make verify` runs what CI would
+  select for the change and stamps the commit. Push the stamped head, then `gh pr ready`: a
+  session hook refuses it unless the stamp names the pushed head (ADR-0096 §4).
+- **Merge when the pull request is green**: every check in CI. The
   session merges its own pull request once every check is green, with no more running in
   parallel than CI carries, and never one that raises a `BLOCKING` request (M1.22, DEC-0189).
-  Once #390 lands, the pull request stays a draft until `make verify` passed for its pushed head,
-  and CI runs from *ready* on (ADR-0096 §4).
 
 ## 5. Sessions in parallel
 

@@ -69,6 +69,7 @@ CLAIMS: dict[str, tuple[str, ...]] = {
         r"deploy/.*",
         r"workers/.*",
         r"tools/.*",
+        r"\.claude/(settings\.json|hooks/.*)",
         r"\.importlinter",
         r"\.dockerignore",
         r"\.env\.example",
