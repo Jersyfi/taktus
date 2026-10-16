@@ -73,7 +73,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "14"
+version: "15"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -439,10 +439,11 @@ steps:
           # The workspace was prepared by the command before the work, below: these commands
           # run there (ADR-0100).
           - >
-            the repository's own checks are run in the workspace and pass: at least
-            `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy`, and
-            `uv run pytest` on the tests of what the change touches, all of which the workspace
-            has. Where one cannot be run there — it needs a container engine, a cluster or a
+            the repository's own checks are run in the workspace and pass: `make check` — the
+            linter, the type checker, the architecture, documentation and register gates and
+            the unit tests, in about a minute — and `uv run pytest` on each test file the change
+            adds or changes, file by file; never the whole suite, which the pipeline runs and
+            which outlasts the workspace's hour (#493). Where one cannot be run there — it needs a container engine, a cluster or a
             host the workspace cannot reach — the summary names it and says why; no check is
             passed over in silence
           - no secret value is written into any file

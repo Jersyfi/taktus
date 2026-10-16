@@ -49,7 +49,12 @@ def test_the_frame_admits_the_package_index_the_lock_file_names_and_no_other_hos
 def test_the_checks_the_agent_is_asked_to_run_are_installed_by_the_setup() -> None:
     acceptance = " ".join(implement()["task"]["acceptance"])
     named = set(re.findall(r"`uv run ([a-z-]+)", acceptance))
-    assert named == {"ruff", "mypy", "pytest"}, named
+    assert named == {"pytest"}, named
+    # The bounded check runs through make, which the worker's image installs (ADR-0100, #493).
+    assert "`make check`" in acceptance
+    assert re.search(r"^check:", (ROOT / "Makefile").read_text(encoding="utf-8"), re.MULTILINE)
+    image = (ROOT / "workers" / "claudecode" / "Dockerfile").read_text(encoding="utf-8")
+    assert re.search(r"apt-get install[^\n]*\bmake\b", image), "make is in the worker's image"
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     dev = {
         re.split(r"[\[<>=!~ ]", r)[0] for r in project["project"]["optional-dependencies"]["dev"]
