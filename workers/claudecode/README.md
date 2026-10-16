@@ -206,7 +206,9 @@ announced as an artifact `change-N` of kind `patch`; at the end, the artifact `s
 agent's own account of what it did, and the artifact `changeset` (`application/json`) is every
 file changed since the baseline with its full content — text as text, anything else as base64,
 and `executable: true` on a file the index records with mode `100755` —
-and every file deleted, by path: what a run hands to a repository connector to put the change
+and every file deleted, by path, and `source`, the commit the workspace was cloned from, so
+that the branch is made from it and not from the base branch as it is when the step ends, which
+the whole files would revert (#496): what a run hands to a repository connector to put the change
 on a branch (`repository.branches.create`), so that the worker never pushes and never holds a
 credential to the repository.
 

@@ -84,6 +84,8 @@ WRITES = re.compile(r">|\$\(|`|\btee\b")
 SHELLS = frozenset({"bash", "sh", "zsh", "dash"})
 AUTH_VARIABLE = {"api-key": "CODEX_API_KEY", "session": "auth.json"}
 BASELINE_TAG = "taktus-baseline"
+SOURCE_TAG = "taktus-source"
+"""The commit the workspace was cloned from: the base the change is put on (#496)."""
 
 GIT_PROXY_VARIABLES = (
     "HTTP_PROXY",
@@ -639,6 +641,10 @@ class _Run:
                     reason=f"the workspace could not be cloned: {completed.stderr.strip()[:200]}",
                 )
                 return False
+            # The commit cloned is where the change starts: its branch is made from it, not
+            # from whatever the base branch reached meanwhile, which a whole file written onto
+            # it would revert (#496).
+            self._git(["git", "tag", "--force", SOURCE_TAG], check=False)
         if not (self.workspace / ".git").is_dir():
             self._git(["git", "init", "--quiet"])
         self._git(["git", "add", "-A"])
@@ -1250,7 +1256,13 @@ class _Run:
             if path in executable:
                 entry["executable"] = True
             files.append(entry)
-        return json.dumps({"base": base, "files": files, "deleted": deleted}, ensure_ascii=False)
+        source = self._git(
+            ["git", "rev-parse", "--verify", "--quiet", f"{SOURCE_TAG}^{{commit}}"], check=False
+        ).stdout.strip()
+        document: Json = {"base": base, "files": files, "deleted": deleted}
+        if source:
+            document["source"] = source
+        return json.dumps(document, ensure_ascii=False)
 
     def _executable_paths(self) -> set[str]:
         staged = self._git(["git", "ls-files", "--stage"], check=False).stdout

@@ -77,3 +77,30 @@ def test_a_new_executable_file_carries_the_flag_and_nothing_else_does(tmp_path: 
         check=True,
     )
     assert changeset["base"] == head.stdout.strip()
+    assert "source" not in changeset, "a workspace that was not cloned names no source"
+
+
+def test_the_changeset_names_the_commit_the_workspace_was_cloned_from(tmp_path: Path) -> None:
+    """#496: the branch is made from the commit cloned, not from the base branch as it is when
+    the step ends, so that the whole files of the change revert nothing it gained meanwhile."""
+    worker = load_worker()
+    run = object.__new__(worker._Run)
+    run.workspace = tmp_path
+
+    def git(*args: str) -> str:
+        return str(run._git(["git", *args]).stdout).strip()
+
+    (tmp_path / "a.txt").write_text("a\n")
+    git("init", "--quiet")
+    git("add", "-A")
+    git("commit", "--quiet", "-m", "upstream")
+    git("tag", worker.SOURCE_TAG)  # as the worker tags the commit it cloned
+    cloned = git("rev-parse", "HEAD")
+    git("commit", "--quiet", "--allow-empty", "-m", "taktus: baseline")
+    git("tag", worker.BASELINE_TAG)
+    (tmp_path / "a.txt").write_text("a, changed\n")
+    git("commit", "--quiet", "-am", "the change")
+
+    changeset = json.loads(run._changeset())
+    assert changeset["source"] == cloned
+    assert [entry["path"] for entry in changeset["files"]] == ["a.txt"]

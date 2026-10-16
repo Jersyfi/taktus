@@ -73,7 +73,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "15"
+version: "16"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -627,7 +627,10 @@ steps:
       operation: repository.branches.create
       input:
         name: { $from: branch-name }
-        base: main
+        # The commit the workspace was cloned from, not `main` as it is now: the changeset holds
+        # whole files, and written onto a newer `main` they reverted what it gained in them
+        # meanwhile (#496). The pull request then shows the change against its own base.
+        base: { $from: implement, $artifact: changeset, $select: source }
         message: { $from: read-issue, $select: output.title }
         files: { $from: implement, $artifact: changeset, $select: files }
         deleted: { $from: implement, $artifact: changeset, $select: deleted }

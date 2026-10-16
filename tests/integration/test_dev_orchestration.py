@@ -77,6 +77,12 @@ SETUP_RECORD = "setup.json"
 FAKE_AGENT = ROOT / "workers" / "claudecode" / "fake_agent.py"
 FIRST_RUN = ROOT / "tools" / "first_run.sh"
 REPOSITORY = "acme/product"
+GIT_IDENTITY = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@localhost",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@localhost",
+}
 RECORDS = "docs/decisions/open"
 # What the fake model answers P-02 with: the one section the issue it refines lacks.
 SECTION_ANSWER = "### How it is verified\n\n- the fake answered: {prompt}\n"
@@ -178,6 +184,29 @@ class Outside:
             {"message": "records", "tree": tree["sha"], "parents": [ref["object"]["sha"]]},
         )
         self.send("PATCH", f"{repo}/git/refs/heads/main", {"sha": commit["sha"]})
+        # The clone the worker works in is the same repository: it gains the same files, and
+        # the service knows its new head as the commit a branch is made from (#496).
+        origin = Path(self.clone_url)
+        for path, content in files.items():
+            (origin / path).parent.mkdir(parents=True, exist_ok=True)
+            (origin / path).write_text(content, encoding="utf-8")
+        for command in (
+            ["git", "add", "-A"],
+            ["git", "commit", "--quiet", "--allow-empty", "-m", "records"],
+        ):
+            subprocess.run(  # noqa: S603 — git with fixed arguments in the test's own repository
+                command, cwd=origin, env={**os.environ, **GIT_IDENTITY}, check=True,
+                capture_output=True,
+            )  # fmt: skip
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],  # noqa: S607
+            cwd=origin, capture_output=True, text=True, check=True,
+        ).stdout.strip()  # fmt: skip
+        httpx.post(
+            f"{self.service_url}/_fake/clone",
+            json={"repository": REPOSITORY, "sha": head},
+            timeout=5,
+        ).raise_for_status()
 
 
 def wait_ready(process: subprocess.Popen[bytes], url: str, log: Path, what: str) -> None:
@@ -328,6 +357,16 @@ def outside(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Outside]
         started.append(worker)
         worker_url = f"http://127.0.0.1:{worker_port}"
         wait_ready(worker, f"{worker_url}/v1/health", worker_log, "coding worker")
+
+        # The service knows the commit the clone was made from, as a real service whose
+        # repository the worker clones does: P-03 makes its branch from it (#496).
+        cloned = subprocess.run(
+            ["git", "rev-parse", "HEAD"],  # noqa: S607
+            cwd=clone, capture_output=True, text=True, check=True,
+        ).stdout.strip()  # fmt: skip
+        httpx.post(
+            f"{service_url}/_fake/clone", json={"repository": REPOSITORY, "sha": cloned}, timeout=5
+        ).raise_for_status()
 
         yield Outside(service_url, f"{connector_url}/mcp", model_url, worker_url, str(clone), token)
         model.shutdown()
@@ -582,7 +621,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
-    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@15`", announced)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@16`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -970,7 +1009,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@4",
     "P-02-refinement.yaml": "p02-refinement@4",
-    "P-03-implementation.yaml": "p03-implementation@15",
+    "P-03-implementation.yaml": "p03-implementation@16",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -982,7 +1021,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "write-report",
         },
         "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@15": {
+        "p03-implementation@16": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -1002,7 +1041,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@15": {"implement"}},
+    "worker.endpoint": {"p03-implementation@16": {"implement"}},
     "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""

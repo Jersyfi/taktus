@@ -103,6 +103,8 @@ STEP_KIND: dict[str, str] = {
 TEST_COMMAND = re.compile(r"\b(pytest|npm test|npm run test|make test|go test|cargo test)\b")
 AUTH_VARIABLE = {"api-key": "ANTHROPIC_API_KEY", "session": "CLAUDE_CODE_OAUTH_TOKEN"}
 BASELINE_TAG = "taktus-baseline"
+SOURCE_TAG = "taktus-source"
+"""The commit the workspace was cloned from: the base the change is put on (#496)."""
 
 GIT_PROXY_VARIABLES = (
     "HTTP_PROXY",
@@ -635,6 +637,10 @@ class _Run:
                     reason=f"the workspace could not be cloned: {completed.stderr.strip()[:200]}",
                 )
                 return False
+            # The commit cloned is where the change starts: its branch is made from it, not
+            # from whatever the base branch reached meanwhile, which a whole file written onto
+            # it would revert (#496).
+            self._git(["git", "tag", "--force", SOURCE_TAG], check=False)
         if not (self.workspace / ".git").is_dir():
             self._git(["git", "init", "--quiet"])
         self._git(["git", "add", "-A"])
@@ -1242,7 +1248,13 @@ class _Run:
             if path in executable:
                 entry["executable"] = True
             files.append(entry)
-        return json.dumps({"base": base, "files": files, "deleted": deleted}, ensure_ascii=False)
+        source = self._git(
+            ["git", "rev-parse", "--verify", "--quiet", f"{SOURCE_TAG}^{{commit}}"], check=False
+        ).stdout.strip()
+        document: Json = {"base": base, "files": files, "deleted": deleted}
+        if source:
+            document["source"] = source
+        return json.dumps(document, ensure_ascii=False)
 
     def _executable_paths(self) -> set[str]:
         """The paths the index records with mode 100755. Every change is committed at its
