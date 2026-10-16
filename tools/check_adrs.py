@@ -245,9 +245,9 @@ def index_rows(adrs: Path) -> list[str]:
             short += ", amended"
         entries.append((number, path.name, title.group(2), short))
     rows = ["| ADR | Title | Status | Related |", "|---|---|---|---|"]
-    for number, name, title, short in entries:
+    for number, name, heading, short in entries:
         rows.append(
-            f"| [{number}]({name}) | {title} | {short} | {'; '.join(related.get(number, []))} |"
+            f"| [{number}]({name}) | {heading} | {short} | {'; '.join(related.get(number, []))} |"
         )
     return rows
 
