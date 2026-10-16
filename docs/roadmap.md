@@ -19,6 +19,10 @@ Taktus develops itself. That only works in this order.
 | **S3 — second tenant** | Taktus runs a real operation: a software business's whole operation, introduced in six stages (DEC-0199, UC-03) | a milestone there is reached without intervention except at anchors |
 | **S4 — level 4** | Taktus unattended | a release happens end to end |
 
+**S2 is reached in stages** (DEC-0197): each hands Taktus more of its own development once the
+one before met its measures. `0.2.0` needs stage 1; the 14 days of S2 are stage 3 and belong to
+`0.6.0` (DEC-0207).
+
 **S3 starts at `0.4.0`, not at `1.0.0`.** The reason is deliberate: versions `0.5` to `0.7` — value
 ledger, role-based views, level 4, the second blueprint — need operating data from a second tenant to
 be designed correctly. Taktus's own repository is an atypical subject: small, documentation-heavy,
@@ -181,8 +185,10 @@ instance (ADR-0039): the conformance half of maturity recorded (#93), and every 
 of P-01 to P-03 taken over by a person when its adapter is removed, which earns the removal half
 (#90, DEC-0111)
 
-**Complete when** Taktus maintains its own repository for **14 days** with no intervention in
-execution, and every block is analysable by cause and duration.
+**Complete when** Taktus's own development has reached stage 1 of DEC-0197: stage 0 met its
+measures — 10 handed tasks, at least 80 % merged without rework, at most USD 3 per merged pull
+request — and stage 1 then ran two weeks within them (#87, DEC-0207); and every block is
+analysable by cause and duration.
 
 ### `0.3.0` — visibility
 Web app: dashboard, process diagram, run history, ledger, consumption, bottleneck overview — **seen
@@ -261,8 +267,9 @@ steering and handover, before it freezes (#403) · a software factory as a worke
 independently and held (#435) · stages 2 and 3 of the second tenant: its customer contact on its
 own and its releases without people (#401, #438)
 
-**Complete when** a release happens end to end without intervention, and stages 2 and 3 of the
-second tenant hold: its customer contact runs at level 3 with an enforced anchor (#401), and its
+**Complete when** Taktus maintains its own repository for **14 days** with no intervention in
+execution — stage 3 of DEC-0197, moved here from `0.2.0` (DEC-0207) — a release happens end to
+end without intervention, and stages 2 and 3 of the second tenant hold: its customer contact runs at level 3 with an enforced anchor (#401), and its
 releases run without people (#438).
 
 ### `0.7.0` — second domain
