@@ -82,6 +82,10 @@ class FakeWorker:
     halt_on_limit: str | None = None
     """A consumption kind: the worker halts at its first boundary as if its running total would
     cross its ceiling in that kind next (W-14)."""
+    stop_on_its_own: int = 0
+    """The next so many assignments stop at their first boundary on the worker's own account,
+    without a limit and without a stop requested, as one does at its unit's wall clock
+    (ADR-0102)."""
     unreachable: str | None = None  # every call fails with this WorkerError, as a dead unit does
     capacity: int | None = None
     full_for: int = 0
@@ -310,6 +314,18 @@ class FakeWorker:
                         checkpoint_ref=checkpoint,
                         reason=f"the next step would cross the {self.halt_on_limit} ceiling",
                         limit=self.halt_on_limit,  # type: ignore[arg-type]
+                    )
+                )
+                return
+            if self.stop_on_its_own > 0 and index < len(self.script) - 1:
+                self.stop_on_its_own -= 1
+                yield await emit(
+                    AssignmentFinished(
+                        **base(),
+                        type="assignment.finished",
+                        outcome=Outcome.STOPPED,
+                        checkpoint_ref=checkpoint,
+                        reason="the unit's wall clock ends soon; stopped at the boundary",
                     )
                 )
                 return

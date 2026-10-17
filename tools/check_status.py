@@ -37,7 +37,13 @@ Checks:
 6. section 1 keeps no milestone's account: each milestone's is `docs/status/<x.y.z>.md`, which
    starts with `# Status of \`x.y.z\`` naming a milestone of docs/roadmap.md and is named in
    section 1; `docs/status/project.md` is how the project is run. Two pull requests on
-   different milestones then never edit the same paragraph (#392).
+   different milestones then never edit the same paragraph (#392);
+7. every file under docs/status/ keeps its paragraphs in the order of their subject: a paragraph
+   that opens with a bold lead starts an entry, the paragraphs up to the next such lead belong to
+   it, and the entries follow the alphabetical order of their leads, without markup and case.
+   A new entry then goes where its subject puts it, not at the end, and two pull requests that
+   each add one to the same milestone land apart (#498). Two pull requests that each appended a
+   paragraph to the end of the same file conflicted on it (#494 after #491).
 
 `--write-pr-body FILE` writes the list into a pull request description, held in FILE, and
 checks nothing (the `owner-list` workflow, DEC-0189 rule 1). The list is the description's last
@@ -79,6 +85,7 @@ duration.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
 import subprocess
@@ -146,6 +153,8 @@ PLACEHOLDER = re.compile(r"<[^>\n]+>|\b(?:TODO|TBD|FIXME|XXX)\b|…")
 # Lines every pull request rewrote, and therefore the lines any two of them conflicted on
 # (DEC-0027): a stored date and a running list of what was decided since the last version.
 REWRITTEN = re.compile(r"^\*\*(As of|Decided since[^*]*):\*\*", re.MULTILINE)
+# The bold lead that opens an entry of a status file, and so decides its place (#498).
+LEAD = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
 
 
 @dataclass
@@ -533,6 +542,41 @@ def check_milestone_files(found: dict[str, str], report: Report) -> None:
             report.ok(f"{rel}: the account of `{version}`, named in section 1")
 
 
+def entry_leads(text: str) -> list[str]:
+    """The leads of a status file's entries, in the file's order, as the order compares them:
+    without backticks and asterisks, whitespace collapsed, case folded. An entry opens with a
+    paragraph that starts with bold at the start of a line; an indented one, a list item or a
+    table continues the entry before it."""
+    leads = []
+    for paragraph in re.split(r"\n[ \t]*\n", text):
+        match = LEAD.match(paragraph)
+        if match is not None:
+            leads.append(" ".join(re.sub(r"[`*]", "", match.group(1)).split()).casefold())
+    return leads
+
+
+def check_entry_order(report: Report) -> None:
+    print("entries in the order of their subject")
+    folder = ROOT / STATUS_DIR
+    files = sorted(folder.glob("*.md")) if folder.is_dir() else []
+    if not files:
+        report.ok(f"no file under {STATUS_DIR}; nothing to order")
+    for path in files:
+        rel = f"{STATUS_DIR}{path.name}"
+        leads = entry_leads(path.read_text(encoding="utf-8"))
+        misplaced = next(
+            (lead for before, lead in itertools.pairwise(leads) if lead < before), None
+        )
+        if misplaced is None:
+            report.ok(f"{rel}: {len(leads)} entries in alphabetical order of their leads")
+        else:
+            report.fail(
+                rel,
+                f'the entry "{misplaced}" is out of place; entries follow the alphabetical '
+                "order of their bold leads, so that two new ones land apart (#498)",
+            )
+
+
 def check_pointer(found: dict[str, str], report: Report) -> None:
     print("needed from the owner")
     body = found.get(SECTIONS[2], "")
@@ -696,6 +740,7 @@ def main(argv: list[str] | None = None) -> int:
         found = check_shape(text, report)
         check_milestone(found, report)
         check_milestone_files(found, report)
+        check_entry_order(report)
         check_pointer(found, report)
     check_freshness(args.base, report)
     print()

@@ -255,7 +255,10 @@ generated (`make status`) and never stored in the file (DEC-0026).
   a generated list that only a reader needs is printed on demand and carried where it cannot
   conflict (DEC-0026). **No file carries a line that every pull request must rewrite** — a
   stored date, a running list of what changed since last time. Two pull requests then conflict
-  on it whatever else they do; the history already holds both (DEC-0027).
+  on it whatever else they do; the history already holds both (DEC-0027). A shared list
+  takes a new entry where its subject puts it, never at the end: `tools/README.md`'s table
+  is alphabetical by tool, and a file under `docs/status/` by the bold lead of its entries
+  (#498).
 - **A record's number is reserved before the record is written.** `make reserve KIND=DEC`,
   `NTC` or `NEED` takes a number on the repository's remote that no other session can take; the
   record keeps it and is never renumbered. The register's index is printed by `make register`

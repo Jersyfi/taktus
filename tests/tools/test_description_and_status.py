@@ -226,3 +226,44 @@ def test_a_milestone_file_that_names_another_milestone_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert milestone_files(tmp_path, monkeypatch, "# Status of `0.9.0`") == 1
+
+
+ENTRIES = """# Status of `0.2.0` — governance
+
+Part of `docs/status.md`.
+
+**A budget is a budget** (#1). Text.
+
+A paragraph that continues the entry.
+
+1. A list item.
+   **An indented lead** continues it too.
+
+**The `chat` connector exists** (#2).
+"""
+
+
+def test_the_leads_of_a_status_file_are_its_entries_without_markup() -> None:
+    leads = check_status.entry_leads(ENTRIES)
+    assert leads == ["a budget is a budget", "the chat connector exists"]
+
+
+def entry_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str) -> int:
+    (tmp_path / "docs" / "status").mkdir(parents=True)
+    (tmp_path / "docs" / "status" / "0.2.0.md").write_text(text, encoding="utf-8")
+    monkeypatch.setattr(check_status, "ROOT", tmp_path)
+    report = check_status.Report()
+    check_status.check_entry_order(report)
+    return len(report.failures)
+
+
+def test_entries_in_the_order_of_their_leads_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert entry_order(tmp_path, monkeypatch, ENTRIES) == 0
+
+
+def test_an_entry_appended_out_of_order_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert entry_order(tmp_path, monkeypatch, ENTRIES + "\n**Another entry** (#3).\n") == 1
