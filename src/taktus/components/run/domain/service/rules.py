@@ -15,6 +15,7 @@ from taktus.components.run.domain.model.work import (
     BacklogRule,
     CheckRule,
     ClassificationRule,
+    CommitTitleRule,
     Condition,
     ConstantRule,
     Expectation,
@@ -345,6 +346,114 @@ def _texts(items: Any, what: str) -> list[str]:
                 f"{_short(item)}"
             )
     return texts
+
+
+CONVENTIONAL = re.compile(
+    r"^(?P<type>[a-z]+)(?:\((?P<scope>[^()]*)\))?(?P<breaking>!)?: (?P<summary>\S.*)$"
+)
+"""A sentence already in the Conventional Commits form: a type, a scope, a summary."""
+
+SCOPE = re.compile(r"^[a-z0-9][a-z0-9._/-]*$")
+"""A scope the title keeps: lower-case words, joined without spaces."""
+
+
+def commit_title(
+    rule: CommitTitleRule,
+    title: Any,
+    number: Any,
+    labels: Any,
+    files: Any,
+    proposal: Any,
+) -> dict[str, Any]:
+    """The title in the Conventional Commits form, its type from the first source that gives
+    one: the sentence, a label, the changed files, the proposal (ADR-0101)."""
+    if not isinstance(title, str) or not title.strip():
+        raise RuleFailed(f"the title is not a sentence: {_short(title)}")
+    sentence = " ".join(title.split())
+    formed = CONVENTIONAL.match(sentence)
+    scope: str | None = None
+    kind: str | None
+    if formed is not None and formed.group("type") in rule.types:
+        kind, source = formed.group("type"), "title"
+        scope = formed.group("scope")
+        summary = formed.group("summary")
+        bang = formed.group("breaking") or ""
+    else:
+        bang = ""
+        summary = _summary(sentence)
+        kind, source = _labelled(rule, labels), "labels"
+        if kind is None:
+            kind, source = _by_files(rule, files), "files"
+        proposed = _proposed(rule, proposal)
+        if kind is None and proposed is not None:
+            kind, source = proposed[0], "proposal"
+        if proposed is not None:
+            scope = proposed[1]
+        if kind is None:
+            raise RuleFailed(
+                "no type for the title: the sentence is not in the form, no label names one, "
+                "the files changed do not decide it, and the proposal names none of "
+                + ", ".join(rule.types)
+            )
+    if scope is not None and SCOPE.match(scope) is None:
+        scope = None
+    head = f"{kind}({scope})" if scope else kind
+    return {
+        "title": f"{head}{bang}: {summary} (#{number})",
+        "type": kind,
+        "scope": scope,
+        "source": source,
+    }
+
+
+def _summary(sentence: str) -> str:
+    """The sentence as a summary: a final full stop dropped, the first letter lower-cased
+    unless the first word is an abbreviation — `CI`, `P-03`, a capital and more capitals or
+    digits — that keeps its capitals."""
+    text = sentence[:-1] if sentence.endswith(".") else sentence
+    first = text.split(" ", 1)[0]
+    if any(c.isupper() or c.isdigit() for c in first[1:]) or not first[:1].isupper():
+        return text
+    return text[0].lower() + text[1:]
+
+
+def _labelled(rule: CommitTitleRule, labels: Any) -> str | None:
+    if rule.label_pattern is None:
+        return None
+    pattern = re.compile(rule.label_pattern)
+    named = sorted(
+        {
+            match.group("type")
+            for label in _texts(labels, "labels")
+            if (match := pattern.search(label)) is not None and match.group("type") in rule.types
+        }
+    )
+    if len(named) > 1:
+        raise RuleFailed(f"the labels name more than one type: {', '.join(named)}")
+    return named[0] if named else None
+
+
+def _by_files(rule: CommitTitleRule, files: Any) -> str | None:
+    paths = _texts(files, "files")
+    if not paths:
+        return None
+    for entry in rule.by_files:
+        pattern = re.compile(entry.pattern)
+        if all(pattern.search(path) is not None for path in paths):
+            return entry.type
+    return None
+
+
+def _proposed(rule: CommitTitleRule, proposal: Any) -> tuple[str | None, str | None] | None:
+    """The type and scope the proposal names; the type None where it is not among the types."""
+    if rule.proposed is None or not isinstance(proposal, str):
+        return None
+    match = re.search(rule.proposed, proposal)
+    if match is None:
+        return None
+    kind = match.group("type")
+    scope = match.groupdict().get("scope")
+    return (kind if kind in rule.types else None), scope
 
 
 def _short(value: Any) -> str:

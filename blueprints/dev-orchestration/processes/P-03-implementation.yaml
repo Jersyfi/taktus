@@ -46,6 +46,13 @@
 # under the section's heading (DEC-0037, ADR-0053). A section handed in when the run starts is
 # as old as the run: in #274 it no longer matched an hour later (issue #282).
 #
+# The pull request's title is the commit `main` gets when it is squash-merged, so it is in the
+# Conventional Commits form: the issue's title as the summary, its type from a label
+# `type:<type>`, or from the files changed where all are documentation or all tests, and
+# otherwise the type the worker's summary proposes in a comment on its first line. A rule holds
+# the proposal to the repository's types, and a title not in the form is not opened (ADR-0101,
+# issue #472).
+#
 # The pull request description is the worker's summary, written in the shape the repository
 # asks of a description, between what the run fixes: `Closes #N` and Taktus's own statement
 # before it, and the closing section after it. The run adds no heading of its own, so each
@@ -75,7 +82,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "17"
+version: "18"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -543,6 +550,15 @@ steps:
             One section is left out: the one whose content the repository generates, which the
             repository puts last. The run appends it after the summary, from the repository's
             own generator, so the summary neither writes nor copies it
+          # The title of the pull request takes its type from the issue's labels or the files
+          # changed where they decide it; otherwise from this proposal, which the rule
+          # `pull-request-title` holds to the repository's types (ADR-0101, #472).
+          - >
+            the summary's first line proposes the Conventional Commits type of the change, and a
+            scope where one fits, as an HTML comment `<!-- commit-type: <type> -->` or
+            `<!-- commit-type: <type>(<scope>) -->`, the type one of build, chore, ci, docs,
+            feat, fix, perf, refactor, revert, style, test: `feat` for a capability added,
+            `fix` for behaviour corrected, and the others as Conventional Commits defines them
         inputs:
           issue: { $input: issue }
           title: { $from: read-issue, $select: output.title }
@@ -764,20 +780,63 @@ steps:
         - value: { $from: read-pipeline, $select: output.state }
           equals: success
 
+  # The title becomes the commit on `main` when the pull request is squash-merged, and that
+  # commit follows Conventional Commits (CLAUDE.md §9). An issue's title is a sentence, so #463
+  # and #470 reached `main` without a type (#472). The type comes from a rule where the issue's
+  # labels or the files changed decide it, and otherwise from the worker's summary, which
+  # proposes it; the rule holds the proposal to the repository's types (ADR-0101).
   - id: pull-request-title
     method: rule
-    reason: the title names the issue, deterministically
-    rejected: []
+    reason: >
+      the title in the Conventional Commits form: the issue's title as the summary, the type from
+      a label `type:<type>`, or from the files changed where all of them are documentation or all
+      tests, and otherwise the type the worker's summary proposes, held to the repository's types
+    rejected:
+      - method: worker
+        why: >
+          the worker proposes the type where nothing else decides it, but a variable method
+          never produces an exact result (ADR-0014); the rule produces the title
+      - method: llm
+        why: where labels or files decide the type no model is needed, and the worker proposes it otherwise
     exactness: exact
     checks:   # provisional: DEC-0173
       - { kind: recomputation, subject: the title of the pull request }
     depends_on: [verify]
     work:
-      rule: template
-      text: "${title} (#${issue})"
-      values:
-        title: { $from: read-issue, $select: output.title }
-        issue: { $input: issue }
+      rule: commit_title
+      title: { $from: read-issue, $select: output.title }
+      number: { $input: issue }
+      # This repository's types, as `tools/check_decisions.py` holds every title to them.
+      types: [build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test]
+      labels: { $from: read-issue, $select: output.labels }
+      label_pattern: '^type:(?P<type>[a-z]+)$'
+      files:
+        - { $from: implement, $artifact: changeset, $select: files }
+        - { $from: implement, $artifact: changeset, $select: deleted }
+      by_files:
+        - { pattern: '^docs/', type: docs }
+        - { pattern: '^tests/', type: test }
+      proposal: { $from: implement, $artifact: summary }
+      proposed: '<!--\s*commit-type:\s*(?P<type>[a-z]+)(?:\((?P<scope>[a-z0-9._/-]+)\))?\s*-->'
+
+  - id: pull-request-title-form
+    method: rule
+    reason: >
+      a title that is not in the Conventional Commits form, with one of the repository's types
+      and the issue's number, is not opened: the check the description workflow makes of every
+      title, made before the pull request exists
+    rejected:
+      - method: llm
+        why: a fixed pattern needs no judgement
+    exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the form of the pull request's title }
+    depends_on: [pull-request-title]
+    work:
+      rule: check
+      conditions:
+        - value: { $from: pull-request-title, $select: title }
+          matches: '^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9][a-z0-9._/-]*\))?!?: \S.* \(#[0-9]+\)$'
 
   - id: closing-section
     method: rule
@@ -845,14 +904,14 @@ steps:
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
-    depends_on: [pull-request-title, pull-request-body]
+    depends_on: [pull-request-title-form, pull-request-body]
     work:
       rule: connector
       operation: repository.pullrequests.open
       input:
         head: { $from: branch-name }
         base: main
-        title: { $from: pull-request-title }
+        title: { $from: pull-request-title, $select: title }
         body: { $from: pull-request-body }
       credentials:
         - { name: REPOSITORY_TOKEN, injected_as: env }

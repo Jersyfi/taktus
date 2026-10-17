@@ -62,7 +62,7 @@ ledger). P-02 never edits the issue and never adds the label `ready`: a person, 
 the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
 the same issue, it stops at the first check: nothing is written twice.
 
-**P-03 Implementation** (version 17, autonomy 4, thirty steps, three of them on escalation): it starts when an
+**P-03 Implementation** (version 18, autonomy 4, thirty-one steps, three of them on escalation): it starts when an
 issue is handed to Taktus, the label `to-taktus` added (DEC-0197), not on the label `ready`. Read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
 of open records on `main`, admit — the ready standard, and open, not a pull request, not
@@ -80,7 +80,7 @@ the repository, with the issue's text as its task and its section "How it is ver
 acceptance; before the agent starts, the worker installs the repository's environment from its lock file, from the package index the step's frame admits, so that the agent runs the repository's checks in the workspace — `make check` and the test files the change touches, never the whole suite (#493) — ADR-0100; it leaves the pipeline's workflow files to a person, which the app may not write, NTC-0203), reserve the numbers of the records the change adds — read the records `main` holds, derive the references `refs/register/<PREFIX>-<NNNN>` of every record the changeset writes under `docs/decisions/` that `main` does not hold (`rule` `extract`, `exact`), and create them (`rule`, outward, skipped when there is none; a number somebody else holds stops the run, naming the reference, ADR-0095) — put the worker's changeset on the branch through the connector (`rule`,
 outward: one commit that carries the idempotency key), wait for the pipeline (`wait`, polling once a minute
 the pipeline's state), read the verdict, verify it is `success` (`rule`, `exact` — the pipeline's
-verdict, never the worker's opinion), compose the title, the closing section and the body, open the pull request
+verdict, never the worker's opinion), compose the title in the Conventional Commits form (`rule` `commit_title`, `exact`: the issue's title as the summary, the type from a label `type:<type>`, from the files changed where all are under `docs/` or all under `tests/`, and otherwise the type the worker's summary proposes in a comment `<!-- commit-type: … -->` on its first line, held to the repository's types) and check its form (`rule` `check`, `exact`: a title not in the form is not opened, ADR-0101), compose the closing section and the body, open the pull request
 (`rule`, outward), label it (`rule`, outward). A run that escalates after its claim gives the
 claim back first (ADR-0097): it removes `in-progress` (`rule`, outward) and comments which step
 failed and why (`rule` `template`, and `rule`, outward); a run refused at admission, or one that
@@ -247,8 +247,11 @@ a person applies by reading.
 7. **wait-for-pipeline** and **read-pipeline** (person) — wait until the pipeline for the
    branch has a verdict, and read it.
 8. **verify** — the verdict is `success`. If not, go back to step 4.
-9. **pull-request-title**, **pull-request-body** and **open-pr** (person) — open the pull
-   request against `main`, titled with the issue's title and `(#<n>)`, its description
+9. **pull-request-title**, **pull-request-title-form**, **pull-request-body** and **open-pr** (person) — open the pull
+   request against `main`, titled in the Conventional Commits form
+   `<type>(<scope>): <issue's title> (#<n>)` — the type from a label `type:<type>`, `docs` or
+   `test` where every file changed is under `docs/` or `tests/`, and otherwise the type that fits
+   the change — its description
    starting `Closes #<n>.` and ending with the section the repository generates
    (`make status` here).
 10. **label** (person) — add the label `taktus` when the change was made by a run that stopped

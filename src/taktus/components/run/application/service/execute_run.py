@@ -140,6 +140,7 @@ from taktus.components.run.domain.model import (
     CheckRule,
     ClaimLost,
     ClassificationRule,
+    CommitTitleRule,
     ConnectorRule,
     ConstantRule,
     Control,
@@ -1817,6 +1818,12 @@ class RunEngine:
         if isinstance(work, ExtractRule):
             (values, excluding), read = await self._resolved(run, [work.values, work.excluding])
             return rules.extract(work, values, excluding), Trace(inputs=read), None, None
+        if isinstance(work, CommitTitleRule):
+            (title, number, labels, files, proposal), read = await self._resolved(
+                run, [work.title, work.number, work.labels, work.files, work.proposal]
+            )
+            titled = rules.commit_title(work, title, number, labels, files, proposal)
+            return titled, Trace(inputs=read), None, None
         if isinstance(work, ConnectorRule):
             return await self._connector_call(run, step_run, work, span)
         if isinstance(work, LlmWork):

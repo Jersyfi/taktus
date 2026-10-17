@@ -279,7 +279,8 @@ worker's default estimate — about 620 000 input tokens against 60 000, where t
 used 1.8 to 4.3 times the estimate in the first live run — so that the suite's `tight` run
 can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales every token count, and
 `FAKE_AGENT_WRITE`, a JSON object of path to content, adds those files to its change, so that a
-process test can give a change a file of its choosing. Its messages name a model the price
+process test can give a change a file of its choosing. Its final summary proposes the type of a
+pull request's title, `<!-- commit-type: feat -->` on its first line, as P-03 asks (ADR-0101). Its messages name a model the price
 table prices, and it ends on `--max-turns` as the real agent does. It writes its session, whole and at once, before it streams a tool's result: the worker may end it at the boundary that result opens, and `--resume` must then find every call it made (#389). The real agent is run with
 `--agent claude` (the default), and a live run needs a credential the operator supplies.
 

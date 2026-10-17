@@ -179,7 +179,8 @@ and deterministically; it does not think. `FAKE_AGENT_EXPIRE_AFTER=N` fails the 
 authentication error after N items, `FAKE_AGENT_WINDOW_AFTER=N` reports the usage limit as
 reached; `--agent-env` passes those through. Its usage overruns the worker's default estimate,
 so that the suite's `tight` run can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales
-every count. The real agent is run with `--agent codex` (the default), and a live run needs a
+every count. Its final message proposes the type of a pull request's title,
+`<!-- commit-type: feat -->` on its first line, as P-03 asks (ADR-0101). The real agent is run with `--agent codex` (the default), and a live run needs a
 credential the operator supplies.
 
 ## Not yet

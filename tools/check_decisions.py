@@ -69,6 +69,11 @@ Checks:
    file (DEC-0189 rule 2). The gate sees that a line has the three parts, not that it is true,
    nor that a change which needed a line got one. A decision that sets such a change aside names
    its pull request in `**Overrides:** #NNN`, which the gate holds to naming one;
+5c. with --pr-title, for every author: the pull request's title, which becomes the commit on
+   `main` when it is squash-merged, is in the Conventional Commits form
+   `<type>(<scope>)!: <summary>`, the type one of `COMMIT_TYPES` and scope and `!` optional
+   (CLAUDE.md §9, issue #472); the host's own title for a revert, `Revert "<such a title>"`,
+   passes too. The gate sees the form, not that the type fits the change;
 6. with --draft false: no BLOCKING decision is open — a pull request with a BLOCKING decision
    stays a draft;
 7. with --forbid-open-blocking (push to main): no BLOCKING file is under open/ at all.
@@ -1290,6 +1295,42 @@ def check_pull_request(
 
 # --- who wrote the description -----------------------------------------------------------------
 
+COMMIT_TYPES = (
+    "build",
+    "chore",
+    "ci",
+    "docs",
+    "feat",
+    "fix",
+    "perf",
+    "refactor",
+    "revert",
+    "style",
+    "test",
+)
+"""The Conventional Commits types a title may carry; P-03's step `pull-request-title` names the
+same (issue #472)."""
+
+COMMIT_TITLE = re.compile(rf"^(?:{'|'.join(COMMIT_TYPES)})(?:\([a-z0-9][a-z0-9._/-]*\))?!?: \S.*$")
+REVERT_TITLE = re.compile(r'^Revert "(?P<title>.+)"$')
+
+
+def check_title(title: str, report: Report) -> None:
+    """The title in the Conventional Commits form, for every author (5c)."""
+    print("title")
+    stripped = title.strip()
+    reverted = REVERT_TITLE.match(stripped)
+    if COMMIT_TITLE.match(stripped) or (reverted and COMMIT_TITLE.match(reverted["title"])):
+        report.ok(f"the title is in the Conventional Commits form: {stripped!r}")
+        return
+    report.fail(
+        "title",
+        f"{stripped!r} is not in the Conventional Commits form `<type>(<scope>): <summary>`, "
+        f"the type one of {', '.join(COMMIT_TYPES)}: the title becomes the commit on main when "
+        "the pull request is squash-merged (CLAUDE.md §9)",
+    )
+
+
 DEPENDENCY_BOTS = frozenset({"dependabot[bot]"})
 """Authors whose descriptions the shape is not asked of: a dependency bot writes its own
 description — what is bumped, from which version to which, the upstream release notes — and
@@ -1318,6 +1359,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--pr-body", type=Path, help="file holding the pull request description")
     parser.add_argument("--draft", type=parse_bool, help="github.event.pull_request.draft")
+    parser.add_argument("--pr-title", help="github.event.pull_request.title")
     parser.add_argument(
         "--author", help="github.event.pull_request.user.login: who wrote the description"
     )
@@ -1369,6 +1411,8 @@ def main(argv: list[str] | None = None) -> int:
         check_description(body, report)
         check_pull_request(body, args.draft, open_docs, report)
         check_behaviour_changes(body, report)
+    if args.pr_title is not None:
+        check_title(args.pr_title, report)
     if args.forbid_open_blocking:
         for doc in open_docs:
             if doc.category == "BLOCKING":

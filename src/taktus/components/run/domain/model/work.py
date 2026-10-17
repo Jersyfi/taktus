@@ -4,7 +4,7 @@ Five kinds are executable in this version. A `rule` step evaluates one of the bu
 (`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
 of a backlog task, the backlog in its order, the roadmap held against the backlog, spam by
 fixed patterns, a contribution's class held to what may be answered, a text template, what a
-pattern names in a list of texts — or
+pattern names in a list of texts, a title in the Conventional Commits form — or
 calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits for a duration
 through the clock, or for an external state read through a connector. A `worker`
 step hands a task to an execution unit behind the worker contract; an `ml` step does too, a
@@ -269,6 +269,66 @@ class ExtractRule(Value):
         return self
 
 
+class FilesType(Value):
+    """The type a change has whose every file matches `pattern`."""
+
+    pattern: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _compiles(self) -> FilesType:
+        try:
+            re.compile(self.pattern)
+        except re.error as error:
+            raise ValueError(f"pattern {self.pattern!r} does not compile: {error}") from error
+        return self
+
+
+class CommitTitleRule(Value):
+    """A title in the Conventional Commits form, `<type>(<scope>): <summary> (#<number>)`, from
+    a sentence such as an issue's title (ADR-0101). The type is one of `types`, taken from the
+    first source that gives one: the sentence itself where it is already in the form; a label
+    among `labels` that `label_pattern` matches, its group `type`; the changed `files`, where
+    every one matches the `pattern` of an entry of `by_files`, that entry's `type`; and last
+    `proposal`, a text in which `proposed` is searched, its groups `type` and `scope`.
+
+    A proposal is a variable method's opinion, so the rule holds it to `types` and produces the
+    value itself. The scope comes from the sentence or the proposal and is dropped unless it is
+    lower-case words. The summary is the sentence, its first letter lower-cased unless its first
+    word is an abbreviation, a final full stop dropped.
+
+    The result is `{"title", "type", "scope", "source"}`. No type from any source, two labels
+    naming different types, or an empty sentence fails the step. The same inputs give the same
+    title every time: admissible for `exact`."""
+
+    rule: Literal["commit_title"]
+    title: Any
+    number: Any
+    types: tuple[str, ...] = Field(min_length=1)
+    labels: Any = None
+    label_pattern: str | None = None
+    files: Any = None
+    by_files: tuple[FilesType, ...] = ()
+    proposal: Any = None
+    proposed: str | None = None
+
+    @model_validator(mode="after")
+    def _patterns_group_a_type(self) -> CommitTitleRule:
+        for name, pattern in (("label_pattern", self.label_pattern), ("proposed", self.proposed)):
+            if pattern is None:
+                continue
+            try:
+                compiled = re.compile(pattern)
+            except re.error as error:
+                raise ValueError(f"{name} {pattern!r} does not compile: {error}") from error
+            if "type" not in compiled.groupindex:
+                raise ValueError(f"{name} {pattern!r} has no group `type`")
+        for entry in self.by_files:
+            if entry.type not in self.types:
+                raise ValueError(f"by_files names {entry.type!r}, which is not among the types")
+        return self
+
+
 class Expectation(Value):
     """What a reading must show: the part of the output `select` names, equal to something,
     matching a pattern, or not — the conditions of a `check`, over what was just read.
@@ -322,6 +382,7 @@ type RuleWork = Annotated[
     | ClassificationRule
     | TemplateRule
     | ExtractRule
+    | CommitTitleRule
     | ConnectorRule,
     Field(discriminator="rule"),
 ]
@@ -756,6 +817,8 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.values]
     if isinstance(work, ExtractRule):
         return [work.values, work.excluding]
+    if isinstance(work, CommitTitleRule):
+        return [work.title, work.number, work.labels, work.files, work.proposal]
     if isinstance(work, WaitWork) and work.until is not None:
         return [work.until.input]
     return []
