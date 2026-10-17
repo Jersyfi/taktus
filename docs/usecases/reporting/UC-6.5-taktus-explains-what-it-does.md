@@ -5,7 +5,7 @@ component: reporting
 epic: E6
 serves: [P2, P7]
 state: specified
-version: 0.3.0
+version: 0.5.0
 tests: []
 adrs: {ADR-0004: ffdb1f1537f5, ADR-0006: 4ef70c98354b, ADR-0021: 202e0442e7ec, ADR-0029: 37c061ef032a}
 supersedes: null
