@@ -12,12 +12,17 @@ matches a rule, reports green and says so.
 
 The rules are the documented places of the repository (docs/architecture/project-structure.md).
 Adding a code area means adding its rule here.
+
+Before the comparison, and whatever changed, the table of tools/README.md is checked to be in the
+alphabetical order of its tools. Two pull requests that each added a tool after the same row
+conflicted on it; in that order two new rows land where their names put them, apart (#498).
 """
 
 from __future__ import annotations
 
 import argparse
 import fnmatch
+import itertools
 import re
 import subprocess
 import sys
@@ -102,6 +107,20 @@ RULES: tuple[Rule, ...] = (
 )
 
 
+TOOLS_README = ROOT / "tools" / "README.md"
+TOOL_ROW = re.compile(r"^\| `([^`]+)`", re.MULTILINE)
+
+
+def check_tools_table(text: str) -> str | None:
+    """Why the table of tools/README.md, given as `text`, is out of order, or None when it is
+    in order."""
+    names = TOOL_ROW.findall(text)
+    for before, name in itertools.pairwise(names):
+        if name.casefold() < before.casefold():
+            return f"tools/README.md lists `{name}` after `{before}`; keep the table alphabetical"
+    return None
+
+
 def git(*args: str) -> str:
     # A fixed executable name and arguments assembled here, not from input: nothing untrusted.
     result = subprocess.run(  # noqa: S603
@@ -138,6 +157,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--base", help="commit or branch to compare with (default origin/main)")
     args = parser.parse_args(argv)
+
+    disorder = check_tools_table(TOOLS_README.read_text(encoding="utf-8"))
+    if disorder is not None:
+        print(f"  FAIL {disorder}, so that two new rows land apart (#498)")
+        return 1
+    print("  ok   tools/README.md lists its tools in alphabetical order")
 
     base = resolve_base(args.base)
     if base is None:
