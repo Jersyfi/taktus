@@ -189,21 +189,41 @@ async def test_a_token_limit_halts_at_the_boundary_and_the_resume_continues(
     assert before and not before & after
 
 
-@pytest.mark.parametrize("late", [False, True], ids=["streamed", "in-the-total"])
+@pytest.mark.parametrize(
+    "late", [None, "1", "summed"], ids=["streamed", "in-the-total", "in-the-model-usage"]
+)
 async def test_the_reported_output_is_every_message_once(
-    start_coding_worker: StartWorker, late: bool
+    start_coding_worker: StartWorker, late: str | None
 ) -> None:
     """The fake agent streams each of its seven messages in two lines; the first carries a
     twentieth of the message's output, the last all of it — or, late, still the twentieth, and
-    only the session total in the final line holds the rest. Either way the worker reports the
-    output of every message once: 40 + n for the calls n = 1..6 and for the closing message
-    n = 99 — not the first line's, not both lines' (#278)."""
-    agent_env = {"FAKE_AGENT_LATE_USAGE": "1"} if late else {}
+    only the session total in the final line holds the rest: in its `usage`, or, as the pinned
+    agent writes it, only in its `modelUsage`, with `usage` the sum of the lines (#504). Every
+    way the worker reports the output of every message once: 40 + n for the calls n = 1..6
+    and for the closing message n = 99 — not the first line's, not both lines' (#278). What
+    the lines did not show is the `report` step's, and its money is priced with it: the steps
+    together cost what the session's tokens cost at the price table."""
+    agent_env = {"FAKE_AGENT_LATE_USAGE": late} if late else {}
     worker = start_coding_worker(auth="api-key", agent_env=agent_env)
     events = await one_assignment(worker)
     assert events[-1]["outcome"] == "succeeded"
     reported = [e for e in events if e["type"] == "consumption.reported"]
-    assert sum(e.get("tokens_out", 0) for e in reported) == sum(40 + n for n in [*range(1, 7), 99])
+    outputs = [40 + n for n in [*range(1, 7), 99]]
+    assert sum(e.get("tokens_out", 0) for e in reported) == sum(outputs)
+    steps = [e for e in reported if e.get("tokens_by_model")]
+    tokens = {
+        "input": 3 * 7,
+        "cache_read": sum(5000 * n for n in [*range(1, 7), 99]),
+        "cache_write": sum(1000 + 100 * n for n in [*range(1, 7), 99]),
+        "output": sum(outputs),
+    }
+    haiku = {"input": 1.0, "cache_read": 0.1, "cache_write": 2.0, "output": 5.0}
+    money = sum(tokens[k] * haiku[k] for k in tokens) / 1e6
+    assert sum(e["currency"]["usd"] for e in steps) == pytest.approx(money, abs=1e-5)
+    if late:
+        # The calls' steps saw a twentieth of their output; the report step names the rest.
+        missed = sum(o - o // 20 for o in outputs[:-1])
+        assert steps[-1]["tokens_out"] == outputs[-1] + missed
 
 
 async def test_an_agent_within_its_estimate_leaves_w14_inconclusive(

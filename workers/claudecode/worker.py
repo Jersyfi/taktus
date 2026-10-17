@@ -561,9 +561,9 @@ class _Run:
         self.last_checkpoint: str | None = self.body.get("context", {}).get("checkpoint_ref")
         self.deferred: list[Json] = []
         # Per message, the tokens already counted for it, by price kind; all messages' tokens
-        # counted so far, by price kind; the model the agent named last.
+        # counted so far, by model and price kind; the model the agent named last.
         self.usage_seen: dict[str, dict[str, int]] = {}
-        self.streamed: dict[str, int] = {}
+        self.streamed: dict[str, dict[str, int]] = {}
         self.last_model = worker.options.model or "unknown"
         # Tokens of messages whose usage arrived before a call to attribute them to: they go
         # to the next step, so that none is lost.
@@ -1322,18 +1322,35 @@ class _Run:
         counted = self.usage_seen.get(identifier, {})
         self.usage_seen[identifier] = {k: max(counted.get(k, 0), kinds[k]) for k in PRICE_KINDS}
         new = {k: max(0, kinds[k] - counted.get(k, 0)) for k in PRICE_KINDS}
-        self.streamed = {k: self.streamed.get(k, 0) + new[k] for k in PRICE_KINDS}
+        self.streamed = _merged(self.streamed, {self.last_model: new})
         return {self.last_model: new} if any(new.values()) else {}
 
     def _remainder_of(self, result: Json) -> dict[str, dict[str, int]]:
         """What the agent's session total in its final line holds beyond what the stream
-        showed: the output of messages whose last line came before their last token, under
-        the model the agent named last."""
+        showed: the output of messages whose last line came before their last token. The
+        pinned agent streams every line of a message with the output written so far, and its
+        `usage` adds up only those lines; its `modelUsage`, per model, holds what each
+        message used in the end, and the calls it makes beside the conversation (#504). That
+        total is compared per model; an agent that names none is compared on `usage`, under
+        the model it named last."""
+        per_model = result.get("modelUsage")
+        if isinstance(per_model, dict) and per_model:
+            out: dict[str, dict[str, int]] = {}
+            for model, usage in per_model.items():
+                if not isinstance(usage, dict):
+                    continue
+                kinds = _kinds_of_model_usage(usage)
+                seen = self.streamed.get(str(model), {})
+                new = {k: max(0, kinds[k] - seen.get(k, 0)) for k in PRICE_KINDS}
+                if any(new.values()):
+                    out[str(model)] = new
+            return out
         usage = result.get("usage")
         if not isinstance(usage, dict):
             return {}
         kinds = _kinds_of(usage)
-        new = {k: max(0, kinds[k] - self.streamed.get(k, 0)) for k in PRICE_KINDS}
+        streamed = {k: sum(s.get(k, 0) for s in self.streamed.values()) for k in PRICE_KINDS}
+        new = {k: max(0, kinds[k] - streamed[k]) for k in PRICE_KINDS}
         return {self.last_model: new} if any(new.values()) else {}
 
     def _capability_of(self, tool: str, arguments: Json) -> str:
@@ -1388,6 +1405,8 @@ class _Run:
         if ended_by == "result" and not result.get("is_error"):
             self._finish_succeeded(result, text)
             return
+        # What the result's total holds beyond the stream is the last step's, as on success.
+        self.unattributed = _merged(self.unattributed, self._remainder_of(result))
         self._report_unclaimed()
         self._settle(result)
         if result.get("subtype") == TURN_LIMIT:
@@ -1691,6 +1710,16 @@ def _kinds_of(usage: Json) -> dict[str, int]:
         "cache_read": int(usage.get("cache_read_input_tokens") or 0),
         "cache_write": int(usage.get("cache_creation_input_tokens") or 0),
         "output": int(usage.get("output_tokens") or 0),
+    }
+
+
+def _kinds_of_model_usage(usage: Json) -> dict[str, int]:
+    """One model's entry of the agent's `modelUsage` by price kind."""
+    return {
+        "input": int(usage.get("inputTokens") or 0),
+        "cache_read": int(usage.get("cacheReadInputTokens") or 0),
+        "cache_write": int(usage.get("cacheCreationInputTokens") or 0),
+        "output": int(usage.get("outputTokens") or 0),
     }
 
 
