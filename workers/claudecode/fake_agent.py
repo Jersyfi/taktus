@@ -34,8 +34,11 @@ small factor keeps the run within the estimate.
 
 Every message is streamed in several lines whose usage grows, as the real agent's does: the
 first line carries a twentieth of the message's output, the last all of it. The final line
-carries the session's total. `FAKE_AGENT_LATE_USAGE=1` keeps every
-line at the fraction, so that only the total holds the rest.
+carries the session's total twice, as the real agent's does: `usage` in the stream's keys, and
+`modelUsage` per model in its own. `FAKE_AGENT_LATE_USAGE=1` keeps every line at the fraction,
+so that only the total holds the rest, and names no `modelUsage`, so that only `usage` does.
+`FAKE_AGENT_LATE_USAGE=summed` is the pinned agent's shape (#504): every line at the fraction,
+`usage` the sum of those fractions, and only `modelUsage` the session's total.
 
 Every message names its model, as the real agent's does: `--model`, or `MODEL` below, which the
 worker's price table prices. A run that reaches `--max-turns` with its plan unfinished ends as
@@ -116,6 +119,28 @@ def partial(full: Json) -> Json:
 
 def add(total: Json, used: Json) -> Json:
     return {name: total.get(name, 0) + count for name, count in used.items()}
+
+
+def model_usage(total: Json) -> Json:
+    """The session's total per model, in the keys of the agent's `modelUsage`."""
+    return {
+        os.environ.get("FAKE_AGENT_MODEL") or MODEL: {
+            "inputTokens": total.get("input_tokens", 0),
+            "outputTokens": total.get("output_tokens", 0),
+            "cacheReadInputTokens": total.get("cache_read_input_tokens", 0),
+            "cacheCreationInputTokens": total.get("cache_creation_input_tokens", 0),
+        }
+    }
+
+
+def reported(total: Json, shown: Json) -> Json:
+    """The final line's `usage` and `modelUsage`, as `FAKE_AGENT_LATE_USAGE` shapes them."""
+    late = os.environ.get("FAKE_AGENT_LATE_USAGE")
+    if late == "summed":
+        return {"usage": shown, "modelUsage": model_usage(total)}
+    if late:
+        return {"usage": total}
+    return {"usage": total, "modelUsage": model_usage(total)}
 
 
 def message(message_id: str, blocks: list[Json], used: Json, session_id: str) -> Json:
@@ -255,6 +280,7 @@ def main(argv: list[str] | None = None) -> int:
     turns = 0
     results = 0
     total: Json = {}
+    shown: Json = {}  # what the lines showed: each message at its fraction
     # A tool it is not offered is one it does not know: it never calls it.
     remaining = [
         (n, tool, arguments)
@@ -281,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
                     "session_id": session_id,
                     "num_turns": turns,
                     "total_cost_usd": round(0.02 * turns, 4),
-                    "usage": total,
+                    **reported(total, shown),
                 }
             )
             return 1
@@ -294,6 +320,7 @@ def main(argv: list[str] | None = None) -> int:
         names = " and ".join(tool for _, tool, _ in batch)
         stream(f"msg_fake{first:04d}", f"Step {first}: {names}.", calls, usage(first), session_id)
         total = add(total, usage(first))
+        shown = add(shown, partial(usage(first)))
         pairs = list(zip(batch, calls, strict=True))
         if os.environ.get("FAKE_AGENT_PARALLEL") == "reversed":
             pairs.reverse()  # the later call finishes first, and its result comes first
@@ -347,6 +374,7 @@ def main(argv: list[str] | None = None) -> int:
                 break
     stream("msg_fakefinal", "Done.", {"type": "text", "text": FINAL}, usage(99), session_id)
     total = add(total, usage(99))
+    shown = add(shown, partial(usage(99)))
     emit(
         {
             "type": "result",
@@ -356,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
             "session_id": session_id,
             "num_turns": turns + 1,
             "total_cost_usd": round(0.02 * (turns + 1), 4),
-            "usage": total,  # the session's total: every message, each once
+            **reported(total, shown),  # the session's total: every message, each once
         }
     )
     return 0

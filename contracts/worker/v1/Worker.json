@@ -638,7 +638,7 @@
         "outcome": { "$ref": "#/$defs/Outcome" },
         "checkpoint_ref": { "$ref": "#/$defs/CheckpointRef" },
         "limit": {
-          "description": "The kind of the ceiling whose running total halted the assignment at a step boundary (W-14). Absent when the stop was requested.",
+          "description": "The kind of the ceiling whose running total halted the assignment at a step boundary (W-14). Absent when the stop was requested, and when the worker stopped on its own before its unit's wall clock (TAKTUS_UNIT_WALL_SECONDS, ADR-0102).",
           "$ref": "#/$defs/LimitKind"
         },
         "reason": { "type": "string", "minLength": 1 },

@@ -180,7 +180,9 @@ version registered, and the `budget.set` statement names the limit before and th
 raise is held to the ceiling the operator sets in `TAKTUS_RAISE_CEILING`, an amount and its
 currency; without one no raise is admitted (#458, DEC-0202). `--raise-quota UNITS` raises its
 quota the same way, held to `TAKTUS_RAISE_CEILING_QUOTA` (DEC-0208). A worker step
-stopped mid-way ends with the worker's checkpoint, and the resumed assignment starts from it.
+stopped mid-way ends with the worker's checkpoint, and the resumed assignment starts from it. A
+worker that stopped on its own, before its unit's wall clock, with no limit reached and no stop
+asked for, has its step continued at once in a new unit, at most three times (ADR-0102).
 
 Every state change is one transaction with the ledger entry that describes it: the run as it
 now is and the entry land together or not at all. A worker's own step boundaries are persisted

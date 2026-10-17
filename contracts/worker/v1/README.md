@@ -261,6 +261,13 @@ limit, the step does not start. The worker ends the assignment at the boundary i
 naming the kind whose ceiling halted it. A stop requested through `POST /stop` carries no
 `limit`.
 
+**A worker may also stop on its own before its unit's wall clock.** An execution adapter tells a
+launched unit the wall clock it ends it at, in `TAKTUS_UNIT_WALL_SECONDS`. A worker that can stop
+at a boundary may do so shortly before that clock: `stopped`, the boundary's `checkpoint_ref`, a
+`reason` that says so, and no `limit`, since the clock is no ceiling of the assignment's limits.
+The run continues the step from that checkpoint with a new assignment (ADR-0102). A worker that
+ignores the variable is ended at the clock as before.
+
 A step can use more than it was expected to, after it started. That step is not aborted: it
 finishes, and the worker halts at the boundary right after it and starts nothing more. The limit
 then yields by at most that one step's overrun. No work is lost: the checkpoint is kept, and an

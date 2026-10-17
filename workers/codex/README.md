@@ -155,6 +155,12 @@ fails. A command that fails ends the assignment before the agent starts; what it
 workspace is committed into the baseline and is not part of the change. It and the agent find
 their caches under `<state>/cache` (`XDG_CACHE_HOME`, ADR-0100).
 
+**Before its unit's wall clock it stops on its own.** Where the execution adapter names the
+unit's wall clock in `TAKTUS_UNIT_WALL_SECONDS`, the worker checks it at each boundary, where it
+checks its limits. Within the clock's last tenth — at least two minutes, at most half of it — it
+starts nothing more and ends `stopped` with the checkpoint and no `limit`. The run continues the
+step from there in a new unit, so the work is not lost when the unit is killed (ADR-0102, #493).
+
 ## What it cannot do
 
 - **Stop inside an item.** A boundary lies after an item completes.

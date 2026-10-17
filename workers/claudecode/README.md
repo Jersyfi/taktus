@@ -62,7 +62,13 @@ counted once, at its highest count: what a later line adds goes to the step the 
 When a line carries text and the call comes in a later line, the tokens wait for the call. A
 message that calls no tool — the closing summary — gives its tokens to the `report` step. So
 does whatever the session total in the agent's final line holds beyond what the stream showed.
-Until this was so, a message whose text came before its call was reported with zero tokens. In
+That total is the final line's `modelUsage`, per model, and its `usage` only where it names
+none. The pinned agent writes every line of a message with the output written so far, and its
+`usage` adds up those lines; only `modelUsage` holds what each message used in the end. A
+coding step of `run_5d7b0249728ce00c8cf6` made 99 tool calls and reported 1 059 output tokens,
+because the worker compared the stream with that `usage` (#504). A result that ends the
+assignment `stopped` or `failed` gives what its total holds beyond the stream to the last step
+in the same way. Until this was so, a message whose text came before its call was reported with zero tokens. In
 the live run of #74 the worker counted each message at its first line and reported a twentieth
 of the output its agent used (#278). An assignment that ends before the final line — stopped
 at a limit, a window or a stop — has only the stream's count.
@@ -239,6 +245,12 @@ under `<state>/cache` (`XDG_CACHE_HOME`), on the unit's state claim, so that a l
 links what an earlier one fetched instead of fetching it again. P-03 prepares the workspace this
 way with `uv sync --all-extras --frozen`: about half a minute and half a gigabyte the first time,
 a few seconds once the cache holds it.
+
+**Before its unit's wall clock it stops on its own.** Where the execution adapter names the
+unit's wall clock in `TAKTUS_UNIT_WALL_SECONDS`, the worker checks it at each boundary, where it
+checks its limits. Within the clock's last tenth — at least two minutes, at most half of it — it
+starts nothing more and ends `stopped` with the checkpoint and no `limit`. The run continues the
+step from there in a new unit, so the work is not lost when the unit is killed (ADR-0102, #493).
 
 ## What it cannot do
 
