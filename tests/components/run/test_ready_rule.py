@@ -90,14 +90,14 @@ def test_a_closed_record_or_issue_does_not_block() -> None:
     assert rules.ready(admission(), reading(body=body), RECORDS, [3])["ready"] is True
 
 
-def test_sections_missing_names_them_and_refuses_an_issue_that_has_them_all() -> None:
+def test_sections_missing_names_them_and_finds_none_missing_in_a_complete_issue() -> None:
     rule = ReadyRule(rule="ready", expect="sections_missing", issue={})
     body = FORM.format(verified="", blocked="nothing").replace("Event triggers", "")
     lacking = reading(body=body.replace("are not part of it.", ""), labels=[], milestone=None)
     result = rules.ready(rule, lacking, None, None)
     assert result["missing"] == ["How it is verified", "Where the boundary lies"]
-    with pytest.raises(RuleFailed, match="carries every section already"):
-        rules.ready(rule, reading(), None, None)
+    # A complete issue lacks nothing; the steps that write sections skip themselves on it.
+    assert rules.ready(rule, reading(), None, None)["missing"] == []
     with pytest.raises(RuleFailed, match="not open"):
         rules.ready(rule, reading(state="closed", body=body), None, None)
 

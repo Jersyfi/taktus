@@ -528,10 +528,15 @@ def test_refinement_writes_only_the_missing_section(outside: Outside, tmp_path: 
     p02 = "P-02-refinement.yaml"
     already = first_run_pattern("P02_ALREADY_REFINED")
 
-    # An issue that carries every section is left alone: refused before the model is asked.
-    output = run_bundle(outside, state_dir, p02, f"issue={tasks.ready}", expect=3)
-    assert refused(output, "missing", "carries every section already"), output
-    assert any(already.search(line) for line in output.splitlines()), output
+    # An issue that carries every section is left alone: the run finishes, the model is never
+    # asked, and nothing is written — no escalation for an issue that needs nothing.
+    output = run_bundle(outside, state_dir, p02, f"issue={tasks.ready}")
+    assert "state finished" in output, output
+    # A skipped step succeeds with the result `skipped` (`when`, ADR-0088): no model tokens on
+    # it, and no write.
+    for step in ("refine", "compose-comment", "write-sections"):
+        line = next(row for row in output.splitlines() if re.search(rf"\d+ {step}\s", row))
+        assert "succeeded" in line and "tokens" not in line and "quota" not in line, line
     assert outside.state()[REPOSITORY]["comments"] == 0  # type: ignore[index]
 
     # An issue missing a section gains exactly that section, as a comment.
@@ -1058,7 +1063,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@4",
-    "P-02-refinement.yaml": "p02-refinement@4",
+    "P-02-refinement.yaml": "p02-refinement@5",
     "P-03-implementation.yaml": "p03-implementation@19",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
@@ -1070,7 +1075,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "read-open-records",
             "write-report",
         },
-        "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
+        "p02-refinement@5": {"read-issue", "read-comments", "write-sections"},
         "p03-implementation@19": {
             "read-issue",
             "read-comments",
@@ -1094,7 +1099,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
         },
     },
     "worker.endpoint": {"p03-implementation@19": {"implement"}},
-    "model.endpoint": {"p02-refinement@4": {"refine"}},
+    "model.endpoint": {"p02-refinement@5": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""
 
