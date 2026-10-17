@@ -172,7 +172,8 @@ fails on that check and only on that check.
 
 ## The fake agent
 
-The gate runs this worker against `fake_agent.py`: a stand-in that takes the same options, reads
+Its final summary is written in the shape this repository asks of a pull request description, as
+P-03 asks its agent for it (#471). The gate runs this worker against `fake_agent.py`: a stand-in that takes the same options, reads
 the same authentication, writes the same stream and the same session file, and really performs
 its fixed plan of items in the workspace. It proves the worker's mechanics without an account
 and deterministically; it does not think. `FAKE_AGENT_EXPIRE_AFTER=N` fails the turn with an
