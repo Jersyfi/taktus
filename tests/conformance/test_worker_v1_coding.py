@@ -437,3 +437,23 @@ async def test_a_stop_inside_a_message_counts_the_money_of_its_tokens(
     # What the budget counts: the money of all three messages, the cut-off one with them.
     counted = sum(e.get("currency", {}).get("usd", 0.0) for e in reported)
     assert counted == pytest.approx(0.2908 + 0.3613 + 0.4318)
+
+
+async def test_near_its_units_wall_clock_the_worker_stops_at_a_boundary_of_its_own(
+    start_coding_worker: StartWorker,
+) -> None:
+    """ADR-0102: the execution adapter names the unit's wall clock in TAKTUS_UNIT_WALL_SECONDS.
+    Within its last part the worker starts nothing more and ends `stopped` with the checkpoint
+    and no limit, so that the run continues the step in a new unit instead of losing it when the
+    unit is killed."""
+    worker = start_coding_worker(
+        auth="api-key",
+        agent_env={"TAKTUS_UNIT_WALL_SECONDS": "8", "FAKE_AGENT_STEP_SECONDS": "1.5"},
+    )
+    events = await one_assignment(worker)
+    finished = events[-1]
+    assert finished["outcome"] == "stopped", finished
+    assert "limit" not in finished, "the worker's own stop names no ceiling of the limits"
+    assert "wall clock" in finished["reason"]
+    boundaries = [e for e in events if e["type"] == "step.boundary"]
+    assert boundaries and boundaries[-1]["checkpoint_ref"] == finished["checkpoint_ref"]

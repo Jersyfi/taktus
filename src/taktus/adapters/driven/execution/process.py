@@ -56,6 +56,7 @@ from taktus.ports.configuration import Configuration
 from taktus.ports.execution import (
     UNIT_PORT_VARIABLE,
     UNIT_STATE_DIR_VARIABLE,
+    UNIT_WALL_SECONDS_VARIABLE,
     ExecutionError,
     ExecutionRefused,
     Isolation,
@@ -174,6 +175,7 @@ class ProcessExecution:
             **configured,
             UNIT_PORT_VARIABLE: str(port),
             UNIT_STATE_DIR_VARIABLE: str(unit_state),
+            UNIT_WALL_SECONDS_VARIABLE: str(request.wall),
             UNIT_WORKSPACE_VARIABLE: str(workspace),
             **{c.reference.name: c.value.reveal() for c in credentials},
         }

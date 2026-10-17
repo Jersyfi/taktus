@@ -15,7 +15,9 @@ starts anything.
 The launch convention, the one thing a unit must know when an adapter starts it: it reads
 `TAKTUS_UNIT_PORT` for the port to serve the contract on and `TAKTUS_UNIT_STATE_DIR` for the
 directory that outlives the job. Both are environment variables, so that any worker — a
-script, a foreign binary behind a shell wrapper — can be launched without knowing more.
+script, a foreign binary behind a shell wrapper — can be launched without knowing more. Beside
+them it is told `TAKTUS_UNIT_WALL_SECONDS`, the wall clock after which the adapter ends it, so
+that a worker that can stop at a boundary does so before it is killed (ADR-0102).
 
 Beside the convention a unit receives the variables its own program needs to start, as the
 operator configures them for the worker (`ExecutionUnit.environment`, ADR-0090): a coding
@@ -38,6 +40,7 @@ from taktus.shared.v1 import AutonomyLevel, Value
 
 UNIT_PORT_VARIABLE = "TAKTUS_UNIT_PORT"
 UNIT_STATE_DIR_VARIABLE = "TAKTUS_UNIT_STATE_DIR"
+UNIT_WALL_SECONDS_VARIABLE = "TAKTUS_UNIT_WALL_SECONDS"
 ISOLATION_REQUIRED_FROM: AutonomyLevel = 3
 """From this autonomy level upwards an unisolated unit is refused (ADR-0002)."""
 
@@ -160,6 +163,14 @@ class JobRequest(Value):
     injects it into the unit; the value is never written to a volume, an image or a log."""
     wall_seconds: int | None = Field(default=None, ge=1)
     """A ceiling below the unit's own, for a job with a deadline."""
+
+    @property
+    def wall(self) -> int:
+        """The wall clock the adapter holds the unit to: the job's ceiling, never above the
+        unit's own. The unit is told it as `TAKTUS_UNIT_WALL_SECONDS` (ADR-0102)."""
+        return min(
+            self.wall_seconds or self.unit.limits.wall_seconds, self.unit.limits.wall_seconds
+        )
 
 
 def reach(unit: ExecutionUnit, frame_hosts: tuple[Host, ...]) -> tuple[Host, ...]:
