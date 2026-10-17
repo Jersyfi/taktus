@@ -41,8 +41,9 @@ this run knows, which must come back as the artifact the task names, byte for by
 step of the work; `after-command-failing` exits with 1, which must fail the assignment without
 that artifact. Then the same work twice with a command before it: `before-command` prints a
 value only this run knows, which must come back as the artifact the task names, produced by the
-first step, with the work after it; `before-command-failing` exits with 1, which must fail the
-assignment before any step of the work starts.
+first step, with the work after it, and its command after the work, `cat`, reads that artifact
+as its `input` and must print it back (ADR-0101); `before-command-failing` exits with 1, which
+must fail the assignment before any step of the work starts.
 
 W-08 scans everything the suite saw for the value of the credential it referenced by name. W-12
 is reported as pending: the removal test needs processes, and the suite has none.
@@ -1428,8 +1429,10 @@ async def _w18_before(
 ) -> None:
     """The same work twice with a command before it (ADR-0100). The first prints a value only
     this run knows, which must come back as the named artifact, produced by the first step,
-    with the work's steps after it. The second exits with 1, which must fail the assignment
-    with no step after the command's. Both commands are POSIX utilities: `printf` and `false`."""
+    with the work's steps after it; the same run's command after the work, `cat`, reads that
+    artifact as its `input`, and what it printed must be the same bytes (ADR-0101). The second
+    exits with 1, which must fail the assignment with no step after the command's. The commands
+    are POSIX utilities: `printf`, `cat` and `false`."""
     nonce = "taktus-conformance-" + secrets.token_hex(8)
     expected = f"{nonce}\n".encode()
     printed = await _run(
@@ -1439,6 +1442,7 @@ async def _w18_before(
         declared,
         limits,
         before={"command": ["printf", "%s\\n", nonce], "artifact": BEFORE_ARTIFACT},
+        after={"command": ["cat"], "artifact": AFTER_ARTIFACT, "input": BEFORE_ARTIFACT},
     )
     runs.append(printed)
     await _judge(client, printed, estimate, findings)
@@ -1469,6 +1473,14 @@ async def _w18_before(
         findings.fail(
             "W-18",
             f"{where}: no step of the work started after the command before it; steps {started}",
+        )
+        return
+    read = printed.artifact_bytes.get(AFTER_ARTIFACT)
+    if read != expected:
+        findings.fail(
+            "W-18",
+            f"{where}: the command after the work read {BEFORE_ARTIFACT!r} as its input and "
+            f"printed {(read or b'')[:80]!r}, not that artifact's {expected!r}",
         )
         return
 
@@ -1502,8 +1514,9 @@ async def _w18_before(
         findings.ok(
             "W-18",
             f"the command before the work ran first and its output came back as "
-            f"{BEFORE_ARTIFACT!r}; a command before the work that exited with 1 failed the "
-            "assignment before the work started",
+            f"{BEFORE_ARTIFACT!r}, which the command after the work read as its input; a "
+            "command before the work that exited with 1 failed the assignment before the work "
+            "started",
         )
 
 

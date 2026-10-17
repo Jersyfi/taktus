@@ -183,7 +183,7 @@
 
     "AfterCommand": {
       "title": "AfterCommand",
-      "description": "A command the worker runs in its workspace once the work is done, as the last step of the assignment. Its standard output becomes the artifact named by `artifact`, byte for byte. A command that exits with anything but 0 fails the assignment, and the artifact is not produced. The command is a program and its arguments, run without a shell, and it is given no credential (README §3, check W-18).",
+      "description": "A command the worker runs in its workspace once the work is done, as the last step of the assignment. Its standard output becomes the artifact named by `artifact`, byte for byte. A command that exits with anything but 0 fails the assignment, and the artifact is not produced. The command is a program and its arguments, run without a shell, and it is given no credential. With `input`, its standard input is the content of the artifact `input` names, which the assignment produced before it; without, its standard input is empty (README §3, check W-18).",
       "type": "object",
       "properties": {
         "command": {
@@ -194,6 +194,11 @@
         },
         "artifact": {
           "description": "The artifact_id under which the command's standard output is published.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "input": {
+          "description": "The artifact_id of an artifact the assignment produced before the command, whose content the command reads on its standard input, byte for byte. An assignment that produced no such artifact fails, and the command does not run.",
           "type": "string",
           "pattern": "^[a-z][a-z0-9_.-]*$"
         }

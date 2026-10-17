@@ -217,8 +217,10 @@ not the agent — runs its `command` in the workspace as the agent left it, with
 with no credential in its environment, for at most five minutes. Its standard output becomes the
 artifact `after.artifact`, of kind `output`, byte for byte. A command that exits with anything
 but 0 publishes nothing and the assignment ends `failed` with the exit status and the end of what
-it wrote to its error output (W-18). P-03 runs the repository's generator of the closing section
-this way (ADR-0053).
+it wrote to its error output (W-18). With `after.input`, the command reads that artifact on its
+standard input — the agent's `summary`, say — and an artifact the assignment never produced fails
+it without running the command. P-03 runs the repository's generator of the closing section this
+way, and its check of the description the summary becomes (ADR-0053, ADR-0101).
 
 A task that names `before` gains one first step, before the agent starts: the worker runs its
 `command` in the prepared workspace the same way — without a shell, with no credential — for at

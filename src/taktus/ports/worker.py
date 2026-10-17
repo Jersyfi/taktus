@@ -137,10 +137,12 @@ class AfterCommand(Value):
     """A command the worker runs in its workspace once the work is done. Its standard output
     becomes the artifact `artifact` names, byte for byte; an exit status other than 0 fails the
     assignment (contracts/worker/v1 §3, W-18). A program and its arguments, run without a shell,
-    given no credential."""
+    given no credential. With `input`, it reads on its standard input the content of the
+    artifact of that id the assignment produced before it (ADR-0101)."""
 
     command: tuple[Annotated[str, StringConstraints(min_length=1)], ...] = Field(min_length=1)
     artifact: str = Field(pattern=r"^[a-z][a-z0-9_.-]*$")
+    input: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_.-]*$")
 
 
 class BeforeCommand(Value):

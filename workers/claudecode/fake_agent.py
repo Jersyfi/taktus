@@ -22,7 +22,8 @@ tool results, as an expired subscription token does; `FAKE_AGENT_WINDOW_AFTER=N`
 subscription window as exhausted after N tool results; `FAKE_AGENT_HANG_AFTER=N` writes the text
 of its next message after N tool results, with the message's usage, and then works on it without
 end, so that a stop lands inside a message whose call never comes (#277). `FAKE_AGENT_WRITE`
-adds files to the change (`plan()`). `FAKE_AGENT_PARALLEL=1` makes two calls per message, as
+adds files to the change (`plan()`), and `FAKE_AGENT_FINAL` replaces the text it ends with — the
+summary the worker publishes. `FAKE_AGENT_PARALLEL=1` makes two calls per message, as
 the real agent does when it calls tools in parallel: both calls come first, each in a line of
 its own, then both results — with `reversed`, the second call's result first.
 
@@ -341,14 +342,15 @@ def main(argv: list[str] | None = None) -> int:
             if is_error and "denied" in text:
                 denied = True  # the real agent may try another way; this one gives up
                 break
-    stream("msg_fakefinal", "Done.", {"type": "text", "text": FINAL}, usage(99), session_id)
+    final = os.environ.get("FAKE_AGENT_FINAL") or FINAL
+    stream("msg_fakefinal", "Done.", {"type": "text", "text": final}, usage(99), session_id)
     total = add(total, usage(99))
     emit(
         {
             "type": "result",
             "subtype": "success",
             "is_error": False,
-            "result": FINAL,
+            "result": final,
             "session_id": session_id,
             "num_turns": turns + 1,
             "total_cost_usd": round(0.02 * (turns + 1), 4),

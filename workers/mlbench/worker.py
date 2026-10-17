@@ -267,6 +267,7 @@ class PlannedStep:
     argv: tuple[str, ...] | None = None  # the task's command before or after the work
     artifact: str | None = None  # the artifact that command fills
     before: bool = False  # the command before the work (ADR-0100)
+    reads: str | None = None  # the artifact the command after the work reads (ADR-0101)
 
 
 def plan_for(task: Json, job: Job, floor: float) -> list[PlannedStep]:
@@ -323,6 +324,7 @@ def plan_for(task: Json, job: Job, floor: float) -> list[PlannedStep]:
                 0.0,
                 argv=tuple(str(p) for p in after.get("command") or ()),
                 artifact=str(after.get("artifact")),
+                reads=str(after["input"]) if after.get("input") is not None else None,
             )
         )
     return steps
@@ -757,7 +759,17 @@ class Worker:
         if job is None:  # a rejected assignment never runs
             raise StepFailed("the task could not be read")
         if step.argv is not None:
-            output, failure = run_after(step.argv, before=step.before)
+            given = next(
+                (
+                    p.content
+                    for p in assignment.inherited + assignment.produced
+                    if p.artifact_id == step.reads
+                ),
+                None,
+            )
+            if step.reads is not None and given is None:
+                raise StepFailed(f"the command after the work reads {step.reads!r}, never produced")
+            output, failure = run_after(step.argv, before=step.before, given=given)
             if step.before:
                 # The command before the work publishes what it wrote either way (ADR-0100).
                 self._produce(
@@ -1095,10 +1107,14 @@ def fetch(uri: str, limit: int) -> bytes:
     return data
 
 
-def run_after(argv: tuple[str, ...], *, before: bool = False) -> tuple[bytes, str | None]:
+def run_after(
+    argv: tuple[str, ...], *, before: bool = False, given: bytes | None = None
+) -> tuple[bytes, str | None]:
     """Run the task's command before or after the work: a program and its arguments, without
-    a shell, with no credential in its environment (contracts/worker/v1 §3). After the work,
-    its standard output; before it, its standard output and error output in order."""
+    a shell, with no credential in its environment (contracts/worker/v1 §3), `given` on its
+    standard input — the artifact the command after the work reads (ADR-0101) — else nothing.
+    After the work, its standard output; before it, its standard output and error output in
+    order."""
     keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
     environment = {k: os.environ[k] for k in keep if k in os.environ}
     which = "before" if before else "after"
@@ -1107,7 +1123,7 @@ def run_after(argv: tuple[str, ...], *, before: bool = False) -> tuple[bytes, st
             list(argv),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT if before else subprocess.PIPE,
-            stdin=subprocess.DEVNULL,
+            input=given or b"",
             timeout=AFTER_TIMEOUT,
             check=False,
             env=environment,

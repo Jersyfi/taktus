@@ -85,9 +85,13 @@ fails at `label` with its pull request open, gives nothing back. The body is the
 the template fixes: `Closes #N` and Taktus's own statement before it, and after it the section
 the repository generates for the end of every description — a copy is a rule, not a model's
 output (issue #34). The template adds no heading of its own: the summary is written in the shape
-the repository asks of a description, so each section is there once (issue #282). The worker generates it: after its change it runs `tools/check_status.py
---print` in its workspace, the tree the branch will carry, and a template puts what it printed
-under the section's heading (DEC-0037, ADR-0053). A run started by hand may hand the section in
+the repository asks of a description, so each section is there once (issue #282). The worker generates it: after its change it runs `tools/describe.py`
+in its workspace, the tree the branch will carry, with the agent's summary as its input; that
+prints what `tools/check_status.py --print` prints, once the summary and that section pass the
+description check `tools/check_decisions.py --pr-body`, and a template puts what it printed under
+the section's heading (DEC-0037, ADR-0053, ADR-0101). A summary the check fails fails the coding
+step with the check's findings, and the run gives the issue back naming them before any pull
+request is opened (#471). A run started by hand may hand the section in
 as the input `closing_section` instead. Nothing writes to the base branch: a person merges.
 A run may spend USD 5 (DEC-0203), all of it on the coding step: the worker prices its tokens at every
 boundary and halts there before that is crossed, and an agent that reaches its limit of turns

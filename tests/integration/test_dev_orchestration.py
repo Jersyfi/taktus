@@ -251,10 +251,40 @@ print("Installed 3 packages")
     return directory
 
 
+# What the fake agent ends with: its summary, in the shape the repository asks of a description,
+# which P-03's command after the work checks before the pull request is opened (#471).
+SUMMARY = """## What this is about
+
+A greeting.
+
+## Decisions required
+
+None
+
+## What was done
+
+Wrote notes/plan.md and hello.txt, edited the greeting, and ran the check.
+
+## Why this way
+
+The issue asks for it.
+
+## What to check
+
+hello.txt says hello.
+"""
+
+
 @pytest.fixture
-def outside(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Outside]:
+def summary(request: pytest.FixtureRequest) -> str:
+    """The text the fake agent ends with (`FAKE_AGENT_FINAL`); parametrized indirectly."""
+    return str(getattr(request, "param", None) or SUMMARY)
+
+
+@pytest.fixture
+def outside(tmp_path: Path, request: pytest.FixtureRequest, summary: str) -> Iterator[Outside]:
     """The fakes and the worker. Parametrized indirectly with a mapping of path to content, the
-    fake agent adds those files to its change (`FAKE_AGENT_WRITE`)."""
+    fake agent adds those files to its change (`FAKE_AGENT_WRITE`); it ends with `summary`."""
     agent_writes: dict[str, str] = getattr(request, "param", None) or {}
     started: list[subprocess.Popen[bytes]] = []
     token = "tok-" + secrets.token_hex(12)
@@ -303,10 +333,12 @@ def outside(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Outside]
         model_url = f"http://127.0.0.1:{model.server_address[1]}"
 
         # A repository for the worker to clone: one commit on main, which carries the
-        # generator P-03's worker runs after its change (DEC-0037).
+        # generator P-03's worker runs after its change (DEC-0037) and the description check
+        # it runs on the summary first (#471).
         clone = tmp_path / "origin"
         (clone / "tools").mkdir(parents=True)
-        shutil.copy(ROOT / "tools" / "check_status.py", clone / "tools" / "check_status.py")
+        for tool in ("check_status.py", "describe.py", "check_decisions.py", "reserve.py"):
+            shutil.copy(ROOT / "tools" / tool, clone / "tools" / tool)
         git_env = {
             **os.environ,
             "GIT_AUTHOR_NAME": "t",
@@ -343,7 +375,7 @@ def outside(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Outside]
                     "--estimate-currency",
                     "0.5",
                     "--agent-env",
-                    "FAKE_AGENT_WRITE",
+                    "FAKE_AGENT_WRITE,FAKE_AGENT_FINAL",
                 ],
                 stdout=handle,
                 stderr=subprocess.STDOUT,
@@ -352,6 +384,7 @@ def outside(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Outside]
                     "PATH": f"{fake_package_manager(tmp_path)}{os.pathsep}{os.environ['PATH']}",
                     "CODING_AGENT_API_KEY": agent_key,
                     "FAKE_AGENT_WRITE": json.dumps(agent_writes),
+                    "FAKE_AGENT_FINAL": summary,
                 },
             )
         started.append(worker)
@@ -621,7 +654,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
-    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@16`", announced)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@17`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -764,6 +797,34 @@ def test_a_branch_left_by_an_earlier_attempt_stops_the_run_before_the_coding_ste
         ["egress.write", "give-back"],
         ["egress.write", "announce-give-back"],
     ], output
+
+
+@pytest.mark.parametrize(
+    "summary", [SUMMARY.replace("hello.txt says hello.", "hello.txt (ADR 0034, …)")], indirect=True
+)
+def test_a_summary_the_description_check_fails_opens_no_pull_request(
+    outside: Outside, tmp_path: Path
+) -> None:
+    """#471: the agent's summary quotes a reference with an ellipsis, which the description
+    check reads as a placeholder — what #470 carried into its pull request. The worker's command
+    after the work runs the check on the summary and the generated section and fails, so the
+    coding step fails: the run writes no branch and opens no pull request, and gives the issue
+    back with the check's finding named (ADR-0097, ADR-0101)."""
+    state_dir = tmp_path / "state"
+    tasks = backlog(outside)
+    hand(outside, tasks.ready)
+    inputs = p03_inputs(outside, tasks.ready)
+    output = run_bundle(outside, state_dir, "P-03-implementation.yaml", *inputs, expect=3)
+    assert re.search(r"implement\s+worker\s+tolerant\s+failed", output), output
+    assert outside.state()[REPOSITORY]["branches"] == 1, "only main"  # type: ignore[index]
+    assert outside.state()[REPOSITORY]["pulls"] == 0  # type: ignore[index]
+
+    took, gave_back = comments_on(outside, tasks.ready)
+    assert took.startswith("Taktus took this issue: run `run_")
+    assert "stopped at the step `implement`" in gave_back, gave_back
+    assert "`## What to check` keeps a placeholder: '…'" in gave_back, gave_back
+    assert "`tools/check_decisions.py --pr-body` fails the description" in gave_back, gave_back
+    assert "in-progress" not in outside.labels(tasks.ready)
 
 
 # --- the numbers of the records a change adds (issues #382, #281) -------------------------------
@@ -1009,7 +1070,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@4",
     "P-02-refinement.yaml": "p02-refinement@4",
-    "P-03-implementation.yaml": "p03-implementation@16",
+    "P-03-implementation.yaml": "p03-implementation@17",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -1021,7 +1082,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "write-report",
         },
         "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@16": {
+        "p03-implementation@17": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -1041,7 +1102,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@16": {"implement"}},
+    "worker.endpoint": {"p03-implementation@17": {"implement"}},
     "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""

@@ -76,6 +76,11 @@ Checks:
 Checks 5 and 5a are not asked of a description a dependency bot wrote (`DEPENDENCY_BOTS`,
 NTC-0013): it carries its own explanation of what it changes. Every other check still runs.
 
+With --pr-body and --description-only, only checks 5 to 5b run, the ones that read the
+description: the register is read for the decisions a description names, and not checked. That is
+what P-03 runs before it opens a pull request (`tools/describe.py`, #471); the rest of the
+register is `make gate-decisions`, which the pipeline runs on the branch before that.
+
 `**Needed by:**` is a date, or — for a question with no date of its own, such as a mode-4 question
 due before a milestone — `before` and what it must precede. `**Written after the answer:**` on a
 record says that the request was written after the owner had answered; `make status` leaves it out
@@ -1332,6 +1337,11 @@ def main(argv: list[str] | None = None) -> int:
         help="print the register's index, generated from the records, and exit (make register)",
     )
     parser.add_argument(
+        "--description-only",
+        action="store_true",
+        help="with --pr-body: run only the checks that read the description (tools/describe.py)",
+    )
+    parser.add_argument(
         "--forbid-open-blocking",
         action="store_true",
         help="fail on any BLOCKING file under open/ (use on the main branch)",
@@ -1347,6 +1357,14 @@ def main(argv: list[str] | None = None) -> int:
             _, provided_needs = check_needs(Report())
         print(index_text(records, notices, provided_needs), end="")
         return 0
+    if args.description_only and args.pr_body is not None:
+        with contextlib.redirect_stdout(io.StringIO()):
+            open_docs, _ = check_register(Report())
+        body = args.pr_body.read_text(encoding="utf-8")
+        check_description(body, report)
+        check_pull_request(body, args.draft, open_docs, report)
+        check_behaviour_changes(body, report)
+        return finish(report, started)
     open_docs, records = check_register(report)
     notices = check_notices(report)
     check_index(report)
@@ -1375,6 +1393,11 @@ def main(argv: list[str] | None = None) -> int:
                 report.fail(
                     doc.rel, "BLOCKING request on the main branch; it was merged unanswered"
                 )
+    return finish(report, started)
+
+
+def finish(report: Report, started: float) -> int:
+    """The last lines: the count and the duration; 1 when anything failed."""
     print()
     duration = f"{time.monotonic() - started:.2f}s"
     if report.failures:

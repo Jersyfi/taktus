@@ -134,7 +134,11 @@ run without a shell, and `artifact` the `artifact_id` under which its standard o
 published, byte for byte, as `text/plain`. The command is the task's: no model chooses or runs it,
 and the worker gives it no credential. A command that exits with anything but 0 fails the
 assignment, and the artifact is not produced. A resumed assignment whose checkpoint lies after
-that artifact does not run it again. Check W-18 holds a worker to this (ADR-0053).
+that artifact does not run it again. With `input`, the command reads on its standard input the
+content of the artifact of that id the assignment produced before it, byte for byte, so that the
+task's own code can check what the work wrote; an assignment that produced none fails, and the
+command does not run. Without `input`, its standard input is empty. Check W-18 holds a worker to
+this (ADR-0053, ADR-0101).
 
 **A command before the work.** `task.before` names a command the worker runs in its prepared
 workspace before the work starts, as the assignment's first step: what makes the workspace able
@@ -298,7 +302,7 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 | W-15 | a worker holding `max_concurrent_assignments` answers one more `POST /v1/assignments` with `503` and a problem body, and records nothing of it |
 | W-16 | `GET /v1/assignments/{id}` of an id the worker never received answers `404` with a problem body |
 | W-17 | a `POST /v1/assignments` whose id the worker already holds, running or finished, answers `409` with a problem body and starts nothing: the assignment of that id stays the first |
-| W-18 | a task's command after the work runs as the last step, after every step of the work; its standard output is the artifact the task names, byte for byte; a command that exits with anything but 0 fails the assignment without that artifact. A task's command before the work runs as the first step, before every step of the work; its output is the artifact the task names; a command that exits with anything but 0 fails the assignment, and no step of the work starts |
+| W-18 | a task's command after the work runs as the last step, after every step of the work; its standard output is the artifact the task names, byte for byte; with `input`, its standard input is the content of that artifact of the assignment; a command that exits with anything but 0 fails the assignment without that artifact. A task's command before the work runs as the first step, before every step of the work; its output is the artifact the task names; a command that exits with anything but 0 fails the assignment, and no step of the work starts |
 
 The suite runs W-01 to W-11 and W-13 to W-18 against a live worker and reports W-12 as *pending*: the removal test
 takes the adapter out of running processes, which a suite talking to one endpoint cannot do, and

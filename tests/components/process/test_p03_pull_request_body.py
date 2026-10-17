@@ -71,3 +71,30 @@ def test_each_section_ci_checks_appears_once_and_the_generated_one_last() -> Non
     check_decisions.check_pull_request(body, None, [], report)
     check_status.check_pull_request(body, printed, report)
     assert report.failures == []
+
+
+def test_the_description_is_checked_on_the_summary_before_the_pull_request_opens() -> None:
+    """#471: the worker's command after the work reads the summary and runs the description
+    check on it with the generated section, as `pull-request-body` composes the two, before
+    `open-pr`. The body differs from what was checked only by what comes before the summary,
+    which carries no heading."""
+    import describe
+
+    bundle = yaml.safe_load(P03.read_text(encoding="utf-8"))
+    (implement,) = [s for s in bundle["steps"] if s["id"] == "implement"]
+    after = implement["work"]["task"]["after"]
+    assert after == {
+        "command": ["python3", "tools/describe.py"],
+        "artifact": "closing",
+        "input": "summary",
+    }
+    (closing,) = [s for s in bundle["steps"] if s["id"] == "closing-section"]
+    assert closing["work"]["values"]["block"] == {"$from": "implement", "$artifact": "closing"}
+
+    printed = check_status.generated(check_status.open_records())
+    rule = TemplateRule.model_validate(closing["work"])
+    body = composed(rules.template(rule, {"block": printed}))
+    checked = describe.compose(summary(), printed)
+    before, _, rest = body.partition(summary())
+    assert rest.strip() == checked[len(summary()) :].strip()
+    assert not re.search(r"^## ", before, re.MULTILINE), "nothing before the summary is a section"

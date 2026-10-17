@@ -127,6 +127,8 @@ class PlannedStep:
     before: bool = False
     """The task's command before the work: its error output is part of its artifact, which is
     produced whether it succeeded or not (ADR-0100)."""
+    reads: str | None = None
+    """The artifact the task's command after the work reads on its standard input (ADR-0101)."""
 
 
 def quick_plan(step_seconds: float) -> list[PlannedStep]:
@@ -221,6 +223,7 @@ def plan_for(task: Json, profile: str, options: argparse.Namespace) -> list[Plan
                 0.0,
                 (ArtifactSpec(str(after.get("artifact")), "output", "text/plain"),),
                 argv=argv,
+                reads=str(after["input"]) if after.get("input") is not None else None,
             )
         )
     return steps
@@ -604,8 +607,13 @@ class Worker:
                     "not allow"
                 )
             else:
-                if step.argv is not None:
-                    output, failure = run_program(step.argv, before=step.before)
+                given = next(
+                    (p.content for p in assignment.produced if p.artifact_id == step.reads), None
+                )
+                if step.reads is not None and given is None:
+                    failure = f"the command after the work reads {step.reads!r}, never produced"
+                elif step.argv is not None:
+                    output, failure = run_program(step.argv, before=step.before, given=given)
                 else:
                     output, failure = run_command(step.command)
                 if self.fault == "W-08-log" and credential:
@@ -806,10 +814,14 @@ def run_command(command: str) -> tuple[bytes, str | None]:
     return completed.stdout, None
 
 
-def run_program(argv: tuple[str, ...], *, before: bool = False) -> tuple[bytes, str | None]:
+def run_program(
+    argv: tuple[str, ...], *, before: bool = False, given: bytes | None = None
+) -> tuple[bytes, str | None]:
     """Run the task's command before or after the work: a program and its arguments, without a
-    shell, with no credential in its environment (contracts/worker/v1 §3). After the work, its
-    standard output; before it, its standard output and error output in order."""
+    shell, with no credential in its environment (contracts/worker/v1 §3), `given` on its
+    standard input — the artifact the command after the work reads (ADR-0101) — else nothing.
+    After the work, its standard output; before it, its standard output and error output in
+    order."""
     keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
     environment = {k: os.environ[k] for k in keep if k in os.environ}
     which = "before" if before else "after"
@@ -818,7 +830,7 @@ def run_program(argv: tuple[str, ...], *, before: bool = False) -> tuple[bytes, 
             list(argv),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT if before else subprocess.PIPE,
-            stdin=subprocess.DEVNULL,
+            input=given or b"",
             timeout=COMMAND_TIMEOUT,
             check=False,
             env=environment,

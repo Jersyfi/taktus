@@ -78,7 +78,9 @@ that boundary's `checkpoint_ref`.
 **The command after the work.** A task that names `after` gains one last step, `after`, of kind
 `shell`: its `command` runs without a shell and with no credential in its environment, and its
 standard output becomes the artifact `after.artifact`, of kind `output`, byte for byte. A command
-that exits with anything but 0 publishes nothing and the assignment ends `failed` (W-18).
+that exits with anything but 0 publishes nothing and the assignment ends `failed` (W-18). With
+`after.input`, the command reads that artifact of the assignment on its standard input; one the
+assignment never produced fails it without running the command (ADR-0101).
 
 **The command before the work.** A task that names `before` gains one first step, `before`, of
 kind `shell`, run the same way. What it writes to its standard output and error output becomes

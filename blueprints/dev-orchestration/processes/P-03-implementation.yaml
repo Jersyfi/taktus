@@ -47,7 +47,12 @@
 # The pull request description is the worker's summary, written in the shape the repository
 # asks of a description, between what the run fixes: `Closes #N` and Taktus's own statement
 # before it, and the closing section after it. The run adds no heading of its own, so each
-# section is there once (issue #282). The connector configured for
+# section is there once (issue #282). The description is checked before the pull request is
+# opened, not only by the pipeline afterwards: the worker's command after the work reads the
+# summary, runs the repository's description check on the summary and the generated section,
+# and prints the section only for a description that passes. One that fails fails the coding
+# step with the check's findings, and the run gives the issue back naming them; no pull request
+# is opened (#471, ADR-0101). The connector configured for
 # `repository.*` and the worker configured for `code.*` are what the capabilities resolve to;
 # no product is named here.
 #
@@ -73,7 +78,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "16"
+version: "17"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -471,7 +476,7 @@ steps:
           # with, so the shape the repository asks of a description is asked of the summary.
           # The section the repository generates is not asked of it: the run appends that
           # section itself, by a template, after the summary (issue #34), from what the command
-          # below printed (DEC-0037).
+          # below printed (DEC-0037). That command checks the summary first (#471).
           - >
             the summary this assignment ends with is the body of the pull request that will
             carry the change: what it delivers, and what a reviewer must know. Where the
@@ -480,7 +485,12 @@ steps:
             same headings at the same level and every required section present and truthful.
             One section is left out: the one whose content the repository generates, which the
             repository puts last. The run appends it after the summary, from the repository's
-            own generator, so the summary neither writes nor copies it
+            own generator, so the summary neither writes nor copies it. Before the pull request
+            is opened, `python3 tools/describe.py` reads the summary on its standard input and
+            runs the repository's description check, `tools/check_decisions.py --pr-body`, on
+            it and that section; a summary it fails ends the run without a pull request. So
+            write the summary to a file outside the repository's tree and run that command on
+            it before ending, until it passes
         inputs:
           issue: { $input: issue }
           title: { $from: read-issue, $select: output.title }
@@ -496,9 +506,13 @@ steps:
         # The repository's generator of the closing section, run by the worker — not by the
         # agent, and with no model — once the work is done, in the workspace: the tree the
         # branch will carry. What it prints is the artifact `closing`, byte for byte (W-18).
+        # It reads the agent's summary as its input and prints the section only when the
+        # description the two make passes the repository's description check; otherwise it
+        # fails, with the check's findings, and so does the step (#471, ADR-0101).
         after:
-          command: [python3, tools/check_status.py, --print]
+          command: [python3, tools/describe.py]
           artifact: closing
+          input: summary
       max_steps: 40
       workspace:
         kind: git

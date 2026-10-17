@@ -1422,7 +1422,16 @@ class _Run:
                     "summary": "the command after the work",
                 },
             )
-        output, failure = run_after(tuple(str(p) for p in after["command"]), self.workspace)
+        read = after.get("input")
+        given = next(
+            (p.content for p in a.inherited + a.produced if p.artifact_id == read), None
+        )
+        if read is not None and given is None:
+            output, failure = b"", f"the command after the work reads {read!r}, never produced"
+        else:
+            output, failure = run_after(
+                tuple(str(p) for p in after["command"]), self.workspace, given or b""
+            )
         if failure is None:
             produced = Produced(named, "output", "text/plain", output)
             with a.lock:
@@ -1529,16 +1538,20 @@ def cache_of(state: Path) -> Path:
     return state / "cache"
 
 
-def run_after(argv: tuple[str, ...], workspace: Path) -> tuple[bytes, str | None]:
+def run_after(
+    argv: tuple[str, ...], workspace: Path, given: bytes = b""
+) -> tuple[bytes, str | None]:
     """Run the task's command after the work in the workspace: a program and its arguments,
-    without a shell, with no credential in its environment. Its standard output, and why it
-    failed or None."""
+    without a shell, with no credential in its environment, `given` on its standard input — the
+    artifact the task names as its `input`, else nothing (ADR-0101). Its standard output, and
+    why it failed or None."""
     keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
     environment = {k: os.environ[k] for k in keep if k in os.environ}
     try:
         completed = subprocess.run(  # noqa: S603 — the task's own command, by design
             list(argv),
             cwd=workspace,
+            input=given,
             capture_output=True,
             timeout=AFTER_TIMEOUT,
             check=False,
