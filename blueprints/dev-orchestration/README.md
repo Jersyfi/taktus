@@ -52,10 +52,12 @@ do not name it, read from the issue numbers each item names, `#N`), compose the 
 nothing, until its autonomy is raised (M3.9). The blueprint first described the reconciliation
 as a model's judgement; the owner chose the rule in DEC-0080 (M3.13).
 
-**P-02 Refinement** (autonomy 3, seven steps): read the issue and its comments (`rule`, connector
+**P-02 Refinement** (version 5, autonomy 3, seven steps): read the issue and its comments (`rule`, connector
 reads), check that P-02 has not commented on it already (`rule`, `exact`), find the sections of
-the standard the body lacks (`rule` `ready`, `exact` — an issue that is closed, a pull request,
-or carries all three is refused here), write the missing ones (`llm`, `sourced` — the answer
+the standard the body lacks (`rule` `ready`, `exact` — an issue that is closed or a pull request
+is refused here; one that carries all three lacks none, and the three steps after this skip
+themselves, so that the run finishes having written nothing instead of escalating, version 5),
+write the missing ones (`llm`, `sourced` — the answer
 leaves the step only when it opens with one of the three headings and carries text under it),
 compose the comment (`rule`), write it (`rule`, outward effect: an `egress.write` entry in the
 ledger). P-02 never edits the issue and never adds the label `ready`: a person, or P-01, puts

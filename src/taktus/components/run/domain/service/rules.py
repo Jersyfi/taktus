@@ -97,11 +97,9 @@ def ready(rule: ReadyRule, issue: Any, open_records: Any, open_issues: Any) -> d
         refused = [r for r in reasons if r.startswith(("not open", "a pull request"))]
         if refused:
             raise RuleFailed(f"issue #{issue['number']}: " + "; ".join(refused))
-        if not missing:
-            raise RuleFailed(
-                f"issue #{issue['number']} carries every section already: "
-                + ", ".join(f"'{name}'" for name in standard.SECTIONS)
-            )
+        # An issue that carries every section has nothing to refine: `missing` is empty, and
+        # the steps that write sections skip themselves on it (`when`). It is no failure, and
+        # it escalated ten of P-02's fourteen runs on the instance in two days.
     return result
 
 

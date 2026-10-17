@@ -81,7 +81,9 @@ What a read returns is the connector's to declare, not the contract's. The refer
 connector reads an issue with its labels and milestone, lists the open issues to the last page,
 and lists a directory at a ref (issue #70). P-03 Implementation feeds those readings to the run
 component's built-in rule `ready`, the backlog's ready standard
-(`components/run/domain/service/ready.py`, DEC-0051). P-01 Roadmap control feeds the open
+(`components/run/domain/service/ready.py`, DEC-0051); P-02 Refinement asks it which sections an
+issue lacks, and an issue that lacks none is no failure but an empty list, on which P-02's
+writing steps skip themselves. P-01 Roadmap control feeds the open
 issues and the roadmap's text, read as a file, to the rules `backlog` and `roadmap` of the same
 component (issue #71). The rules judge the readings; the connector judges nothing. An issue's
 form ends at a horizontal rule: a footer after it belongs to no section (DEC-0116). Both

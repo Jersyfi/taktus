@@ -25,7 +25,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p02-refinement
-version: "4"
+version: "5"
 name: P-02 Refinement
 autonomy:
   level: 3
@@ -120,8 +120,9 @@ steps:
       which sections of the ready standard the issue lacks is the standard's own reading of
       its body — the rule `ready`, the same code a session's `make backlog` runs, rather than
       a `check` with patterns that would state the standard a second time and could drift from
-      it; an issue that is closed, a pull request, or carries every section is refused here,
-      and nothing is written
+      it; an issue that is closed or a pull request is refused here, and one that carries
+      every section lacks none: the steps that write sections skip themselves, and the run
+      finishes having written nothing
     rejected:
       - method: llm
         why: whether a section is there is a fact of the text, not a judgement
@@ -151,6 +152,9 @@ steps:
       to: human
     depends_on: [missing]
     work:
+      when:
+        - value: { $from: missing, $select: missing }
+          not_matches: '^\[\]$'
       purpose: reasoning
       system: >
         You write the missing sections of a task in a software backlog. You are given the
@@ -189,6 +193,9 @@ steps:
     exactness: sourced
     depends_on: [refine]
     work:
+      when:
+        - value: { $from: missing, $select: missing }
+          not_matches: '^\[\]$'
       rule: template
       text: |
         ${sections}
@@ -213,6 +220,9 @@ steps:
       to: human
     depends_on: [compose-comment]
     work:
+      when:
+        - value: { $from: missing, $select: missing }
+          not_matches: '^\[\]$'
       rule: connector
       operation: repository.comments.create
       input:
