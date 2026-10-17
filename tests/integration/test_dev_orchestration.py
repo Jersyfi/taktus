@@ -164,6 +164,17 @@ class Outside:
         assert isinstance(issue, dict)
         return sorted(label["name"] for label in issue["labels"])
 
+    def main_ran(self, conclusion: str) -> dict[str, object]:
+        """A completed `ci` run for the head of `main`, as a push to it would make one."""
+        answer = httpx.post(
+            f"{self.service_url}/_fake/run",
+            json={"repository": REPOSITORY, "branch": "main", "conclusion": conclusion},
+            timeout=5,
+        )
+        answer.raise_for_status()
+        result: dict[str, object] = answer.json()
+        return result
+
     def commit_on_main(self, files: dict[str, str]) -> None:
         """Put files on `main` through the service's object interface, as a push would."""
         repo = f"/repos/{REPOSITORY}"
@@ -584,9 +595,13 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         assert comments_on(outside, number) == []
     assert outside.state()[REPOSITORY]["branches"] == 1  # type: ignore[index]
 
-    # The ready one is admitted, claimed, implemented, and becomes a pull request.
+    # The ready one is admitted, claimed, implemented, and becomes a pull request. `main` is
+    # green: its pipeline is read before the coding step, and nothing else changes (#481).
+    outside.main_ran("success")
     output = run_bundle(outside, state_dir, p03, *p03_inputs(outside, tasks.ready))
     assert "state finished" in output, output
+    assert re.search(r"wait-for-main\s+wait\s+-\s+succeeded", output), output
+    assert re.search(r"read-main\s+rule\s+sourced\s+succeeded", output), output
     for step in ("admit", "verify"):
         assert f"{step:<20} rule       exact     succeeded" in output, output
     assert "implement            worker     tolerant  succeeded" in output, output
@@ -621,7 +636,7 @@ def test_implementation_admits_a_ready_issue_claims_it_and_refuses_the_rest(
         "to-taktus",
     ]
     (announced,) = comments_on(outside, tasks.ready)
-    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@16`", announced)
+    assert re.match(r"Taktus took this issue: run `run_\w+` of `p03-implementation@17`", announced)
 
     ref = outside.get(f"/repos/{REPOSITORY}/git/ref/heads/taktus/issue-{tasks.ready}")
     assert isinstance(ref, dict)
@@ -757,6 +772,41 @@ def test_a_branch_left_by_an_earlier_attempt_stops_the_run_before_the_coding_ste
     assert gave_back.startswith("Taktus gives this issue back: run `run_")
     assert "stopped at the step `read-branch`" in gave_back
     assert f"the branch {branch} exists and this run did not make it" in gave_back
+    writes = [line.split()[2:4] for line in output.splitlines() if "egress." in line]
+    assert writes == [
+        ["egress.write", "claim"],
+        ["egress.write", "announce-claim"],
+        ["egress.write", "give-back"],
+        ["egress.write", "announce-give-back"],
+    ], output
+
+
+def test_a_red_main_stops_the_run_before_the_coding_step(outside: Outside, tmp_path: Path) -> None:
+    """A ready issue while the newest `ci` run on `main` failed: the guard of `main` would fail
+    the push run of the branch, after the coding step had spent (#480). So the run reads `main`'s
+    pipeline after its claim and stops there, naming the red run, before the worker is assigned
+    (#481). It gives the claim back and says why (ADR-0097)."""
+    state_dir = tmp_path / "state"
+    tasks = backlog(outside)
+    hand(outside, tasks.ready)
+    red = outside.main_ran("failure")
+    inputs = p03_inputs(outside, tasks.ready)
+    output = run_bundle(outside, state_dir, "P-03-implementation.yaml", *inputs, expect=3)
+    assert re.search(r"wait-for-main\s+wait\s+-\s+succeeded", output), output
+    assert re.search(r"read-main\s+rule\s+sourced\s+failed", output), output
+    assert "main is red: the ci run at its head" in output, output
+    assert str(red["html_url"]) in output, "the red run is named"
+
+    # Nothing was spent: the coding step never started, and no worker was assigned.
+    ledger = json.loads((state_dir / "ledger.json").read_text())["default"]
+    assert not [e for e in ledger if e["refs"].get("step_id") == "implement"]
+    assert not list((tmp_path / "worker-state" / "workspaces").iterdir()), "never assigned"
+    assert outside.state()[REPOSITORY]["branches"] == 1, "main alone"  # type: ignore[index]
+
+    assert outside.labels(tasks.ready) == ["priority:high", "ready", "task", "to-taktus"]
+    _, gave_back = comments_on(outside, tasks.ready)
+    assert "stopped at the step `read-main`" in gave_back
+    assert str(red["html_url"]) in gave_back
     writes = [line.split()[2:4] for line in output.splitlines() if "egress." in line]
     assert writes == [
         ["egress.write", "claim"],
@@ -1009,7 +1059,7 @@ def test_roadmap_control_reports_each_disagreement_once(outside: Outside, tmp_pa
 BUNDLES = {
     "P-01-roadmap-control.yaml": "p01-roadmap-control@4",
     "P-02-refinement.yaml": "p02-refinement@4",
-    "P-03-implementation.yaml": "p03-implementation@16",
+    "P-03-implementation.yaml": "p03-implementation@17",
 }
 REPOSITORY_CONNECTOR = "connector.channel.repo"
 TAKEN_OVER: dict[str, dict[str, set[str]]] = {
@@ -1021,7 +1071,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "write-report",
         },
         "p02-refinement@4": {"read-issue", "read-comments", "write-sections"},
-        "p03-implementation@16": {
+        "p03-implementation@17": {
             "read-issue",
             "read-comments",
             "read-open-issues",
@@ -1029,6 +1079,8 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "claim",
             "announce-claim",
             "read-branch",
+            "wait-for-main",
+            "read-main",
             "read-register",
             "read-register-open",
             "reserve-records",
@@ -1041,7 +1093,7 @@ TAKEN_OVER: dict[str, dict[str, set[str]]] = {
             "announce-give-back",
         },
     },
-    "worker.endpoint": {"p03-implementation@16": {"implement"}},
+    "worker.endpoint": {"p03-implementation@17": {"implement"}},
     "model.endpoint": {"p02-refinement@4": {"refine"}},
 }
 """Per integration, the steps of P-01 to P-03 it serves, which a person takes over without it."""

@@ -50,7 +50,9 @@ What it enforces, because the connector's checks depend on it:
 - **A pipeline per push.** Creating a reference creates one completed pipeline run for its
   commit, concluded `success` unless `POST /_fake/ci` said otherwise (`{"conclusion":
   "failure"}`, or `{"pending": true}` for a run that never completes), so that a process can
-  read the pipeline's verdict for a branch it created.
+  read the pipeline's verdict for a branch it created. `POST /_fake/run` with `{"repository",
+  "branch", "conclusion"}` records one completed `ci` run for the head of an existing branch, as
+  a push to it would — how `main` turns red or green (#481).
 
 Test-only endpoints under `/_fake/`: `GET /_fake/state` counts what exists, `POST /_fake/reset`
 empties the store, `POST /_fake/outage` with `{"on": true}` makes every other request answer 503
@@ -480,6 +482,16 @@ class Handler(BaseHTTPRequestHandler):
                 sha = str(body["sha"])
                 repo.objects[sha] = {**head, "sha": sha}
             self._send(200, {"sha": sha})
+            return
+        if url.path == "/_fake/run":
+            with self.store.lock:
+                repo = self.store.repository(*str(body["repository"]).split("/", 1))
+                head = repo.refs[str(body["branch"])]
+                conclusion = str(body.get("conclusion") or "success")
+                run = self.store.create_run(
+                    repo, "ci", head, status="completed", conclusion=conclusion
+                )
+            self._send(201, run)
             return
         if url.path == "/_fake/reset":
             with self.store.lock:

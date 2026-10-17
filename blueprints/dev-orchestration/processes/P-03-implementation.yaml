@@ -29,7 +29,9 @@
 #
 # Before the coding step spends anything, the run reads the branch it will create. A branch of
 # that name it did not make stops the run there, naming the branch: a person looks at it,
-# deletes or renames it, and hands the task over again (ADR-0099, DEC-0202).
+# deletes or renames it, and hands the task over again (ADR-0099, DEC-0202). It reads `main`'s
+# pipeline there too: while it runs, the run waits, and a red `main` stops the run, naming the
+# failed run, since the guard of `main` would fail the branch's push run (#481).
 #
 # Inputs: `issue`, the issue's number; `records_path`, the directory of the base branch that
 # holds the open decision and needs records; `repository_url`, where the worker clones from;
@@ -73,7 +75,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "16"
+version: "17"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -402,6 +404,66 @@ steps:
             Nothing was spent on the coding step. A person looks at the branch, deletes or
             renames it, and hands the task over again
 
+  # While `main` is red, the guard in the push run of the branch fails it, and the run would give
+  # its issue back at `read-pipeline`, after the coding step has spent (#480, #481). So the run
+  # reads `main`'s pipeline before it spends: it waits while the `ci` run at `main`'s head is not
+  # complete, and stops there when that run failed, as `read-branch` does for the branch
+  # (ADR-0099). A head with no `ci` run passes, as the guard passes a `main` with no completed
+  # run. `main` may turn red while the coding step runs; the guard in the push run holds that.
+  - id: wait-for-main
+    method: wait
+    reason: >
+      the pipeline of `main`'s head runs on its own time; the run waits for its verdict before
+      the coding step spends anything, polling the state
+    rejected: []
+    fallback:
+      when: the connector serving repository.pipelines is unavailable
+      to: human
+    depends_on: [claim]
+    work:
+      until:
+        operation: repository.pipelines.status
+        input:
+          ref: main
+          workflow: ci
+        credentials:
+          - { name: REPOSITORY_TOKEN, injected_as: env }
+        select: state
+        expect: [success, failure, none]
+        # Once a minute, as `wait-for-pipeline`: the step reserves a call per poll until the
+        # timeout, 62 quota units, and the run's 200 still hold that wait's 82 after it (#472).
+        poll_seconds: 60
+        timeout_seconds: 1800
+
+  - id: read-main
+    method: rule
+    reason: >
+      `main`'s verdict is read before the coding step spends anything; a red `main` stops the
+      run here, naming the failed run, and a resume reads it again (issue #31)
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving repository.pipelines is unavailable
+      to: human
+    depends_on: [wait-for-main]
+    work:
+      rule: connector
+      operation: repository.pipelines.status
+      input:
+        ref: main
+        workflow: ci
+      credentials:
+        - { name: REPOSITORY_TOKEN, injected_as: env }
+      expect:
+        - select: state
+          not_matches: '^failure$'
+          says: >-
+            main is red: the ci run at its head ${sha} failed (${runs}). Nothing was spent on
+            the coding step. A branch written now would fail the guard of main; hand the task
+            over again once main is green
+
   - id: implement
     method: worker
     reason: >
@@ -420,7 +482,7 @@ steps:
         pipeline is red
       to: human
     requires: [code.read, code.edit, code.test, shell.sandboxed]
-    depends_on: [claim, context, read-branch]
+    depends_on: [claim, context, read-branch, read-main]
     work:
       task:
         goal: >
