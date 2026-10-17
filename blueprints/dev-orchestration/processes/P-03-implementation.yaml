@@ -82,7 +82,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "18"
+version: "19"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -549,7 +549,10 @@ steps:
             same headings at the same level and every required section present and truthful.
             One section is left out: the one whose content the repository generates, which the
             repository puts last. The run appends it after the summary, from the repository's
-            own generator, so the summary neither writes nor copies it
+            own generator, so the summary neither writes nor copies it. The summary carries no
+            ellipsis character, not even inside a quotation, and no TODO, TBD, FIXME or XXX: the
+            repository's description check reads each as a placeholder, and the run opens no
+            pull request whose summary has one (#471)
           # The title of the pull request takes its type from the issue's labels or the files
           # changed where they decide it; otherwise from this proposal, which the rule
           # `pull-request-title` holds to the repository's types (ADR-0101, #472).
@@ -896,6 +899,32 @@ steps:
         summary: { $from: implement, $artifact: summary }
         closing: { $input: closing_section, $otherwise: { $from: closing-section } }
 
+  # The repository's description check runs on the pull request once it is open, and #470 failed
+  # it on an ellipsis inside a quotation of the worker's summary (#471). So the run holds the
+  # description to the same form first, and opens nothing that would fail: the four sections in
+  # their order, none empty, and no placeholder in what the worker wrote — the gate's
+  # placeholders, `…`, `TODO`, `TBD`, `FIXME` and `XXX` (`tools/check_decisions.py`). A refused
+  # description stops the run here, named, before anything leaves it.
+  - id: pull-request-body-form
+    method: rule
+    reason: >
+      whether the description has the repository's form is a fact of its text, checked by the
+      patterns of the repository's own check before the pull request is opened
+    rejected:
+      - method: llm
+        why: a form is a pattern, not a judgement
+    exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: the description's sections and placeholders }
+    depends_on: [pull-request-body]
+    work:
+      rule: check
+      conditions:
+        - value: { $from: pull-request-body }
+          matches: '(?s)## What this is about\n+\s*\S.*## What was done\n+\s*\S.*## Why this way\n+\s*\S.*## What to check\n+\s*\S'
+        - value: { $from: implement, $artifact: summary }
+          not_matches: '…|\b(TODO|TBD|FIXME|XXX)\b'
+
   - id: open-pr
     method: rule
     reason: opening a pull request is an API call; a repeat after a restart finds the one opened
@@ -904,7 +933,7 @@ steps:
     fallback:
       when: the connector serving repository.pullrequests is unavailable
       to: human
-    depends_on: [pull-request-title-form, pull-request-body]
+    depends_on: [pull-request-title-form, pull-request-body-form]
     work:
       rule: connector
       operation: repository.pullrequests.open

@@ -88,9 +88,17 @@ def plan() -> list[tuple[str, Json]]:
 
 
 # A summary proposes the type of the pull request's title, as P-03 asks of it (ADR-0101).
+# The summary in the shape this repository asks of a pull request description (ADR-0017 §7),
+# as P-03 asks its agent for it, so that its check of the description (#471) passes.
 FINAL = (
     "<!-- commit-type: feat -->\n"
-    "Wrote notes/plan.md and hello.txt, edited the greeting, and ran the check."
+    "## What this is about\n\nA plan and a greeting.\n\n"
+    "## Decisions required\n\nNone\n\n"
+    "## Behaviour changes\n\nNone\n\n"
+    "## What was done\n\n"
+    "Wrote notes/plan.md and hello.txt, edited the greeting, and ran the check.\n\n"
+    "## Why this way\n\nThe task asked for it.\n\n"
+    "## What to check\n\nThat the greeting reads well."
 )
 MODEL = "claude-haiku-4-5-20251001"
 """The model a message names where `--model` names none: as the real agent names it, dated."""
