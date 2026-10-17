@@ -240,6 +240,12 @@ links what an earlier one fetched instead of fetching it again. P-03 prepares th
 way with `uv sync --all-extras --frozen`: about half a minute and half a gigabyte the first time,
 a few seconds once the cache holds it.
 
+**Before its unit's wall clock it stops on its own.** Where the execution adapter names the
+unit's wall clock in `TAKTUS_UNIT_WALL_SECONDS`, the worker checks it at each boundary, where it
+checks its limits. Within the clock's last tenth — at least two minutes, at most half of it — it
+starts nothing more and ends `stopped` with the checkpoint and no `limit`. The run continues the
+step from there in a new unit, so the work is not lost when the unit is killed (ADR-0102, #493).
+
 ## What it cannot do
 
 - **Stop inside a tool call.** A boundary lies after a call's result; a shell command that runs

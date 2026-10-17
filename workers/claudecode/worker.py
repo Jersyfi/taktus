@@ -104,6 +104,11 @@ TEST_COMMAND = re.compile(r"\b(pytest|npm test|npm run test|make test|go test|ca
 AUTH_VARIABLE = {"api-key": "ANTHROPIC_API_KEY", "session": "CLAUDE_CODE_OAUTH_TOKEN"}
 BASELINE_TAG = "taktus-baseline"
 SOURCE_TAG = "taktus-source"
+WALL_VARIABLE = "TAKTUS_UNIT_WALL_SECONDS"
+WALL = "wall"
+"""The halt kind of the unit's wall clock: a stop the worker makes on its own, before the
+execution adapter kills the unit, finished `stopped` without `limit` (ADR-0102)."""
+UNIT_STARTED = time.monotonic()
 """The commit the workspace was cloned from: the base the change is put on (#496)."""
 
 GIT_PROXY_VARIABLES = (
@@ -777,7 +782,7 @@ class _Run:
             )
             return False
         if self.fault != "W-14" and (halt := self._over_ceiling()) is not None:
-            self._finish_stopped(halt[1], limit=halt[0])
+            self._finish_stopped(halt[1], limit=None if halt[0] == WALL else halt[0])
             return False
         return True
 
@@ -1162,7 +1167,24 @@ class _Run:
                     f"the running total of {self.used[quantity]:g} {named} has reached the "
                     f"limit of {ceiling:g}; halted at the boundary of {self.last_step_id}"
                 )
-        return None
+        return self._near_the_wall()
+
+    def _near_the_wall(self) -> tuple[str, str] | None:
+        """The unit's wall clock, which the execution adapter names (ADR-0102): within its last
+        tenth — at least two minutes, at most half of it — nothing more starts, and the
+        assignment stops at this boundary with its work kept, to continue in a new unit,
+        instead of being killed in the middle of a step."""
+        configured = os.environ.get(WALL_VARIABLE)
+        if not configured or self.last_checkpoint is None:
+            return None
+        wall = float(configured)
+        left = wall - (time.monotonic() - UNIT_STARTED)
+        if left > min(max(120.0, wall / 10), wall / 2):
+            return None
+        return WALL, (
+            f"the unit's wall clock of {wall:g} s ends in {max(left, 0):.0f} s; stopped at the "
+            f"boundary of {self.last_step_id}, to continue in a new unit"
+        )
 
     def _close_step(self, step: Step, how: str) -> None:
         """The boundary after a completed tool call: the workspace committed, the change an
@@ -1337,7 +1359,8 @@ class _Run:
             self._finish_stopped("stop requested; the assignment ended at the boundary")
             return
         if ended_by == "limit" and self.halted is not None:
-            self._finish_stopped(self.halted[1], limit=self.halted[0])
+            kind = self.halted[0]
+            self._finish_stopped(self.halted[1], limit=None if kind == WALL else kind)
             return
         if ended_by == "window":
             self._finish_stopped(

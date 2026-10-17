@@ -74,6 +74,7 @@ from taktus.ports.execution import (
     ISOLATION_REQUIRED_FROM,
     UNIT_PORT_VARIABLE,
     UNIT_STATE_DIR_VARIABLE,
+    UNIT_WALL_SECONDS_VARIABLE,
     ExecutionAtCapacity,
     ExecutionError,
     ExecutionRefused,
@@ -480,6 +481,7 @@ class KubernetesExecution:
             *({"name": name, "value": value} for name, value in unit.environment),
             {"name": UNIT_PORT_VARIABLE, "value": str(unit.port)},
             {"name": UNIT_STATE_DIR_VARIABLE, "value": unit.state_dir},
+            {"name": UNIT_WALL_SECONDS_VARIABLE, "value": str(request.wall)},
             {"name": "HOME", "value": WORKSPACE},
             {"name": "TMPDIR", "value": "/tmp"},  # noqa: S108 — an empty directory of the job
         ]

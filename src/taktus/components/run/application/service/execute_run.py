@@ -282,6 +282,9 @@ from taktus.shared.v1 import (
 )
 from taktus.shared.v1.consumption import MODEL_NAME_PATTERN
 
+CONTINUATIONS = 3
+"""How often one step continues in a new unit after its worker stopped at its wall clock."""
+
 NO_RESULT = b"null"
 """The result of a step a person performed after its model was unsure: nothing (ADR-0076)."""
 
@@ -512,6 +515,9 @@ class RunEngine:
         self._inflight: dict[str, tuple[Worker, str]] = {}
         self._observed: dict[str, list[budgeting.Observation]] = {}
         self._limit_halts: set[str] = set()
+        self._continued: dict[tuple[str, str], int] = {}
+        """How often each step continued in a new unit after its worker stopped on its own,
+        at its unit's wall clock (ADR-0102); at most CONTINUATIONS times."""
         self._immature: set[str] = set()
         """Runs whose current step was not run on an adapter below *verified*: they halt with
         cause `maturity` (NTC-0051)."""
@@ -1061,6 +1067,17 @@ class RunEngine:
             self._immature.discard(run.id)
             self._administering.discard(run.id)
 
+    def _in_a_new_unit(self, run: Run, step_run: StepRun) -> bool:
+        """Whether a step its worker stopped on its own continues in a new unit: at most
+        CONTINUATIONS times a step, so that a worker that stops at once cannot loop. The run's
+        money remains the bound on what the continuations spend."""
+        key = (run.id, step_run.step_id)
+        done = self._continued.get(key, 0)
+        if step_run.checkpoint is None or done >= CONTINUATIONS:
+            return False
+        self._continued[key] = done + 1
+        return True
+
     async def _steps(self, run: Run, stop_after: int | None, span: Span) -> Run:
         refused = await self._platform_refuses(None)
         if refused is not None:
@@ -1102,8 +1119,14 @@ class RunEngine:
                 if capacity:
                     # Waiting at the boundary: the runner tries again after a delay (ADR-0037).
                     cause = Cause.CAPACITY
+                elif run.id in self._limit_halts:
+                    cause = Cause.LIMIT
+                elif run.id not in self._stop_requested and self._in_a_new_unit(run, step_run):
+                    # Its worker stopped on its own, at its unit's wall clock, with the work at
+                    # its checkpoint: the step continues there in a new unit (ADR-0102).
+                    continue
                 else:
-                    cause = Cause.LIMIT if run.id in self._limit_halts else Cause.STOP
+                    cause = Cause.STOP
                 self._limit_halts.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             completed_now += 1

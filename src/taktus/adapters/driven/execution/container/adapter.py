@@ -59,6 +59,7 @@ from taktus.ports.configuration import Configuration
 from taktus.ports.execution import (
     UNIT_PORT_VARIABLE,
     UNIT_STATE_DIR_VARIABLE,
+    UNIT_WALL_SECONDS_VARIABLE,
     ExecutionError,
     ExecutionRefused,
     Isolation,
@@ -275,6 +276,7 @@ class ContainerExecution:
             *(f"{name}={value}" for name, value in unit.environment),
             f"{UNIT_PORT_VARIABLE}={unit.port}",
             f"{UNIT_STATE_DIR_VARIABLE}={unit.state_dir}",
+            f"{UNIT_WALL_SECONDS_VARIABLE}={request.wall}",
             f"TAKTUS_CREDENTIALS_DIR={CREDENTIALS_DIR}",
         ]
         if request.allowed_hosts:
