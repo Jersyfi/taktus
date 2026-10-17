@@ -12,9 +12,11 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
-from taktus.components.run.domain.model import TemplateRule
+from taktus.components.run.domain.model import CheckRule, TemplateRule
+from taktus.components.run.domain.model.errors import RuleFailed
 from taktus.components.run.domain.service import rules
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -71,3 +73,41 @@ def test_each_section_ci_checks_appears_once_and_the_generated_one_last() -> Non
     check_decisions.check_pull_request(body, None, [], report)
     check_status.check_pull_request(body, printed, report)
     assert report.failures == []
+
+
+def form_check() -> CheckRule:
+    bundle = yaml.safe_load(P03.read_text(encoding="utf-8"))
+    (step,) = [s for s in bundle["steps"] if s["id"] == "pull-request-body-form"]
+    return CheckRule.model_validate(step["work"])
+
+
+def test_a_description_in_the_repositorys_form_is_opened() -> None:
+    """#471: the run holds the description to the form the repository checks before it opens
+    the pull request."""
+    body = composed("## Needed from the owner\n\nNothing is open.")
+    assert rules.check(form_check(), [body, summary()]) == [body, summary()]
+
+
+@pytest.mark.parametrize("placeholder", ["…", "TODO", "TBD", "FIXME", "XXX"])
+def test_a_summary_with_a_placeholder_is_refused_before_the_pull_request_opens(
+    placeholder: str,
+) -> None:
+    """The gate reads each of these as a placeholder; #470 failed it on an ellipsis inside a
+    quotation of the worker's summary."""
+    written = summary().replace("Said.", f'Said "the old text {placeholder} and so on".', 1)
+    body = composed("## Needed from the owner\n\nNothing is open.")
+    with pytest.raises(RuleFailed, match="condition 2 does not hold"):
+        rules.check(form_check(), [body, written])
+
+
+def test_a_description_without_a_section_is_refused() -> None:
+    written = summary().replace("## Why this way", "## Why", 1)
+    steps = yaml.safe_load(P03.read_text(encoding="utf-8"))["steps"]
+    template = next(s for s in steps if s["id"] == "pull-request-body")["work"]
+    closing = "## Needed from the owner\n\nNothing."
+    body = rules.template(
+        TemplateRule.model_validate(template),
+        {"issue": 471, "summary": written, "closing": closing},
+    )
+    with pytest.raises(RuleFailed, match="condition 1 does not hold"):
+        rules.check(form_check(), [body, written])
