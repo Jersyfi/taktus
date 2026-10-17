@@ -9,6 +9,12 @@ question is raised only where the vision gives no direction, and only after the 
 ADRs, the anchors and the register were checked. `make status` shows how often the owner took
 the recommended option and how often a notice was overridden.
 
+**`make gates` is green locally in one command again** (DEC-0036). On 2026-09-29 it ended with
+seven errors after 26 minutes on the owner's machine: two `docker build` runs hung silently for
+600 and 900 s, reported seven times. A test image is now built only when its content changed,
+and a hung build names where it stopped. Measured on the owner's machine: a healthy run costs
+the same, about 3½ minutes; a hang costs 120 s instead of 600 or 900.
+
 **On 2026-10-01 the audit of the register came back**, and the owner's answers DEC-0040 to
 DEC-0043 were recorded first and then encoded. A decision under that rule states how it follows
 its source, and between two options both consistent with the sources it takes the stricter in
@@ -23,32 +29,6 @@ Four needs were raised that had been deferred or never written — backups (NEED
 webhook secret (NEED-0010), the live connector test in CI (since superseded by Taktus's own app, NEED-0013), the coding agent in CI
 (NEED-0012) — and the licence is tracked as the owner's own question, DEC-0044, due before
 `1.0.0`.
-
-**What was decided, and when**, is the register's index, which `make register` prints from the
-records, newest last, each in the table of its kind (DEC-0094); each record names the pull request
-that recorded it. Since #316 the index is stored nowhere and every number is reserved before its
-record is written (`make reserve`), so two pull requests that each add a record never conflict
-(DEC-0189 rule 6). Since #315 a behaviour change (M2.4) is a line of the pull request's
-section *Behaviour changes* instead of a notice file, and `make status` counts those lines of
-merged pull requests beside the notices (DEC-0189 rule 2). Since #382 a P-03 run reserves the numbers of the records its change adds,
-through the repository connector, before it writes the branch (ADR-0095). The ready rule reads an issue's form up to its footer (DEC-0116). **Open:** DEC-0044, the licence, which must be settled
-by the release of `1.0.0` and is taken up only when that release is prepared. On 2026-10-11 the owner answered DEC-0124 (UC-4.14 stands), DEC-0127 (four kinds of link, with a direction on outside contributors carried by #245), DEC-0131 (the candidate weighting table, version 0, uncalibrated), DEC-0132 (UC-8.5 gains the Takt's condition) and DEC-0133 (planning refuses a credential administering the instance's platform, undeclared ones too), each with Option A; UC-8.5 carries the Takt's condition since, and #81 builds it. The same evening the owner answered DEC-0174 (the session merges its own green pull requests and tags the release candidate, for the push through `0.1.0` to `0.3.0`), DEC-0175 (people Taktus does not know are handled by a triage process for its owner; UC-1.9 carries it since, and #245 builds it) and DEC-0176 (the guides go to a self-hosted BookStack), each with Option A. The owner's idea of the same evening, that Taktus rents execution capacity at a provider within a budget, is DEC-0177 (#253), open. DEC-0179 lets the session act on the instance with the deployment identity (Option A). DEC-0184, on 2026-10-12, lets it tag further release candidates until the milestones close. DEC-0185, the same day, approves the web app's design direction *one body that works* and makes the look of a representation the session's (M1.20). DEC-0186, raised the same day, asks whether UC-4.15 states what changing a process from the web app and chat must do; it is in force provisionally as Option A, and ADR-0091 says how it is built. Since #294 to #299 a process is changed in dialogue and rolled back from the web app and the owner's chat: a proposal, a rehearsal, commissioning, a rollback as a new version. NEED-0017, NEED-0019 and NEED-0020 were provided that evening: the owner's repository and chat accounts are linked to `idn_owner`, which holds `owner`, the owner-facing channel is configured, and the connector suite's sandbox has the app. DEC-0161, which library the ML bench trains with (M3.8), in force provisionally as Option A. DEC-0173, how a step whose value a fixed rule computes from its inputs stays `exact` (M3.15), in force provisionally as Option A, a sixth check, recomputation, which fifteen of the repository's sixteen `exact` steps declare (#91, ADR-0082). DEC-0164, what method maturation must achieve (M3.15), a use case of its own on Option A, on which #217 and #218 are written. On 2026-10-10 the
-owner answered DEC-0069, DEC-0082 and DEC-0087 with Option A — what the seventeen, twenty-seven
-and seventeen use cases of the migration's second to fourth steps add beyond the definition
-stands — and DEC-0123: no figure compares the working time of named persons; processes are
-analysed in detail by step, role and department. DEC-0028,
-DEC-0029 and DEC-0030, raised by the pull request that brought in the vision layer, were answered on
-2026-10-08, each with the recommended option: a floor for automatic skill approval set from data,
-qualified reviewers for the legal-anchor catalogue before a finance or personnel blueprint, and
-the thirteen use cases' added conditions stand. DEC-0053, the
-budget of the next live run, was answered on 2026-10-08: USD 3 in total. DEC-0055, raised on
-2026-10-08 from the owner's idea, was answered the same day: what Taktus does is seen as it
-happens, as UC-6.10 requires for `0.3.0`. The same day the owner decided that the deployed
-instance is production — Taktus manages itself there and steers the operation — and answered
-how the deployment's needs are provided (DEC-0057, DEC-0058). DEC-0034 and DEC-0037, raised by the
-pull request that took up the first run's findings, are answered: a worker with no calibration
-history reserves twice its estimate, and where a run produces a generated text is the session's
-to decide.
 
 **On 2026-10-07 the owner answered five readings and replaced hand-written briefs.** Recorded
 first, as DEC-0047 to DEC-0051. An operator's explicit margin below the 10 % floor holds,
@@ -75,11 +55,22 @@ the code `make backlog` runs (issue #71, NTC-0048, NTC-0049). Its daily trigger 
 rule for that reconciliation over a model's matching, as the blueprint first described it
 (DEC-0080).
 
-**`make gates` is green locally in one command again** (DEC-0036). On 2026-09-29 it ended with
-seven errors after 26 minutes on the owner's machine: two `docker build` runs hung silently for
-600 and 900 s, reported seven times. A test image is now built only when its content changed,
-and a hung build names where it stopped. Measured on the owner's machine: a healthy run costs
-the same, about 3½ minutes; a hang costs 120 s instead of 600 or 900.
+**The migration of the project definition** into `docs/vision/` and `docs/usecases/` ran in four
+pull requests and is complete:
+
+1. **`vision/`, the use case format, the two gates, the rules, the three findings** — done in the
+   pull request that brought in the vision layer. The findings: reporting is a component and
+   enablement is not (ADR-0029); use case numbers are reconciled, the repository's winning, in
+   `docs/usecases/NUMBERING.md`.
+2. **The use cases of `process`, `run` and `governance`** — done on 2026-10-08, with UC-15.3,
+   UC-15.4 and UC-15.5 of E15; what they add beyond the definition is DEC-0069.
+3. **`command`, `identity`, `catalog`, `accounting`**, with E14 and UC-15.1 — done on
+   2026-10-09; what they add beyond the definition is DEC-0082.
+4. **`knowledge`, `value`, `ledger`, `reporting`, and what moves into `blueprints/`**, with the
+   finance domain of UC-15.2 and three requirements the owner stated outside the definition — the
+   owner-facing channel, documentation beyond the repository, and the product finding — done on
+   2026-10-09; what they add beyond the definition is DEC-0087. The migration's working file is
+   deleted.
 
 **The vision layer and the use cases.** Since the pull request that brought in `docs/vision/`,
 the repository says why Taktus exists — fourteen principles, each with its reason and what it
@@ -145,23 +136,32 @@ answers, for the first time, how much of the vision stands:
   the migration is deleted, as it said; `docs/usecases/NUMBERING.md` keeps where every number of the
   definition went.
 
-**The migration of the project definition** into `docs/vision/` and `docs/usecases/` ran in four
-pull requests and is complete:
-
-1. **`vision/`, the use case format, the two gates, the rules, the three findings** — done in the
-   pull request that brought in the vision layer. The findings: reporting is a component and
-   enablement is not (ADR-0029); use case numbers are reconciled, the repository's winning, in
-   `docs/usecases/NUMBERING.md`.
-2. **The use cases of `process`, `run` and `governance`** — done on 2026-10-08, with UC-15.3,
-   UC-15.4 and UC-15.5 of E15; what they add beyond the definition is DEC-0069.
-3. **`command`, `identity`, `catalog`, `accounting`**, with E14 and UC-15.1 — done on
-   2026-10-09; what they add beyond the definition is DEC-0082.
-4. **`knowledge`, `value`, `ledger`, `reporting`, and what moves into `blueprints/`**, with the
-   finance domain of UC-15.2 and three requirements the owner stated outside the definition — the
-   owner-facing channel, documentation beyond the repository, and the product finding — done on
-   2026-10-09; what they add beyond the definition is DEC-0087. The migration's working file is
-   deleted.
-
 **The weekly removal test** (`.github/workflows/removal-test.yml`, Mondays 06:00 UTC) ran on
 its schedule for the first time on 2026-09-28, green, in 25 seconds — started by the host at
 12:51 UTC, not 06:00, which is the host's scheduling and not the workflow's.
+
+**What was decided, and when**, is the register's index, which `make register` prints from the
+records, newest last, each in the table of its kind (DEC-0094); each record names the pull request
+that recorded it. Since #316 the index is stored nowhere and every number is reserved before its
+record is written (`make reserve`), so two pull requests that each add a record never conflict
+(DEC-0189 rule 6). Since #315 a behaviour change (M2.4) is a line of the pull request's
+section *Behaviour changes* instead of a notice file, and `make status` counts those lines of
+merged pull requests beside the notices (DEC-0189 rule 2). Since #382 a P-03 run reserves the numbers of the records its change adds,
+through the repository connector, before it writes the branch (ADR-0095). The ready rule reads an issue's form up to its footer (DEC-0116). **Open:** DEC-0044, the licence, which must be settled
+by the release of `1.0.0` and is taken up only when that release is prepared. On 2026-10-11 the owner answered DEC-0124 (UC-4.14 stands), DEC-0127 (four kinds of link, with a direction on outside contributors carried by #245), DEC-0131 (the candidate weighting table, version 0, uncalibrated), DEC-0132 (UC-8.5 gains the Takt's condition) and DEC-0133 (planning refuses a credential administering the instance's platform, undeclared ones too), each with Option A; UC-8.5 carries the Takt's condition since, and #81 builds it. The same evening the owner answered DEC-0174 (the session merges its own green pull requests and tags the release candidate, for the push through `0.1.0` to `0.3.0`), DEC-0175 (people Taktus does not know are handled by a triage process for its owner; UC-1.9 carries it since, and #245 builds it) and DEC-0176 (the guides go to a self-hosted BookStack), each with Option A. The owner's idea of the same evening, that Taktus rents execution capacity at a provider within a budget, is DEC-0177 (#253), open. DEC-0179 lets the session act on the instance with the deployment identity (Option A). DEC-0184, on 2026-10-12, lets it tag further release candidates until the milestones close. DEC-0185, the same day, approves the web app's design direction *one body that works* and makes the look of a representation the session's (M1.20). DEC-0186, raised the same day, asks whether UC-4.15 states what changing a process from the web app and chat must do; it is in force provisionally as Option A, and ADR-0091 says how it is built. Since #294 to #299 a process is changed in dialogue and rolled back from the web app and the owner's chat: a proposal, a rehearsal, commissioning, a rollback as a new version. NEED-0017, NEED-0019 and NEED-0020 were provided that evening: the owner's repository and chat accounts are linked to `idn_owner`, which holds `owner`, the owner-facing channel is configured, and the connector suite's sandbox has the app. DEC-0161, which library the ML bench trains with (M3.8), in force provisionally as Option A. DEC-0173, how a step whose value a fixed rule computes from its inputs stays `exact` (M3.15), in force provisionally as Option A, a sixth check, recomputation, which fifteen of the repository's sixteen `exact` steps declare (#91, ADR-0082). DEC-0164, what method maturation must achieve (M3.15), a use case of its own on Option A, on which #217 and #218 are written. On 2026-10-10 the
+owner answered DEC-0069, DEC-0082 and DEC-0087 with Option A — what the seventeen, twenty-seven
+and seventeen use cases of the migration's second to fourth steps add beyond the definition
+stands — and DEC-0123: no figure compares the working time of named persons; processes are
+analysed in detail by step, role and department. DEC-0028,
+DEC-0029 and DEC-0030, raised by the pull request that brought in the vision layer, were answered on
+2026-10-08, each with the recommended option: a floor for automatic skill approval set from data,
+qualified reviewers for the legal-anchor catalogue before a finance or personnel blueprint, and
+the thirteen use cases' added conditions stand. DEC-0053, the
+budget of the next live run, was answered on 2026-10-08: USD 3 in total. DEC-0055, raised on
+2026-10-08 from the owner's idea, was answered the same day: what Taktus does is seen as it
+happens, as UC-6.10 requires for `0.3.0`. The same day the owner decided that the deployed
+instance is production — Taktus manages itself there and steers the operation — and answered
+how the deployment's needs are provided (DEC-0057, DEC-0058). DEC-0034 and DEC-0037, raised by the
+pull request that took up the first run's findings, are answered: a worker with no calibration
+history reserves twice its estimate, and where a run produces a generated text is the session's
+to decide.

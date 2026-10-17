@@ -31,6 +31,13 @@ different milestones never edit the same paragraph (#392):
 How the project itself is run — how the owner is asked, the register, the gates, the vision
 layer, the reviews — is `docs/status/project.md`.
 
+A file under `docs/status/` takes a new paragraph where its subject puts it, not at the end.
+A paragraph that opens with a bold lead starts an entry, and the entries follow the alphabetical
+order of their leads. Two pull requests that each add an entry to the same milestone then land
+apart; two that each appended one at the end conflicted (#494 after #491). One file per
+paragraph would have avoided the conflict entirely, at the cost of a milestone's account read
+as a folder; the order was chosen instead, and `make gate-status` holds every file to it (#498).
+
 ## 2. The next pull requests
 
 **The order of work is the backlog's** (DEC-0051): the repository's open issues, in milestones
