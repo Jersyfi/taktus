@@ -7,8 +7,9 @@ that whoever reads the ledger — the stream of changes of ADR-0055, every repre
 from it — reads it from one place and never derives it a second time.
 
 An entry of a kind this table does not name changes no state: `step.assigned`,
-`step.reserved`, `step.waited`, `budget.set`, `run.triggered`, `run.ended` and every kind
-outside the run component. Such an entry is not a change of state.
+`step.reserved`, `step.waited`, `budget.set`, `run.triggered`, `run.ended`, `run.lowered` and
+every kind outside the run component. A step a person rejected (`step.declined`) is planned
+again: resuming its run proposes it again (ADR-0110). Such an entry is not a change of state.
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ STEP_KINDS: dict[str, StepState] = {
     "step.anchored": StepState.WAITING_HUMAN,
     "step.confirmed": StepState.PLANNED,
     "step.performed": StepState.SUCCEEDED,
+    "step.declined": StepState.PLANNED,
 }
 """A step's entries whose kind alone says the state. `step.finished` and `step.decided` need
 their outcome as well (`led_to`)."""

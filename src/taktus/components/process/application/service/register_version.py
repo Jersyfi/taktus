@@ -9,7 +9,9 @@ statement (ADR-0026). A version that raises a level over the one it replaces is 
 a person's approval and the quality history the replaced version names, read from the ledger;
 otherwise it is refused with `RaiseRefused`, and the refusal is a ledger entry,
 `autonomy.refused`. An admitted raise is `autonomy.raised`, with the approving person as its
-actor (ADR-0039, `domain.service.autonomy`). This is the one code path that stores a version.
+actor (ADR-0039, `domain.service.autonomy`). The replaced version is measured as it runs now:
+a level the governance component lowered by rule counts as its level, so that a level that
+fell rises again only this way (ADR-0110). This is the one code path that stores a version.
 
 Registering is also where a version that would hand the instance its own platform is refused:
 a step naming a credential declared to administer the platform the instance runs on, or one
@@ -49,6 +51,7 @@ from taktus.components.process.domain.model.exactness import (
     InvalidStatement,
 )
 from taktus.components.process.domain.service import autonomy, exactness
+from taktus.components.process.ports import LoweredLevels, LoweredVersions
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
@@ -90,7 +93,11 @@ class RegisterProcessVersionHandler:
         ledger: Ledger,
         administration: Administration | None = None,
         clock: Clock | None = None,
+        lowered: LoweredVersions | None = None,
     ) -> None:
+        self._lowered = lowered
+        """The levels a version was lowered to by rule (ADR-0110): a version above them raises
+        a level. None: no level was lowered."""
         self._versions = versions
         self._work = work
         self._processes = processes
@@ -113,6 +120,7 @@ class RegisterProcessVersionHandler:
                 )
             raise InvalidProcess(tuple(refusals))
         refused: autonomy.RaiseVerdict | None = None
+        lowerings = await self._lowerings(tenant, version)
         async with self._work.transaction(tenant):
             stored = await self._versions.get(tenant, version.ref)
             # A registered version never changes: the runs that name it, their ledger and their
@@ -129,7 +137,10 @@ class RegisterProcessVersionHandler:
                 )
             replaced = await self._replaced(tenant, version)
             raised = [
-                r for old in replaced for r in autonomy.raises(old.autonomy, version.autonomy)
+                r
+                for old in replaced
+                for r in autonomy.raises(self._running(old, lowerings), version.autonomy)
+                if old.ref != version.ref
             ]
             if raised:
                 verdict = await self._verdict(tenant, version, replaced, raised, command)
@@ -157,6 +168,23 @@ class RegisterProcessVersionHandler:
         if refused is not None:
             raise RaiseRefused(version.ref, refused.findings)
         return stored if same and stored is not None else version
+
+    async def _lowerings(self, tenant: Tenant, version: ProcessVersion) -> dict[str, LoweredLevels]:
+        """The lowered levels of every version the new one would replace, read before the
+        registration's own transaction: units of work do not nest."""
+        if self._lowered is None:
+            return {}
+        async with self._work.transaction(tenant):
+            replaced = await self._replaced(tenant, version)
+        return {old.ref: await self._lowered.lowered(tenant, old.ref) for old in replaced}
+
+    @staticmethod
+    def _running(version: ProcessVersion, lowerings: Mapping[str, LoweredLevels]) -> Autonomy:
+        """The statement of a version as it runs now: lowered where a level fell by rule."""
+        lowered = lowerings.get(version.ref)
+        if lowered is None:
+            return version.autonomy
+        return autonomy.lowered_to(version.autonomy, lowered.level, lowered.actions)
 
     async def _replaced(self, tenant: Tenant, version: ProcessVersion) -> list[ProcessVersion]:
         """The version the new one replaces: the process's active version where it is known;

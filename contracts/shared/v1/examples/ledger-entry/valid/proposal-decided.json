@@ -1,0 +1,16 @@
+{
+  "seq": 31,
+  "ts": "2026-10-18T09:42:00Z",
+  "kind": "proposal.decided",
+  "prev_hash": "sha256:0e7c4a1d8b5f2e9c6a3d0b7e4f1a8c5d2b9e6f3a0c7d4b1e8f5a2c9d6b3e0f7a",
+  "hash": "sha256:7a2c9d6b3e0f7a0e7c4a1d8b5f2e9c6a3d0b7e4f1a8c5d2b9e6f3a0c7d4b1e8f",
+  "refs": {
+    "tenant": "acme",
+    "process_version": "support-replies@2",
+    "run_id": "run_4f1c",
+    "step_id": "send",
+    "action": "mail.reply.send"
+  },
+  "outcome": "corrected",
+  "content_digest": "sha256:3d0b7e4f1a8c5d2b9e6f3a0c7d4b1e8f5a2c9d6b3e0f7a0e7c4a1d8b5f2e9c6a"
+}

@@ -32,6 +32,7 @@ NO_STATE = frozenset(
     {
         "budget.set",  # the budget a person set
         "run.claim_lost",  # a runner lost its claim; the run is another runner's, unchanged
+        "run.lowered",  # the run took on a lowered level; its state is unchanged (ADR-0110)
         "run.triggered",  # which trigger started the run
         "step.assigned",  # the assignment handed to the worker; the step was running already
         "step.reserved",  # what admission reserved; the step was admitted already

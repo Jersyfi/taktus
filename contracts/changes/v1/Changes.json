@@ -117,6 +117,7 @@
         "step.awaiting",
         "step.confirmed",
         "step.decided",
+        "step.declined",
         "step.failed",
         "step.finished",
         "step.performed",

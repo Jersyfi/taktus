@@ -8,6 +8,10 @@ than the version it replaces *raises* a level. Three cases are raises:
 - an action's level goes up;
 - an action loses its own entry, and so runs at the process's level, which is higher.
 
+A level the governance component lowered by rule counts as the replaced version's level
+(ADR-0110): a version at the level the replaced one was registered with, after it fell, raises
+it again, and needs what any raise needs (`lowered_to`).
+
 A raise is admitted only with both of what governance.md §1 asks: an explicit approval by a
 person, and a demonstrated quality history — as many runs in a row as the replaced version's
 `history` names, the most recent ones, each ended without a failure or a result defect. The
@@ -30,7 +34,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from taktus.shared.v1 import Autonomy, LedgerEntry, Step, Value
+from taktus.shared.v1 import ActionAutonomy, Autonomy, AutonomyLevel, LedgerEntry, Step, Value
 
 type Refusal = Literal["no_approval", "no_history_named", "history_short"]
 
@@ -55,6 +59,39 @@ def actions_used(steps: Sequence[Step], work: Mapping[str, Mapping[str, Any]]) -
 def _until(work: Mapping[str, Any]) -> Mapping[str, Any]:
     until = work.get("until")
     return until if isinstance(until, Mapping) else {}
+
+
+LOWERED = "lowered by rule (ADR-0110); it rises again only with a person's approval and the history"
+
+
+def lowered_to(
+    statement: Autonomy,
+    level: AutonomyLevel | None,
+    actions: Mapping[str, AutonomyLevel],
+) -> Autonomy:
+    """The statement as its version runs after the levels it was lowered to: the process's
+    level and each action's, never higher than the statement says."""
+    process = statement.level if level is None else min(statement.level, level)
+    entries: dict[str, ActionAutonomy] = {}
+    for action, own in (statement.actions or {}).items():
+        to = min(own.level, process, actions.get(action, own.level))
+        entries[action] = ActionAutonomy(
+            level=to,
+            reason=own.reason if to == own.level else LOWERED,
+            toward_next=own.toward_next or LOWERED,
+        )
+    for action, to in actions.items():
+        if action not in entries and to < process:
+            entries[action] = ActionAutonomy(level=to, reason=LOWERED, toward_next=LOWERED)
+    if process == statement.level and entries == dict(statement.actions or {}):
+        return statement
+    return Autonomy(
+        level=process,
+        reason=statement.reason if process == statement.level else LOWERED,
+        toward_next=statement.toward_next or LOWERED,
+        actions=entries or None,
+        history=statement.history,
+    )
 
 
 def raises(current: Autonomy, new: Autonomy) -> list[str]:

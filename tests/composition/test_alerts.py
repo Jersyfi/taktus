@@ -1,12 +1,13 @@
 """What needs a person's action reaches the owner's channel (ADR-0106, issue #323).
 
-Each of the three signals — a capacity crossing to *act*, a lost claim, a failed or missing
-backup — is recorded as its producer records it: the ledger entry of the capacity report and of
-the runner, the row of the backup program. The owner-facing channel is the one the composition
-root wires, with a carrier that records what it was told to deliver (`fakes/owner_channel.py`).
-Each produces one message, with what happened and what to do; a repeated look sends nothing new
-until it clears. Without a channel, nothing is sent, the view says why, and the startup log says
-which tenant hears nothing.
+Each of the signals — a capacity crossing to *act*, a lost claim, a failed or missing
+backup, a level that fell by rule or a raise Taktus proposes (ADR-0110) — is recorded as its
+producer records it: the ledger entry of the capacity report and of the runner, the row of the
+backup program, the governance component's incident and entry. The owner-facing channel is the
+one the composition root wires, with a carrier that records what it was told to deliver
+(`fakes/owner_channel.py`). Each produces one message, with what happened and what to do; a
+repeated look sends nothing new until it clears. Without a channel, nothing is sent, the view
+says why, and the startup log says which tenant hears nothing.
 """
 
 from __future__ import annotations
@@ -19,6 +20,11 @@ from fakes.identity import FixedTenants
 from fakes.owner_channel import CHANNEL, SECRET, TENANT, OwnerChannel, owner_channel
 
 from taktus.adapters.driven.memory import MemoryBackupLog, MemoryTenantStore
+from taktus.components.governance.application.service import (
+    BreachSeen,
+    ConfigureCorrections,
+    DecisionMade,
+)
 from taktus.components.reporting.application.service import Alerts, Reported
 from taktus.components.reporting.domain.model import ReportKind
 from taktus.components.run.application.service import CLAIM_LOST
@@ -42,6 +48,7 @@ class World:
             self.given.owner,
             self.given.clock,
             backup_expected_hours=expected_hours,
+            corrections=self.given.decisions.corrections,
         )
         # A backup a moment ago: only the signal a test records is in effect.
         self.backed_up(ok=True)
@@ -237,3 +244,60 @@ async def test_the_scheduler_looks_once_per_interval_and_survives_a_failure() ->
     clock.current += timedelta(seconds=61)
     await tick()
     assert found.looked == ["a", "b", "a", "b"]
+
+
+async def test_a_level_that_fell_by_rule_reaches_the_owner_until_answered() -> None:
+    """ADR-0110: the owner hears of a lowering, with its rule and its levels."""
+    w = World()
+    await w.given.configure()
+    corrections = w.given.decisions.corrections
+    await corrections.breached(
+        TENANT,
+        BreachSeen(
+            process_version="p@1", run_id="run_1", step_id="send", level=3, anchors=("anc-w",)
+        ),
+    )
+
+    assert await w.alerts.report(TENANT) == Reported(raised=1, delivered=1)
+    (message,) = w.said
+    assert "now runs at level 2" in message and "anc-w" in message and "run_1" in message
+    assert "--approve-raise" in message, "how it rises again"
+    w.later(hours=2)
+    assert await w.alerts.report(TENANT) == Reported(), "said once"
+    (one,) = await w.alerts.noticed(TENANT)
+    await w.done(one.alert.id)
+    (closed,) = await w.alerts.noticed(TENANT)
+    assert closed.closed
+    assert (await corrections.lowered(TENANT, "p@1")).level == 2, "an answer raises nothing"
+
+
+async def test_a_raise_taktus_proposes_reaches_the_owner_with_its_figures() -> None:
+    w = World(expected_hours=None)
+    await w.given.configure()
+    corrections = w.given.decisions.corrections
+    await corrections.configure(
+        ConfigureCorrections(tenant=TENANT, raise_decisions=2, raise_weeks=1), by="idn_owner"
+    )
+    for days in (0, 8):
+        w.later(days=days)
+        async with w.given.persistence.transaction(TENANT):
+            await w.given.identity.ledger.record(
+                TENANT,
+                Fact(
+                    kind="proposal.decided",
+                    refs=LedgerRefs(tenant=TENANT, process_version="p@1", run_id=f"run_{days}"),
+                    outcome="released",
+                ),
+            )
+        await corrections.decided(
+            TENANT,
+            DecisionMade(
+                process_version="p@1", run_id=f"run_{days}", step_id="a", action=None, level=2
+            ),
+        )
+
+    assert await w.alerts.report(TENANT) == Reported(raised=1, delivered=1)
+    (message,) = w.said
+    assert "proposes raising the process p" in message
+    assert "0% of 1 proposal(s) over 7 days" in message and "0% of 2 over 28 days" in message
+    assert "never applies a raise" in message

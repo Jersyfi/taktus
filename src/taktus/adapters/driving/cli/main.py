@@ -26,9 +26,11 @@ proposals to move a step to a trained model (ADR-0084, ADR-0086). `ledger verify
 tenant's chain from its last verified checkpoint, or with `--full` from its first entry
 (ADR-0105). `incident` lists and closes what the watch over expected runs raised, and configures
 the tenant's watch (ADR-0107). `signal` configures a signal's corridor, as a person, and
-lists every signal judged against its corridor now (ADR-0109). The others need services, which
-the composition root provides as the typer context object (see `wiring`); the console script
-`taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module exposes the
+lists every signal judged against its corridor now (ADR-0109). `corrections` prints the
+correction rate per process and action class, the levels that fell by rule, and configures
+the tenant's limits (ADR-0110). The others need services, which the composition root
+provides as the typer context object (see `wiring`); the console script `taktusctl`
+therefore starts in `taktus.composition.taktusctl`, and this module exposes the
 application for it.
 """
 
@@ -48,6 +50,7 @@ from taktus.adapters.driving.cli import (
     anchors_command,
     capacity_command,
     conformance_command,
+    corrections_command,
     cost_command,
     deactivate_command,
     exactness_command,
@@ -100,6 +103,7 @@ app.add_typer(tenant_command.tenant, name="tenant")
 app.add_typer(anchors_command.anchors, name="anchors")
 app.add_typer(incident_command.incident, name="incident")
 app.add_typer(signal_command.signal, name="signal")
+app.add_typer(corrections_command.corrections, name="corrections")
 app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 app.add_typer(guides_command.guides, name="guides")
 app.add_typer(maturation_command.maturation, name="maturation")

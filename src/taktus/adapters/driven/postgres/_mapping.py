@@ -1289,6 +1289,31 @@ class CorridorMapper:
         return [dict(row.corridor) for row in rows]
 
 
+class CorrectionLimitsMapper:
+    """One row per tenant that set its correction limits; the limits stay a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.correction_limits, tenant, id)
+        return None if row is None else dict(row.limits)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.correction_limits,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "configured_at": _at(document["configured_at"]),
+                "limits": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.correction_limits, tenant, s.correction_limits.c.id)
+        return [dict(row.limits) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -1313,4 +1338,5 @@ MAPPERS: dict[str, Mapper] = {
     "incident": IncidentMapper(),
     "watch_configuration": WatchConfigurationMapper(),
     "corridor": CorridorMapper(),
+    "correction_limits": CorrectionLimitsMapper(),
 }

@@ -4,6 +4,13 @@ from taktus.components.governance.application.service.configure_anchors import (
     ConfigureAnchors,
     ConfigureAnchorsHandler,
 )
+from taktus.components.governance.application.service.corrections import (
+    BreachSeen,
+    ConfigureCorrections,
+    Corrections,
+    DecisionMade,
+    Verdict,
+)
 from taktus.components.governance.application.service.expected_runs import (
     CloseIncident,
     ConfigureWatch,
@@ -24,16 +31,21 @@ from taktus.components.governance.application.service.signal_incidents import (
 __all__ = [
     "AnchorsInForce",
     "AnchorsRefused",
+    "BreachSeen",
     "CloseIncident",
     "ConfigureAnchors",
     "ConfigureAnchorsHandler",
+    "ConfigureCorrections",
     "ConfigureWatch",
+    "Corrections",
     "DatabaseStore",
+    "DecisionMade",
     "ExpectedRuns",
     "RaiseRed",
     "ReportCapacity",
     "ReportCapacityHandler",
     "SignalIncidents",
     "UnknownIncident",
+    "Verdict",
     "Watch",
 ]

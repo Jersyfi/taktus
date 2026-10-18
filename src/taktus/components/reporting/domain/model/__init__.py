@@ -6,6 +6,8 @@ from taktus.components.reporting.domain.model.alert import (
     BackupState,
     CapacityCrossing,
     ClaimLost,
+    LevelLowered,
+    RaiseProposed,
     Signalled,
 )
 from taktus.components.reporting.domain.model.channel import (
@@ -112,6 +114,7 @@ __all__ = [
     "Lack",
     "LackCause",
     "Level",
+    "LevelLowered",
     "Link",
     "Occurrence",
     "Offered",
@@ -125,6 +128,7 @@ __all__ = [
     "ProcessRef",
     "ProcessStepFacts",
     "ProcessSummary",
+    "RaiseProposed",
     "Reader",
     "Reading",
     "Recorded",

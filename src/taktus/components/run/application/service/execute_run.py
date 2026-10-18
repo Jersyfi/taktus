@@ -44,6 +44,17 @@ it, the step is rejected with a finding that names it and the adapter, and the r
 cause `maturity` (NTC-0051). A rehearsal is asked none of this (NTC-0079); a replay is asked
 the level, and not the maturity (ADR-0108).
 
+A person's answer to a step proposed at level 1 or 2 is a decision on a proposal (ADR-0110):
+`released` as proposed, `corrected` — the work as the person released it, which the step then
+runs with at level 2 — or `rejected`, which runs nothing of the step and halts the run with
+cause `declined`. Each is recorded as `proposal.decided`, with the action class whose level held
+the step and the digests of the proposal and of the version released, and no person; the
+answer's own entry names who answered. The governance component then applies its rule to the
+decisions, through the run's port `Levels`. Before a step's level is applied, the run takes on
+the levels its version was lowered to by rule (`run.lowered`). After a step acted, the anchors
+are asked again: an anchor that names the act, with no decision to perform it, is a breach, and
+the process falls one level before its next step.
+
 What happens around every step is the contract of ADR-0005 and is the same for every method:
 
 1. estimate — every step, whatever its method: a worker step asks the worker; an `llm` step
@@ -211,11 +222,14 @@ from taktus.components.run.domain.service.projections import CALIBRATION, step_k
 from taktus.components.run.domain.service.rehearsal import REHEARSED
 from taktus.components.run.ports import (
     Anchors,
+    Breach,
     ConnectorPool,
     Decisions,
+    Levels,
     Maturities,
     ModelPool,
     NotRaised,
+    ProposalDecided,
     Replay,
     Verdict,
     WorkerPool,
@@ -391,6 +405,29 @@ class ConfirmSteps:
     performed: bool = False
     enqueue: bool = False
     stop_after: int | None = None
+    corrected: Mapping[StepId, Mapping[str, Any]] = field(default_factory=dict)
+    """The work a person released in place of what Taktus proposed, per step it answers: at
+    level 2 the step runs with it, at level 1 it is what the person performed (ADR-0110)."""
+    rejected: bool = False
+    """The person rejects what the steps propose: nothing of them runs, and the run halts with
+    cause `declined`. Resuming it proposes them again (ADR-0110)."""
+
+
+PROPOSAL_DECIDED = "proposal.decided"
+"""A person's decision on a step proposed at level 1 or 2 (ADR-0110)."""
+RUN_LOWERED = "run.lowered"
+"""A run took on a level its version was lowered to by rule (ADR-0110)."""
+
+
+@dataclass(frozen=True)
+class _Decision:
+    """What a person's answer to a proposed step was, before it is recorded."""
+
+    step_id: StepId
+    outcome: Literal["released", "corrected", "rejected"]
+    level: AutonomyLevel
+    action: str | None
+    corrected: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -513,6 +550,7 @@ class RunEngine:
         decisions: Decisions | None = None,
         administration: Administration | None = None,
         replay: Replay | None = None,
+        levels: Levels | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -532,6 +570,12 @@ class RunEngine:
         self._decisions = decisions
         """Where an anchored step raises its decision requests. None with anchors wired: an
         anchored step cannot ask, and fails without its act."""
+        self._levels = levels
+        """Where decisions and breaches are counted, and the lowered levels read (ADR-0110).
+        None: nothing is counted, and no level falls by rule."""
+        self._settled: set[tuple[str, str]] = set()
+        """Steps that ended without their act — skipped or declined — in this process: no
+        breach is looked for in them."""
         self._recordings = recordings or RecordedResponses(runs, work, objects)
         self._replay = replay
         """What answers every step of a rehearsal that would leave the engine, from a recorded
@@ -837,10 +881,24 @@ class RunEngine:
                 raise RunError("name the step(s) to answer")
             if command.enqueue and self._queue is None:
                 raise RunError("no queue is wired; a run is handed to a runner through one")
+            if command.performed and command.rejected:
+                raise RunError("a step is either performed or rejected; one at a time")
+            unknown = sorted(set(command.corrected) - set(command.steps))
+            if unknown:
+                raise RunError(f"a correction names a step it does not answer: {unknown}")
+            if command.rejected and command.corrected:
+                raise RunError("a rejected step runs nothing, so nothing of it is corrected")
             if command.performed:
                 # What a step a person performed hands on: nothing of Taktus's (ADR-0076).
                 await self._objects.put(NO_RESULT)
-            answered = [self._answer(run, s, command) for s in dict.fromkeys(command.steps)]
+            decisions: dict[StepId, _Decision] = {}
+            answered: list[tuple[str, StepRun]] = []
+            for step_id in dict.fromkeys(command.steps):
+                kind, step_run, decision = self._answer(run, step_id, command)
+                answered.append((kind, step_run))
+                if decision is not None:
+                    decisions[step_id] = decision
+            run = self._corrected(run, decisions)
             for _, step_run in answered:
                 # The wait on a person ends with the answer. Its record names no one; the
                 # answer's own entry names who answered (ADR-0015, protective rule).
@@ -850,15 +908,37 @@ class RunEngine:
                 run = run.with_step_run(step_run)
             for index, (kind, step_run) in enumerate(answered):
                 job = None
-                if command.enqueue and index == len(answered) - 1:
+                if command.enqueue and index == len(answered) - 1 and not command.rejected:
                     job = Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
-                run = await self._commit(run, kind, step=step_run, actor=command.actor, enqueue=job)
+                decision = decisions.get(step_run.step_id)
+                proposal = None if decision is None else await self._decision_record(run, decision)
+                run = await self._commit(
+                    run,
+                    kind,
+                    step=step_run,
+                    actor=command.actor,
+                    enqueue=job,
+                    proposal=proposal,
+                )
+            for decision in decisions.values():
+                await self._counted(run, decision)
+            if command.rejected:
+                reason = (
+                    f"rejected by {command.actor}: "
+                    + ", ".join(dict.fromkeys(command.steps))
+                    + " not performed; resuming the run proposes it again"
+                )
+                return await self._end(run, RunState.HALTED, Cause.DECLINED, reason, span)
             if command.enqueue:
                 return run
             run = await self._commit(run.to(RunState.RUNNING), "run.resumed", actor=command.actor)
             return await self._execute(run, command.stop_after, span)
 
-    def _answer(self, run: Run, step_id: StepId, command: ConfirmSteps) -> tuple[str, StepRun]:
+    def _answer(
+        self, run: Run, step_id: StepId, command: ConfirmSteps
+    ) -> tuple[str, StepRun, _Decision | None]:
+        """The step run as the person's answer leaves it, the kind of the answer's entry, and
+        the decision on a proposal it is; None for an answer that decides no proposal."""
         try:
             step_run = run.step_run(step_id)
         except KeyError:
@@ -872,8 +952,38 @@ class RunEngine:
                 "by the person the anchor names, not confirmed here (ADR-0042)"
             )
         if step_run.block is not None and step_run.block.cause == block.FELL_BACK:
-            return self._performed_after_fallback(step_run, command)
-        level = self._held(run, run.step(step_id)).level
+            if command.rejected or step_id in command.corrected:
+                raise RunError(
+                    f"step {step_id!r} fell back to a person because its model was unsure: "
+                    "there is no proposal to correct or reject. Perform it and report it "
+                    "performed"
+                )
+            kind, performed = self._performed_after_fallback(step_run, command)
+            return kind, performed, None
+        held = self._held(run, run.step(step_id))
+        level = held.level
+        corrected = command.corrected.get(step_id)
+        outcome: Literal["released", "corrected", "rejected"] = (
+            "rejected" if command.rejected else "corrected" if corrected is not None else "released"
+        )
+        decision = _Decision(
+            step_id=step_id,
+            outcome=outcome,
+            level=level,
+            action=held.action,
+            corrected=corrected,
+        )
+        if command.rejected:
+            return (
+                "step.declined",
+                step_run.to(
+                    StepState.PLANNED,
+                    confirmed_by=None,
+                    reason=f"rejected by {command.actor}: not performed; resuming the run "
+                    "proposes it again",
+                ),
+                decision,
+            )
         if level == 1 and not command.performed:
             raise RunError(
                 f"step {step_id!r} runs at level 1: Taktus executes no act of it. Perform it "
@@ -886,15 +996,90 @@ class RunEngine:
             )
         if command.performed:
             now = self._clock.now()
-            return "step.performed", step_run.to(
-                StepState.SUCCEEDED,
-                confirmed_by=command.actor,
-                reason=f"performed by {command.actor}, as Taktus proposed it (level 1)",
-                started_at=now,
-                finished_at=now,
+            how = "as Taktus proposed it" if corrected is None else "as the person corrected it"
+            return (
+                "step.performed",
+                step_run.to(
+                    StepState.SUCCEEDED,
+                    confirmed_by=command.actor,
+                    reason=f"performed by {command.actor}, {how} (level 1)",
+                    started_at=now,
+                    finished_at=now,
+                ),
+                decision,
             )
-        return "step.confirmed", step_run.to(
-            StepState.PLANNED, confirmed_by=command.actor, reason=None
+        return (
+            "step.confirmed",
+            step_run.to(StepState.PLANNED, confirmed_by=command.actor, reason=None),
+            decision,
+        )
+
+    def _corrected(self, run: Run, decisions: Mapping[StepId, _Decision]) -> Run:
+        """The run with the work a person released in place of a step proposed at level 2: the
+        step runs with it. Refused, changing nothing, when the work does not hold to the
+        step's method. At level 1 the person performed the act, and the work stays."""
+        work = dict(run.work)
+        for decision in decisions.values():
+            if decision.corrected is None or decision.level == 1:
+                continue
+            step = run.step(decision.step_id)
+            try:
+                parse_work(step, decision.corrected, run.inputs)
+            except (UnsupportedWork, ValueError) as error:
+                raise RunError(
+                    f"the correction of step {step.id!r} is no work its method runs: {error}"
+                ) from error
+            work[step.id] = dict(decision.corrected)
+        return run if work == dict(run.work) else run.model_copy(update={"work": work})
+
+    async def _decision_record(self, run: Run, decision: _Decision) -> tuple[str, str | None, str]:
+        """The outcome, the action class and the digest of the decision's document: the
+        proposal as `step.awaiting` put it down, and for a correction the version the person
+        released, so that the change can be seen (UC-7.5 §2)."""
+        async with self._work.transaction(run.tenant):
+            entries = await self._ledger.entries(run.tenant, run.id)
+        proposed = next(
+            (
+                e.content_digest
+                for e in reversed(entries)
+                if e.kind == "step.awaiting" and e.refs.step_id == decision.step_id
+            ),
+            None,
+        )
+        released: str | None = None
+        if decision.corrected is not None:
+            document: dict[str, Any] = {}
+            if proposed is not None:
+                stored = await self._objects.get(proposed)
+                if stored is not None:
+                    document = dict(json.loads(stored))
+            document["work"] = dict(decision.corrected)
+            released = await self._objects.put(_canonical(document))
+        record = {
+            "run_id": run.id,
+            "step_id": decision.step_id,
+            "outcome": decision.outcome,
+            "level": decision.level,
+            "action": decision.action,
+            "proposal": proposed,
+            "released": released,
+        }
+        digest = await self._objects.put(_canonical(record))
+        return decision.outcome, decision.action, digest
+
+    async def _counted(self, run: Run, decision: _Decision) -> None:
+        """The governance component applies its rule to the decision (ADR-0110)."""
+        if self._levels is None:
+            return
+        await self._levels.decided(
+            run.tenant,
+            ProposalDecided(
+                process_version=run.process_version,
+                run_id=run.id,
+                step_id=decision.step_id,
+                action=decision.action,
+                level=decision.level,
+            ),
         )
 
     def _performed_after_fallback(
@@ -1198,6 +1383,7 @@ class RunEngine:
                 self._limit_halts.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             completed_now += 1
+            await self._breach(run, step, step_run)
             # The boundary: a stop requested meanwhile takes effect here.
             if run.id in self._stop_requested or (
                 stop_after is not None and completed_now >= stop_after
@@ -1287,6 +1473,7 @@ class RunEngine:
             if step_run.block is not None and step_run.block.cause == block.HELD_BACK:
                 # What it depended on no longer waits: the step can start (ADR-0043).
                 run, step_run = await self._close_block(run, step_run)
+            run = await self._take_lowered(run)
             work = parse_work(step, run.work.get(step.id), run.inputs)
             refusal = self._administration.refusal(step.id, _credential_names(work))
             if refusal is not None:
@@ -1325,6 +1512,57 @@ class RunEngine:
             if isinstance(work, WorkerWork):
                 return await self._worker_step(run, step, step_run, work, span, held)
             return await self._local_step(run, step, step_run, work, span, held)
+
+    async def _take_lowered(self, run: Run) -> Run:
+        """The run with the levels its version was lowered to by rule, where they are lower
+        than its own; each change recorded as `run.lowered` (ADR-0110). A rehearsal is asked
+        no level, and takes on none."""
+        if self._levels is None or run.rehearsal:
+            return run
+        lowered = await self._levels.lowered(run.tenant, run.process_version)
+        changes: list[tuple[str | None, AutonomyLevel]] = []
+        level = run.autonomy_level
+        if lowered.level is not None and lowered.level < level:
+            level = lowered.level
+            changes.append((None, level))
+        actions = dict(run.actions)
+        for action, lower in sorted(lowered.actions.items()):
+            if lower < min(actions.get(action, level), level):
+                actions[action] = lower
+                changes.append((action, lower))
+        if not changes:
+            return run
+        run = run.model_copy(update={"autonomy_level": level, "actions": actions})
+        for held_by, lower in changes:
+            run = await self._commit(run, RUN_LOWERED, outcome=f"level_{lower}", action=held_by)
+        return run
+
+    async def _breach(self, run: Run, step: Step, step_run: StepRun) -> None:
+        """After a step that acted: an anchor that names its act now, with no decision to
+        perform it, is a breach, and the process falls one level (ADR-0110). A rehearsal acts
+        on nothing outside; a step that ended without its act performed none."""
+        if self._levels is None or self._anchors is None or run.rehearsal:
+            return
+        if (run.id, step.id) in self._settled:
+            return
+        if step_run.anchoring is not None and step_run.anchoring.proceeds:
+            return
+        work = parse_work(step, run.work.get(step.id), run.inputs)
+        if not autonomy.acts(work, await self._outward(work)):
+            return
+        named = await self._applying(run, autonomy.actions_of(step, work))
+        if not named:
+            return
+        await self._levels.breached(
+            run.tenant,
+            Breach(
+                process_version=run.process_version,
+                run_id=run.id,
+                step_id=step.id,
+                level=run.autonomy_level,
+                anchors=tuple(a.id for a in named),
+            ),
+        )
 
     async def _applying(self, run: Run, used: tuple[str, ...]) -> tuple[Anchor, ...]:
         if self._anchors is None:
@@ -1415,6 +1653,7 @@ class RunEngine:
         """The step ends without its act, with a result that says why (ADR-0088): skipped
         because its `when` did not hold, or declined by the person it asked. The result is
         stored as any result is, so that the steps after it read it through `$from`."""
+        self._settled.add((run.id, step_run.step_id))
         content = json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
         digest = await self._objects.put(content)
         now = self._clock.now()
@@ -3529,6 +3768,8 @@ class RunEngine:
         decision: str | None = None,
         interface: str | None = None,
         ended: str | None = None,
+        action: str | None = None,
+        proposal: tuple[str, str | None, str] | None = None,
     ) -> Run:
         """One transaction: the run as it now is, and — when `kind` is given — the ledger entry
         that says what changed. Either both land or neither does. A step that finished with a
@@ -3537,7 +3778,9 @@ class RunEngine:
         `trigger` records the trigger that started the run as `run.triggered`; `interface`
         records a failed call that speaks about its interface as `interface.failed`, beside the
         step's entry (ADR-0047); `ended` records how the run ended, `ok`, `empty` or `error`, as
-        `run.ended` with its duration from its creation (ADR-0107)."""
+        `run.ended` with its duration from its creation (ADR-0107); `proposal` records the
+        decision on a proposal — outcome, action class, document digest — as `proposal.decided`,
+        naming no person (ADR-0110)."""
         run = run.model_copy(update={"updated_at": self._clock.now()})
         async with self._work.transaction(run.tenant):
             await self._fence(run)
@@ -3555,7 +3798,19 @@ class RunEngine:
                     actor=actor,
                     digest=digest,
                     decision=decision,
+                    action=action,
                 )
+                if proposal is not None and step is not None:
+                    decided, held_by, document = proposal
+                    await self._record(
+                        run,
+                        PROPOSAL_DECIDED,
+                        step=step,
+                        outcome=decided,
+                        digest=document,
+                        action=held_by,
+                        bare=True,
+                    )
                 if interface is not None and step is not None:
                     await self._record(run, interfaces.RECORD_KIND, step=step, outcome=interface)
                 if ended is not None:
@@ -3622,23 +3877,39 @@ class RunEngine:
         digest: Digest | None = None,
         decision: str | None = None,
         duration: float | None = None,
+        action: str | None = None,
+        bare: bool = False,
     ) -> LedgerEntry:
+        """`bare` records only what names the step — no assignment, no artifacts, no method,
+        adapter or consumption — for an entry that counts a decision (ADR-0110)."""
         refs = LedgerRefs(
             tenant=run.tenant,
             plan_id=run.plan_id,
             process_version=run.process_version,
             run_id=run.id,
             step_id=None if step is None else step.step_id,
-            assignment_id=None if step is None else step.assignment_id,
+            assignment_id=None if step is None or bare else step.assignment_id,
             decision_request_id=decision,
+            action=action,
             artifact_ids=None
-            if step is None or not step.artifacts
+            if step is None or bare or not step.artifacts
             else tuple(a.id for a in step.artifacts),
             actor=actor,
             # The trace this entry is recorded in: what joins the ledger and the telemetry.
             trace_id=self._telemetry.current_trace_id(),
         )
         consumption: Consumption | None = None
+        if bare:
+            return await self._ledger.record(
+                run.tenant,
+                Fact(
+                    kind=kind,
+                    refs=refs,
+                    outcome=outcome,
+                    content_digest=digest,
+                    rehearsal=True if run.rehearsal else None,
+                ),
+            )
         if step is not None and kind not in (blocked.RECORD_KIND, interfaces.RECORD_KIND):
             if kind in ("step.admitted", "step.rejected") and step.estimate is not None:
                 quantities = step.estimate.quantities()

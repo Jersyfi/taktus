@@ -406,6 +406,7 @@ async def wire(
                     anchors=decisions.anchors,
                     administration=settings.administration,
                     decisions=decisions.requests,
+                    levels=decisions.levels,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -552,6 +553,7 @@ async def wire(
                 ledger=ledger,
                 administration=settings.administration,
                 clock=clock,
+                lowered=decisions.lowered,
             )
             proposal_acts = ProposalActs(
                 proposals=proposals,
@@ -622,6 +624,7 @@ async def wire(
                     owner,
                     clock,
                     backup_expected_hours=settings.backup_expected_hours,
+                    corrections=decisions.corrections,
                 ),
                 signals=signals.watch,
                 changes=LiveHub(

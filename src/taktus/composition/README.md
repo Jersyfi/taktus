@@ -29,7 +29,11 @@ component says when a run was expected, and the governance component reads the l
 an incident for one that did not (`expected_runs.py`, ADR-0107). It judges every signal against
 its corridor from what the measuring step recorded: a red value raises an incident and a report
 at once, and the daily report lists what deviates; a confirmed reply to it starts a process as a
-command (`signals.py`, ADR-0109). The guides' process, S-05, asks the instance through the loopback
+command (`signals.py`, ADR-0109). The run counts every decision on what it proposed, and the
+governance component lowers a level by rule; `decisions.py` answers the run's port `Levels`
+and registration's port `LoweredVersions` from the governance component, beside the anchors
+and the decision requests, and the owner hears of a fall through the alerts (`alerts.py`,
+ADR-0110). The guides' process, S-05, asks the instance through the loopback
 connector to render, measure and publish the guides and to report a hand edit; `guides.py`
 answers over the knowledge and reporting components, and serves `knowledge.pages` over the
 directory `TAKTUS_KNOWLEDGE_DIRECTORY` names (ADR-0066). Method maturation is built once in

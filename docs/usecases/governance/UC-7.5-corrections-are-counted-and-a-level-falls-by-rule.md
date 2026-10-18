@@ -3,10 +3,10 @@ id: UC-7.5
 title: Corrections are counted, and a level falls by rule
 component: governance
 serves: [P10, P12, P14]
-state: specified
+state: built
 version: 0.4.0
-tests: []
-adrs: {ADR-0023: 949c6f4e13af, ADR-0026: ccc4bd1f5423, ADR-0039: c716494667e5}
+tests: [tests/governance/test_corrections.py::test_every_decision_records_its_outcome_process_step_action_and_time, tests/governance/test_corrections.py::test_a_corrected_decision_keeps_the_proposal_and_the_version_released, tests/governance/test_corrections.py::test_a_rejected_proposal_runs_nothing_halts_the_run_and_is_proposed_again, tests/governance/test_corrections.py::test_the_rate_per_process_and_action_over_7_and_28_days_is_reproducible, tests/components/governance/test_corrections.py::test_nothing_decided_is_no_rate_at_all, tests/components/governance/test_corrections.py::test_each_unit_is_counted_apart_and_rehearsals_count_for_nothing, tests/components/governance/test_corrections.py::test_a_change_of_level_starts_the_count_again, tests/governance/test_corrections.py::test_when_the_tenants_conditions_hold_a_raise_is_proposed_and_never_applied, tests/components/governance/test_corrections.py::test_a_raise_is_due_once_per_change_of_level_on_both_windows, tests/composition/test_alerts.py::test_a_raise_taktus_proposes_reaches_the_owner_with_its_figures, tests/governance/test_corrections.py::test_a_level_3_process_that_breaches_an_anchor_is_at_level_2_before_its_next_step, tests/composition/test_alerts.py::test_a_level_that_fell_by_rule_reaches_the_owner_until_answered, tests/governance/test_corrections.py::test_a_correction_rate_above_the_limit_lowers_the_process_one_level, tests/governance/test_corrections.py::test_a_rate_above_the_limit_lowers_the_action_class_and_leaves_the_process, tests/components/governance/test_corrections.py::test_a_rate_lowers_only_above_its_limit_and_with_its_minimum_of_decisions, tests/components/governance/test_corrections.py::test_the_shipped_limits_hold_until_a_tenant_sets_its_own, tests/governance/test_corrections.py::test_the_decision_to_lower_is_a_rule_and_no_model, tests/governance/test_corrections.py::test_a_level_lowered_by_rule_rises_again_only_with_approval_and_evidence, tests/components/governance/test_corrections.py::test_a_version_is_lowered_to_the_lowest_level_named_and_never_below_one, tests/governance/test_corrections.py::test_no_figure_names_the_person_who_corrected, tests/architecture/test_no_figure_names_a_person.py::test_no_type_of_the_core_holds_a_figure_under_a_persons_name]
+adrs: {ADR-0023: 949c6f4e13af, ADR-0026: ccc4bd1f5423, ADR-0039: c716494667e5, ADR-0110: 9c2d720b8e58}
 supersedes: null
 ---
 

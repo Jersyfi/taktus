@@ -90,7 +90,9 @@ def expected_runs_tick(
                     incident=incident.id,
                     kind=incident.kind.value,
                     process=incident.process_version,
-                    expected_at=incident.expected_at.isoformat(),
+                    expected_at=None
+                    if incident.expected_at is None
+                    else incident.expected_at.isoformat(),
                 )
             for share in done.crossed:
                 log.warning(

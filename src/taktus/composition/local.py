@@ -273,6 +273,7 @@ class LocalWiring:
                     anchors=decisions.anchors,
                     administration=administration,
                     decisions=decisions.requests,
+                    levels=decisions.levels,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -374,6 +375,7 @@ class LocalWiring:
                     ledger=ledger,
                     administration=administration,
                     clock=clock,
+                    lowered=decisions.lowered,
                 ),
                 commission=commission,
                 engine=engine,
@@ -410,6 +412,7 @@ class LocalWiring:
                     owner,
                     clock,
                     backup_expected_hours=backup_expected_hours,
+                    corrections=decisions.corrections,
                 ),
                 measures=maturation.measures,
                 correct_result=maturation.correct,
@@ -424,6 +427,7 @@ class LocalWiring:
                 ),
                 corridors=signals.corridors,
                 signals=signals.watch,
+                corrections=decisions.corrections,
             )
             telemetry.shutdown()
 

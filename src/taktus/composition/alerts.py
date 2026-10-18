@@ -5,7 +5,9 @@ will hear of them.
 `RecordedSignals` reads a tenant's ledger once — its capacity crossings, which the governance
 component writes, and its lost claims, which the run writes — and the backup's outcomes, which
 the backup program writes into the database. It hands them to the reporting component in its
-own shape. The components never import each other; this is where they meet. `alerts` builds the
+own shape. With the governance component's `Corrections`, it also reads every incident about a
+level that fell by rule and every raise Taktus proposed on the corrections (ADR-0110). The
+components never import each other; this is where they meet. `alerts` builds the
 use case over the owner-facing channel's own handlers, so that an alert reaches the owner
 through the same channel, checks and renderings as every other report (ADR-0045).
 """
@@ -18,12 +20,16 @@ from datetime import datetime, timedelta
 import structlog
 from pydantic import ValidationError
 
+from taktus.components.governance.application.service import Corrections
+from taktus.components.governance.domain.model import Incident, Proposed
 from taktus.components.reporting.application.service import Alerts, Reported
 from taktus.components.reporting.domain.model import (
     BackupRun,
     BackupState,
     CapacityCrossing,
     ClaimLost,
+    LevelLowered,
+    RaiseProposed,
     Signalled,
 )
 from taktus.components.run.application.service import CLAIM_LOST
@@ -49,6 +55,54 @@ def _run(outcome: BackupOutcome) -> BackupRun:
     return BackupRun(name=outcome.name, at=outcome.at, reason=outcome.reason)
 
 
+def _number(facts: dict[str, str | float | None], name: str) -> float | None:
+    value = facts.get(name)
+    return value if isinstance(value, float) else None
+
+
+def _lowered(incident: Incident) -> LevelLowered:
+    facts = dict(incident.facts)
+    unit = facts.get("unit")
+    anchors = facts.get("anchors")
+    decided = _number(facts, "decided")
+    step = facts.get("step")
+    return LevelLowered.model_validate(
+        {
+            "incident": incident.id,
+            "at": incident.raised_at,
+            "process_version": incident.process_version,
+            "action": None if unit in (None, "process") else unit,
+            "rule": incident.rule,
+            "before": int(str(facts.get("level_before"))),
+            "after": int(str(facts.get("level_after"))),
+            "anchors": tuple(a for a in str(anchors or "").split(", ") if a),
+            "run_id": incident.run_id,
+            "step_id": step if isinstance(step, str) else None,
+            "decided": None if decided is None else int(decided),
+            "rate": _number(facts, "rate"),
+            "limit": _number(facts, "limit"),
+            "window_days": _number(facts, "window_days"),
+        }
+    )
+
+
+def _proposed(one: Proposed) -> RaiseProposed:
+    figures = one.figures
+    return RaiseProposed.model_validate(
+        {
+            "seq": one.seq,
+            "at": figures.at,
+            "process_version": one.process_version,
+            "action": figures.unit.action,
+            "week_decided": figures.week.decided,
+            "week_rate": figures.week.rate,
+            "month_decided": figures.month.decided,
+            "month_rate": figures.month.rate,
+            "counted_since": figures.counted_since,
+        }
+    )
+
+
 class RecordedSignals:
     """A tenant's recorded facts, as the reporting component reads them. An entry whose fields
     do not hold to the reporting component's patterns is left out: nothing that is not an
@@ -62,12 +116,14 @@ class RecordedSignals:
         tenants: TenantStore,
         *,
         backup_expected_hours: int | None,
+        corrections: Corrections | None = None,
     ) -> None:
         self._ledger = ledger
         self._work = work
         self._backups = backups
         self._tenants = tenants
         self._expected = backup_expected_hours
+        self._corrections = corrections
 
     async def signalled(self, tenant: Tenant) -> Signalled:
         async with self._work.transaction(tenant):
@@ -94,9 +150,24 @@ class RecordedSignals:
                     )
             except ValidationError:
                 continue
+        lowered: list[LevelLowered] = []
+        raises: list[RaiseProposed] = []
+        if self._corrections is not None:
+            for incident in await self._corrections.lowerings(tenant):
+                try:
+                    lowered.append(_lowered(incident))
+                except (ValidationError, ValueError):
+                    continue
+            for proposal in await self._corrections.proposed(tenant):
+                try:
+                    raises.append(_proposed(proposal))
+                except ValidationError:
+                    continue
         return Signalled(
             capacity=tuple(crossings),
             claims_lost=tuple(losses),
+            lowered=tuple(lowered),
+            raises=tuple(raises),
             backup=BackupState(
                 watched_since=None if entry is None else entry.created_at,
                 expected_hours=self._expected,
@@ -116,10 +187,16 @@ def alerts(
     clock: Clock,
     *,
     backup_expected_hours: int | None,
+    corrections: Corrections | None = None,
 ) -> Alerts:
     return Alerts(
         RecordedSignals(
-            ledger, work, backups, tenants, backup_expected_hours=backup_expected_hours
+            ledger,
+            work,
+            backups,
+            tenants,
+            backup_expected_hours=backup_expected_hours,
+            corrections=corrections,
         ),
         owner.queries,
         owner.channel,
