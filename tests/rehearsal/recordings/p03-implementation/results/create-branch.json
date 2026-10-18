@@ -3,27 +3,27 @@
     "quota_units": 11.0
   },
   "effect": {
-    "content_digest": "sha256:df203b5136e7b5e758f16670b70bc26dbbfe4331a459d22a164d9f7fc0e93577",
+    "content_digest": "sha256:19810d51267297609c22677d16e856dedba07327d785b818354caf1ca54edf01",
     "kind": "write",
     "records": [
       {
         "id": "taktus/issue-2",
         "kind": "vcs.branch",
-        "url": "http://127.0.0.1:20569/acme/product/tree/taktus/issue-2"
+        "url": "http://127.0.0.1:20592/acme/product/tree/taktus/issue-2"
       },
       {
         "id": "000000000000000000000000000000000000000e",
         "kind": "vcs.commit",
-        "url": "http://127.0.0.1:20569/acme/product/commit/000000000000000000000000000000000000000e"
+        "url": "http://127.0.0.1:20592/acme/product/commit/000000000000000000000000000000000000000e"
       }
     ],
     "replayed": false
   },
   "output": {
-    "base": "82526c43a19e6717ac3c052b9d4fef1cc3c83fe7",
-    "commit_url": "http://127.0.0.1:20569/acme/product/commit/000000000000000000000000000000000000000e",
+    "base": "9bb783e305c3761f25601876cacf8073734bbe69",
+    "commit_url": "http://127.0.0.1:20592/acme/product/commit/000000000000000000000000000000000000000e",
     "name": "taktus/issue-2",
     "sha": "000000000000000000000000000000000000000e",
-    "url": "http://127.0.0.1:20569/acme/product/tree/taktus/issue-2"
+    "url": "http://127.0.0.1:20592/acme/product/tree/taktus/issue-2"
   }
 }

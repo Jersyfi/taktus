@@ -61,15 +61,17 @@ def test_every_recording_is_of_a_bundle_and_every_bundle_has_one() -> None:
 
 
 async def test_a_bundle_that_sends_something_else_turns_the_replay_red(postgres_url: str) -> None:
-    """A deliberate break of a bundle: P-02's comment gains a word. The step that writes it
-    sends another body than the recorded step sent, and fails, naming the part that differs."""
+    """A deliberate break of a bundle: P-02 reads the comments with one more field. The step
+    sends another input than the recorded step sent, and fails, naming the part that differs.
+    The step is one every run of P-02 takes, so the break bites whatever the recorded issue
+    held."""
     document = bundle("p02-refinement")
-    compose = next(s for s in document["steps"] if s["id"] == "compose-comment")
-    compose["work"]["text"] = "Changed on purpose.\n" + compose["work"]["text"]
+    comments = next(s for s in document["steps"] if s["id"] == "read-comments")
+    comments["work"]["input"]["per_page"] = 50
     done = await replayed(postgres_url, "p02-refinement", document)
     assert not done.held
-    (line,) = [d for d in done.differences if d.startswith("write-sections:")]
-    assert "replayed failed" in line and "input.body differs" in line, done.differences
+    (line,) = [d for d in done.differences if d.startswith("read-comments:")]
+    assert "replayed failed" in line and "input" in line and "differs" in line, done.differences
 
 
 async def test_a_recorded_answer_that_leads_elsewhere_turns_the_replay_red(

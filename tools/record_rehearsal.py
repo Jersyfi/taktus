@@ -22,6 +22,11 @@ It refuses, and writes nothing: a run that is a rehearsal, or still running; a d
 not empty; and a recording in which it finds the value of a secret the environment points at
 (every `TAKTUS_…_FILE`, the database URL among them).
 
+A recording names no person (ADR-0108, principle 14). A connector names an actor as an object
+with `"kind": "person"`, such as an issue's author; every other field of such an object is
+replaced by `PERSON` as a result is read, before anything is reconstructed from it, so what a
+later step sent is recorded as the replay will send it.
+
 It must run where the instance runs — in its runner image, with the `taktus` package and Python
 and nothing else — so it imports only what every recent release of the package has, and keeps
 the recording's format and digests here, beside the replay's own definition of them, which
@@ -69,6 +74,9 @@ ENDED = (RunState.FINISHED, RunState.ESCALATED, RunState.HALTED, RunState.WAITIN
 SHORTEST_SECRET = 8
 """A known secret shorter than this is not searched for: it would match by chance."""
 
+PERSON = "a person"
+"""What stands for every identifier of a person a connector answered (ADR-0108)."""
+
 
 class Refused(Exception):
     """The recording is not written; the message says why."""
@@ -103,6 +111,17 @@ def connector_request(operation: str, input: Mapping[str, Any]) -> dict[str, Any
 
 
 # --- the run --------------------------------------------------------------------------------
+
+
+def without_persons(document: Any) -> Any:
+    """The document with every field of an object of kind `person` but its kind replaced."""
+    if isinstance(document, Mapping):
+        if document.get("kind") == "person":
+            return {key: ("person" if key == "kind" else PERSON) for key in document}
+        return {key: without_persons(value) for key, value in document.items()}
+    if isinstance(document, list):
+        return [without_persons(value) for value in document]
+    return document
 
 
 def _json_file(document: Any) -> bytes:
@@ -283,7 +302,7 @@ class Export:
         if checkpoint.result_digest is None:
             return None
         document = json.loads(await self.content(step_run, "the result", checkpoint.result_digest))
-        return document if isinstance(document, dict) else None
+        return without_persons(document) if isinstance(document, dict) else None
 
     def keep(self, name: str, document: Any) -> str:
         self.files[name] = _json_file(document)

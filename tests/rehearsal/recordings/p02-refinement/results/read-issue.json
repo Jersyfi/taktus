@@ -1,27 +1,27 @@
 {
   "consumption": {
-    "quota_units": 1.0
+    "quota_units": 2.0
   },
   "effect": {
     "kind": "read"
   },
   "output": {
     "author": {
-      "account": "1002",
+      "account": "a person",
       "kind": "person"
     },
-    "body": "### What must be achieved\n\nA greeting is written to hello.txt.\n\n### How it is verified\n\n_No response_\n\n### Where the boundary lies\n\nNo other file changes.\n\n### Component\n\nworkers\n\n### Source\n\ndocs/roadmap.md, 0.2.0\n\n### Blocked by\n\nnothing\n",
-    "created_at": "2026-10-18T18:38:45Z",
+    "body": "### What must be achieved\n\n`tests/integration/test_ledger_at_scale.py` holds `GET /runs/{id}/ledger` to the 200 ms #321 requires. During a local `make verify` that ran every lane in parallel, it took 0.212 s once, and passed on two repeats (#520). A requirement's bound measured on a loaded machine fails at random. The test is mended so that it measures the requirement, not the machine's load, or it is quarantined by a `gate-weakened` notice with a date.\n\n### How it is verified\n\n- The test passes twenty times in a row under `make verify` on a developer machine, or the notice names where it runs instead and until when.\n- The 200 ms of #321 stays the bound: the measurement changes, not the requirement (CLAUDE.md §11, point 13).\n\n### Where the boundary lies\n\nNot the ledger's read path itself (#321, ADR-0105).\n\n### Component\n\ntests/integration\n\n### Source\n\n#520; #321; ADR-0096 §5\n\n### Blocked by\n\nnothing",
+    "created_at": "2026-10-18T19:37:03Z",
     "is_pull_request": false,
     "labels": [
-      "priority:high",
+      "priority:normal",
       "ready",
       "task"
     ],
-    "milestone": "0.2.0",
-    "number": 3,
+    "milestone": "0.4.0",
+    "number": 528,
     "state": "open",
-    "title": "Without a verification",
-    "url": "http://127.0.0.1:20569/acme/product/issues/3"
+    "title": "The ledger scale test's 200 ms bound fails on a loaded machine",
+    "url": "https://github.com/Jersyfi/taktus/issues/528"
   }
 }

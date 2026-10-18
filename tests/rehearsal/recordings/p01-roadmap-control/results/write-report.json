@@ -3,25 +3,25 @@
     "quota_units": 2.0
   },
   "effect": {
-    "content_digest": "sha256:5635aabf15377c3a3e75115a3785a7608da455198f8704b4935377909cb3cf5d",
+    "content_digest": "sha256:060302806e589a8210676dc106fd515eaa907364e3f5703e171d1a074f5a5946",
     "kind": "write",
     "records": [
       {
         "id": "6#1",
         "kind": "comment",
-        "url": "http://127.0.0.1:20569/acme/product/issues/6#issuecomment-1"
+        "url": "http://127.0.0.1:20592/acme/product/issues/6#issuecomment-1"
       }
     ],
     "replayed": false
   },
   "output": {
     "author": {
-      "account": "1",
+      "account": "a person",
       "kind": "person"
     },
-    "body": "## Roadmap control\n\n`docs/roadmap.md` at `0000000000000000000000000000000000000009`, held against the open issues.\n\n### Where the roadmap and the issues disagree\n\n- 0.2.0: the item “An item without an issue” names no issue\n- #2 is in milestone 0.2.0; the roadmap places it in 0.1.0\n- #3 is in milestone 0.2.0; the roadmap does not name it\n- #5 is in milestone 0.2.0; the roadmap does not name it\n\n### Issues labelled `ready` that fail the standard\n\n- #3 is labelled `ready` and fails the standard: section 'How it is verified' is missing or empty\n- #4 is labelled `ready` and fails the standard: no milestone\n\n### The backlog in its order\n\n**Ready, in the order a session takes them**\n- #2 · 0.2.0 · high · Write a greeting\n\n**Claimed**\nnone\n\n**Not ready**\n- #3 · 0.2.0 · high · Without a verification — section 'How it is verified' is missing or empty\n- #5 · 0.2.0 · high · Blocked by a decision — blocked by DEC-0999, still open\n- #4 · - · high · Without a milestone — no milestone\n- #1 · - · - · Seed issue — not labelled ready; section 'What must be achieved' is missing or empty; section 'How it is verified' is missing or empty; section 'Where the boundary lies' is missing or empty; no component; no milestone; not exactly one priority label; no 'Blocked by' section (write 'nothing' when nothing blocks it)\n\n---\nWritten by Taktus, process P-01 Roadmap control. It proposes and changes nothing: a\nperson names an issue in the roadmap, sets a milestone or removes a label\n(docs/process/README.md). The order is the one `make backlog` prints.\n\n<!-- taktus-idempotency-key taktus:run_cd99e9b422c0bd7d87f1:write-report:1 -->\n",
-    "created_at": "2026-10-18T18:38:47Z",
+    "body": "## Roadmap control\n\n`docs/roadmap.md` at `0000000000000000000000000000000000000009`, held against the open issues.\n\n### Where the roadmap and the issues disagree\n\n- 0.2.0: the item “An item without an issue” names no issue\n- #2 is in milestone 0.2.0; the roadmap places it in 0.1.0\n- #3 is in milestone 0.2.0; the roadmap does not name it\n- #5 is in milestone 0.2.0; the roadmap does not name it\n\n### Issues labelled `ready` that fail the standard\n\n- #3 is labelled `ready` and fails the standard: section 'How it is verified' is missing or empty\n- #4 is labelled `ready` and fails the standard: no milestone\n\n### The backlog in its order\n\n**Ready, in the order a session takes them**\n- #2 · 0.2.0 · high · Write a greeting\n\n**Claimed**\nnone\n\n**Not ready**\n- #3 · 0.2.0 · high · Without a verification — section 'How it is verified' is missing or empty\n- #5 · 0.2.0 · high · Blocked by a decision — blocked by DEC-0999, still open\n- #4 · - · high · Without a milestone — no milestone\n- #1 · - · - · Seed issue — not labelled ready; section 'What must be achieved' is missing or empty; section 'How it is verified' is missing or empty; section 'Where the boundary lies' is missing or empty; no component; no milestone; not exactly one priority label; no 'Blocked by' section (write 'nothing' when nothing blocks it)\n\n---\nWritten by Taktus, process P-01 Roadmap control. It proposes and changes nothing: a\nperson names an issue in the roadmap, sets a milestone or removes a label\n(docs/process/README.md). The order is the one `make backlog` prints.\n\n<!-- taktus-idempotency-key taktus:run_3b59787dfdc36326ae8c:write-report:1 -->\n",
+    "created_at": "2026-10-18T19:57:34Z",
     "id": "1",
-    "url": "http://127.0.0.1:20569/acme/product/issues/6#issuecomment-1"
+    "url": "http://127.0.0.1:20592/acme/product/issues/6#issuecomment-1"
   }
 }

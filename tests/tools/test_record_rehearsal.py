@@ -278,3 +278,25 @@ def test_the_known_secrets_are_every_file_the_environment_points_at(tmp_path: Pa
         {"TAKTUS_CREDENTIAL_X_FILE": str(secret), "TAKTUS_SHORT_FILE": str(tmp_path / "none")}
     )
     assert found == ["a-long-enough-secret"]
+
+
+def test_a_recording_names_no_person() -> None:
+    """ADR-0108: an issue's author, as a connector answers it, leaves only its kind behind."""
+    answered = {
+        "output": {
+            "number": 7,
+            "author": {"kind": "person", "account": "64214261", "login": "someone"},
+            "comments": [{"author": {"kind": "person", "account": "1"}, "body": "b"}],
+            "assignee": {"kind": "bot", "account": "taktus"},
+        }
+    }
+    kept = record_rehearsal.without_persons(answered)
+    assert kept["output"]["author"] == {
+        "kind": "person",
+        "account": record_rehearsal.PERSON,
+        "login": record_rehearsal.PERSON,
+    }
+    assert kept["output"]["comments"][0]["author"]["account"] == record_rehearsal.PERSON
+    assert kept["output"]["comments"][0]["body"] == "b"
+    assert kept["output"]["assignee"] == {"kind": "bot", "account": "taktus"}
+    assert "64214261" not in json.dumps(kept)
