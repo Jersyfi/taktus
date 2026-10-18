@@ -1,6 +1,6 @@
-"""What the product finding reads and where it sends (UC-6.12, ADR-0046).
+"""What the product finding reads and where it sends (UC-6.12, ADR-0046, ADR-0112).
 
-Two ports. **`Blocks`** is the run's blocked-time accounts, read: every block that ended and
+Three ports. **`Blocks`** is the run's blocked-time accounts, read: every block that ended and
 every block still open, as the run records them (ADR-0043). The composition root binds it to the
 run's query; this component never imports the run.
 
@@ -8,6 +8,10 @@ run's query; this component never imports the run.
 an instance whose operator enabled it. It holds every finding it was sent, each with its texts.
 The marks in those texts say what it holds (`domain/service/texts.py`), so the instance keeps no
 memory of what it sent and a restart sends nothing twice.
+
+**`TenantContent`** is what the tenant holds that must not leave the instance: the values its
+runs were given and the values their work states. Every text that leaves for the product is
+checked against it first (ADR-0112 §4). The composition root binds it to the run's repository.
 """
 
 from __future__ import annotations
@@ -25,6 +29,14 @@ from taktus.shared.v1 import Value
 class Blocks(Protocol):
     async def blocks(self, tenant: Tenant) -> Sequence[Blocked]:
         """Every block of the tenant, ended or open, a rehearsal's left out."""
+        ...
+
+
+class TenantContent(Protocol):
+    async def values(self, tenant: Tenant) -> Sequence[str]:
+        """Every text and number the tenant's runs were given, and every one their work states,
+        as text. The names of operations and capabilities a work calls are not among them: they
+        say what the process needs of the product."""
         ...
 
 

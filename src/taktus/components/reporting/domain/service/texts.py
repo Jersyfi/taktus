@@ -34,7 +34,8 @@ MARK = "taktus-finding"
 
 _MARK = re.compile(
     r"<!-- taktus-finding lack=(?P<lack>[0-9a-f]{16}) occurrence=(?P<occurrence>[0-9a-f]{16}) "
-    r"state=(?P<state>met|ended) seconds=(?P<seconds>-|[0-9]+(?:\.[0-9]+)?) -->"
+    r"state=(?P<state>met|ended) seconds=(?P<seconds>-|[0-9]+(?:\.[0-9]+)?)"
+    r"(?: source=(?P<source>src_[0-9a-f]{20}))? -->"
 )
 
 _TITLES = {
@@ -89,9 +90,10 @@ def form(text: str) -> str:
 
 def mark(lack: Lack, occurrence: Occurrence, state: State) -> str:
     seconds = "-" if occurrence.seconds is None else f"{occurrence.seconds:.0f}"
+    source = "" if occurrence.source is None else f" source={occurrence.source}"
     return (
         f"<!-- {MARK} lack={lack.key} occurrence={occurrence.id} state={state} "
-        f"seconds={seconds} -->"
+        f"seconds={seconds}{source} -->"
     )
 
 
@@ -107,6 +109,7 @@ def reported(texts: Iterable[str]) -> tuple[Reported, ...]:
                     occurrence=match["occurrence"],
                     state="met" if match["state"] == "met" else "ended",
                     seconds=None if seconds == "-" else float(seconds),
+                    source=match["source"],
                 )
             )
     return tuple(found)
@@ -137,6 +140,8 @@ def _at(occurrence: Occurrence) -> str:
 
 def _occurrence(lack: Lack, occurrence: Occurrence, number: int, state: State) -> str:
     where = f"run `{occurrence.run_id}`, step `{occurrence.step_id}`, cause `{lack.cause}`"
+    if occurrence.source is not None:
+        where = f"sender `{occurrence.source}`, {where}"
     if state == "met":
         return f"Occurrence {number}: {where}, blocked since {_at(occurrence)}, still waiting."
     return (
@@ -149,8 +154,10 @@ def _in_all(known: Mapping[str, Reported]) -> str:
     ended = [r for r in known.values() if r.state == "ended"]
     open_ = len(known) - len(ended)
     waited = sum(r.seconds or 0.0 for r in ended)
+    senders = {r.source for r in known.values() if r.source is not None}
+    origin = f" from {len(senders)} sender{'s' if len(senders) != 1 else ''}" if senders else ""
     text = (
-        f"In all: {len(known)} occurrence{'s' if len(known) != 1 else ''}, "
+        f"In all: {len(known)} occurrence{'s' if len(known) != 1 else ''}{origin}, "
         f"{_seconds(waited)} waited over the {len(ended)} that ended"
     )
     return text + (f", {open_} still waiting." if open_ else ".")
@@ -202,7 +209,11 @@ def addition(
 
 def _as_reported(lack: Lack, occurrence: Occurrence, state: State) -> Reported:
     return Reported(
-        lack=lack.key, occurrence=occurrence.id, state=state, seconds=occurrence.seconds
+        lack=lack.key,
+        occurrence=occurrence.id,
+        state=state,
+        seconds=occurrence.seconds,
+        source=occurrence.source,
     )
 
 
@@ -227,3 +238,12 @@ def shown(finding: Finding, shape: str | None = None) -> str:
         }
         lines.append(_in_all(known))
     return "\n".join(lines)
+
+
+def by_hand(text: str, source: str, run: str | None) -> str:
+    """The body of a report a person wrote by hand (ADR-0112 §5): their text as they wrote it,
+    then below a rule the sender and, where they reported it from a run, the run's pseudonym.
+    No mark: a report by hand is not a finding, and no later report adds to it."""
+    where = f"Reported by hand on an instance of Taktus, sender `{source}`"
+    where += f", from run `{run}`." if run is not None else "."
+    return "\n".join([text.strip(), "", "---", "", where])

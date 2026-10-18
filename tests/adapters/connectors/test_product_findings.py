@@ -12,7 +12,7 @@ Never against the real repository: the connector's target is the fake's address.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 from fakes import FakeClock, FakeIdentifiers, FakeMaturities, FakeWorker
 
+from taktus.adapters.driven.clock import SystemRandomness
 from taktus.adapters.driven.connectors.github.server import Config, build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.memory import (
@@ -32,14 +33,23 @@ from taktus.adapters.driven.memory import (
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
-from taktus.components.reporting.application.service import SENT, ProductFindings, Sending, Sent
-from taktus.components.reporting.domain.service import texts
+from taktus.components.reporting.application.service import (
+    DISABLED,
+    ENABLED,
+    SENT,
+    Kept,
+    ProductFindings,
+    Sending,
+    Sent,
+)
+from taktus.components.reporting.domain.service import leaving, texts
 from taktus.components.run.application.query import BlockedTime
 from taktus.components.run.application.service import EngineOptions, ResumeRun, RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.components.run.domain.service.ready import missing_sections
-from taktus.composition.findings import RepositoryChannel, RunBlocks
-from taktus.ports.worker import ComputeLimit, Limits, QuotaLimit
+from taktus.composition.findings import READ_KEY, RepositoryChannel, RunBlocks, RunContent
+from taktus.ports.connector import CallContext
+from taktus.ports.worker import ComputeLimit, CredentialReference, Limits, QuotaLimit
 from taktus.shared.v1 import (
     Commissioned,
     ExactnessClass,
@@ -66,7 +76,7 @@ GOAL = "Review the payroll export of the customer"
 """Content of the project: it must appear in no text the finding sends."""
 
 
-def review(id: str) -> Step:
+def review(id: str, lacking: str = LACKING) -> Step:
     return Step(
         id=id,
         method=Method.WORKER,
@@ -74,7 +84,7 @@ def review(id: str) -> Step:
         rejected=(),
         exactness=ExactnessClass.TOLERANT,
         fallback=Fallback(when="x", to=Method.HUMAN),
-        requires=(LACKING,),
+        requires=(lacking,),
     )
 
 
@@ -117,23 +127,39 @@ class World:
         )
         return ProductFindings(
             RunBlocks(self.accounts),
-            Sending(channel, self.ledger, self.objects, self.persistence) if sending else None,
+            Kept(
+                self.ledger,
+                self.objects,
+                self.persistence,
+                SystemRandomness(),
+                RunContent(self.runs, self.persistence),
+            ),
+            Sending(channel, self.service.url) if sending else None,
             shape=FORM,
         )
 
-    async def start(self, process: str) -> Run:
-        step = review("review")
+    async def start(
+        self,
+        process: str,
+        *,
+        step_id: str = "review",
+        lacking: str = LACKING,
+        goal: str = GOAL,
+        inputs: Mapping[str, Any] | None = None,
+        run_id: str | None = None,
+    ) -> Run:
+        step = review(step_id, lacking)
         plan = Plan(
             id="pln_1",
             command_id="cmd_1",
-            goal=GOAL,
+            goal=goal,
             autonomy_level=3,
             steps=(step,),
             results_in=PlanResult.RUN,
             status=PlanStatus.COMMISSIONED,
             commissioned=Commissioned(by=PERSON, at=AT),
         )
-        work = {"review": {"task": {"goal": GOAL, "acceptance": ["a"], "inputs": {"n": 1}}}}
+        work = {step_id: {"task": {"goal": goal, "acceptance": ["a"], "inputs": {"n": 1}}}}
         return await self.engine.start(
             StartRun(
                 plan=plan,
@@ -145,6 +171,8 @@ class World:
                 process_version=f"{process}@1",
                 actor=PERSON,
                 tenant=TENANT,
+                inputs=inputs or {},
+                run_id=run_id,
             )
         )
 
@@ -178,7 +206,9 @@ async def test_one_lack_met_twice_is_one_issue_with_two_occurrences(service: Ser
     (issue,) = await held(w)
     assert issue.open and texts.MARK in issue.texts[0]
     assert missing_sections(issue.texts[0]) == [], "the issue has the configured form's sections"
-    assert first.id in issue.texts[0] and "`review`" in issue.texts[0]
+    named = await w.findings().pseudonyms(TENANT)
+    assert named.run(first.id) in issue.texts[0] and named.step("review") in issue.texts[0]
+    assert first.id not in issue.texts[0], "the run leaves by pseudonym (ADR-0112)"
     assert "still waiting" in issue.texts[0]
 
     # The same lack, met by another run of another process ten minutes later.
@@ -205,9 +235,12 @@ async def test_one_lack_met_twice_is_one_issue_with_two_occurrences(service: Ser
     assert all(r.state == "ended" for r in known.values())
     total = sum(round(s) for s in waited)
     assert sum(r.seconds or 0 for r in known.values()) == total, "the waiting is summed"
-    assert f"In all: 2 occurrences, {total} s waited over the 2 that ended." in issue.texts[-1]
+    assert (
+        f"In all: 2 occurrences from 1 sender, {total} s waited over the 2 that ended."
+        in issue.texts[-1]
+    )
     for run in (first, second):
-        assert any(run.id in text for text in issue.texts), "each occurrence carries its run"
+        assert any(named.run(run.id) in text for text in issue.texts), "each carries its run"
 
     # Sent again, and by a restarted instance: nothing new.
     assert await w.findings().send(TENANT) == Sent()
@@ -236,8 +269,94 @@ async def test_an_instance_not_enabled_records_and_shows_and_sends_nothing(
     assert not findings.enabled
     assert await findings.send(TENANT) == Sent()
     assert await held(w) == []
-    (finding,) = await findings.findings(TENANT)
-    shown = findings.shown(finding)
+    async with w.persistence.transaction(TENANT):
+        kinds = {e.kind for e in await w.ledger.entries(TENANT)}
+    assert not kinds & {ENABLED, DISABLED, SENT}, "off by default: nothing enabled, nothing sent"
+    (one,) = await findings.outgoing(TENANT)
+    shown = one.text
     assert "### What must be achieved" in shown, "shown in the configured form"
     assert shown.startswith(f"Product finding: no worker offers {LACKING}")
-    assert run.id in shown and PERSON not in shown and GOAL not in shown
+    named = await findings.pseudonyms(TENANT)
+    assert named.run(run.id) in shown and PERSON not in shown and GOAL not in shown
+    assert one.finding.occurrences[0].run_id == run.id, "the operator can tell which run it is"
+
+
+CUSTOMER = "Erika Mustermann"
+AMOUNT = "4.711,00 EUR"
+ADDRESS = "Heidestraße 17, 51147 Köln"
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_a_finding_from_an_instance_outside_carries_nothing_of_its_tenant(
+    service: Service,
+) -> None:
+    """Issue #446: a customer's name, an amount and an address planted in a run — in what it
+    was given, in its goal and its work, in the run's and the step's identifiers — reach no
+    text of the issue."""
+    w = World(service)
+    goal = f"Bill {CUSTOMER} {AMOUNT} at {ADDRESS}"
+    run = await w.start(
+        "billing",
+        step_id="bill-erika-mustermann",
+        goal=goal,
+        inputs={"customer": CUSTOMER, "amount": AMOUNT, "address": ADDRESS},
+        run_id="run_erika-mustermann-4711",
+    )
+    assert run.state is RunState.ESCALATED
+    assert await w.findings().send(TENANT) == Sent(opened=1)
+    (issue,) = await held(w)
+    config = Config(target=w.service.url, repository=REPOSITORY, timeout=5.0)
+    listed = await McpActionConnector(build_server(config), timeout=5.0).call(
+        "repository.issues.list",
+        CallContext(
+            tenant=TENANT,
+            identity="taktus",
+            run_id="read",
+            step_id="read",
+            attempt=1,
+            idempotency_key=READ_KEY,
+            credentials=(CredentialReference(name="REPOSITORY_TOKEN", injected_as="env"),),
+        ),
+        {"state": "all"},
+    )
+    titles = [str(i.get("title", "")) for i in listed.output["issues"]]
+    everything = "\n".join([*titles, *issue.texts])
+    folded = leaving.fold(everything)
+    for planted in (CUSTOMER, AMOUNT, ADDRESS, "Mustermann", "Heidestraße", "51147", "4711"):
+        assert planted not in everything and leaving.fold(planted) not in folded, planted
+    assert leaving.check([everything], leaving.values([CUSTOMER, AMOUNT, ADDRESS])) == ()
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_a_lack_that_names_the_tenants_content_is_withheld_and_shown(
+    service: Service,
+) -> None:
+    w = World(service)
+    await w.start("billing", lacking="crm.erika-mustermann", inputs={"customer": CUSTOMER})
+    findings = w.findings()
+    assert await findings.send(TENANT) == Sent(withheld=1)
+    assert await held(w) == [], "nothing of it left the instance"
+    (one,) = await findings.outgoing(TENANT)
+    assert [m.kind for m in one.withheld] == ["tenant_value"]
+
+
+@pytest.mark.usefixtures("credentials")
+async def test_the_same_lack_on_two_instances_is_one_finding(service: Service) -> None:
+    """Two instances outside the project, each its own state, send to the same repository:
+    the second adds an occurrence to the finding the first opened, under its own sender."""
+    one, other = World(service), World(service)
+    await one.start("intake")
+    other.later(timedelta(minutes=3))
+    await other.start("intake")
+    assert await one.findings().send(TENANT) == Sent(opened=1)
+    assert await other.findings().send(TENANT) == Sent(added=1)
+    (issue,) = await held(one)
+    senders = {r.source for r in texts.reported(issue.texts)}
+    first = await one.findings().pseudonyms(TENANT)
+    second = await other.findings().pseudonyms(TENANT)
+    assert senders == {first.source, second.source} and len(senders) == 2
+    assert "In all: 2 occurrences from 2 senders" in issue.texts[-1]
+    assert (
+        await one.findings().send(TENANT) == Sent()
+        and await other.findings().send(TENANT) == Sent()
+    )

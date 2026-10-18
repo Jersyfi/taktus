@@ -1,5 +1,7 @@
-"""`taktusctl findings` end to end (UC-6.12 §2): an instance that does not send its findings
-records them and shows them to its operator, who can send one by hand."""
+"""`taktusctl findings` end to end (UC-6.12 §2, ADR-0112): an instance that does not send its
+findings records them and shows them to its operator, who can send one by hand; and a report a
+person writes by hand is checked, shown exactly as it would be sent, and sent only once they
+confirm it."""
 
 from __future__ import annotations
 
@@ -44,7 +46,7 @@ TENANT = "default"
 PERSON = "idn_operator"
 
 
-async def a_run_that_lacks_a_worker(state_dir: Path) -> Run:
+async def a_run_that_lacks_a_worker(state_dir: Path, inputs: dict[str, str] | None = None) -> Run:
     """A run in the development store whose step needs a worker no configured one offers."""
     persistence = MemoryPersistence(state_dir)
     clock = SystemClock()
@@ -88,6 +90,7 @@ async def a_run_that_lacks_a_worker(state_dir: Path) -> Run:
             process_version="intake@1",
             actor=PERSON,
             tenant=TENANT,
+            inputs=inputs or {},
         )
     )
 
@@ -97,15 +100,21 @@ FORM = Path(__file__).resolve().parents[2] / ".github" / "finding-form.md"
 
 
 def findings(
-    state_dir: Path, *args: str, form: Path | None = None
+    state_dir: Path,
+    *args: str,
+    form: Path | None = None,
+    answer: str | None = None,
+    connector: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     inherited = {k: v for k, v in os.environ.items() if not k.startswith("TAKTUS_")}
     shape = {} if form is None else {"TAKTUS_FINDINGS_FORM": str(form)}
+    enabled = {} if connector is None else {"TAKTUS_FINDINGS_CONNECTOR": connector}
     return subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
         [taktusctl(), "findings", *args],
         capture_output=True,
         text=True,
-        env={**inherited, **PLAIN, "TAKTUS_STATE_DIR": str(state_dir), **shape},
+        input=answer,
+        env={**inherited, **PLAIN, "TAKTUS_STATE_DIR": str(state_dir), **shape, **enabled},
         check=False,
     )
 
@@ -132,4 +141,59 @@ def test_the_operator_sees_each_finding_ready_to_send_by_hand(tmp_path: Path) ->
 
     (document,) = json.loads(findings(state, "--json").stdout)
     assert document["lack"] == {"cause": "no_worker", "lacking": "code.review"}
-    assert document["occurrences"][0]["run_id"] == run.id
+    sent_as = document["occurrences"][0]
+    assert sent_as["run_id"] != run.id and sent_as["run_id"] in document["text"]
+    assert sent_as["source"] in document["text"] and run.id not in document["text"]
+    assert document["on_instance"][0]["run_id"] == run.id and document["withheld"] == []
+    assert "\n--- on this instance only, not sent ---\n" in shown.stdout
+    assert f"Run `{sent_as['run_id']}` is run `{run.id}`" in shown.stdout
+
+
+def test_a_report_by_hand_is_checked_then_shown_and_sent_only_once_confirmed(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    asyncio.run(a_run_that_lacks_a_worker(state, inputs={"customer": "Erika Mustermann"}))
+    leaky = tmp_path / "leaky.md"
+    leaky.write_text("The export for Erika Mustermann fails.\n", encoding="utf-8")
+    refused = findings(state, "report", "--title", "Export fails", "--text", str(leaky))
+    assert refused.returncode == 1, refused.stdout + refused.stderr
+    assert "Nothing was sent" in refused.stdout and "tenant value `erika mustermann`" in (
+        refused.stdout
+    )
+    assert "This is exactly what would be sent" not in refused.stdout
+
+    clean = tmp_path / "clean.md"
+    clean.write_text("The export step fails after a retry.\n", encoding="utf-8")
+    by_hand = findings(state, "report", "--title", "Export fails", "--text", str(clean))
+    assert by_hand.returncode == 0, by_hand.stderr
+    assert "This is exactly what would be sent:\n\nExport fails\n\n" in by_hand.stdout
+    assert "The export step fails after a retry." in by_hand.stdout
+    assert "Send the text above by hand." in by_hand.stdout and "Send it?" not in by_hand.stdout
+
+    # Enabled: nothing is sent before the person confirms. The connector's address answers no
+    # one, so a send that was attempted would fail.
+    nowhere = "http://127.0.0.1:9/mcp"
+    declined = findings(
+        state,
+        "report",
+        "--title",
+        "Export fails",
+        "--text",
+        str(clean),
+        answer="n\n",
+        connector=nowhere,
+    )
+    assert declined.returncode == 0, declined.stderr
+    assert "Send it?" in declined.stdout and "Nothing was sent." in declined.stdout
+    confirmed = findings(
+        state,
+        "report",
+        "--title",
+        "Export fails",
+        "--text",
+        str(clean),
+        answer="y\n",
+        connector=nowhere,
+    )
+    assert confirmed.returncode == 2, "confirmed, it is sent: here to an address nobody answers"

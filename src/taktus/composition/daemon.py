@@ -97,6 +97,7 @@ from taktus.components.reporting.application.query import LevelQueries, ReportQu
 from taktus.components.reporting.application.service import (
     Alerts,
     BrokenInterfaces,
+    Kept,
     LiveChanges,
     ProductFindings,
     Sending,
@@ -132,7 +133,7 @@ from taktus.composition.execution import (
     unit_environments,
 )
 from taktus.composition.expected_runs import ExpectedRunsWatch, expected_runs_tick
-from taktus.composition.findings import RepositoryChannel, RunBlocks, findings_tick
+from taktus.composition.findings import RepositoryChannel, RunBlocks, RunContent, findings_tick
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
 from taktus.composition.levels import RepositoryLevelRecords
@@ -675,6 +676,14 @@ async def wire(
                 ),
                 findings=ProductFindings(
                     RunBlocks(BlockedTime(ledger, objects, persistence, runs)),
+                    Kept(
+                        ledger,
+                        objects,
+                        persistence,
+                        SystemRandomness(),
+                        RunContent(runs, persistence, PostgresRepository(persistence, Command)),
+                        known_secrets(os.environ, also=[settings.database.reveal()]),
+                    ),
                     None
                     if settings.findings_connector is None
                     else Sending(
@@ -682,9 +691,7 @@ async def wire(
                             McpActionConnector(settings.findings_connector),
                             labels=settings.findings.labels,
                         ),
-                        ledger,
-                        objects,
-                        persistence,
+                        settings.findings_connector,
                     ),
                     shape=shape,
                 ),

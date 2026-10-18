@@ -485,3 +485,17 @@ its own database, its own secret store, its own configuration. Two instances sha
 never call each other. The Taktus project runs two — a development instance on `main`, a
 project instance on a tagged release — so that a faulty version under development cannot take
 down productive work (ADR-0013 D).
+
+**What leaves an instance for the product.** One thing does, and only where the instance's
+operator enabled it: product findings and reports written by hand, sent as issues to the Taktus
+repository through a connector of the capability `repository` (UC-6.12, ADR-0046, ADR-0112).
+The one setting is `TAKTUS_FINDINGS_CONNECTOR`, and each tenant's ledger records each change of
+it as `finding.enabled` or `finding.disabled`. A finding names the run and the step it was met
+in by pseudonym: an HMAC of the identifier under a key the tenant's instance draws and never
+sends. It names its sender, one tenant of one instance, by a random identifier, never by a
+person, an operator or a tenant. One lack is one issue across every instance that sends to it.
+Before anything leaves, one rule checks every part that came from the instance — what was
+lacking, the operator's form, a person's text — against the tenant's own values and the shapes
+of personal data, and withholds what fails (`components/reporting/domain/service/leaving.py`).
+A report by hand (`taktusctl findings report`) is shown exactly as it would be sent, and sent
+only once the person confirms it.
