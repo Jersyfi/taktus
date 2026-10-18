@@ -18,7 +18,7 @@ from taktus.components.governance.domain.model import (
 )
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
-from taktus.components.reporting.domain.model import OwnerChannel, Report
+from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report
 from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.ports.persistence import WrongTenant
 from taktus.shared.v1 import Command, Plan
@@ -43,6 +43,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (Report, samples.report),
     (Incident, samples.incident),
     (WatchConfiguration, samples.watch_configuration),
+    (Corridor, samples.corridor),
 ]
 
 

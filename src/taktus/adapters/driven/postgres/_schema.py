@@ -274,6 +274,19 @@ watch_configuration = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+corridor = Table(
+    "corridor",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # <signal>@<version> (ADR-0109)
+    Column("signal", Text, nullable=False),
+    Column("version", Integer, nullable=False),
+    _at("changed_at"),
+    Column("corridor", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per version of a corridor, written once and never changed (ADR-0109 §3)."""
+
 trigger_state = Table(
     "trigger_state",
     metadata,

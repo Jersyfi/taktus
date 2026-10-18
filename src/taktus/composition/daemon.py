@@ -100,6 +100,7 @@ from taktus.components.reporting.application.service import (
     LiveChanges,
     ProductFindings,
     Sending,
+    SignalWatch,
 )
 from taktus.components.reporting.domain.model import OwnerChannel, PendingAct
 from taktus.components.run.application.query import (
@@ -149,6 +150,7 @@ from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
+from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
 from taktus.composition.triggers import Triggers
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
@@ -216,6 +218,9 @@ class Wired:
     alerts: Alerts
     """What needs a person's action — a capacity crossing, a lost claim, a failed or missing
     backup — reported to the owner by the scheduler (ADR-0106)."""
+    signals: SignalWatch
+    """The signals the scheduler judges against their corridors once a minute while it leads,
+    and the daily report it raises from them (ADR-0109)."""
     changes: LiveHub
     """The streams of changes this process holds for its readers, fed from the ledger
     (ADR-0055). Only the `api` role opens any."""
@@ -444,6 +449,31 @@ async def wire(
                 clock,
                 ids,
             )
+            # A red signal and the daily report reach the owner's channel, and a confirmed
+            # intervention from it starts its process as a command (ADR-0109).
+            signals = signal_wiring(
+                stored,
+                ledger_store=ledger_store,
+                ledger=ledger,
+                objects=objects,
+                provenance=provenance_store,
+                work=persistence,
+                clock=clock,
+                identities=identities,
+                owner=owner,
+            )
+            owner.answering.intervene_with(
+                CommandInterventions(
+                    processes=PostgresRepository(persistence, Process),
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    commission=commission,
+                    engine=engine,
+                    identities=identities,
+                    work=persistence,
+                    clock=clock,
+                    ids=ids,
+                )
+            )
             conformance = RunConformanceHandler(
                 InstanceSuites(
                     pools=pools,
@@ -593,6 +623,7 @@ async def wire(
                     clock,
                     backup_expected_hours=settings.backup_expected_hours,
                 ),
+                signals=signals.watch,
                 changes=LiveHub(
                     LiveChanges(Records(persistence, ledger_store, runs), state_of),
                     PostgresLedgerSignal(url),
@@ -848,6 +879,9 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         report_alerts = alerts_tick(wired.alerts, wired.tenants, wired.clock)
         # And it watches that every expected run happened, by rule (ADR-0107).
         watch_expected = expected_runs_tick(wired.expected, wired.tenants, wired.clock)
+        # And it judges every signal against its corridor, and raises the daily report
+        # (ADR-0109).
+        judge_signals = signals_tick(wired.signals, wired.tenants, wired.clock)
 
         async def scheduled() -> None:
             await wired.triggers.tick()
@@ -856,6 +890,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await send_findings()
             await report_interfaces()
             await report_alerts()
+            await judge_signals()
 
         tasks.append(
             asyncio.create_task(

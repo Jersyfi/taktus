@@ -41,6 +41,7 @@ KIND_IN_THE_REPOSITORY: dict[ReportKind, str] = {
     ReportKind.NEED: "Needs request",
     ReportKind.DATE: "Date",
     ReportKind.FAILURE: "Failure",
+    ReportKind.SIGNALS: "Daily signals",
 }
 
 
@@ -124,9 +125,11 @@ def message(report: Report, channel: OwnerChannel) -> str:
         ReportKind.NEED: book.need,
         ReportKind.DATE: book.date,
         ReportKind.FAILURE: book.failure,
+        ReportKind.SIGNALS: book.signals,
     }[report.kind]
+    title = report.title if heading is None else f"{heading}: {report.title}"
     lines = [
-        f"*{heading}: {report.title}* ({report.id})",
+        f"*{title}* ({report.id})",
         "",
         f"{book.needed}:",
         *(f"• {item}" for item in report.needed),
@@ -166,6 +169,13 @@ def asked_back(report: Report, book: Phrasebook) -> str:
 
 def filed(answer: str, book: Phrasebook) -> str:
     return book.filed.format(answer=answer)
+
+
+def run_url(channel: OwnerChannel, run_id: str) -> str | None:
+    """Where the web app draws one run, when the control plane's address is configured."""
+    if channel.view_base is None:
+        return None
+    return f"{channel.view_base.rstrip('/')}/app/#/runs/{quote(run_id, safe='')}"
 
 
 def level_url(channel: OwnerChannel, level: Level) -> str | None:

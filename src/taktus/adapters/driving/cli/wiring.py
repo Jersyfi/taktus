@@ -33,7 +33,9 @@ from taktus.components.reporting.application.service import (
     BrokenInterfaces,
     ChannelOf,
     ConfigureChannelHandler,
+    Corridors,
     ProductFindings,
+    SignalWatch,
 )
 from taktus.components.run.application.query import ProvenanceQuery, StepMeasures
 from taktus.components.run.application.service import (
@@ -114,6 +116,11 @@ class Services:
     expected_runs: ExpectedRuns | None = None
     """The incidents the watch over expected runs raised, closed by a person, and the
     tenant's watch configuration (`taktusctl incident`, ADR-0107)."""
+    corridors: Corridors | None = None
+    """The tenant's corridors, configured by a person (`taktusctl signal configure`,
+    ADR-0109)."""
+    signals: SignalWatch | None = None
+    """Every signal judged against its corridor now (`taktusctl signal list`)."""
 
 
 @dataclass(frozen=True)

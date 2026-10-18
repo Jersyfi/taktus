@@ -16,6 +16,10 @@ from taktus.components.governance.application.service.report_capacity import (
     ReportCapacity,
     ReportCapacityHandler,
 )
+from taktus.components.governance.application.service.signal_incidents import (
+    RaiseRed,
+    SignalIncidents,
+)
 
 __all__ = [
     "AnchorsInForce",
@@ -26,8 +30,10 @@ __all__ = [
     "ConfigureWatch",
     "DatabaseStore",
     "ExpectedRuns",
+    "RaiseRed",
     "ReportCapacity",
     "ReportCapacityHandler",
+    "SignalIncidents",
     "UnknownIncident",
     "Watch",
 ]

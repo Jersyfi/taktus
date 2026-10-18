@@ -37,6 +37,9 @@ class ReportKind(StrEnum):
     """A date the owner must act by."""
     FAILURE = "failure"
     """A failure Taktus noticed about itself (DEC-0058)."""
+    SIGNALS = "signals"
+    """The daily report of the signals outside their corridor (ADR-0109). It offers the
+    processes a person may start from it beside the answer that it is done."""
 
 
 class ReportState(StrEnum):

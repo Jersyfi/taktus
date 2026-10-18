@@ -18,6 +18,15 @@ from taktus.components.reporting.ports.levels import LevelRecords
 from taktus.components.reporting.ports.live import LiveRecords, States, TenantState
 from taktus.components.reporting.ports.phrasebooks import Phrasebooks
 from taktus.components.reporting.ports.secret_values import SecretValues
+from taktus.components.reporting.ports.signals import (
+    Declared,
+    InterventionRefused,
+    Interventions,
+    Measurements,
+    MeasuringSteps,
+    RedIncidents,
+    RedSignal,
+)
 
 __all__ = [
     "Blocks",
@@ -25,14 +34,21 @@ __all__ = [
     "DecisionAnswers",
     "DecisionRead",
     "DecisionRefused",
+    "Declared",
     "Deliveries",
     "Failures",
     "FindingChannel",
     "Held",
+    "InterventionRefused",
+    "Interventions",
     "LevelRecords",
     "LiveRecords",
+    "Measurements",
+    "MeasuringSteps",
     "NotDelivered",
     "Phrasebooks",
+    "RedIncidents",
+    "RedSignal",
     "SecretValues",
     "Sent",
     "Signals",

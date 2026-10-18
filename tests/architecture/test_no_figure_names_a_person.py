@@ -182,6 +182,10 @@ DECLARED: dict[str, str] = {
         "a check from the catalogue: the bounds, the threshold and the share a process version "
         "declares for a step's result, set by whoever writes it (ADR-0082)"
     ),
+    "taktus.components.reporting.domain.model.signal.Corridor": (
+        "a signal's corridor: the thresholds, the window and the minimum a person of the tenant "
+        "sets for one signal, which measures no named person (ADR-0109)"
+    ),
 }
 """Every type whose numbers are declared parameters of a process, not figures of anyone."""
 

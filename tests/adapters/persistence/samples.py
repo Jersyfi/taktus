@@ -47,7 +47,7 @@ from taktus.components.process.domain.model import (
     Trigger,
     TriggerState,
 )
-from taktus.components.reporting.domain.model import OwnerChannel, Report
+from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report, Subject
 from taktus.components.run.domain.model import (
     Anchoring,
     Checkpoint,
@@ -547,4 +547,27 @@ def watch_configuration(tenant: str = "t") -> WatchConfiguration:
         empty_window=timedelta(days=7),
         empty_minimum=4,
         configured_at=AT,
+    )
+
+
+def corridor(tenant: str = "t") -> Corridor:
+    return Corridor(
+        id="cost.cloud_daily@2",
+        tenant=tenant,
+        signal="cost.cloud_daily",
+        version=2,
+        process="read-cloud-cost",
+        step="read-cost",
+        select="totals.eur",
+        about=Subject(kind="department", name="engineering"),
+        bounds="median",
+        yellow=1.5,
+        red=2.0,
+        window=timedelta(days=7),
+        minimum=5,
+        fresh=timedelta(hours=26),
+        role="owner",
+        case="https://tickets.example/board/cost",
+        interventions=("throttle-cloud",),
+        changed_at=AT,
     )

@@ -67,7 +67,8 @@ class RaiseReport:
     standing_still: Sequence[str]
     due: date | None
     offered: Sequence[tuple[str, str, bool]] = ()
-    """A decision request's options, as identifier, proposal and whether it is recommended.
+    """A decision request's options, as identifier, proposal and whether it is recommended; the
+    interventions a daily report of signals offers beside the answer that it is done (ADR-0109).
     Empty for every other kind, which offers the one answer that it is done."""
     links: Sequence[tuple[str, str]] = ()
     """Every file, issue and pull request the report concerns, as label and address."""
@@ -125,11 +126,15 @@ class RaiseReportHandler:
             raise NoChannel(command.tenant)
         if existing is not None:
             return existing
+        given = tuple(
+            Offered(id=i, label=label, recommended=recommended)
+            for i, label, recommended in command.offered
+        )
         if command.kind is ReportKind.DECISION:
-            offered = tuple(
-                Offered(id=i, label=label, recommended=recommended)
-                for i, label, recommended in command.offered
-            )
+            offered = given
+        elif command.kind is ReportKind.SIGNALS:
+            # The daily report offers the interventions beside the answer that it is done.
+            offered = (Offered(id=DONE, label=channel.phrasebook.done), *given)
         else:
             offered = (Offered(id=DONE, label=channel.phrasebook.done),)
         now = self._clock.now()

@@ -125,6 +125,7 @@ from taktus.composition.settings import (
     load_tenants,
     load_workers,
 )
+from taktus.composition.signals import signal_wiring
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
@@ -291,6 +292,17 @@ class LocalWiring:
             commission = CommissionPlanHandler(
                 stores.of(Command), stores.of(Plan), stores.work, clock, ids
             )
+            signals = signal_wiring(
+                stores.of,
+                ledger_store=stores.ledger_store,
+                ledger=ledger,
+                objects=objects,
+                provenance=stores.provenance_store,
+                work=stores.work,
+                clock=clock,
+                identities=identities,
+                owner=owner,
+            )
             conformance = RunConformanceHandler(
                 InstanceSuites(
                     pools=pools,
@@ -410,6 +422,8 @@ class LocalWiring:
                     stores.work,
                     clock,
                 ),
+                corridors=signals.corridors,
+                signals=signals.watch,
             )
             telemetry.shutdown()
 

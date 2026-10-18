@@ -232,6 +232,11 @@ Taktus data steers processes and cost, never people.
 This is a data-model property, not a policy. A feature that violates it is not misconfigurable — it
 is unbuildable.
 
+A signal measures no named person either (ADR-0109 §3). A corridor names what its signal is
+about — the operation, a role or a department — and one whose signal or subject is the name of a
+person of the tenant is refused. Who changed a corridor is the actor of its ledger entry, never a
+field beside its thresholds.
+
 `tests/architecture/test_no_figure_names_a_person.py` holds it: a value type of the core or a
 table that holds a quantity beside a field naming a person fails, unless it is a record of one
 act without a total, or a read of one's own with the test that proves nobody else reads it
