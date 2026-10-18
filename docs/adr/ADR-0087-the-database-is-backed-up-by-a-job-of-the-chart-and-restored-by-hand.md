@@ -1,7 +1,7 @@
 # ADR-0087 — The database is backed up by a job of the chart, and restored by hand
 
 **Status:** accepted · makes ADR-0013 C hold for an installed instance (issue #67, roadmap
-`0.1.0`)
+`0.1.0`) · amended 2026-10-18 (#322): the object store is archived beside the dump
 
 ## Context
 ADR-0013 C requires that Taktus is repairable without Taktus: a manual way to restore an earlier
@@ -45,6 +45,15 @@ A run writes two objects named after the time it started, `taktus-<UTC time>`:
 The ledger is append-only (ADR-0006), so every head read before the dump is in the dump. A
 restore is checked against the manifest's heads: each tenant's chain must verify, and must reach
 the head the manifest names. The hash of the head covers the whole chain before it.
+
+*Amended 2026-10-18 (#322):* a third object, the **object store's archive**
+(`<name>.objects.tar.gz`), holds every file of the instance's object store: the artifacts, block
+records and recordings the database names by digest. On 2026-10-12, a restore of the database
+alone left none of a finished run's 20 digests readable, and a halted run escalated on resume.
+The archive is made after the dump. An object is written before the row that names it, so every
+object a row of the dump names is in the archive. The manifest names the archive with its
+SHA-256, size and count of files. The chart mounts the state volume read-only into the backup's
+pod. The volume is ReadWriteOnce, so the pod runs on the node of the control plane's pods.
 
 ### 3. Encryption to a public key, so that the instance cannot read its own backups
 With `backup.recipient` set to an `age` public key, the dump and the manifest are encrypted to
@@ -114,5 +123,8 @@ store whatever the store's credential lets it delete: with a credential that may
 compromised instance can delete its own backups (DEC-0058). Encryption protects what is in the
 store; whoever holds the private key can read every backup, and a lost private key makes every
 encrypted backup unreadable. The heads in the manifest are read before the dump: a tenant whose
-first ledger entry was written between the two is in the dump and not in the manifest. Only the
-database is backed up: the artifact volume (`state`) and the execution state claim are not.
+first ledger entry was written between the two is in the dump and not in the manifest. The object
+store's archive holds what was in it when the archive was made. An object written after the dump
+and before the archive is in it, and named by no row: it is harmless. The execution state claim
+is not backed up. The backup's pod needs a running control-plane pod on the node holding the
+state volume; with every role scaled to zero, the backup does not start.

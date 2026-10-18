@@ -493,12 +493,13 @@ names one, writes it to the store off the node, and then deletes every backup ol
 object the backup did not write is never touched. A run whose backup failed deletes nothing; its
 Job stays for its log.
 
-A backup is two objects under one name, `taktus-<UTC time>`:
+A backup is up to three objects under one name, `taktus-<UTC time>`:
 
 | Object | What it holds |
 |---|---|
 | `<name>.dump` (`.dump.age` encrypted) | the database, `pg_dump --format=custom` |
-| `<name>.json` (`.json.age` encrypted) | when, the dump's SHA-256 and size, whether it is encrypted, the schema revision, and every tenant's ledger head — `seq` and `hash` of its last entry — read before the dump |
+| `<name>.objects.tar.gz` (`.age` encrypted) | the object store: every artifact, block record and recording the database names by digest, archived after the dump. Written with `backup.objects`, the default (#322) |
+| `<name>.json` (`.json.age` encrypted) | when, the dump's and the archive's SHA-256 and size, the archive's count of files, whether they are encrypted, the schema revision, and every tenant's ledger head — `seq` and `hash` of its last entry — read before the dump |
 
 **What the backup needs.** The database URL the roles read (`database.urlSecret`), as a login
 that reads every row: every tenant's table forces row-level security, so the login is the
@@ -506,7 +507,9 @@ database's superuser or holds `BYPASSRLS`. With `database.deploy: true` it is th
 store's credential, one Secret with two keys (`CREDENTIALS.md`). Where encryption is wanted, an
 `age` key pair made by the operator off the instance (`age-keygen -o key.txt`): its public key
 (`age1…`) goes into `backup.recipient`, the file with its private key into the operator's own
-secret store. The instance never holds the private key, and cannot read its own backups.
+secret store. The instance never holds the private key, and cannot read its own backups. With
+`backup.objects`, the state volume, mounted read-only. It is ReadWriteOnce, so the backup's pod
+is scheduled onto the node of the control plane's pods, and does not start while none runs.
 
 **Run one now.** `kubectl create job --from=cronjob/<release>-backup <release>-backup-now` in the
 control plane's namespace, then read its log.
@@ -530,19 +533,22 @@ steps against a fresh database.
    rclone --config /dev/null lsf :s3:<bucket>/<prefix>
    ```
 
-   and copy the chosen backup's two objects out:
+   and copy the chosen backup's objects out:
 
    ```bash
    rclone --config /dev/null copyto :s3:<bucket>/<prefix>/<name>.dump ./<name>.dump
+   rclone --config /dev/null copyto :s3:<bucket>/<prefix>/<name>.objects.tar.gz ./<name>.objects.tar.gz
    rclone --config /dev/null copyto :s3:<bucket>/<prefix>/<name>.json ./<name>.json
    ```
 
-   Compare the dump's SHA-256 (`sha256sum <name>.dump`) with the manifest's `sha256`.
+   Compare the dump's SHA-256 (`sha256sum <name>.dump`) with the manifest's `sha256`, and the
+   archive's with the manifest's `objects.sha256`.
 3. **Decrypt, where the names end in `.age`**, with the private key from the operator's secret
    store:
 
    ```bash
    age --decrypt --identity key.txt --output <name>.dump <name>.dump.age
+   age --decrypt --identity key.txt --output <name>.objects.tar.gz <name>.objects.tar.gz.age
    age --decrypt --identity key.txt --output <name>.json <name>.json.age
    ```
 
@@ -564,7 +570,17 @@ steps against a fresh database.
    pg_restore --no-owner --exit-on-error --single-transaction --dbname "$URL" <name>.dump
    ```
 
-6. **Check every tenant's chain** against the manifest's heads. The heads, as the database now
+6. **Restore the object store** into the state volume's `objects` directory, empty or not: a
+   file of the archive is named by its content's digest, so one already there is the same.
+
+   ```bash
+   mkdir -p <state>/objects && tar -xzf <name>.objects.tar.gz -C <state>/objects
+   ```
+
+   `<state>` is the state volume (`<release>-state`) mounted by a pod of the operator's choice, or
+   a new volume of that name. A backup without an archive restores the database alone: what its
+   runs name by digest is not readable, and a halted run escalates on resume.
+7. **Check every tenant's chain** against the manifest's heads. The heads, as the database now
    holds them, as the superuser:
 
    ```bash
@@ -576,7 +592,7 @@ steps against a fresh database.
    entry was changed is the chain's own proof: the head's hash covers every entry before it, and
    Taktus verifies a tenant's whole chain from its first entry whenever `taktusctl run` reports
    a run (ADR-0006).
-7. **Start Taktus again** with the same chart values. The schema revision of the manifest must
+8. **Start Taktus again** with the same chart values. The schema revision of the manifest must
    be one the released version migrates from; an older backup is migrated forward by the
    release's own migration Job.
 
