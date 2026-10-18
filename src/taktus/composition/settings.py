@@ -769,6 +769,12 @@ def load_findings(configuration: Configuration) -> FindingsShape:
     return FindingsShape(form_file=Path(form).expanduser() if form else None, labels=labels)
 
 
+def load_findings_connector(configuration: Configuration) -> str | None:
+    """`TAKTUS_FINDINGS_CONNECTOR`: the one setting that enables sending findings (ADR-0112
+    §1); None, the default, sends nothing. `taktusctl findings report` reads it too."""
+    return _Reader(configuration).url("findings.connector", "") or None
+
+
 def load_tenants(configuration: Configuration) -> tuple[str, ...] | None:
     """`TAKTUS_TENANTS`, deprecated (ADR-0104 §7): the tenants of the registry an instance is
     narrowed to. None, unset: every tenant of the registry. The command line reads it too."""
@@ -988,7 +994,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         triage=reader.triage(),
         administration=load_administration(configuration),
         knowledge_directory=load_knowledge_directory(configuration),
-        findings_connector=reader.url("findings.connector", "") or None,
+        findings_connector=load_findings_connector(configuration),
         findings=load_findings(configuration),
         backup_expected_hours=load_backup_expected_hours(configuration),
         change_process=reader.text("change.process", "").strip() or None,

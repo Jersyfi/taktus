@@ -11,7 +11,8 @@ and the date a person must act by. `cost` recomputes what a run cost from the le
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `tenant` creates, renames and lists the instance's tenants; Taktus generates each
 identifier (ADR-0104). `anchors` configures and shows a tenant's anchors (ADR-0042). `findings`
-shows what the instance met that the product lacks, ready to send by hand (UC-6.12).
+shows what the instance met that the product lacks, ready to send by hand, and `findings report`
+sends a report a person wrote, once it is checked, shown and confirmed (UC-6.12, ADR-0112).
 `owner-channel` configures and shows where what is needed from the owner reaches them
 (ADR-0045). `interfaces` shows every interface the instance noticed had stopped behaving as its
 adapter expects, and whether the owner heard of it (ADR-0047). `alerts` shows what needs a
@@ -95,7 +96,7 @@ app.command("deactivate")(deactivate_command.deactivate)
 app.command("exactness")(exactness_command.exactness)
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
-app.command("findings")(findings_command.findings)
+app.add_typer(findings_command.findings, name="findings")
 app.command("interfaces")(interfaces_command.interfaces)
 app.command("alerts")(alerts_command.alerts)
 app.add_typer(identity_command.identity, name="identity")

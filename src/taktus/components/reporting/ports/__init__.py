@@ -12,6 +12,7 @@ from taktus.components.reporting.ports.findings import (
     ChannelIncomplete,
     FindingChannel,
     Held,
+    TenantContent,
 )
 from taktus.components.reporting.ports.interfaces import Failures
 from taktus.components.reporting.ports.levels import LevelRecords
@@ -53,5 +54,6 @@ __all__ = [
     "Sent",
     "Signals",
     "States",
+    "TenantContent",
     "TenantState",
 ]

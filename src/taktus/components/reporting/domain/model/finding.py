@@ -32,6 +32,9 @@ LACKING_PATTERN = r"^[a-z][a-z0-9_.-]*(,[a-z][a-z0-9_.-]*)*$"
 """What was lacking: a capability, several comma-separated, or an operation."""
 RUN_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
 OCCURRENCE_PATTERN = r"^[0-9a-f]{16}$"
+SOURCE_PATTERN = r"^src_[0-9a-f]{20}$"
+"""The sender of a finding: one tenant of one instance, by an identifier drawn at random on that
+instance (ADR-0112 §3). It names no person, no operator and no tenant."""
 
 
 def short(text: str) -> str:
@@ -63,12 +66,14 @@ class Lack(Value):
 
 
 class Occurrence(Value):
-    """One block for a lack. `seconds` is set once the block ended."""
+    """One block for a lack. `seconds` is set once the block ended. `source` is the sender it is
+    sent from; None on the instance, before it is made fit to leave (ADR-0112)."""
 
     run_id: str = Field(pattern=RUN_PATTERN, max_length=128)
     step_id: StepId
     since: datetime
     seconds: float | None = Field(default=None, ge=0)
+    source: str | None = Field(default=None, pattern=SOURCE_PATTERN)
 
     @property
     def id(self) -> str:
@@ -100,3 +105,5 @@ class Reported(Value):
     occurrence: str = Field(pattern=OCCURRENCE_PATTERN)
     state: Literal["met", "ended"]
     seconds: float | None = Field(default=None, ge=0)
+    source: str | None = Field(default=None, pattern=SOURCE_PATTERN)
+    """The sender that reported it; None for a mark written before senders were named."""

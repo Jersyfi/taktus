@@ -5,6 +5,9 @@ reads, and a repository as the channel it is sent through.
 open on its step run — and hands them to the reporting component in its own shape. The two
 components never import each other; this is where they meet.
 
+`RunContent` reads what the tenant's runs were given and what their work states: the values no
+text that leaves for the product may carry (ADR-0112 §4).
+
 `RepositoryChannel` sends through a connector that serves `repository.issues` and
 `repository.comments` on the repository its operator configured it for. A finding is an issue,
 opened with the labels its operator configured (`TAKTUS_FINDINGS_LABELS`, none by default), and
@@ -29,12 +32,14 @@ from taktus.components.reporting.domain.model import Blocked
 from taktus.components.reporting.domain.service.texts import MARK
 from taktus.components.reporting.ports import ChannelIncomplete, Held
 from taktus.components.run.application.query import BlockedTime
+from taktus.components.run.domain.model import Run
 from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock
 from taktus.ports.connector import ActionConnector, CallContext
 from taktus.ports.identity import ServedTenants
-from taktus.ports.persistence import Tenant
+from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.worker import CredentialReference
+from taktus.shared.v1 import Command
 
 TAKTUS = "taktus"
 """The identity Taktus acts as on its own behalf (ADR-0033)."""
@@ -77,6 +82,56 @@ class RunBlocks:
             for w in await self._accounts.waiting(tenant)
         ]
         return [*ended, *still]
+
+
+NAMES_OF_THE_PRODUCT = frozenset({"operation", "capability", "capabilities", "requires"})
+"""The keys of a work whose values name what a step needs of the product, not the tenant's
+content: a finding is about exactly these."""
+
+
+def leaves(value: Any, *, under: str | None = None) -> list[str]:
+    """Every text and number in a document, as text; a reference (`$input.…`) and the value of
+    a key in `NAMES_OF_THE_PRODUCT` left out."""
+    if under in NAMES_OF_THE_PRODUCT:
+        return []
+    if isinstance(value, Mapping):
+        return [leaf for key, each in value.items() for leaf in leaves(each, under=str(key))]
+    if isinstance(value, list | tuple):
+        return [leaf for each in value for leaf in leaves(each, under=under)]
+    if isinstance(value, bool) or value is None:
+        return []
+    if isinstance(value, int | float):
+        return [str(value)]
+    text = str(value)
+    return [] if text.startswith("$") else [text]
+
+
+class RunContent:
+    """What the tenant's commands said and its runs were given, and what their work states,
+    read from the repositories each time it is asked: when a finding has something to send,
+    and when a person prepares a report."""
+
+    def __init__(
+        self,
+        runs: Repository[Run],
+        work: UnitOfWork,
+        commands: Repository[Command] | None = None,
+    ) -> None:
+        self._runs = runs
+        self._work = work
+        self._commands = commands
+
+    async def values(self, tenant: Tenant) -> Sequence[str]:
+        async with self._work.transaction(tenant):
+            runs = await self._runs.list(tenant)
+            commands = [] if self._commands is None else await self._commands.list(tenant)
+        found: list[str] = []
+        for command in commands:
+            found += leaves(command.model_dump(mode="json", include={"intent", "context"}))
+        for run in runs:
+            found += leaves(run.inputs)
+            found += leaves(run.work)
+        return found
 
 
 class RepositoryChannel:
@@ -160,15 +215,14 @@ def findings_tick(
     *,
     interval_seconds: int = INTERVAL_SECONDS,
 ) -> Callable[[], Awaitable[None]]:
-    """What the scheduler calls on every tick: where sending is enabled, every tenant's findings
-    are sent when the interval has passed since the last sending — the first tick sends at once.
+    """What the scheduler calls on every tick: when the interval has passed since the last
+    sending — the first tick at once — every tenant's findings are sent where sending is
+    enabled, and a change of the setting is recorded in each tenant's ledger either way.
     A sending that fails is logged and tried again at the next interval: reporting never stops
     the scheduler, and what was not sent is sent then."""
     last: list[datetime] = []
 
     async def tick() -> None:
-        if not findings.enabled:
-            return
         now = clock.now()
         if last and now - last[0] < timedelta(seconds=interval_seconds):
             return
@@ -182,6 +236,13 @@ def findings_tick(
             if sent.opened or sent.added:
                 log.info(
                     "product findings sent", tenant=tenant, opened=sent.opened, added=sent.added
+                )
+            if sent.withheld:
+                # The count alone: what withholds a finding is shown on the instance, never logged.
+                log.warning(
+                    "product findings withheld: they carry a value of the tenant",
+                    tenant=tenant,
+                    withheld=sent.withheld,
                 )
 
     return tick
