@@ -1548,7 +1548,7 @@ class RunEngine:
         if step_run.anchoring is not None and step_run.anchoring.proceeds:
             return
         work = parse_work(step, run.work.get(step.id), run.inputs)
-        if not autonomy.acts(work, await self._outward(work)):
+        if not autonomy.acts(work, await self._outward(run, work)):
             return
         named = await self._applying(run, autonomy.actions_of(step, work))
         if not named:
