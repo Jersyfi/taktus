@@ -21,6 +21,9 @@ step served by either is served by the other (README.md in this directory says h
 - **the limits as a ceiling**: at every boundary the running total is held against the limits;
   once a limit of tokens or quota is reached, the agent is ended there and the assignment ends
   `stopped` with the checkpoint and the limit named;
+- **the repository's rules**: the target repository's `AGENTS.md` is handed to the agent in
+  its brief, and the agent's own reading of it is turned off, so that it arrives once
+  (ADR-0113);
 - **authentication**: by API key or by the agent's login file, chosen at start (`--auth`) and
   supplied under the credential name the assignment carries; a login that expires mid-run, or
   a window that is exhausted, halts at the last boundary with the cause;
@@ -91,6 +94,15 @@ WALL = "wall"
 execution adapter kills the unit, finished `stopped` without `limit` (ADR-0102)."""
 UNIT_STARTED = time.monotonic()
 """The commit the workspace was cloned from: the base the change is put on (#496)."""
+
+RULES_NAME = "AGENTS.md"
+"""The open convention's file of a repository's rules for coding agents, at its root: what the
+brief hands the agent (ADR-0113)."""
+RULES_LIMIT = 32_000
+"""Characters of `AGENTS.md` the brief carries at most; beyond, the agent reads the rest."""
+OWN_READING_OFF = "project_doc_max_bytes=0"
+"""The agent's setting that keeps it from reading `AGENTS.md` itself: the brief carries it,
+and twice would be paid for at every call (ADR-0113 §3)."""
 
 GIT_PROXY_VARIABLES = (
     "HTTP_PROXY",
@@ -815,6 +827,8 @@ class _Run:
             "--sandbox",
             sandbox,
             "--skip-git-repo-check",
+            "--config",
+            OWN_READING_OFF,
         ]
         if self.model:
             arguments += ["--model", self.model]
@@ -829,23 +843,9 @@ class _Run:
         return arguments
 
     def _prompt(self, resuming: bool) -> str:
-        task = self.body["task"]
-        lines = [
-            "You are an execution unit of an orchestrator. Work in the current directory only.",
-            "Do not ask questions; decide and proceed. Do not commit, push or use git.",
-            "When the task is done, answer with a short summary of what you changed.",
-            "",
-            f"Goal: {task['goal']}",
-        ]
-        acceptance = task.get("acceptance") or []
-        if acceptance:
-            lines += ["Acceptance:", *(f"- {a}" for a in acceptance)]
-        inputs = {k: v for k, v in (task.get("inputs") or {}).items() if k != "hosts"}
-        if inputs:
-            lines += ["Inputs (JSON):", json.dumps(inputs, indent=2)]
-        if resuming:
-            lines.insert(0, "Continue the task from where you stopped; do not redo what is done.")
-        return "\n".join(lines)
+        # A resumed thread holds the rules already; the agent re-reads them at every call.
+        rules = None if resuming else repository_rules(self.workspace)
+        return brief(self.body["task"], resuming=resuming, rules=rules)
 
     def _agent_environment(self) -> dict[str, str]:
         keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TERM")
@@ -1509,6 +1509,61 @@ def _only_reads(script: str) -> bool:
         if program not in READING:
             return False
     return True
+
+
+def brief(task: Json, *, resuming: bool, rules: str | None) -> str:
+    """The agent's prompt: what this worker asks of it, the repository's rules where given, then
+    the task's goal, acceptance and inputs. Where the rules and the lines before them conflict,
+    those lines win: the frame and the contract are not the repository's to change."""
+    lines = [
+        "You are an execution unit of an orchestrator. Work in the current directory only.",
+        "Do not ask questions; decide and proceed. Do not commit, push or use git.",
+        "When the task is done, answer with a short summary of what you changed.",
+    ]
+    if rules is not None:
+        lines += [
+            "",
+            f"The repository's rules, from its {RULES_NAME}. "
+            "Where they conflict with the lines above, the lines above win.",
+            f"--- {RULES_NAME} ---",
+            rules,
+            f"--- end of {RULES_NAME} ---",
+        ]
+    lines += ["", f"Goal: {task['goal']}"]
+    acceptance = task.get("acceptance") or []
+    if acceptance:
+        lines += ["Acceptance:", *(f"- {a}" for a in acceptance)]
+    inputs = {k: v for k, v in (task.get("inputs") or {}).items() if k != "hosts"}
+    if inputs:
+        lines += ["Inputs (JSON):", json.dumps(inputs, indent=2)]
+    if resuming:
+        lines.insert(0, "Continue the task from where you stopped; do not redo what is done.")
+    return "\n".join(lines)
+
+
+def repository_rules(workspace: Path) -> str | None:
+    """The target repository's `AGENTS.md` as the brief carries it: whole up to `RULES_LIMIT`
+    characters, cut there with a line that says so. None where the repository has none, where
+    it is empty, or where it is not a regular file inside the workspace: a link that leads out
+    of the workspace is never followed, so that no file of the worker — a credential's — reaches
+    the agent's context (ADR-0113 §3)."""
+    try:
+        path = (workspace / RULES_NAME).resolve(strict=True)
+        root = workspace.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    if not path.is_relative_to(root) or not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    if not text:
+        return None
+    if len(text) > RULES_LIMIT:
+        cut = f"[{RULES_NAME} continues beyond {RULES_LIMIT} characters; read the rest there.]"
+        text = text[:RULES_LIMIT] + "\n" + cut
+    return text
 
 
 def run_before(argv: tuple[str, ...], workspace: Path, state: Path) -> tuple[bytes, str | None]:

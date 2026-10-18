@@ -22,9 +22,11 @@ tool results, as an expired subscription token does; `FAKE_AGENT_WINDOW_AFTER=N`
 subscription window as exhausted after N tool results; `FAKE_AGENT_HANG_AFTER=N` writes the text
 of its next message after N tool results, with the message's usage, and then works on it without
 end, so that a stop lands inside a message whose call never comes (#277). `FAKE_AGENT_WRITE`
-adds files to the change (`plan()`). `FAKE_AGENT_PARALLEL=1` makes two calls per message, as
-the real agent does when it calls tools in parallel: both calls come first, each in a line of
-its own, then both results — with `reversed`, the second call's result first.
+adds files to the change (`plan()`). `FAKE_AGENT_BRIEF_PATH` names a file it writes its prompt
+and its arguments to, so that a test can read the brief the worker sent (ADR-0113).
+`FAKE_AGENT_PARALLEL=1` makes two calls per message, as the real agent does when it calls tools
+in parallel: both calls come first, each in a line of its own, then both results — with
+`reversed`, the second call's result first.
 
 Its usage is fixed too, and it overruns: about 620 000 input tokens for the whole plan, ten
 times the worker's default estimate of 60 000 — the real agent used 1.8 to 4.3 times that
@@ -224,6 +226,16 @@ def session_path(session_id: str) -> Path:
     return directory / f"{session_id}.json"
 
 
+def keep_brief(prompt: str, arguments: list[str]) -> None:
+    """Where `FAKE_AGENT_BRIEF_PATH` names a file, write there what this invocation was given:
+    its prompt and its arguments, so that a test can read the brief the worker sent."""
+    target = os.environ.get("FAKE_AGENT_BRIEF_PATH")
+    if target:
+        Path(target).write_text(
+            json.dumps({"prompt": prompt, "arguments": arguments}), encoding="utf-8"
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("-p", "--print", dest="prompt", default="")
@@ -238,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--resume", default=None)
     parser.add_argument("--model", default=None)
     args = parser.parse_args(argv)
+    keep_brief(args.prompt, sys.argv[1:] if argv is None else argv)
     if args.model:
         os.environ["FAKE_AGENT_MODEL"] = args.model
 

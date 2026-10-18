@@ -113,6 +113,22 @@ unit's environment: `TAKTUS_WORKER_<NAME>_EXECUTION_UNIT_ENV=CODING_AGENT_AUTH=a
 chart `unitEnv: {CODING_AGENT_AUTH: api-key}` on the worker's entry. It is visible configuration
 and never a secret (ADR-0090).
 
+### The repository's rules
+
+The agent reads the repository's `AGENTS.md` by itself. The worker turns that reading off
+(`--config project_doc_max_bytes=0`) and reads the file itself, at the root of the workspace.
+It puts it into the agent's prompt, after its own lines and before the task, between two lines
+that name the file, as the first coding worker does (ADR-0113 §3). The rules so arrive once, in
+the same place for either coding worker, and a test can show that they do. The prompt says that
+the worker's lines win where the two conflict.
+
+- A resumed assignment's prompt carries no rules: its thread holds them from the first.
+- At most 32,000 characters of the file are carried; a longer one is cut with a line that says
+  the rest is in the file.
+- A link that leads out of the workspace is not followed, so that no file of the worker — a
+  credential's — reaches the agent.
+- Without the file, or with an empty one, the prompt is what it was before.
+
 ### The frame
 
 **The agent asks no permission per call** in its non-interactive mode. The worker holds the frame
@@ -143,7 +159,8 @@ can be given, and is refused.
 
 As the first coding worker's: the workspace is cloned (through the unit's proxy, #306) or started empty under
 `<state>/workspaces/<id>`, a clean one unless the assignment resumes from a checkpoint (#280);
-a baseline is committed and tagged, the task becomes the agent's prompt, every completed item
+a baseline is committed and tagged, the repository's `AGENTS.md` and the task become the agent's
+prompt (*The repository's rules*), every completed item
 that changed the workspace is committed and announced as an artifact `change-N` of kind
 `patch`, and at the end the `summary` and the `changeset` are
 published. A task that names `after` gains one last step: the worker — not the agent — runs its
@@ -186,7 +203,9 @@ and deterministically; it does not think. `FAKE_AGENT_EXPIRE_AFTER=N` fails the 
 authentication error after N items, `FAKE_AGENT_WINDOW_AFTER=N` reports the usage limit as
 reached; `--agent-env` passes those through. Its usage overruns the worker's default estimate,
 so that the suite's `tight` run can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales
-every count. Its final message proposes the type of a pull request's title,
+every count; `FAKE_AGENT_BRIEF_PATH` names a file it writes its prompt and its arguments to, so
+that a test reads the brief the worker sent (`tests/conformance/test_coding_workers_brief.py`).
+Its final message proposes the type of a pull request's title,
 `<!-- commit-type: feat -->` on its first line, as P-03 asks (ADR-0101). The real agent is run with `--agent codex` (the default), and a live run needs a
 credential the operator supplies.
 

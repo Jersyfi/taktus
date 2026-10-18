@@ -230,6 +230,10 @@ generated (`make status`) and never stored in the file (DEC-0026).
   is mended or quarantined by a `gate-weakened` notice with a date, never rerun until green and
   forgotten.
 - **Everything in English** — code, comments, commits, documentation.
+- **`AGENTS.md` points here and carries no rule.** It is the file the open convention gives a
+  coding agent of any product for a repository's rules, and the coding workers hand it to their
+  agent (ADR-0113). A rule goes into this file, never into `AGENTS.md`, so that the doctrine
+  exists once.
 - **Never delete without asking:** no volume, database, backup or process version history. Restores
   count as potentially destructive and follow the same rule.
 - **Efficiency over verbosity.** Short descriptions, no restating the obvious, no report without a

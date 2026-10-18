@@ -138,6 +138,16 @@ Until the bundle format exists (`0.3.0`), a bundle is this process version writt
 one addition per step — `work`, what the step does when it runs — carried as data and interpreted
 by the run. `examples/README.md` is the reference for that shape.
 
+`taktusctl bundle check` holds a bundle to the rules registration holds it to, with the same
+code and without an instance, a database or a login, so that a repository holding bundles checks
+them in its own CI (ADR-0113 §4, `examples/README.md`).
+
+A **skill** in a bundle is a directory in the open `SKILL.md` format, under
+`skills/<name>/SKILL.md`: YAML front matter with `name` and `description`, then the instructions.
+A step names the skills it uses in its `work`, under `skills`, by name; it still reaches its
+adapter by capability, and no skill names a product (ADR-0113 §1–2). Nothing reads `skills` yet:
+loading and handing them over is the skill lifecycle of `0.6.0` (UC-14.2).
+
 ---
 
 ## 5. Run and step run

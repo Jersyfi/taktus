@@ -167,6 +167,28 @@ execution:
 Every unit of the worker receives them — a probe's too, so that it can answer. They are visible
 configuration and never a secret: the credential itself stays a credential (ADR-0090).
 
+### The repository's rules
+
+The agent reads the repository's rules from its own file, `CLAUDE.md`, by itself. It does not
+read `AGENTS.md`, the open convention's file, where a `CLAUDE.md` is there. So the worker reads
+`AGENTS.md` at the root of the workspace and puts it into the agent's prompt, after its own
+lines and before the task, between two lines that name the file (ADR-0113 §3). The prompt says
+that the worker's lines win where the two conflict.
+
+- A `CLAUDE.md` (or `.claude/CLAUDE.md`) with a line `@AGENTS.md` imports the file, and the
+  agent resolves the import. The prompt then leaves `AGENTS.md` out, so that the rules are read
+  once at every call and paid for once.
+- A resumed assignment's prompt carries no rules: its session holds them from the first.
+- At most 32,000 characters of the file are carried; a longer one is cut with a line that says
+  the rest is in the file.
+- A link that leads out of the workspace is not followed, so that no file of the worker — a
+  credential's — reaches the agent.
+- Without the file, or with an empty one, the prompt is what it was before.
+
+Where a repository has no `CLAUDE.md`, the agent may read `AGENTS.md` by itself as well, at the
+version it is pinned to. The rules then reach it twice, which costs what the file holds at every
+call and changes nothing in what it is told (ADR-0113, *Where this promise ends*).
+
 ### The frame
 
 The agent is offered only the tools the frame allows (`--tools`) and may use exactly those
@@ -207,7 +229,7 @@ receives the proxy variables, as the agent does (#306); any other kind starts em
 workspace that an earlier attempt of the same assignment left is removed first, unless the
 assignment resumes from a checkpoint (#280). The workspace is made a repository if it is not
 one, and a baseline commit is made and tagged. The task's goal, acceptance and inputs
-become the agent's prompt. Every completed tool call that changed the workspace is committed and
+become the agent's prompt, after the repository's `AGENTS.md` (*The repository's rules*). Every completed tool call that changed the workspace is committed and
 announced as an artifact `change-N` of kind `patch`; at the end, the artifact `summary` is the
 agent's own account of what it did, and the artifact `changeset` (`application/json`) is every
 file changed since the baseline with its full content — text as text, anything else as base64,
@@ -291,7 +313,9 @@ worker's default estimate — about 620 000 input tokens against 60 000, where t
 used 1.8 to 4.3 times the estimate in the first live run — so that the suite's `tight` run
 can show the halt at a limit; `FAKE_AGENT_USAGE_FACTOR` scales every token count, and
 `FAKE_AGENT_WRITE`, a JSON object of path to content, adds those files to its change, so that a
-process test can give a change a file of its choosing. Its final summary proposes the type of a
+process test can give a change a file of its choosing; `FAKE_AGENT_BRIEF_PATH` names a file it
+writes its prompt and its arguments to, so that a test reads the brief the worker sent
+(`tests/conformance/test_coding_workers_brief.py`). Its final summary proposes the type of a
 pull request's title, `<!-- commit-type: feat -->` on its first line, as P-03 asks (ADR-0101). Its messages name a model the price
 table prices, and it ends on `--max-turns` as the real agent does. Its final summary is written in
 the shape this repository asks of a pull request description, as P-03 asks its agent for it, so

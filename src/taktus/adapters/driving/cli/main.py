@@ -21,7 +21,9 @@ the owner heard of it (ADR-0106). `guides` renders the
 administration guide and the guide for users from the repository, and puts them into a directory
 of files without overwriting a page edited there (UC-13.6, ADR-0065). `exactness` prints the
 exactness statement of a bundle: which checks apply, what they cover, what they do not, and what
-would slip through (UC-6.9, ADR-0082); like `conformance run` it needs no wiring. `maturation`
+would slip through (UC-6.9, ADR-0082); like `conformance run` it needs no wiring. `bundle
+check` holds bundles to registration's rules with no instance, no database and no login, for a
+repository's own CI (ADR-0113). `maturation`
 prints every step's measures, records a person's correction of a step's result, and asks for
 proposals to move a step to a trained model (ADR-0084, ADR-0086). `ledger verify` verifies a
 tenant's chain from its last verified checkpoint, or with `--full` from its first entry
@@ -49,6 +51,7 @@ import typer
 from taktus.adapters.driving.cli import (
     alerts_command,
     anchors_command,
+    bundle_command,
     capacity_command,
     conformance_command,
     corrections_command,
@@ -94,6 +97,7 @@ app.command("submit")(submit_command.submit)
 app.command("resume")(resume_command.resume)
 app.command("deactivate")(deactivate_command.deactivate)
 app.command("exactness")(exactness_command.exactness)
+app.add_typer(bundle_command.bundle, name="bundle")
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
 app.add_typer(findings_command.findings, name="findings")

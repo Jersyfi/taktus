@@ -45,6 +45,47 @@ uv run taktusctl run --process examples/processes/six-times-seven.yaml --resume 
 | `--identity ID` | the identity the command is attributed to and the run acts on behalf of — what every connector call carries. One the tenant knows (`taktusctl identity add ID`), or nothing executes; `TAKTUS_IDENTITY` when the option is not given. The command line authenticates by holding the instance's state, and the identity component supplies the organisational path (ADR-0040) |
 | `--tenant ID` | the tenant the run belongs to (default `default`, or `TAKTUS_TENANT`): one the instance serves, as `taktusctl tenant list` shows. `taktusctl tenant create NAME` creates one and prints the identifier Taktus generated for it (ADR-0104). |
 
+## Checking a bundle without an instance
+
+```bash
+uv run taktusctl bundle check examples/processes blueprints
+```
+
+`taktusctl bundle check` holds each bundle to the rules registration holds it to: the shape, the
+rules of every step, the graph, and the exactness statement (ADR-0113). It is the code
+registration runs, not a copy of it. It needs no instance, no database, no login and no network.
+A path is a bundle file, or a directory: every YAML file below it is checked, except one whose
+top-level `kind` says it is no process and that lists no steps, such as a `blueprint.yaml`. It
+prints one line per bundle, and every finding of a refused one. Exit code `0` means every
+bundle would register; `1`, that one would be refused; `2`, that a file cannot be read or that
+no bundle was found.
+
+Three refusals of registration need an instance and are not made here: a step naming a
+credential that administers the instance's platform (ADR-0025), a raise of an autonomy level
+over the active version (ADR-0039), and a version registered before with another content.
+
+A repository that holds bundles runs the check in its own CI. On GitHub Actions:
+
+```yaml
+# .github/workflows/bundles.yml
+name: bundles
+on: [pull_request, push]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Check the bundles as registration would
+        run: uvx --python 3.13 --from "git+https://github.com/Jersyfi/taktus@v0.4.0" taktusctl bundle check processes/
+```
+
+`v0.4.0` is the first release that carries the command. Pin the release the instance runs, so
+that the check holds the bundle to the rules that instance registers by. `processes/` stands for
+wherever the repository keeps its bundles. The job needs no secret and reaches nothing but the
+package's source. `tests/integration/test_bundle_check_command.py` runs the command in an
+environment holding nothing of Taktus and holds this snippet to it.
+
 ## The shape of a bundle
 
 The process bundle format proper arrives at `0.3.0` (`docs/roadmap.md`, ADR-0011). Until then a
