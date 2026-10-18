@@ -63,6 +63,7 @@ PRODUCT_NAMES = (
     "grafana",
     "datadog",
     "sentry",
+    "prometheus",
 )
 PRODUCT = re.compile(r"\b(" + "|".join(PRODUCT_NAMES) + r")\b", re.IGNORECASE)
 

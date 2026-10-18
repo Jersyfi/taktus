@@ -659,6 +659,173 @@ def start_knowledge_connector(tmp_path: Path) -> Iterator[StartConnector]:
     stop_all(started)
 
 
+# --- the connectors over open standards (ADR-0111) ----------------------------------------------
+
+CONNECTORS = ROOT / "src" / "taktus" / "adapters" / "driven" / "connectors"
+FAKE_MAIL = ROOT / "tests" / "fakes" / "mail_service.py"
+FAKE_METRICS = ROOT / "tests" / "fakes" / "metrics_service.py"
+MAIL_LOGIN = "taktus@mail.example"
+MAIL_ACTIONS = "MAIL_PASSWORD"
+MAIL_INTAKE = "MAIL_INTAKE_SECRET"
+METRICS_ACTIONS = "METRICS_TOKEN"
+CHECK_ACTIONS = "CHECK_TOKEN"
+
+
+def open_standard_faults(module: str) -> list[tuple[str, str]]:
+    """Every fault one of the connectors over open standards offers, from the connector."""
+    return _list_faults(
+        [sys.executable, "-m", f"taktus.adapters.driven.connectors.{module}", "--list-faults"]
+    )
+
+
+def _secret_files(tmp_path: Path, name: str, values: dict[str, str]) -> dict[str, str]:
+    """Each value in a file of its own, and the variables that name the files."""
+    env: dict[str, str] = {}
+    for key, value in values.items():
+        path = tmp_path / f"{key.lower()}-{name}"
+        path.write_text(value, encoding="utf-8")
+        path.chmod(0o600)
+        env[f"TAKTUS_CREDENTIAL_{key}_FILE"] = str(path)
+    return env
+
+
+def _clean_environment() -> dict[str, str]:
+    return {k: v for k, v in os.environ.items() if not k.startswith("TAKTUS_CREDENTIAL_")}
+
+
+def _start_connector(
+    started: list[subprocess.Popen[bytes]],
+    tmp_path: Path,
+    module: str,
+    args: list[str],
+    env: dict[str, str],
+    name: str,
+) -> tuple[str, Path]:
+    port = free_port()
+    log = tmp_path / f"{module}-connector-{name}.log"
+    command = [
+        sys.executable,
+        "-m",
+        f"taktus.adapters.driven.connectors.{module}",
+        "--port",
+        str(port),
+        *args,
+    ]
+    with log.open("wb") as handle:
+        process = subprocess.Popen(  # noqa: S603 — our own module, fixed arguments
+            command, stdout=handle, stderr=subprocess.STDOUT, env=env
+        )
+    started.append(process)
+    endpoint = f"http://127.0.0.1:{port}"
+    wait_ready(process, f"{endpoint}/health", log, f"{module} connector")
+    return endpoint, log
+
+
+def _start_fake(
+    started: list[subprocess.Popen[bytes]],
+    tmp_path: Path,
+    script: Path,
+    args: list[str],
+    env: dict[str, str],
+    ready: str,
+    name: str,
+) -> None:
+    log = tmp_path / f"{script.stem}-{name}.log"
+    with log.open("wb") as handle:
+        process = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
+            [sys.executable, str(script), *args], stdout=handle, stderr=subprocess.STDOUT, env=env
+        )
+    started.append(process)
+    wait_ready(process, ready, log, script.stem)
+
+
+@pytest.fixture
+def start_mail_connector(tmp_path: Path) -> Iterator[StartConnector]:
+    """The fake mail server and the mail connector, each a process of its own. The password
+    and the intake secret reach the connector only through the files
+    `TAKTUS_CREDENTIAL_<NAME>_FILE` names; the suite signs with the same secret."""
+    started: list[subprocess.Popen[bytes]] = []
+
+    def start(*, fault: str | None = None, scenario: Path | None = None) -> RunningConnector:
+        password = "pw-" + secrets.token_hex(12)
+        secret = "mis-" + secrets.token_hex(12)
+        name = fault or "honest"
+        imap, smtp, http = free_port(), free_port(), free_port()
+        fake_env = {**_clean_environment(), "FAKE_MAIL_ACCOUNTS": f"{MAIL_LOGIN}:{password}"}
+        args = ["--imap-port", str(imap), "--smtp-port", str(smtp), "--http-port", str(http)]
+        service_url = f"http://127.0.0.1:{http}"
+        _start_fake(
+            started, tmp_path, FAKE_MAIL, args, fake_env, f"{service_url}/_fake/state", name
+        )
+        env = {
+            **_clean_environment(),
+            **_secret_files(tmp_path, name, {MAIL_ACTIONS: password, MAIL_INTAKE: secret}),
+        }
+        connector_args = [
+            "--imap", f"127.0.0.1:{imap}", "--smtp", f"127.0.0.1:{smtp}",
+            "--user", MAIL_LOGIN, "--security", "none",
+        ]  # fmt: skip
+        if fault:
+            connector_args += ["--fault", fault]
+        endpoint, log = _start_connector(started, tmp_path, "mail", connector_args, env, name)
+        return RunningConnector(
+            f"{endpoint}/mcp",
+            log,
+            service_url,
+            {MAIL_ACTIONS: password, MAIL_INTAKE: secret},
+            started[-1],
+            scenario=scenario or CONNECTORS / "mail" / "scenario.json",
+        )
+
+    yield start
+    stop_all(started)
+
+
+def _metrics_starter(
+    started: list[subprocess.Popen[bytes]], tmp_path: Path, module: str, credential: str
+) -> StartConnector:
+    def start(*, fault: str | None = None) -> RunningConnector:
+        token = "tok-" + secrets.token_hex(12)
+        name = fault or "honest"
+        port = free_port()
+        service_url = f"http://127.0.0.1:{port}"
+        fake_env = {**_clean_environment(), "FAKE_METRICS_TOKENS": token}
+        _start_fake(
+            started, tmp_path, FAKE_METRICS, ["--port", str(port)], fake_env,
+            f"{service_url}/_fake/state", f"{module}-{name}",
+        )  # fmt: skip
+        env = {**_clean_environment(), **_secret_files(tmp_path, name, {credential: token})}
+        target = service_url if module == "prometheus" else f"{service_url}/service"
+        args = ["--target", target] + (["--fault", fault] if fault else [])
+        endpoint, log = _start_connector(started, tmp_path, module, args, env, name)
+        return RunningConnector(
+            f"{endpoint}/mcp",
+            log,
+            service_url,
+            {credential: token},
+            started[-1],
+            scenario=CONNECTORS / module / "scenario.json",
+        )
+
+    return start
+
+
+@pytest.fixture
+def start_metrics_connector(tmp_path: Path) -> Iterator[StartConnector]:
+    """The fake metrics store and the metrics connector, each a process of its own."""
+    started: list[subprocess.Popen[bytes]] = []
+    yield _metrics_starter(started, tmp_path, "prometheus", METRICS_ACTIONS)
+    stop_all(started)
+
+
+@pytest.fixture
+def start_check_connector(tmp_path: Path) -> Iterator[StartConnector]:
+    """The fake service to check and the check connector, each a process of its own."""
+    started: list[subprocess.Popen[bytes]] = []
+    yield _metrics_starter(started, tmp_path, "httpcheck", CHECK_ACTIONS)
+    stop_all(started)
+
+
 # --- the instance runs the suite and records it (ADR-0044) ----------------------------------------
 
 

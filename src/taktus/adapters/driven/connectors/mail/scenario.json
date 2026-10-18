@@ -1,0 +1,55 @@
+{
+  "credentials": {
+    "actions": "MAIL_PASSWORD",
+    "intake": "MAIL_INTAKE_SECRET"
+  },
+  "read": {
+    "operation": "mail.messages.read",
+    "input": {
+      "message_id": "<seed-1@mail.example>"
+    }
+  },
+  "writes": [
+    {
+      "operation": "mail.messages.send",
+      "input": {
+        "to": "recipient@mail.example",
+        "subject": "Conformance {{unique}}",
+        "text": "Sent by the conformance suite."
+      }
+    },
+    {
+      "operation": "channel.mail.reply",
+      "input": {
+        "address": "customer@mail.example",
+        "thread": "<seed-1@mail.example>",
+        "text": "Reply {{unique}} from the conformance suite."
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "mail.messages.read",
+    "input": {
+      "message_id": "<placeholder-missing@mail.example>"
+    },
+    "expected_cause": "not_found"
+  },
+  "intake": {
+    "signature": {
+      "header": "x-mail-signature",
+      "prefix": "sha256="
+    },
+    "supported": {
+      "headers_file": "payloads/message-received.headers.json",
+      "body_file": "payloads/message-received.body.json"
+    },
+    "unsupported": {
+      "headers_file": "payloads/auto-reply.headers.json",
+      "body_file": "payloads/auto-reply.body.json"
+    },
+    "own_action": {
+      "headers_file": "payloads/own-action.headers.json",
+      "body_file": "payloads/own-action.body.json"
+    }
+  }
+}

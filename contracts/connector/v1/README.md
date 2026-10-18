@@ -412,7 +412,8 @@ adapters at *verified* or above.
 
 The suite cannot know which input an operation needs. The connector's author states it in a
 **scenario** (`Connector.json#/$defs/Scenario`): one read, one or more writes whose idempotency
-is `native` or `marked`, one call the target must refuse and with which cause, and recorded
+is `native` or `marked` — none for a connector that only reads, whose C-05 then passes as not
+applicable (ADR-0111) — one call the target must refuse and with which cause, and recorded
 payloads for intake. A later write can name what an earlier one created (`{{shared}}`), so
 that the same scenario runs against a real target. How to write one, and what each check means in plain words:
 [CONFORMANCE.md](CONFORMANCE.md).
@@ -440,3 +441,9 @@ thread, post into a conversation or a thread, `delivery` and `marked` — and in
 channel `channel.chat` under `hmac-sha256-timestamped`, its service's URL check answered as a
 handshake. It passes the same suite against a fake of its service, fault for fault
 (`tests/conformance/test_connector_v1_chat.py`).
+
+Three more serve open standards (ADR-0111): mail — `mail.messages` and `channel.mail`, a send
+`marked` by its message identifier and intake under `hmac-sha256` from a relay that reads the
+mailbox — and two that only read, `metrics.series` and `check.http`. The two pass the suite
+with a scenario that names no write. All three pass it against local fakes of their servers,
+fault for fault (`tests/conformance/test_connector_v1_open_standards.py`).
