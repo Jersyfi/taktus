@@ -7,6 +7,7 @@ never mirroring a tool (ADR-0016). Nothing here imports a component or a technol
 |---|---|---|
 | `worker.py` | CONTRACT 1, the client side: the worker contract's shapes and the `Worker` protocol | `adapters/driven/workers/http/` |
 | `persistence.py` | `TenantStore`, the instance's registry of tenants, written in a tenant's own unit of work and read whole by `every` (ADR-0104); `Repository[T]` for one aggregate kind, and `Queried[T]` for one read newest first a page at a time, counted, or found by a field without reading every aggregate (ADR-0094), `LedgerStore` append-only (its `summary` counts one kind without reading the chain; `head`, `after` and `position` are what a reader resumes from), `UnitOfWork` — every call names its tenant and happens inside a transaction; `StateSize`, the state's size on disk | `adapters/driven/postgres/`; `adapters/driven/memory/` (development and test only); one suite checks both |
+| `backups.py` | what the instance knows of its backups: the outcome each run of the backup program recorded, read per tenant (ADR-0106) | `adapters/driven/postgres/backup_log.py`; `adapters/driven/memory/backup_log.py` (development and test only) |
 | `ledger.py` | facts in, chained entries out, `verify` — one chain per tenant | `components/ledger` |
 | `configuration.py` | what an instance is told about itself, by key; `Secret` for what must not be shown | `adapters/driven/configuration/` |
 | `objectstore.py` | artifact bytes by digest | `adapters/driven/memory/` |

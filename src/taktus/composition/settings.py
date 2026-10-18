@@ -685,6 +685,11 @@ def load_capacity(configuration: Configuration) -> CapacitySettings:
     )
 
 
+def load_backup_expected_hours(configuration: Configuration) -> int | None:
+    """`TAKTUS_BACKUP_EXPECTED_HOURS`: None when unset or 0. `taktusctl alerts` reads it too."""
+    return _Reader(configuration).integer("backup.expected.hours", 0, low=0) or None
+
+
 def load_administration(configuration: Configuration) -> Administration:
     """`TAKTUS_PLATFORM` and `TAKTUS_ADMINISTERS`: the platform this instance runs on and the
     platforms each credential administers (ADR-0052). `taktusctl` reads them too."""
@@ -849,6 +854,10 @@ class Settings:
     only recorded on the instance and shown to the operator."""
     findings: FindingsShape
     """The shape of the issue a finding opens: its form and its labels."""
+    backup_expected_hours: int | None
+    """`TAKTUS_BACKUP_EXPECTED_HOURS`: how old the last successful backup may be before the
+    owner hears that it is missing (ADR-0106 §5). None, the default: a missing backup is not
+    watched, and a failed one the backup recorded still is."""
     change_process: str | None
     """`TAKTUS_CHANGE_PROCESS`: the process that turns a change asked for in words into a
     proposal (UC-4.15, ADR-0091 §2), by its identifier. None, the default: no request in words
@@ -914,6 +923,7 @@ class Settings:
             ("TAKTUS_KNOWLEDGE_DIRECTORY", str(self.knowledge_directory or "")),
             ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
             *self.findings.effective(),
+            ("TAKTUS_BACKUP_EXPECTED_HOURS", str(self.backup_expected_hours or "")),
             ("TAKTUS_CHANGE_PROCESS", self.change_process or ""),
             ("TAKTUS_PLATFORM", self.administration.platform or ""),
             (
@@ -980,6 +990,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         knowledge_directory=load_knowledge_directory(configuration),
         findings_connector=reader.url("findings.connector", "") or None,
         findings=load_findings(configuration),
+        backup_expected_hours=load_backup_expected_hours(configuration),
         change_process=reader.text("change.process", "").strip() or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         object_cache_mb=reader.integer("object.cache.mb", 64, low=0),

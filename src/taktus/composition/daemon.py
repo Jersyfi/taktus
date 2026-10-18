@@ -41,6 +41,7 @@ from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
+    PostgresBackupLog,
     PostgresLeadership,
     PostgresLedgerSignal,
     PostgresLedgerStore,
@@ -91,6 +92,7 @@ from taktus.components.process.application.service.triggers import TriggersHandl
 from taktus.components.process.domain.model import Process, ProcessVersion, Proposal, TriggerState
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
+    Alerts,
     BrokenInterfaces,
     LiveChanges,
     ProductFindings,
@@ -111,6 +113,7 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
+from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
@@ -203,6 +206,9 @@ class Wired:
     interfaces: BrokenInterfaces
     """The broken interfaces noticed from the run's failed calls, reported to the owner by the
     scheduler (ADR-0047)."""
+    alerts: Alerts
+    """What needs a person's action — a capacity crossing, a lost claim, a failed or missing
+    backup — reported to the owner by the scheduler (ADR-0106)."""
     changes: LiveHub
     """The streams of changes this process holds for its readers, fed from the ledger
     (ADR-0055). Only the `api` role opens any."""
@@ -571,6 +577,15 @@ async def wire(
                 decisions=decisions,
                 owner=owner,
                 interfaces=broken_interfaces(ledger, persistence, owner, clock),
+                alerts=alerts(
+                    ledger,
+                    persistence,
+                    PostgresBackupLog(persistence),
+                    PostgresTenantStore(persistence),
+                    owner,
+                    clock,
+                    backup_expected_hours=settings.backup_expected_hours,
+                ),
                 changes=LiveHub(
                     LiveChanges(Records(persistence, ledger_store, runs), state_of),
                     PostgresLedgerSignal(url),
@@ -699,6 +714,12 @@ async def serve(
                 instance=settings.instance,
                 database=described(settings.database.reveal()),
             )
+            # Who hears of what needs a person's action, and what stays in the log (ADR-0106).
+            await say_who_hears(
+                wired.owner,
+                wired.tenants,
+                backup_expected_hours=settings.backup_expected_hours,
+            )
             # What the start left alive — the modules, the wiring — lives as long as the
             # process. Frozen, the collector no longer scans it on every full collection, which
             # stops every thread of the process: 2 000 runs read at once paused the event loop
@@ -799,12 +820,16 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it reports to the owner every interface that stopped behaving as its adapter
         # expects, noticed from the run's own calls (ADR-0047).
         report_interfaces = interfaces_tick(wired.interfaces, wired.tenants, wired.clock)
+        # And what needs a person's action: a capacity crossing, a lost claim, a failed or
+        # missing backup (ADR-0106).
+        report_alerts = alerts_tick(wired.alerts, wired.tenants, wired.clock)
 
         async def scheduled() -> None:
             await wired.triggers.tick()
             await tick()
             await send_findings()
             await report_interfaces()
+            await report_alerts()
 
         tasks.append(
             asyncio.create_task(

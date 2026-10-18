@@ -1,5 +1,6 @@
 """Ports this component needs beyond the cross-cutting ones."""
 
+from taktus.components.reporting.ports.alerts import Signals
 from taktus.components.reporting.ports.decisions import (
     DecisionAnswers,
     DecisionRead,
@@ -34,6 +35,7 @@ __all__ = [
     "Phrasebooks",
     "SecretValues",
     "Sent",
+    "Signals",
     "States",
     "TenantState",
 ]

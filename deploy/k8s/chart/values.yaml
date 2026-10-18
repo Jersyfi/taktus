@@ -95,6 +95,7 @@ backup:
     repository: ""         # the backup image (deploy/backup/Dockerfile), released with the instance
     tag: ""
   schedule: "17 3 * * *"   # daily, 03:17 UTC
+  expectedHours: 26        # how old the last successful backup may be before each owner hears it is missing (ADR-0106)
   retentionDays: 30        # a backup older than this is deleted; the newest never is
   recipient: ""            # an age public key (age1…); empty: not encrypted. The private key stays off the instance
   objects: true            # archive the object store beside the dump (#322); its pod runs on the control plane's node

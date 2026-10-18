@@ -236,6 +236,19 @@ pending_act = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+backup_outcome = Table(
+    "backup_outcome",
+    metadata,
+    _tenant(),
+    Column("name", Text, nullable=False),
+    _at("at"),
+    Column("outcome", Text, nullable=False),
+    Column("reason", Text),
+    PrimaryKeyConstraint("tenant", "name"),
+    Index("backup_outcome_newest", "tenant", "at"),
+)
+"""Written by the backup program, read by the instance (ADR-0106)."""
+
 trigger_state = Table(
     "trigger_state",
     metadata,

@@ -7,6 +7,8 @@ the same image, against a fresh database, and every tenant's chain must verify a
 head it had before the backup. With a recipient configured, nothing written is readable without
 the key, and with the key the restore is the same. With the object store given, a run's every
 digest is readable after a restore into a fresh database and an empty state directory (#322).
+Every run records its outcome for every tenant in the database it backed up, a failed one with
+the step it failed at (ADR-0106).
 """
 
 from __future__ import annotations
@@ -311,6 +313,15 @@ async def digests_of(url: str, run_id: str) -> set[str]:
         await postgres.close()
 
 
+async def outcomes(postgres: PostgresPersistence) -> list[tuple[str, str, str, str | None]]:
+    """Every recorded outcome, read by the database's own login, as an operator reads it."""
+    async with postgres.engine.connect() as connection:
+        rows = await connection.execute(
+            text("SELECT tenant, name, outcome, reason FROM backup_outcome ORDER BY tenant, name")
+        )
+        return [(r.tenant, r.name, r.outcome, r.reason) for r in rows]
+
+
 def written(store: Path) -> list[str]:
     return sorted(
         p.name for p in store.iterdir() if p.name.startswith("taktus-2") and OLD not in p.name
@@ -342,6 +353,10 @@ async def test_a_backup_restores_onto_a_fresh_database_with_every_chain_intact(
     name = dump.removesuffix(".dump")
     manifest = json.loads((store / manifest_file).read_text(encoding="utf-8"))
     assert manifest["object"] == dump and manifest["encrypted"] is False
+    # The run's outcome, for every tenant of the instance, the backup's own name and no reason.
+    assert await outcomes(persistence) == [
+        (tenant, name, "ok", None) for tenant in sorted(("default", *TENANTS))
+    ]
     assert manifest["ledger_heads"] == before
     assert manifest["schema_revision"]
 
@@ -497,7 +512,7 @@ async def test_a_restore_with_the_object_store_reads_every_digest_a_run_refers_t
 
 
 async def test_a_backup_names_a_missing_object_store_and_writes_nothing(
-    backup_image: str, source: Database, tmp_path: Path
+    backup_image: str, source: Database, persistence: PostgresPersistence, tmp_path: Path
 ) -> None:
     store, secrets, _ = directories(tmp_path, source)
     done = run_backup(
@@ -506,3 +521,7 @@ async def test_a_backup_names_a_missing_object_store_and_writes_nothing(
     assert done.returncode == 1
     assert "TAKTUS_BACKUP_OBJECTS_DIRECTORY names no directory" in done.stderr
     assert written(store) == []
+    # The failure is recorded with the step it failed at, a token and never the message.
+    ((tenant, name, outcome, reason),) = await outcomes(persistence)
+    assert (tenant, outcome, reason) == ("default", "failed", "configuration")
+    assert name.startswith("taktus-2")
