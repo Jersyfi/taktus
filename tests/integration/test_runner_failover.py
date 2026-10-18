@@ -73,6 +73,10 @@ tells the test, after the kill, whether a session of A's is still being served."
 def bundle(n: int) -> dict[str, Any]:
     document = restart_bundle()
     document["id"] = f"failover-{os.getpid()}-{n}"
+    # The pause waits inline, shorter than the poll interval: a wait beyond it parks its run, and
+    # its job may then be claimed by either runner (ADR-0103), which is not what this test reads.
+    settle = next(s for s in document["steps"] if s["id"] == "settle")
+    settle["work"]["seconds"] = 0.04
     return document
 
 
