@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Sequence
 from datetime import datetime
+from typing import NamedTuple
 
 from taktus.ports.ledger import Fact, Verification
 from taktus.shared.v1 import Digest, LedgerEntry
@@ -37,10 +38,18 @@ def link(previous: LedgerEntry | None, fact: Fact, at: datetime) -> LedgerEntry:
     return unhashed.model_copy(update={"hash": hash_of(unhashed)})
 
 
-def verify(entries: Sequence[LedgerEntry]) -> Verification:
-    """Walk the chain from the first entry. Every finding names the sequence number."""
+class Link(NamedTuple):
+    """Where a walk of the chain stands: the sequence number and hash of the entry it reached
+    last. A checkpoint is one (ADR-0105 §6)."""
+
+    seq: int
+    hash: Digest
+
+
+def walk(entries: Sequence[LedgerEntry], previous: Link | None) -> tuple[list[str], Link | None]:
+    """Walk the entries that follow `previous` (None: from the first entry). The findings name
+    sequence numbers; the link is to the last entry walked, or `previous` when there was none."""
     findings: list[str] = []
-    previous: LedgerEntry | None = None
     for entry in entries:
         expected_seq = 1 if previous is None else previous.seq + 1
         if entry.seq != expected_seq:
@@ -50,5 +59,11 @@ def verify(entries: Sequence[LedgerEntry]) -> Verification:
             findings.append(f"entry {entry.seq}: prev_hash does not match entry {expected_seq - 1}")
         if hash_of(entry) != entry.hash:
             findings.append(f"entry {entry.seq}: hash does not match its content")
-        previous = entry
+        previous = Link(entry.seq, entry.hash)
+    return findings, previous
+
+
+def verify(entries: Sequence[LedgerEntry]) -> Verification:
+    """Walk the chain from the first entry. Every finding names the sequence number."""
+    findings, _ = walk(entries, None)
     return Verification(entries=len(entries), intact=not findings, findings=tuple(findings))

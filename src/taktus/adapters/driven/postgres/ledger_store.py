@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, literal_column, select
 from sqlalchemy.engine import Row
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.sql.elements import ColumnClause
 
 from taktus.adapters.driven.postgres import _schema as s
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
 from taktus.ports.persistence import DuplicateSequence, KindSummary, Tenant
 from taktus.shared.v1 import LedgerEntry
+
+RUN_ID: ColumnClause[str] = literal_column("(refs ->> 'run_id')")
+"""The run an entry references, as the index `ledger_entry_run` is defined on it."""
 
 
 class PostgresLedgerStore:
@@ -84,6 +88,18 @@ class PostgresLedgerStore:
         )
         return [_entry(row) for row in rows]
 
+    async def of_run(self, tenant: Tenant, run_id: str) -> Sequence[LedgerEntry]:
+        """One indexed read: `ledger_entry_run` (migration 0001). The expression is written as
+        the index names it, with the key as a literal, so that the planner can match the two:
+        a key passed as a parameter is another expression to it (ADR-0105)."""
+        connection = self._persistence.connection(tenant)
+        rows = await connection.execute(
+            select(s.ledger_entry)
+            .where((s.ledger_entry.c.tenant == tenant) & (RUN_ID == run_id))
+            .order_by(s.ledger_entry.c.seq)
+        )
+        return [_entry(row) for row in rows]
+
     async def summary(self, tenant: Tenant, kind: str, *, since: datetime) -> KindSummary:
         """Two statements, neither of which reads the chain into this process: the counts and
         the first time in one aggregate, the newest entry by the primary key's order."""
@@ -117,13 +133,22 @@ class PostgresLedgerStore:
         )
         return 0 if newest is None else int(newest)
 
-    async def after(self, tenant: Tenant, seq: int, *, limit: int) -> Sequence[LedgerEntry]:
+    async def after(
+        self,
+        tenant: Tenant,
+        seq: int,
+        *,
+        limit: int,
+        kinds: Collection[str] | None = None,
+    ) -> Sequence[LedgerEntry]:
+        """With `kinds`, read through `ledger_entry_kind` (migration 0054): a range of
+        sequence numbers per kind."""
         connection = self._persistence.connection(tenant)
+        condition = (s.ledger_entry.c.tenant == tenant) & (s.ledger_entry.c.seq > seq)
+        if kinds is not None:
+            condition &= s.ledger_entry.c.kind.in_(sorted(kinds))
         rows = await connection.execute(
-            select(s.ledger_entry)
-            .where((s.ledger_entry.c.tenant == tenant) & (s.ledger_entry.c.seq > seq))
-            .order_by(s.ledger_entry.c.seq)
-            .limit(limit)
+            select(s.ledger_entry).where(condition).order_by(s.ledger_entry.c.seq).limit(limit)
         )
         return [_entry(row) for row in rows]
 

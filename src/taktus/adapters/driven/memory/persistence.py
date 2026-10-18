@@ -25,6 +25,7 @@ from taktus.adapters.driven.memory import _snapshot
 from taktus.ports.persistence import (
     NestedTransaction,
     NoTransaction,
+    Projected,
     SpoiltTransaction,
     Stored,
     Tenant,
@@ -46,6 +47,9 @@ class Transaction:
     spoilt: bool = False
     ended: list[Callable[[], None]] = field(default_factory=list)
     """What to undo when the transaction ends, committed or not: the locks it took."""
+    projected: dict[str, tuple[Projected, bool]] = field(default_factory=dict)
+    """The projections this transaction stored, by name, each with whether it replaces what
+    was stored (ADR-0105)."""
     claimed: set[str] = field(default_factory=set)
     """The claims this transaction holds until it ends, by name: a second claim of one it holds
     is granted at once, as PostgreSQL grants a transaction's advisory lock again."""
@@ -57,6 +61,8 @@ class MemoryPersistence:
         self._tables: dict[str, dict[Tenant, dict[str, Any]]] = {}
         self._ledger: dict[Tenant, list[LedgerEntry]] = {}
         self._provenance: dict[Tenant, list[Provenance]] = {}
+        self._projections: dict[Tenant, dict[str, Projected]] = {}
+        """Derived from the ledger and rebuilt from it, so never written to a snapshot."""
         self._current: ContextVar[Transaction | None] = ContextVar("transaction", default=None)
         self._claims: dict[str, asyncio.Lock] = {}
         if snapshot_dir is not None:
@@ -110,6 +116,12 @@ class MemoryPersistence:
             self._ledger.setdefault(transaction.tenant, []).extend(transaction.appended)
         if transaction.recorded:
             self._provenance.setdefault(transaction.tenant, []).extend(transaction.recorded)
+        stored = self._projections.setdefault(transaction.tenant, {})
+        for name, (value, replace) in transaction.projected.items():
+            # Another transaction may have stored this projection meanwhile: without `replace`,
+            # the one that read further wins, as the database adapter's conditional write does.
+            if replace or name not in stored or stored[name].seq < value.seq:
+                stored[name] = value
         if self._snapshot_dir is None:
             return
         for kind in touched:
@@ -162,6 +174,9 @@ class MemoryPersistence:
 
     def provenance(self, tenant: Tenant) -> list[Provenance]:
         return self._provenance.setdefault(tenant, [])
+
+    def projections(self, tenant: Tenant) -> dict[str, Projected]:
+        return self._projections.setdefault(tenant, {})
 
     def load(self, kind: str, model: type[Stored]) -> None:
         """Read a kind's snapshot, once, when its repository is created."""

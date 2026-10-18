@@ -657,7 +657,8 @@ paths:
           title: Authorization
       responses:
         '200':
-          description: The entries, and whether the tenant's chain verifies.
+          description: The entries, and whether the tenant's chain verifies from its last verified checkpoint,
+            which `chain.checkpoint` names (ADR-0105).
           content:
             application/json:
               schema:

@@ -35,6 +35,7 @@ from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
     MemoryObjectStore,
     MemoryPersistence,
+    MemoryProjectionStore,
     MemoryProvenanceStore,
     MemoryRepository,
     MemoryTenantStore,
@@ -44,6 +45,7 @@ from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresPersistence,
+    PostgresProjectionStore,
     PostgresProvenanceStore,
     PostgresQueue,
     PostgresRepository,
@@ -120,6 +122,7 @@ from taktus.composition.settings import (
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
     LedgerStore,
+    ProjectionStore,
     ProvenanceStore,
     Repository,
     StateSize,
@@ -146,6 +149,7 @@ class Stores:
     provenance_store: ProvenanceStore
     tenants: TenantStore
     """The instance's registry of tenants (ADR-0104)."""
+    projection_store: ProjectionStore
     storage: str
     queue: Queue | None = None
     size: StateSize | None = None
@@ -184,7 +188,7 @@ class LocalWiring:
             ) as opened,
         ):
             runs = stores.of(Run)
-            ledger = ChainedLedger(stores.ledger_store, clock)
+            ledger = ChainedLedger(stores.ledger_store, clock, stores.projection_store)
             registry = TenantRegistry(
                 store=stores.tenants,
                 work=stores.work,
@@ -395,7 +399,7 @@ class LocalWiring:
             registry = TenantRegistry(
                 store=stores.tenants,
                 work=stores.work,
-                ledger=ChainedLedger(stores.ledger_store, clock),
+                ledger=ChainedLedger(stores.ledger_store, clock, stores.projection_store),
                 clock=clock,
                 ids=SystemIdentifiers(),
                 narrowed_to=tenants,
@@ -406,7 +410,7 @@ class LocalWiring:
                     clock=clock,
                     state_dir=state_dir,
                     ledger_store=stores.ledger_store,
-                    ledger=ChainedLedger(stores.ledger_store, clock),
+                    ledger=ChainedLedger(stores.ledger_store, clock, stores.projection_store),
                     work=stores.work,
                     database=stores.size,
                 ),
@@ -439,6 +443,7 @@ class LocalWiring:
                     ledger_store=MemoryLedgerStore(memory),
                     provenance_store=MemoryProvenanceStore(memory),
                     tenants=MemoryTenantStore(memory),
+                    projection_store=MemoryProjectionStore(memory),
                     storage=f"memory with a snapshot under {state_dir} — development only, "
                     "not durable; set TAKTUS_DATABASE_URL for a database",
                 )
@@ -481,6 +486,7 @@ class LocalWiring:
                 ledger_store=PostgresLedgerStore(postgres),
                 provenance_store=PostgresProvenanceStore(postgres),
                 tenants=PostgresTenantStore(postgres),
+                projection_store=PostgresProjectionStore(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
                 queue=PostgresQueue(postgres),
                 size=postgres,

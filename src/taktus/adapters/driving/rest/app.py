@@ -716,7 +716,10 @@ def _reads(services: RestServices) -> APIRouter:
         description="The account key in `Authorization: Bearer` proves the identity. A run you "
         "may not see is answered as one that does not exist.",
         responses={
-            200: {"description": "The entries, and whether the tenant's chain verifies."},
+            200: {
+                "description": "The entries, and whether the tenant's chain verifies from its "
+                "last verified checkpoint, which `chain.checkpoint` names (ADR-0105)."
+            },
             **unauthenticated,
             404: {"description": "No such run that you may see.", **PROBLEM},
             **INVALID,
@@ -737,7 +740,11 @@ def _reads(services: RestServices) -> APIRouter:
             {
                 "run_id": run_id,
                 "entries": [e.document() for e in entries],
-                "chain": {"intact": verification.intact, "entries": verification.entries},
+                "chain": {
+                    "intact": verification.intact,
+                    "entries": verification.entries,
+                    "checkpoint": verification.checkpoint,
+                },
             }
         )
 
