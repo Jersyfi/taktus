@@ -373,8 +373,10 @@ def connector_services(
             ids=ids,
         )
     )
+    placed = directory((TENANT,), persistence=persistence, clock=clock)
     return Services(
-        identities=directory((TENANT,), persistence=persistence, clock=clock).directory,
+        identities=placed.directory,
+        tenants=placed.tenants,
         register_version=RegisterProcessVersionHandler(versions, persistence, ledger=ledger),
         commission=commission,
         engine=engine_for(pools.workers, pools.connectors, pools.models),
