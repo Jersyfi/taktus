@@ -570,3 +570,8 @@ them."""
 TENANT_SETTING = "taktus.tenant"
 """The session setting the row-level security policies read: `current_setting('taktus.tenant')`.
 Unset, no row is visible."""
+
+REGISTRY_SETTING = "taktus.registry"
+"""The session setting the registry's own policy reads (migration 0053, ADR-0104): `on`, and
+every row of `tenant` is visible for reading. Only the tenant store's `every` sets it, in a
+transaction of its own."""

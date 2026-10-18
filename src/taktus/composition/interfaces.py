@@ -20,7 +20,9 @@ from taktus.components.reporting.application.service import BrokenInterfaces, Re
 from taktus.components.reporting.domain.model import FailedCall
 from taktus.components.run.application.query import InterfaceFailures
 from taktus.composition.owner_channel import OwnerChannelWiring
+from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock
+from taktus.ports.identity import ServedTenants
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Tenant, UnitOfWork
 
@@ -74,7 +76,7 @@ def broken_interfaces(
 
 def interfaces_tick(
     broken: BrokenInterfaces,
-    tenants: Sequence[Tenant],
+    tenants: ServedTenants,
     clock: Clock,
     *,
     interval_seconds: int = INTERVAL_SECONDS,
@@ -89,7 +91,7 @@ def interfaces_tick(
         if last and now - last[0] < timedelta(seconds=interval_seconds):
             return
         last[:] = [now]
-        for tenant in tenants:
+        for tenant in await this_round(tenants, "scheduler"):
             try:
                 done: Reported = await broken.report(tenant)
             except Exception as error:  # a report must never take the scheduler down

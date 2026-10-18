@@ -96,7 +96,7 @@ def run(
         typer.Option(
             "--tenant",
             envvar="TAKTUS_TENANT",
-            help="The tenant the run belongs to: one the instance serves (TAKTUS_TENANTS).",
+            help="The tenant the run belongs to: one the instance serves (taktusctl tenant list).",
         ),
     ] = DEFAULT_TENANT,
     input: Annotated[

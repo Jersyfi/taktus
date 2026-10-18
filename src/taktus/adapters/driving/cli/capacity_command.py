@@ -40,7 +40,7 @@ def capacity(
         typer.Option(
             "--tenant",
             help="A tenant whose runs are counted and whose chain gets a crossing (repeat for "
-            "several). Default: the tenants the instance serves, TAKTUS_TENANTS.",
+            "several). Default: every tenant the instance serves.",
         ),
     ] = None,
     record: Annotated[

@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
+from fakes.identity import FixedTenants
+
 from composition.test_reactions import ACCOUNT, TENANT, World, bundle
 from taktus.components.command.application.service import (
     CompleteIntake,
@@ -79,7 +81,7 @@ class Public(World):
         )
         old = self.reactions
         self.reactions = Reactions(
-            tenants=(TENANT,),
+            tenants=FixedTenants((TENANT,)),
             outbox=self.outbox,
             intake=old._intake,
             reactions=old._reactions,

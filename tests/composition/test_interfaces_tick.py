@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from fakes import FakeClock
+from fakes.identity import FixedTenants
 
 from taktus.components.reporting.application.service import Reported
 from taktus.composition.interfaces import interfaces_tick
@@ -26,7 +27,7 @@ class Broken:
 async def test_every_tenant_is_looked_at_once_per_interval_and_a_failure_is_survived() -> None:
     clock = FakeClock(datetime(2026, 10, 9, tzinfo=UTC))
     broken = Broken(fail=True)
-    tick = interfaces_tick(broken, ("a", "b"), clock, interval_seconds=60)  # type: ignore[arg-type]
+    tick = interfaces_tick(broken, FixedTenants(("a", "b")), clock, interval_seconds=60)  # type: ignore[arg-type]
     await tick()
     await tick()
     assert broken.looked == ["a", "b"], "a failure is logged, the next tenant still looked at"

@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import structlog
@@ -65,8 +65,9 @@ from taktus.components.run.domain.service.capacity import (
     CapacityRules,
     admit_capacity,
 )
+from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock, Identifiers
-from taktus.ports.identity import IdentityResolver
+from taktus.ports.identity import IdentityResolver, ServedTenants
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.outbox import INTAKE_ACCEPTED, INTAKE_CONTRIBUTION, Outbox, OutboxEntry
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -145,7 +146,7 @@ class Reactions:
     def __init__(
         self,
         *,
-        tenants: Sequence[Tenant],
+        tenants: ServedTenants,
         outbox: Outbox,
         intake: CompleteIntakeHandler,
         reactions: ReactionsHandler,
@@ -161,7 +162,7 @@ class Reactions:
     ) -> None:
         """`identities` and `ids` let a contribution start its triage (ADR-0088); without
         them, the entries `intake.contribution` wait."""
-        self._tenants = tuple(tenants)
+        self._tenants = tenants
         self._outbox = outbox
         self._intake = intake
         self._reactions = reactions
@@ -180,7 +181,7 @@ class Reactions:
         """The runs this pass started, by identifier."""
         started: list[str] = []
         self._placed = False
-        for tenant in self._tenants:
+        for tenant in await this_round(self._tenants, "automation"):
             try:
                 async with self._work.transaction(tenant):
                     entries = await self._outbox.unpublished(tenant, INTAKE_ACCEPTED, BATCH)

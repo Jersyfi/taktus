@@ -54,13 +54,15 @@ from taktus.components.run.application.service.execute_run import ResumeRun, Run
 from taktus.components.run.domain.model import Cause, ClaimLost, Run, RunState
 from taktus.components.run.domain.service import waiting
 from taktus.ports.clock import Clock
+from taktus.ports.identity import ServedTenants
 from taktus.ports.persistence import Tenant, UnitOfWork
 from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue
 
 
 @dataclass(frozen=True)
 class RunnerOptions:
-    tenants: Sequence[Tenant]
+    tenants: ServedTenants
+    """The tenants this runner serves, asked again at every claim round (ADR-0104)."""
     claimant: str
     """How this runner names itself on the claims it holds; unique among live runners."""
     concurrency: int = 4
@@ -141,7 +143,7 @@ class Runner:
 
     async def _claim_round(self) -> int:
         claimed = 0
-        for tenant in self.options.tenants:
+        for tenant in await self.options.tenants.served():
             free = self.options.concurrency - len(self._executing)
             if free <= 0 or self._stopping:
                 break

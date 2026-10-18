@@ -263,10 +263,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   worker step may finish up to `TAKTUS_SHUTDOWN_CEILING_SECONDS`, the claims are released, the
   process exits 0. A role still running at the ceiling is abandoned and its run recovered by
   the next runner from its last persisted boundary.
-- **Tenants.** An instance is told which tenants it serves (`TAKTUS_TENANTS`, default
-  `default`); the runner claims for each in turn. An intake lands in the tenant of the identity
-  the sender's account is linked to, and nowhere when it is linked to none (ADR-0040); the
-  first tenant is only where such a sender is answered from. Such a sender is answered only
+- **Tenants.** An instance serves every tenant of its registry, the table `tenant`, which the
+  identity component owns (ADR-0104). An administrator adds to it with `taktusctl tenant
+  create` or `POST /administration/tenants`, and Taktus generates the identifier. Every role
+  reads the registry at every round, so a tenant created while the daemon runs is served
+  without a restart; the runner claims for each tenant in turn. `TAKTUS_TENANTS` is
+  deprecated: set, it narrows the registry to the tenants it names. An intake lands in the
+  tenant of the identity the sender's account is linked to, and nowhere when it is linked to
+  none (ADR-0040); the oldest tenant is only where such a sender is answered from. Such a sender is answered only
   for what they wrote — an intake whose `intent.authored` is `false`, such as a label added, is
   answered nothing — and once per conversation within `TAKTUS_OFFER_WINDOW_SECONDS`, a day by
   default. The `api` role makes the offers of one conversation one at a time, and keeps when it

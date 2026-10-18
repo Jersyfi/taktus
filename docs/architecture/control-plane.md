@@ -83,6 +83,12 @@ provisional operator identity of DEC-0013 in `0.2.0`:
   `identity.unlinked`). An administrator sees every link of a tenant and revokes one with
   `taktusctl identity links` and `revoke`; the next event from that account is from an
   unknown sender.
+- **A tenant is created by an administrator, never chosen by a customer** (ADR-0104). The
+  identity component keeps the instance's registry of tenants. `taktusctl tenant create` or
+  `POST /administration/tenants` adds one, Taktus generates its identifier, and its display
+  name may change. Each creation is the first entry of the new tenant's chain,
+  `tenant.created`; a rename is `tenant.renamed`. Every role reads the registry at every
+  round, so the new tenant is served without a restart.
 - **The command line names an identity the component knows** (`--identity`); the component
   supplies its organisational path. **A scheduled run acts for the identity that registered
   the process's active version** (ADR-0035, amended).

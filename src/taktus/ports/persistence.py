@@ -33,7 +33,8 @@ from pydantic import Field
 from taktus.shared.v1 import LedgerEntry, Provenance, Value
 
 type Tenant = str
-"""The identifier of a tenant. Until the identity component exists there is one, `default`."""
+"""The identifier of a tenant. Migration 0001 creates `default`; every other tenant is created
+through the identity component's registry, which generates its identifier (ADR-0104)."""
 
 
 class PersistenceError(Exception):
@@ -240,6 +241,49 @@ class ProvenanceStore(Protocol):
         """The record that produced the artifact in that run, followed by every record its
         inputs lead to, transitively, across runs of the tenant. Empty when no record of the
         run lists the artifact. One query."""
+        ...
+
+
+class TenantEntry(Value):
+    """One tenant of the instance's registry: its identifier, which Taktus generated, its
+    display name, which may change, and when it was created (ADR-0104)."""
+
+    id: str = Field(min_length=1)
+    name: str
+    """What a person reads. The registry checks a new name; a row written by other means is
+    read as it is."""
+    created_at: datetime
+
+
+class TenantExists(PersistenceError):
+    """A tenant was added under an identifier the registry already holds."""
+
+    def __init__(self, tenant: Tenant) -> None:
+        super().__init__(f"the registry already holds a tenant {tenant!r}")
+
+
+class TenantStore(Protocol):
+    """The instance's registry of tenants (ADR-0104). A write names its tenant and happens in
+    a unit of work opened for that tenant, like every other write. `every` is the one read
+    that sees more than one tenant's row; it opens a transaction of its own and reads only the
+    registry."""
+
+    async def add(self, entry: TenantEntry) -> None:
+        """Inside a unit of work opened for `entry.id`. Raises `TenantExists` when the registry
+        holds the identifier already."""
+        ...
+
+    async def get(self, tenant: Tenant) -> TenantEntry | None:
+        """Inside a unit of work opened for `tenant`: its entry, or None."""
+        ...
+
+    async def rename(self, tenant: Tenant, name: str) -> None:
+        """Inside a unit of work opened for `tenant`: its display name from now on."""
+        ...
+
+    async def every(self) -> Sequence[TenantEntry]:
+        """Every tenant of the registry, oldest first, ties by identifier. Outside any unit of
+        work: what has been committed."""
         ...
 
 

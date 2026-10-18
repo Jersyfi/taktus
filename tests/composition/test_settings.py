@@ -37,7 +37,8 @@ def test_defaults_are_the_self_hosting_shape() -> None:
     assert loaded.roles == ALL_ROLES
     assert loaded.http_host == "127.0.0.1" and loaded.http_port == 8080
     assert loaded.path_prefix == "/"
-    assert loaded.tenants == ("default",)
+    assert loaded.tenants is None, "every tenant of the registry (ADR-0104)"
+    assert loaded.administration_key is None, "no administration of tenants on HTTP"
     assert loaded.instance == "host-1"
     assert loaded.migrate_on_start is False
     assert loaded.connectors == {}
@@ -190,7 +191,25 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 75, "every setting is in the startup log"
+    assert len(effective) == 76, "every setting is in the startup log"
+
+
+def test_the_administration_key_is_read_from_a_file_and_masked(tmp_path: Path) -> None:
+    key = tmp_path / "administration-key"
+    key.write_text("adm-the-key-itself\n", encoding="utf-8")
+    loaded = settings(TAKTUS_ADMINISTRATION_KEY_FILE=str(key))
+    assert loaded.administration_key is not None
+    assert loaded.administration_key.reveal() == "adm-the-key-itself"
+    effective = dict(loaded.effective())
+    assert effective["TAKTUS_ADMINISTRATION_KEY"] == f"*** (from file {key})"
+    assert "adm-the-key-itself" not in json.dumps(effective)
+
+
+def test_tenants_unset_or_empty_serve_the_whole_registry() -> None:
+    """ADR-0104 §7: the variable only narrows the registry, and only while it is accepted."""
+    assert settings().tenants is None
+    assert settings(TAKTUS_TENANTS="").tenants is None
+    assert settings(TAKTUS_TENANTS="acme").tenants == ("acme",)
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:

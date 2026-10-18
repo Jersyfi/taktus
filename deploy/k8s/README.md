@@ -147,6 +147,13 @@ migrate (DEC-0060). An upgrade that changes only the release's image does not re
 database: its pod template carries no label that changes with a release (#237). Until it is done the roles refuse to start against an empty schema and are
 restarted.
 
+**Tenants are created after the install, not configured** (ADR-0104). The migration creates
+`default`. Every other tenant is created with `taktusctl tenant create NAME`, run in a pod of
+the control plane, which prints the identifier Taktus generated. Every role serves the new
+tenant at its next round, without a restart. The chart sets no `TAKTUS_TENANTS` and mounts no
+administration key, so the administration of tenants on the HTTP surface stays off on a
+cluster.
+
 **Every pod runs under the restricted profile**, the database included: not as root, no
 privilege escalation, every capability dropped, the runtime's default seccomp profile and a
 read-only root filesystem. The control plane's namespace can therefore enforce `restricted` too.

@@ -74,6 +74,18 @@ Three reasons:
 - A release that Taktus builds is proven on the development instance and deployed to a project
   instance by a person or by another instance (ADR-0013 D).
 
+## Amendment — tenants are created by a command (2026-10-18)
+
+ADR-0104 sets aside two sentences of this record. §4 says one tenant, `default`, is created by
+migration until the identity component exists. The promise below says `default` is the only
+tenant until `0.2.0`.
+
+Since ADR-0104 the table `tenant` is the instance's registry, and the identity component owns
+it. `default` is still created by migration 0001. Every other tenant is created by an
+administrator with `taktusctl tenant create` or on the HTTP surface, and Taktus generates its
+identifier. Every role reads the registry on every round, so an instance learns of a new tenant
+without a restart. `TAKTUS_TENANTS` only narrows the registry while it is still accepted.
+
 ## Where this promise ends
 
 Row-level security keeps tenants apart inside the database for the application role; a

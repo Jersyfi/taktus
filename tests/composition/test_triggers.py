@@ -9,7 +9,7 @@ from typing import Any
 
 from fakes import FakeConnector, FakeIdentifiers, FakeWorker
 from fakes.connector import READ, WRITE
-from fakes.identity import directory
+from fakes.identity import FixedTenants, directory
 from fakes.maturity import VERIFIED
 
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
@@ -80,7 +80,7 @@ class World:
             versions, self.persistence, processes, ledger=self.ledger
         )
         self.triggers = Triggers(
-            tenants=(TENANT,),
+            tenants=FixedTenants((TENANT,)),
             triggers=TriggersHandler(processes, versions, self.states, self.persistence),
             commission=CommissionPlanHandler(
                 MemoryRepository(self.persistence, Command),

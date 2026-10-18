@@ -43,7 +43,7 @@ uv run taktusctl run --process examples/processes/six-times-seven.yaml --resume 
 | `--state-dir PATH` | where artifact bytes are written, and — without a database — the snapshot of runs, plans and the ledger between invocations (default `~/.cache/taktus/taktusctl`, or `TAKTUS_STATE_DIR`). The snapshot is development only: the in-memory adapters, not a supported deployment. With `TAKTUS_DATABASE_URL` set the state lives in PostgreSQL (`README.md`, *Operating it*). |
 | `--input NAME=VALUE` | one input of the run, repeatable; what `$input` references in the bundle resolve to. A value that reads as JSON is JSON (`--input issue=11` is a number, `--input labels='["taktus"]'` a list); anything else is text |
 | `--identity ID` | the identity the command is attributed to and the run acts on behalf of — what every connector call carries. One the tenant knows (`taktusctl identity add ID`), or nothing executes; `TAKTUS_IDENTITY` when the option is not given. The command line authenticates by holding the instance's state, and the identity component supplies the organisational path (ADR-0040) |
-| `--tenant ID` | the tenant the run belongs to (default `default`, or `TAKTUS_TENANT`): one the instance serves (`TAKTUS_TENANTS`). |
+| `--tenant ID` | the tenant the run belongs to (default `default`, or `TAKTUS_TENANT`): one the instance serves, as `taktusctl tenant list` shows. `taktusctl tenant create NAME` creates one and prints the identifier Taktus generated for it (ADR-0104). |
 
 ## The shape of a bundle
 

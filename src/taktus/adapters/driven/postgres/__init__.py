@@ -17,6 +17,7 @@ from taktus.adapters.driven.postgres.provenance_store import PostgresProvenanceS
 from taktus.adapters.driven.postgres.queue import PostgresQueue
 from taktus.adapters.driven.postgres.repository import PostgresRepository
 from taktus.adapters.driven.postgres.signal import PostgresLedgerSignal
+from taktus.adapters.driven.postgres.tenant_store import PostgresTenantStore
 
 __all__ = [
     "PostgresLeadership",
@@ -27,6 +28,7 @@ __all__ = [
     "PostgresProvenanceStore",
     "PostgresQueue",
     "PostgresRepository",
+    "PostgresTenantStore",
     "SchemaOutOfDate",
     "check_schema",
     "upgrade",

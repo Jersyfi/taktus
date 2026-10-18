@@ -152,6 +152,11 @@ class MemoryPersistence:
     def table(self, kind: str, tenant: Tenant) -> dict[str, Any]:
         return self._tables.setdefault(kind, {}).setdefault(tenant, {})
 
+    def tenants_of(self, kind: str) -> list[Tenant]:
+        """Every tenant that holds something of a kind: what the tenant store reads across
+        tenants."""
+        return list(self._tables.get(kind, {}))
+
     def chain(self, tenant: Tenant) -> list[LedgerEntry]:
         return self._ledger.setdefault(tenant, [])
 

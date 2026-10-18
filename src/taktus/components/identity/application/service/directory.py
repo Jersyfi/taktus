@@ -19,7 +19,9 @@ Every identity added and every link made or revoked is a ledger entry in the sam
 (ADR-0006); the actor is the identity that acted, where one did.
 
 An account belongs to at most one identity across every tenant the instance serves: a link is
-looked for in each of them, and refused where one is active in any.
+looked for in each of them, and refused where one is active in any. Which tenants it serves is
+asked of `ServedTenants` at every act, so that a tenant created while the instance runs is
+served from its creation on (ADR-0104).
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ from taktus.ports.identity import (
     IdentityResolver,
     IdentitySource,
     Resolution,
+    ServedTenants,
     UnknownSenderAnswer,
 )
 from taktus.ports.ledger import Fact, Ledger
@@ -127,7 +130,7 @@ class IdentityDirectory(IdentityResolver):
     def __init__(
         self,
         *,
-        tenants: Sequence[Tenant],
+        tenants: ServedTenants,
         identities: Repository[Identity],
         links: Repository[ChannelLink],
         codes: Repository[LinkCode],
@@ -137,7 +140,7 @@ class IdentityDirectory(IdentityResolver):
         randomness: Randomness,
         source: IdentitySource | None = None,
     ) -> None:
-        self._tenants = tuple(tenants)
+        self._tenants = tenants
         self._identities = identities
         self._links = links
         self._codes = codes
@@ -147,16 +150,17 @@ class IdentityDirectory(IdentityResolver):
         self._randomness = randomness
         self._source = source
 
-    @property
-    def tenants(self) -> tuple[Tenant, ...]:
-        return self._tenants
+    async def tenants(self) -> tuple[Tenant, ...]:
+        """The tenants the instance serves now."""
+        return await self._tenants.served()
 
     # --- the port ---------------------------------------------------------------------------
 
     async def resolve(
         self, channel: Capability, account: str, *, tenant: Tenant | None = None
     ) -> Resolution | None:
-        searched = self._tenants if tenant is None else (tenant,)
+        served = await self._tenants.served()
+        searched = served if tenant is None else (tenant,)
         found = await self._active_link(channel, account, searched)
         if found is not None:
             return _resolution(found[1])
@@ -165,14 +169,14 @@ class IdentityDirectory(IdentityResolver):
         answer = await self._source.lookup(channel, account)
         if answer is None or answer.tenant not in searched:
             return None
-        if tenant is not None and await self._active_link(channel, account, self._tenants):
+        if tenant is not None and await self._active_link(channel, account, served):
             return None  # the account is another tenant's; it maps to at most one identity
         return await self._link_from_source(
             channel, account, answer.tenant, answer.identity, answer.org_path
         )
 
     async def identity(self, tenant: Tenant, identity: str) -> Resolution | None:
-        if tenant not in self._tenants:
+        if tenant not in await self._tenants.served():
             return None
         async with self._work.transaction(tenant):
             known = await self._identities.get(tenant, identity)
@@ -181,8 +185,9 @@ class IdentityDirectory(IdentityResolver):
     async def unknown_sender(
         self, channel: Capability, account: str, said: str
     ) -> UnknownSenderAnswer:
+        served = await self._tenants.served()
         for code in dict.fromkeys(CODE.findall(said)):
-            for tenant in self._tenants:
+            for tenant in served:
                 linked = await self._redeem(tenant, code, channel, account)
                 if linked is not None:
                     return linked
@@ -198,7 +203,7 @@ class IdentityDirectory(IdentityResolver):
             held = await self._codes.get(tenant, code_id(code))
         if held is None or not held.redeemable(channel, now):
             return None
-        if await self._active_link(channel, account, self._tenants) is not None:
+        if await self._active_link(channel, account, await self._tenants.served()) is not None:
             return UnknownSenderAnswer(reply=TAKEN_REPLY)
         async with self._work.transaction(tenant):
             held = await self._codes.get(tenant, code_id(code))
@@ -217,7 +222,7 @@ class IdentityDirectory(IdentityResolver):
         if not key.startswith(KEY_PREFIX):
             return None
         wanted = digest(key)
-        for tenant in self._tenants:
+        for tenant in await self._tenants.served():
             async with self._work.transaction(tenant):
                 identities = await self._identities.list(tenant)
             for identity in identities:
@@ -259,7 +264,7 @@ class IdentityDirectory(IdentityResolver):
     ) -> tuple[Identity, str]:
         """A new identity with its first account key; the key is returned to be handed to the
         person once. `IdentityExists` when the tenant has one of that name."""
-        self._served(tenant)
+        await self._served(tenant)
         key = self._new_key()
         added = Identity(
             id=identity,
@@ -291,7 +296,7 @@ class IdentityDirectory(IdentityResolver):
         self, tenant: Tenant, identity: str, roles: Sequence[str], *, by: str | None = None
     ) -> Identity:
         """The roles the identity holds from now on, replacing the ones before."""
-        self._served(tenant)
+        await self._served(tenant)
         async with self._work.transaction(tenant):
             existing = await self._identities.get(tenant, identity)
             if existing is None:
@@ -310,7 +315,7 @@ class IdentityDirectory(IdentityResolver):
 
     async def issue_key(self, tenant: Tenant, identity: str, *, by: str | None = None) -> str:
         """A new account key for an identity; the old one stops working."""
-        self._served(tenant)
+        await self._served(tenant)
         key = self._new_key()
         async with self._work.transaction(tenant):
             existing = await self._identities.get(tenant, identity)
@@ -326,13 +331,13 @@ class IdentityDirectory(IdentityResolver):
 
     async def links(self, tenant: Tenant) -> list[ChannelLink]:
         """Every link of the tenant, active and revoked."""
-        self._served(tenant)
+        await self._served(tenant)
         async with self._work.transaction(tenant):
             return sorted(await self._links.list(tenant), key=lambda link: link.linked_at)
 
     async def revoke(self, tenant: Tenant, link: str, *, by: str | None = None) -> ChannelLink:
         """The link is revoked; the account is from an unknown sender from now on."""
-        self._served(tenant)
+        await self._served(tenant)
         now = self._clock.now()
         async with self._work.transaction(tenant):
             existing = await self._links.get(tenant, link)
@@ -351,8 +356,8 @@ class IdentityDirectory(IdentityResolver):
 
     # --- inside -----------------------------------------------------------------------------
 
-    def _served(self, tenant: Tenant) -> None:
-        if tenant not in self._tenants:
+    async def _served(self, tenant: Tenant) -> None:
+        if tenant not in await self._tenants.served():
             raise UnknownTenant(tenant)
 
     def _new_key(self) -> str:

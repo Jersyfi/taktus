@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fakes import FakeIdentifiers, FakeWorker
-from fakes.identity import directory
+from fakes.identity import FixedTenants, directory
 from fakes.maturity import VERIFIED
 
 from taktus.adapters.driven.memory import (
@@ -139,7 +139,7 @@ class World:
             return self.full
 
         self.reactions = Reactions(
-            tenants=(TENANT,),
+            tenants=FixedTenants((TENANT,)),
             outbox=self.outbox,
             intake=complete,
             reactions=ReactionsHandler(processes, versions, self.persistence),

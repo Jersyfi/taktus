@@ -12,8 +12,9 @@ a person creates in their Taktus account to link a channel account (ADR-0040), t
 requests addressed to a decider — listed, answered, the reading confirmed — and the decider's
 own response times (ADR-0042), the reports to the owner as their view and their repository
 text (ADR-0045), a read API for the runs and ledger entries the reader may see, and the live
-stream of changes of state as Server-Sent Events (ADR-0055). No other write, no UI. An answer
-the owner writes in the thread of a report arrives through the webhook intake.
+stream of changes of state as Server-Sent Events (ADR-0055), and the administration of the
+instance's tenants for the holder of its administration key (ADR-0104). No other write, no
+UI. An answer the owner writes in the thread of a report arrives through the webhook intake.
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -36,7 +37,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
-from taktus.adapters.driving.rest import levels, proposals
+from taktus.adapters.driving.rest import levels, proposals, tenants
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
 from taktus.adapters.driving.rest.wiring import RestServices, StreamsFull
 from taktus.components.command.application.service import (
@@ -126,6 +127,7 @@ def build_app(
         app.include_router(levels.router(services, _authenticated), prefix=base)
         app.include_router(proposals.router(services, _authenticated), prefix=base)
         app.include_router(proposals.acts_router(services, _authenticated), prefix=base)
+        app.include_router(tenants.router(services), prefix=base)
         if web is not None and (web / "index.html").is_file():
             levels.mount_web(app, base, web)
     return app
@@ -194,7 +196,10 @@ def _intake(services: RestServices) -> APIRouter:
             400: {"description": "The body cannot be read.", **PROBLEM},
             401: {"description": "Unsigned, or the signature does not verify.", **PROBLEM},
             404: {"description": "No connector serves the channel.", **PROBLEM},
-            503: {"description": "The connector did not answer.", **PROBLEM},
+            503: {
+                "description": "The connector did not answer, or the instance serves no tenant.",
+                **PROBLEM,
+            },
             **INVALID,
         },
     )
@@ -205,11 +210,14 @@ def _intake(services: RestServices) -> APIRouter:
             body=body,
             received_at=datetime.now(UTC),
         )
+        served = await services.tenants.served()
+        if not served:
+            return problem(503, "this instance serves no tenant")
         try:
             outcome = await services.intake.execute(
-                # Where an event is kept is the identity component's to decide; the first
+                # Where an event is kept is the identity component's to decide; the oldest
                 # tenant is only where a sender nobody could place is answered from.
-                ReceiveIntake(channel=channel, delivery=delivery, tenant=services.tenants[0])
+                ReceiveIntake(channel=channel, delivery=delivery, tenant=served[0])
             )
         except UnknownChannel as error:
             return problem(404, str(error))
