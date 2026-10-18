@@ -158,7 +158,7 @@ class World:
             options=EngineOptions(park_waits_after_seconds=self.park_after),
         )
 
-    async def submit(self, *definitions: tuple[Step, dict[str, Any]]) -> Run:
+    async def submit(self, *definitions: tuple[Step, dict[str, Any]], tenant: str = TENANT) -> Run:
         steps = tuple(step for step, _ in definitions)
         plan = Plan(
             id=self.ids.new("pln"),
@@ -177,7 +177,7 @@ class World:
                 budget=BUDGET,
                 process_version="p@1",
                 actor="idn_t",
-                tenant=TENANT,
+                tenant=tenant,
             )
         )
 
@@ -191,6 +191,7 @@ class World:
         wait_first: float = 0.02,
         wait_cap: float = 0.1,
         tenants: ServedTenants | None = None,
+        poll: float = 0.02,
     ) -> Runner:
         runner = Runner(
             engine=engine or self.engine,
@@ -201,7 +202,7 @@ class World:
                 tenants=tenants or FixedTenants((TENANT,)),
                 claimant=name,
                 concurrency=concurrency,
-                poll_seconds=0.02,
+                poll_seconds=poll,
                 heartbeat_seconds=heartbeat,
                 wait_first_seconds=wait_first,
                 wait_cap_seconds=wait_cap,
@@ -683,6 +684,43 @@ async def test_a_tenant_created_while_the_runner_runs_is_claimed_at_its_next_rou
     registry.tenants = (TENANT,)
     asked = registry.asked
     await until(lambda: len(runner.outcomes) == 1)
-    assert registry.asked - asked <= 2, "claimed at the next round, within one poll interval"
+    # The round that claims it, and the round its end wakes (#319), at most one more between.
+    assert registry.asked - asked <= 3, "claimed at the next round, within one poll interval"
     await world.stop(runner)
     assert (await world.stored(run.id)).state is RunState.FINISHED
+
+
+# --- every tenant gets its turn, and a freed place is taken at once (issue #319) -----------------
+
+
+@pytest.mark.parametrize("order", [("a", "b"), ("b", "a")])
+async def test_a_tenant_s_run_starts_at_once_behind_another_tenant_s_thousand(
+    order: tuple[str, str],
+) -> None:
+    world = World()
+    for _ in range(1000):
+        await world.submit(wait("w", 1), tenant="a")
+    late = await world.submit(rule("r", 1), tenant="b")
+    poll = 0.25
+    begun = asyncio.get_running_loop().time()
+    runner = world.runner("r1", concurrency=4, tenants=FixedTenants(order), poll=poll)
+    await until(lambda: any(o.run is not None and o.run.id == late.id for o in runner.outcomes))
+    took = asyncio.get_running_loop().time() - begun
+    await world.stop(runner)
+    assert took < 2 * poll, f"b's run waited {took:.2f}s behind a's thousand"
+    async with world.persistence.transaction("b"):
+        done = await world.runs.get("b", late.id)
+    assert done is not None and done.state is RunState.FINISHED
+
+
+async def test_a_run_that_ends_wakes_the_runner_and_four_places_drain_more_than_four_a_second() -> (
+    None
+):
+    world = World()
+    runs = [await world.submit(rule("r", 1)) for _ in range(40)]
+    runner = world.runner("r1", concurrency=4, poll=1.0)
+    begun = asyncio.get_running_loop().time()
+    await until(lambda: len(runner.outcomes) == len(runs))
+    took = asyncio.get_running_loop().time() - begun
+    await world.stop(runner)
+    assert len(runs) / took > 4, f"{len(runs)} runs in {took:.2f}s with a poll of a second"
