@@ -6,20 +6,10 @@
   },
   "format": "taktus.recording/v1",
   "inputs": {
-    "issue": 3
+    "issue": 528
   },
   "margin": 0.0,
   "operations": [
-    {
-      "capability": "repository.comments",
-      "demand": {
-        "quota_units": 3.0
-      },
-      "effect": "write",
-      "idempotency": "marked",
-      "name": "repository.comments.create",
-      "summary": "as recorded"
-    },
     {
       "capability": "repository.comments",
       "demand": {
@@ -41,14 +31,14 @@
   ],
   "process": "p02-refinement",
   "process_version": "p02-refinement@5",
-  "run_id": "run_595fd2aed37be774aaf6",
+  "run_id": "run_30ad9fcaf2fb24e441ba",
   "state": "finished",
   "steps": [
     {
       "answer": {
         "adapter": "connector.channel.repo",
         "consumption": {
-          "quota_units": 1.0
+          "quota_units": 2.0
         },
         "estimate": {
           "quota_units": 1.0
@@ -57,9 +47,9 @@
         "operation": "repository.issues.read",
         "outcome": "succeeded",
         "request": {
-          "digest": "sha256:cdfc827518d590e98635e958a23b0bebdbad81675d50f90600f812fbbc27cac6",
+          "digest": "sha256:a42972faeeb44dfcc0a3a6758f96002f440a135309cc6ea7e1f07265cf390f95",
           "parts": {
-            "input.number": "sha256:4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+            "input.number": "sha256:bd3a797ba948938978965781bd341bc0fc7711ed00e513b9c63a61cf3d916562",
             "operation": "sha256:93fad1e49f64713973bedd399b7e8a57e1872680fd64d76d830491a883f46bdb"
           }
         },
@@ -83,9 +73,9 @@
         "operation": "repository.comments.list",
         "outcome": "succeeded",
         "request": {
-          "digest": "sha256:6715d2dff290573f9b217a6dbfe33cbac4ee20108f2e6abbd3fb2da2ef57fcea",
+          "digest": "sha256:5f9f68d04172473ad90e2e06dcf033fa0d20c295eab2ecec71164df4d8cb9753",
           "parts": {
-            "input.number": "sha256:4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+            "input.number": "sha256:bd3a797ba948938978965781bd341bc0fc7711ed00e513b9c63a61cf3d916562",
             "operation": "sha256:ad1802c9204fd595eb9483072e76b37cc2eddc4e8de32b200dec503967107a1d"
           }
         },
@@ -109,42 +99,6 @@
       "state": "succeeded"
     },
     {
-      "answer": {
-        "adapter": "model.endpoint",
-        "consumption": {
-          "tokens_by_model": {
-            "fake-model": {
-              "input": 162,
-              "output": 68
-            }
-          },
-          "tokens_in": 162,
-          "tokens_out": 68
-        },
-        "estimate": {
-          "tokens_by_model": {
-            "fake-model": {
-              "input": 989,
-              "output": 1536
-            }
-          },
-          "tokens_in": 989,
-          "tokens_out": 1536
-        },
-        "kind": "model",
-        "outcome": "succeeded",
-        "purpose": "reasoning",
-        "request": {
-          "digest": "sha256:f844240486085b029ff92046c9afb49639b310e23dcc937b8bac751fc817febb",
-          "parts": {
-            "max_output_tokens": "sha256:b51e45a12fbae3d0ee2bf77f1a4f80cbf642e2b4d1c237d2c0f7053a54f6b388",
-            "system": "sha256:f607bcf0cc92fdc8cde7ddf56fa11dfba92c9df8044a6edd72670d80d531801e",
-            "user": "sha256:9d4b7887d10915cbceecab4671d70ebc3b2fe89e19b83b95cadde9c8e0934292"
-          }
-        },
-        "result": "results/refine.json",
-        "version": "fake-model"
-      },
       "id": "refine",
       "met_a_person": false,
       "method": "llm",
@@ -157,33 +111,12 @@
       "state": "succeeded"
     },
     {
-      "answer": {
-        "adapter": "connector.channel.repo",
-        "consumption": {
-          "quota_units": 2.0
-        },
-        "estimate": {
-          "quota_units": 3.0
-        },
-        "kind": "connector",
-        "operation": "repository.comments.create",
-        "outcome": "succeeded",
-        "request": {
-          "digest": "sha256:a3a70c628e61ad01bfa26fa411e60ddd31624900ccce2d963175c9ae110763cb",
-          "parts": {
-            "input.body": "sha256:68d453883293d2c44c238c883709396f68b6fd8ca6677e77c3d533495de134b8",
-            "input.number": "sha256:4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
-            "operation": "sha256:71db048f3ab8337d0e089a4abd747d1602a47aa52c6f7d028876f01e452b58fb"
-          }
-        },
-        "result": "results/write-sections.json"
-      },
       "id": "write-sections",
       "met_a_person": false,
       "method": "rule",
       "state": "succeeded"
     }
   ],
-  "taken": "local",
+  "taken": "instance",
   "uncalibrated_margin": 1.0
 }

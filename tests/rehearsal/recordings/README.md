@@ -1,10 +1,18 @@
 # Recordings of the self-development bundles
 
-**These recordings are local, standing in until a recording from the instance replaces them.**
-Each was taken from a run on a developer's machine against the repository's fakes — the
-repository service, the model endpoint, the coding agent — and says so in its own
-`recording.json` (`"taken": "local"`). They prove the replay and the export end to end. They do
-not prove that the bundles still lead where a run on the instance led.
+Each recording says where it was taken, in its own `recording.json` (`"taken"`):
+
+| Process | Taken | From |
+|---|---|---|
+| `p01-roadmap-control` | local | no run of P-01 on the instance yet |
+| `p02-refinement` | instance | `run_30ad9fcaf2fb24e441ba` of `p02-refinement@5`, on #528, 2026-10-18 |
+| `p03-implementation` | local | no run of the current version on the instance yet |
+| `s07-change-in-dialogue` | local | S-07 is not installed on the instance yet |
+
+A local recording was taken on a developer's machine against the repository's fakes — the
+repository service, the model endpoint, the coding agent. It proves the replay and the export
+end to end, not that the bundle still leads where a run on the instance led. A recording from
+the instance proves that.
 
 One directory per process, named by its identifier: `p01-roadmap-control`, `p02-refinement`,
 `p03-implementation`, `s07-change-in-dialogue`. `tests/rehearsal/test_replay.py` replays each
@@ -37,6 +45,8 @@ They are data, never code. They carry no secret value, and no person is named in
 3. Copy the directory here in place of the local one, and run `make rehearse`.
 4. Read the result files before committing them: they are what the repository service and the
    model answered, and they become public with the commit. The secret scan runs on them in CI.
+   The tool replaces every identifier of a person a connector answered — an issue's author —
+   by `a person`; check that none is left.
 
 ## When the replay is red
 
