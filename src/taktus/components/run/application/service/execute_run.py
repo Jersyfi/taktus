@@ -398,7 +398,11 @@ def _ended(run: Run) -> bool:
     if run.state is RunState.WAITING_HUMAN:
         # What waits for a person stays with the person, unless a person has answered.
         return run.runnable() is None
-    return run.state is RunState.HALTED and run.cause not in (Cause.STOP, Cause.CAPACITY)
+    return run.state is RunState.HALTED and run.cause not in (
+        Cause.STOP,
+        Cause.CAPACITY,
+        Cause.PARKED,
+    )
 
 
 @dataclass(frozen=True)
@@ -446,6 +450,11 @@ class EngineOptions:
     decision_days: int = 3
     """How many days after it is raised a decision request an anchor raises is due
     (ADR-0042)."""
+    park_waits_after_seconds: float | None = None
+    """A `wait` step that would wait longer than this parks its run: the run halts with cause
+    `parked`, and its runner defers the job to the wait's next check, holding no place
+    meanwhile (ADR-0103). None waits inline, where no runner resumes a halted run — a run
+    executed from the command line."""
 
 
 @dataclass(frozen=True)
@@ -529,6 +538,7 @@ class RunEngine:
         """Runs whose current step was refused for a credential administering this instance's
         own platform: they halt with cause `administration`."""
         self._at_capacity: set[str] = set()
+        self._parked: set[str] = set()
         """Runs whose current step met its worker at capacity: they halt, or escalate once the
         step's ceiling passed, with cause `capacity` (ADR-0037)."""
         self._claim: ContextVar[Claim | None] = ContextVar("claim", default=None)
@@ -1115,10 +1125,15 @@ class RunEngine:
                 cause = Cause.CAPACITY if capacity else Cause.FAILURE
                 run = await self._escalating(run)
                 return await self._end(run, RunState.ESCALATED, cause, step_run.reason, span)
+            parked = run.id in self._parked
+            self._parked.discard(run.id)
             if step_run.state is StepState.STOPPED:
                 if capacity:
                     # Waiting at the boundary: the runner tries again after a delay (ADR-0037).
                     cause = Cause.CAPACITY
+                elif parked:
+                    # A wait step parked: the runner defers the job to its next check (ADR-0103).
+                    cause = Cause.PARKED
                 elif run.id in self._limit_halts:
                     cause = Cause.LIMIT
                 elif run.id not in self._stop_requested and self._in_a_new_unit(run, step_run):
@@ -1668,6 +1683,14 @@ class RunEngine:
         attempt = step_run.attempt
         if step_run.state is StepState.FAILED and not step_run.retryable:
             attempt += 1
+        # A wait resumed — parked, or recovered after a restart — counts from when it began,
+        # and what its earlier checks used stays counted (ADR-0103).
+        resumed = step_run.state in (StepState.STOPPED, StepState.RUNNING)
+        before = (
+            step_run.consumption
+            if step_run.state is StepState.STOPPED and _parked_wait(step_run)
+            else None
+        )
         try:
             demand = await self._demand(run, step, work)
         except RuleFailed as failure:
@@ -1709,9 +1732,11 @@ class RunEngine:
             artifacts: tuple[Artifact, ...] = ()
             if isinstance(work, WaitWork):
                 if work.until is None:
-                    await self._clock.sleep(work.seconds)
+                    await self._wait_for(step_run, work.seconds, resumed=resumed)
                 else:
-                    step_run, consumption = await self._wait_until(run, step_run, work.until, span)
+                    step_run, consumption = await self._wait_until(
+                        run, step_run, work.until, span, before, resumed=resumed
+                    )
             else:
                 value, trace, consumption, adapter = await self._evaluate(run, step_run, work, span)
                 if adapter is not None:
@@ -1730,6 +1755,8 @@ class RunEngine:
                 )
         except _AtLimit as limited:
             return await self._at_limit(run, step_run, limited, span)
+        except _Parked as parked:
+            return await self._park(run, step_run, parked)
         except RuleFailed as failure:
             span.record_failure("rule failed")
             run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
@@ -2508,11 +2535,67 @@ class RunEngine:
             observed_at=self._clock.now(),
         )
 
+    async def _park(self, run: Run, step_run: StepRun, parked: _Parked) -> tuple[Run, StepRun]:
+        """The wait goes on without this runner: the step goes back to its boundary with its
+        block still open and the moment of its next check, and the run halts there with cause
+        `parked` for its runner to defer the job to that moment (ADR-0103). The block ends only
+        when the wait does, so its whole duration is booked to `wait.external`."""
+        self._parked.add(run.id)
+        now = self._clock.now()
+        check_at = parked.check_at
+        if step_run.block is not None:
+            step_run = step_run.model_copy(
+                update={"block": step_run.block.model_copy(update={"next_check_at": check_at})}
+            )
+        step_run = step_run.to(
+            StepState.STOPPED,
+            consumption=parked.consumption,
+            reason=f"waiting, parked until {check_at.isoformat()}",
+            finished_at=now,
+        )
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.waiting",
+            step=step_run,
+            outcome=step_run.block.cause if step_run.block is not None else "parked",
+        )
+        return run, step_run
+
+    def _waited_so_far(self, step_run: StepRun, resumed: bool) -> float:
+        """How long a wait step has waited: nothing when it starts now; since its block began
+        when it resumes."""
+        if not resumed or step_run.block is None:
+            return 0.0
+        return max(0.0, (self._clock.now() - step_run.block.since).total_seconds())
+
+    async def _wait_for(self, step_run: StepRun, seconds: float, *, resumed: bool) -> None:
+        """Wait on the clock for `seconds`, or, for a wait resumed, for what remains of them
+        since it began. What remains beyond the engine's limit for waiting inline parks the run
+        instead (ADR-0103)."""
+        remaining = seconds - self._waited_so_far(step_run, resumed)
+        if remaining <= 0:
+            return
+        limit = self._options.park_waits_after_seconds
+        if limit is not None and remaining > limit:
+            began = step_run.block.since if step_run.block is not None else self._clock.now()
+            raise _Parked(began + timedelta(seconds=seconds), None)
+        await self._clock.sleep(remaining)
+
     async def _wait_until(
-        self, run: Run, step_run: StepRun, until: WaitUntil, span: Span
+        self,
+        run: Run,
+        step_run: StepRun,
+        until: WaitUntil,
+        span: Span,
+        before: Consumption | None = None,
+        *,
+        resumed: bool = False,
     ) -> tuple[StepRun, Consumption | None]:
         """Poll a read operation until the selected part of its output is expected, within
-        the timeout. A wait produces no result (ADR-0018); what it consumed is counted."""
+        the timeout. A wait produces no result (ADR-0018); what it consumed is counted. The
+        timeout counts from when the wait began, so a parked wait resumed, or one recovered
+        after a restart, waits only what remains; a poll interval beyond the engine's limit for
+        waiting inline parks the run until the next check (ADR-0103)."""
         resolved = await self._connector(step_run.step_id, until.capability)
         operation = resolved.declaration.operation(until.operation)
         if operation is None:
@@ -2529,7 +2612,10 @@ class RunEngine:
         (input,), _ = await self._resolved(run, [until.input])
         step_run = step_run.model_copy(update={"adapter": resolved.adapter})
         used: dict[str, Any] = {}
-        waited = 0.0
+        if before is not None:
+            _accumulate(used, before)
+        waited = self._waited_so_far(step_run, resumed)
+        limit = self._options.park_waits_after_seconds
         while True:
             result = await self._call(
                 run, step_run, resolved, operation, input, until.credentials, span
@@ -2551,6 +2637,9 @@ class RunEngine:
                     adapter=resolved.adapter,
                     outcome="wait timed out",
                 )
+            if limit is not None and until.poll_seconds > limit:
+                check_at = self._clock.now() + timedelta(seconds=until.poll_seconds)
+                raise _Parked(check_at, _consumption(used))
             await self._clock.sleep(until.poll_seconds)
             waited += until.poll_seconds
 
@@ -3512,6 +3601,21 @@ class _AtLimit(Exception):
     reason: str
     retry_after_seconds: float | None = None
     """The delay the provider asked for in its `Retry-After`; None when it named none."""
+
+
+@dataclass(frozen=True)
+class _Parked(Exception):
+    """A wait step waits longer than the engine waits inline: the run parks (ADR-0103)."""
+
+    check_at: datetime
+    """When the wait is checked next: for a wait on the clock, when it ends."""
+    consumption: Consumption | None
+    """What the wait's checks used so far, its earlier parks included."""
+
+
+def _parked_wait(step_run: StepRun) -> bool:
+    """Whether the step run is a wait step parked at its boundary (ADR-0103)."""
+    return step_run.block is not None and step_run.block.next_check_at is not None
 
 
 @dataclass(frozen=True)

@@ -217,7 +217,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   (`tests/integration/test_runner_fence.py`, NTC-0044). A run halted because its worker was at
   capacity is *deferred*: its job is claimable again after a delay that starts at the poll
   interval and doubles up to a minute, and the deferral is not a failed attempt (ADR-0037,
-  `tests/integration/test_capacity_wait.py`). A worker step's assignment is named in the ledger
+  `tests/integration/test_capacity_wait.py`). A `wait` step longer than the poll interval
+  parks its run: the run halts with cause `parked`, and its job is deferred to the wait's next
+  check, so a wait for time or for an outside system holds no place (ADR-0103). A worker step's assignment is named in the ledger
   before it is posted; a runner that recovers the run asks the worker about it and adopts it
   instead of handing over another, and a runner that loses its claim leaves it running for the
   next (ADR-0038, `tests/integration/test_handover.py`).

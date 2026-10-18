@@ -28,6 +28,9 @@ What happens when a run ends decides the job:
   that does not end into an escalation (ADR-0037). A model's provider at its rate limit is
   waited for the same way; where it named its delay in `Retry-After`, the job is deferred by
   that delay instead (ADR-0043);
+- halted because a `wait` step parked — the job is *deferred* to the wait's next check, which
+  the step's block names. A wait for time or for an outside system holds no place meanwhile,
+  as a wait for a person does not either (ADR-0103);
 - the engine raised — the job is *released* and counted as an attempt; after the queue's limit
   of attempts the job stays for a person.
 
@@ -216,6 +219,9 @@ class Runner:
             if run.state is RunState.HALTED and run.cause is Cause.CAPACITY:
                 await self._defer(executing, run)
                 outcome.disposition = "deferred"
+            elif run.state is RunState.HALTED and run.cause is Cause.PARKED:
+                await self._park(executing, run)
+                outcome.disposition = "deferred"
             elif (
                 run.state is RunState.HALTED
                 and run.cause is Cause.STOP
@@ -279,6 +285,25 @@ class Runner:
             waiting.delay(waits, self.options.wait_first_seconds, self.options.wait_cap_seconds)
             if named is None
             else max(named, self.options.wait_first_seconds)
+        )
+        async with self.work.transaction(executing.tenant):
+            await self.queue.defer(
+                executing.tenant, executing.job.id, self.options.claimant, seconds
+            )
+
+    async def _park(self, executing: _Executing, run: Run) -> None:
+        """Give the job back until the parked wait's next check, holding no place meanwhile
+        (ADR-0103). A check already due defers by nothing."""
+        checks = [
+            s.block.next_check_at
+            for s in run.step_runs
+            if s.block is not None and s.block.next_check_at is not None
+        ]
+        check_at = min(checks) if checks else None
+        seconds = (
+            self.options.wait_first_seconds
+            if check_at is None
+            else max(0.0, (check_at - self.clock.now()).total_seconds())
         )
         async with self.work.transaction(executing.tenant):
             await self.queue.defer(

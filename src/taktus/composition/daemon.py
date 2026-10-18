@@ -360,6 +360,7 @@ async def wire(
                         seeds=seeds,
                         capacity=rules_of(settings.capacity),
                         unit_memory_bytes=memory_demand(settings.workers),
+                        park_waits_after_seconds=settings.poll_seconds,
                     ),
                     platform=HostPlatform(clock, state_dir=settings.state_dir),
                     connectors=connectors,
