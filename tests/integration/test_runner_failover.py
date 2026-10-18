@@ -380,7 +380,7 @@ async def test_two_runners_share_the_runs_and_the_survivor_resumes_a_killed_runn
             assert [s.state for s in finished.step_runs] == [StepState.SUCCEEDED] * 4
             entries = [e for e in ledger if e.refs.run_id == run_id]
             kinds = [e.kind for e in entries]
-            assert kinds[-1] == "run.finished" and kinds.count("run.finished") == 1
+            assert kinds[-2:] == ["run.finished", "run.ended"] and kinds.count("run.finished") == 1
             started = [e.refs.step_id for e in entries if e.kind == "step.started"]
             ids = [a.id for a in finished.step_run("compute").artifacts]
             assert ids == [f"output-{n}" for n in range(1, COMMANDS + 1)], "every output, once"

@@ -146,7 +146,7 @@ async def test_a_run_completes_and_the_ledger_verifies(
         assert verify.checkpoint is not None and verify.checkpoint.result_digest is not None
         entries = await entries_of(services, run.id)
         assert [e.kind for e in entries][:3] == ["run.created", "budget.set", "run.started"]
-        assert [e.kind for e in entries][-1] == "run.finished"
+        assert [e.kind for e in entries][-2:] == ["run.finished", "run.ended"]
         assert sum(1 for e in entries if e.kind == "step.finished") == 4
         started = next(
             e for e in entries if e.kind == "step.started" and e.refs.step_id == "compute"
