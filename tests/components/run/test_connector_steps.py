@@ -176,7 +176,11 @@ async def test_a_write_repeated_after_a_crash_derives_the_same_key_and_is_replay
     assert second.attempt == 1
     kinds = await h.kinds(recovered)
     assert "run.recovered:write" in kinds
-    assert kinds[-2:] == ["egress.write:write:replayed", "run.finished::succeeded"]
+    assert kinds[-3:] == [
+        "egress.write:write:replayed",
+        "run.finished::succeeded",
+        "run.ended::ok",
+    ]
     assert await h.verify()
 
 

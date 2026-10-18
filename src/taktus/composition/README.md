@@ -24,7 +24,9 @@ comes back the same way and is answered with the level's text equivalent and a l
 the web app, read through the levels the `api` role serves (ADR-0069). The phrasebooks Taktus ships, one per language, are
 `phrasebooks/*.json`: the core names no language. While it leads, the scheduler also looks for a
 broken interface in the run's failed calls and reports it to the owner through the same channel
-(`interfaces.py`, ADR-0047). The guides' process, S-05, asks the instance through the loopback
+(`interfaces.py`, ADR-0047). It also watches that every expected run happened: the process
+component says when a run was expected, and the governance component reads the ledger and raises
+an incident for one that did not (`expected_runs.py`, ADR-0107). The guides' process, S-05, asks the instance through the loopback
 connector to render, measure and publish the guides and to report a hand edit; `guides.py`
 answers over the knowledge and reporting components, and serves `knowledge.pages` over the
 directory `TAKTUS_KNOWLEDGE_DIRECTORY` names (ADR-0066). Method maturation is built once in

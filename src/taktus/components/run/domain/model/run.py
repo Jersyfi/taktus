@@ -39,6 +39,22 @@ class RunState(StrEnum):
     FINISHED = "finished"
 
 
+RUN_ENDED = "run.ended"
+"""The ledger kind that says how a run ended, with its duration (ADR-0107 §2). It is written
+beside `run.finished` and `run.escalated`, and changes no state of its own."""
+
+
+class Ended(StrEnum):
+    """How a run ended: the outcome of its `run.ended` entry (ADR-0107 §2)."""
+
+    OK = "ok"
+    """It finished, and no step that marks it empty was skipped."""
+    EMPTY = "empty"
+    """It finished and found nothing to do: a step that marks it empty was skipped."""
+    ERROR = "error"
+    """It escalated, whatever its steps returned."""
+
+
 class Cause(StrEnum):
     """Why a run halted or escalated. Tokens, so that the ledger can carry them."""
 

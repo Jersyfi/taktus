@@ -230,7 +230,7 @@ async def test_a_run_survives_a_killed_process_and_resumes_at_its_last_boundary(
     assert after[: len(before)] == before
     kinds = [e.kind for e in after]
     assert kinds[len(before)] == "run.recovered"
-    assert kinds[-1] == "run.finished"
+    assert kinds[-2:] == ["run.finished", "run.ended"]
     assert kinds.count("step.started") == 4, "every step once"
     assert sum(1 for e in after if e.kind == "step.started" and e.refs.step_id == "compute") == 1
     assert [e.refs.step_id for e in after if e.kind == "step.adopted"] == ["compute"], (

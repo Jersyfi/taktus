@@ -69,6 +69,7 @@ Top level:
 | `autonomy` | the autonomy statement (ADR-0026): `level` — what the run and its worker assignments carry, 1 to 4 — `reason`, why the process runs at that level, and `toward_next`, what is missing to go one level higher or what forbids it (required below 4, absent at 4). A bare level does not register. Optional: `actions`, a lower level per tool action — a capability a step requires or a connector operation it calls — each with its own `level`, `reason` and `toward_next`; a step runs at the lowest level that applies to it. And `history`, how many runs in a row without a failure a raise of any of these levels needs (ADR-0039) |
 | `limits` | the run's budget: `currency`, `quota` and `compute` in the shape of the worker contract's `Limits` (`contracts/worker/v1`). Every worker step's estimate is admitted against what is left of it. |
 | `triggers` | what starts a run besides a person. `schedule` triggers are fired by the daemon's elected scheduler, once per slot (ADR-0035); `event` triggers are recorded, not yet acted on. A trigger is one of the two, see below |
+| `expect` | when a run is expected (ADR-0107): `schedule`, in the form of a schedule trigger, a run at every slot; or `gap`, the longest time between the starts of two runs, as a duration (`26h`); and `bound`, the longest time a run may take from its start to its end. `schedule` and `gap` exclude each other. Without either, every schedule trigger expects a run at each of its slots. A run that was expected and did not start within the tenant's grace period, or did not end within its bound and the grace, raises an incident (`taktusctl incident`) |
 | `slo`, `author`, `reason` | as in control-plane.md §4; recorded, not yet acted on |
 | `steps` | the graph; edges are the `depends_on` lists. The graph is checked: acyclic, every dependency a step of the process, every step connected to the rest. |
 
@@ -113,13 +114,14 @@ version; every other method is refused before the run starts.
 | `llm` | `purpose`, `prompt`, optional `system`, `values`, `max_output_tokens`, `pattern` | the prompt, with every `${name}` replaced from `values`, goes to the model configured for the purpose (`TAKTUS_MODEL_*`); the result is the text it answered, once it matches `pattern` — the check that keeps a `sourced` step from passing on an answer beside the point |
 
 **When a step runs, and whom it asks first** (ADR-0088, ADR-0097). Beside what it does, a step's
-`work` may carry three keys of its own, for every method:
+`work` may carry four keys of its own, for every method:
 
 | Key | Meaning |
 |---|---|
 | `when` | a list of conditions in the shape of `rule: check`'s, over the results of the steps it depends on. When one does not hold, the step is skipped before anything of it starts: it succeeds with the result `{skipped: true, because}`, performs nothing and asks nobody, and the ledger says `step.finished` with the outcome `skipped`. A part a condition names that the result does not carry is null |
 | `ask` | `question`, optional `situation`, `proposal` — templates over `values`, as a `template` rule's text is — `role` (`owner` unless named) and `on_decline` (`halt` or `continue`). Before the step's act, at every level, a decision request is raised for it, beside any anchor's (ADR-0042): perform the act (A, recommended) or not (B). A rehearsal asks nothing. Declined with `halt`, the run halts as for an anchor; with `continue`, the act is not performed and the step succeeds with `{declined: true, by, answer}` — the decider's answer as written — for the steps after it to act on |
 | `on_escalation` | `true`: the step is no part of the sequence. When a step fails and the run escalates, the steps marked so run first, in the plan's order, each once every step it depends on succeeded; then the run ends escalated for the step that failed. A run that finishes skips them, with `{skipped: true, because: "the run did not escalate"}`. A step of the sequence may not depend on one, and one may not `ask`. P-03 gives its claim back with them |
+| `empty_when_skipped` | `true`: a run that finishes with this step skipped, because its `when` did not hold, found nothing to do. It ends `empty`, not `ok` (ADR-0107). The step needs a `when`, and a step `on_escalation` may not carry it |
 
 P-05 Triage of contributions uses both: a step that closes spam runs only `when` the class is
 spam, and the step that keeps a contribution `ask`s the owner first

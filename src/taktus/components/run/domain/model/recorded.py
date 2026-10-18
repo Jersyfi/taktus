@@ -7,8 +7,8 @@ that whoever reads the ledger — the stream of changes of ADR-0055, every repre
 from it — reads it from one place and never derives it a second time.
 
 An entry of a kind this table does not name changes no state: `step.assigned`,
-`step.reserved`, `step.waited`, `budget.set`, `run.triggered` and every kind outside the run
-component. Such an entry is not a change of state.
+`step.reserved`, `step.waited`, `budget.set`, `run.triggered`, `run.ended` and every kind
+outside the run component. Such an entry is not a change of state.
 """
 
 from __future__ import annotations

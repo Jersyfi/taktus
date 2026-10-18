@@ -70,6 +70,8 @@ from taktus.components.catalog.application.service import (
 )
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
+from taktus.components.governance.application.service import ExpectedRuns
+from taktus.components.governance.domain.model import Incident, WatchConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.knowledge.application.service import PublishGuidesHandler
@@ -400,6 +402,14 @@ class LocalWiring:
                 measures=maturation.measures,
                 correct_result=maturation.correct,
                 propose_moves=maturation.propose,
+                expected_runs=ExpectedRuns(
+                    stores.of(Incident),
+                    stores.of(WatchConfiguration),
+                    stores.ledger_store,
+                    ledger,
+                    stores.work,
+                    clock,
+                ),
             )
             telemetry.shutdown()
 

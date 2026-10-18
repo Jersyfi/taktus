@@ -428,7 +428,7 @@ async def test_no_level_switches_off_the_stop_the_reports_or_the_escalation(leve
     # The reports: every state change of every step is in the ledger, whatever the level.
     kinds = await w.kinds(run)
     assert "step.finished:prep:succeeded" in kinds and "step.finished:check:failed" in kinds
-    assert kinds[-1] == "run.escalated::failure"
+    assert kinds[-2:] == ["run.escalated::failure", "run.ended::error"]
 
     # The emergency stop: a stop requested at a boundary halts the run at every level.
     w = World(rule("one"), rule("two", after=("one",)), level=autonomy_level)

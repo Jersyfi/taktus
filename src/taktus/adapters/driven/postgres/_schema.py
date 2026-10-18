@@ -90,6 +90,7 @@ process_version = Table(
     Column("autonomy", JSONB, nullable=False),  # level, reason, toward_next (ADR-0026)
     Column("triggers", JSONB, nullable=False),
     Column("slo", JSONB),
+    Column("expect", JSONB),  # when a run is expected (ADR-0107)
     Column("work", JSONB, nullable=False),
     Column("limits", JSONB),
     Column("inputs", JSONB, nullable=False),
@@ -248,6 +249,30 @@ backup_outcome = Table(
     Index("backup_outcome_newest", "tenant", "at"),
 )
 """Written by the backup program, read by the instance (ADR-0106)."""
+
+incident = Table(
+    "incident",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("kind", Text, nullable=False),  # run.missing, run.overdue (ADR-0107)
+    Column("process_id", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    _at("raised_at"),
+    Column("incident", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("incident_state", "tenant", "state"),
+)
+
+watch_configuration = Table(
+    "watch_configuration",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    _at("configured_at"),
+    Column("configuration", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
 
 trigger_state = Table(
     "trigger_state",
@@ -481,10 +506,20 @@ ledger_entry = Table(
     Column("adapter", Text),
     Column("consumption", JSONB),
     Column("outcome", Text),
+    Column("duration_seconds", Float),  # how long a run took, on run.ended (ADR-0107)
     Column("content_digest", Text),
     Column("rehearsal", Boolean),  # true on every entry of a rehearsal run (ADR-0030)
     PrimaryKeyConstraint("tenant", "seq"),
     Index("ledger_entry_run", "tenant", text("(refs ->> 'run_id')")),
+    # A process's entries of a kind, by time: what the watcher of expected runs reads
+    # (ADR-0107).
+    Index(
+        "ledger_entry_process",
+        "tenant",
+        text("(split_part(refs ->> 'process_version', '@', 1))"),
+        "kind",
+        "ts",
+    ),
     # A reader's position is an entry's hash; this finds its sequence number (ADR-0055 §4).
     Index("ledger_entry_hash", "tenant", "hash"),
     # The entries of some kinds, in sequence order, without the others (ADR-0105).

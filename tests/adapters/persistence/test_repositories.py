@@ -11,7 +11,11 @@ from adapters.persistence.conftest import Backend
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.decision.domain.model import RegisterEntry, Request
-from taktus.components.governance.domain.model import AnchorConfiguration
+from taktus.components.governance.domain.model import (
+    AnchorConfiguration,
+    Incident,
+    WatchConfiguration,
+)
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
 from taktus.components.reporting.domain.model import OwnerChannel, Report
@@ -37,6 +41,8 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (RegisterEntry, samples.register_entry),
     (OwnerChannel, samples.owner_channel),
     (Report, samples.report),
+    (Incident, samples.incident),
+    (WatchConfiguration, samples.watch_configuration),
 ]
 
 

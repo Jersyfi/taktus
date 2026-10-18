@@ -183,7 +183,7 @@ async def test_sigterm_mid_run_lands_on_a_boundary_and_the_next_daemon_resumes(
                 await asyncio.sleep(0.1)
         async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
             ledger = (await client.get(f"{prefix}/runs/{run.id}/ledger", headers=reader)).json()
-            assert ledger["chain"]["intact"] and ledger["entries"][-1]["kind"] == "run.finished"
+            assert ledger["chain"]["intact"] and ledger["entries"][-2]["kind"] == "run.finished"
         second.send_signal(signal.SIGTERM)
         assert await asyncio.wait_for(second.wait(), timeout=25) == 0, log.read_text()
     finally:
@@ -201,7 +201,7 @@ async def test_sigterm_mid_run_lands_on_a_boundary_and_the_next_daemon_resumes(
     assert after[: len(before)] == before, "nothing before the signal changed"
     kinds = [e.kind for e in after]
     assert kinds[len(before)] == "run.resumed"
-    assert kinds[-1] == "run.finished"
+    assert kinds[-2:] == ["run.finished", "run.ended"]
     assert sum(1 for e in after if e.kind == "step.started" and e.refs.step_id == "compute") == 2
     assert await database.verifies()
     await database.close()

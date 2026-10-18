@@ -212,6 +212,7 @@ async def test_a_run_completes_and_every_state_change_is_in_the_ledger() -> None
         "step.waited:pause:waiting_on_clock",
         "step.finished:pause:succeeded",
         "run.finished::succeeded",
+        "run.ended::ok",
     ]
     assert await h.verify()
 
@@ -325,13 +326,14 @@ async def test_stop_after_takes_effect_at_the_boundary_and_the_run_resumes() -> 
     assert [s.state for s in run.step_runs] == [StepState.SUCCEEDED] * 3
     kinds = await h.kinds(run)
     assert kinds.count("step.started:b") == 1, "a finished step is not run again"
-    assert kinds[-6:] == [
+    assert kinds[-7:] == [
         "run.resumed",
         "step.admitted:c",
         "step.started:c",
         "step.waited:c:waiting_on_clock",
         "step.finished:c:succeeded",
         "run.finished::succeeded",
+        "run.ended::ok",
     ]
     assert await h.verify()
 
@@ -547,7 +549,11 @@ async def test_a_failed_check_escalates_and_produces_nothing() -> None:
     verify = run.step_run("verify")
     assert verify.state is StepState.FAILED and verify.artifacts == () and verify.checkpoint is None
     assert "does not match '^42$'" in (verify.reason or "")
-    assert (await h.kinds(run))[-2:] == ["step.finished:verify:failed", "run.escalated::failure"]
+    assert (await h.kinds(run))[-3:] == [
+        "step.finished:verify:failed",
+        "run.escalated::failure",
+        "run.ended::error",
+    ]
 
 
 def test_a_tampered_artifact_fails_the_check() -> None:
@@ -635,5 +641,5 @@ async def test_a_worker_that_cannot_be_reached_fails_the_step_with_that_cause() 
     assert do.state is StepState.FAILED and do.assignment_id is None
     assert do.reason is not None and "could not be started" in do.reason
     kinds = [e.kind for e in await h.entries(run)]
-    assert kinds[-2:] == ["step.finished", "run.escalated"]
+    assert kinds[-3:] == ["step.finished", "run.escalated", "run.ended"]
     assert fake.assignments == [], "nothing was posted"

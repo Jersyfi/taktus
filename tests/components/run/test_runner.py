@@ -266,6 +266,7 @@ async def test_a_submitted_run_is_planned_with_its_job_until_a_runner_claims_it(
         "step.started",
         "step.finished",
         "run.finished",
+        "run.ended",
     ]
     assert await world.claimable() == [], "a completed job is gone"
 
@@ -385,6 +386,7 @@ async def test_a_runner_paused_past_its_lease_cannot_commit_the_step_it_was_insi
         "step.started",
         "step.finished",
         "run.finished",
+        "run.ended",
         "run.claim_lost",
     ]
     async with world.persistence.transaction(TENANT):

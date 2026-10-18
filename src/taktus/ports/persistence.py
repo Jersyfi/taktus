@@ -190,6 +190,21 @@ class LedgerStore(Protocol):
         without reading the chain: what a report over a growing ledger may ask every hour."""
         ...
 
+    async def of_process(
+        self, tenant: Tenant, process_id: str, kinds: Collection[str], *, since: datetime
+    ) -> Sequence[LedgerEntry]:
+        """The entries of the given kinds about any version of one process, recorded at or
+        after `since`, in sequence order, without reading the chain. A rehearsal's entries are
+        left out: they are no evidence that anything ran (ADR-0030, ADR-0107)."""
+        ...
+
+    async def latest_of_process(
+        self, tenant: Tenant, process_id: str, kinds: Collection[str], *, at_or_before: datetime
+    ) -> LedgerEntry | None:
+        """The newest entry of the given kinds about any version of one process, recorded at
+        or before the moment; None when there is none. A rehearsal's entries are left out."""
+        ...
+
     async def head(self, tenant: Tenant) -> int:
         """The sequence number of the newest entry of the tenant's chain, 0 when it has none.
         Unlike `last`, it claims nothing: a reader asks it without waiting for a writer."""

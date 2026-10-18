@@ -570,7 +570,8 @@ type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork
 WHEN = "when"
 ASK = "ask"
 ON_ESCALATION = "on_escalation"
-CONTROL_KEYS = frozenset({WHEN, ASK, ON_ESCALATION})
+EMPTY_WHEN_SKIPPED = "empty_when_skipped"
+CONTROL_KEYS = frozenset({WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED})
 
 
 class Ask(Value):
@@ -596,11 +597,20 @@ class Control(Value):
     on_escalation: bool = False
     """The step runs only when the run escalates, and asks nobody: the run has gone to a person
     already (ADR-0097)."""
+    empty_when_skipped: bool = False
+    """A run that finished with this step skipped, because its `when` did not hold, found
+    nothing to do: it ends `empty`, not `ok` (ADR-0107 §2)."""
 
     @model_validator(mode="after")
     def _a_step_on_escalation_asks_nobody(self) -> Control:
         if self.on_escalation and self.ask is not None:
             raise ValueError("a step that runs on escalation asks nobody")
+        if self.empty_when_skipped and not self.when:
+            raise ValueError(
+                "a step marks its run empty when its `when` does not hold; it has none"
+            )
+        if self.empty_when_skipped and self.on_escalation:
+            raise ValueError("a step that runs on escalation never marks a finished run empty")
         return self
 
     def referenced(self) -> list[Any]:
@@ -684,6 +694,15 @@ def escalation_steps(work: Mapping[StepId, Mapping[str, Any]]) -> frozenset[Step
     """The steps whose work says `on_escalation: true` (ADR-0097)."""
     return frozenset(
         step_id for step_id, given in work.items() if given and given.get(ON_ESCALATION) is True
+    )
+
+
+def empty_markers(work: Mapping[StepId, Mapping[str, Any]]) -> frozenset[StepId]:
+    """The steps whose work says `empty_when_skipped: true` (ADR-0107 §2)."""
+    return frozenset(
+        step_id
+        for step_id, given in work.items()
+        if given and given.get(EMPTY_WHEN_SKIPPED) is True
     )
 
 

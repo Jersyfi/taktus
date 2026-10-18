@@ -233,7 +233,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   across a restart of the leader — because the run's identifier is derived from the trigger
   and the slot and the engine refuses a run that exists; slots missed while nobody led start
   one run (`tests/integration/test_time_triggers.py`). The tick also makes the capacity
-  report; deadlines and budget windows arrive with governance.
+  report, and once a minute it watches that every expected run happened: one that did not
+  raises an incident (`composition/expected_runs.py`, ADR-0107,
+  `tests/integration/test_expected_runs.py`); deadlines and budget windows arrive with
+  governance.
 - **`automation`** leads through the leadership port under its own name, as the scheduler does,
   and while it leads reacts to events (`composition/reactions.py`, ADR-0048). The intake writes
   the outbox entry `intake.accepted` in the transaction that keeps an event (`ports/outbox.py`);

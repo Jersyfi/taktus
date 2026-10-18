@@ -1,0 +1,14 @@
+{
+  "seq": 9,
+  "ts": "2026-10-18T06:02:41Z",
+  "kind": "run.ended",
+  "prev_hash": "sha256:690396b0e760bb1a655c81fe146dd04fdd7ed9686a1916cf90e4c223914ae917",
+  "hash": "sha256:5b1f0d4c9a7e3b2d8f6a0c1e4b7d9f2a5c8e1b4d7f0a3c6e9b2d5f8a1c4e7b0d",
+  "refs": {
+    "tenant": "acme",
+    "process_version": "watch-payments@3",
+    "run_id": "run_17351"
+  },
+  "outcome": "empty",
+  "duration_seconds": 41.5
+}

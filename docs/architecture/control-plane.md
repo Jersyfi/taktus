@@ -289,6 +289,22 @@ Three words, kept apart (ADR-0021):
 | **result defect** | a run completed and reported success, but its result is wrong | nowhere in the states; only a check of the result finds it (UC-4.10, `0.5.0`) |
 | **incident** | the tracked object above either: severity, timeline, affected scope, remediation plan, addressees, closure | raised and delivered into the organisation's own tracking system (UC-6.8, `0.5.0`) |
 
+**Every run ends `ok`, `empty` or `error`, with its duration** (ADR-0107). `run.ended` is
+written beside `run.finished` and `run.escalated`, in the same transaction, with the time from
+the run's creation in `duration_seconds`. An escalated run ends `error`. A finished run ends
+`empty` when a step that marks it so (`empty_when_skipped`) was skipped, and `ok` otherwise. A
+schedule trigger whose `each` list was empty records `trigger.empty`.
+
+**A run that was expected and did not happen raises an incident**, the first source of one
+(ADR-0107, UC-4.16). A process version declares when a run is expected (`expect`), or inherits
+its schedule triggers. While it leads, the scheduler looks once a minute
+(`composition/expected_runs.py`). A rule over the expectation and the ledger finds a slot that
+no run answered within the tenant's grace period, a gap that passed without a run, and a run
+that did not end within its bound. It raises an incident in the governance component, recorded
+as `incident.raised`. A further miss and a run that happened late are recorded on it, and a
+person closes it (`taktusctl incident`). A process whose ends are mostly `empty` is reported as
+`watch.empty_share`. Delivering the incident, its severity and its report are UC-6.8.
+
 The model above handles failures. Result defects need a record that this version writes and a
 detection that `0.5.0` adds; the record is the provenance chain of §6.1.
 

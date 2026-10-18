@@ -77,12 +77,15 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
+    ExpectedRuns,
     ReportCapacity,
     ReportCapacityHandler,
 )
+from taktus.components.governance.domain.model import Incident, WatchConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.ledger.application.service import ChainedLedger
+from taktus.components.process.application.service.expectations import ExpectationsHandler
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.reactions import ReactionsHandler
 from taktus.components.process.application.service.register_version import (
@@ -127,6 +130,7 @@ from taktus.composition.execution import (
     telemetry_of,
     unit_environments,
 )
+from taktus.composition.expected_runs import ExpectedRunsWatch, expected_runs_tick
 from taktus.composition.findings import RepositoryChannel, RunBlocks, findings_tick
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
@@ -195,6 +199,9 @@ class Wired:
     """The capacity report the scheduler runs every `TAKTUS_CAPACITY_INTERVAL_SECONDS`."""
     triggers: Triggers
     """The time triggers the scheduler fires on every tick while it leads (ADR-0035)."""
+    expected: ExpectedRunsWatch
+    """The watch over expected runs the scheduler makes once a minute while it leads: a run
+    that did not happen raises an incident (ADR-0107)."""
     reactions: Reactions
     """The event reactions the automation role makes on every pass while it leads (ADR-0048)."""
     findings: ProductFindings
@@ -647,6 +654,22 @@ async def wire(
                     ),
                     shape=shape,
                 ),
+                expected=ExpectedRunsWatch(
+                    ExpectationsHandler(
+                        PostgresRepository(persistence, Process),
+                        PostgresRepository(persistence, ProcessVersion),
+                        persistence,
+                    ),
+                    ExpectedRuns(
+                        PostgresRepository(persistence, Incident),
+                        PostgresRepository(persistence, WatchConfiguration),
+                        ledger_store,
+                        ledger,
+                        persistence,
+                        clock,
+                    ),
+                    clock,
+                ),
                 triggers=Triggers(
                     tenants=tenants,
                     triggers=TriggersHandler(
@@ -823,9 +846,12 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And what needs a person's action: a capacity crossing, a lost claim, a failed or
         # missing backup (ADR-0106).
         report_alerts = alerts_tick(wired.alerts, wired.tenants, wired.clock)
+        # And it watches that every expected run happened, by rule (ADR-0107).
+        watch_expected = expected_runs_tick(wired.expected, wired.tenants, wired.clock)
 
         async def scheduled() -> None:
             await wired.triggers.tick()
+            await watch_expected()
             await tick()
             await send_findings()
             await report_interfaces()

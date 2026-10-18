@@ -19,6 +19,7 @@ from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import (
     AnchorsInForce,
     ConfigureAnchorsHandler,
+    ExpectedRuns,
     ReportCapacityHandler,
 )
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
@@ -110,6 +111,9 @@ class Services:
     propose_moves: ProposeMovesHandler | None = None
     """Proposals to move a step to a trained model, on evidence, through the instance's
     decision port (`taktusctl maturation propose`)."""
+    expected_runs: ExpectedRuns | None = None
+    """The incidents the watch over expected runs raised, closed by a person, and the
+    tenant's watch configuration (`taktusctl incident`, ADR-0107)."""
 
 
 @dataclass(frozen=True)

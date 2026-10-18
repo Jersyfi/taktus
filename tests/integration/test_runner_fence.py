@@ -232,6 +232,7 @@ async def test_a_runner_paused_past_its_lease_cannot_commit_the_step_it_was_insi
         "step.started",
         "step.finished",
         "run.finished",
+        "run.ended",
         "run.claim_lost",
     ], "B executed both steps from the boundary A left"
     async with a.persistence.transaction(TENANT):

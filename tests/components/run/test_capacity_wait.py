@@ -121,10 +121,11 @@ async def test_a_wait_beyond_the_step_s_ceiling_escalates_with_the_cause() -> No
     assert fake.assignments == []
 
     kinds = await h.kinds(run)
-    assert kinds[-3:] == [
+    assert kinds[-4:] == [
         "step.waited:do:at_capacity",
         "step.finished:do:at_capacity",
         "run.escalated::capacity",
+        "run.ended::error",
     ]
     waited = next(e for e in await h.entries(run) if e.kind == "step.waited")
     record = await document(h, waited.content_digest)

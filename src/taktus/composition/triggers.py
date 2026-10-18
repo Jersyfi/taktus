@@ -18,6 +18,10 @@ schedule (ADR-0040) — as the identity component places it at the moment of fir
 nobody registered, or registered by an identity the component no longer knows, does not fire,
 and every tick says so.
 
+**A firing that finds nothing.** A trigger whose `each` list names no item starts no run. It
+records `trigger.empty`, with the duration of the read: the watcher of expected runs counts it as
+a run that happened and ended `empty` (ADR-0107).
+
 This is wiring, because a firing crosses three components — process, command and run — and only
 the composition root may hold them all (`composition/README.md`).
 """
@@ -51,6 +55,7 @@ from taktus.shared.v1 import Command, Intent, LedgerRefs, ReplyTo
 
 CHANNEL = "channel.schedule"
 REFUSED = "trigger.refused"
+EMPTY = "trigger.empty"
 
 log = structlog.get_logger("taktusd")
 
@@ -119,6 +124,7 @@ class Triggers:
             )
             return []
         identity = placed.identity
+        began = self._clock.now()
         try:
             items = await self._items(tenant, firing, identity)
         except TriggerFailed as error:
@@ -128,6 +134,11 @@ class Triggers:
                 reason=str(error),
             )
             return []
+        if not items:
+            # The firing ran, read its list and found nothing: a run that happened and ended
+            # `empty`, which the watcher of expected runs counts (ADR-0107 §2).
+            took = (self._clock.now() - began).total_seconds()
+            await self._empty(tenant, firing, identity, round(max(took, 0.0), 3))
         started: list[str] = []
         runs: list[str] = []
         for item in items:
@@ -248,6 +259,28 @@ class Triggers:
                 actions=version.autonomy.action_levels,
             )
         )
+
+    async def _empty(self, tenant: Tenant, firing: Firing, identity: str, duration: float) -> None:
+        log.info(
+            "a time trigger fired and its list named nothing to start",
+            tenant=tenant,
+            trigger=firing.state.id,
+            slot=firing.slot.isoformat(),
+        )
+        canonical = json.dumps(firing.triggered(None), ensure_ascii=False, sort_keys=True)
+        async with self._work.transaction(tenant):
+            await self._ledger.record(
+                tenant,
+                Fact(
+                    kind=EMPTY,
+                    refs=LedgerRefs(
+                        tenant=tenant, process_version=firing.version.ref, actor=identity
+                    ),
+                    outcome="empty",
+                    duration_seconds=duration,
+                    content_digest="sha256:" + hashlib.sha256(canonical.encode()).hexdigest(),
+                ),
+            )
 
     async def _refused(
         self, tenant: Tenant, firing: Firing, item: Any, identity: str, reason: str

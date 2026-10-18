@@ -10,6 +10,7 @@ from taktus.components.process.domain.model.event import (
 from taktus.components.process.domain.model.process import (
     Each,
     Edge,
+    Expect,
     InputDeclaration,
     Process,
     ProcessVersion,
@@ -31,6 +32,7 @@ __all__ = [
     "Each",
     "Edge",
     "Event",
+    "Expect",
     "Fields",
     "Firing",
     "InputDeclaration",
