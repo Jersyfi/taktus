@@ -49,7 +49,10 @@ Two workers exist. The reference worker `script` runs shell commands and no AI. 
 worker (`workers/claudecode/`, named by capability everywhere else) wraps a coding agent: a
 step per completed tool call, tokens per step, money at the end, two authentication modes,
 and a session that expires halts at the last boundary. It passes the same suite, faults
-included, against a stand-in for the agent; its README states what it cannot do.
+included, against a stand-in for the agent; its README states what it cannot do. Both coding
+workers hand their agent the target repository's `AGENTS.md`, the open convention's file of a
+repository's rules for coding agents, in its brief before the task, once per session. No worker
+depends on a file named after one agent's product (ADR-0113 §3).
 
 ### 2.2 Connector
 

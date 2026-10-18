@@ -22,6 +22,8 @@ items, as an expired login does; `FAKE_AGENT_WINDOW_AFTER=N` reports the usage l
 after N completed items. Its usage is fixed and overruns the worker's default estimate — about
 620 000 input tokens for the whole plan against 60 000 — so that the worker can be shown to halt
 when a running total reaches its limit (W-14). `FAKE_AGENT_USAGE_FACTOR` scales every count.
+`FAKE_AGENT_BRIEF_PATH` names a file it writes its prompt and its arguments to, so that a test
+can read the brief the worker sent (ADR-0113).
 """
 
 from __future__ import annotations
@@ -175,7 +177,12 @@ def parse(argv: list[str]) -> Json:
 
 
 def main(argv: list[str] | None = None) -> int:
-    options = parse(sys.argv[1:] if argv is None else argv)
+    arguments = sys.argv[1:] if argv is None else argv
+    options = parse(arguments)
+    if target := os.environ.get("FAKE_AGENT_BRIEF_PATH"):
+        # What this invocation was given, so that a test can read the brief the worker sent.
+        brief = {"prompt": options["prompt"], "arguments": arguments}
+        Path(target).write_text(json.dumps(brief), encoding="utf-8")
     home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
     logged_in = bool(os.environ.get("CODEX_API_KEY")) or (home / "auth.json").is_file()
     thread = options["resume"] or str(uuid.uuid4())
