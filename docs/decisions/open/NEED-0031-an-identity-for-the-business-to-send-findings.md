@@ -1,7 +1,7 @@
 # NEED-0031 — An identity for the business to send findings
 
 **Kind:** credential
-**Raised in:** the pull request that closes [#446](https://github.com/Jersyfi/taktus/issues/446)
+**Raised in:** [#534](https://github.com/Jersyfi/taktus/pull/534)
 **Issue:** [#533](https://github.com/Jersyfi/taktus/issues/533)
 **Needed by:** 2026-10-31
 **Foreseeable since:** #446, which builds the path on which an instance outside the project sends its findings to this repository
