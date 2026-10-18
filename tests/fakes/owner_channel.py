@@ -15,7 +15,7 @@ from typing import Any
 
 from fakes.clock import FakeClock
 from fakes.identity import Directory, directory
-from taktus.adapters.driven.memory import MemoryRepository
+from taktus.adapters.driven.memory import MemoryPersistence, MemoryRepository
 from taktus.components.reporting.application.query import LevelQueries
 from taktus.components.reporting.application.service import (
     Answer,
@@ -244,11 +244,14 @@ def owner_channel(
     secrets: tuple[str, ...] = (SECRET,),
     environment: Mapping[str, str] | None = None,
     levels: LevelRecords | None = None,
+    persistence: MemoryPersistence | None = None,
+    clock: FakeClock | None = None,
 ) -> OwnerChannel:
     """With `levels`, the owner's conversation answers a request for a representation from
-    those records (ADR-0069)."""
-    clock = FakeClock()
-    identity = directory((TENANT,), clock=clock)
+    those records (ADR-0069). With `persistence` and `clock`, it shares them with whatever else
+    a test wires over them."""
+    clock = clock or FakeClock()
+    identity = directory((TENANT,), clock=clock, persistence=persistence)
     persistence = identity.persistence
 
     def of(kind: Any) -> Any:

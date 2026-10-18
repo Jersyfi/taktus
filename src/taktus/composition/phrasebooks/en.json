@@ -62,5 +62,8 @@
   "rollback_read": "I read this as: make version {version} of {process} current again, as a new version.",
   "commissioned": "Version {version} of {process} is active.",
   "rolled_back": "{process} is at version {version} again, as version {new}.",
-  "act_refused": "That cannot be done now; the process's page says why."
+  "act_refused": "That cannot be done now; the process's page says why.",
+  "signals": "Signals",
+  "intervene": "start {process}",
+  "intervened": "{process} started as run {run}."
 }

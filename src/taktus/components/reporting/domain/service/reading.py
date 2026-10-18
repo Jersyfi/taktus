@@ -18,11 +18,12 @@ and is asked back.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Literal
 
 from pydantic import Field, model_validator
 
-from taktus.components.reporting.domain.model import Phrasebook
+from taktus.components.reporting.domain.model import Offered, Phrasebook
 from taktus.shared.v1 import Value
 
 _AROUND = " \t\r\n.,;:!?\"'„“”«»()"
@@ -34,6 +35,14 @@ def normalised(text: str) -> str:
 
 def done(text: str, book: Phrasebook) -> bool:
     return normalised(text) in book.done_words
+
+
+def offer(text: str, offers: Iterable[Offered]) -> str | None:
+    """The identifier of the one offered answer whose label is the whole message; None when it
+    is none of them. How a reply to the daily report of signals is read (ADR-0109 §6)."""
+    said = normalised(text)
+    found = [o.id for o in offers if normalised(o.label) == said]
+    return found[0] if len(found) == 1 else None
 
 
 def confirmation(text: str, book: Phrasebook) -> bool | None:

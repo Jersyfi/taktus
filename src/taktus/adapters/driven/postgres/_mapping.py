@@ -1263,6 +1263,32 @@ class WatchConfigurationMapper:
         return [dict(row.configuration) for row in rows]
 
 
+class CorridorMapper:
+    """One row per version of a corridor (ADR-0109 §3). A version is inserted once and never
+    changed: the application role may not update a row, and a second insert under the same
+    identifier fails."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.corridor, tenant, id)
+        return None if row is None else dict(row.corridor)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await connection.execute(
+            insert(s.corridor).values(
+                tenant=tenant,
+                id=document["id"],
+                signal=document["signal"],
+                version=document["version"],
+                changed_at=_at(document["changed_at"]),
+                corridor=document,
+            )
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.corridor, tenant, s.corridor.c.signal, s.corridor.c.version)
+        return [dict(row.corridor) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -1286,4 +1312,5 @@ MAPPERS: dict[str, Mapper] = {
     "pending_act": PendingActMapper(),
     "incident": IncidentMapper(),
     "watch_configuration": WatchConfigurationMapper(),
+    "corridor": CorridorMapper(),
 }

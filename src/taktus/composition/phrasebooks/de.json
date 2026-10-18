@@ -62,5 +62,8 @@
   "rollback_read": "Ich verstehe das so: Version {version} von {process} wird wieder aktuell, als neue Version.",
   "commissioned": "Version {version} von {process} ist aktiv.",
   "rolled_back": "{process} ist wieder bei Version {version}, als Version {new}.",
-  "act_refused": "Das geht gerade nicht; die Seite des Prozesses sagt, warum."
+  "act_refused": "Das geht gerade nicht; die Seite des Prozesses sagt, warum.",
+  "signals": "Signale",
+  "intervene": "starte {process}",
+  "intervened": "{process} läuft als Lauf {run}."
 }

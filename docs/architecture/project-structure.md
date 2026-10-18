@@ -24,7 +24,7 @@ boundaries, `import-linter` contracts and `tests/architecture` are not optional 
 | `knowledge` | knowledge sources, embeddings, citations. Its package's first content is the guides beyond the repository (UC-13.6, ADR-0065): the manifest, the rendering by rule, the seven states a page in a knowledge system can be in, and the publishing through `knowledge.pages` |
 | `value` | value ledger, cost and benefit entries, revert analysis |
 | `ledger` | hash chain, verification, export |
-| `reporting` | views and who may see them, reports and their delivery, the explanation of an action on request; owns no figure — every number is read from the component that produces it (ADR-0029). Its package arrived with the product finding (UC-6.12, ADR-0046); the owner-facing channel — a tenant's configuration and phrasebook, a report to the owner in three renderings, the answer in the channel read, reflected and confirmed — is in it too (ADR-0045), and so is the broken interface noticed from the run's failed calls (ADR-0047), and what needs a person's action — a capacity crossing to *act*, a lost claim, a failed or missing backup — noticed from recorded facts (ADR-0106) |
+| `reporting` | views and who may see them, reports and their delivery, the explanation of an action on request; owns no figure — every number is read from the component that produces it (ADR-0029). Its package arrived with the product finding (UC-6.12, ADR-0046); the owner-facing channel — a tenant's configuration and phrasebook, a report to the owner in three renderings, the answer in the channel read, reflected and confirmed — is in it too (ADR-0045), and so is the broken interface noticed from the run's failed calls (ADR-0047), and what needs a person's action — a capacity crossing to *act*, a lost claim, a failed or missing backup — noticed from recorded facts (ADR-0106), and the signals judged against their corridors, with the daily report of what deviates (ADR-0109) |
 
 **Rules between components:** no direct import · communication through events · reading another
 component's data is allowed, writing is not · what is shared lives in the **language-neutral** shared
@@ -235,8 +235,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   one run (`tests/integration/test_time_triggers.py`). The tick also makes the capacity
   report, and once a minute it watches that every expected run happened: one that did not
   raises an incident (`composition/expected_runs.py`, ADR-0107,
-  `tests/integration/test_expected_runs.py`); deadlines and budget windows arrive with
-  governance.
+  `tests/integration/test_expected_runs.py`), and judges every signal against its corridor,
+  raising the daily report from 06:00 UTC (`composition/signals.py`, ADR-0109); deadlines and
+  budget windows arrive with governance.
 - **`automation`** leads through the leadership port under its own name, as the scheduler does,
   and while it leads reacts to events (`composition/reactions.py`, ADR-0048). The intake writes
   the outbox entry `intake.accepted` in the transaction that keeps an event (`ports/outbox.py`);

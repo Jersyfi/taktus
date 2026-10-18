@@ -15,6 +15,11 @@ Every such message is answered in that thread, once, and is never acted on silen
    phrasebook's words for yes; a word for no rejects it, and the report is open again. A
    decision is filed as the decision component's register entry; any other answer on the
    report itself. Anything else written while a reading waits is read as a new answer.
+4. **An intervention is a command** (ADR-0109 §6). The daily report of signals offers the
+   processes a person may start from it. A reply whose whole message is one of their labels is
+   read as that start, sent back, and only its confirmation starts the process, on behalf of
+   the person who confirmed it. The report is filed with the run as its record. A start that is
+   refused leaves the report open.
 
 What the person wrote is never quoted back and never stored here: the report keeps the answer
 it confirmed and where it was given — the channel, the address and the thread.
@@ -40,6 +45,7 @@ from taktus.components.reporting.domain.model import (
     ReportKind,
     ReportState,
 )
+from taktus.components.reporting.domain.service import corridors
 from taktus.components.reporting.domain.service import reading as rules
 from taktus.components.reporting.domain.service.rendering import (
     asked_back,
@@ -53,6 +59,7 @@ from taktus.components.reporting.ports import (
     SecretValues,
     Sent,
 )
+from taktus.components.reporting.ports.signals import InterventionRefused, Interventions
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -76,7 +83,7 @@ class AnswerInChannel:
 class Answer:
     report: Report
     outcome: str
-    """`not_filed`, `closed`, `asked_back`, `reflected`, `reread` or `filed`."""
+    """`not_filed`, `closed`, `asked_back`, `reflected`, `reread`, `refused` or `filed`."""
     replied: bool
 
 
@@ -91,7 +98,9 @@ class AnswerInChannelHandler:
         deliveries: Deliveries,
         decisions: DecisionAnswers,
         secrets: SecretValues,
+        interventions: Interventions | None = None,
     ) -> None:
+        self._interventions = interventions
         self._reports = reports
         self._channels = channels
         self._work = work
@@ -100,6 +109,10 @@ class AnswerInChannelHandler:
         self._deliveries = deliveries
         self._decisions = decisions
         self._secrets = secrets
+
+    def intervene_with(self, interventions: Interventions) -> None:
+        """What starts a confirmed intervention: bound once the run engine exists."""
+        self._interventions = interventions
 
     async def execute(self, command: AnswerInChannel) -> Answer | None:
         """The answer, or None when the message answers no report: it is not this
@@ -134,6 +147,11 @@ class AnswerInChannelHandler:
                     command, report, "closed" if error.closed else "not_filed", said, who
                 )
             option, kept = read.option, read.kept
+        elif report.kind is ReportKind.SIGNALS:
+            starts = [o for o in report.offered if o.id != DONE]
+            option, kept = rules.offer(command.text, starts), False
+            if option is None and rules.done(command.text, book):
+                option = DONE
         else:
             option, kept = (DONE, False) if rules.done(command.text, book) else (None, False)
         if option is None:
@@ -188,6 +206,38 @@ class AnswerInChannelHandler:
                 }
             )
             return await self._settle(command, reopened, "reread", book.reread)
+        said = filed(reading.answer, book)
+        process = (
+            corridors.intervened(reading.answer) if report.kind is ReportKind.SIGNALS else None
+        )
+        if process is not None:
+            try:
+                if self._interventions is None:
+                    raise InterventionRefused("no intervention can be started here")
+                entry = await self._interventions.start(
+                    command.tenant,
+                    process,
+                    by=reading.by,
+                    report=report.id,
+                    channel=command.channel,
+                    address=command.address,
+                )
+            except InterventionRefused:
+                refused = report.model_copy(
+                    update={
+                        "state": ReportState.OPEN,
+                        "reading": None,
+                        "history": (
+                            *report.history,
+                            Happened(at=now, event="intervention_refused", by=reading.by),
+                        ),
+                    }
+                )
+                return await self._settle(
+                    command, refused, "refused", book.act_refused or book.not_filed
+                )
+            if book.intervened is not None:
+                said = book.intervened.format(process=process, run=entry)
         answer = Filed(answer=reading.answer, by=reading.by, at=now, record=entry, where=where)
         done = report.model_copy(
             update={
@@ -197,7 +247,7 @@ class AnswerInChannelHandler:
                 "history": (*report.history, Happened(at=now, event="filed", by=reading.by)),
             }
         )
-        return await self._settle(command, done, "filed", filed(reading.answer, book))
+        return await self._settle(command, done, "filed", said)
 
     async def _close(
         self, command: AnswerInChannel, report: Report, outcome: str, said: str, who: str | None

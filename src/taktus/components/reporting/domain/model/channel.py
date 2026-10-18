@@ -31,6 +31,8 @@ PLACEHOLDERS: dict[str, frozenset[str]] = {
     "rollback_read": frozenset({"process", "version"}),
     "commissioned": frozenset({"process", "version"}),
     "rolled_back": frozenset({"process", "version", "new"}),
+    "intervene": frozenset({"process"}),
+    "intervened": frozenset({"process", "run"}),
 }
 """The sentences that take values, and the values each must use — no more, no fewer."""
 
@@ -108,6 +110,13 @@ class Phrasebook(Value):
     act_refused: str | None = Field(default=None, min_length=1)
     """Said when a change, a rehearsal, a commissioning or a rollback cannot be done; the web
     app's page of the process says why."""
+    signals: str | None = Field(default=None, min_length=1)
+    """The heading of the daily report of signals (ADR-0109). None: the title alone."""
+    intervene: str | None = Field(default=None, min_length=1)
+    """The label of an intervention the daily report offers, with `{process}`: what a person
+    answers to start it. None: the report offers none."""
+    intervened: str | None = Field(default=None, min_length=1)
+    """Said when a confirmed intervention started, with `{process}` and `{run}`."""
 
     @model_validator(mode="after")
     def _readable(self) -> Phrasebook:

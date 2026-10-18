@@ -74,6 +74,13 @@ from taktus.components.reporting.domain.model.report import (
     ReportKind,
     ReportState,
 )
+from taktus.components.reporting.domain.model.signal import (
+    Corridor,
+    Judged,
+    Level,
+    Recorded,
+    Subject,
+)
 
 __all__ = [
     "ID_PREFIXES",
@@ -89,6 +96,7 @@ __all__ = [
     "CapacityCrossing",
     "Change",
     "ClaimLost",
+    "Corridor",
     "CountedRuns",
     "DecisionFacts",
     "Delivery",
@@ -100,8 +108,10 @@ __all__ = [
     "Finding",
     "Happened",
     "InterfaceCause",
+    "Judged",
     "Lack",
     "LackCause",
+    "Level",
     "Link",
     "Occurrence",
     "Offered",
@@ -117,6 +127,7 @@ __all__ = [
     "ProcessSummary",
     "Reader",
     "Reading",
+    "Recorded",
     "Report",
     "ReportKind",
     "ReportState",
@@ -135,6 +146,7 @@ __all__ = [
     "SnapshotStep",
     "StateAfter",
     "StepFacts",
+    "Subject",
     "TaskDestination",
     "VersionRef",
     "Wait",

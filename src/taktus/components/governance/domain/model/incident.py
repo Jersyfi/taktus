@@ -1,5 +1,7 @@
 """An incident, and the tenant's configuration of the watch that raises one (ADR-0107, ADR-0021).
 
+A second source is a signal's corridor: a value beyond its red threshold (ADR-0109 §4).
+
 An **incident** is the tracked object above a failure (ADR-0021 §1). The first source of one is
 the watcher of expected runs: a run that was expected and did not happen, or a run that did not
 end within its bound. It names the process and its version, the expected time, the last run that
@@ -29,6 +31,8 @@ class IncidentKind(StrEnum):
     """A run that was expected did not happen."""
     OVERDUE = "run.overdue"
     """A run that started did not end within its bound."""
+    SIGNAL_RED = "signal.red"
+    """A signal's value lay beyond the red threshold of its corridor (ADR-0109 §4)."""
 
 
 class IncidentState(StrEnum):
@@ -50,13 +54,14 @@ class Happening(Value):
     """One event of an incident's timeline."""
 
     at: datetime
-    what: Literal["missed", "happened", "closed"]
+    what: Literal["missed", "happened", "closed", "red"]
     expected_at: datetime | None = None
-    """For `missed`: when the run was expected."""
+    """For `missed`: when the run was expected. For `red`: when the red value was recorded."""
     deadline: datetime | None = None
     """For `missed`: the expected time plus the grace period, after which it counted as missed."""
     run: RunSeen | None = None
-    """For `happened`: the run that happened after the miss."""
+    """For `happened`: the run that happened after the miss. For `red`: the run that measured
+    the further red value."""
 
 
 class Incident(Value):
@@ -66,13 +71,15 @@ class Incident(Value):
     process_id: str = Field(min_length=1)
     process_version: str = Field(min_length=1)
     expected_at: datetime
-    """When the run was expected to start (missing), or to have ended (overdue)."""
+    """When the run was expected to start (missing), or to have ended (overdue); when the red
+    value was recorded (signal)."""
     last_run: RunSeen | None = None
     """The last run of the process that did happen before the miss; None when none did."""
     run_id: str | None = Field(default=None, min_length=1)
     """For an overdue run: the run that has not ended."""
     rule: str = Field(min_length=1)
-    """The rule that fired: `expected.slot`, `expected.gap` or `expected.bound`."""
+    """The rule that fired: `expected.slot`, `expected.gap`, `expected.bound` or
+    `corridor.red`."""
     facts: Mapping[str, str | float | None] = Field(default_factory=dict)
     """What the rule read, and the thresholds it compared with (ADR-0023 §1)."""
     raised_at: datetime
@@ -89,6 +96,10 @@ class Incident(Value):
         return self._with(
             Happening(at=at, what="missed", expected_at=expected_at, deadline=deadline)
         )
+
+    def red_again(self, run: RunSeen, at: datetime) -> Incident:
+        """A further red value of the same signal, recorded on its open incident."""
+        return self._with(Happening(at=at, what="red", expected_at=run.at, run=run))
 
     def happened(self, run: RunSeen, at: datetime) -> Incident:
         return self._with(Happening(at=at, what="happened", run=run))

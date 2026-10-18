@@ -305,6 +305,17 @@ as `incident.raised`. A further miss and a run that happened late are recorded o
 person closes it (`taktusctl incident`). A process whose ends are mostly `empty` is reported as
 `watch.empty_share`. Delivering the incident, its severity and its report are UC-6.8.
 
+**A signal's red value raises an incident too** (ADR-0109, UC-6.13). A signal is the result of
+one step of method `rule` or `statistics`, exact or sourced, with a provenance record. Its
+corridor is the tenant's configuration: a yellow and a red threshold, as a multiple of the
+median of the step's own earlier results or as fixed bounds. A person changes it, as a new
+version (`taktusctl signal`); a run or a worker cannot. While it leads, the scheduler judges the
+newest value of each signal once a minute (`composition/signals.py`). A red value raises an
+incident of kind `signal.red` and reaches the owner's channel at once. From 06:00 UTC it raises
+the daily report: every signal outside its corridor and every one not measured, each line with
+its run, its step and its case. A reply that names an offered intervention is read back, and its
+confirmation starts the process as a command for the person who confirmed it.
+
 The model above handles failures. Result defects need a record that this version writes and a
 detection that `0.5.0` adds; the record is the provenance chain of §6.1.
 
