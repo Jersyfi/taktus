@@ -181,6 +181,7 @@ class ProcessVersionMapper:
                 "autonomy": document["autonomy"],
                 "triggers": document.get("triggers", []),
                 "slo": document.get("slo"),
+                "expect": document.get("expect"),
                 "work": document.get("work", {}),
                 "limits": document.get("limits"),
                 "inputs": document.get("inputs", {}),
@@ -224,6 +225,7 @@ class ProcessVersionMapper:
                 "steps": [_step_from(step) for step in steps],
                 "triggers": row.triggers,
                 "slo": row.slo,
+                "expect": row.expect,
                 "work": row.work,
                 "limits": row.limits,
                 "inputs": row.inputs,
@@ -1207,6 +1209,60 @@ class PendingActMapper:
         return [dict(row.act) for row in rows]
 
 
+class IncidentMapper:
+    """One row per incident (ADR-0107): the incident as a document, and beside it the columns a
+    list of the open ones is read by. A row is never deleted: its state moves on."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.incident, tenant, id)
+        return None if row is None else dict(row.incident)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.incident,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "kind": document["kind"],
+                "process_id": document["process_id"],
+                "state": document.get("state", "open"),
+                "raised_at": _at(document["raised_at"]),
+                "incident": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.incident, tenant, s.incident.c.raised_at, s.incident.c.id)
+        return [dict(row.incident) for row in rows]
+
+
+class WatchConfigurationMapper:
+    """One row per tenant that configured its watch; the configuration stays a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.watch_configuration, tenant, id)
+        return None if row is None else dict(row.configuration)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.watch_configuration,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "configured_at": _at(document["configured_at"]),
+                "configuration": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.watch_configuration, tenant, s.watch_configuration.c.id)
+        return [dict(row.configuration) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -1228,4 +1284,6 @@ MAPPERS: dict[str, Mapper] = {
     "report": ReportMapper(),
     "proposal": ProposalMapper(),
     "pending_act": PendingActMapper(),
+    "incident": IncidentMapper(),
+    "watch_configuration": WatchConfigurationMapper(),
 }

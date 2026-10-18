@@ -132,6 +132,7 @@ from taktus.components.run.domain.model import (
     INTERRUPTIBLE,
     PROCEED,
     RESUMABLE,
+    RUN_ENDED,
     Anchoring,
     Ask,
     BacklogRule,
@@ -144,6 +145,7 @@ from taktus.components.run.domain.model import (
     ConnectorRule,
     ConstantRule,
     Control,
+    Ended,
     ExtractRule,
     LlmWork,
     MlWork,
@@ -170,6 +172,7 @@ from taktus.components.run.domain.model import (
     artifact_references,
     block,
     control_of,
+    empty_markers,
     parse_work,
     referenced_values,
     references,
@@ -1220,7 +1223,26 @@ class RunEngine:
         if cause is not None:
             span.set_attribute("run.cause", cause)
         outcome = "succeeded" if state is RunState.FINISHED else str(cause)
-        return await self._commit(run.to(state, cause, reason), f"run.{state}", outcome=outcome)
+        ended: str | None = None
+        if state is RunState.ESCALATED:
+            ended = Ended.ERROR  # whatever its steps returned (ADR-0107 §2)
+        elif state is RunState.FINISHED:
+            ended = Ended.EMPTY if await self._found_nothing(run) else Ended.OK
+        return await self._commit(
+            run.to(state, cause, reason), f"run.{state}", outcome=outcome, ended=ended
+        )
+
+    async def _found_nothing(self, run: Run) -> bool:
+        """Whether a step that marks its run empty was skipped because its `when` did not
+        hold: the result it settled with says so (ADR-0088, ADR-0107 §2)."""
+        marked = empty_markers(run.work)
+        if not marked:
+            return False
+        results, _ = await self._results(run, set(marked))
+        return any(
+            isinstance(result, Mapping) and result.get("skipped") is True
+            for result in results.values()
+        )
 
     async def _execute_step(self, run: Run, step: Step, step_run: StepRun) -> tuple[Run, StepRun]:
         async with self._telemetry.span(
@@ -3455,6 +3477,7 @@ class RunEngine:
         digest: Digest | None = None,
         decision: str | None = None,
         interface: str | None = None,
+        ended: str | None = None,
     ) -> Run:
         """One transaction: the run as it now is, and — when `kind` is given — the ledger entry
         that says what changed. Either both land or neither does. A step that finished with a
@@ -3462,7 +3485,8 @@ class RunEngine:
         to `enqueue` lands in it too. `new` refuses a run that exists already (`RunExists`);
         `trigger` records the trigger that started the run as `run.triggered`; `interface`
         records a failed call that speaks about its interface as `interface.failed`, beside the
-        step's entry (ADR-0047)."""
+        step's entry (ADR-0047); `ended` records how the run ended, `ok`, `empty` or `error`, as
+        `run.ended` with its duration from its creation (ADR-0107)."""
         run = run.model_copy(update={"updated_at": self._clock.now()})
         async with self._work.transaction(run.tenant):
             await self._fence(run)
@@ -3483,6 +3507,11 @@ class RunEngine:
                 )
                 if interface is not None and step is not None:
                     await self._record(run, interfaces.RECORD_KIND, step=step, outcome=interface)
+                if ended is not None:
+                    took = (self._clock.now() - run.created_at).total_seconds()
+                    await self._record(
+                        run, RUN_ENDED, outcome=ended, duration=round(max(took, 0.0), 3)
+                    )
                 if trigger is not None:
                     # The ledger is content-free (ADR-0006): the entry names the trigger's kind
                     # and carries the digest of its document; the command keeps the document.
@@ -3541,6 +3570,7 @@ class RunEngine:
         actor: str | None = None,
         digest: Digest | None = None,
         decision: str | None = None,
+        duration: float | None = None,
     ) -> LedgerEntry:
         refs = LedgerRefs(
             tenant=run.tenant,
@@ -3578,6 +3608,7 @@ class RunEngine:
                 adapter=None if step is None else step.adapter,
                 consumption=consumption,
                 outcome=outcome,
+                duration_seconds=duration,
                 content_digest=digest,
                 rehearsal=True if run.rehearsal else None,  # ADR-0030
             ),

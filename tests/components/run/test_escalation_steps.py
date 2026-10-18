@@ -56,7 +56,11 @@ async def test_a_failed_step_runs_the_steps_on_escalation_before_the_run_escalat
     assert "1" in said and run.step_run("give-back").state is StepState.SUCCEEDED
     kinds = await h.kinds(run)
     assert kinds.index("step.finished:work:failed") < kinds.index("step.finished:say-why:succeeded")
-    assert kinds[-2:] == ["step.finished:give-back:succeeded", "run.escalated::failure"]
+    assert kinds[-3:] == [
+        "step.finished:give-back:succeeded",
+        "run.escalated::failure",
+        "run.ended::error",
+    ]
     assert await h.verify()
     provenance = ProvenanceQuery(h.provenance, h.runs, h.ledger, h.persistence)
     verification = await provenance.verify(ProvenanceOfRun(run_id=run.id, tenant=TENANT))

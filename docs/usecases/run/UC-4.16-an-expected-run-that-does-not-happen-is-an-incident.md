@@ -3,10 +3,10 @@ id: UC-4.16
 title: An expected run that does not happen is an incident
 component: run
 serves: [P6, P10, P12]
-state: specified
+state: built
 version: 0.4.0
-tests: []
-adrs: {ADR-0021: 202e0442e7ec, ADR-0023: 949c6f4e13af, ADR-0035: 070012ed0fb2}
+tests: [tests/components/process/test_expectations.py::test_a_version_declares_a_schedule_and_a_bound, tests/components/process/test_expectations.py::test_a_version_declares_a_longest_gap, tests/components/process/test_expectations.py::test_a_scheduled_version_without_a_declaration_inherits_its_schedule, tests/components/run/test_run_ended.py::test_a_run_that_found_something_ends_ok_with_its_duration, tests/components/run/test_run_ended.py::test_a_run_whose_marked_step_was_skipped_ends_empty_never_ok, tests/components/run/test_run_ended.py::test_a_run_that_escalated_ends_error_never_empty, tests/composition/test_expected_runs.py::test_a_firing_that_found_nothing_is_a_run_that_ended_empty, tests/integration/test_expected_runs.py::test_the_scheduler_stopped_for_one_process_raises_exactly_one_incident, tests/composition/test_expected_runs.py::test_the_scheduler_stopped_for_one_process_raises_exactly_one_incident, tests/components/governance/test_expected_runs.py::test_a_missed_slot_raises_one_incident_naming_process_time_and_last_run, tests/components/governance/test_expected_runs.py::test_a_run_over_its_bound_raises_an_incident_naming_the_run, tests/components/governance/test_expected_runs.py::test_the_same_facts_give_the_same_answer, tests/components/governance/test_expected_runs.py::test_no_model_decides_that_a_run_is_missing, tests/components/governance/test_expected_runs.py::test_a_run_that_happens_later_is_recorded_and_closes_nothing, tests/components/governance/test_expected_runs.py::test_a_person_closes_an_incident_and_the_incident_names_nobody, tests/composition/test_expected_runs.py::test_a_process_switched_off_raises_nothing_while_it_is_off, tests/components/governance/test_expected_runs.py::test_a_watcher_that_never_finds_anything_is_reported_once_per_crossing]
+adrs: {ADR-0021: 202e0442e7ec, ADR-0023: 949c6f4e13af, ADR-0035: 070012ed0fb2, ADR-0107: f2bc49583aa4}
 supersedes: null
 ---
 
@@ -57,3 +57,13 @@ DEC-0199; NTC-0210. The incident it raises is UC-6.8; the vocabulary of failure 
 is ADR-0021; a stop by rule is ADR-0023; time triggers fire once per slot through the elected
 scheduler (ADR-0035). Its version is `0.4.0`, because stage 0 of UC-03 depends on every watcher
 being seen to run.
+How it is built is ADR-0107: the declaration `expect`, the entry `run.ended`, and the watch the
+scheduler makes once a minute.
+
+## 5. What is proven so far
+
+Every condition of section 2, by the tests the front matter names. The scheduler stopped for one
+process raises exactly one incident in memory and against PostgreSQL. An incident is closed by a
+person (`taktusctl incident close`); a rule of the incident's own that closes it is not built,
+and arrives with UC-6.8. The incident is recorded in Taktus and logged; delivering it into the
+business's tracking system is UC-6.8 too.

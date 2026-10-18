@@ -22,7 +22,14 @@ from taktus.components.catalog.domain.model import (
 )
 from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.decision.domain.model import RegisterEntry, Request
-from taktus.components.governance.domain.model import AnchorConfiguration
+from taktus.components.governance.domain.model import (
+    AnchorConfiguration,
+    Happening,
+    Incident,
+    IncidentKind,
+    RunSeen,
+    WatchConfiguration,
+)
 from taktus.components.identity.domain.model import (
     ChannelLink,
     Identity,
@@ -33,6 +40,7 @@ from taktus.components.identity.domain.model import (
 )
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import (
+    Expect,
     Process,
     ProcessVersion,
     Slo,
@@ -83,12 +91,14 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
         {"event": "issue.labelled", "filter": {"label": ["ready", "now"]}},
     ]
     document["slo"] = {"freshness": "24h", "latency": "90s"}
+    document["expect"] = {"schedule": "0 7 * * 1-5", "bound": "2h"}
     parsed = parse_bundle(document)
     assert parsed.triggers == (
         Trigger(schedule="0 6 * * 1-5"),
         Trigger(event="issue.labelled", filter={"label": ("ready", "now")}),
     )
     assert parsed.slo == Slo(freshness=timedelta(hours=24), latency=timedelta(seconds=90))
+    assert parsed.expect == Expect(schedule="0 7 * * 1-5", bound=timedelta(hours=2))
     return parsed
 
 
@@ -496,4 +506,45 @@ def report(tenant: str = "t") -> Report:
                 {"at": AT + timedelta(hours=2), "event": "filed", "by": "idn_owner"},
             ],
         }
+    )
+
+
+def incident(tenant: str = "t") -> Incident:
+    last = RunSeen(at=AT - timedelta(days=1), run_id="run_0", kind="run.started")
+    return Incident(
+        id="inc_0123456789abcdef0123",
+        tenant=tenant,
+        kind=IncidentKind.MISSING,
+        process_id="six-times-seven",
+        process_version="six-times-seven@1",
+        expected_at=AT,
+        last_run=last,
+        rule="expected.slot",
+        facts={"schedule": "0 7 * * 1-5", "grace_seconds": 900.0},
+        raised_at=AT + timedelta(minutes=15),
+        timeline=(
+            Happening(
+                at=AT + timedelta(minutes=15),
+                what="missed",
+                expected_at=AT,
+                deadline=AT + timedelta(minutes=15),
+            ),
+            Happening(
+                at=AT + timedelta(hours=1),
+                what="happened",
+                run=RunSeen(at=AT + timedelta(minutes=50), run_id="run_1", kind="run.started"),
+            ),
+        ),
+    )
+
+
+def watch_configuration(tenant: str = "t") -> WatchConfiguration:
+    return WatchConfiguration(
+        id=tenant,
+        tenant=tenant,
+        grace=timedelta(minutes=5),
+        empty_share=0.75,
+        empty_window=timedelta(days=7),
+        empty_minimum=4,
+        configured_at=AT,
     )

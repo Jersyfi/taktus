@@ -51,6 +51,14 @@ def bundle_of(
         }
         if slo:
             bundle["slo"] = slo
+    if version.expect is not None:
+        expect: dict[str, Any] = {}
+        if version.expect.schedule is not None:
+            expect["schedule"] = version.expect.schedule
+        for name, value in (("gap", version.expect.gap), ("bound", version.expect.bound)):
+            if value is not None:
+                expect[name] = value.total_seconds()
+        bundle["expect"] = expect
     return bundle
 
 

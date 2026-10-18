@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import func, insert, literal_column, select
 from sqlalchemy.engine import Row
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.sql.elements import ColumnClause
+from sqlalchemy.sql.elements import ColumnClause, ColumnElement
 
 from taktus.adapters.driven.postgres import _schema as s
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
@@ -54,6 +54,7 @@ class PostgresLedgerStore:
             adapter=document.get("adapter"),
             consumption=document.get("consumption"),
             outcome=document.get("outcome"),
+            duration_seconds=document.get("duration_seconds"),
             content_digest=document.get("content_digest"),
             rehearsal=document.get("rehearsal"),
         )
@@ -126,6 +127,32 @@ class PostgresLedgerStore:
             latest=None if row is None else _entry(row),
         )
 
+    async def of_process(
+        self, tenant: Tenant, process_id: str, kinds: Collection[str], *, since: datetime
+    ) -> Sequence[LedgerEntry]:
+        """One statement over the index `ledger_entry_process` (migration 0056)."""
+        connection = self._persistence.connection(tenant)
+        rows = await connection.execute(
+            select(s.ledger_entry)
+            .where(_of(tenant, process_id, kinds) & (s.ledger_entry.c.ts >= since))
+            .order_by(s.ledger_entry.c.seq)
+        )
+        return [_entry(row) for row in rows]
+
+    async def latest_of_process(
+        self, tenant: Tenant, process_id: str, kinds: Collection[str], *, at_or_before: datetime
+    ) -> LedgerEntry | None:
+        connection = self._persistence.connection(tenant)
+        row = (
+            await connection.execute(
+                select(s.ledger_entry)
+                .where(_of(tenant, process_id, kinds) & (s.ledger_entry.c.ts <= at_or_before))
+                .order_by(s.ledger_entry.c.seq.desc())
+                .limit(1)
+            )
+        ).first()
+        return None if row is None else _entry(row)
+
     async def head(self, tenant: Tenant) -> int:
         connection = self._persistence.connection(tenant)
         newest = await connection.scalar(
@@ -163,6 +190,22 @@ class PostgresLedgerStore:
         return None if found is None else int(found)
 
 
+def _of(tenant: Tenant, process_id: str, kinds: Collection[str]) -> ColumnElement[bool]:
+    """The entries of the kinds about any version of the process, a rehearsal's left out. The
+    process is the part of `refs.process_version` before `@`, as the index reads it."""
+    entry = s.ledger_entry.c
+    # Written as the index's expression, literally, so that the planner matches it.
+    process: ColumnElement[str] = literal_column(
+        "split_part(ledger_entry.refs ->> 'process_version', '@', 1)"
+    )
+    return (
+        (entry.tenant == tenant)
+        & (process == process_id)
+        & entry.kind.in_(sorted(kinds))
+        & entry.rehearsal.is_(None)
+    )
+
+
 def _entry(row: Row[Any]) -> LedgerEntry:
     ts: datetime = row.ts
     document: dict[str, Any] = {
@@ -179,6 +222,7 @@ def _entry(row: Row[Any]) -> LedgerEntry:
         "adapter",
         "consumption",
         "outcome",
+        "duration_seconds",
         "content_digest",
         "rehearsal",
     ):

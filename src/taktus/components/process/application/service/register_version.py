@@ -35,6 +35,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from taktus.components.process.domain.model import (
+    Expect,
     InputDeclaration,
     InvalidProcess,
     Process,
@@ -278,6 +279,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             steps=tuple(steps),
             triggers=tuple(Trigger.model_validate(t) for t in bundle.get("triggers", ())),
             slo=_slo(bundle.get("slo")),
+            expect=_expect(bundle.get("expect")),
             work=work,
             limits=bundle.get("limits"),
             inputs=_inputs(bundle.get("inputs")),
@@ -345,6 +347,27 @@ def _slo(raw: Any) -> Slo | None:
         freshness=_duration(raw.get("freshness")),
         latency=_duration(raw.get("latency")),
     )
+
+
+def _expect(raw: Any) -> Expect | None:
+    """`expect`: a `schedule` or a `gap`, and a `bound` (ADR-0107)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`expect` is not a mapping",))
+    unknown = sorted(set(raw) - {"schedule", "gap", "bound"})
+    if unknown:
+        raise InvalidProcess(
+            (f"`expect` names {', '.join(map(str, unknown))}; it takes schedule, gap and bound",)
+        )
+    try:
+        return Expect(
+            schedule=None if raw.get("schedule") is None else str(raw["schedule"]),
+            gap=_duration(raw.get("gap")),
+            bound=_duration(raw.get("bound")),
+        )
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("expect", error))) from error
 
 
 def _duration(raw: Any) -> timedelta | None:

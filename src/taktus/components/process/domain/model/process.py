@@ -198,6 +198,31 @@ class Slo(Value):
     latency: timedelta | None = None
 
 
+class Expect(Value):
+    """When a run of the process is expected (ADR-0107): at every slot of a `schedule`, or
+    within a `gap` of the last run's start; and that a run ends within its `bound`. A run
+    that does not happen as expected, or does not end within its bound, raises an incident."""
+
+    schedule: str | None = Field(default=None, min_length=1)
+    gap: timedelta | None = None
+    """The longest time between the starts of two runs."""
+    bound: timedelta | None = None
+    """The longest time a run may take from its start to its end."""
+
+    @model_validator(mode="after")
+    def _says_something(self) -> Expect:
+        if self.schedule is None and self.gap is None and self.bound is None:
+            raise ValueError("`expect` names a `schedule`, a `gap` or a `bound`")
+        if self.schedule is not None and self.gap is not None:
+            raise ValueError("`expect` names a `schedule` or a `gap`, not both")
+        if self.schedule is not None:
+            schedule.parse(self.schedule)  # an InvalidSchedule is a ValueError and says why
+        for name, value in (("gap", self.gap), ("bound", self.bound)):
+            if value is not None and value <= timedelta(0):
+                raise ValueError(f"`expect.{name}` is a time longer than nothing")
+        return self
+
+
 class ProcessVersion(Value):
     """One version of a process: the graph, its triggers and service level, and who changed
     what and why. Every invariant of the graph is checked here; an instance is valid or does
@@ -212,6 +237,9 @@ class ProcessVersion(Value):
     steps: tuple[Step, ...] = Field(min_length=1)
     triggers: tuple[Trigger, ...] = ()
     slo: Slo | None = None
+    expect: Expect | None = None
+    """When a run is expected (ADR-0107). None: every schedule trigger expects a run at
+    each of its slots, and nothing else is expected."""
     work: Mapping[StepId, Work] = Field(default_factory=dict)
     limits: Work | None = None
     inputs: Mapping[str, InputDeclaration] = Field(default_factory=dict)
@@ -258,6 +286,16 @@ class ProcessVersion(Value):
         if findings:
             raise InvalidProcess(tuple(findings))
         return self
+
+    @property
+    def expected_schedules(self) -> tuple[str, ...]:
+        """The schedules a run is expected at every slot of: the declared one, or without a
+        declared schedule or gap, every schedule trigger's (ADR-0107 §1)."""
+        if self.expect is not None and self.expect.schedule is not None:
+            return (self.expect.schedule,)
+        if self.expect is not None and self.expect.gap is not None:
+            return ()
+        return tuple(dict.fromkeys(t.schedule for t in self.triggers if t.schedule is not None))
 
     @property
     def required_inputs(self) -> tuple[str, ...]:

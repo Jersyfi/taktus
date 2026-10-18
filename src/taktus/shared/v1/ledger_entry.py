@@ -33,6 +33,8 @@ class LedgerRefs(Value):
     step_id: str | None = Field(default=None, min_length=1)
     assignment_id: str | None = Field(default=None, min_length=1)
     decision_request_id: str | None = Field(default=None, min_length=1)
+    incident_id: str | None = Field(default=None, min_length=1)
+    """The incident the entry is about (ADR-0107)."""
     report_id: str | None = Field(default=None, min_length=1)
     """The report to the owner the entry is about (ADR-0045)."""
     artifact_ids: tuple[str, ...] | None = None
@@ -64,6 +66,9 @@ class LedgerEntry(Value):
     adapter: str | None = Field(default=None, min_length=1)
     consumption: Consumption | None = None
     outcome: str | None = Field(default=None, pattern=OUTCOME_PATTERN)
+    duration_seconds: float | None = Field(default=None, ge=0)
+    """How long what the entry records took: a run, from its creation to its end, on
+    `run.ended`; the read of an `each` list on `trigger.empty` (ADR-0107)."""
     content_digest: Digest | None = None
     rehearsal: Literal[True] | None = None
     """True on every entry of a rehearsal run, absent otherwise (ADR-0030): nothing outside

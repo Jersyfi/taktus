@@ -39,6 +39,8 @@ class Fact(Value):
     adapter: str | None = Field(default=None, min_length=1)
     consumption: Consumption | None = None
     outcome: str | None = Field(default=None, pattern=OUTCOME_PATTERN)
+    duration_seconds: float | None = Field(default=None, ge=0)
+    """How long what the fact records took, in seconds (ADR-0107)."""
     content_digest: Digest | None = None
     rehearsal: Literal[True] | None = None
     """Set on every fact of a rehearsal run (ADR-0030); None on every other."""

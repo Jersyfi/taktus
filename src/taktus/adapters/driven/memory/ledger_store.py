@@ -54,6 +54,23 @@ class MemoryLedgerStore:
             latest=of_kind[-1] if of_kind else None,
         )
 
+    async def of_process(
+        self, tenant: Tenant, process_id: str, kinds: Collection[str], *, since: datetime
+    ) -> Sequence[LedgerEntry]:
+        return [
+            e for e in await self.entries(tenant) if _of(e, process_id, kinds) and e.ts >= since
+        ]
+
+    async def latest_of_process(
+        self, tenant: Tenant, process_id: str, kinds: Collection[str], *, at_or_before: datetime
+    ) -> LedgerEntry | None:
+        found = [
+            e
+            for e in await self.entries(tenant)
+            if _of(e, process_id, kinds) and e.ts <= at_or_before
+        ]
+        return found[-1] if found else None
+
     async def head(self, tenant: Tenant) -> int:
         entries = await self.entries(tenant)
         return entries[-1].seq if entries else 0
@@ -74,3 +91,13 @@ class MemoryLedgerStore:
 
     async def position(self, tenant: Tenant, hash: str) -> int | None:
         return next((e.seq for e in await self.entries(tenant) if e.hash == hash), None)
+
+
+def _of(entry: LedgerEntry, process_id: str, kinds: Collection[str]) -> bool:
+    version = entry.refs.process_version
+    return (
+        entry.kind in kinds
+        and entry.rehearsal is None
+        and version is not None
+        and version.split("@", 1)[0] == process_id
+    )

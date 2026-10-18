@@ -38,12 +38,19 @@ async def test_entries_come_back_in_sequence_with_every_field(backend: Backend) 
         2,
         ZERO,
         kind="step.finished",
-        refs={"tenant": tenant, "run_id": "r", "step_id": "a", "artifact_ids": ["x", "y"]},
+        refs={
+            "tenant": tenant,
+            "run_id": "r",
+            "step_id": "a",
+            "artifact_ids": ["x", "y"],
+            "incident_id": "inc_1",
+        },
         method="worker",
         model="llama@3.1",
         adapter="worker.http",
         consumption={"compute_seconds": 1.5, "resource_class": "cpu.small", "tokens_in": 3},
         outcome="rehearsed",
+        duration_seconds=12.345,
         content_digest=ZERO,
         rehearsal=True,
     )
@@ -149,6 +156,52 @@ async def test_a_summary_counts_one_kind_without_reading_the_chain(backend: Back
     assert summary.latest is not None and summary.latest.seq == 3
     assert summary.latest.outcome == "second"
     assert other.total == 0 and other.latest is None
+
+
+async def test_a_process_s_entries_of_given_kinds_are_found_by_time(backend: Backend) -> None:
+    """What the watcher of expected runs reads (ADR-0107): a process's entries of some kinds
+    since a moment, and the newest of them at or before one — any version of the process, a
+    rehearsal's left out, another process's never."""
+    tenant = await backend.tenant()
+    store = backend.ledger_store
+    day = [datetime(2026, 10, d, tzinfo=UTC) for d in range(1, 6)]
+    rows = [
+        ("run.started", "watch@1", day[0], None),
+        ("run.started", "watch@2", day[1], None),
+        ("run.ended", "watch@2", day[2], None),
+        ("run.started", "other@1", day[3], None),
+        ("run.started", "watch@2", day[4], True),
+    ]
+    async with backend.work.transaction(tenant):
+        prev = None
+        for seq, (kind, version, ts, rehearsal) in enumerate(rows, start=1):
+            await store.append(
+                tenant,
+                entry(
+                    seq,
+                    prev,
+                    kind=kind,
+                    ts=ts,
+                    refs={"tenant": tenant, "process_version": version, "run_id": f"r{seq}"},
+                    rehearsal=rehearsal,
+                ),
+            )
+            prev = ZERO
+    async with backend.work.transaction(tenant):
+        found = await store.of_process(tenant, "watch", ("run.started",), since=day[1])
+        both = await store.of_process(tenant, "watch", ("run.started", "run.ended"), since=day[0])
+        newest = await store.latest_of_process(
+            tenant, "watch", ("run.started",), at_or_before=day[4]
+        )
+        none = await store.latest_of_process(
+            tenant, "watch", ("run.started",), at_or_before=datetime(2026, 9, 30, tzinfo=UTC)
+        )
+        other = await store.of_process(tenant, "wat", ("run.started",), since=day[0])
+    assert [e.seq for e in found] == [2]
+    assert [e.seq for e in both] == [1, 2, 3]
+    assert newest is not None and newest.seq == 2, "a rehearsal is no evidence that it ran"
+    assert none is None
+    assert other == [], "a process is named whole, never by a prefix"
 
 
 async def test_a_reader_finds_the_head_the_entries_after_a_position_and_a_hash_again(

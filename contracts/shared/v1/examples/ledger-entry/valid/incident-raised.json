@@ -1,0 +1,13 @@
+{
+  "seq": 12,
+  "ts": "2026-10-18T07:16:00Z",
+  "kind": "incident.raised",
+  "prev_hash": "sha256:5b1f0d4c9a7e3b2d8f6a0c1e4b7d9f2a5c8e1b4d7f0a3c6e9b2d5f8a1c4e7b0d",
+  "hash": "sha256:0e7c4a1d8b5f2e9c6a3d0b7e4f1a8c5d2b9e6f3a0c7d4b1e8f5a2c9d6b3e0f7a",
+  "refs": {
+    "tenant": "acme",
+    "process_version": "watch-payments@3",
+    "incident_id": "inc_3f9a0c2e7b1d5a8e4c6f"
+  },
+  "outcome": "missed"
+}
