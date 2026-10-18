@@ -657,6 +657,7 @@ async def test_a_short_wait_waits_inline_and_does_not_park() -> None:
     await until(lambda: len(runner.outcomes) == 1)
     await world.stop(runner)
     assert runner.outcomes[0].disposition == "completed"
+    assert (await world.stored(run.id)).state is RunState.FINISHED
 
 
 class GrowingTenants:
