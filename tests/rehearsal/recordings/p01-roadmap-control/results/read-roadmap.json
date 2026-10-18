@@ -1,0 +1,17 @@
+{
+  "consumption": {
+    "quota_units": 2.0
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "output": {
+    "commit": "0000000000000000000000000000000000000009",
+    "content": "# Roadmap\n\n### `0.1.0` — first\nA greeting (#2)\n\n**Complete when** it is done.\n\n**Done so far:** the seed (#1) and more (#42).\n\n### `0.2.0` — second\nAn item without an issue\n\n**Complete when** it is done.\n",
+    "encoding": "utf-8",
+    "path": "docs/roadmap.md",
+    "ref": "main",
+    "sha": "0000000000000000000000000000000000000007",
+    "size": 208
+  }
+}

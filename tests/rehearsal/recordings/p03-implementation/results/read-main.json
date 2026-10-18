@@ -1,0 +1,23 @@
+{
+  "consumption": {
+    "quota_units": 2.0
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "output": {
+    "ref": "main",
+    "runs": [
+      {
+        "conclusion": "success",
+        "created_at": "2026-10-18T18:38:50Z",
+        "id": "2",
+        "name": "ci",
+        "status": "completed",
+        "url": "http://127.0.0.1:20569/acme/product/actions/runs/2"
+      }
+    ],
+    "sha": "0000000000000000000000000000000000000009",
+    "state": "success"
+  }
+}

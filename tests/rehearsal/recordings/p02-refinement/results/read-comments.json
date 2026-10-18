@@ -1,0 +1,12 @@
+{
+  "consumption": {
+    "quota_units": 1.0
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "output": {
+    "comments": [],
+    "number": 3
+  }
+}

@@ -1,0 +1,7 @@
+diff --git a/hello.txt b/hello.txt
+index ce01362..4b5fa63 100644
+--- a/hello.txt
++++ b/hello.txt
+@@ -1 +1 @@
+-hello
++hello, world

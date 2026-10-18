@@ -1,0 +1,314 @@
+{
+  "consumption": {
+    "quota_units": 1.0
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "output": {
+    "bundle": {
+      "author": "the repository",
+      "autonomy": {
+        "level": 3,
+        "reason": "the one outward effect is a comment on an issue that a person reads before anything builds on it, the model's answer leaves the step only through a check, and a second run on the same issue writes nothing; a person watches through the comments themselves\n",
+        "toward_next": "a demonstrated quality history — sections that a person did not have to rewrite, over a month of issues — and the check on the answer's structure strengthened beyond a pattern; then the raise is proposed with that evidence (anchors.taktus.md M3.9)\n"
+      },
+      "id": "p02-refinement",
+      "inputs": {
+        "issue": {
+          "description": "the number of the issue to refine",
+          "example": 11,
+          "required": true
+        }
+      },
+      "limits": {
+        "quota": {
+          "units": 60
+        }
+      },
+      "name": "P-02 Refinement",
+      "reason": "the second process of the dev-orchestration blueprint, runnable",
+      "steps": [
+        {
+          "exactness": "sourced",
+          "fallback": {
+            "to": "human",
+            "when": "the connector serving repository.issues is unavailable"
+          },
+          "id": "read-issue",
+          "method": "rule",
+          "reason": "the issue is read verbatim from the system of record; nothing to judge",
+          "rejected": [
+            {
+              "method": "llm",
+              "why": "a read needs no language model"
+            }
+          ],
+          "work": {
+            "credentials": [
+              {
+                "injected_as": "env",
+                "name": "REPOSITORY_TOKEN"
+              }
+            ],
+            "input": {
+              "number": {
+                "$input": "issue"
+              }
+            },
+            "operation": "repository.issues.read",
+            "rule": "connector"
+          }
+        },
+        {
+          "depends_on": [
+            "read-issue"
+          ],
+          "exactness": "sourced",
+          "fallback": {
+            "to": "human",
+            "when": "the connector serving repository.comments is unavailable"
+          },
+          "id": "read-comments",
+          "method": "rule",
+          "reason": "the discussion so far is context for the sections, read verbatim",
+          "rejected": [
+            {
+              "method": "llm",
+              "why": "a read needs no language model"
+            }
+          ],
+          "work": {
+            "credentials": [
+              {
+                "injected_as": "env",
+                "name": "REPOSITORY_TOKEN"
+              }
+            ],
+            "input": {
+              "number": {
+                "$input": "issue"
+              }
+            },
+            "operation": "repository.comments.list",
+            "rule": "connector"
+          }
+        },
+        {
+          "checks": [
+            {
+              "kind": "recomputation",
+              "subject": "the verdict whether the issue may be refined"
+            }
+          ],
+          "depends_on": [
+            "read-issue",
+            "read-comments"
+          ],
+          "exactness": "exact",
+          "id": "admit",
+          "method": "rule",
+          "reason": "whether this process already wrote its comment on the issue is a machine check over the comments just read; a wrong verdict here would write the same sections twice\n",
+          "rejected": [
+            {
+              "method": "llm",
+              "why": "a fixed condition needs no judgement, and a judgement could be wrong"
+            }
+          ],
+          "work": {
+            "conditions": [
+              {
+                "not_matches": "Written by Taktus, process P-02 Refinement",
+                "value": {
+                  "$from": "read-comments",
+                  "$select": "output.comments"
+                }
+              }
+            ],
+            "rule": "check"
+          }
+        },
+        {
+          "checks": [
+            {
+              "kind": "recomputation",
+              "subject": "the list of sections the issue lacks"
+            }
+          ],
+          "depends_on": [
+            "admit"
+          ],
+          "exactness": "exact",
+          "id": "missing",
+          "method": "rule",
+          "reason": "which sections of the ready standard the issue lacks is the standard's own reading of its body — the rule `ready`, the same code a session's `make backlog` runs, rather than a `check` with patterns that would state the standard a second time and could drift from it; an issue that is closed or a pull request is refused here, and one that carries every section lacks none: the steps that write sections skip themselves, and the run finishes having written nothing\n",
+          "rejected": [
+            {
+              "method": "llm",
+              "why": "whether a section is there is a fact of the text, not a judgement"
+            }
+          ],
+          "work": {
+            "expect": "sections_missing",
+            "issue": {
+              "$from": "read-issue",
+              "$select": "output"
+            },
+            "rule": "ready"
+          }
+        },
+        {
+          "depends_on": [
+            "missing"
+          ],
+          "exactness": "sourced",
+          "fallback": {
+            "to": "human",
+            "when": "the answer fails the check, or the model serving the purpose reasoning is unavailable"
+          },
+          "id": "refine",
+          "method": "llm",
+          "reason": "writing what must be achieved, how it is verified and where the boundary lies from an issue's text and its discussion is understanding language and judging what \"done\" means for it; no rule expresses that\n",
+          "rejected": [
+            {
+              "method": "rule",
+              "why": "the wording of issues is too varied for a rule set"
+            },
+            {
+              "method": "ml",
+              "why": "no labelled corpus of such sections exists yet; a classifier cannot write them"
+            }
+          ],
+          "work": {
+            "max_output_tokens": 1536,
+            "pattern": "^### (What must be achieved|How it is verified|Where the boundary lies)[ \\t]*\\n+\\s*\\S",
+            "prompt": "Issue #${number}: ${title}\n\n${body}\n\nComments so far (JSON, may be empty):\n${comments}\n\nThe sections missing (JSON): ${missing}\n",
+            "purpose": "reasoning",
+            "system": "You write the missing sections of a task in a software backlog. You are given the names of the sections that are missing; write exactly those, each headed \"### \" and the name, in the order given, and no other section. \"What must be achieved\" states the outcome, not the route. \"How it is verified\" states the conditions that must hold, as a list of testable sentences, so that it cannot be met by interpretation. \"Where the boundary lies\" states what is not part of it. Cite the issue's own words where a sentence comes from them. Write nothing before the first heading.\n",
+            "values": {
+              "body": {
+                "$from": "read-issue",
+                "$select": "output.body"
+              },
+              "comments": {
+                "$from": "read-comments",
+                "$select": "output.comments"
+              },
+              "missing": {
+                "$from": "missing",
+                "$select": "missing"
+              },
+              "number": {
+                "$from": "read-issue",
+                "$select": "output.number"
+              },
+              "title": {
+                "$from": "read-issue",
+                "$select": "output.title"
+              }
+            },
+            "when": [
+              {
+                "not_matches": "^\\[\\]$",
+                "value": {
+                  "$from": "missing",
+                  "$select": "missing"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "depends_on": [
+            "refine"
+          ],
+          "exactness": "sourced",
+          "id": "compose-comment",
+          "method": "rule",
+          "reason": "the comment is the model's sections plus a fixed footer that says who wrote them",
+          "rejected": [
+            {
+              "method": "llm",
+              "why": "a fixed composition needs no model"
+            }
+          ],
+          "work": {
+            "rule": "template",
+            "text": "${sections}\n\n---\nWritten by Taktus, process P-02 Refinement, from the issue and its comments: the\nsections of the ready standard the issue lacks (docs/process/README.md). Edit freely.\nOnce they are in the issue, a person adds the label `ready`; P-03 Implementation reads\nthe issue, not this comment.\n",
+            "values": {
+              "sections": {
+                "$from": "refine",
+                "$select": "text"
+              }
+            },
+            "when": [
+              {
+                "not_matches": "^\\[\\]$",
+                "value": {
+                  "$from": "missing",
+                  "$select": "missing"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "depends_on": [
+            "compose-comment"
+          ],
+          "exactness": "sourced",
+          "fallback": {
+            "to": "human",
+            "when": "the connector serving repository.comments is unavailable"
+          },
+          "id": "write-sections",
+          "method": "rule",
+          "reason": "writing a comment is an API call with a fixed body; the effect leaves the system",
+          "rejected": [
+            {
+              "method": "worker",
+              "why": "nothing here needs a sandbox or tools"
+            }
+          ],
+          "work": {
+            "credentials": [
+              {
+                "injected_as": "env",
+                "name": "REPOSITORY_TOKEN"
+              }
+            ],
+            "input": {
+              "body": {
+                "$from": "compose-comment"
+              },
+              "number": {
+                "$input": "issue"
+              }
+            },
+            "operation": "repository.comments.create",
+            "rule": "connector",
+            "when": [
+              {
+                "not_matches": "^\\[\\]$",
+                "value": {
+                  "$from": "missing",
+                  "$select": "missing"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "triggers": [
+        {
+          "event": "issue.opened",
+          "from_event": {
+            "issue": "issue"
+          }
+        }
+      ],
+      "version": "5"
+    },
+    "version": "5"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "consumption": {
+    "quota_units": 1.0
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "output": {
+    "exists": false,
+    "free": true,
+    "key": null,
+    "name": "taktus/issue-2",
+    "sha": null
+  }
+}

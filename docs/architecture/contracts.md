@@ -283,6 +283,20 @@ count towards *verified*. *Exception*: the integration cannot be removed by desi
 database, ADR-0002. Every result names the configuration it was taken under: the adapter that
 served the identifier, what it declared and its version.
 
+**A replay answers every step of a rehearsal from a recorded run (ADR-0108).** A rehearsal of
+ADR-0030 answers only an outward operation from a recording, and calls everything else. A replay
+goes further: an engine given a replay (`components/run/ports/replay.py`) resolves every
+rehearsal from it, so that a connector call of any effect, a wait on a connector, a model call
+and a worker step are each answered by the recorded result of the same step in a real run of
+the same process. The recording is a directory of data (`adapters/driven/replay`); what a step
+sent is kept as digests only, what it received as the run kept it. A step that sends anything
+other than its recorded step sent fails, naming the parts that differ. The replay asks the step
+boundaries — anchors, a step's own `ask`, the level — and not an adapter's maturity, because its
+adapter is the recording. `tools/record_rehearsal.py` writes a recording from a run in an
+instance's database; `make rehearse` replays the self-development bundles from theirs. CI runs
+it as the lane `rehearse`: on a pull request that touches a bundle, a recording or the core, and
+on every commit on `main` (ADR-0096 §1).
+
 **The conformance half is recorded by the instance that ran the suite (ADR-0044).** The instance
 runs the suite of an adapter's contract against the endpoint its own configuration resolves for
 the adapter identifier: the configured worker (or one unit started for the suite, for a launched

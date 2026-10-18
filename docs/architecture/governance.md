@@ -43,7 +43,8 @@ of the step starts:
 | 3 | nothing is asked; the step runs only on an adapter at *verified* or above, and is refused with a finding that names it and the adapter otherwise |
 
 A waiting step holds back only the steps that depend on it; the run waits in `waiting_human` once
-nothing else can run. A rehearsal is asked for neither (NTC-0079). A level rises only where a
+nothing else can run. A rehearsal is asked for neither (NTC-0079); a replay of a recorded run is
+asked as any run is, and is not asked an adapter's maturity (ADR-0108). A level rises only where a
 version is registered: with a person's approval and the quality history — runs in a row without
 a failure or a result defect — that the replaced version names under `history`. A refusal is the
 ledger entry `autonomy.refused`; Taktus may propose a raise (`autonomy.proposed`) and never

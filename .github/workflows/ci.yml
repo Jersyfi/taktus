@@ -42,6 +42,7 @@ jobs:
       web: ${{ steps.lanes.outputs.web }}
       conformance: ${{ steps.lanes.outputs.conformance }}
       test: ${{ steps.lanes.outputs.test }}
+      rehearse: ${{ steps.lanes.outputs.rehearse }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -232,6 +233,26 @@ jobs:
           TAKTUS_REQUIRE_DATABASE: "1"
         run: make test
 
+  # The self-development bundles — P-01, P-02, P-03 and S-07 — replayed from recordings of real
+  # runs against a database (ADR-0108, ADR-0096 §1, #393): every step must reach the state it
+  # reached when recorded, so that a change that breaks a bundle, the engine's handling of it or
+  # a recorded answer is red before it merges. A lane like the others: a pull request runs it
+  # when it touches a path `tools/lanes.py` gives it, and a push to `main` runs it unfiltered,
+  # never cancelled. It needs no credential: the replay reaches nothing outside.
+  rehearse:
+    needs: select
+    if: needs.select.outputs.rehearse == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - name: rehearse
+        env:
+          TAKTUS_REQUIRE_DATABASE: "1"
+        run: make rehearse
+
   # The one check the ruleset requires. It needs every job above, fails unless each one
   # succeeded, and always reports — a job that failed, was cancelled or timed out fails it.
   # On a pull request its last step is the guard (ADR-0096 §5, #391): while the newest run on
@@ -240,7 +261,7 @@ jobs:
   gates:
     name: ${{ (github.event_name == 'pull_request' && github.event.pull_request.draft) && 'gates (draft)' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/')) && 'gates (checked on push)' || 'gates' }}
     if: always()
-    needs: [select, contracts, decisions, web, static, conformance, test]
+    needs: [select, contracts, decisions, web, static, conformance, test, rehearse]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

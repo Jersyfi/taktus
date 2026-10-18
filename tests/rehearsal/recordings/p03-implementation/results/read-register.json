@@ -1,0 +1,20 @@
+{
+  "consumption": {
+    "quota_units": 2.0
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "output": {
+    "commit": "0000000000000000000000000000000000000009",
+    "entries": [
+      {
+        "name": "open",
+        "path": "docs/decisions/open",
+        "type": "dir"
+      }
+    ],
+    "path": "docs/decisions",
+    "ref": "main"
+  }
+}

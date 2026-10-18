@@ -1,0 +1,26 @@
+{
+  "consumption": {
+    "quota_units": 1.0
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "output": {
+    "difference": {
+      "autonomy_after": {
+        "level": 3,
+        "reason": "the one outward effect is a comment on an issue that a person reads before anything builds on it, the model's answer leaves the step only through a check, and a second run on the same issue writes nothing; a person watches through the comments themselves\n",
+        "toward_next": "a demonstrated quality history — sections that a person did not have to rewrite, over a month of issues — and the check on the answer's structure strengthened beyond a pattern; then the raise is proposed with that evidence (anchors.taktus.md M3.9)\n"
+      },
+      "autonomy_before": {
+        "level": 3,
+        "reason": "the one outward effect is a comment on an issue that a person reads before anything builds on it, the model's answer leaves the step only through a check, and a second run on the same issue writes nothing; a person watches through the comments themselves\n",
+        "toward_next": "a demonstrated quality history — sections that a person did not have to rewrite, over a month of issues — and the check on the answer's structure strengthened beyond a pattern; then the raise is proposed with that evidence (anchors.taktus.md M3.9)\n"
+      },
+      "inputs_changed": false,
+      "steps": [],
+      "triggers_changed": false
+    },
+    "proposal": "prp_cb3ec10117430ad2bff8"
+  }
+}

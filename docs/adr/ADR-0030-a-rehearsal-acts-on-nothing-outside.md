@@ -1,6 +1,6 @@
 # ADR-0030 — A rehearsal acts on nothing outside; a removal verdict says what it was taken under
 
-**Status:** accepted
+**Status:** accepted · amended 2026-10-18 (ADR-0108): an engine given a replay answers every step of a rehearsal that would leave it from a recorded run of the same process, by step, and asks its step boundaries
 
 ## Context
 The removal test (ADR-0003, ADR-0027) withholds one integration and runs the processes that

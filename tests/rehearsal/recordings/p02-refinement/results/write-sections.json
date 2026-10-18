@@ -1,0 +1,27 @@
+{
+  "consumption": {
+    "quota_units": 2.0
+  },
+  "effect": {
+    "content_digest": "sha256:6c8e7b95331dc5b3de50613906c840a31ca48cfb577664268c18fe6f02f1cbf4",
+    "kind": "write",
+    "records": [
+      {
+        "id": "3#2",
+        "kind": "comment",
+        "url": "http://127.0.0.1:20569/acme/product/issues/3#issuecomment-2"
+      }
+    ],
+    "replayed": false
+  },
+  "output": {
+    "author": {
+      "account": "1",
+      "kind": "person"
+    },
+    "body": "### How it is verified\n\n- the fake answered: Issue #3: Without a verification\n\n### What must be achieved\n\nA greeting is written to hello.txt.\n\n### How it is verified\n\n_No response_\n\n### Where the boundary lies\n\nNo other file changes.\n\n### Component\n\nworkers\n\n### Source\n\ndocs/roadmap.md, 0.2.0\n\n### Blocked by\n\nnothing\n\n\nComments so far (JSON, may be empty):\n[]\n\nThe sections missing (JSON): [\"How it is verified\"]\n\n\n\n---\nWritten by Taktus, process P-02 Refinement, from the issue and its comments: the\nsections of the ready standard the issue lacks (docs/process/README.md). Edit freely.\nOnce they are in the issue, a person adds the label `ready`; P-03 Implementation reads\nthe issue, not this comment.\n\n<!-- taktus-idempotency-key taktus:run_595fd2aed37be774aaf6:write-sections:1 -->\n",
+    "created_at": "2026-10-18T18:38:50Z",
+    "id": "2",
+    "url": "http://127.0.0.1:20569/acme/product/issues/3#issuecomment-2"
+  }
+}

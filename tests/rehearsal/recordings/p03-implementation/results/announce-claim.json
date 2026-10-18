@@ -1,0 +1,27 @@
+{
+  "consumption": {
+    "quota_units": 2.0
+  },
+  "effect": {
+    "content_digest": "sha256:152a2ec93fe2f6ce60607953aebc4fa1ec887baad602ad5babd71bff97cac7d3",
+    "kind": "write",
+    "records": [
+      {
+        "id": "2#3",
+        "kind": "comment",
+        "url": "http://127.0.0.1:20569/acme/product/issues/2#issuecomment-3"
+      }
+    ],
+    "replayed": false
+  },
+  "output": {
+    "author": {
+      "account": "1",
+      "kind": "person"
+    },
+    "body": "Taktus took this issue: run `run_90302631bc80c9ec284b` of `p03-implementation@20` claimed it with the label `in-progress`.\n\n*Written by Taktus, process P-03 Implementation. The run ends in a pull request that\ncloses this issue, or it gives the issue back here and says why. Merging stays with a\nperson.*\n\n<!-- taktus-idempotency-key taktus:run_90302631bc80c9ec284b:announce-claim:1 -->\n",
+    "created_at": "2026-10-18T18:38:52Z",
+    "id": "3",
+    "url": "http://127.0.0.1:20569/acme/product/issues/2#issuecomment-3"
+  }
+}
