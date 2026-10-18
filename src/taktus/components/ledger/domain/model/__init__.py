@@ -1,3 +1,10 @@
-from taktus.components.ledger.domain.model.chain import canonical, hash_of, link, verify
+from taktus.components.ledger.domain.model.chain import (
+    Link,
+    canonical,
+    hash_of,
+    link,
+    verify,
+    walk,
+)
 
-__all__ = ["canonical", "hash_of", "link", "verify"]
+__all__ = ["Link", "canonical", "hash_of", "link", "verify", "walk"]

@@ -1,6 +1,6 @@
 # ADR-0006 — The ledger as a content-free hash chain
 
-**Status:** accepted
+**Status:** accepted · amended 2026-10-18 (ADR-0105): a projection derived from the ledger, which records the last sequence number it read and is rebuilt from the ledger at any time, is allowed; the ledger stays the one source
 
 ## Context
 The activity log carries three jobs at once: compliance evidence, the basis for every metric, and

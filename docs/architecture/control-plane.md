@@ -310,6 +310,30 @@ for a halt stays on the run; the ledger carries the cause as a token.
 **It is the single source for every metric.** No view and no value ledger computes from a second
 source.
 
+**A read costs what it returns** (ADR-0105). The entries of one run are read through the index
+`ledger_entry_run`, and the entries of some kinds through `ledger_entry_kind`. Neither reads the
+rest of the chain. A value over the whole history is a *projection*: a value computed from the
+ledger entry by entry, stored in `ledger_projection` with the sequence number of the last entry
+it read. A read brings it up to date from that number and stores it again. Two are defined, in
+`components/run/domain/service/projections.py`. The calibration keeps the last twenty
+observations of each adapter, method and step, which is all a run start reads. The activity
+names the runs with an entry in each process and day, for the blocked-time sums. A projection is
+derived, not a second source. It is rebuilt from the ledger at any time, and a test compares
+the rebuild with the full computation. A projection whose rule changes takes a new name, and is
+built again from the first entry. A write of a projection never waits: a second writer finds the
+first holding the projection's claim and stores nothing.
+
+**A chain is verified from its last verified checkpoint.** The checkpoint is the sequence number
+and hash of the newest entry a verification found intact, stored as a projection. A verification
+walks the entries after it and moves it when it finds nothing. `GET /runs/{id}/ledger` answers
+where its walk started, as `chain.checkpoint`. A full verification walks from the first entry
+and trusts no checkpoint: `taktusctl ledger verify --full`. When it finds a fault, the checkpoint
+goes back to the start, so every later verification finds the fault again. A change to an entry
+before the checkpoint is found only by the full verification. With 500 000 entries in a tenant,
+a run start's calibration took 7 to 22 ms and `GET /runs/{id}/ledger` 53 to 57 ms
+(`tests/integration/test_ledger_at_scale.py`); reading the whole ledger instead took 6.9 s and
+18.9 s on the same machine.
+
 In the database the ledger is append-only by construction, not only by convention: the
 application role may insert and read, and a trigger rejects every update, delete and truncate
 for everyone but a superuser (`migrations/`). A hash chain whose rows can be edited proves

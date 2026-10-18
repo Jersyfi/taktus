@@ -23,7 +23,7 @@ an adapter nor the domain opens one.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Any, Protocol, Self
@@ -179,6 +179,11 @@ class LedgerStore(Protocol):
         """Every entry of the tenant's chain, in sequence order."""
         ...
 
+    async def of_run(self, tenant: Tenant, run_id: str) -> Sequence[LedgerEntry]:
+        """The entries that reference one run, in sequence order, without reading another
+        run's: the database reads them through the index `ledger_entry_run` (ADR-0105)."""
+        ...
+
     async def summary(self, tenant: Tenant, kind: str, *, since: datetime) -> KindSummary:
         """How many entries of one kind the tenant's chain holds, how many of them were
         recorded at or after `since`, when the first was recorded, and the newest of them —
@@ -190,9 +195,18 @@ class LedgerStore(Protocol):
         Unlike `last`, it claims nothing: a reader asks it without waiting for a writer."""
         ...
 
-    async def after(self, tenant: Tenant, seq: int, *, limit: int) -> Sequence[LedgerEntry]:
+    async def after(
+        self,
+        tenant: Tenant,
+        seq: int,
+        *,
+        limit: int,
+        kinds: Collection[str] | None = None,
+    ) -> Sequence[LedgerEntry]:
         """At most `limit` entries of the tenant's chain whose sequence number is above `seq`,
-        in sequence order: what a reader resumes from (ADR-0055)."""
+        in sequence order: what a reader resumes from (ADR-0055). With `kinds`, only entries of
+        those kinds, read without reading the others: the database reads them through the
+        index `ledger_entry_kind` (ADR-0105)."""
         ...
 
     async def position(self, tenant: Tenant, hash: str) -> int | None:
@@ -211,6 +225,36 @@ class KindSummary(Value):
     """When the earliest of them was recorded; None when there is none."""
     latest: LedgerEntry | None = None
     """The newest of them; None when there is none."""
+
+
+class Projected(Value):
+    """A projection as it was stored (`ProjectionStore.read`, ADR-0105)."""
+
+    seq: int = Field(ge=0)
+    """The sequence number of the last ledger entry the projection read; 0 for none."""
+    state: dict[str, Any]
+    """The projection's value as a JSON document; only its definition reads it."""
+
+
+class ProjectionStore(Protocol):
+    """Where the values derived from a tenant's ledger are kept, one per name: the projections
+    and the checkpoint of the chain's verification (ADR-0105). Every value can be rebuilt from
+    the ledger, so it is derived, not a second source: nothing here is ever written from
+    anything but ledger entries. Reads and writes happen inside the caller's unit of work."""
+
+    async def read(self, tenant: Tenant, name: str) -> Projected | None:
+        """The stored value of the projection `name`, or None when none is stored yet."""
+        ...
+
+    async def write(
+        self, tenant: Tenant, name: str, value: Projected, *, replace: bool = False
+    ) -> bool:
+        """Store `value`, and say whether it was stored. Without `replace`, it is stored only
+        when it read further into the ledger than the stored one, and only when no other
+        transaction is storing the same projection: the write never waits. With `replace`,
+        it is stored whatever was stored before, waiting for such a transaction if need be:
+        what a rebuild and a full verification do."""
+        ...
 
 
 class StateSize(Protocol):

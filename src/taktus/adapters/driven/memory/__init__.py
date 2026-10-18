@@ -16,6 +16,7 @@ from taktus.adapters.driven.memory.ledger_store import MemoryLedgerStore
 from taktus.adapters.driven.memory.object_store import MemoryObjectStore
 from taktus.adapters.driven.memory.outbox import MemoryOutbox
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
+from taktus.adapters.driven.memory.projection_store import MemoryProjectionStore
 from taktus.adapters.driven.memory.provenance_store import MemoryProvenanceStore
 from taktus.adapters.driven.memory.queue import MemoryQueue
 from taktus.adapters.driven.memory.repository import MemoryRepository
@@ -27,6 +28,7 @@ __all__ = [
     "MemoryObjectStore",
     "MemoryOutbox",
     "MemoryPersistence",
+    "MemoryProjectionStore",
     "MemoryProvenanceStore",
     "MemoryQueue",
     "MemoryRepository",

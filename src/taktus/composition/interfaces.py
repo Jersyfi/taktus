@@ -28,7 +28,7 @@ from taktus.ports.persistence import Tenant, UnitOfWork
 
 INTERVAL_SECONDS = 60
 """How often the scheduler looks for a broken interface: the owner hears of one within a minute
-of the call that made it, and each look reads the tenant's ledger once."""
+of the call that made it, and each look reads the tenant's `interface.failed` entries once."""
 
 log = structlog.get_logger("taktusd")
 

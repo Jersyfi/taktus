@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime
 
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
@@ -42,6 +42,9 @@ class MemoryLedgerStore:
         transaction = self._persistence.current(tenant)
         return [*self._persistence.chain(tenant), *transaction.appended]
 
+    async def of_run(self, tenant: Tenant, run_id: str) -> Sequence[LedgerEntry]:
+        return [e for e in await self.entries(tenant) if e.refs.run_id == run_id]
+
     async def summary(self, tenant: Tenant, kind: str, *, since: datetime) -> KindSummary:
         of_kind = [e for e in await self.entries(tenant) if e.kind == kind]
         return KindSummary(
@@ -55,8 +58,19 @@ class MemoryLedgerStore:
         entries = await self.entries(tenant)
         return entries[-1].seq if entries else 0
 
-    async def after(self, tenant: Tenant, seq: int, *, limit: int) -> Sequence[LedgerEntry]:
-        return [e for e in await self.entries(tenant) if e.seq > seq][:limit]
+    async def after(
+        self,
+        tenant: Tenant,
+        seq: int,
+        *,
+        limit: int,
+        kinds: Collection[str] | None = None,
+    ) -> Sequence[LedgerEntry]:
+        return [
+            e
+            for e in await self.entries(tenant)
+            if e.seq > seq and (kinds is None or e.kind in kinds)
+        ][:limit]
 
     async def position(self, tenant: Tenant, hash: str) -> int | None:
         return next((e.seq for e in await self.entries(tenant) if e.hash == hash), None)

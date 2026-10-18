@@ -2,8 +2,9 @@
 
 Every `interface.failed` entry of the tenant's ledger, oldest first: the adapter the call went
 through, the cause token, the run and the step, and when. Read from the ledger and from nothing
-else. A rehearsal's entries are left out: a rehearsal runs on a configuration altered on purpose,
-such as the removal test's, and what it meets is not the work's (ADR-0030).
+else, and only those entries: the sweep every minute costs what it returns (ADR-0105). A
+rehearsal's entries are left out: a rehearsal runs on a configuration altered on purpose, such as
+the removal test's, and what it meets is not the work's (ADR-0030).
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ class InterfaceFailures:
 
     async def failures(self, tenant: Tenant) -> tuple[FailedCall, ...]:
         async with self._work.transaction(tenant):
-            entries = await self._ledger.entries(tenant)
+            entries = await self._ledger.of_kinds(tenant, {RECORD_KIND})
         return tuple(
             FailedCall(
                 seq=entry.seq,

@@ -2,8 +2,10 @@
 person's own waits.
 
 Everything here is read from the tenant's ledger and the records its `step.waited` entries name
-by digest, and from nothing else. A rehearsal's blocks are left out: a rehearsal acts on nothing
-outside, and its waits are not the work's (ADR-0030).
+by digest, and from nothing else. Each read costs what it returns (ADR-0105): it reads the
+entries of the kinds it needs, and the activity of runs is a projection of the ledger. A
+rehearsal's blocks are left out: a rehearsal acts on nothing outside, and its waits are not the
+work's (ADR-0030).
 
 Three reads of what ended, and one of what has not:
 
@@ -23,7 +25,6 @@ Three reads of what ended, and one of what has not:
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from collections.abc import Sequence
 
 from taktus.components.run.domain.model.run import Run
@@ -34,11 +35,10 @@ from taktus.components.run.domain.service.blocked import (
     Period,
     Waiting,
     parse,
-    period_of,
-    process_of,
     sums,
     waiting,
 )
+from taktus.components.run.domain.service.projections import ACTIVITY
 from taktus.ports.ledger import Ledger
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
@@ -83,25 +83,22 @@ class BlockedTime:
 
     async def blocks(self, tenant: Tenant) -> tuple[Block, ...]:
         """Every block that ended in the tenant, oldest first."""
-        return tuple(block for _, block in await self._recorded(await self._entries(tenant)))
+        records = await self._entries(tenant, {RECORD_KIND})
+        return tuple(block for _, block in await self._recorded(records))
 
     async def sums(self, tenant: Tenant, period: Period = "day") -> tuple[BlockedSum, ...]:
         """Blocked time per account, per process and per period."""
-        entries = await self._entries(tenant)
-        active: dict[tuple[str, str], set[str]] = defaultdict(set)
-        for entry in entries:
-            if entry.refs.run_id is None or entry.refs.process_version is None:
-                continue
-            key = (process_of(entry.refs.process_version), period_of(entry.ts, period))
-            active[key].add(entry.refs.run_id)
+        async with self._work.transaction(tenant):
+            entries = await self._ledger.of_kinds(tenant, {RECORD_KIND, *ANSWERS})
+            activity = await self._ledger.project(tenant, ACTIVITY)
         answered = _answerers(entries)
         recorded = [(block, answered.get(e.seq)) for e, block in await self._recorded(entries)]
-        return sums(recorded, {k: frozenset(v) for k, v in active.items()}, period)
+        return sums(recorded, activity.active(period), period)
 
     async def own(self, tenant: Tenant, reader: str) -> tuple[Block, ...]:
         """The waits on a person that `reader` ended: each block of `wait.human` whose step the
         reader answered, in the entry right after the block's record."""
-        entries = await self._entries(tenant)
+        entries = await self._entries(tenant, {RECORD_KIND, *ANSWERS})
         answered_by = _answerers(entries)
         return tuple(
             block
@@ -109,9 +106,9 @@ class BlockedTime:
             if block.account == "wait.human" and answered_by.get(entry.seq) == reader
         )
 
-    async def _entries(self, tenant: Tenant) -> Sequence[LedgerEntry]:
+    async def _entries(self, tenant: Tenant, kinds: set[str]) -> Sequence[LedgerEntry]:
         async with self._work.transaction(tenant):
-            return await self._ledger.entries(tenant)
+            return await self._ledger.of_kinds(tenant, kinds)
 
     async def _recorded(self, entries: Sequence[LedgerEntry]) -> list[tuple[LedgerEntry, Block]]:
         """The blocks the entries name, each with its entry. A record whose content is gone

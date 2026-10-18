@@ -474,6 +474,18 @@ ledger_entry = Table(
     Index("ledger_entry_run", "tenant", text("(refs ->> 'run_id')")),
     # A reader's position is an entry's hash; this finds its sequence number (ADR-0055 §4).
     Index("ledger_entry_hash", "tenant", "hash"),
+    # The entries of some kinds, in sequence order, without the others (ADR-0105).
+    Index("ledger_entry_kind", "tenant", "kind", "seq"),
+)
+
+ledger_projection = Table(
+    "ledger_projection",
+    metadata,
+    _tenant(),
+    Column("name", Text, nullable=False),
+    Column("seq", BigInteger, nullable=False),  # the last ledger entry it read
+    Column("state", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "name"),
 )
 
 LEDGER_CHANNEL = "taktus_ledger"

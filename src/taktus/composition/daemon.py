@@ -46,6 +46,7 @@ from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresOutbox,
     PostgresPersistence,
+    PostgresProjectionStore,
     PostgresProvenanceStore,
     PostgresQueue,
     PostgresRepository,
@@ -294,7 +295,7 @@ async def wire(
         telemetry = telemetry_of(settings.telemetry)
         runs = PostgresRepository(persistence, Run)
         ledger_store = PostgresLedgerStore(persistence)
-        ledger = ChainedLedger(ledger_store, clock)
+        ledger = ChainedLedger(ledger_store, clock, PostgresProjectionStore(persistence))
         # Which tenants the instance serves: its registry, read on every round (ADR-0104).
         tenants = TenantRegistry(
             store=PostgresTenantStore(persistence),

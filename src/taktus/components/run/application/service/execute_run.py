@@ -195,6 +195,7 @@ from taktus.components.run.domain.service.capacity import (
     CapacityRules,
     admit_capacity,
 )
+from taktus.components.run.domain.service.projections import CALIBRATION, step_key
 from taktus.components.run.domain.service.rehearsal import REHEARSED
 from taktus.components.run.ports import (
     Anchors,
@@ -2090,7 +2091,7 @@ class RunEngine:
                 self._options.seeds,
                 self._options.uncalibrated_margin,
                 budgeting.models_of(demand.quantities),
-                step=_step_key(run.process_version, step.id),
+                step=step_key(run.process_version, step.id),
             )
         )
         reservation = budgeting.reserve(demand.quantities, scale)
@@ -2216,37 +2217,14 @@ class RunEngine:
         return run, step_run
 
     async def _observations(self, tenant: Tenant) -> list[budgeting.Observation]:
-        """Every pair of estimate and actual in the tenant's ledger, oldest first: a step's
+        """The pairs of estimate and actual the calibration reads, oldest first: a step's
         `step.admitted` and the `step.finished` of the same step after it. The calibration
-        is a statistic over these, and so reproducible from the ledger (ADR-0005 §4)."""
-        estimates: dict[tuple[str, str], Consumption] = {}
-        observed: list[budgeting.Observation] = []
+        is a statistic over these, and so reproducible from the ledger (ADR-0005 §4). They are
+        a projection of the ledger, brought up to date from the last entry it read: a run start
+        reads the entries since, not the tenant's history (ADR-0105)."""
         async with self._work.transaction(tenant):
-            entries = await self._ledger.entries(tenant)
-        for entry in entries:
-            run_id, step_id = entry.refs.run_id, entry.refs.step_id
-            if run_id is None or step_id is None or entry.rehearsal:
-                continue  # a rehearsal replays recorded answers: it measures no adapter
-            if entry.kind == "step.admitted" and entry.consumption is not None:
-                estimates[(run_id, step_id)] = entry.consumption
-            elif entry.kind == "step.finished" and entry.outcome == "stopped":
-                # A stopped step used part of what it was estimated for: its partial actual
-                # against its whole estimate would read as an overestimate. It measures nothing.
-                estimates.pop((run_id, step_id), None)
-            elif entry.kind == "step.finished" and entry.consumption is not None:
-                estimate = estimates.pop((run_id, step_id), None)
-                if estimate is None or entry.adapter is None or entry.method is None:
-                    continue
-                observed.append(
-                    budgeting.Observation(
-                        adapter=entry.adapter,
-                        method=entry.method,
-                        estimate=estimate,
-                        actual=entry.consumption,
-                        step=_step_key(entry.refs.process_version, step_id),
-                    )
-                )
-        return observed
+            calibration = await self._ledger.project(tenant, CALIBRATION)
+        return calibration.observations()
 
     # --- llm steps ------------------------------------------------------------------------------
 
@@ -3719,11 +3697,3 @@ def _credential_names(work: Work) -> list[str]:
     if isinstance(work, WaitWork) and work.until is not None:
         return [c.name for c in work.until.credentials]
     return []
-
-
-def _step_key(process_version: str | None, step_id: str) -> str | None:
-    """`<process>/<step>`: the same step of every version of a process, the key a bound is
-    calibrated by (#370)."""
-    if process_version is None:
-        return None
-    return f"{process_version.split('@', 1)[0]}/{step_id}"

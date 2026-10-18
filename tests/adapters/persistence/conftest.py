@@ -19,18 +19,21 @@ from sqlalchemy import create_engine, text
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
     MemoryPersistence,
+    MemoryProjectionStore,
     MemoryProvenanceStore,
     MemoryRepository,
 )
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
     PostgresPersistence,
+    PostgresProjectionStore,
     PostgresProvenanceStore,
     PostgresRepository,
 )
 from taktus.adapters.driven.postgres.url import for_sqlalchemy
 from taktus.ports.persistence import (
     LedgerStore,
+    ProjectionStore,
     ProvenanceStore,
     Queried,
     Repository,
@@ -52,6 +55,7 @@ class Backend:
     _repository: Any
     _new_tenant: Any
     tenants: list[str] = field(default_factory=list)
+    projection_store: ProjectionStore | None = None
 
     def repository[T: Stored](self, kind: type[T]) -> Repository[T]:
         repository: Repository[T] = self._repository(kind)
@@ -84,6 +88,7 @@ async def memory_backend() -> Backend:
         MemoryProvenanceStore(memory),
         lambda kind: MemoryRepository(memory, kind),
         no_tenant_to_create,
+        projection_store=MemoryProjectionStore(memory),
     )
 
 
@@ -111,6 +116,7 @@ async def postgres_backend(postgres_url: str) -> AsyncIterator[Backend]:
             PostgresProvenanceStore(postgres),
             lambda kind: PostgresRepository(postgres, kind),
             create_tenant,
+            projection_store=PostgresProjectionStore(postgres),
         )
     finally:
         await postgres.close()
