@@ -46,10 +46,9 @@ test: env ## Unit and domain tests — everything under tests/ that is not a gat
 	$(UV) run tools/gate.py test tests $(PARALLEL) -m 'not timing' $(foreach g,architecture conformance governance exactness rehearsal,--ignore=tests/$(g))
 	$(UV) run tools/gate.py timing tests -m timing $(foreach g,architecture conformance governance exactness rehearsal,--ignore=tests/$(g))
 
-# The self-development bundles, replayed from their recordings against a database (ADR-0108,
-# ADR-0096 §1 ring 3): CI's job `rehearse` runs it on every commit on `main`, never on a pull
-# request. It needs no credential and reaches nothing outside; a change to a bundle runs it
-# before it is pushed.
+# The self-development bundles, replayed from their recordings against a database (ADR-0108):
+# CI's lane `rehearse`, which `tools/lanes.py` selects for a change to a bundle, a recording or
+# the core, and every push to `main` runs. It needs no credential and reaches nothing outside.
 .PHONY: rehearse
 rehearse: env ## Replay P-01, P-02, P-03 and S-07 from tests/rehearsal/recordings; every step must reach the state it reached when recorded
 	$(UV) run tools/gate.py rehearse tests/rehearsal

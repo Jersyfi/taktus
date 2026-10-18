@@ -293,8 +293,9 @@ sent is kept as digests only, what it received as the run kept it. A step that s
 other than its recorded step sent fails, naming the parts that differ. The replay asks the step
 boundaries — anchors, a step's own `ask`, the level — and not an adapter's maturity, because its
 adapter is the recording. `tools/record_rehearsal.py` writes a recording from a run in an
-instance's database; `make rehearse` replays the self-development bundles from theirs, and CI
-runs it on every commit on `main` (ADR-0096 §1, ring 3).
+instance's database; `make rehearse` replays the self-development bundles from theirs. CI runs
+it as the lane `rehearse`: on a pull request that touches a bundle, a recording or the core, and
+on every commit on `main` (ADR-0096 §1).
 
 **The conformance half is recorded by the instance that ran the suite (ADR-0044).** The instance
 runs the suite of an adapter's contract against the endpoint its own configuration resolves for

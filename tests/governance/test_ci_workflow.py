@@ -48,7 +48,7 @@ def test_the_required_check_needs_every_other_job_and_always_reports() -> None:
 
 def test_every_selectable_lane_runs_only_when_the_change_selects_it() -> None:
     jobs = load(CI)["jobs"]
-    for lane in ("contracts", "web", "conformance", "test"):
+    for lane in ("contracts", "web", "conformance", "test", "rehearse"):
         assert jobs[lane]["needs"] == "select", lane
         assert jobs[lane]["if"] == f"needs.select.outputs.{lane} == 'true'", lane
     for always in ("static", "decisions"):
@@ -118,11 +118,11 @@ def test_the_slow_suites_run_in_lanes_of_their_own() -> None:
             assert "make gate-conformance" not in text and "make test" not in text, name
 
 
-def test_every_commit_on_main_rehearses_the_self_development_bundles() -> None:
-    """Ring 3 (ADR-0096 §1, ADR-0108, #393): the replay runs on a push to `main` and on nothing
-    else, against a database that may not be skipped, and is handed no secret."""
+def test_the_replay_of_the_self_development_bundles_is_a_lane_without_a_secret() -> None:
+    """The replay (ADR-0108, #393) runs where `tools/lanes.py` selects it — on a pull request
+    that touches what it replays, and unfiltered on `main` — against a database that may not be
+    skipped, and is handed no secret."""
     job = load(CI)["jobs"]["rehearse"]
-    assert job["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/main'"
     runs = [step for step in job["steps"] if "run" in step]
     assert runs[-1]["run"] == "make rehearse"
     assert runs[-1]["env"] == {"TAKTUS_REQUIRE_DATABASE": "1"}

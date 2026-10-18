@@ -1,5 +1,5 @@
-"""Write the recording of one run, from an instance's database, for the replay on `main`
-(ADR-0108).
+"""Write the recording of one run, from an instance's database, for the replay of the
+self-development bundles (ADR-0108).
 
     python3 record_rehearsal.py --tenant TENANT --run RUN_ID --out DIRECTORY
         [--objects DIRECTORY] [--taken instance|local]

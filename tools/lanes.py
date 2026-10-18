@@ -18,7 +18,7 @@ is not, so that no change can slip past every lane.
     tools/lanes.py ... --commands              the make targets of the selected lanes, one a line
 
 Not the selection by component inside the Python core (#394): a change under `src/` selects
-the whole `test` lane.
+the whole `test` lane, and the lane `rehearse` with it.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 ALWAYS = ("static", "decisions")
-SELECTABLE = ("contracts", "web", "conformance", "test")
+SELECTABLE = ("contracts", "web", "conformance", "test", "rehearse")
 LANES = ALWAYS + SELECTABLE
 
 # A path matching one of these selects every lane.
@@ -74,6 +74,18 @@ CLAIMS: dict[str, tuple[str, ...]] = {
         r"\.dockerignore",
         r"\.env\.example",
     ),
+    # The replay of the self-development bundles (ADR-0108): the bundles, the recordings and
+    # what replays them. It reaches the core through the composition root, whose import graph
+    # holds nearly every module under `src/`, so every change there selects it;
+    # `tests/tools/test_lanes.py` holds the claim to the modules the replay imports.
+    "rehearse": (
+        r"src/.*",
+        r"blueprints/.*",
+        r"migrations/.*",
+        r"tests/rehearsal/.*",
+        r"tests/integration/test_rehearsal_recordings\.py",
+        r"tools/record_rehearsal\.py",
+    ),
 }
 
 # What each lane runs, as CI's job runs it.
@@ -92,6 +104,7 @@ COMMANDS: dict[str, tuple[str, ...]] = {
     "web": ("gate-web",),
     "conformance": ("gate-conformance",),
     "test": ("test",),
+    "rehearse": ("rehearse",),
 }
 
 

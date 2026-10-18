@@ -1,17 +1,22 @@
-"""The local recordings of the replay on `main`, made again (ADR-0108).
+"""The local recordings of the replay, made again (ADR-0108 §8).
 
-Not a test of anything: the way `tests/rehearsal/recordings/` was made, kept so that it can be
-made again while the recordings there are local ones. It runs only with
-`TAKTUS_RECORD_LOCAL=1`, and then writes the directories itself:
+Not a test of anything: the way `tests/rehearsal/recordings/` is made from the repository's
+fakes. It runs only with `TAKTUS_RECORD_LOCAL` set — `1` for every process, or the identifiers
+of the processes to record again, separated by commas — and then writes those directories
+itself:
 
-    TAKTUS_RECORD_LOCAL=1 uv run pytest tests/integration/test_rehearsal_recordings.py \
-        --basetemp=/tmp/taktus-record
+    TAKTUS_RECORD_LOCAL=p03-implementation uv run pytest \
+        tests/integration/test_rehearsal_recordings.py --basetemp=/tmp/taktus-record
+
+`--basetemp` keeps the machine's own temporary path, and the name of its user, out of the
+recorded inputs. A pull request that changes what a step sends records that process again
+here, in the same pull request, whether its recording was local or from the instance.
 
 It runs P-01, P-02, P-03 and S-07 for real, against the repository's fakes — the repository
 service, the model endpoint, the coding agent — exactly as `test_dev_orchestration.py` does,
 with the state in a PostgreSQL database, and then writes each run's recording with
-`tools/record_rehearsal.py`, the tool the instance's recordings are taken with. A recording
-from the instance replaces each of these; then this file is removed.
+`tools/record_rehearsal.py`, the tool the instance's recordings are taken with. Every process
+runs, because S-07 changes the P-02 that ran before it; only the processes named are written.
 """
 
 from __future__ import annotations
@@ -49,7 +54,7 @@ from .test_first_slice import taktusctl
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TAKTUS_RECORD_LOCAL"),
-    reason="writes the local recordings of tests/rehearsal; TAKTUS_RECORD_LOCAL=1 runs it",
+    reason="writes the local recordings of tests/rehearsal; TAKTUS_RECORD_LOCAL runs it",
 )
 
 RECORDINGS = ROOT / "tests" / "rehearsal" / "recordings"
@@ -98,6 +103,25 @@ async def last_run_of(database: str, process: str) -> str:
         await postgres.close()
     found = [r for r in runs if r.process_version.startswith(process + "@")]
     return max(found, key=lambda r: r.created_at).id
+
+
+PROCESSES = (
+    "p01-roadmap-control",
+    "p02-refinement",
+    "p03-implementation",
+    "s07-change-in-dialogue",
+)
+
+
+def wanted() -> tuple[str, ...]:
+    """The processes `TAKTUS_RECORD_LOCAL` names: every one for `1`."""
+    given = os.environ.get("TAKTUS_RECORD_LOCAL", "").strip()
+    if given == "1":
+        return PROCESSES
+    named = tuple(name.strip() for name in given.split(",") if name.strip())
+    unknown = [name for name in named if name not in PROCESSES]
+    assert not unknown, f"no recording of {unknown}; the processes are {PROCESSES}"
+    return named
 
 
 def record(env: dict[str, str], state_dir: Path, process: str, run_id: str) -> None:
@@ -152,9 +176,5 @@ def test_record_the_local_recordings(
     ).raise_for_status()
     run(S07, env, "process=p02-refinement", "request=also post the sections as a comment")
 
-    for process in ("p01-roadmap-control", "p02-refinement", "p03-implementation"):
+    for process in wanted():
         record(env, state_dir, process, asyncio.run(last_run_of(postgres_url, process)))
-    record(
-        env, state_dir, "s07-change-in-dialogue",
-        asyncio.run(last_run_of(postgres_url, "s07-change-in-dialogue")),
-    )  # fmt: skip

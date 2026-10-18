@@ -42,6 +42,7 @@ jobs:
       web: ${{ steps.lanes.outputs.web }}
       conformance: ${{ steps.lanes.outputs.conformance }}
       test: ${{ steps.lanes.outputs.test }}
+      rehearse: ${{ steps.lanes.outputs.rehearse }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -233,13 +234,14 @@ jobs:
         run: make test
 
   # The self-development bundles — P-01, P-02, P-03 and S-07 — replayed from recordings of real
-  # runs against a database (ADR-0108, ADR-0096 §1 ring 3, #393): every step must reach the state
-  # it reached when recorded, so that a change that breaks a bundle, the engine's handling of
-  # it or a recorded answer turns `main` red. On every commit on `main` and never on a pull
-  # request; a run on `main` is never cancelled. It needs no credential: the replay reaches
-  # nothing outside.
+  # runs against a database (ADR-0108, ADR-0096 §1, #393): every step must reach the state it
+  # reached when recorded, so that a change that breaks a bundle, the engine's handling of it or
+  # a recorded answer is red before it merges. A lane like the others: a pull request runs it
+  # when it touches a path `tools/lanes.py` gives it, and a push to `main` runs it unfiltered,
+  # never cancelled. It needs no credential: the replay reaches nothing outside.
   rehearse:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: select
+    if: needs.select.outputs.rehearse == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

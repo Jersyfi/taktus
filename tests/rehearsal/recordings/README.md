@@ -40,8 +40,18 @@ They are data, never code. They carry no secret value, and no person is named in
 
 ## When the replay is red
 
-A bundle change that alters what a step sends — an operation, its input, a prompt, a task —
-fails the replay at that step, naming the parts of the request that differ. That is the replay
-working. The change then needs a new recording: from the instance once the change runs there,
-and meanwhile the local one made again with
-`TAKTUS_RECORD_LOCAL=1 uv run pytest tests/integration/test_rehearsal_recordings.py --basetemp=/tmp/taktus-record`.
+A change that alters what a step sends — an operation, its input, a prompt, a task, a step added
+or removed — fails the replay at that step, naming the parts of the request that differ. That is
+the replay working. CI's lane `rehearse` runs it on the pull request, and `make verify` runs it
+before. The pull request then records that process again, in the same pull request, from the
+repository's fakes:
+
+```
+TAKTUS_RECORD_LOCAL=<process id> uv run pytest tests/integration/test_rehearsal_recordings.py \
+    --basetemp=/tmp/taktus-record
+```
+
+`TAKTUS_RECORD_LOCAL=1` records all four. This holds for a recording from the instance too: the
+pull request replaces it with a local one, which says `"taken": "local"` again, and the process
+stays local until the new version has run on the instance and that run is recorded as above
+(ADR-0108 §8). The replay is never loosened to let a changed request pass.

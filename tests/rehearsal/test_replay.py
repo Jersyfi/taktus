@@ -9,8 +9,9 @@ it reached in the recorded run.
 
 The deliberate breaks below show that the replay turns red, and names the step, when a bundle
 changes what a step sends, when a recorded answer no longer leads where it led, and when an
-answer is missing. `make rehearse` runs this file, and the job `rehearse` runs it on every
-commit on `main`; it needs no credential and reaches nothing outside.
+answer is missing. `make rehearse` runs this file, as CI's lane `rehearse` does on a pull
+request that touches what it replays and on every commit on `main`; it needs no credential and
+reaches nothing outside.
 """
 
 from __future__ import annotations
