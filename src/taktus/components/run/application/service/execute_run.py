@@ -141,7 +141,7 @@ import contextlib
 import hashlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -3028,7 +3028,13 @@ class RunEngine:
         call = {"run.id": run.id, "step.id": step.id, "adapter": adapter}
         (inputs,), read = await self._resolved(run, [work.task.inputs])
         if isinstance(work, MlWork):
-            inputs = MlWork.worker_inputs(inputs)
+            try:
+                inputs = MlWork.worker_inputs(inputs)
+            except ValueError as unreadable:
+                # The case does not give the numbers the model predicts from (ADR-0114 §3).
+                return await self._failed_before(
+                    run, step_run, span, f"the case cannot be predicted: {unreadable}", None, False
+                )
             read = (*read, *self._predicted_from(step, inputs))
         trace = Trace(inputs=read, adapter_version=resolved.version)
         if step_run.assignment_open:
@@ -3091,11 +3097,33 @@ class RunEngine:
         demand = ConsumptionQuantities.model_validate(
             {**estimate.quantities(), "resource_class": estimate.resource_class}
         )
+        why_not: str | None = None
+        if isinstance(work, MlWork) and work.fallback is not None:
+            # A moved step may hand its case to the language model it was moved from: it is
+            # admitted for both, the prediction and the completion (ADR-0114 §4).
+            try:
+                fallback = await self._llm_demand(run, step, work.fallback)
+            except _StepFailed as failure:
+                return await self._failed_before(
+                    run, step_run, span, failure.reason, failure.adapter, failure.retryable
+                )
+            if fallback.quantities is None:
+                why_not = f"the language model it falls back to: {fallback.why_not}"
+            else:
+                both: dict[str, Any] = {}
+                _accumulate(both, fallback.quantities)
+                _accumulate(both, demand)
+                demand = ConsumptionQuantities.model_validate(both)
         run, step_run, admitted = await self._admit(
             run,
             step,
             step_run,
-            _Demand(demand, adapter=adapter, capabilities=tuple(step.required_capabilities)),
+            _Demand(
+                None if why_not is not None else demand,
+                why_not,
+                adapter=adapter,
+                capabilities=tuple(step.required_capabilities),
+            ),
             span,
         )
         if not admitted:
@@ -3645,6 +3673,10 @@ class RunEngine:
             "confidence": confidence,
             "threshold": work.threshold.describe(),
         }
+        if work.fallback is not None and produced is not None:  # rows() read it
+            return await self._moved(
+                run, step_run, work, artifacts, consumption, trace, rows, document
+            )
         if work.threshold.unsure(confidence) and produced is not None:  # rows() read it
             fallback = {
                 **document,
@@ -3689,6 +3721,101 @@ class RunEngine:
             StepState.SUCCEEDED,
             artifacts=produced_now,
             consumption=consumption,
+            checkpoint=Checkpoint(
+                ref=f"ckpt/{run.id}/{step.id}",
+                step_id=step.id,
+                taken_at=now,
+                artifact_ids=tuple(a.id for a in produced_now),
+                result_digest=result_digest,
+            ),
+            finished_at=now,
+        )
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.finished",
+            step=step_run,
+            outcome="succeeded",
+            trace=trace,
+        )
+        return run, step_run
+
+    async def _moved(
+        self,
+        run: Run,
+        step_run: StepRun,
+        work: MlWork,
+        artifacts: tuple[Artifact, ...],
+        consumption: Consumption | None,
+        trace: Trace,
+        rows: Sequence[prediction.Row],
+        document: Mapping[str, Any],
+    ) -> tuple[Run, StepRun]:
+        """A step moved from a language model to a trained model (ADR-0114 §4). When the model
+        is sure — its confidence at or above the threshold — its class is the step's text.
+        Otherwise the case goes to the language model the step was moved from, with the same
+        prompt, and that answer is the step's text. Either way the result says which method
+        answered and carries the model's rows, so that a dependant reads the text as it read
+        the language model's, and a reader sees where each case went."""
+        step = run.step(step_run.step_id)
+        fallback = work.fallback
+        if fallback is None:  # unreachable: the caller checked
+            raise UnsupportedWork(step.id, "a moved step names the language model it falls to")
+        confidence = float(document["confidence"])
+        result: dict[str, Any] = {**document, "rows": [row.document() for row in rows]}
+        used = consumption
+        if not work.threshold.unsure(confidence) and len({row.label for row in rows}) == 1:
+            result |= {"text": rows[0].label, "answered_by": str(Method.ML), "fell_back": False}
+        else:
+            attributes = {"run.id": run.id, "step.id": step.id}
+            try:
+                async with self._telemetry.span("model.fallback", attributes) as span:
+                    value, read, spent, _ = await self._llm_step(run, step_run, fallback, span)
+            except (_StepFailed, _AtLimit) as failure:
+                spent_then = failure.consumption if isinstance(failure, _StepFailed) else None
+                step_run = step_run.to(
+                    StepState.FAILED,
+                    artifacts=artifacts,
+                    consumption=_added(consumption, spent_then),
+                    reason=(
+                        f"the model was unsure (confidence {confidence:g}, "
+                        f"{work.threshold.describe()}), and the language model it falls back "
+                        f"to did not answer: {failure.reason}"
+                    ),
+                    retryable=True,
+                    finished_at=self._clock.now(),
+                )
+                run = await self._commit(
+                    run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+                )
+                return run, step_run
+            result |= {
+                "text": value["text"],
+                "answered_by": str(Method.LLM),
+                "fell_back": True,
+                "fallback_model": value["model"],
+            }
+            used = _added(consumption, spent)
+            trace = Trace(
+                inputs=(*trace.inputs, *read.inputs), adapter_version=trace.adapter_version
+            )
+        now = self._clock.now()
+        content = _canonical(result)
+        result_digest = await self._objects.put(content)
+        produced_now = (
+            *artifacts,
+            Artifact(
+                id="result",
+                kind="result",
+                digest=result_digest,
+                media_type="application/json",
+                size_bytes=len(content),
+                created_at=now,
+            ),
+        )
+        step_run = step_run.to(
+            StepState.SUCCEEDED,
+            artifacts=produced_now,
+            consumption=used,
             checkpoint=Checkpoint(
                 ref=f"ckpt/{run.id}/{step.id}",
                 step_id=step.id,
@@ -4047,6 +4174,16 @@ def _accumulate(used: dict[str, Any], event: ConsumptionQuantities) -> None:
             used[name] = used.get(name, 0) + value
     if event.resource_class is not None:
         used["resource_class"] = event.resource_class
+
+
+def _added(*parts: Consumption | None) -> Consumption | None:
+    """What several parts of one step used, together: a moved step's prediction and the
+    completion it fell back to (ADR-0114 §4)."""
+    used: dict[str, Any] = {}
+    for part in parts:
+        if part is not None:
+            _accumulate(used, part)
+    return _consumption(used)
 
 
 def _consumption(used: dict[str, Any]) -> Consumption | None:

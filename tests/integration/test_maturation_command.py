@@ -253,3 +253,23 @@ def test_proposals_are_asked_for_under_a_budget_and_every_outcome_is_printed(
     assert outcome["proposed"] is False and outcome["applied"] is False
     nobody = maturation(state, "propose", "--compute-seconds", "600")
     assert nobody.returncode == 2 and "nothing executes without an identity" in nobody.stderr
+
+
+def test_a_move_is_applied_measured_and_rolled_back_only_where_there_is_one(
+    tmp_path: Path,
+) -> None:
+    """The three commands of a move (ADR-0114), wired as an instance is. That an accepted
+    proposal moves the step, that the move is measured and rolled back, is
+    `tests/composition/test_method_move.py`'s."""
+    state = tmp_path / "state"
+    asyncio.run(history(state, 2))
+    added_by_command_line(taktusctl(), STARTER, instance(state))
+    none = maturation(state, "moves")
+    assert none.returncode == 0, none.stderr
+    assert "no step was moved to a trained model yet" in none.stdout
+    assert json.loads(maturation(state, "moves", "--json").stdout) == []
+    unknown = maturation(state, "apply", "dr_move_nothing")
+    assert unknown.returncode == 1
+    assert "refused (unknown): dr_move_nothing is no proposal to move a step" in unknown.stderr
+    nothing = maturation(state, "rollback", "triage", "--identity", STARTER)
+    assert nothing.returncode == 1 and "refused (unknown): no process 'triage'" in nothing.stderr

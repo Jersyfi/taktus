@@ -110,6 +110,7 @@ from taktus.composition.interfaces import broken_interfaces
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities
+from taktus.composition.moves import MethodMoves
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.proposals import InstanceChanges
 from taktus.composition.settings import (
@@ -369,18 +370,19 @@ class LocalWiring:
                     stores.work,
                 ),
             )
+            register_version = RegisterProcessVersionHandler(
+                stores.of(ProcessVersion),
+                stores.work,
+                stores.of(Process),
+                ledger=ledger,
+                administration=administration,
+                clock=clock,
+                lowered=decisions.lowered,
+            )
             yield Services(
                 conformance=conformance,
                 deactivate=DeactivateProcessHandler(stores.of(Process), stores.work, ledger),
-                register_version=RegisterProcessVersionHandler(
-                    stores.of(ProcessVersion),
-                    stores.work,
-                    stores.of(Process),
-                    ledger=ledger,
-                    administration=administration,
-                    clock=clock,
-                    lowered=decisions.lowered,
-                ),
+                register_version=register_version,
                 commission=commission,
                 engine=engine,
                 provenance=ProvenanceQuery(stores.provenance_store, runs, ledger, stores.work),
@@ -437,6 +439,17 @@ class LocalWiring:
                 measures=maturation.measures,
                 correct_result=maturation.correct,
                 propose_moves=maturation.propose,
+                # An accepted proposal applied, and a move rolled back (ADR-0114).
+                moves=MethodMoves(
+                    versions=stores.of(ProcessVersion),
+                    processes=stores.of(Process),
+                    register=register_version,
+                    decisions=decisions.requests,
+                    ledger=ledger,
+                    objects=objects,
+                    work=stores.work,
+                ),
+                review_moves=maturation.review,
                 expected_runs=ExpectedRuns(
                     stores.of(Incident),
                     stores.of(WatchConfiguration),

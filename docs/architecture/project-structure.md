@@ -266,6 +266,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   entries after its own position, filtered when they are sent by the reader's key as it is then.
   A reader that reconnects to another process resumes from its position. Proven with two `api`
   processes, with the notification and without it (`tests/integration/test_live_changes.py`).
+- **A decision that takes effect** on the HTTP surface (`adapters/driving/rest/app.py`) or in
+  the owner's channel (`composition/owner_channel.py`) is handed to the run engine, which
+  continues or halts the run it holds, and to `composition/moves.py` with its request. A
+  request that accepted a proposal to move a step to a trained model registers the moved
+  version; one that accepted a proposal to roll a move back registers the replaced version again
+  (ADR-0114). A move that cannot be applied is logged, and `taktusctl maturation apply`
+  (`adapters/driving/cli/maturation_command.py`) applies it once the cause is gone; `taktusctl
+  maturation moves` and `rollback` measure and undo a move.
 - **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays; it raises a run's money or its quota (DEC-0208).
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread

@@ -122,10 +122,14 @@ process is shown; a bundle with a bare level does not register. A registered ver
   produce the result; on every step that produces one, never on `wait` or `human` (ADR-0018)
 
 See [methods.md](methods.md). The choice is measured continuously and Taktus proposes changes.
+A step of method `ml` registers only with its model's evaluation on held-out cases, for the
+file it pins (UC-8.4 §2, ADR-0114).
 
 ### 4.2 Versioning
 
-Every change creates a new **process version** with author, reason, diff and evaluation result. The
+Every change creates a new **process version** with author, reason, diff and evaluation result.
+A step moved to a trained model on an accepted proposal is such a version, and rolling it back
+registers the replaced version again as a new one (ADR-0114). The
 database holds the pointer to the active version; the versions themselves are **bundles**:
 definition, prompts, skills, connector *capabilities*, governance rules and value criteria in one
 package.

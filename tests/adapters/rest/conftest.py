@@ -192,7 +192,9 @@ class Services:
             self.ids,
         )
 
-    async def decided(self, tenant: str, run_id: str, actor: str) -> None:
+    async def decided(
+        self, tenant: str, run_id: str, actor: str, request_id: str | None = None
+    ) -> None:
         self.continued.append((tenant, run_id, actor))
 
     async def ready(self) -> str | None:

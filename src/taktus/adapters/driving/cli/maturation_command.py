@@ -11,6 +11,11 @@ instance's price table (`TAKTUS_PRICE_TABLE`) and its decision port:
   where the cases reach the floor, each run held to the budget the command names, and raise a
   proposal as a decision request where the evidence holds. It prints every outcome: the request
   raised, or why none was. Nothing is applied: a person decides the move.
+- `apply` registers the new version of a proposal a person accepted: the step on the trained
+  model, falling back to the language model below the threshold (ADR-0114). A proposal not yet
+  accepted, declined, or accepted with modifications is refused, with the reason.
+- `moves` prints every move measured over its first 100 cases, beside the version it replaced.
+- `rollback` makes the version a move replaced current again, as a new version: one act.
 """
 
 from __future__ import annotations
@@ -30,9 +35,14 @@ from taktus.adapters.driving.cli.run_command import (
     resolve_identity,
 )
 from taktus.adapters.driving.cli.wiring import NotOperable, Wiring
-from taktus.components.run.application.service import CorrectResult, MoveOutcome, ProposeMoves
+from taktus.components.run.application.service import (
+    CorrectResult,
+    MoveError,
+    MoveOutcome,
+    ProposeMoves,
+)
 from taktus.components.run.domain.model import RunError
-from taktus.components.run.domain.service.maturation import Measures
+from taktus.components.run.domain.service.maturation import Measures, MoveReview
 from taktus.ports.worker import ComputeLimit, Limits
 
 maturation = typer.Typer(
@@ -186,6 +196,77 @@ def propose(
         typer.echo("\n".join(render_outcome(o) for o in outcomes))
 
 
+@maturation.command("apply")
+def apply(
+    ctx: typer.Context,
+    request_id: Annotated[
+        str, typer.Argument(help="The decision request of the proposal a person accepted.")
+    ],
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+    tenant: Tenant = DEFAULT_TENANT,
+) -> None:
+    """Register the new version of an accepted proposal: the step on the trained model, its
+    fallback the language model. The version it replaces stays registered and unchanged. A
+    decision confirmed on the HTTP surface or in the owner's channel applies it already; this
+    applies it where none could, and applied twice it gives the same version.
+
+    Exit code 0: registered. Exit code 1: refused, with the reason. Exit code 2: the state
+    cannot be read.
+    """
+    try:
+        ref = _run(ctx, state_dir, _apply, tenant, request_id)
+    except MoveError as error:
+        typer.echo(f"refused ({error.kind}): {error}", err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo(f"moved  {request_id}  registered {ref}")
+
+
+@maturation.command("rollback")
+def rollback(
+    ctx: typer.Context,
+    process_id: Annotated[str, typer.Argument(help="The process whose move is undone.")],
+    identity: Identity = None,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+    tenant: Tenant = DEFAULT_TENANT,
+) -> None:
+    """Roll back the move of the process's current version: the version it replaced becomes
+    current again, as a new version. Nothing is deleted.
+
+    Exit code 0: rolled back. Exit code 1: refused, with the reason. Exit code 2: the state or
+    the identity cannot be read.
+    """
+    try:
+        ref = _run(ctx, state_dir, _rollback, tenant, identity, process_id)
+    except MoveError as error:
+        typer.echo(f"refused ({error.kind}): {error}", err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo(f"rolled back  {process_id}  registered {ref}")
+
+
+@maturation.command("moves")
+def moves(
+    ctx: typer.Context,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+    tenant: Tenant = DEFAULT_TENANT,
+    as_json: AsJson = False,
+) -> None:
+    """Print every move to a trained model, measured over its first 100 cases: the cost per
+    case and the share that fell back, beside the cost per case of the version it replaced. A
+    move that did not make the step cheaper is proposed for rolling back.
+
+    Exit code 0: every move is measured or measuring. Exit code 1: a move is not cheaper, or
+    its cost could not be priced. Exit code 2: the state cannot be read.
+    """
+    found = _run(ctx, state_dir, _moves, tenant)
+    if as_json:
+        typer.echo(json.dumps([m.document() for m in found], indent=2, ensure_ascii=False))
+    elif not found:
+        typer.echo("no step was moved to a trained model yet")
+    else:
+        typer.echo("\n".join(render_review(m) for m in found))
+    raise typer.Exit(code=1 if any(m.verdict in ("not_cheaper", "unpriced") for m in found) else 0)
+
+
 def _run(
     ctx: typer.Context, state_dir: Path, call: Any, *args: Any, worker: str = DEFAULT_WORKER
 ) -> Any:
@@ -250,6 +331,54 @@ async def _propose(
                 as_change=as_change,
             )
         )
+
+
+async def _apply(wiring: Wiring, state_dir: Path, worker: str, tenant: str, request_id: str) -> str:
+    async with wiring.services(state_dir=state_dir, worker_endpoint=worker) as services:
+        if services.moves is None:
+            raise NotOperable("this wiring applies no move")
+        return (await services.moves.apply(tenant, request_id)).ref
+
+
+async def _rollback(
+    wiring: Wiring,
+    state_dir: Path,
+    worker: str,
+    tenant: str,
+    identity: str | None,
+    process_id: str,
+) -> str:
+    async with wiring.services(state_dir=state_dir, worker_endpoint=worker) as services:
+        if services.moves is None:
+            raise NotOperable("this wiring rolls back no move")
+        placed = await resolve_identity(services, identity, tenant)
+        return (await services.moves.rollback(tenant, process_id, by=placed.identity)).ref
+
+
+async def _moves(
+    wiring: Wiring, state_dir: Path, worker: str, tenant: str
+) -> tuple[MoveReview, ...]:
+    async with wiring.services(state_dir=state_dir, worker_endpoint=worker) as services:
+        if services.review_moves is None:
+            raise NotOperable("this wiring measures no move")
+        return await services.review_moves.execute(tenant)
+
+
+def render_review(m: MoveReview) -> str:
+    def money(amount: float | None) -> str:
+        if amount is None:
+            return "unpriced"
+        return f"{amount:.9f}{'' if m.currency is None else ' ' + m.currency}/case"
+
+    share = "-" if m.fallback_share is None else f"{m.fallback_share:.1%}"
+    line = (
+        f"{m.move.process_version} {m.move.step_id}  {m.verdict}  {m.cases}/{m.of} case(s)  "
+        f"{money(m.cost_per_case)}, fell back {share}  replaced {m.move.replaced} "
+        f"{money(m.replaced_cost_per_case)} over {m.replaced_cases} case(s)"
+    )
+    if m.rollback_request is not None:
+        line += f"\n  proposed for rolling back: request {m.rollback_request}"
+    return line
 
 
 def render_measures(m: Measures) -> str:

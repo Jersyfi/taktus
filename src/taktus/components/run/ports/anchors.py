@@ -76,6 +76,9 @@ class Verdict(Value):
     answer: str | None = None
     """The answer as the decider wrote it, words around the option included, once applied: what
     a process that continues after a decline acts on (ADR-0088)."""
+    modified: bool = False
+    """The reading that took effect carries modifications beside the option: what a rule that
+    applies only the option as proposed must not apply (ADR-0114 §2)."""
 
 
 class Decisions(Protocol):
