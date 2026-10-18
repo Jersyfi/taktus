@@ -221,8 +221,9 @@ class ConnectorDeliveries(Deliveries):
         return _sent(result)
 
 
-type Decided = Callable[[Tenant, str, str], Awaitable[None]]
-"""A decision took effect: the run it holds continues from its boundary, or halts there."""
+type Decided = Callable[[Tenant, str, str, str], Awaitable[None]]
+"""A decision took effect — the tenant, the run, the person, the request: the run it holds
+continues from its boundary, or halts there, and a proposal it answers is applied (ADR-0114)."""
 
 
 class DecisionsOfTheChannel(DecisionAnswers):
@@ -268,7 +269,7 @@ class DecisionsOfTheChannel(DecisionAnswers):
         if done.entry is None:
             return None
         if self.decided is not None:
-            await self.decided(tenant, done.entry.run_id, identity)
+            await self.decided(tenant, done.entry.run_id, identity, done.entry.request_id)
         return done.entry.id
 
 

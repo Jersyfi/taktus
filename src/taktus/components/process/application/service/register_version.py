@@ -24,6 +24,10 @@ Registering is where an `exact` step must say how it becomes exact: one that dec
 from the catalogue is refused, with the catalogue in the finding, and so is a version whose
 exactness statement could not be complete (UC-4.13, UC-6.9, ADR-0082). Versions stored before
 are read as they are.
+
+Registering is where a step on a trained model must carry its model's evaluation on held-out
+cases, of the very file it pins: a version without it, or with one that failed, is refused
+(UC-8.4 §2, ADR-0114, `domain.service.evaluation`).
 """
 
 from __future__ import annotations
@@ -50,7 +54,7 @@ from taktus.components.process.domain.model.exactness import (
     ExactnessStatement,
     InvalidStatement,
 )
-from taktus.components.process.domain.service import autonomy, exactness
+from taktus.components.process.domain.service import autonomy, evaluation, exactness
 from taktus.components.process.ports import LoweredLevels, LoweredVersions
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock
@@ -317,6 +321,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
     except ValidationError as error:
         raise InvalidProcess(tuple(_describe("bundle", error))) from error
     refused = exactness.findings(version.steps)
+    refused.extend(evaluation.findings(version.steps, version.work))
     try:
         exactness.statement(version.ref, version.name, version.steps)
     except InvalidStatement as error:

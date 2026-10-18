@@ -77,6 +77,28 @@ tries it on a fifth of the cases held out, and proposes the move only at 95 % ag
 cost per case and the same model from both trainings. The proposal is a decision request; Taktus
 never applies it. The numbers are DEC-0164's provisional answer.
 
+**Once a person accepts (ADR-0114).** The process gains a new version, and the version it
+replaces stays registered and unchanged. In the new version the step runs on the trained model,
+pinned by version and digest, with the model's file in the version. Below the proposal's
+confidence threshold the step hands the case to the language model it ran on before, with the
+same prompt and the same check:
+
+```yaml
+step: classify
+method: ml
+model: classify-clf@d32abf606bf9
+fallback:
+  when: confidence < 0.9
+  to: llm          # the language model the step was moved from
+```
+
+Its result says which method answered. The version registers only with the model's evaluation
+on the held-out cases, for the very file it pins; one without it is refused (UC-8.4 §2). Over
+the first 100 cases on the new version, Taktus reports the cost per case and the share that fell
+back, beside the replaced version's cost per case. A move that did not make the step cheaper is
+proposed for rolling back. Rolling back is one act: the replaced version becomes current again,
+as a new version.
+
 **Operating time becomes an asset.** The organisation collects the training data for its own models
 while it works, and Taktus notices when there is enough.
 

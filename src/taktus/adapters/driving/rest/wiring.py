@@ -162,10 +162,13 @@ class RestServices(Protocol):
         """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
         ...
 
-    async def decided(self, tenant: Tenant, run_id: str, actor: str) -> None:
+    async def decided(
+        self, tenant: Tenant, run_id: str, actor: str, request_id: str | None = None
+    ) -> None:
         """A request of the run took effect: the run continues from the boundary it waits
         at, or halts there, as the decision says. Nothing happens while another request of
-        the run waits."""
+        the run waits. A proposal to move a step, or to roll a move back, that the request
+        answers is applied (ADR-0114)."""
         ...
 
     @property

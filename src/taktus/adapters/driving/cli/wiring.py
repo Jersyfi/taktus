@@ -29,6 +29,7 @@ from taktus.components.process.application.service.deactivate import DeactivateP
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
+from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.reporting.application.service import (
     Alerts,
     BrokenInterfaces,
@@ -42,17 +43,27 @@ from taktus.components.run.application.query import ProvenanceQuery, StepMeasure
 from taktus.components.run.application.service import (
     CorrectResultHandler,
     ProposeMovesHandler,
+    ReviewMovesHandler,
     RunEngine,
 )
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
-from taktus.ports.persistence import Repository, UnitOfWork
+from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 
 
 class NotOperable(Exception):
     """The services cannot be opened as configured — no database where one is named, a schema
     that is not at the current revision, a URL that is not one. The message says what to do."""
+
+
+class Moves(Protocol):
+    """A proposal to move a step to a trained model applied once a person accepted it, and a
+    move rolled back (ADR-0114). Both raise `MoveError` naming why not."""
+
+    async def apply(self, tenant: Tenant, request_id: str) -> ProcessVersion: ...
+
+    async def rollback(self, tenant: Tenant, process_id: str, *, by: str) -> ProcessVersion: ...
 
 
 @dataclass(frozen=True)
@@ -114,6 +125,11 @@ class Services:
     propose_moves: ProposeMovesHandler | None = None
     """Proposals to move a step to a trained model, on evidence, through the instance's
     decision port (`taktusctl maturation propose`)."""
+    moves: Moves | None = None
+    """An accepted proposal applied, and a move rolled back (`taktusctl maturation apply`,
+    `rollback`, ADR-0114)."""
+    review_moves: ReviewMovesHandler | None = None
+    """Every move measured over its first cases (`taktusctl maturation moves`)."""
     expected_runs: ExpectedRuns | None = None
     """The incidents the watch over expected runs raised, closed by a person, and the
     tenant's watch configuration (`taktusctl incident`, ADR-0107)."""

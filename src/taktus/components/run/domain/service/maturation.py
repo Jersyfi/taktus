@@ -28,12 +28,16 @@ import csv
 import hashlib
 import io
 import math
+from base64 import b64encode
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import Field
 
+from taktus.components.run.domain.model.work import CONTROL_KEYS, PREDICT, column
+from taktus.components.run.domain.model.work import LABEL as LABEL
 from taktus.shared.v1 import ExactnessClass, Method, Value
 
 MAX_CLASSES = 50
@@ -46,8 +50,6 @@ FALLBACK_AT = 0.9
 """The confidence below which the moved step would hand a case back to the language model it
 runs on now: the threshold `docs/architecture/methods.md` §2 shows. The person who accepts the
 proposal accepts it with this number or changes it."""
-LABEL = "label"
-"""The label column of the cases a training reads. A feature of that name is renamed."""
 CORRECTED = "step.corrected"
 """The ledger kind of a person's correction of a step's result."""
 ALLOWED = ExactnessClass.SOURCED
@@ -76,6 +78,11 @@ class Case(Value):
     """What could not be priced, and why."""
     seconds: float | None = Field(default=None, ge=0)
     """How long the step ran."""
+    started_at: datetime | None = None
+    """When the step started: the order the cases of a moved step are counted in."""
+    fell_back: bool = False
+    """The case went from the trained model to the language model the step was moved from,
+    because the model was unsure (ADR-0114)."""
 
 
 class Measures(Value):
@@ -220,11 +227,6 @@ def split(cases: Sequence[Case], seed: int = 0) -> tuple[tuple[Case, ...], tuple
         train.extend(ordered[cut:])
     key = lambda c: c.run_id  # noqa: E731 — the order a dataset is written in
     return tuple(sorted(train, key=key)), tuple(sorted(held, key=key))
-
-
-def column(name: str) -> str:
-    """A feature's column name: never the label's."""
-    return f"{name}_" if name == LABEL else name
 
 
 def dataset(cases: Sequence[Case], features: Sequence[str], *, labelled: bool) -> bytes:
@@ -396,3 +398,226 @@ class Proposal(Value):
         met, not repeated."""
         key = f"{tenant}|{self.process_version}|{self.step_id}|{self.evidence.digest}"
         return "dr_move_" + hashlib.sha256(key.encode()).hexdigest()[:24]
+
+
+# --- the move, once a person accepted it (ADR-0114) ----------------------------------------------
+
+MOVED = "method.moved"
+"""The ledger kind of a step moved to a trained model: a new version registered on a person's
+acceptance of the proposal."""
+MEASURED = "method.measured"
+"""The ledger kind of a move's measures over its first `MOVE_CASES` cases."""
+ROLLED_BACK = "method.rolled_back"
+"""The ledger kind of a move undone: the replaced version current again, as a new version."""
+MOVE_CASES = 100
+"""The cases on the new version a move is measured over (DEC-0164, Option A, item 5)."""
+ACCEPT = "A"
+"""The option of a proposal that moves the step, and of a review's that rolls the move back."""
+READS = "data.read"
+
+
+def evaluation_of(proposal: Proposal, request_id: str) -> dict[str, Any]:
+    """The model's evaluation on the held-out cases, as the new version carries it (UC-8.4 §2):
+    the model it is about by digest, the cases, the agreement, the share below the threshold,
+    and the runs that trained and tried it."""
+    e = proposal.evidence
+    return {
+        "model_digest": e.digest,
+        "held_out": e.held_out,
+        "agreement": e.agreement,
+        "below_threshold": e.below_threshold,
+        "threshold": proposal.threshold,
+        "digests": list(e.digests),
+        "training_run": proposal.training_run,
+        "trial_run": proposal.trial_run,
+        "proposal": request_id,
+    }
+
+
+def moved_step(
+    proposal: Proposal, step: Mapping[str, Any], model: bytes, request_id: str
+) -> dict[str, Any]:
+    """The step of a bundle, moved: its method `ml`, its model pinned by version and digest, its
+    fallback the language model it ran on, at the proposal's threshold, and the model's
+    evaluation in its work. Everything else of the step stays as it was. A step that is not the
+    one proposed, not on a language model, or a model file that is not the one evaluated, is a
+    ValueError naming it."""
+    e = proposal.evidence
+    if step.get("id") != proposal.step_id:
+        raise ValueError(
+            f"the step is {step.get('id')!r}, and the proposal moves {proposal.step_id!r}"
+        )
+    if step.get("method") != str(Method.LLM):
+        raise ValueError(
+            f"step {proposal.step_id} runs on {step.get('method')}, not on the language model "
+            "the proposal was measured on"
+        )
+    work = step.get("work")
+    if not isinstance(work, Mapping) or not isinstance(work.get("prompt"), str):
+        raise ValueError(f"step {proposal.step_id} carries no prompt under `work`")
+    if "sha256:" + hashlib.sha256(model).hexdigest() != e.digest:
+        raise ValueError(f"the model file is not the one evaluated, {e.digest}")
+    control = {k: v for k, v in work.items() if k in CONTROL_KEYS}
+    prompt = {k: v for k, v in work.items() if k not in CONTROL_KEYS}
+    rejected = [
+        dict(r)
+        for r in step.get("rejected") or ()
+        if isinstance(r, Mapping) and r.get("method") != str(Method.ML)
+    ]
+    rejected.append(
+        {
+            "method": str(Method.LLM),
+            "why": (
+                f"measured at {money(e.llm_cost_per_case, e.currency)} per case against "
+                f"{money(e.ml_cost_per_case, e.currency)} for the trained model, and its answers "
+                "vary; it stays the fallback for a case the model is unsure of"
+            ),
+        }
+    )
+    replaced = {"work", "method", "model", "reason", "rejected", "fallback", "requires"}
+    kept = {key: value for key, value in step.items() if key not in replaced}
+    return {
+        **kept,
+        "method": str(Method.ML),
+        "model": proposal.model,
+        "reason": (
+            f"moved from the language model on evidence, accepted as {request_id}: the trained "
+            f"model agrees with the labels on {percent(e.agreement)} of {e.held_out} held-out "
+            "cases, costs less per case, and gives the same answer at its digest"
+        ),
+        "rejected": rejected,
+        "fallback": {"when": f"confidence < {proposal.threshold:g}", "to": str(Method.LLM)},
+        "requires": [READS, PREDICT],
+        "work": {
+            **control,
+            "model": {"base64": b64encode(model).decode("ascii"), "digest": e.digest},
+            "dataset": {"values": prompt.get("values") or {}, "features": list(proposal.features)},
+            "fallback": prompt,
+            "evaluation": evaluation_of(proposal, request_id),
+        },
+    }
+
+
+class Move(Value):
+    """A move registered: what `method.moved` records by digest."""
+
+    process_version: str = Field(min_length=1)
+    """The version the step runs on the trained model in."""
+    replaced: str = Field(min_length=1)
+    """The version it replaced, which stays registered and unchanged."""
+    step_id: str = Field(min_length=1)
+    request_id: str = Field(min_length=1)
+    """The proposal a person accepted."""
+    model: str = Field(min_length=1)
+    model_digest: str = Field(min_length=1)
+    threshold: float = Field(ge=0, le=1)
+
+    @property
+    def process_id(self) -> str:
+        return self.process_version.split("@", 1)[0]
+
+
+type Verdict = Literal["measuring", "cheaper", "not_cheaper", "unpriced"]
+
+
+class MoveReview(Value):
+    """A move measured over the first `MOVE_CASES` cases of the new version, beside the version
+    it replaced (DEC-0164, Option A, item 5). Nothing here names a person."""
+
+    move: Move
+    cases: int = Field(ge=0)
+    """The cases counted, at most `MOVE_CASES`."""
+    of: int = MOVE_CASES
+    cost_per_case: float | None = None
+    fell_back: int = Field(ge=0)
+    """How many of the cases counted went to the language model."""
+    fallback_share: float | None = None
+    replaced_cases: int = Field(ge=0)
+    replaced_cost_per_case: float | None = None
+    currency: str | None = None
+    unpriced: tuple[str, ...] = ()
+    verdict: Verdict
+    """`measuring` until `MOVE_CASES` cases ran; then `cheaper` or `not_cheaper` by the cost
+    per case, or `unpriced` where either cost could not be priced."""
+    rollback_request: str | None = None
+    """The proposal to roll the move back, raised when it is `not_cheaper`."""
+
+    def situation(self) -> str:
+        m = self.move
+        return (
+            f"Step {m.step_id} was moved to the trained model {m.model} in {m.process_version} "
+            f"on the proposal {m.request_id}. Over its first {self.cases} cases it cost "
+            f"{money(self.cost_per_case, self.currency)} per case, and "
+            f"{percent(self.fallback_share or 0.0)} of them went back to the language model. "
+            f"{m.replaced}, the version it replaced, cost "
+            f"{money(self.replaced_cost_per_case, self.currency)} per case over "
+            f"{self.replaced_cases} cases. The move did not make the step cheaper."
+        )
+
+    def question(self) -> str:
+        m = self.move
+        return f"Shall step {m.step_id} go back to the language model, as in {m.replaced}?"
+
+    def options(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        m = self.move
+        return (
+            {
+                "id": ACCEPT,
+                "proposal": (
+                    f"Roll the move back: {m.replaced} becomes current again, as a new version."
+                ),
+                "consequence": (
+                    f"Step {m.step_id} runs on the language model again and costs what it cost "
+                    f"there. {m.process_version} stays registered and unchanged."
+                ),
+                "recommended": True,
+                "reason": "the move was proposed because it would be cheaper, and it is not",
+            },
+            {
+                "id": "B",
+                "proposal": f"Keep step {m.step_id} on the trained model.",
+                "consequence": (
+                    "The step keeps its reproducible answers at the cost measured. Nothing is "
+                    "proposed again for this move."
+                ),
+                "recommended": False,
+            },
+        )
+
+    def rollback_request_id(self, tenant: str) -> str:
+        """The same move gives the same request: a review raised twice is met, not repeated."""
+        key = f"{tenant}|{self.move.request_id}|{self.move.process_version}"
+        return "dr_back_" + hashlib.sha256(key.encode()).hexdigest()[:24]
+
+
+def review(
+    move: Move, cases: Sequence[Case], replaced: Sequence[Case], currency: str | None
+) -> MoveReview:
+    """A move's measures: the first `MOVE_CASES` cases of the new version in the order they
+    started, their cost per case and the share that fell back, beside the cost per case of the
+    replaced version over its cases. The verdict is a rule over the two costs."""
+    first = sorted(cases, key=lambda c: (c.started_at or datetime.min, c.run_id))[:MOVE_CASES]
+    now = measure(move.process_version, move.step_id, Method.ML, first, currency)
+    before = measure(move.replaced, move.step_id, Method.LLM, replaced, currency)
+    fell = sum(1 for c in first if c.fell_back)
+    verdict: Verdict
+    if len(first) < MOVE_CASES:
+        verdict = "measuring"
+    elif now.cost_per_case is None or before.cost_per_case is None:
+        verdict = "unpriced"
+    elif now.cost_per_case < before.cost_per_case:
+        verdict = "cheaper"
+    else:
+        verdict = "not_cheaper"
+    return MoveReview(
+        move=move,
+        cases=len(first),
+        cost_per_case=now.cost_per_case,
+        fell_back=fell,
+        fallback_share=round(fell / len(first), 6) if first else None,
+        replaced_cases=len(replaced),
+        replaced_cost_per_case=before.cost_per_case,
+        currency=currency,
+        unpriced=tuple(sorted({*now.unpriced, *before.unpriced})),
+        verdict=verdict,
+    )

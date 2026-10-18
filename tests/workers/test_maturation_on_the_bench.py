@@ -1,4 +1,4 @@
-"""Method maturation on the ML bench itself (ADR-0084, issue #217).
+"""Method maturation on the ML bench itself (ADR-0084, issue #217; ADR-0114, issue #218).
 
 The bench is started as a process and reached over HTTP, as the control plane reaches it. The
 run history is written by the run engine with a scripted language model; maturation then
@@ -10,6 +10,7 @@ proposal to a person. The rules — the floor, the verdict, the request's shape 
 from __future__ import annotations
 
 from components.run.test_maturation import BUDGET, PROCESS, STARTER, TENANT, World, separable
+from composition.test_method_move import cases_on, moved
 
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.components.run.application.service import ProposeMoves
@@ -50,3 +51,22 @@ async def test_a_step_on_a_language_model_is_proposed_a_model_the_bench_trained(
     assert trial.step("held-out").model == proposal.model
     (request,) = await w.proposals()
     assert request.id == outcome.request_id and e.digest in request.request.situation
+
+
+async def test_the_accepted_move_runs_on_the_bench_reproducibly_and_measurably_cheaper(
+    ml_bench: Bench,
+) -> None:
+    """The roadmap's `0.4.0` criterion against the bench itself (issue #218, ADR-0114): the
+    proposal accepted, the step moved, 100 cases on the new version measured beside the version
+    it replaced, and the same case answered the same twice."""
+    async with HttpWorker(ml_bench.endpoint) as bench:
+        w, _, version = await moved(workers=[bench])
+        await cases_on(w, version, maturation.MOVE_CASES, unsure_every=maturation.MOVE_CASES + 1)
+        one = await w.run_of(version, 10.2, 0.3, confidence=1.0, kind="k1")
+        two = await w.run_of(version, 10.2, 0.3, confidence=1.0, kind="k1")
+    (review,) = await w.review.execute(TENANT)
+    assert review.verdict == "cheaper", review
+    assert review.cost_per_case is not None and review.replaced_cost_per_case is not None
+    assert review.cost_per_case < review.replaced_cost_per_case
+    first, second = await w.result(one), await w.result(two)
+    assert first == second and first["answered_by"] == "ml", "reproducible at the pinned model"

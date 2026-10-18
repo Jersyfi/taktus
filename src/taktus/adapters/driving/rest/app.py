@@ -525,7 +525,9 @@ def _decisions(services: RestServices) -> APIRouter:
         except DecisionError as error:
             return _refused(error)
         if confirmed.entry is not None:
-            await services.decided(who.tenant, confirmed.entry.run_id, who.identity)
+            await services.decided(
+                who.tenant, confirmed.entry.run_id, who.identity, confirmed.entry.request_id
+            )
         return JSONResponse(
             {
                 "applied": confirmed.entry is not None,

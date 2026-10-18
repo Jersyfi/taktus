@@ -230,7 +230,8 @@ async def test_the_threshold_is_compared_as_written(when: str, falls_back: bool)
     ("changes", "reason"),
     [
         ({"when": None}, "names its fallback"),
-        ({"to": Method.LLM}, "falls back to a person in this version"),
+        ({"to": Method.WORKER}, "falls back to a person, or to the language model"),
+        ({"to": Method.LLM}, "names no language model's work under `fallback`"),
         ({"when": "tests failed twice"}, "not a threshold the engine evaluates"),
         ({"when": "confidence < 1.5"}, "not a threshold the engine evaluates"),
         ({"requires": ("data.read",)}, "requires ml.predict"),

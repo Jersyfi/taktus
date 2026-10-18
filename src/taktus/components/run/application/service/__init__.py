@@ -16,6 +16,7 @@ from taktus.components.run.application.service.maturation import (
     ProposeMoves,
     ProposeMovesHandler,
 )
+from taktus.components.run.application.service.moves import MoveError, ReviewMovesHandler
 from taktus.components.run.application.service.runner import Outcome, Runner, RunnerOptions
 
 __all__ = [
@@ -25,11 +26,13 @@ __all__ = [
     "CorrectResultHandler",
     "DecideSteps",
     "EngineOptions",
+    "MoveError",
     "MoveOutcome",
     "Outcome",
     "ProposeMoves",
     "ProposeMovesHandler",
     "ResumeRun",
+    "ReviewMovesHandler",
     "RunEngine",
     "Runner",
     "RunnerOptions",

@@ -145,6 +145,7 @@ class RequestsOfTheRun:
             decided_by=request.decided_by,
             entry=shaped.outcome,
             answer=shaped.answer_raw,
+            modified=shaped.answer_interpreted.modifications is not None,
         )
 
 

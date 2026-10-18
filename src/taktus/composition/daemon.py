@@ -112,6 +112,7 @@ from taktus.components.run.application.query import (
 from taktus.components.run.application.service import (
     DecideSteps,
     EngineOptions,
+    MoveError,
     RunEngine,
     Runner,
     RunnerOptions,
@@ -142,6 +143,7 @@ from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities
+from taktus.composition.moves import MethodMoves
 from taktus.composition.owner_channel import (
     OwnerChannelWiring,
     known_secrets,
@@ -231,6 +233,8 @@ class Wired:
     """A person's proposals for a changed process, never versions (ADR-0091)."""
     proposal_acts: ProposalActs
     """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
+    moves: MethodMoves | None = None
+    """An accepted proposal to move a step applied, and a move rolled back (ADR-0114)."""
     runner: Runner | None = None
     leading: bool = field(default=False, init=False)
     """Whether this process holds the scheduler's lead right now."""
@@ -259,11 +263,15 @@ class Wired:
     def confirm_decision(self) -> ConfirmRequestHandler:
         return self.decisions.confirm
 
-    async def decided(self, tenant: str, run_id: str, actor: str) -> None:
+    async def decided(
+        self, tenant: str, run_id: str, actor: str, request_id: str | None = None
+    ) -> None:
         # The run is handed to a runner through the queue; this process may serve only `api`.
         await self.engine.decide(
             DecideSteps(run_id=run_id, actor=actor, tenant=tenant, enqueue=True)
         )
+        if request_id is not None:
+            await applied_move(self.moves, tenant, request_id)
 
     async def ready(self) -> str | None:
         """None when the database answers and is at the schema this build needs; otherwise
@@ -280,6 +288,19 @@ class Wired:
 
 class NotOperable(Exception):
     """The daemon cannot serve as configured; the message says why and what to do."""
+
+
+async def applied_move(moves: MethodMoves | None, tenant: str, request_id: str) -> None:
+    """A decision that took effect, handed to the moves: one that accepted a proposal to move a
+    step, or to roll a move back, is applied (ADR-0114). A move that cannot be applied is
+    logged with why; the decision stays in effect, and `taktusctl maturation apply` applies it
+    once the cause is gone."""
+    if moves is None:
+        return
+    try:
+        await moves.decided(tenant, request_id)
+    except MoveError as error:
+        log.warning("move not applied", request=request_id, kind=error.kind, reason=str(error))
 
 
 @asynccontextmanager
@@ -412,12 +433,14 @@ async def wire(
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
 
-            async def decided(tenant: str, run_id: str, actor: str) -> None:
+            async def decided(tenant: str, run_id: str, actor: str, request_id: str) -> None:
                 # A decision confirmed in the owner's channel hands the run to a runner,
-                # as one confirmed on the HTTP surface does.
+                # as one confirmed on the HTTP surface does, and applies a proposal to move a
+                # step that it answers (ADR-0114).
                 await engine.decide(
                     DecideSteps(run_id=run_id, actor=actor, tenant=tenant, enqueue=True)
                 )
+                await applied_move(moves, tenant, request_id)
 
             levels = LevelQueries(
                 RepositoryLevelRecords(
@@ -556,6 +579,15 @@ async def wire(
                 clock=clock,
                 lowered=decisions.lowered,
             )
+            moves = MethodMoves(
+                versions=PostgresRepository(persistence, ProcessVersion),
+                processes=PostgresRepository(persistence, Process),
+                register=register_version,
+                decisions=decisions.requests,
+                ledger=ledger,
+                objects=objects,
+                work=persistence,
+            )
             proposal_acts = ProposalActs(
                 proposals=proposals,
                 processes=PostgresRepository(persistence, Process),
@@ -638,6 +670,7 @@ async def wire(
                 levels=levels,
                 proposals=proposals,
                 proposal_acts=proposal_acts,
+                moves=moves,
                 complete_intake=complete_intake,
                 reactions=Reactions(
                     tenants=tenants,

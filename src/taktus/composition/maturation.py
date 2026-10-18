@@ -10,7 +10,8 @@ decision port. Without a price table every cost is named unpriced, and nothing i
 
 S-06 of `blueprints/self-operation/` runs maturation on the schedule its trigger names. It asks
 for the measures and the proposals through the loopback connector, which `InstanceMaturation`
-answers. It is wiring: nothing here decides what maturation requires.
+answers; a weekly run measures the moves already made as well (ADR-0114). It is wiring:
+nothing here decides what maturation requires.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from taktus.components.run.application.service import (
     CorrectResultHandler,
     ProposeMoves,
     ProposeMovesHandler,
+    ReviewMovesHandler,
     RunEngine,
 )
 from taktus.components.run.domain.model import Run
@@ -37,11 +39,13 @@ from taktus.ports.worker import Limits
 
 @dataclass(frozen=True)
 class Maturation:
-    """The three handlers of method maturation, over one instance."""
+    """The handlers of method maturation, over one instance."""
 
     measures: StepMeasures
     correct: CorrectResultHandler
     propose: ProposeMovesHandler
+    review: ReviewMovesHandler
+    """Every move to a trained model, measured over its first cases (ADR-0114)."""
 
 
 def maturation_wiring(
@@ -62,6 +66,7 @@ def maturation_wiring(
         propose=ProposeMovesHandler(
             engine, measures, objects, ledger, work, clock, decisions, prices
         ),
+        review=ReviewMovesHandler(measures, objects, ledger, work, clock, decisions, prices),
     )
 
 
@@ -99,11 +104,14 @@ class InstanceMaturation:
                 step_id=_text(scope, "step_id"),
             )
         )
+        # The moves already made are measured on the same schedule (ADR-0114 §6).
+        moves = await self._maturation.review.execute(tenant)
         return {
             "outcomes": [o.document() for o in outcomes],
             "looked_at": len(outcomes),
             "proposed": sum(1 for o in outcomes if o.proposed),
             "applied": sum(1 for o in outcomes if o.applied),
+            "moves": [m.document() for m in moves],
         }
 
 
