@@ -1,3 +1,4 @@
+from taktus.components.reporting.application.service.alerts import Alerted, Alerts
 from taktus.components.reporting.application.service.answer_in_channel import (
     Answer,
     AnswerInChannel,
@@ -55,6 +56,8 @@ __all__ = [
     "NOT_SHOWN",
     "SENT",
     "SHOWN",
+    "Alerted",
+    "Alerts",
     "Answer",
     "AnswerInChannel",
     "AnswerInChannelHandler",

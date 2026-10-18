@@ -119,6 +119,15 @@ instance serves, because every tenant's work stands on the same platform. It nam
 that observed and, for storage, the bytes the state occupied as `consumption.storage_bytes`.
 Nothing else: the ledger stays content-free (ADR-0006).
 
+**Who is told.** A crossing to *act* reaches the owner of every tenant whose chain it is in,
+through the tenant's owner-facing channel (ADR-0045, ADR-0106). It is a report of kind
+`failure`, with the figure's kind, the time, and what to do. It is said once, and nothing more is
+said until an entry with outcome `ok` clears it; a later crossing to *act* is a new report. The
+scheduler looks once a minute while it leads. A tenant without a channel hears nothing: its
+finding stays in the log and the ledger, the daemon's startup log names the tenant, and
+`taktusctl alerts` shows it. The same report tells the owner of a runner that lost its claim and
+of a failed or missing backup (ADR-0106).
+
 ## 4. Admission against the platform
 
 Admission control refuses a step whose estimate does not fit the budget (ADR-0005). It refuses a

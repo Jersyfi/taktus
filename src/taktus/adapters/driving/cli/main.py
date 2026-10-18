@@ -14,7 +14,9 @@ identifier (ADR-0104). `anchors` configures and shows a tenant's anchors (ADR-00
 shows what the instance met that the product lacks, ready to send by hand (UC-6.12).
 `owner-channel` configures and shows where what is needed from the owner reaches them
 (ADR-0045). `interfaces` shows every interface the instance noticed had stopped behaving as its
-adapter expects, and whether the owner heard of it (ADR-0047). `guides` renders the
+adapter expects, and whether the owner heard of it (ADR-0047). `alerts` shows what needs a
+person's action — a capacity crossing, a lost claim, a failed or missing backup — and whether
+the owner heard of it (ADR-0106). `guides` renders the
 administration guide and the guide for users from the repository, and puts them into a directory
 of files without overwriting a page edited there (UC-13.6, ADR-0065). `exactness` prints the
 exactness statement of a bundle: which checks apply, what they cover, what they do not, and what
@@ -40,6 +42,7 @@ from typing import Annotated
 import typer
 
 from taktus.adapters.driving.cli import (
+    alerts_command,
     anchors_command,
     capacity_command,
     conformance_command,
@@ -87,6 +90,7 @@ app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
 app.command("findings")(findings_command.findings)
 app.command("interfaces")(interfaces_command.interfaces)
+app.command("alerts")(alerts_command.alerts)
 app.add_typer(identity_command.identity, name="identity")
 app.add_typer(tenant_command.tenant, name="tenant")
 app.add_typer(anchors_command.anchors, name="anchors")

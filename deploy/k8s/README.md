@@ -518,6 +518,16 @@ secret store. The instance never holds the private key, and cannot read its own 
 `backup.objects`, the state volume, mounted read-only. It is ReadWriteOnce, so the backup's pod
 is scheduled onto the node of the control plane's pods, and does not start while none runs.
 
+**Who hears of a failed or missing backup** (ADR-0106). Every run records its outcome in the
+database it backed up: one row of `backup_outcome` per tenant, `ok` or `failed` with the step
+that failed. The chart sets `TAKTUS_BACKUP_EXPECTED_HOURS` from `backup.expectedHours`, 26 by
+default. While the scheduler leads, it tells each tenant's owner-facing channel of a failed run,
+and of a last success older than that, once until a successful run clears it. A tenant without
+a channel hears nothing; the daemon's startup log names it, and `taktusctl alerts` on the
+instance shows what it would have heard. A login with `BYPASSRLS` that is not the superuser
+needs `GRANT INSERT ON backup_outcome` for the recording; without it the backup still runs, and
+is reported as missing.
+
 **Run one now.** `kubectl create job --from=cronjob/<release>-backup <release>-backup-now` in the
 control plane's namespace, then read its log.
 

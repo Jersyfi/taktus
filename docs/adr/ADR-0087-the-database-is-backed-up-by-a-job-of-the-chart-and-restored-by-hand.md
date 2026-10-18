@@ -1,7 +1,8 @@
 # ADR-0087 — The database is backed up by a job of the chart, and restored by hand
 
 **Status:** accepted · makes ADR-0013 C hold for an installed instance (issue #67, roadmap
-`0.1.0`) · amended 2026-10-18 (#322): the object store is archived beside the dump
+`0.1.0`) · amended 2026-10-18 (#322): the object store is archived beside the dump · amended
+2026-10-18 by ADR-0106 (#323): every run records its outcome in the database
 
 ## Context
 ADR-0013 C requires that Taktus is repairable without Taktus: a manual way to restore an earlier
@@ -73,6 +74,13 @@ says:
 
 A run whose backup failed deletes nothing.
 
+*Amended 2026-10-18 (ADR-0106, #323):* at the end of every run, the program inserts its outcome
+into the table `backup_outcome` through `psql`: one row per tenant, with the time, the backup's
+name, `ok` or `failed`, and for a failure the step that failed as a token. The instance reads
+the newest outcome and reports a failed backup, or one older than the expected interval, through
+each tenant's owner-facing channel. A recording that fails changes neither the backup nor the
+exit code. The program still imports nothing of Taktus.
+
 ### 5. The restore is a procedure of standard commands
 `deploy/k8s/README.md` §11 is the restore: list the backups, copy one out of the store, decrypt
 it where it is encrypted, create the application role in an empty database, `pg_restore`, and
@@ -109,13 +117,14 @@ tenant's chain against the heads taken before the backup.
 - `CREDENTIALS.md`: the backup store's credential is one Secret with two keys, the identifier and
   the secret, mounted as files.
 - `deploy/k8s/README.md` §11, the restore by hand.
-- No migration, no contract change, nothing in `src/`.
+- No migration, no contract change, nothing in `src/`. *Amended 2026-10-18:* migration 0055
+  creates `backup_outcome`, and `src/` reads it (ADR-0106).
 
 ## Where this promise ends
 A backup is taken once a day by default; the work of the hours since the last one is lost with
-the node. Nothing notices a backup that did not run or failed, beyond the failed Job the cluster
-keeps: a missing backup is not yet a finding Taktus reports, and the owner sees it only by
-looking. The restore is exercised by the tests against a database of the tests' own and was
+the node. A backup that did not run or failed is known to the instance only from the outcome the program
+recorded in the database. A run that cannot reach the database records nothing, and is reported
+only once the expected interval has passed (ADR-0106). The restore is exercised by the tests against a database of the tests' own and was
 carried out by hand once (`docs/runs/`); a restore of the installed instance's own backup is the
 operator's, and the drill that repeats it on a schedule is S-03 of `1.0.0`. The retention keeps
 the store from growing beyond what it says, not the store's own usage, and it deletes on the

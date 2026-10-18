@@ -42,7 +42,15 @@ Configuration, all from the environment; a secret only from a file (CREDENTIALS.
 | `TAKTUS_BACKUP_WORK_DIR` | where the dump waits before it leaves; the temporary directory |
 | `TAKTUS_BACKUP_OBJECTS_DIRECTORY` | the object store, `<state dir>/objects`; empty: none |
 
-Exit code 0: written and the retention kept. 1: nothing was deleted, and the log says why.
+At the end of every run, its outcome is recorded in the database it backs up (ADR-0106): one
+row of `backup_outcome` per tenant of the table `tenant`, with the run's time, its name, `ok` or
+`failed`, and for a failure the step that failed as a token — `configuration`, `database`,
+`encryption`, `objects`, `store` or `retention`. Never a message: no secret and no tool output
+reaches the row. The instance reads the newest outcome and tells each tenant's owner of a failed
+or missing backup. A recording that fails is printed and changes neither the backup nor the exit
+code; a run that cannot reach the database records nothing.
+
+Exit code 0: written and the retention kept. 1: the run failed, and the log says why.
 """
 
 from __future__ import annotations
@@ -75,8 +83,19 @@ HEADS = (
 REVISION = "SELECT coalesce(max(version_num), '') FROM alembic_version"
 
 
+STEPS = frozenset({"configuration", "database", "encryption", "objects", "store", "retention"})
+"""The steps a run can fail at: the token a failed outcome records."""
+RECORD_SECONDS = "10"
+"""How long the recording of an outcome waits for the database to answer."""
+
+
 class BackupError(Exception):
-    """A step failed; the message says which, never with a secret in it."""
+    """A step failed; the message says which, never with a secret in it. `step` is the token
+    the outcome records."""
+
+    def __init__(self, message: str, *, step: str = "configuration") -> None:
+        super().__init__(message)
+        self.step = step
 
 
 # --- names and the retention ---------------------------------------------------------------
@@ -198,14 +217,22 @@ def settings(env: Mapping[str, str]) -> Settings:
 # --- the tools -------------------------------------------------------------------------------
 
 
+TOOL_STEPS = {"pg_isready": "database", "psql": "database", "pg_dump": "database"}
+TOOL_STEPS |= {"age": "encryption", "rclone": "store"}
+
+
 def run(command: Sequence[str], *, env: Mapping[str, str] | None = None, what: str) -> str:
     """Run one tool; on failure, raise with its last lines of error output. The command line
     never carries a secret, so it may be named."""
     merged = {**os.environ, **(env or {})}
-    done = subprocess.run(command, env=merged, capture_output=True, text=True, check=False)  # noqa: S603
+    step = TOOL_STEPS.get(Path(command[0]).name, "configuration")
+    try:
+        done = subprocess.run(command, env=merged, capture_output=True, text=True, check=False)  # noqa: S603
+    except OSError as error:
+        raise BackupError(f"{what} failed: {command[0]}: {error.strerror}", step=step) from None
     if done.returncode != 0:
         tail = "\n".join(done.stderr.strip().splitlines()[-5:])
-        raise BackupError(f"{what} failed ({done.returncode}): {tail}")
+        raise BackupError(f"{what} failed ({done.returncode}): {tail}", step=step)
     return done.stdout
 
 
@@ -295,7 +322,11 @@ def backup(s: Settings, *, now: datetime) -> str:
         if s.objects_dir is not None:
             # After the dump: every object a row of it names was written before that row.
             archived = Path(work) / f"{name}.objects.tar.gz"
-            count = archive(s.objects_dir, archived)
+            try:
+                count = archive(s.objects_dir, archived)
+            except (OSError, tarfile.TarError) as error:
+                reason = f"archiving the object store failed: {type(error).__name__}"
+                raise BackupError(reason, step="objects") from None
             archived = encrypt(s, archived)
             objects = {**described(archived), "count": count}
             written.append(archived)
@@ -321,7 +352,8 @@ def backup(s: Settings, *, now: datetime) -> str:
         listed = set(listing(s))
         missing = {path.name for path in written} - listed
         if missing:
-            raise BackupError(f"written but not listed in the store: {sorted(missing)}")
+            reason = f"written but not listed in the store: {sorted(missing)}"
+            raise BackupError(reason, step="store")
         stored = (
             "the database alone"
             if objects is None
@@ -335,30 +367,92 @@ def backup(s: Settings, *, now: datetime) -> str:
 
 
 def keep_retention(s: Settings, *, now: datetime) -> list[str]:
-    doomed = expired(listing(s), now=now, retention_days=s.retention_days)
-    for name in doomed:
-        store(s, "deletefile", f"{s.remote}/{name}", what=f"deleting {name}")
-        print(f"deleted {name}: older than {s.retention_days} day(s)")
+    try:
+        doomed = expired(listing(s), now=now, retention_days=s.retention_days)
+        for name in doomed:
+            store(s, "deletefile", f"{s.remote}/{name}", what=f"deleting {name}")
+            print(f"deleted {name}: older than {s.retention_days} day(s)")
+    except BackupError as error:
+        raise BackupError(str(error), step="retention") from None
     return doomed
+
+
+# --- the outcome -------------------------------------------------------------------------------
+
+
+def outcome_sql(name: str, at: datetime, step: str | None) -> str:
+    """The statement that records one run's outcome for every tenant. Every value is the
+    program's own — a name of its form, a time, a token of `STEPS` — and is checked again here,
+    so nothing from outside reaches the statement."""
+    if NAME.match(f"{name}.json") is None:
+        raise BackupError(f"{name!r} is not a backup's name")
+    if step is not None and step not in STEPS:
+        raise BackupError(f"{step!r} is not a step of the backup")
+    outcome = "'ok'" if step is None else "'failed'"
+    reason = "NULL" if step is None else f"'{step}'"
+    when = at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Every value was checked against the program's own forms above; none comes from outside.
+    return (
+        "INSERT INTO backup_outcome (tenant, name, at, outcome, reason) "  # noqa: S608
+        f"SELECT id, '{name}', '{when}'::timestamptz, {outcome}, {reason} FROM tenant "
+        "ON CONFLICT DO NOTHING"
+    )
+
+
+def record_outcome(
+    database_url: str,
+    database_env: Mapping[str, str],
+    *,
+    name: str,
+    at: datetime,
+    step: str | None,
+) -> bool:
+    """Record the run's outcome; True when it was. A failure is printed and goes no further:
+    the backup is what it is whether or not the instance hears of it (ADR-0106)."""
+    command = ["psql", "--no-psqlrc", "--tuples-only", "--no-align", "--dbname", database_url]
+    try:
+        run(
+            [*command, "-c", outcome_sql(name, at, step)],
+            env={**database_env, "PGCONNECT_TIMEOUT": RECORD_SECONDS},
+            what="recording the outcome",
+        )
+    except BackupError as error:
+        print(f"backup: the outcome of {name} was not recorded: {error}", file=sys.stderr)
+        return False
+    print(f"recorded {name}: {'ok' if step is None else f'failed at {step}'}")
+    return True
+
+
+def database_of(env: Mapping[str, str]) -> tuple[str, Mapping[str, str]] | None:
+    """The database to record a failure in, when its URL can be read at all."""
+    try:
+        return without_password(read_secret(env, "TAKTUS_DATABASE_URL_FILE"))
+    except BackupError:
+        return None
 
 
 def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     command = args[0] if args else "backup"
+    environment = os.environ if env is None else env
+    now = datetime.now(UTC)
     try:
-        s = settings(os.environ if env is None else env)
-        now = datetime.now(UTC)
-        if command == "backup":
-            backup(s, now=now)
-            keep_retention(s, now=now)
-        elif command == "list":
+        if command not in ("backup", "list"):
+            raise BackupError(f"unknown command {command!r}: backup or list")
+        s = settings(environment)
+        if command == "list":
             for name in sorted(listing(s)):
                 print(name)
-        else:
-            raise BackupError(f"unknown command {command!r}: backup or list")
+            return 0
+        backup(s, now=now)
+        keep_retention(s, now=now)
     except BackupError as error:
         print(f"backup: {error}", file=sys.stderr)
+        database = database_of(environment) if command == "backup" else None
+        if database is not None:
+            record_outcome(*database, name=name_at(now), at=now, step=error.step)
         return 1
+    record_outcome(s.database_url, s.database_env, name=name_at(now), at=now, step=None)
     return 0
 
 

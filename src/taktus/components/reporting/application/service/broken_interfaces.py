@@ -128,7 +128,7 @@ class BrokenInterfaces:
             if report is None:
                 reason = NO_CHANNEL if channel is None else NOT_RAISED
             elif not delivered:
-                reason = _why(report)
+                reason = why_not_delivered(report)
             result.append(
                 Noticed(
                     found=found,
@@ -155,7 +155,7 @@ class BrokenInterfaces:
                     report = await self._raising.execute(self._command(tenant, one.found))
                     raised += 1
                 else:
-                    last = _last_attempt(one.report)
+                    last = last_attempt(one.report)
                     if last is not None and now - last < RETRY:
                         continue
                     report = await self._raising.deliver(DeliverReport(tenant, one.report.id))
@@ -180,13 +180,13 @@ class BrokenInterfaces:
         )
 
 
-def _why(report: Report) -> str:
+def why_not_delivered(report: Report) -> str:
     attempts = [d for d in report.deliveries if d.channel is DeliveryChannel.MESSAGE]
     if not attempts or attempts[-1].reason is None:
         return NOT_RAISED
     return attempts[-1].reason
 
 
-def _last_attempt(report: Report) -> datetime | None:
+def last_attempt(report: Report) -> datetime | None:
     attempts = [d.at for d in report.deliveries if d.channel is DeliveryChannel.MESSAGE]
     return attempts[-1] if attempts else None

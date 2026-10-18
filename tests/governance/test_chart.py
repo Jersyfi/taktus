@@ -771,6 +771,16 @@ def test_the_backup_reaches_the_database_and_the_store_and_nothing_else(
     assert admitted == ["control-plane", "migrate", "backup"]
 
 
+def test_the_instance_expects_a_backup_daily_and_is_told_nothing_without_one() -> None:
+    """A missing backup reaches each owner once the interval passed (ADR-0106)."""
+    [config] = of_kind(render(), "ConfigMap")
+    assert config["data"]["TAKTUS_BACKUP_EXPECTED_HOURS"] == "26"
+    [config] = of_kind(render("backup.expectedHours=50"), "ConfigMap")
+    assert config["data"]["TAKTUS_BACKUP_EXPECTED_HOURS"] == "50"
+    [config] = of_kind(render("backup.enabled=false"), "ConfigMap")
+    assert "TAKTUS_BACKUP_EXPECTED_HOURS" not in config["data"]
+
+
 def test_without_the_backup_nothing_of_it_is_rendered() -> None:
     documents = render("backup.enabled=false")
     assert of_kind(documents, "CronJob") == []

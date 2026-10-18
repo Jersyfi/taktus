@@ -33,7 +33,9 @@ What happens when a run ends decides the job:
   the step's block names. A wait for time or for an outside system holds no place meanwhile,
   as a wait for a person does not either (ADR-0103);
 - the engine raised — the job is *released* and counted as an attempt; after the queue's limit
-  of attempts the job stays for a person.
+  of attempts the job stays for a person;
+- the claim was lost — the job is another runner's and stays untouched; the loss is recorded as
+  `run.claim_lost` in the run's chain, so that a person hears of it (ADR-0106).
 
 The same holds for a run that had already ended when its job was claimed: a runner that died
 after the run's last state was committed and before it completed the job leaves exactly that.
@@ -227,6 +229,7 @@ class Runner:
                 executing.lost = True
                 outcome.error = str(lost)
                 outcome.disposition = "lost"
+                await self._note_lost(executing, outcome)
                 return outcome
             except Exception as error:  # every failure of one run is one outcome, not a crash
                 outcome.error = f"{type(error).__name__}: {error}"
@@ -236,6 +239,7 @@ class Runner:
             outcome.run = run
             if executing.lost:
                 outcome.disposition = "lost"
+                await self._note_lost(executing, outcome)
                 return outcome
             if run.state is RunState.HALTED and run.cause is Cause.CAPACITY:
                 await self._defer(executing, run)
@@ -278,6 +282,15 @@ class Runner:
                 executing.stop_requested = True
                 self.engine.relinquish(executing.run_id)
                 return
+
+    async def _note_lost(self, executing: _Executing, outcome: Outcome) -> None:
+        """Record the lost claim in the run's chain, for the person who must look at the
+        runners (ADR-0106 §2). A recording that fails is said in the outcome, and the runner
+        goes on."""
+        try:
+            await self.engine.record_claim_lost(executing.tenant, executing.run_id)
+        except Exception as error:  # noting a loss must never take the runner down
+            outcome.error = f"{outcome.error or 'claim lost'}; not recorded: {type(error).__name__}"
 
     async def _renew(self, executing: _Executing) -> bool | None:
         """True renewed, False lost, None unknown (the store did not answer)."""

@@ -3,6 +3,7 @@ from taktus.components.run.application.service.correct_result import (
     CorrectResultHandler,
 )
 from taktus.components.run.application.service.execute_run import (
+    CLAIM_LOST,
     ConfirmSteps,
     DecideSteps,
     EngineOptions,
@@ -18,6 +19,7 @@ from taktus.components.run.application.service.maturation import (
 from taktus.components.run.application.service.runner import Outcome, Runner, RunnerOptions
 
 __all__ = [
+    "CLAIM_LOST",
     "ConfirmSteps",
     "CorrectResult",
     "CorrectResultHandler",

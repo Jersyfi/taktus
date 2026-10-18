@@ -28,6 +28,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.reporting.application.service import (
+    Alerts,
     BrokenInterfaces,
     ChannelOf,
     ConfigureChannelHandler,
@@ -93,6 +94,9 @@ class Services:
     interfaces: BrokenInterfaces | None = None
     """The broken interfaces the instance noticed from its own calls, and what became of their
     reports, to show its operator (`taktusctl interfaces`, ADR-0047)."""
+    alerts: Alerts | None = None
+    """What needs a person's action, noticed from recorded facts, and what became of its
+    reports, to show its operator (`taktusctl alerts`, ADR-0106)."""
     conformance: RunConformanceHandler | None = None
     """The instance runs an adapter's conformance suite and records it (`taktusctl
     conformance record`, ADR-0044)."""

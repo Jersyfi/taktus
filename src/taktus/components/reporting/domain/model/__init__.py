@@ -1,3 +1,13 @@
+from taktus.components.reporting.domain.model.alert import (
+    ID_PREFIXES,
+    Alert,
+    AlertKind,
+    BackupRun,
+    BackupState,
+    CapacityCrossing,
+    ClaimLost,
+    Signalled,
+)
 from taktus.components.reporting.domain.model.channel import (
     OwnerChannel,
     PendingAct,
@@ -66,12 +76,19 @@ from taktus.components.reporting.domain.model.report import (
 )
 
 __all__ = [
+    "ID_PREFIXES",
     "LACK_CAUSES",
     "TRANSIENT",
     "UNFORESEEN",
+    "Alert",
+    "AlertKind",
+    "BackupRun",
+    "BackupState",
     "Blocked",
     "BrokenInterface",
+    "CapacityCrossing",
     "Change",
+    "ClaimLost",
     "CountedRuns",
     "DecisionFacts",
     "Delivery",
@@ -112,6 +129,7 @@ __all__ = [
     "RunningStep",
     "Scope",
     "ScopeKind",
+    "Signalled",
     "Snapshot",
     "SnapshotRun",
     "SnapshotStep",

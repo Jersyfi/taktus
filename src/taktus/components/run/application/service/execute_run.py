@@ -283,6 +283,9 @@ from taktus.shared.v1 import (
 )
 from taktus.shared.v1.consumption import MODEL_NAME_PATTERN
 
+CLAIM_LOST = "run.claim_lost"
+"""The ledger kind a runner's lost claim is recorded under (ADR-0106 §2)."""
+
 CONTINUATIONS = 3
 """How often one step continues in a new unit after its worker stopped at its wall clock."""
 
@@ -1039,6 +1042,16 @@ class RunEngine:
         fence refuses whatever it would still write. The worker's assignment is not stopped:
         the runner that holds the claim now adopts it (ADR-0038)."""
         self._stop_requested.add(run_id)
+
+    async def record_claim_lost(self, tenant: Tenant, run_id: str) -> None:
+        """A runner learned that it lost its claim on the run: `run.claim_lost` in the run's
+        chain, with outcome `lost` (ADR-0106 §2). Written outside the claim: the run is another
+        runner's now, and the entry changes nothing of it. It names the run and nothing that
+        could name a runner, a host or a person."""
+        async with self._work.transaction(tenant):
+            run = await self._runs.get(tenant, run_id)
+            if run is not None:
+                await self._record(run, CLAIM_LOST, outcome="lost")
 
     # --- the loop ------------------------------------------------------------------------------
 

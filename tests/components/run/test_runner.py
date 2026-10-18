@@ -36,6 +36,7 @@ from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.application.service import (
+    CLAIM_LOST,
     EngineOptions,
     ResumeRun,
     RunEngine,
@@ -332,7 +333,11 @@ async def test_a_runner_whose_claim_was_taken_writes_nothing_more_and_leaves_the
     await world.stop(first)
     assert first.outcomes[0].disposition == "lost"
     assert await world.stored(run.id) == before, "r1 wrote nothing after the claim was taken"
-    assert await world.kinds(run.id) == kinds
+    # Nothing of the run, and the loss recorded for a person to look at (ADR-0106).
+    assert await world.kinds(run.id) == [*kinds, "run.claim_lost"]
+    async with world.persistence.transaction(TENANT):
+        (lost,) = [e for e in await world.ledger.entries(TENANT, run.id) if e.kind == CLAIM_LOST]
+    assert lost.outcome == "lost" and lost.refs.actor is None and lost.adapter is None
     async with world.persistence.transaction(TENANT):
         assert await world.queue.extend(TENANT, "job_0001", "r2"), "r2 still holds the job"
 
@@ -341,8 +346,9 @@ async def test_a_runner_paused_past_its_lease_cannot_commit_the_step_it_was_insi
     """Issue #107. Runner A is inside step `a`, before its commit, and pauses — its heartbeat
     never comes — for longer than the lease. Runner B claims the job, recovers the run and
     executes it to its end. Then A goes on: its commit of the step's end is refused, and A
-    gives the run up. The run is B's, the ledger has no entry from A after B's recovery, and
-    the ledger and provenance chains verify with no step recorded twice."""
+    gives the run up. The run is B's, the ledger has no entry from A after B's recovery but the
+    record that A lost its claim, and the ledger and provenance chains verify with no step
+    recorded twice."""
     world = World(lease_seconds=1)
     run = await world.submit(rule("a", 41), rule("b", 1, after=("a",)))
     held = HeldObjects(b"41")
@@ -364,7 +370,7 @@ async def test_a_runner_paused_past_its_lease_cannot_commit_the_step_it_was_insi
     assert lost.disposition == "lost" and "refused" in (lost.error or "")
     assert await world.stored(run.id) == finished, "the run is as B left it"
     kinds = await world.kinds(run.id)
-    assert kinds == entries_of_b, "nothing from A after B's run.recovered"
+    assert kinds == [*entries_of_b, "run.claim_lost"], "from A only the loss, after B's run"
     assert kinds == [
         "run.created",
         "budget.set",
@@ -379,6 +385,7 @@ async def test_a_runner_paused_past_its_lease_cannot_commit_the_step_it_was_insi
         "step.started",
         "step.finished",
         "run.finished",
+        "run.claim_lost",
     ]
     async with world.persistence.transaction(TENANT):
         assert (await world.ledger.verify(TENANT)).intact

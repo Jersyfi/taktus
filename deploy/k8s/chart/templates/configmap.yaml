@@ -123,6 +123,10 @@ data:
   TAKTUS_CAPACITY_STORAGE_EXPANDABLE: {{ .Values.capacity.storageExpandable | quote }}
   TAKTUS_CAPACITY_STORAGE_WARN_PERCENT: {{ .Values.capacity.storageWarnPercent | quote }}
   TAKTUS_CAPACITY_ACT_WITHIN_DAYS: {{ .Values.capacity.actWithinDays | quote }}
+  {{- if .Values.backup.enabled }}
+  {{- /* The backup records every run's outcome; a missing one is told to each owner (ADR-0106). */}}
+  TAKTUS_BACKUP_EXPECTED_HOURS: {{ .Values.backup.expectedHours | quote }}
+  {{- end }}
   {{- with .Values.administration.platform }}
   TAKTUS_PLATFORM: {{ . | quote }}
   {{- end }}

@@ -32,6 +32,7 @@ from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
+    MemoryBackupLog,
     MemoryLedgerStore,
     MemoryObjectStore,
     MemoryPersistence,
@@ -43,6 +44,7 @@ from taktus.adapters.driven.memory import (
 from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
 from taktus.adapters.driven.postgres import (
+    PostgresBackupLog,
     PostgresLedgerStore,
     PostgresPersistence,
     PostgresProjectionStore,
@@ -86,6 +88,7 @@ from taktus.components.run.application.query import (
 )
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run
+from taktus.composition.alerts import alerts
 from taktus.composition.capacity import capacity_report, rules_of
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.decisions import decision_wiring
@@ -108,6 +111,7 @@ from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.proposals import InstanceChanges
 from taktus.composition.settings import (
     load_administration,
+    load_backup_expected_hours,
     load_budget,
     load_capacity,
     load_connectors,
@@ -119,6 +123,7 @@ from taktus.composition.settings import (
     load_tenants,
     load_workers,
 )
+from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
     LedgerStore,
@@ -150,6 +155,8 @@ class Stores:
     tenants: TenantStore
     """The instance's registry of tenants (ADR-0104)."""
     projection_store: ProjectionStore
+    backups: BackupLog
+    """The outcomes the backup program recorded (ADR-0106)."""
     storage: str
     queue: Queue | None = None
     size: StateSize | None = None
@@ -179,6 +186,7 @@ class LocalWiring:
             tenants = load_tenants(self._configuration)
             administration = load_administration(self._configuration)
             knowledge_directory = load_knowledge_directory(self._configuration)
+            backup_expected_hours = load_backup_expected_hours(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
         async with (
@@ -380,6 +388,15 @@ class LocalWiring:
                     shape=shape,
                 ),
                 interfaces=broken_interfaces(ledger, stores.work, owner, clock),
+                alerts=alerts(
+                    ledger,
+                    stores.work,
+                    stores.backups,
+                    stores.tenants,
+                    owner,
+                    clock,
+                    backup_expected_hours=backup_expected_hours,
+                ),
                 measures=maturation.measures,
                 correct_result=maturation.correct,
                 propose_moves=maturation.propose,
@@ -444,6 +461,7 @@ class LocalWiring:
                     provenance_store=MemoryProvenanceStore(memory),
                     tenants=MemoryTenantStore(memory),
                     projection_store=MemoryProjectionStore(memory),
+                    backups=MemoryBackupLog(memory),
                     storage=f"memory with a snapshot under {state_dir} — development only, "
                     "not durable; set TAKTUS_DATABASE_URL for a database",
                 )
@@ -487,6 +505,7 @@ class LocalWiring:
                 provenance_store=PostgresProvenanceStore(postgres),
                 tenants=PostgresTenantStore(postgres),
                 projection_store=PostgresProjectionStore(postgres),
+                backups=PostgresBackupLog(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
                 queue=PostgresQueue(postgres),
                 size=postgres,
