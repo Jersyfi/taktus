@@ -1,7 +1,8 @@
 # ADR-0076 — A step of method `ml` is a prediction on a worker, and an unsure one goes to its fallback
 
 **Status:** accepted · builds the first part of method maturation (issue #216, roadmap `0.4.0`)
-on ADR-0004 and ADR-0007
+on ADR-0004 and ADR-0007 · amended 2026-10-19 (ADR-0114): a step moved from a language model
+falls back to that language model, and §4's refusal of it no longer holds
 
 ## Context
 ADR-0004 names `ml` as one of eight methods a step can run on: a trained model, reproducible
@@ -62,6 +63,10 @@ as the step's artifact; they are never its result.
 A fallback to another method — to the language model a step moved away from — is refused before
 the run starts. Switching methods inside a step belongs to the move itself (#218).
 
+*Amended 2026-10-19 by ADR-0114 §3:* a step whose work carries the language model's work under
+`fallback` falls back to `llm`, and its result says which method answered. A fallback to any
+method other than a person or that language model is still refused.
+
 ### 5. The result names what produced it
 A step that is sure enough finishes with a result document: the model as pinned and by digest,
 every row's class and confidence, the step's confidence and the threshold. Its provenance record
@@ -91,7 +96,7 @@ The fallback holds the model's answer back when the model says it is unsure. It 
 model that is sure and wrong: confidence is the model's own estimate, and agreement with the truth
 is measured when the model is evaluated, not when it predicts. The pin by digest makes the file
 the step runs on knowable; it does not say the file is the model `name@version` claims to be,
-which needs the model hub (UC-8.6). A fallback goes to a person only: until #218, a step cannot
-fall back to another method. A step's confidence is the lowest of its rows, so a step that
+which needs the model hub (UC-8.6). A fallback goes to a person, or, for a step moved from a
+language model, to that language model (ADR-0114); to no other method. A step's confidence is the lowest of its rows, so a step that
 predicts many rows goes to a person more often than one that predicts a few; a fallback per row
 is not built.
