@@ -52,7 +52,8 @@ decision request, each only where the entry changed it. Which state a kind and a
 to is published beside the state machine that owns it: the run component
 (`components/run/domain/model/recorded.py`) and the decision component
 (`components/decision/domain/model/recorded.py`). A representation reads the state from the
-change and never derives it a second time.
+change and never derives it a second time. A step a person rejected is `step.declined`: it is planned
+again, and its run halts (ADR-0110).
 
 **A change carries no content, no figure and no person.** The entry's actor, its consumption,
 its model, its adapter and its digest are left out. What a run has consumed is read from the

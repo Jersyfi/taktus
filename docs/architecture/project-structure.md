@@ -80,7 +80,7 @@ taktus/
 ├── tests/
 │   ├── architecture/                # adapter obligation, component boundaries, no product names
 │   ├── conformance/                 # the contract suite, runnable against foreign adapters
-│   ├── governance/                  # anchors hold, limits never breach, least privilege; test_anchors.py: anchors at the step boundary and decision requests
+│   ├── governance/                  # anchors hold, limits never breach, least privilege; test_anchors.py: anchors at the step boundary and decision requests; test_corrections.py: decisions on proposals counted, a level that falls by rule before the next step (ADR-0110)
 │   ├── exactness/                   # `exact` steps never take their final value from AI
 │   ├── contract/                    # the Python bindings match the schemas and their examples
 │   ├── components/ adapters/        # domain tables and application tests against fakes/; adapters/persistence and adapters/queue: one suite, both implementations; adapters/connectors: the reference connector against fakes/repository_service.py; adapters/rest: the surface under two prefixes; adapters/execution: the process adapter, and the container adapter checked from inside a job; adapters/telemetry: spans nested, the trace id on every entry, no person and no secret in an attribute
@@ -236,7 +236,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   report, and once a minute it watches that every expected run happened: one that did not
   raises an incident (`composition/expected_runs.py`, ADR-0107,
   `tests/integration/test_expected_runs.py`), and judges every signal against its corridor,
-  raising the daily report from 06:00 UTC (`composition/signals.py`, ADR-0109); deadlines and
+  raising the daily report from 06:00 UTC (`composition/signals.py`, ADR-0109). It reports
+  to the owner what needs a person's action, a level that fell by rule and a raise Taktus
+  proposes among it (`composition/alerts.py`, ADR-0106, ADR-0110). The run reaches the
+  governance component's `Corrections` through `composition/decisions.py`, and `taktusctl
+  corrections` reads and configures it; deadlines and
   budget windows arrive with governance.
 - **`automation`** leads through the leadership port under its own name, as the scheduler does,
   and while it leads reacts to events (`composition/reactions.py`, ADR-0048). The intake writes

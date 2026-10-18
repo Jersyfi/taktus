@@ -1,7 +1,8 @@
 """Use case: what needs a person's action reaches the owner of the tenant (ADR-0106, issue #323).
 
 `noticed` is the view: the rules over the recorded facts — capacity crossings, lost claims, the
-backup's state — every alert with what became of its report. It is computed from the facts each
+backup's state, a level lowered or a raise proposed by rule (ADR-0110) — every alert with what
+became of its report. It is computed from the facts each
 time it is read, so there is nothing to keep in step with it. The facts are recorded whether or
 not anyone hears of them, and `taktusctl alerts` shows them.
 
@@ -107,6 +108,8 @@ class Alerts:
         found: list[Alert] = [
             *rule.capacity(signalled.capacity),
             *rule.claims_lost(signalled.claims_lost, closed),
+            *rule.lowered(signalled.lowered),
+            *rule.raises(signalled.raises),
         ]
         backup = rule.backup(signalled.backup, self._clock.now())
         if backup is not None:

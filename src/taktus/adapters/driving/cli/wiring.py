@@ -19,6 +19,7 @@ from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import (
     AnchorsInForce,
     ConfigureAnchorsHandler,
+    Corrections,
     ExpectedRuns,
     ReportCapacityHandler,
 )
@@ -121,6 +122,9 @@ class Services:
     ADR-0109)."""
     signals: SignalWatch | None = None
     """Every signal judged against its corridor now (`taktusctl signal list`)."""
+    corrections: Corrections | None = None
+    """The decisions on proposals counted per process and action class, and the tenant's
+    correction limits (`taktusctl corrections`, ADR-0110)."""
 
 
 @dataclass(frozen=True)

@@ -50,6 +50,26 @@ a failure or a result defect — that the replaced version names under `history`
 ledger entry `autonomy.refused`; Taktus may propose a raise (`autonomy.proposed`) and never
 applies one. Level 4 and levels per risk class are not built yet.
 
+**How a level falls, and what a raise rests on** (ADR-0110, UC-7.5). A person answers a step
+proposed at level 1 or 2 in one of three ways: released as proposed, corrected with the work the
+person released, or rejected. Each is the ledger entry `proposal.decided`, naming the process
+version, the step and the action class that held the step, and no person. The **correction
+rate** of a process, or of one action class of it, is corrected and rejected over all decided,
+over 7 and 28 days, counted from its last change of level. It is never computed per person.
+
+| What happens | What follows, by rule |
+|---|---|
+| the rate over the tenant's window is above its limit, with its minimum of decisions | the unit falls one level |
+| a step acted on what an anchor names, with no decision to perform it | the process falls one level |
+| the tenant's conditions for a raise hold: decisions, weeks, a rate below its limit over both windows | Taktus proposes the raise (`autonomy.proposed`), once per change of level |
+
+A fall needs nobody, because it makes the system safer. It raises an incident with the rule and
+its facts, and records `autonomy.lowered`. The run takes the lower level on at its next step
+boundary (`run.lowered`). The level rises again only by a version a person registers with
+approval and the quality history: registration measures the replaced version at its lowered
+level. The owner hears of a fall and of a proposed raise through the owner-facing channel. The
+tenant's limits are `taktusctl corrections configure`; the shipped default is NTC-0215.
+
 ---
 
 ## 2. Anchors

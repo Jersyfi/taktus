@@ -24,6 +24,7 @@ from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.decision.domain.model import RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
+    CorrectionLimits,
     Happening,
     Incident,
     IncidentKind,
@@ -570,4 +571,33 @@ def corridor(tenant: str = "t") -> Corridor:
         case="https://tickets.example/board/cost",
         interventions=("throttle-cloud",),
         changed_at=AT,
+    )
+
+
+def lowering_incident(tenant: str = "t") -> Incident:
+    """An incident about a level that fell by rule: no expected time (ADR-0110)."""
+    return Incident(
+        id="inc_level",
+        tenant=tenant,
+        kind=IncidentKind.BREACH,
+        process_id="p",
+        process_version="p@1",
+        run_id="run_1",
+        rule="anchor.breach",
+        facts={"anchors": "anc-write", "level_before": "3", "level_after": "2"},
+        raised_at=AT,
+    )
+
+
+def correction_limits(tenant: str = "t") -> CorrectionLimits:
+    return CorrectionLimits(
+        id=tenant,
+        tenant=tenant,
+        raise_decisions=10,
+        raise_weeks=2,
+        raise_rate=0.1,
+        lower_rate=0.3,
+        lower_window=timedelta(days=14),
+        lower_minimum=3,
+        configured_at=AT,
     )

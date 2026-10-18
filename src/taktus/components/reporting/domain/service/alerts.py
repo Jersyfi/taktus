@@ -13,6 +13,14 @@ is in effect when a run failed after that success, or when that success is older
 expected interval. A tenant with no success at all counts from when it began to be watched. A
 new success that is recent enough ends it.
 
+**A level lowered.** Every incident the governance component raised for a level that fell by rule
+is one alert (ADR-0110). It stays in effect until the owner answers its report: a level that fell
+rises again only by a person's approval, so nothing clears it on its own.
+
+**A raise proposed.** Every raise Taktus proposed on the corrections is one alert, with the
+figures it was proposed with. It stays in effect until the owner answers its report. The answer
+does not raise anything: a raise is a version a person registers with their approval (UC-7.1).
+
 Nothing else decides: no model, no estimate, no reading of words (ADR-0023). Pure: facts and the
 closing times in, alerts and their words out.
 """
@@ -29,6 +37,8 @@ from taktus.components.reporting.domain.model.alert import (
     BackupState,
     CapacityCrossing,
     ClaimLost,
+    LevelLowered,
+    RaiseProposed,
 )
 from taktus.components.reporting.domain.model.finding import short
 
@@ -246,6 +256,116 @@ def backup(state: BackupState, now: datetime) -> Alert | None:
                 if state.last_ok is None
                 else f"last success {state.last_ok.name}."
             )
+        ),
+    )
+
+
+# --- a level lowered ----------------------------------------------------------------------------
+
+
+def _unit(version: str, action: str | None) -> str:
+    process = version.rsplit("@", 1)[0]
+    return f"the process {process}" if action is None else f"the action {action} of {process}"
+
+
+def lowered(found: Iterable[LevelLowered]) -> tuple[Alert, ...]:
+    """Every alert of a level that fell, oldest first."""
+    return tuple(_lowered(one) for one in sorted(found, key=lambda o: (o.at, o.incident)))
+
+
+def _lowered(one: LevelLowered) -> Alert:
+    unit = _unit(one.process_version, one.action)
+    fell = one.after < one.before
+    if one.rule == "anchor.breach":
+        anchors = ", ".join(one.anchors) or "an anchor"
+        why = (
+            f"Step {one.step_id} of run {one.run_id} performed an act that {anchors} names, "
+            "with no person's decision to perform it."
+        )
+        look = (
+            "Read the run's ledger (`taktusctl ledger`) around the step: what it performed, and "
+            "why the anchor did not halt it at its boundary — an anchor configured while the "
+            "step ran, or an act its declaration did not name."
+        )
+    else:
+        rate = 0.0 if one.rate is None else one.rate
+        limit = 0.0 if one.limit is None else one.limit
+        why = (
+            f"Its correction rate over {one.window_days or 0:g} days was {rate:.0%} of "
+            f"{one.decided or 0} decision(s), above the tenant's limit of {limit:.0%}."
+        )
+        look = (
+            "Read what people corrected or rejected (`taktusctl corrections`): the "
+            "proposals and the versions released are kept in the ledger by digest."
+        )
+    if fell:
+        title = f"A level fell by rule: {unit} now runs at level {one.after}"
+        held = (
+            f"Its steps now ask what level {one.after} asks of a person before they start. "
+            "Nothing else stands still."
+        )
+    else:
+        title = f"An anchor was breached by {unit}, already at the lowest level"
+        held = "Nothing more: it runs at level 1, where a person performs every act."
+    return Alert(
+        id=_id("lowered", one.incident),
+        kind="lowered",
+        since=one.at,
+        in_effect=True,
+        title=title,
+        needed=(
+            f"A look at {unit} ({one.process_version}): {why} Taktus lowered it from level "
+            f"{one.before} to {one.after} at {_at(one.at)}, by rule and without asking "
+            f"(incident {one.incident})."
+            if fell
+            else f"A look at {unit} ({one.process_version}): {why} (incident {one.incident}).",
+        ),
+        steps=(
+            look,
+            "Repair the cause in the process, or leave it at the lower level.",
+            "A level that fell rises again only by a version you register with your approval "
+            "and its evidence (`taktusctl submit` with `--approve-raise`). Answer this report once "
+            "you have looked.",
+        ),
+        standing_still=(held,),
+        summary=(
+            f"Level lowered: {unit} from {one.before} to {one.after} at {_at(one.at)} ({one.rule})."
+        ),
+    )
+
+
+# --- a raise proposed ---------------------------------------------------------------------------
+
+
+def raises(found: Iterable[RaiseProposed]) -> tuple[Alert, ...]:
+    """Every alert of a raise Taktus proposed, oldest first."""
+    return tuple(_raise(one) for one in sorted(found, key=lambda o: o.seq))
+
+
+def _raise(one: RaiseProposed) -> Alert:
+    unit = _unit(one.process_version, one.action)
+    return Alert(
+        id=_id("raise", f"{one.process_version}|{one.action or ''}|{one.seq}"),
+        kind="raise",
+        since=one.at,
+        in_effect=True,
+        title=f"Taktus proposes raising {unit} one level",
+        needed=(
+            f"Your decision on a raise of {unit} ({one.process_version}). People corrected or "
+            f"rejected {one.week_rate:.0%} of {one.week_decided} proposal(s) over 7 days and "
+            f"{one.month_rate:.0%} of {one.month_decided} over 28 days, counted since "
+            f"{_at(one.counted_since)}: the tenant's conditions for a raise hold.",
+        ),
+        steps=(
+            "Read the figures and what was corrected: `taktusctl corrections`.",
+            "To raise it, register a version one level higher with your approval "
+            "(`taktusctl submit` with `--approve-raise`). Taktus never applies a raise itself.",
+            "Answer this report once you have decided; leaving the level as it is needs nothing.",
+        ),
+        standing_still=("Nothing: the process runs at its level until you decide.",),
+        summary=(
+            f"Raise proposed: {unit}, {one.week_rate:.0%} over 7 days, {one.month_rate:.0%} "
+            "over 28 days."
         ),
     )
 

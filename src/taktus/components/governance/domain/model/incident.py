@@ -9,6 +9,10 @@ did happen, the rule that fired and the facts the rule read (ADR-0023 §1). Its 
 happened to it since: further misses, a run that happened late, its closure. It never names a
 person (principle 14): who closed it is the actor of its ledger entry, not a field of it.
 
+The second source is a level that falls by rule (ADR-0110): a process that breached an anchor,
+or a unit whose correction rate rose above the tenant's limit. Its facts name the levels before
+and after, and what the rule read.
+
 A **watch configuration** is one tenant's grace period and its threshold for a watcher that never
 finds anything. A tenant that configured nothing holds the shipped default (NTC-0212).
 """
@@ -33,6 +37,11 @@ class IncidentKind(StrEnum):
     """A run that started did not end within its bound."""
     SIGNAL_RED = "signal.red"
     """A signal's value lay beyond the red threshold of its corridor (ADR-0109 §4)."""
+    BREACH = "anchor.breach"
+    """A process performed an act an anchor names without a person's decision to perform it;
+    the process falls one level (ADR-0110)."""
+    CORRECTIONS = "corrections.rate"
+    """A unit's correction rate rose above the tenant's limit; it falls one level (ADR-0110)."""
 
 
 class IncidentState(StrEnum):
@@ -70,16 +79,16 @@ class Incident(Value):
     kind: IncidentKind
     process_id: str = Field(min_length=1)
     process_version: str = Field(min_length=1)
-    expected_at: datetime
+    expected_at: datetime | None = None
     """When the run was expected to start (missing), or to have ended (overdue); when the red
-    value was recorded (signal)."""
+    value was recorded (signal); None for an incident about a level (ADR-0110)."""
     last_run: RunSeen | None = None
     """The last run of the process that did happen before the miss; None when none did."""
     run_id: str | None = Field(default=None, min_length=1)
     """For an overdue run: the run that has not ended."""
     rule: str = Field(min_length=1)
     """The rule that fired: `expected.slot`, `expected.gap`, `expected.bound` or
-    `corridor.red`."""
+    `corridor.red`; for a level, `anchor.breach` or `corrections.rate` (ADR-0110)."""
     facts: Mapping[str, str | float | None] = Field(default_factory=dict)
     """What the rule read, and the thresholds it compared with (ADR-0023 §1)."""
     raised_at: datetime

@@ -44,7 +44,7 @@ from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import LedgerEntry
 
-ANSWERS = frozenset({"step.confirmed", "step.performed", "step.decided"})
+ANSWERS = frozenset({"step.confirmed", "step.performed", "step.declined", "step.decided"})
 """The entries that end a wait on a person, each naming who answered as its actor."""
 
 

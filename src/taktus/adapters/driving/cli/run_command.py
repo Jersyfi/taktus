@@ -9,7 +9,10 @@ step boundary; the bundle is read again, so that a changed `limits` block is a c
 
 A run waits for a person where its autonomy level asks for one (ADR-0039): `--approve STEP`
 confirms a step at level 2, `--performed STEP` reports that the person performed a step's act
-at level 1; both name the run with `--resume` and continue it. `--approve-raise` is the invoking
+at level 1; both name the run with `--resume` and continue it. `--correct STEP=FILE` answers
+either with the work the person released in place of the proposal, read from the file; `--reject
+STEP` runs nothing of it and halts the run. Each is a decision on a proposal, counted per process
+and action class (ADR-0110). `--approve-raise` is the invoking
 person's approval of a raise of the bundle's autonomy level; the raise is admitted only with the
 quality history the replaced version names.
 """
@@ -126,6 +129,24 @@ def run(
             "only proposes at level 1, and continue the run. Repeatable.",
         ),
     ] = None,
+    correct: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--correct",
+            metavar="STEP=FILE",
+            help="With --resume and --approve or --performed: the work you released for this "
+            "step in place of what Taktus proposed, as a JSON or YAML file. Repeatable.",
+        ),
+    ] = None,
+    reject: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--reject",
+            metavar="STEP",
+            help="With --resume: reject what this step proposes. Nothing of it runs, and the run "
+            "halts; resuming it proposes the step again. Repeatable.",
+        ),
+    ] = None,
     approve_raise: Annotated[
         bool,
         typer.Option(
@@ -146,6 +167,14 @@ def run(
         bundle = _load(process)
         inputs = parse_inputs(input or [])
         answer = answers(resume, approve or [], performed or [])
+        corrected = corrections(correct or [])
+        rejected = tuple(reject or ())
+        if rejected and (answer is not None or corrected):
+            raise ValueError("--reject stands alone: a rejected step is not confirmed or corrected")
+        if rejected and resume is None:
+            raise ValueError("--reject names a waiting run with --resume")
+        if corrected and answer is None:
+            raise ValueError("--correct goes with --approve or --performed of the same step")
     except (OSError, yaml.YAMLError, ValueError) as error:
         typer.echo(f"cannot read {process}: {error}", err=True)
         raise typer.Exit(code=2) from error
@@ -164,6 +193,8 @@ def run(
                 inputs=inputs,
                 answer=answer,
                 approve_raise=approve_raise,
+                corrected=corrected,
+                rejected=rejected,
             )
         )
     except RaiseRefused as error:
@@ -193,6 +224,20 @@ def answers(
             "a step is either confirmed (level 2) or performed (level 1); one at a time"
         )
     return (tuple(approve), False) if approve else (tuple(performed), True)
+
+
+def corrections(given: list[str]) -> dict[str, dict[str, Any]]:
+    """`STEP=FILE`, each file a mapping: the work the person released for that step."""
+    found: dict[str, dict[str, Any]] = {}
+    for item in given:
+        step, separator, path = item.partition("=")
+        if not separator or not step or not path:
+            raise ValueError(f"--correct takes STEP=FILE, not {item!r}")
+        document = yaml.safe_load(Path(os.path.expanduser(path)).read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise ValueError(f"{path} holds no mapping: a step's work is one")
+        found[step] = document
+    return found
 
 
 def refused(error: RaiseRefused) -> None:
@@ -273,6 +318,8 @@ async def _run(
     inputs: dict[str, Any],
     answer: tuple[tuple[str, ...], bool] | None = None,
     approve_raise: bool = False,
+    corrected: dict[str, dict[str, Any]] | None = None,
+    rejected: tuple[str, ...] = (),
 ) -> Run:
     async with wiring.services(state_dir=state_dir, worker_endpoint=worker_endpoint) as services:
         typer.echo(f"state  {services.storage}")
@@ -289,8 +336,8 @@ async def _run(
         if resume is None:
             require_inputs(version, inputs)
             run = await _start(services, version, budget, placed, tenant, stop_after, inputs)
-        elif answer is not None:
-            steps, performed = answer
+        elif answer is not None or rejected:
+            steps, performed = answer if answer is not None else (rejected, False)
             run = await services.engine.confirm(
                 ConfirmSteps(
                     run_id=resume,
@@ -299,6 +346,8 @@ async def _run(
                     tenant=tenant,
                     performed=performed,
                     stop_after=stop_after,
+                    corrected=corrected or {},
+                    rejected=bool(rejected),
                 )
             )
         else:

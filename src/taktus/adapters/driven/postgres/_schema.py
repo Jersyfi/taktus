@@ -255,7 +255,8 @@ incident = Table(
     metadata,
     _tenant(),
     Column("id", Text, nullable=False),
-    Column("kind", Text, nullable=False),  # run.missing, run.overdue (ADR-0107)
+    # run.missing, run.overdue (ADR-0107); anchor.breach, corrections.rate (ADR-0110)
+    Column("kind", Text, nullable=False),
     Column("process_id", Text, nullable=False),
     Column("state", Text, nullable=False),
     _at("raised_at"),
@@ -286,6 +287,17 @@ corridor = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 """One row per version of a corridor, written once and never changed (ADR-0109 §3)."""
+
+correction_limits = Table(
+    "correction_limits",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    _at("configured_at"),
+    Column("limits", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that set its correction limits (ADR-0110)."""
 
 trigger_state = Table(
     "trigger_state",

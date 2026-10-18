@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from taktus.shared.v1.artifact import Digest
+from taktus.shared.v1.autonomy import ACTION_PATTERN
 from taktus.shared.v1.consumption import Consumption
 from taktus.shared.v1.method import Method
 from taktus.shared.v1.step import MODEL_PATTERN
@@ -35,6 +36,9 @@ class LedgerRefs(Value):
     decision_request_id: str | None = Field(default=None, min_length=1)
     incident_id: str | None = Field(default=None, min_length=1)
     """The incident the entry is about (ADR-0107)."""
+    action: str | None = Field(default=None, pattern=ACTION_PATTERN)
+    """The tool action whose level held the step the entry is about; None where the process's
+    own level held it (ADR-0110)."""
     report_id: str | None = Field(default=None, min_length=1)
     """The report to the owner the entry is about (ADR-0045)."""
     artifact_ids: tuple[str, ...] | None = None
