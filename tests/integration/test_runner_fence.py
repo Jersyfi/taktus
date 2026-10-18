@@ -214,7 +214,8 @@ async def test_a_runner_paused_past_its_lease_cannot_commit_the_step_it_was_insi
     assert lost.disposition == "lost" and "refused" in (lost.error or ""), lost
     assert await a.run(run.id) == finished, "the run document is B's"
     kinds = await a.kinds(run.id)
-    assert kinds == kinds_of_b, "nothing from A after B's run.recovered"
+    # From A only the record that it lost its claim, after B's run (ADR-0106).
+    assert kinds == [*kinds_of_b, "run.claim_lost"], "nothing else from A after B's recovery"
     recovered = kinds.index("run.recovered")
     assert kinds[:recovered] == [
         "run.created",
@@ -231,6 +232,7 @@ async def test_a_runner_paused_past_its_lease_cannot_commit_the_step_it_was_insi
         "step.started",
         "step.finished",
         "run.finished",
+        "run.claim_lost",
     ], "B executed both steps from the boundary A left"
     async with a.persistence.transaction(TENANT):
         verification = await a.ledger.verify(TENANT)
