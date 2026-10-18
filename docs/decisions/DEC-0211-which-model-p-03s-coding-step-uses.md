@@ -5,7 +5,6 @@
 **Raised in:** the pull request that records the calibration of 2026-10-17
 **Issue:** [#512](https://github.com/Jersyfi/taktus/issues/512)
 **Needed by:** 2026-10-20
-**Provisional answer:** none. The instance keeps the agent's default, Opus 5.5, until the answer.
 
 ## 1. What this is about
 
@@ -62,3 +61,16 @@ Nothing is blocked; the instance runs on Opus meanwhile. Stage 0's money measure
 ## 7. How to answer
 
 In #512: "DEC-0211: Option A", "Option B" or "Option C".
+
+## Outcome
+
+**Decided:** 2026-10-18
+**Answer:** Option A. "DEC-0211: Option A." (the owner's words).
+**Reasoning given:** none beyond the recommendation.
+**What it changes:**
+
+- The instance's coding worker runs with `CODING_AGENT_MODEL: claude-sonnet-5-5`. The worker's conformance and the removal test run again after the change.
+- Stage 0's money per merged pull request is measured again over the next ten handed tasks, against USD 3 (DEC-0207).
+- A task Sonnet fails twice is run with Opus.
+
+**Recorded in:** this pull request
