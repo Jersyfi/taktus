@@ -37,6 +37,7 @@ from taktus.adapters.driven.memory import (
     MemoryPersistence,
     MemoryProvenanceStore,
     MemoryRepository,
+    MemoryTenantStore,
 )
 from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
@@ -46,6 +47,7 @@ from taktus.adapters.driven.postgres import (
     PostgresProvenanceStore,
     PostgresQueue,
     PostgresRepository,
+    PostgresTenantStore,
     SchemaOutOfDate,
     check_schema,
 )
@@ -64,7 +66,7 @@ from taktus.components.catalog.application.service import (
 )
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
-from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.ledger.application.service import ChainedLedger
@@ -122,6 +124,7 @@ from taktus.ports.persistence import (
     Repository,
     StateSize,
     Stored,
+    TenantStore,
     UnitOfWork,
     UnreadableState,
 )
@@ -141,6 +144,8 @@ class Stores:
     of: RepositoryFactory
     ledger_store: LedgerStore
     provenance_store: ProvenanceStore
+    tenants: TenantStore
+    """The instance's registry of tenants (ADR-0104)."""
     storage: str
     queue: Queue | None = None
     size: StateSize | None = None
@@ -180,8 +185,16 @@ class LocalWiring:
         ):
             runs = stores.of(Run)
             ledger = ChainedLedger(stores.ledger_store, clock)
+            registry = TenantRegistry(
+                store=stores.tenants,
+                work=stores.work,
+                ledger=ledger,
+                clock=clock,
+                ids=ids,
+                narrowed_to=tenants,
+            )
             identities = IdentityDirectory(
-                tenants=tenants,
+                tenants=registry,
                 identities=stores.of(Identity),
                 links=stores.of(ChannelLink),
                 codes=stores.of(LinkCode),
@@ -353,6 +366,7 @@ class LocalWiring:
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work, clock, weights
                 ),
                 identities=identities,
+                tenants=registry,
                 configure_anchors=decisions.configure,
                 anchors=decisions.anchors,
                 configure_owner_channel=owner.configure,
@@ -378,6 +392,14 @@ class LocalWiring:
             raise NotOperable(str(error)) from error
         clock = SystemClock()
         async with self._stores(state_dir) as stores:
+            registry = TenantRegistry(
+                store=stores.tenants,
+                work=stores.work,
+                ledger=ChainedLedger(stores.ledger_store, clock),
+                clock=clock,
+                ids=SystemIdentifiers(),
+                narrowed_to=tenants,
+            )
             yield CapacityServices(
                 report=capacity_report(
                     settings,
@@ -388,7 +410,7 @@ class LocalWiring:
                     work=stores.work,
                     database=stores.size,
                 ),
-                tenants=tenants,
+                tenants=await registry.served(),
                 job_memory_bytes=memory_demand(configured),
             )
 
@@ -416,6 +438,7 @@ class LocalWiring:
                     of=in_memory,
                     ledger_store=MemoryLedgerStore(memory),
                     provenance_store=MemoryProvenanceStore(memory),
+                    tenants=MemoryTenantStore(memory),
                     storage=f"memory with a snapshot under {state_dir} — development only, "
                     "not durable; set TAKTUS_DATABASE_URL for a database",
                 )
@@ -457,6 +480,7 @@ class LocalWiring:
                 of=in_postgres,
                 ledger_store=PostgresLedgerStore(postgres),
                 provenance_store=PostgresProvenanceStore(postgres),
+                tenants=PostgresTenantStore(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
                 queue=PostgresQueue(postgres),
                 size=postgres,

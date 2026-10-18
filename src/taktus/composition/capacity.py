@@ -10,6 +10,7 @@ store the state is files under the state directory, which the platform measures.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -24,7 +25,9 @@ from taktus.components.governance.application.service import (
 from taktus.components.governance.domain.model import CapacityReport, CapacityThresholds, Status
 from taktus.components.run.domain.service.capacity import CapacityRules
 from taktus.composition.settings import CapacitySettings
+from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock
+from taktus.ports.identity import ServedTenants
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import LedgerStore, StateSize, UnitOfWork
 
@@ -81,12 +84,14 @@ def capacity_tick(
     clock: Clock,
     *,
     interval_seconds: int,
+    tenants: ServedTenants | None = None,
 ) -> Callable[[], Awaitable[CapacityReport | None]]:
     """What the scheduler calls on every tick: a report when the interval has passed since the
     last one — the first tick reports at once — and nothing otherwise. Every finding is a log
     line, a finding a person must act on a warning; a crossing is in the ledger. A report that
     fails is logged and tried again at the next interval: watching the platform never stops
-    the scheduler."""
+    the scheduler. With `tenants`, the report counts and records for the tenants served at the
+    time of each report (ADR-0104), not the ones of `command`."""
     last: list[datetime] = []
 
     async def tick() -> CapacityReport | None:
@@ -94,8 +99,11 @@ def capacity_tick(
         if last and now - last[0] < timedelta(seconds=interval_seconds):
             return None
         last[:] = [now]
+        asked = command
+        if tenants is not None:
+            asked = replace(command, tenants=await this_round(tenants, "scheduler"))
         try:
-            report = await handler.execute(command)
+            report = await handler.execute(asked)
         except Exception as error:  # a report must never take the scheduler down
             log.error("capacity report failed", error=f"{type(error).__name__}: {error}")
             return None

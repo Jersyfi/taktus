@@ -30,6 +30,16 @@ def identity(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TAKTUS_IDENTITY", "idn_test")
 
 
+@pytest.fixture(autouse=True)
+def served(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests share one database, and every test tenant is in its registry. A daemon or a
+    command line started here serves `default` alone, as before the registry (ADR-0104 §7):
+    otherwise every runner would claim every other test's runs. A test about the registry
+    gives the variable empty, against a database of its own. Once the variable is removed,
+    the tests keep apart in another way."""
+    monkeypatch.setenv("TAKTUS_TENANTS", "default")
+
+
 @pytest.fixture
 def worker_endpoint(tmp_path: Path) -> Iterator[str]:
     yield from reference_worker(tmp_path)

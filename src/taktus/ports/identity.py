@@ -6,6 +6,10 @@ the rest of the core asks of it. A resolution places a sender: the tenant the co
 to, the identity that acts, the organisational path for visibility and cost attribution
 (control-plane.md §2). A sender that cannot be placed gets no execution.
 
+Which tenants the instance serves is the third thing it answers, `ServedTenants`: every role
+asks it on every round, so that a tenant created while the instance runs is served without a
+restart (ADR-0104).
+
 The organisation's own identity source — a directory, single sign-on — is a second port,
 `IdentitySource`. The identity component asks it about an account it has no link for, and
 records what it answers as a link. An adapter for a particular source is a connector of its own.
@@ -73,4 +77,11 @@ class IdentitySource(Protocol):
     async def lookup(self, channel: Capability, account: str) -> SourceAnswer | None:
         """The identity the organisation's source maps the account to, or None when it maps it
         to none. Never a guess from a matching name or address."""
+        ...
+
+
+class ServedTenants(Protocol):
+    async def served(self) -> tuple[Tenant, ...]:
+        """The tenants this instance serves now, oldest first. Asked again on every round of a
+        role: the answer is never kept beyond it."""
         ...

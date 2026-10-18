@@ -21,7 +21,7 @@ from taktus.components.governance.application.service import (
     ConfigureAnchorsHandler,
     ReportCapacityHandler,
 )
-from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
 from taktus.components.process.application.service.register_version import (
@@ -55,6 +55,9 @@ class Services:
     identities: IdentityDirectory
     """The identity component: the identity an invocation names must be one it knows, and the
     administrative acts on identities and links go through it (ADR-0040)."""
+    tenants: TenantRegistry
+    """The instance's registry of tenants: created, renamed and listed by an administrator
+    (`taktusctl tenant`, ADR-0104)."""
     register_version: RegisterProcessVersionHandler
     commission: CommissionPlanHandler
     engine: RunEngine
@@ -111,7 +114,8 @@ class CapacityServices:
 
     report: ReportCapacityHandler
     tenants: tuple[str, ...]
-    """The tenants the instance serves (`TAKTUS_TENANTS`): their runs are counted."""
+    """The tenants the instance serves, read from its registry (ADR-0104): their runs are
+    counted."""
     job_memory_bytes: int | None
     """The memory limit of the unit a worker step starts on this platform, if any."""
 

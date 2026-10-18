@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeIdentifiers, FakeWorker, HeldObjects, InnerStep
+from fakes.identity import FixedTenants
 from fakes.maturity import VERIFIED
 from fakes.model import FakeModel
 
@@ -44,6 +45,7 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Cause, Run, RunExists, RunState, StepState
 from taktus.components.run.domain.service import provenance
+from taktus.ports.identity import ServedTenants
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.queue import RUN_EXECUTE, Job
 from taktus.ports.worker import ComputeLimit, Limits
@@ -188,6 +190,7 @@ class World:
         concurrency: int = 2,
         wait_first: float = 0.02,
         wait_cap: float = 0.1,
+        tenants: ServedTenants | None = None,
     ) -> Runner:
         runner = Runner(
             engine=engine or self.engine,
@@ -195,7 +198,7 @@ class World:
             work=self.persistence,
             clock=self.clock,
             options=RunnerOptions(
-                tenants=(TENANT,),
+                tenants=tenants or FixedTenants((TENANT,)),
                 claimant=name,
                 concurrency=concurrency,
                 poll_seconds=0.02,
@@ -654,4 +657,32 @@ async def test_a_short_wait_waits_inline_and_does_not_park() -> None:
     await until(lambda: len(runner.outcomes) == 1)
     await world.stop(runner)
     assert runner.outcomes[0].disposition == "completed"
+    assert (await world.stored(run.id)).state is RunState.FINISHED
+
+
+class GrowingTenants:
+    """A registry an administrator adds to while the runner runs; it counts the rounds."""
+
+    def __init__(self) -> None:
+        self.tenants: tuple[str, ...] = ()
+        self.asked = 0
+
+    async def served(self) -> tuple[str, ...]:
+        self.asked += 1
+        return self.tenants
+
+
+async def test_a_tenant_created_while_the_runner_runs_is_claimed_at_its_next_round() -> None:
+    """ADR-0104 §6: the runner asks the registry at every claim round; no restart."""
+    world = World()
+    registry = GrowingTenants()
+    run = await world.submit(rule("a", 1))
+    runner = world.runner("r1", tenants=registry)
+    await until(lambda: registry.asked >= 3)
+    assert not runner.outcomes, "a tenant the registry does not hold is not served"
+    registry.tenants = (TENANT,)
+    asked = registry.asked
+    await until(lambda: len(runner.outcomes) == 1)
+    assert registry.asked - asked <= 2, "claimed at the next round, within one poll interval"
+    await world.stop(runner)
     assert (await world.stored(run.id)).state is RunState.FINISHED

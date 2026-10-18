@@ -32,7 +32,7 @@ from taktus.components.decision.application.service import (
     ConfirmRequestHandler,
 )
 from taktus.components.decision.domain.model import Request
-from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
@@ -43,6 +43,7 @@ from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
 from taktus.composition.owner_channel import KnownSecrets, OwnerChannelWiring, owner_channel_wiring
+from taktus.ports.configuration import Secret
 from taktus.ports.connector import (
     ConnectorError,
     Delivery,
@@ -115,11 +116,12 @@ class Services:
     """The streams of changes, fed from the memory ledger at short intervals (ADR-0055)."""
     continued: list[tuple[str, str, str]] = field(default_factory=list)
     """The runs handed on after a decision took effect: tenant, run, actor."""
-    tenants: Sequence[str] = (TENANT, OTHER)
     roles: Sequence[str] = ("api", "runner")
     leading: bool = False
     not_ready_reason: str | None = None
     ids: FakeIdentifiers = field(default_factory=FakeIdentifiers)
+    administration_key: Secret | None = None
+    """The instance's administration key; None: the administration of tenants is off."""
     acts: ProposalActs | None = None
     """The acts on a proposal; a test that reaches them sets them. What they do is held by
     `tests/composition/test_proposals.py`."""
@@ -131,6 +133,11 @@ class Services:
     @property
     def identities(self) -> IdentityDirectory:
         return self.identity.directory
+
+    @property
+    def tenants(self) -> TenantRegistry:
+        """The instance's registry: `TENANT` and `OTHER`, the same the directory serves."""
+        return self.identity.tenants
 
     async def linked(self, name: str = "idn_ada", account: str = "100200") -> str:
         """The person links the account with a code from their Taktus account; their key."""

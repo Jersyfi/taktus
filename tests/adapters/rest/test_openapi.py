@@ -70,6 +70,8 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/processes/{process_id}/proposals/{proposal_id}/rehearse",
         "/processes/{process_id}/proposals/{proposal_id}/commission",
         "/processes/{process_id}/rollback",
+        "/administration/tenants",
+        "/administration/tenants/{tenant}",
     }
     for path, operations in document["paths"].items():
         for method, operation in operations.items():

@@ -49,6 +49,7 @@ from taktus.adapters.driven.postgres import (
     PostgresProvenanceStore,
     PostgresQueue,
     PostgresRepository,
+    PostgresTenantStore,
     SchemaOutOfDate,
     check_schema,
     upgrade,
@@ -77,7 +78,7 @@ from taktus.components.governance.application.service import (
     ReportCapacity,
     ReportCapacityHandler,
 )
-from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
@@ -142,7 +143,7 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.triggers import Triggers
 from taktus.ports.clock import Clock
-from taktus.ports.configuration import Configuration, ConfigurationError
+from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.leadership import Leadership
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Queried, Repository, Stored, UnitOfWork
@@ -177,6 +178,9 @@ class Wired:
     identities: IdentityDirectory
     """The identity component: who a sender is, the link codes a person makes, the links an
     administrator sees and revokes (ADR-0040)."""
+    tenants: TenantRegistry
+    """The instance's registry of tenants: every role asks it which tenants it serves on every
+    round, and an administrator creates and renames tenants through it (ADR-0104)."""
     decisions: DecisionWiring
     """Anchors and decision requests: what the engine asks at the step boundary, and what the
     decider answers on the HTTP surface (ADR-0042)."""
@@ -216,8 +220,8 @@ class Wired:
         return sorted(r.value for r in self.settings.roles)
 
     @property
-    def tenants(self) -> tuple[str, ...]:
-        return self.settings.tenants
+    def administration_key(self) -> Secret | None:
+        return self.settings.administration_key
 
     @property
     def decision_queries(self) -> DecisionQueries:
@@ -291,9 +295,18 @@ async def wire(
         runs = PostgresRepository(persistence, Run)
         ledger_store = PostgresLedgerStore(persistence)
         ledger = ChainedLedger(ledger_store, clock)
+        # Which tenants the instance serves: its registry, read on every round (ADR-0104).
+        tenants = TenantRegistry(
+            store=PostgresTenantStore(persistence),
+            work=persistence,
+            ledger=ledger,
+            clock=clock,
+            ids=ids,
+            narrowed_to=settings.tenants,
+        )
         # Who a sender is, and who acts: the identity component, and nothing else (ADR-0040).
         identities = IdentityDirectory(
-            tenants=settings.tenants,
+            tenants=tenants,
             identities=PostgresRepository(persistence, Identity),
             links=PostgresRepository(persistence, ChannelLink),
             codes=PostgresRepository(persistence, LinkCode),
@@ -553,6 +566,7 @@ async def wire(
                     triage=settings.triage,
                 ),
                 identities=identities,
+                tenants=tenants,
                 decisions=decisions,
                 owner=owner,
                 interfaces=broken_interfaces(ledger, persistence, owner, clock),
@@ -568,7 +582,7 @@ async def wire(
                 proposal_acts=proposal_acts,
                 complete_intake=complete_intake,
                 reactions=Reactions(
-                    tenants=settings.tenants,
+                    tenants=tenants,
                     outbox=outbox,
                     intake=complete_intake,
                     reactions=ReactionsHandler(
@@ -618,7 +632,7 @@ async def wire(
                     shape=shape,
                 ),
                 triggers=Triggers(
-                    tenants=settings.tenants,
+                    tenants=tenants,
                     triggers=TriggersHandler(
                         PostgresRepository(persistence, Process),
                         PostgresRepository(persistence, ProcessVersion),
@@ -642,7 +656,7 @@ async def wire(
                     work=persistence,
                     clock=clock,
                     options=RunnerOptions(
-                        tenants=settings.tenants,
+                        tenants=tenants,
                         claimant=settings.instance,
                         concurrency=settings.runner_concurrency,
                         poll_seconds=settings.poll_seconds,
@@ -771,20 +785,19 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # the instance, however many schedulers stand by (docs/architecture/platform.md).
         tick = capacity_tick(
             wired.capacity,
-            ReportCapacity(
-                tenants=settings.tenants, job_memory_bytes=memory_demand(settings.workers)
-            ),
+            ReportCapacity(tenants=(), job_memory_bytes=memory_demand(settings.workers)),
             wired.clock,
             interval_seconds=settings.capacity.interval_seconds,
+            tenants=wired.tenants,
         )
 
         # And it fires the schedule triggers that are due: once per slot, however many
         # schedulers stand by (ADR-0035).
         # And, where the operator enabled it, it sends the product findings (UC-6.12).
-        send_findings = findings_tick(wired.findings, settings.tenants, wired.clock)
+        send_findings = findings_tick(wired.findings, wired.tenants, wired.clock)
         # And it reports to the owner every interface that stopped behaving as its adapter
         # expects, noticed from the run's own calls (ADR-0047).
-        report_interfaces = interfaces_tick(wired.interfaces, settings.tenants, wired.clock)
+        report_interfaces = interfaces_tick(wired.interfaces, wired.tenants, wired.clock)
 
         async def scheduled() -> None:
             await wired.triggers.tick()
@@ -852,6 +865,14 @@ def main() -> None:
         sys.exit(EXIT_CONFIGURATION)
     configure(settings.log_level)
     log_effective_configuration(settings)
+    if settings.tenants is not None:
+        # ADR-0104 §7: the registry is the list; the variable only narrows it, for one release.
+        log.warning(
+            "TAKTUS_TENANTS is deprecated and will be removed: this instance serves only the "
+            "tenants of its registry that the variable names. Create a tenant with "
+            "`taktusctl tenant create`, and unset the variable to serve every tenant",
+            tenants=list(settings.tenants),
+        )
     if not settings.administration.checked:
         # ADR-0052: without the platform named, ADR-0025's rule is the operator's alone.
         log.warning(

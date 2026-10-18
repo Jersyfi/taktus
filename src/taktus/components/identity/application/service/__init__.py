@@ -12,16 +12,30 @@ from taktus.components.identity.application.service.directory import (
     UnknownTenant,
     offer,
 )
+from taktus.components.identity.application.service.tenants import (
+    TENANT_CREATED,
+    TENANT_RENAMED,
+    BadName,
+    NoSuchTenant,
+    TenantError,
+    TenantRegistry,
+)
 
 __all__ = [
     "CREATED",
     "KEY_ISSUED",
     "LINKED",
+    "TENANT_CREATED",
+    "TENANT_RENAMED",
     "UNLINKED",
     "AlreadyLinked",
+    "BadName",
     "IdentityDirectory",
     "IdentityError",
     "IdentityExists",
+    "NoSuchTenant",
+    "TenantError",
+    "TenantRegistry",
     "UnknownIdentity",
     "UnknownLink",
     "UnknownTenant",

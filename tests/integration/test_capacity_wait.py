@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fakes.identity import FixedTenants
 from fakes.maturity import VERIFIED
 from sqlalchemy import text
 
@@ -112,7 +113,7 @@ class Instance:
             work=persistence,
             clock=clock,
             options=RunnerOptions(
-                tenants=(TENANT,),
+                tenants=FixedTenants((TENANT,)),
                 claimant=name,
                 concurrency=CONCURRENCY,
                 poll_seconds=0.05,

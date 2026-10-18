@@ -90,7 +90,7 @@ paths:
           content:
             application/problem+json: {}
         '503':
-          description: The connector did not answer.
+          description: The connector did not answer, or the instance serves no tenant.
           content:
             application/problem+json: {}
         '422':
@@ -1321,6 +1321,129 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /administration/tenants:
+    get:
+      tags:
+      - administration
+      summary: The instance's tenants
+      description: Every tenant this instance serves, oldest first, with its identifier, its display name
+        and when it was created.
+      operationId: listed_administration_tenants_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The tenants.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No administration key, or another one.
+          content:
+            application/problem+json: {}
+        '404':
+          description: The administration on HTTP is not enabled.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    post:
+      tags:
+      - administration
+      summary: Create a tenant
+      description: A new tenant with the display name given. Taktus generates its identifier and returns
+        it; a request never chooses one. Every role serves the tenant from its next round on, without
+        a restart. The creation is the first entry of the new tenant's ledger, `tenant.created`.
+      operationId: create_administration_tenants_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantName'
+      responses:
+        '201':
+          description: The tenant created, with its generated identifier.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No administration key, or another one.
+          content:
+            application/problem+json: {}
+        '404':
+          description: The administration on HTTP is not enabled.
+          content:
+            application/problem+json: {}
+        '422':
+          description: The body does not validate.
+          content:
+            application/problem+json: {}
+  /administration/tenants/{tenant}:
+    patch:
+      tags:
+      - administration
+      summary: Rename a tenant
+      description: The tenant's display name from now on; its identifier stays. The change is an entry
+        of the tenant's ledger, `tenant.renamed`.
+      operationId: rename_administration_tenants__tenant__patch
+      parameters:
+      - name: tenant
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tenant
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantName'
+      responses:
+        '200':
+          description: The tenant with its new name.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No administration key, or another one.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such tenant, or the administration is off.
+          content:
+            application/problem+json: {}
+        '422':
+          description: The body does not validate.
+          content:
+            application/problem+json: {}
 components:
   schemas:
     AnswerBody:
@@ -1426,3 +1549,24 @@ components:
       required:
       - version
       title: RollbackBody
+    TenantName:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+          description: 'The tenant''s display name: what a person reads. It may change later.'
+        by:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: By
+          description: The administrator who acts, as the ledger names them. Optional.
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: TenantName
+      description: A field the surface does not know — an identifier among them — is refused.

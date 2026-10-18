@@ -1,29 +1,29 @@
 """`taktusctl` — the command line of Taktus.
 
 The commands, one by one. `conformance run` drives the conformance suite
-(src/taktus/conformance) for the worker, the connector or the model contract against an
-endpoint the caller names; the suite is
-not part of the control plane, needs no wiring and records nothing. `conformance record` has the
-instance run the suite against the adapter its configuration resolves for an identifier, and
-records the outcome in the adapter's maturity and the ledger (ADR-0044). `run` and `submit`
-drive the control plane: `run` executes a bundle in this process, `submit` queues it for the
-daemon. `capacity` reports what the platform has left and
-the date a person must act by. `cost` recomputes what a run cost from the ledger. `identity`
+(src/taktus/conformance) for the worker, the connector or the model contract against an endpoint
+the caller names; the suite is not part of the control plane, needs no wiring and records
+nothing. `conformance record` has the instance run the suite against the adapter its
+configuration resolves for an identifier, and records the outcome in the adapter's maturity and
+the ledger (ADR-0044). `run` and `submit` drive the control plane: `run` executes a bundle in
+this process, `submit` queues it for the daemon. `capacity` reports what the platform has left
+and the date a person must act by. `cost` recomputes what a run cost from the ledger. `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
-(ADR-0040). `anchors` configures and shows a tenant's anchors (ADR-0042). `findings` shows
-what the instance met that the product lacks, ready to send by hand (UC-6.12). `owner-channel`
-configures and shows where what is needed from the owner reaches them (ADR-0045). `interfaces`
-shows every interface the instance noticed had stopped behaving as its adapter expects, and
-whether the owner heard of it (ADR-0047). `guides` renders the administration guide and the
-guide for users from the repository, and puts them into a directory of files without
-overwriting a page edited there (UC-13.6, ADR-0065). `exactness` prints the exactness statement
-of a bundle: which checks apply, what they cover, what they do not, and what would slip through
-(UC-6.9, ADR-0082); like `conformance run` it needs no wiring. `maturation` prints every step's
-measures, records a person's correction of a step's result, and asks for proposals to move a
-step to a trained model (ADR-0084, ADR-0086). The others need
-services, which the composition root provides as the typer context object (see `wiring`); the
-console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
-exposes the application for it.
+(ADR-0040). `tenant` creates, renames and lists the instance's tenants; Taktus generates each
+identifier (ADR-0104). `anchors` configures and shows a tenant's anchors (ADR-0042). `findings`
+shows what the instance met that the product lacks, ready to send by hand (UC-6.12).
+`owner-channel` configures and shows where what is needed from the owner reaches them
+(ADR-0045). `interfaces` shows every interface the instance noticed had stopped behaving as its
+adapter expects, and whether the owner heard of it (ADR-0047). `guides` renders the
+administration guide and the guide for users from the repository, and puts them into a directory
+of files without overwriting a page edited there (UC-13.6, ADR-0065). `exactness` prints the
+exactness statement of a bundle: which checks apply, what they cover, what they do not, and what
+would slip through (UC-6.9, ADR-0082); like `conformance run` it needs no wiring. `maturation`
+prints every step's measures, records a person's correction of a step's result, and asks for
+proposals to move a step to a trained model (ADR-0084, ADR-0086). The others need services,
+which the composition root provides as the typer context object (see `wiring`); the console
+script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module exposes
+the application for it.
 """
 
 from __future__ import annotations
@@ -53,6 +53,7 @@ from taktus.adapters.driving.cli import (
     resume_command,
     run_command,
     submit_command,
+    tenant_command,
 )
 from taktus.conformance import (
     ConnectorSuiteOptions,
@@ -84,6 +85,7 @@ app.command("cost")(cost_command.cost)
 app.command("findings")(findings_command.findings)
 app.command("interfaces")(interfaces_command.interfaces)
 app.add_typer(identity_command.identity, name="identity")
+app.add_typer(tenant_command.tenant, name="tenant")
 app.add_typer(anchors_command.anchors, name="anchors")
 app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 app.add_typer(guides_command.guides, name="guides")

@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from fakes import FakeClock
+from fakes.identity import FixedTenants
 
 from taktus.components.reporting.application.service import Sent
 from taktus.composition.findings import findings_tick
@@ -27,7 +28,9 @@ class Findings:
 
 async def test_a_disabled_instance_sends_nothing() -> None:
     findings = Findings(enabled=False)
-    tick = findings_tick(findings, ("a",), FakeClock(datetime(2026, 10, 9, tzinfo=UTC)))  # type: ignore[arg-type]
+    tick = findings_tick(
+        findings, FixedTenants(("a",)), FakeClock(datetime(2026, 10, 9, tzinfo=UTC))
+    )  # type: ignore[arg-type]
     await tick()
     assert findings.sent == []
 
@@ -36,7 +39,7 @@ async def test_every_tenant_is_sent_once_per_interval_and_a_failure_is_survived(
     clock = FakeClock(datetime(2026, 10, 9, tzinfo=UTC))
     findings = Findings(enabled=True, fail=True)
     tenants: Sequence[str] = ("a", "b")
-    tick = findings_tick(findings, tenants, clock, interval_seconds=600)  # type: ignore[arg-type]
+    tick = findings_tick(findings, FixedTenants(tuple(tenants)), clock, interval_seconds=600)  # type: ignore[arg-type]
     await tick()
     await tick()
     assert findings.sent == ["a", "b"], "a failure is logged, the next tenant still sent"

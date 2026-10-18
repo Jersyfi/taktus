@@ -6,16 +6,61 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
-from fakes.clock import FakeClock
-from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
-from taktus.components.identity.application.service import IdentityDirectory
+from fakes.clock import FakeClock, FakeIdentifiers
+from taktus.adapters.driven.memory import (
+    MemoryLedgerStore,
+    MemoryPersistence,
+    MemoryRepository,
+    MemoryTenantStore,
+)
+from taktus.adapters.driven.memory.tenant_store import BEGINNING
+from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.ports.clock import Clock
 from taktus.ports.connector import ChannelReplies, IntakeReplyTo
 from taktus.ports.identity import IdentitySource, Resolution, SourceAnswer
+from taktus.ports.persistence import TenantEntry
+
+
+@dataclass(frozen=True)
+class FixedTenants:
+    """The tenants a role serves, fixed for a test that is not about the registry."""
+
+    tenants: tuple[str, ...]
+
+    async def served(self) -> tuple[str, ...]:
+        return self.tenants
+
+
+def registry(
+    persistence: MemoryPersistence,
+    tenants: Sequence[str] = ("default",),
+    *,
+    clock: Clock | None = None,
+    ledger: ChainedLedger | None = None,
+) -> TenantRegistry:
+    """The instance's registry in memory, holding `tenants` in that order, as if an
+    administrator had created them one after another."""
+    clock = clock or FakeClock()
+    store = MemoryTenantStore(persistence)
+    for n, tenant in enumerate(tenants):
+        if tenant != "default":
+            persistence.table("tenant", tenant)[tenant] = TenantEntry(
+                id=tenant, name=tenant, created_at=BEGINNING + timedelta(seconds=n + 1)
+            )
+    return TenantRegistry(
+        store=store,
+        work=persistence,
+        ledger=ledger or ChainedLedger(MemoryLedgerStore(persistence), clock),
+        clock=clock,
+        ids=FakeIdentifiers(),
+        # `default` is in every registry; a test that serves others only narrows to them.
+        narrowed_to=None if "default" in tenants else tuple(tenants),
+    )
 
 
 class FakeRandomness:
@@ -59,6 +104,8 @@ class Directory:
     ledger: ChainedLedger
     links: MemoryRepository[ChannelLink]
     directory: IdentityDirectory
+    tenants: TenantRegistry
+    """The registry the directory asks which tenants the instance serves."""
 
     async def kinds(self, tenant: str) -> list[str]:
         async with self.persistence.transaction(tenant):
@@ -90,13 +137,15 @@ def directory(
     clock = clock or FakeClock()
     ledger = ChainedLedger(MemoryLedgerStore(persistence), clock)
     links = MemoryRepository(persistence, ChannelLink)
+    served = registry(persistence, tenants, clock=clock, ledger=ledger)
     return Directory(
         persistence=persistence,
         clock=clock,
         ledger=ledger,
         links=links,
+        tenants=served,
         directory=IdentityDirectory(
-            tenants=tenants,
+            tenants=served,
             identities=MemoryRepository(persistence, Identity),
             links=links,
             codes=MemoryRepository(persistence, LinkCode),

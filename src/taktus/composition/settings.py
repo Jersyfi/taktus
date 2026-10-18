@@ -41,7 +41,6 @@ class Role(StrEnum):
 
 
 ALL_ROLES: frozenset[Role] = frozenset(Role)
-DEFAULT_TENANT = "default"
 
 
 class ExecutionKind(StrEnum):
@@ -765,9 +764,13 @@ def load_findings(configuration: Configuration) -> FindingsShape:
     return FindingsShape(form_file=Path(form).expanduser() if form else None, labels=labels)
 
 
-def load_tenants(configuration: Configuration) -> tuple[str, ...]:
-    """`TAKTUS_TENANTS`: the tenants an instance serves; `taktusctl capacity` reads it too."""
-    return _Reader(configuration).names("tenants", (DEFAULT_TENANT,))
+def load_tenants(configuration: Configuration) -> tuple[str, ...] | None:
+    """`TAKTUS_TENANTS`, deprecated (ADR-0104 §7): the tenants of the registry an instance is
+    narrowed to. None, unset: every tenant of the registry. The command line reads it too."""
+    reader = _Reader(configuration)
+    if not reader.text("tenants", "").strip():
+        return None
+    return reader.names("tenants", ())
 
 
 @dataclass(frozen=True)
@@ -856,9 +859,14 @@ class Settings:
     object_cache_mb: int
     """How many MiB of artifact bytes the object store keeps in memory at most: the objects used
     most recently. Every object stays readable from `state_dir`. 0 keeps none (#311)."""
-    tenants: tuple[str, ...]
-    """The tenants this instance serves: the runner claims work for each of them in turn, and
-    the identity component places senders in them and nowhere else."""
+    tenants: tuple[str, ...] | None
+    """`TAKTUS_TENANTS`, deprecated: the tenants of the registry this instance is narrowed to.
+    None, the default: every tenant of the registry, read by every role on every round
+    (ADR-0104)."""
+    administration_key: Secret | None
+    """`TAKTUS_ADMINISTRATION_KEY_FILE`: the key that admits a request to the administration of
+    tenants on the HTTP surface (ADR-0104 §4). None: those routes answer 404."""
+    administration_key_source: str | None
     instance: str
     """How this process names itself when it claims work; unique among the instances that
     share a database."""
@@ -916,7 +924,13 @@ class Settings:
             ),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
             ("TAKTUS_OBJECT_CACHE_MB", str(self.object_cache_mb)),
-            ("TAKTUS_TENANTS", ",".join(self.tenants)),
+            ("TAKTUS_TENANTS", ",".join(self.tenants or ())),
+            (
+                "TAKTUS_ADMINISTRATION_KEY",
+                ""
+                if self.administration_key is None
+                else f"{self.administration_key} (from {self.administration_key_source})",
+            ),
             ("TAKTUS_INSTANCE", self.instance),
             ("TAKTUS_SHUTDOWN_CEILING_SECONDS", str(self.shutdown_ceiling_seconds)),
             ("TAKTUS_LEASE_SECONDS", str(self.lease_seconds)),
@@ -970,6 +984,8 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         object_cache_mb=reader.integer("object.cache.mb", 64, low=0),
         tenants=load_tenants(configuration),
+        administration_key=configuration.secret("administration.key"),
+        administration_key_source=configuration.source("administration.key"),
         instance=reader.text("instance", default_instance),
         shutdown_ceiling_seconds=reader.integer("shutdown.ceiling.seconds", 300, low=1),
         lease_seconds=reader.integer("lease.seconds", 60, low=5),

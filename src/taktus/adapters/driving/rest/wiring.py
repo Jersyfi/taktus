@@ -18,12 +18,13 @@ from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
 )
-from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.domain.model import ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.domain.model import Change, Reader, Scope, Snapshot
 from taktus.components.run.domain.model import Run
+from taktus.ports.configuration import Secret
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Queried, Tenant, UnitOfWork
 
@@ -100,9 +101,16 @@ class RestServices(Protocol):
         ...
 
     @property
-    def tenants(self) -> Sequence[Tenant]:
-        """The tenants this instance serves; the first is the one a read that names none is
-        answered for, and the one a reply to a sender nobody could place is made in."""
+    def tenants(self) -> TenantRegistry:
+        """The instance's registry: the tenants it serves now — the oldest is the one a reply to
+        a sender nobody could place is made in — and the administrator's acts on them
+        (ADR-0104)."""
+        ...
+
+    @property
+    def administration_key(self) -> Secret | None:
+        """The key that admits a request to the administration of tenants; None when the
+        operator configured none (ADR-0104 §4)."""
         ...
 
     @property

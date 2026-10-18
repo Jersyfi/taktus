@@ -52,8 +52,8 @@ shutdownCeilingSeconds: 300
 logLevel: info
 
 # Non-secret settings of the daemon not named elsewhere in this file, as TAKTUS_* variables:
-# TAKTUS_TENANTS, TAKTUS_CONNECTORS and the like. A secret never goes here; it goes into
-# `credentials`.
+# TAKTUS_CONNECTORS and the like. A secret never goes here; it goes into `credentials`. The
+# tenants are not a setting: `taktusctl tenant create` adds them to the database (ADR-0104).
 env: {}
 
 # Files of configuration that a setting names by path: file name → content. Each is mounted

@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
 from typing import Any
 
 import structlog
@@ -41,9 +40,10 @@ from taktus.components.process.domain.model import Firing
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import RunError, RunExists, select
 from taktus.components.run.ports import ConnectorPool
+from taktus.composition.tenancy import this_round
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import CallContext, CallFailed, ConnectorError, idempotency_key
-from taktus.ports.identity import IdentityResolver, Resolution
+from taktus.ports.identity import IdentityResolver, Resolution, ServedTenants
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Tenant, UnitOfWork
 from taktus.ports.worker import Limits
@@ -67,7 +67,7 @@ class Triggers:
     def __init__(
         self,
         *,
-        tenants: Sequence[Tenant],
+        tenants: ServedTenants,
         triggers: TriggersHandler,
         commission: CommissionPlanHandler,
         engine: RunEngine,
@@ -78,7 +78,7 @@ class Triggers:
         clock: Clock,
         ids: Identifiers,
     ) -> None:
-        self._tenants = tuple(tenants)
+        self._tenants = tenants
         self._triggers = triggers
         self._commission = commission
         self._engine = engine
@@ -92,7 +92,7 @@ class Triggers:
     async def tick(self) -> list[str]:
         """The runs this tick started, by identifier."""
         started: list[str] = []
-        for tenant in self._tenants:
+        for tenant in await this_round(self._tenants, "scheduler"):
             try:
                 firings = await self._triggers.due(FindDueFirings(tenant, self._clock.now()))
                 for firing in firings:

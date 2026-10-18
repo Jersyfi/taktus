@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeWorker, HeldObjects
+from fakes.identity import FixedTenants
 from fakes.maturity import VERIFIED
 from sqlalchemy import text
 
@@ -105,7 +106,7 @@ class Instance:
             work=self.persistence,
             clock=self.clock,
             options=RunnerOptions(
-                tenants=(TENANT,),
+                tenants=FixedTenants((TENANT,)),
                 claimant=name,
                 concurrency=1,
                 poll_seconds=0.05,
