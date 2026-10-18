@@ -126,3 +126,6 @@ class OpenBlock(Value):
     """For a wait on a provider's rate limit: the delay its latest answer asked for in
     `Retry-After`, in seconds; the runner defers the job by it (ADR-0043). None where the
     provider named none."""
+    next_check_at: datetime | None = None
+    """For a `wait` step that parked its run: when the wait is checked next; the runner defers
+    the job to it (ADR-0103). None for every other block."""

@@ -11,7 +11,9 @@ the run on its own.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -22,7 +24,7 @@ from fakes.maturity import VERIFIED
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.components.governance.domain.model import ResultRef
 from taktus.components.governance.domain.service.egress import left_the_system
-from taktus.components.run.application.service import RunEngine
+from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import (
     Cause,
     NoConnector,
@@ -69,8 +71,9 @@ class ConnectorHarness(Harness):
         *definitions: tuple[Step, dict[str, Any]],
         connector: FakeConnector | None = None,
         workers: Sequence[Worker] = (),
+        options: EngineOptions | None = None,
     ) -> None:
-        super().__init__(*definitions, workers=workers)
+        super().__init__(*definitions, workers=workers, options=options)
         self.connector = connector or FakeConnector()
         self.engine = RunEngine(
             maturities=VERIFIED,
@@ -84,6 +87,7 @@ class ConnectorHarness(Harness):
             ids=self.ids,
             telemetry=self.engine._telemetry,
             connectors=StaticConnectorPool([("connector.fake", self.connector)]),
+            options=self.engine._options,
         )
 
     async def records(self, run_id: str) -> list[Any]:
@@ -414,6 +418,78 @@ async def test_a_wait_that_runs_out_fails_the_step() -> None:
     assert run.state is RunState.ESCALATED
     assert "waited 30s" in (run.step_run("ci").reason or "")
     assert run.step_run("ci").retryable is True
+
+
+# --- a wait longer than the engine waits inline parks the run (ADR-0103, issue #320) ----------
+
+PARKING = EngineOptions(uncalibrated_margin=0.0, park_waits_after_seconds=1)
+
+
+def pipeline_wait(poll: float, timeout: float) -> tuple[Any, dict[str, Any]]:
+    return (
+        wait("ci", 0)[0],
+        {
+            "until": {
+                "operation": READ,
+                "input": {"id": "ci"},
+                "credentials": CREDENTIALS,
+                "select": "state",
+                "expect": ["success"],
+                "poll_seconds": poll,
+                "timeout_seconds": timeout,
+            }
+        },
+    )
+
+
+async def test_a_wait_for_an_outside_state_parks_between_checks_and_counts_every_check() -> None:
+    h = ConnectorHarness(pipeline_wait(30, 600), options=PARKING)
+    h.connector.read_sequence = [{"state": "pending"}, {"state": "pending"}, {"state": "success"}]
+    run = await h.start()
+    assert run.state is RunState.HALTED and run.cause is Cause.PARKED
+    ci = run.step_run("ci")
+    assert ci.state is StepState.STOPPED and ci.block is not None
+    assert ci.block.account == "wait.external" and ci.block.next_check_at is not None
+    run = await h.resume(run)
+    assert run.state is RunState.HALTED and run.cause is Cause.PARKED
+    run = await h.resume(run)
+    assert run.state is RunState.FINISHED
+    assert h.clock.slept == [], "nothing waited inline"
+    ci = run.step_run("ci")
+    assert ci.consumption is not None and ci.consumption.quota_units == 3
+    kinds = await h.kinds(run)
+    assert sum(k.startswith("step.waiting:") for k in kinds) == 2
+    assert sum(k.startswith("step.waited:") for k in kinds) == 1
+
+
+async def test_a_parked_wait_past_its_timeout_fails_on_its_next_check() -> None:
+    h = ConnectorHarness(pipeline_wait(10, 25), options=PARKING)
+    h.connector.reads["ci"] = {"state": "pending"}
+    run = await h.start()
+    assert run.cause is Cause.PARKED
+    h.clock.current += timedelta(seconds=30)
+    run = await h.resume(run)
+    assert run.state is RunState.ESCALATED
+    waited = re.match(r"waited (\d+)s", run.step_run("ci").reason or "")
+    assert waited is not None and int(waited[1]) >= 30, "counted from when the wait began"
+
+
+async def test_a_parked_wait_on_the_clock_waits_only_what_remains() -> None:
+    h = ConnectorHarness(wait("w", 100), options=PARKING)
+    run = await h.start()
+    assert run.cause is Cause.PARKED
+    first = run.step_run("w").block
+    assert first is not None and first.next_check_at is not None
+    assert (first.next_check_at - first.since).total_seconds() == 100
+    h.clock.current += timedelta(seconds=40)
+    run = await h.resume(run)
+    again = run.step_run("w").block
+    assert run.cause is Cause.PARKED and again is not None and again.next_check_at is not None
+    assert again.since == first.since, "one block, from when the wait began"
+    assert again.next_check_at == first.next_check_at, "it ends when it would have"
+    h.clock.current += timedelta(seconds=70)
+    run = await h.resume(run)
+    assert run.state is RunState.FINISHED and h.clock.slept == []
 
 
 # --- a reading that did not show what was expected is read again on resume (issue #31) --------

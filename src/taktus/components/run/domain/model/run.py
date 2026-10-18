@@ -52,6 +52,10 @@ class Cause(StrEnum):
     """A step's worker was at its declared capacity, or its model's provider at its rate limit.
     A run halted with this cause waits at the step's boundary and its runner tries again later;
     one whose step waited beyond its ceiling escalates with it (ADR-0037, ADR-0043)."""
+    PARKED = "parked"
+    """A `wait` step waits longer than the engine waits inline. A run halted with this cause
+    holds no place of any runner; its runner defers the job to the wait's next check, and the
+    run continues there (ADR-0103)."""
     PERSON = "person"
     """A step waits for a person: to confirm it before it starts (level 2), or to perform the act
     Taktus only proposes and report it done (level 1). The run waits in `waiting_human` once

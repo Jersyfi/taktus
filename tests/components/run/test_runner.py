@@ -12,6 +12,7 @@ The clock is the real one here: the runner's loop and the heartbeat sleep throug
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable
 from typing import Any
 
@@ -34,6 +35,7 @@ from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.application.service import (
+    EngineOptions,
     ResumeRun,
     RunEngine,
     Runner,
@@ -118,7 +120,9 @@ class World:
         max_attempts: int = 5,
         worker: FakeWorker | None = None,
         model: FakeModel | None = None,
+        park_after: float | None = None,
     ) -> None:
+        self.park_after = park_after
         self.worker = worker or FakeWorker()
         self.model = model or FakeModel(answer="yes")
         self.clock = SystemClock()
@@ -130,7 +134,8 @@ class World:
         )
         self.ledger = ChainedLedger(MemoryLedgerStore(self.persistence), self.clock)
         self.provenance = MemoryProvenanceStore(self.persistence)
-        self.engine = self.another_engine(MemoryObjectStore())
+        self.objects = MemoryObjectStore()
+        self.engine = self.another_engine(self.objects)
         self.tasks: list[asyncio.Task[None]] = []
 
     def another_engine(self, objects: ObjectStore) -> RunEngine:
@@ -148,6 +153,7 @@ class World:
             ids=self.ids,
             telemetry=NoTelemetry(),
             queue=self.queue,
+            options=EngineOptions(park_waits_after_seconds=self.park_after),
         )
 
     async def submit(self, *definitions: tuple[Step, dict[str, Any]]) -> Run:
@@ -591,3 +597,61 @@ async def test_a_runner_that_lost_its_claim_while_its_worker_was_full_writes_no_
     assert stored.state is RunState.RUNNING and stored.step_run("do").waiting_since is None
     async with world.persistence.transaction(TENANT):
         assert await world.queue.extend(TENANT, "job_0001", "r2"), "r2 still holds the job"
+
+
+# --- a wait parks its run and holds no place (ADR-0103, issue #320) ----------------------------
+
+
+async def test_runs_waiting_half_an_hour_hold_no_place_and_a_fifth_run_starts_at_once() -> None:
+    world = World(park_after=0.05)
+    waiting = [await world.submit(wait("w", 1800)) for _ in range(4)]
+    runner = world.runner("r1", concurrency=4)
+    await until(lambda: len(runner.outcomes) == 4)
+    fifth = await world.submit(rule("a", 1))
+    await until(lambda: len(runner.outcomes) == 5)
+    await world.stop(runner)
+    assert [o.disposition for o in runner.outcomes] == ["deferred"] * 4 + ["completed"]
+    assert (await world.stored(fifth.id)).state is RunState.FINISHED
+    for run in waiting:
+        parked = await world.stored(run.id)
+        assert parked.state is RunState.HALTED and parked.cause is Cause.PARKED
+        step = parked.step_run("w")
+        assert step.state is StepState.STOPPED and step.block is not None
+        assert step.block.account == "wait.external" and step.block.next_check_at is not None
+        assert (step.block.next_check_at - step.block.since).total_seconds() > 1700
+    assert await world.claimable() == [], "deferred to the wait's end: not claimable now"
+
+
+async def test_a_parked_wait_continues_at_its_check_and_books_its_whole_duration() -> None:
+    world = World(park_after=0.05)
+    run = await world.submit(wait("w", 0.4), rule("a", 1, after=("w",)))
+    runner = world.runner("r1")
+    await until(lambda: len(runner.outcomes) == 1)
+    assert runner.outcomes[0].disposition == "deferred"
+    assert runner.executing == 0, "the parked run holds no place"
+    await until(lambda: len(runner.outcomes) == 2)
+    await world.stop(runner)
+    assert [o.disposition for o in runner.outcomes] == ["deferred", "completed"]
+    assert (await world.stored(run.id)).state is RunState.FINISHED
+    kinds = await world.kinds(run.id)
+    assert "run.halted" in kinds and kinds.count("step.waited") == 1
+    assert kinds.index("step.waiting") < kinds.index("step.waited")
+    async with world.persistence.transaction(TENANT):
+        (entry,) = [
+            e for e in await world.ledger.entries(TENANT, run.id) if e.kind == "step.waited"
+        ]
+    content = await world.objects.get(entry.content_digest)
+    assert content is not None
+    document = json.loads(content)
+    assert document["account"] == "wait.external" and document["cause"] == "waiting_on_clock"
+    assert document["seconds"] >= 0.4, "the whole wait, across the park, is one block"
+
+
+async def test_a_short_wait_waits_inline_and_does_not_park() -> None:
+    world = World(park_after=5)
+    run = await world.submit(wait("w", 0.05))
+    runner = world.runner("r1")
+    await until(lambda: len(runner.outcomes) == 1)
+    await world.stop(runner)
+    assert runner.outcomes[0].disposition == "completed"
+    assert (await world.stored(run.id)).state is RunState.FINISHED
