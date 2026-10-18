@@ -596,9 +596,10 @@ steps against a fresh database.
 
    Every tenant of the manifest must appear with the same `seq` and `hash`; a tenant may have
    more entries only if the dump was taken after the manifest's heads were read. Whether an
-   entry was changed is the chain's own proof: the head's hash covers every entry before it, and
-   Taktus verifies a tenant's whole chain from its first entry whenever `taktusctl run` reports
-   a run (ADR-0006).
+   entry was changed is the chain's own proof: the head's hash covers every entry before it.
+   Taktus verifies a chain from its last verified checkpoint (ADR-0105), and the checkpoint is
+   restored with the dump. After a restore, verify every tenant's whole chain from its first
+   entry once: `taktusctl ledger verify --full --tenant <tenant>` for each.
 8. **Start Taktus again** with the same chart values. The schema revision of the manifest must
    be one the released version migrates from; an older backup is migrated forward by the
    release's own migration Job.
