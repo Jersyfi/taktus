@@ -8,7 +8,7 @@ builds it with the release images, and `tests/deploy/` runs it.
 | File | What |
 |---|---|
 | `Dockerfile` | the image, built from the repository root: `docker build -f deploy/backup/Dockerfile .` |
-| `backup.py` | one run: the ledger heads and the schema revision read, `pg_dump`, optionally `age`, both objects written and listed, then the retention kept. Its configuration is in its docstring |
+| `backup.py` | one run: the ledger heads and the schema revision read, `pg_dump`, the object store archived, optionally `age`, every object written and listed, then the retention kept. Its configuration is in its docstring |
 
 `backup.py backup` (the default) waits up to a minute for the database to accept connections — a
 pod that has just started is refused for a few seconds while the cluster applies its network

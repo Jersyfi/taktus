@@ -712,6 +712,33 @@ def test_the_backup_is_a_daily_cronjob_that_never_overlaps_and_reads_its_secrets
     )
 
 
+def test_the_backup_archives_the_object_store_from_the_state_volume_read_only(
+    rendered: list[dict[str, Any]],
+) -> None:
+    """The database alone restores an instance whose runs refer to nothing readable (#322)."""
+    [cron] = of_kind(rendered, "CronJob")
+    pod = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    [container] = pod["containers"]
+    env = {v["name"]: v["value"] for v in container["env"]}
+    assert env["TAKTUS_BACKUP_OBJECTS_DIRECTORY"] == "/var/lib/taktus/objects"
+    mounts = {m["name"]: m for m in container["volumeMounts"]}
+    assert mounts["state"]["mountPath"] == "/var/lib/taktus" and mounts["state"]["readOnly"]
+    volumes = {v["name"]: v for v in pod["volumes"]}
+    claim = volumes["state"]["persistentVolumeClaim"]
+    assert claim == {"claimName": "taktus-state", "readOnly": True}
+    [term] = pod["affinity"]["podAffinity"]["requiredDuringSchedulingIgnoredDuringExecution"]
+    assert term["topologyKey"] == "kubernetes.io/hostname", "the volume is ReadWriteOnce"
+    assert term["labelSelector"]["matchLabels"]["app.kubernetes.io/component"] == "control-plane"
+
+
+def test_without_the_object_store_the_backup_mounts_no_state() -> None:
+    [cron] = of_kind(render("backup.objects=false"), "CronJob")
+    pod = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    [container] = pod["containers"]
+    assert "TAKTUS_BACKUP_OBJECTS_DIRECTORY" not in {v["name"] for v in container["env"]}
+    assert "state" not in {v["name"] for v in pod["volumes"]} and "affinity" not in pod
+
+
 def test_the_retention_and_the_recipient_are_configuration() -> None:
     documents = render("backup.retentionDays=7", "backup.recipient=age1example")
     [cron] = of_kind(documents, "CronJob")

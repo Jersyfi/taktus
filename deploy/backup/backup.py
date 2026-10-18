@@ -7,17 +7,21 @@ only; the work is done by three standard tools that a person restoring by hand u
 store. Nothing here imports Taktus: a backup is taken while Taktus is faulty as well, and is
 restored without it (ADR-0013 C, `deploy/k8s/README.md` §11).
 
-One run writes two objects under one name, `taktus-<UTC time>`:
+One run writes up to three objects under one name, `taktus-<UTC time>`:
 
 - `<name>.dump` — `pg_dump --format=custom` of the whole database, or `<name>.dump.age` when a
   recipient is configured;
-- `<name>.json` — the manifest: when, which object, its SHA-256, whether it is encrypted, the
-  schema revision, and every tenant's ledger head (`seq`, `hash`) read before the dump. The
-  ledger is append-only, so every head read before the dump is in it; a restore is checked
-  against these heads. Encrypted as `<name>.json.age` when the dump is.
+- `<name>.objects.tar.gz` — the instance's object store: every artifact, block record and
+  recording the database refers to by digest, archived after the dump, so that every object a
+  row of the dump names is in it (an object is written before the row that names it). Written
+  where `TAKTUS_BACKUP_OBJECTS_DIRECTORY` names the store's directory; `.age` when encrypted;
+- `<name>.json` — the manifest: when, which objects, their SHA-256 and size, whether they are
+  encrypted, the schema revision, and every tenant's ledger head (`seq`, `hash`) read before the
+  dump. The ledger is append-only, so every head read before the dump is in it; a restore is
+  checked against these heads. Encrypted as `<name>.json.age` when the dump is.
 
-Then the retention: every backup whose time is older than the retention is deleted — its dump
-and its manifest — and no younger one. The newest backup is never deleted, whatever the
+Then the retention: every backup whose time is older than the retention is deleted — its dump,
+its objects and its manifest — and no younger one. The newest backup is never deleted, whatever the
 retention says, so a retention of 0 keeps exactly one. An object whose name is not of this form
 is never touched: the program deletes only what it wrote.
 
@@ -36,6 +40,7 @@ Configuration, all from the environment; a secret only from a file (CREDENTIALS.
 | `TAKTUS_BACKUP_RETENTION_DAYS` | days a backup is kept; 30 by default (DEC-0058) |
 | `TAKTUS_BACKUP_RECIPIENT` | an age public key; empty: not encrypted (DEC-0058) |
 | `TAKTUS_BACKUP_WORK_DIR` | where the dump waits before it leaves; the temporary directory |
+| `TAKTUS_BACKUP_OBJECTS_DIRECTORY` | the object store, `<state dir>/objects`; empty: none |
 
 Exit code 0: written and the retention kept. 1: nothing was deleted, and the log says why.
 """
@@ -48,6 +53,7 @@ import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -56,7 +62,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 
-NAME = re.compile(r"^taktus-(\d{8}T\d{6}Z)\.(dump|json)(\.age)?$")
+NAME = re.compile(r"^taktus-(\d{8}T\d{6}Z)\.(dump|json|objects\.tar\.gz)(\.age)?$")
 TIME = "%Y%m%dT%H%M%SZ"
 DEFAULT_RETENTION_DAYS = 30
 WAIT_SECONDS = 60.0
@@ -113,6 +119,7 @@ class Settings:
     retention_days: int
     recipient: str
     work_dir: Path
+    objects_dir: Path | None = None
 
 
 def read_secret(env: Mapping[str, str], variable: str) -> str:
@@ -179,7 +186,13 @@ def settings(env: Mapping[str, str]) -> Settings:
             "RCLONE_S3_NO_CHECK_BUCKET": "true",
         }
     work_dir = Path(env.get("TAKTUS_BACKUP_WORK_DIR", "") or tempfile.gettempdir())
-    return Settings(url, database_env, remote, store_env, int(raw), recipient, work_dir)
+    objects = env.get("TAKTUS_BACKUP_OBJECTS_DIRECTORY", "").strip()
+    objects_dir = Path(objects) if objects else None
+    if objects_dir is not None and not objects_dir.is_dir():
+        raise BackupError(f"TAKTUS_BACKUP_OBJECTS_DIRECTORY names no directory: {objects}")
+    return Settings(
+        url, database_env, remote, store_env, int(raw), recipient, work_dir, objects_dir
+    )
 
 
 # --- the tools -------------------------------------------------------------------------------
@@ -227,6 +240,21 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def archive(directory: Path, target: Path) -> int:
+    """Every file of the object store, flat, as the store keeps them; return how many. A file
+    written while the archive is made may be in it or not: it is named by no row of the dump."""
+    count = 0
+    with tarfile.open(target, "w:gz") as tar:
+        for path in sorted(p for p in directory.iterdir() if p.is_file()):
+            tar.add(path, arcname=path.name, recursive=False)
+            count += 1
+    return count
+
+
+def described(path: Path) -> dict[str, object]:
+    return {"object": path.name, "sha256": sha256(path), "bytes": path.stat().st_size}
+
+
 # --- one run -----------------------------------------------------------------------------------
 
 
@@ -262,12 +290,22 @@ def backup(s: Settings, *, now: datetime) -> str:
             what="pg_dump",
         )
         dump = encrypt(s, dump)
+        written = [dump]
+        objects: dict[str, object] | None = None
+        if s.objects_dir is not None:
+            # After the dump: every object a row of it names was written before that row.
+            archived = Path(work) / f"{name}.objects.tar.gz"
+            count = archive(s.objects_dir, archived)
+            archived = encrypt(s, archived)
+            objects = {**described(archived), "count": count}
+            written.append(archived)
         manifest = {
             "name": name,
             "created": now.astimezone(UTC).isoformat(),
             "object": dump.name,
             "sha256": sha256(dump),
             "bytes": dump.stat().st_size,
+            "objects": objects,
             "encrypted": bool(s.recipient),
             "recipient": s.recipient or None,
             "schema_revision": revision,
@@ -276,13 +314,23 @@ def backup(s: Settings, *, now: datetime) -> str:
         manifest_path = Path(work) / f"{name}.json"
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", "utf-8")
         manifest_path = encrypt(s, manifest_path)
-        for path in (dump, manifest_path):
+        # The manifest last: a backup without it is incomplete, and a restore starts from it.
+        written.append(manifest_path)
+        for path in written:
             store(s, "copyto", str(path), f"{s.remote}/{path.name}", what=f"writing {path.name}")
-        written = set(listing(s))
-        missing = {dump.name, manifest_path.name} - written
+        listed = set(listing(s))
+        missing = {path.name for path in written} - listed
         if missing:
             raise BackupError(f"written but not listed in the store: {sorted(missing)}")
-        print(f"backup {name}: {dump.name} ({manifest['bytes']} bytes), {len(heads)} tenant(s)")
+        stored = (
+            "the database alone"
+            if objects is None
+            else f"{objects['count']} object(s) in {objects['object']}"
+        )
+        print(
+            f"backup {name}: {dump.name} ({manifest['bytes']} bytes), {stored}, "
+            f"{len(heads)} tenant(s)"
+        )
     return name
 
 

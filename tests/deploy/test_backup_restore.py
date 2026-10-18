@@ -5,7 +5,8 @@ writes a backup into a directory standing in for the store, as the chart's CronJ
 keeps the retention there. The restore then runs the commands of `deploy/k8s/README.md` §11 in
 the same image, against a fresh database, and every tenant's chain must verify and end at the
 head it had before the backup. With a recipient configured, nothing written is readable without
-the key, and with the key the restore is the same.
+the key, and with the key the restore is the same. With the object store given, a run's every
+digest is readable after a restore into a fresh database and an empty state directory (#322).
 """
 
 from __future__ import annotations
@@ -20,13 +21,39 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from fakes import FakeClock
+from fakes import (
+    FakeClock,
+    FakeIdentifiers,
+    FakeWorker,
+)
+from fakes.maturity import VERIFIED
 from sqlalchemy import text
 
-from taktus.adapters.driven.postgres import PostgresLedgerStore, PostgresPersistence
+from taktus.adapters.driven.memory import MemoryObjectStore
+from taktus.adapters.driven.postgres import (
+    PostgresLedgerStore,
+    PostgresPersistence,
+    PostgresProvenanceStore,
+    PostgresRepository,
+)
+from taktus.adapters.driven.telemetry import NoTelemetry
+from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
+from taktus.components.run.application.service import EngineOptions, RunEngine, StartRun
+from taktus.components.run.domain.model import Run, RunState
 from taktus.ports.ledger import Fact
-from taktus.shared.v1 import LedgerRefs
+from taktus.ports.worker import ComputeLimit, Limits
+from taktus.shared.v1 import (
+    Commissioned,
+    ExactnessClass,
+    Fallback,
+    LedgerRefs,
+    Method,
+    Plan,
+    PlanResult,
+    PlanStatus,
+    Step,
+)
 
 TENANTS = ("t_backup_one", "t_backup_two")
 OLD = "taktus-20200101T000000Z"
@@ -144,9 +171,28 @@ def run_backup(
     )  # fmt: skip
 
 
-def restore(image: str, db: Database, store: Path, work: Path, name: str, key: bool) -> None:
-    """The commands of deploy/k8s/README.md §11, steps 2 to 5, with a directory as the store."""
+def restore(
+    image: str,
+    db: Database,
+    store: Path,
+    work: Path,
+    name: str,
+    key: bool,
+    state: Path | None = None,
+) -> None:
+    """The commands of deploy/k8s/README.md §11, steps 2 to 6, with a directory as the store;
+    with `state`, the object store's archive restored into it as well."""
     dump = f"{name}.dump"
+    archive = f"{name}.objects.tar.gz"
+    objects = (
+        []
+        if state is None
+        else [
+            f"rclone --config /dev/null copyto :local:/backups/{archive} /work/{archive}",
+            "mkdir -p /state/objects",
+            f"tar -xzf /work/{archive} -C /state/objects",
+        ]
+    )
     steps = [
         f"rclone --config /dev/null copyto :local:/backups/{dump}{'.age' if key else ''} "
         f"/work/{dump}{'.age' if key else ''}",
@@ -160,11 +206,13 @@ def restore(image: str, db: Database, store: Path, work: Path, name: str, key: b
         'THEN CREATE ROLE taktus_app NOLOGIN; END IF; END \\$\\$" '
         '-c "GRANT taktus_app TO CURRENT_USER"',
         f'pg_restore --no-owner --exit-on-error --single-transaction --dbname "$URL" /work/{dump}',
+        *objects,
     ]
     url, password = db.inside_url.replace(f":{db.password}@", "@"), db.password
+    mounts = [] if state is None else [f"--volume={state}:/state"]
     docker(
         "run", "--rm", *as_me(), f"--network=container:{db.container_id}",
-        f"--volume={store}:/backups:ro", f"--volume={work}:/work",
+        f"--volume={store}:/backups:ro", f"--volume={work}:/work", *mounts,
         f"--env=URL={url}", f"--env=PGPASSWORD={password}",
         "--entrypoint=sh", image, "-euc", " && ".join(steps),
     )  # fmt: skip
@@ -177,6 +225,90 @@ def directories(tmp_path: Path, db: Database) -> tuple[Path, Path, Path]:
     (secrets / "url").write_text(db.inside_url + "\n", encoding="utf-8")
     (secrets / "url").chmod(0o600)
     return store, secrets, work
+
+
+RUN_TENANT = TENANTS[0]
+
+
+async def run_a_process(postgres: PostgresPersistence, objects: Path) -> Run:
+    """A run of a rule and a worker step, on the database and an object store in a directory, as
+    an instance runs it."""
+    async with postgres.engine.begin() as connection:
+        await connection.execute(
+            text("INSERT INTO tenant (id, name, created_at) VALUES (:t, :t, now()) "
+                 "ON CONFLICT DO NOTHING"),
+            {"t": RUN_TENANT},
+        )  # fmt: skip
+    clock = FakeClock(datetime(2026, 10, 18, tzinfo=UTC))
+    engine = RunEngine(
+        maturities=VERIFIED,
+        runs=PostgresRepository(postgres, Run),
+        work=postgres,
+        objects=MemoryObjectStore(objects),
+        ledger=ChainedLedger(PostgresLedgerStore(postgres), clock),
+        provenance=PostgresProvenanceStore(postgres),
+        workers=StaticWorkerPool([("worker.fake", FakeWorker())]),
+        clock=clock,
+        ids=FakeIdentifiers(),
+        telemetry=NoTelemetry(),
+        options=EngineOptions(uncalibrated_margin=0.0),
+    )
+    steps = (
+        Step(id="a", method=Method.RULE, reason="r", rejected=(), exactness=ExactnessClass.EXACT),
+        Step(
+            id="b",
+            method=Method.WORKER,
+            reason="r",
+            rejected=(),
+            exactness=ExactnessClass.TOLERANT,
+            fallback=Fallback(when="x", to=Method.HUMAN),
+            requires=("shell.script",),
+            depends_on=("a",),
+        ),
+    )
+    plan = Plan(
+        id="pln_backup",
+        command_id="cmd_backup",
+        goal="g",
+        autonomy_level=3,
+        steps=steps,
+        results_in=PlanResult.RUN,
+        status=PlanStatus.COMMISSIONED,
+        commissioned=Commissioned(by="idn_t", at=clock.now()),
+    )
+    return await engine.start(
+        StartRun(
+            plan=plan,
+            work={
+                "a": {"rule": "constant", "value": 42},
+                "b": {"task": {"goal": "g", "acceptance": ["a"]}},
+            },
+            budget=Limits(compute=ComputeLimit(seconds=10, resource_class="cpu.small")),
+            process_version="p@1",
+            actor="idn_t",
+            tenant=RUN_TENANT,
+        )
+    )
+
+
+async def digests_of(url: str, run_id: str) -> set[str]:
+    """Every digest the database names for the run: its step runs' artifacts and checkpoints,
+    and its ledger entries' content."""
+    postgres = PostgresPersistence(url, pool_size=1)
+    try:
+        ledger = ChainedLedger(PostgresLedgerStore(postgres), FakeClock())
+        async with postgres.transaction(RUN_TENANT):
+            run = await PostgresRepository(postgres, Run).get(RUN_TENANT, run_id)
+            entries = await ledger.entries(RUN_TENANT, run_id)
+        assert run is not None
+        found = {e.content_digest for e in entries if e.content_digest}
+        for step_run in run.step_runs:
+            found |= {a.digest for a in step_run.artifacts}
+            if step_run.checkpoint is not None and step_run.checkpoint.result_digest:
+                found.add(step_run.checkpoint.result_digest)
+        return found
+    finally:
+        await postgres.close()
 
 
 def written(store: Path) -> list[str]:
@@ -318,3 +450,59 @@ async def test_against_an_object_store_with_its_credential_read_from_files(
     assert [n.rsplit(".", 1)[1] for n in names] == ["dump", "json"], names
     assert wrong.returncode == 1, "a credential the store refuses fails the run"
     assert source.password not in wrong.stdout + wrong.stderr
+
+
+async def test_a_restore_with_the_object_store_reads_every_digest_a_run_refers_to(
+    backup_image: str,
+    source: Database,
+    target: Database,
+    persistence: PostgresPersistence,
+    tmp_path: Path,
+) -> None:
+    """Shown on 2026-10-12: after a restore of the database alone, none of the digests a finished
+    run refers to was readable (#322). With the object store archived beside the dump, all are."""
+    state = tmp_path / "state"
+    (state / "objects").mkdir(parents=True)
+    run = await run_a_process(persistence, state / "objects")
+    assert run.state is RunState.FINISHED
+    referred = await digests_of(source.host_url, run.id)
+    assert referred, "the run refers to objects"
+    store, secrets, work = directories(tmp_path, source)
+    done = docker(
+        "run", "--rm", *as_me(), f"--network=container:{source.container_id}",
+        f"--volume={store}:/backups", f"--volume={secrets}:/run/secrets:ro",
+        f"--volume={state / 'objects'}:/objects:ro",
+        "--env=TAKTUS_DATABASE_URL_FILE=/run/secrets/url",
+        "--env=TAKTUS_BACKUP_STORE_DIRECTORY=/backups",
+        "--env=TAKTUS_BACKUP_OBJECTS_DIRECTORY=/objects",
+        backup_image, check=False,
+    )  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    names = written(store)
+    (archive,) = [n for n in names if n.endswith(".objects.tar.gz")]
+    (manifest_file,) = [n for n in names if n.endswith(".json")]
+    manifest = json.loads((store / manifest_file).read_text(encoding="utf-8"))
+    assert manifest["objects"]["object"] == archive
+    assert manifest["objects"]["count"] == len(list((state / "objects").iterdir()))
+
+    restored = tmp_path / "restored"
+    restored.mkdir()
+    restore(backup_image, target, store, work, archive.removesuffix(".objects.tar.gz"), key=False,
+            state=restored)  # fmt: skip
+
+    assert await digests_of(target.host_url, run.id) == referred
+    objects = MemoryObjectStore(restored / "objects")
+    unreadable = [d for d in sorted(referred) if await objects.get(d) is None]
+    assert unreadable == [], "every digest the run refers to is readable after the restore"
+
+
+async def test_a_backup_names_a_missing_object_store_and_writes_nothing(
+    backup_image: str, source: Database, tmp_path: Path
+) -> None:
+    store, secrets, _ = directories(tmp_path, source)
+    done = run_backup(
+        backup_image, source, store, secrets, TAKTUS_BACKUP_OBJECTS_DIRECTORY="/nowhere"
+    )
+    assert done.returncode == 1
+    assert "TAKTUS_BACKUP_OBJECTS_DIRECTORY names no directory" in done.stderr
+    assert written(store) == []

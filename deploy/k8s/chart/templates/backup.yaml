@@ -3,7 +3,9 @@ The database's scheduled backup (ADR-0087, README §11): a CronJob from the back
 dumps the database, encrypts the dump when a recipient is given, writes it to the store off the
 node and deletes what is older than the retention. It reads the database URL the roles read and
 the store's credential, both as mounted files; it runs as the database's own user and mounts no
-service-account token. It reaches the name service, the database and the store, nothing else;
+service-account token. With `backup.objects`, it also archives the object store beside the dump,
+from the state volume mounted read-only (#322). That volume is ReadWriteOnce, so the backup's pod
+runs on the node of the control plane's pods. It reaches the name service, the database and the store, nothing else;
 the database admits it.
 
 A run that fails leaves its Job and pod, so that its log can be read; the next run does not wait
@@ -92,6 +94,10 @@ spec:
                   value: {{ $b.recipient | quote }}
                 - name: TAKTUS_BACKUP_WORK_DIR
                   value: /work
+                {{- if $b.objects }}
+                - name: TAKTUS_BACKUP_OBJECTS_DIRECTORY
+                  value: /var/lib/taktus/objects
+                {{- end }}
               resources:
                 {{- toYaml $b.resources | nindent 16 }}
               securityContext:
@@ -107,6 +113,21 @@ spec:
                 - name: backup-store
                   mountPath: /run/secrets/taktus/backup-store
                   readOnly: true
+                {{- if $b.objects }}
+                - name: state
+                  mountPath: /var/lib/taktus
+                  readOnly: true
+                {{- end }}
+          {{- if $b.objects }}
+          # The state volume is ReadWriteOnce: it is mounted on the node that holds it already.
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchLabels:
+                      {{- include "taktus.selector" (dict "root" . "component" "control-plane") | nindent 22 }}
+          {{- end }}
           volumes:
             - name: tmp
               emptyDir: {}
@@ -121,6 +142,12 @@ spec:
                 items:
                   - key: {{ $url.key }}
                     path: {{ $url.key }}
+            {{- if $b.objects }}
+            - name: state
+              persistentVolumeClaim:
+                claimName: {{ include "taktus.fullname" . }}-state
+                readOnly: true
+            {{- end }}
             - name: backup-store
               secret:
                 secretName: {{ $secret }}
