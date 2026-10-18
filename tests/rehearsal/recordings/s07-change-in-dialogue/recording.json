@@ -1,0 +1,137 @@
+{
+  "budget": {
+    "quota": {
+      "units": 4.0
+    }
+  },
+  "format": "taktus.recording/v1",
+  "inputs": {
+    "process": "p02-refinement",
+    "request": "also post the sections as a comment"
+  },
+  "margin": 0.0,
+  "operations": [
+    {
+      "capability": "orchestrator.changes",
+      "demand": {
+        "quota_units": 1.0
+      },
+      "effect": "read",
+      "name": "orchestrator.changes.propose",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "orchestrator.changes",
+      "demand": {
+        "quota_units": 1.0
+      },
+      "effect": "read",
+      "name": "orchestrator.changes.read",
+      "summary": "as recorded"
+    }
+  ],
+  "process": "s07-change-in-dialogue",
+  "process_version": "s07-change-in-dialogue@1",
+  "run_id": "run_6f161aabebbf61eed366",
+  "state": "finished",
+  "steps": [
+    {
+      "answer": {
+        "adapter": "connector.loopback",
+        "consumption": {
+          "quota_units": 1.0
+        },
+        "estimate": {
+          "quota_units": 1.0
+        },
+        "kind": "connector",
+        "operation": "orchestrator.changes.read",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:a1883d0e4836fa9a80b424d51c0721b13c89b08d97fd598a2141234f551a609f",
+          "parts": {
+            "input.process": "sha256:af66855eaca488a926872192ef25d370ac188d2bf36a275000177ec88dc9b0cc",
+            "operation": "sha256:52f6ffb1262dc4bb1912868d889fe2b61d2551aee54ab9a8ddc47623efa814ca"
+          }
+        },
+        "result": "results/read.json"
+      },
+      "id": "read",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "model.endpoint",
+        "consumption": {
+          "tokens_by_model": {
+            "fake-model": {
+              "input": 1012,
+              "output": 882
+            }
+          },
+          "tokens_in": 1012,
+          "tokens_out": 882
+        },
+        "estimate": {
+          "tokens_by_model": {
+            "fake-model": {
+              "input": 7719,
+              "output": 8192
+            }
+          },
+          "tokens_in": 7719,
+          "tokens_out": 8192
+        },
+        "kind": "model",
+        "outcome": "succeeded",
+        "purpose": "reasoning",
+        "request": {
+          "digest": "sha256:45008da2543141b09d8a29e096140f62f912c97debdd9f664661ca4057c10853",
+          "parts": {
+            "max_output_tokens": "sha256:864a936a35324151e1c79c44a2e903ff2497f52fa892282d340585f493c637f0",
+            "system": "sha256:d398ba8f4a4b4f718c385259776a856356fb1981d3ddc9014d7fc4f82fce84ed",
+            "user": "sha256:650bbcc834c85b9a4c15762a842e2498b35a20ab0e3086c23868607de281f72a"
+          }
+        },
+        "result": "results/propose.json",
+        "version": "fake-model"
+      },
+      "id": "propose",
+      "met_a_person": false,
+      "method": "llm",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.loopback",
+        "consumption": {
+          "quota_units": 1.0
+        },
+        "estimate": {
+          "quota_units": 1.0
+        },
+        "kind": "connector",
+        "operation": "orchestrator.changes.propose",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:1088dbae45ce6daf2cdd65e170fb405e572730bb67f7faef354dbe799109d2da",
+          "parts": {
+            "input.bundle": "sha256:a69f8de397b759a99bb11905b782ef8af7a5f38115cc2e3733cf9b24560dae65",
+            "input.process": "sha256:af66855eaca488a926872192ef25d370ac188d2bf36a275000177ec88dc9b0cc",
+            "input.request": "sha256:aa422f4d154149ab835b0e428d8682b580e233dfdb9fa733b7e1b0a7f336eda3",
+            "operation": "sha256:5e63be2c9e91f5bdd52280754e71b0ce5ca73b505986223f19885b22d9f70697"
+          }
+        },
+        "result": "results/keep.json"
+      },
+      "id": "keep",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    }
+  ],
+  "taken": "local",
+  "uncalibrated_margin": 1.0
+}

@@ -1,0 +1,26 @@
+{
+  "consumption": {
+    "quota_units": 2.0
+  },
+  "effect": {
+    "content_digest": "sha256:35ddde94337590f160f565399965956612e52017ab5874b76532794cefec1205",
+    "kind": "write",
+    "records": [
+      {
+        "id": "2#in-progress",
+        "kind": "label"
+      }
+    ],
+    "replayed": false
+  },
+  "output": {
+    "labels": [
+      "in-progress",
+      "priority:high",
+      "ready",
+      "task",
+      "to-taktus"
+    ],
+    "number": 2
+  }
+}

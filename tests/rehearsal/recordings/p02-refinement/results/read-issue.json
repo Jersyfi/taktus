@@ -1,0 +1,27 @@
+{
+  "consumption": {
+    "quota_units": 1.0
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "output": {
+    "author": {
+      "account": "1002",
+      "kind": "person"
+    },
+    "body": "### What must be achieved\n\nA greeting is written to hello.txt.\n\n### How it is verified\n\n_No response_\n\n### Where the boundary lies\n\nNo other file changes.\n\n### Component\n\nworkers\n\n### Source\n\ndocs/roadmap.md, 0.2.0\n\n### Blocked by\n\nnothing\n",
+    "created_at": "2026-10-18T18:38:45Z",
+    "is_pull_request": false,
+    "labels": [
+      "priority:high",
+      "ready",
+      "task"
+    ],
+    "milestone": "0.2.0",
+    "number": 3,
+    "state": "open",
+    "title": "Without a verification",
+    "url": "http://127.0.0.1:20569/acme/product/issues/3"
+  }
+}

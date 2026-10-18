@@ -1,0 +1,22 @@
+{
+  "consumption": {
+    "quota_units": 2.0
+  },
+  "effect": {
+    "content_digest": "sha256:fab0b54207e3b10a932243daf42f89d0813088ad73f9365de83bfd3b87925065",
+    "kind": "write",
+    "records": [
+      {
+        "id": "7#taktus",
+        "kind": "label"
+      }
+    ],
+    "replayed": false
+  },
+  "output": {
+    "labels": [
+      "taktus"
+    ],
+    "number": 7
+  }
+}

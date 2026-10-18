@@ -1,0 +1,755 @@
+{
+  "budget": {
+    "currency": {
+      "usd": 5.0
+    },
+    "quota": {
+      "units": 200.0
+    }
+  },
+  "format": "taktus.recording/v1",
+  "inputs": {
+    "closing_section": "## Needed from the owner\n\n<!-- generated -->\nNothing is open.\n<!-- end -->",
+    "coding_credential": "CODING_AGENT_API_KEY",
+    "issue": 2,
+    "records_path": "docs/decisions/open",
+    "repository_host": "localhost",
+    "repository_url": "/private/tmp/taktus-record/test_record_the_local_recordin0/origin"
+  },
+  "margin": 0.0,
+  "operations": [
+    {
+      "capability": "repository.branches",
+      "demand": {
+        "quota_units": 64.0
+      },
+      "effect": "write",
+      "idempotency": "marked",
+      "name": "repository.branches.create",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.branches",
+      "demand": {
+        "quota_units": 2.0
+      },
+      "effect": "read",
+      "name": "repository.branches.read",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.comments",
+      "demand": {
+        "quota_units": 3.0
+      },
+      "effect": "write",
+      "idempotency": "marked",
+      "name": "repository.comments.create",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.comments",
+      "demand": {
+        "quota_units": 10.0
+      },
+      "effect": "read",
+      "name": "repository.comments.list",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.files",
+      "demand": {
+        "quota_units": 2.0
+      },
+      "effect": "read",
+      "name": "repository.files.list",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.issues",
+      "demand": {
+        "quota_units": 20.0
+      },
+      "effect": "read",
+      "name": "repository.issues.list",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.issues",
+      "demand": {
+        "quota_units": 1.0
+      },
+      "effect": "read",
+      "name": "repository.issues.read",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.labels",
+      "demand": {
+        "quota_units": 3.0
+      },
+      "effect": "write",
+      "idempotency": "marked",
+      "name": "repository.labels.set",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.pipelines",
+      "demand": {
+        "quota_units": 2.0
+      },
+      "effect": "read",
+      "name": "repository.pipelines.status",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.pullrequests",
+      "demand": {
+        "quota_units": 3.0
+      },
+      "effect": "write",
+      "idempotency": "marked",
+      "name": "repository.pullrequests.open",
+      "summary": "as recorded"
+    }
+  ],
+  "process": "p03-implementation",
+  "process_version": "p03-implementation@20",
+  "run_id": "run_90302631bc80c9ec284b",
+  "state": "finished",
+  "steps": [
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 1.0
+        },
+        "estimate": {
+          "quota_units": 1.0
+        },
+        "kind": "connector",
+        "operation": "repository.issues.read",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:4c33d53bd1e1818e29a3d75875683b9e6b8b4de50eb6c0b7f73f632239210507",
+          "parts": {
+            "input.number": "sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+            "operation": "sha256:93fad1e49f64713973bedd399b7e8a57e1872680fd64d76d830491a883f46bdb"
+          }
+        },
+        "result": "results/read-issue.json"
+      },
+      "id": "read-issue",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 1.0
+        },
+        "estimate": {
+          "quota_units": 10.0
+        },
+        "kind": "connector",
+        "operation": "repository.comments.list",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:227e1571d8f1c4e9d7af5f9a51e5359f804085c3009cafe4b55a68f49135276e",
+          "parts": {
+            "input.number": "sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+            "operation": "sha256:ad1802c9204fd595eb9483072e76b37cc2eddc4e8de32b200dec503967107a1d"
+          }
+        },
+        "result": "results/read-comments.json"
+      },
+      "id": "read-comments",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "context",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 1.0
+        },
+        "estimate": {
+          "quota_units": 20.0
+        },
+        "kind": "connector",
+        "operation": "repository.issues.list",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:47f790356e68c51ff4335718ebd77e42a1f04dd5c92e938ea10e5d54f1c3603b",
+          "parts": {
+            "input.state": "sha256:35ff74aeea25311f4fe759a6b762c8cd41a79adb23dd5615b92cf215175a63e5",
+            "operation": "sha256:e34bbfc18223f44a329bbb2974f23f7238a8169d17ba0aef2d4da4c9a48d610a"
+          }
+        },
+        "result": "results/read-open-issues.json"
+      },
+      "id": "read-open-issues",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 2.0
+        },
+        "kind": "connector",
+        "operation": "repository.files.list",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:c0600ea87874f4f562d6def7e81c0053b27ef8b14396845c6526dda85f4e11d5",
+          "parts": {
+            "input.path": "sha256:1b1a9006257a1a9f2a6f2cda80c13e8f6b84cc60b258e2ab28e505de0696b859",
+            "input.ref": "sha256:e4a9e4d8baa71a9d8ebf56ec8ae3ea1e82be9f96ae6fe89e36d701d4a5337f30",
+            "operation": "sha256:f250aaddd9bc5ca760c47debd039d2e69bdd78371a2fde59f572b32e1b6ce033"
+          }
+        },
+        "result": "results/read-open-records.json"
+      },
+      "id": "read-open-records",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "admit",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 3.0
+        },
+        "kind": "connector",
+        "operation": "repository.labels.set",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:76f36fe5100b67d0e5891db13ecc0e42eb196c43c2373a308a4a9989292ea892",
+          "parts": {
+            "input.labels": "sha256:6fe10354d68ed94b4641053aa78bb87e945f4e1913243d0f1864ac7c25da2460",
+            "input.number": "sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+            "operation": "sha256:83020660c2d13ea6e7189bef646db58d795f9e604dacc5914ea623a1cc6531ff"
+          }
+        },
+        "result": "results/claim.json"
+      },
+      "id": "claim",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "claim-notice",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 3.0
+        },
+        "kind": "connector",
+        "operation": "repository.comments.create",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:e735acc059234b95028a1a037a42c8adea30bbf64be374de87e1b231fd1f7f50",
+          "parts": {
+            "input.body": "sha256:9d8c58cf684a7180d6f7d3051128899ce69d4361f4cb95c577b398ea3a2e4d96",
+            "input.number": "sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+            "operation": "sha256:71db048f3ab8337d0e089a4abd747d1602a47aa52c6f7d028876f01e452b58fb"
+          }
+        },
+        "result": "results/announce-claim.json"
+      },
+      "id": "announce-claim",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "branch-name",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 1.0
+        },
+        "estimate": {
+          "quota_units": 2.0
+        },
+        "kind": "connector",
+        "operation": "repository.branches.read",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:8b10a4cc5ee2b2d98c5358878c7cb23459245d5fb1bca72dccf13dbde49c0a0e",
+          "parts": {
+            "input.key": "sha256:c1348cf82743a00b4002dd1ef65fa04ebf75247beb8cb3aa755c7d5d02c75e86",
+            "input.name": "sha256:a59e637eb929fea2a70139de7e3a62806bb30591683ce2d83b5cf3b2dd988620",
+            "operation": "sha256:b9a6060a61f23314074615f9dc09a06ff690817817939b668179f86f300c9ea3"
+          }
+        },
+        "result": "results/read-branch.json"
+      },
+      "id": "read-branch",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 62.0
+        },
+        "kind": "wait",
+        "observed": {
+          "select": "state",
+          "value": "success"
+        },
+        "operation": "repository.pipelines.status",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:7924bde939315c05a38ec817e47125c900d3f31fafa4734c943a85c5c3bf05a2",
+          "parts": {
+            "input.ref": "sha256:e4a9e4d8baa71a9d8ebf56ec8ae3ea1e82be9f96ae6fe89e36d701d4a5337f30",
+            "input.workflow": "sha256:ef173e6ef1eadabebf697a84c0c819b54cd6176f87a2d15098eb6316e5d84b12",
+            "operation": "sha256:8d7f5ad7ce0f05dceb39fea18a6bb1ef83c75fe6318468dd4852ef32119ec5e1"
+          }
+        }
+      },
+      "id": "wait-for-main",
+      "met_a_person": false,
+      "method": "wait",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 2.0
+        },
+        "kind": "connector",
+        "operation": "repository.pipelines.status",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:7924bde939315c05a38ec817e47125c900d3f31fafa4734c943a85c5c3bf05a2",
+          "parts": {
+            "input.ref": "sha256:e4a9e4d8baa71a9d8ebf56ec8ae3ea1e82be9f96ae6fe89e36d701d4a5337f30",
+            "input.workflow": "sha256:ef173e6ef1eadabebf697a84c0c819b54cd6176f87a2d15098eb6316e5d84b12",
+            "operation": "sha256:8d7f5ad7ce0f05dceb39fea18a6bb1ef83c75fe6318468dd4852ef32119ec5e1"
+          }
+        },
+        "result": "results/read-main.json"
+      },
+      "id": "read-main",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "worker.endpoint",
+        "artifacts": [
+          {
+            "file": "artifacts/implement/setup",
+            "id": "setup",
+            "kind": "output",
+            "media_type": "text/plain"
+          },
+          {
+            "file": "artifacts/implement/change-3",
+            "id": "change-3",
+            "kind": "patch",
+            "media_type": "text/x-diff"
+          },
+          {
+            "file": "artifacts/implement/change-4",
+            "id": "change-4",
+            "kind": "patch",
+            "media_type": "text/x-diff"
+          },
+          {
+            "file": "artifacts/implement/change-6",
+            "id": "change-6",
+            "kind": "patch",
+            "media_type": "text/x-diff"
+          },
+          {
+            "file": "artifacts/implement/change-7",
+            "id": "change-7",
+            "kind": "patch",
+            "media_type": "text/x-diff"
+          },
+          {
+            "file": "artifacts/implement/summary",
+            "id": "summary",
+            "kind": "report",
+            "media_type": "text/plain"
+          },
+          {
+            "file": "artifacts/implement/changeset",
+            "id": "changeset",
+            "kind": "changeset",
+            "media_type": "application/json"
+          },
+          {
+            "file": "artifacts/implement/closing",
+            "id": "closing",
+            "kind": "output",
+            "media_type": "text/plain"
+          }
+        ],
+        "capabilities": [
+          "code.read",
+          "code.edit",
+          "code.test",
+          "shell.sandboxed"
+        ],
+        "consumption": {
+          "currency": {
+            "usd": 0.14
+          },
+          "tokens_by_model": {
+            "claude-haiku-4-5-20251001": {
+              "cache_read": 600000,
+              "cache_write": 19000,
+              "input": 21,
+              "output": 400
+            }
+          },
+          "tokens_in": 619021,
+          "tokens_out": 400
+        },
+        "estimate": {
+          "currency": {
+            "usd": 0.5
+          },
+          "tokens_in": 60000,
+          "tokens_out": 6000
+        },
+        "kind": "worker",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:e5d64f8f188e08a8195b31fcd7886bdb5512e1852cc4588efd0c78c4ecee87d6",
+          "parts": {
+            "acceptance": "sha256:56b635f3ccdf987816cf585fcd141d0fc429092cf0e4de979837f0415aeeff0d",
+            "after.artifact": "sha256:091df3f4ab890c31e4b752cc2cf08bc466565c43d54ba4e155e1e22f1abaade9",
+            "after.command": "sha256:a6136e78730adf64a551ae0234154999cdb639a110fbb2138d4ce4cb1afccc25",
+            "before.artifact": "sha256:59b3271285bc5043d298c95e8b48d92f93cac65ed7c9136b86f43063bf3b2b21",
+            "before.command": "sha256:a7189835640f35b9fa7f3e6879361c0c5fcbf862473de90971b01931c5bbc290",
+            "goal": "sha256:851672772ba43bc3ef72ac36bbba50f45169b9ecdf671e883665eaba4d765bf6",
+            "inputs.context": "sha256:1531dfe1dbbdb2ac089f9854c0b3189da03dc9ad581f7b049d2971f0dd8b90b3",
+            "inputs.issue": "sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+            "inputs.title": "sha256:e4fd621702583e106b3be47ee190893b6629a525767ea0a8dfd466011d95452c"
+          }
+        }
+      },
+      "id": "implement",
+      "met_a_person": false,
+      "method": "worker",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 2.0
+        },
+        "kind": "connector",
+        "operation": "repository.files.list",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:5dc5416447040ad61ccbd5f28b19cd69a2de22a3b30c6802388c9259c266c647",
+          "parts": {
+            "input.path": "sha256:e9f61123a7ca0df5a19041fc3b28b597cd7cbba2287ce7d44a8e49a87ad68e44",
+            "input.ref": "sha256:e4a9e4d8baa71a9d8ebf56ec8ae3ea1e82be9f96ae6fe89e36d701d4a5337f30",
+            "operation": "sha256:f250aaddd9bc5ca760c47debd039d2e69bdd78371a2fde59f572b32e1b6ce033"
+          }
+        },
+        "result": "results/read-register.json"
+      },
+      "id": "read-register",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 2.0
+        },
+        "kind": "connector",
+        "operation": "repository.files.list",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:c0600ea87874f4f562d6def7e81c0053b27ef8b14396845c6526dda85f4e11d5",
+          "parts": {
+            "input.path": "sha256:1b1a9006257a1a9f2a6f2cda80c13e8f6b84cc60b258e2ab28e505de0696b859",
+            "input.ref": "sha256:e4a9e4d8baa71a9d8ebf56ec8ae3ea1e82be9f96ae6fe89e36d701d4a5337f30",
+            "operation": "sha256:f250aaddd9bc5ca760c47debd039d2e69bdd78371a2fde59f572b32e1b6ce033"
+          }
+        },
+        "result": "results/read-register-open.json"
+      },
+      "id": "read-register-open",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "record-references",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "reserve-records",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 11.0
+        },
+        "estimate": {
+          "quota_units": 64.0
+        },
+        "kind": "connector",
+        "operation": "repository.branches.create",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:ebb7e1673f8b4e450ad5debbb33beb3f86e2a51cdcff88ac313642a16df626b7",
+          "parts": {
+            "input.base": "sha256:e3ef8da07ac8d1cd7ed5cf0384917e36a673b6a4959ef4789bc539ed2dee4c65",
+            "input.deleted": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "input.files": "sha256:8fb1ccdbf68f076350a2a3432667982de3dcd21e677e86c7d63527983c4709c9",
+            "input.message": "sha256:e4fd621702583e106b3be47ee190893b6629a525767ea0a8dfd466011d95452c",
+            "input.name": "sha256:a59e637eb929fea2a70139de7e3a62806bb30591683ce2d83b5cf3b2dd988620",
+            "operation": "sha256:2b02cc5ee397236dfa851905ba1a7c9a5a19aaaf346191a82bdf55a03792617d"
+          }
+        },
+        "result": "results/create-branch.json"
+      },
+      "id": "create-branch",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 82.0
+        },
+        "kind": "wait",
+        "observed": {
+          "select": "state",
+          "value": "success"
+        },
+        "operation": "repository.pipelines.status",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:7d8fc9ebdc84f67d59a4ffdfc38a48f1e9f91c91436fd3d75be697c815e14f1b",
+          "parts": {
+            "input.ref": "sha256:a59e637eb929fea2a70139de7e3a62806bb30591683ce2d83b5cf3b2dd988620",
+            "operation": "sha256:8d7f5ad7ce0f05dceb39fea18a6bb1ef83c75fe6318468dd4852ef32119ec5e1"
+          }
+        }
+      },
+      "id": "wait-for-pipeline",
+      "met_a_person": false,
+      "method": "wait",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 2.0
+        },
+        "kind": "connector",
+        "operation": "repository.pipelines.status",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:7d8fc9ebdc84f67d59a4ffdfc38a48f1e9f91c91436fd3d75be697c815e14f1b",
+          "parts": {
+            "input.ref": "sha256:a59e637eb929fea2a70139de7e3a62806bb30591683ce2d83b5cf3b2dd988620",
+            "operation": "sha256:8d7f5ad7ce0f05dceb39fea18a6bb1ef83c75fe6318468dd4852ef32119ec5e1"
+          }
+        },
+        "result": "results/read-pipeline.json"
+      },
+      "id": "read-pipeline",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "verify",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "pull-request-title",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "pull-request-title-form",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "closing-section",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "pull-request-body",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "pull-request-body-form",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 3.0
+        },
+        "kind": "connector",
+        "operation": "repository.pullrequests.open",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:07b19d6b0fee011deb74f8c7486e3b14ccd53b1b4a522f4bffa23ec880a82f51",
+          "parts": {
+            "input.base": "sha256:e4a9e4d8baa71a9d8ebf56ec8ae3ea1e82be9f96ae6fe89e36d701d4a5337f30",
+            "input.body": "sha256:3ca6aeb4e05a05b532a8da0553d027de89060bf9f7887b294f2a074cf0ef031a",
+            "input.head": "sha256:a59e637eb929fea2a70139de7e3a62806bb30591683ce2d83b5cf3b2dd988620",
+            "input.title": "sha256:b823a404a97222cbd6e513aad8976af32f3fe64ce7ccc0edf7e381e42412e72e",
+            "operation": "sha256:7dc0aeafa069227ce17f5d3556919c157d3ca38278fe7ff7d37a096f8885cf9b"
+          }
+        },
+        "result": "results/open-pr.json"
+      },
+      "id": "open-pr",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 3.0
+        },
+        "kind": "connector",
+        "operation": "repository.labels.set",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:83030f491da1f8a8026ce7ec5ac00df764f4e1db89d6268c180775422cf61e82",
+          "parts": {
+            "input.labels": "sha256:3b081bfacf36aaec2499a33689f25cc2e58efd66efcf8a8bea23170e4fb61aa8",
+            "input.number": "sha256:7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+            "operation": "sha256:83020660c2d13ea6e7189bef646db58d795f9e604dacc5914ea623a1cc6531ff"
+          }
+        },
+        "result": "results/label.json"
+      },
+      "id": "label",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "give-back",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "give-back-notice",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "announce-give-back",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    }
+  ],
+  "taken": "local",
+  "uncalibrated_margin": 1.0
+}

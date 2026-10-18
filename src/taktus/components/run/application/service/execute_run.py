@@ -17,8 +17,9 @@ perform the act as proposed, or not — and the step waits in `waiting_human`
 only then does `decide` read the applied decision (`step.decided`): a step decided to proceed
 continues at its level from the same boundary, and one declined is not run, and the run halts
 with cause `declined`. A request that cannot be raised — a part missing — is not raised, the
-step fails without its act, and the run escalates. A rehearsal acts on nothing outside and is
-asked no anchor (NTC-0079). A step confirmed with `confirm` is never an anchored one.
+step fails without its act, and the run escalates. A rehearsal from the tenant's recordings
+acts on nothing outside and is asked no anchor (NTC-0079); a replay of a recorded run is
+(ADR-0108). A step confirmed with `confirm` is never an anchored one.
 
 A process may hold a step itself (ADR-0088). A step whose `when` does not hold is skipped:
 it succeeds with a result that says so, performs nothing and asks nobody. A step that
@@ -40,7 +41,8 @@ performed the act and reported it (`step.performed`). A waiting step holds back 
 that depend on it; the others run on, and the run waits in `waiting_human` once nothing else can
 run. From level 3 a step runs only on an adapter at *verified* or above; one below is not run on
 it, the step is rejected with a finding that names it and the adapter, and the run halts with
-cause `maturity` (NTC-0051). A rehearsal is asked none of this (NTC-0079).
+cause `maturity` (NTC-0051). A rehearsal is asked none of this (NTC-0079); a replay is asked
+the level, and not the maturity (ADR-0108).
 
 What happens around every step is the contract of ADR-0005 and is the same for every method:
 
@@ -93,6 +95,13 @@ step answers with the recorded response of the most recent real call of the same
 through the same adapter (`application/query/recordings.py`); it finishes with outcome
 `rehearsed`, writes no egress entry, and every ledger entry of the run carries
 `rehearsal: true`. Reads, rules, llm and worker steps run as they do in any run.
+
+An engine given a *replay* (ADR-0108, `ports/replay.py`) replays a recorded run instead: every
+rehearsal it executes resolves its workers, connectors and models from the replay, which answers
+each step that would leave the engine with the recorded result of the same step. An outward
+operation is then sent to the replay, finishes `rehearsed` and writes no egress. Such a rehearsal
+asks its step boundaries — anchors, a step's own `ask`, the level — as any run does; the
+maturity of an adapter is not asked, because the adapter is the recording.
 
 A run a runner resumes on its claim is written under that claim (#107). Every transaction that
 writes the run first asks the queue whether the claim is still the runner's (`Queue.fence`),
@@ -207,6 +216,7 @@ from taktus.components.run.ports import (
     Maturities,
     ModelPool,
     NotRaised,
+    Replay,
     Verdict,
     WorkerPool,
 )
@@ -502,6 +512,7 @@ class RunEngine:
         anchors: Anchors | None = None,
         decisions: Decisions | None = None,
         administration: Administration | None = None,
+        replay: Replay | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -522,6 +533,10 @@ class RunEngine:
         """Where an anchored step raises its decision requests. None with anchors wired: an
         anchored step cannot ask, and fails without its act."""
         self._recordings = recordings or RecordedResponses(runs, work, objects)
+        self._replay = replay
+        """What answers every step of a rehearsal that would leave the engine, from a recorded
+        run (ADR-0108). None: a rehearsal answers its outward operations from the tenant's
+        recordings and runs everything else as any run does (ADR-0030)."""
         self._clock = clock
         self._ids = ids
         self._telemetry = telemetry
@@ -689,9 +704,10 @@ class RunEngine:
             work = parse_work(step, run.work.get(step.id), run.inputs)
             if isinstance(work, WorkerWork):
                 worker_steps.append(step.id)
-            if not isinstance(work, LlmWork) or self._models is None:
+            pool = self._model_pool(run)
+            if not isinstance(work, LlmWork) or pool is None:
                 continue
-            resolved = await self._models.resolve(work.purpose)
+            resolved = await pool.resolve(work.purpose)
             if resolved is None or any(m[0] == resolved.adapter for m in models):
                 continue
             prices = self._options.prices
@@ -1058,6 +1074,26 @@ class RunEngine:
 
     # --- the loop ------------------------------------------------------------------------------
 
+    # --- replay (ADR-0108) -----------------------------------------------------------------------
+
+    def _replaying(self, run: Run) -> bool:
+        """Whether the run is a rehearsal this engine replays from a recorded run: every step
+        that would leave the engine is resolved from the replay, never from a configured pool."""
+        return run.rehearsal and self._replay is not None
+
+    def _worker_pool(self, run: Run) -> WorkerPool:
+        return self._replay.workers if self._replay is not None and run.rehearsal else self._workers
+
+    def _connector_pool(self, run: Run) -> ConnectorPool | None:
+        if self._replay is not None and run.rehearsal:
+            return self._replay.connectors
+        return self._connectors
+
+    def _model_pool(self, run: Run) -> ModelPool | None:
+        return self._replay.models if self._replay is not None and run.rehearsal else self._models
+
+    # --- end of replay -----------------------------------------------------------------------
+
     def _check_executable(self, run: Run) -> None:
         """Every step has an executor and every `$from` names a dependency, before anything
         runs: a run never fails in the middle for a reason known at the start."""
@@ -1267,7 +1303,10 @@ class RunEngine:
                     return await self._settle(
                         run, step_run, {"skipped": True, "because": because}, "skipped", read
                     )
-            if not run.rehearsal and step_run.state in (StepState.PLANNED, StepState.REJECTED):
+            # A replay asks the step's boundary as any run does (ADR-0108); a rehearsal from
+            # the tenant's recordings asks none of it (NTC-0079).
+            asks = not run.rehearsal or self._replaying(run)
+            if asks and step_run.state in (StepState.PLANNED, StepState.REJECTED):
                 # The step boundary, first: an anchor holds at every level (ADR-0042), and so
                 # does what the process itself asks (ADR-0088).
                 decided = step_run.anchoring is not None and step_run.anchoring.proceeds
@@ -1275,9 +1314,9 @@ class RunEngine:
                 asked = None if decided else control.ask
                 if anchors or asked is not None:
                     return await self._anchor(run, step, step_run, held, anchors, asked)
-            if not run.rehearsal and step_run.state is StepState.PLANNED:
+            if asks and step_run.state is StepState.PLANNED:
                 # The step boundary: what the level asks of a person, before anything starts.
-                acting = held.level == 1 and autonomy.acts(work, await self._outward(work))
+                acting = held.level == 1 and autonomy.acts(work, await self._outward(run, work))
                 awaited = autonomy.awaits(
                     held.level, acting=acting, confirmed=step_run.confirmed_by is not None
                 )
@@ -1410,12 +1449,13 @@ class RunEngine:
         )
         return run, settled
 
-    async def _outward(self, work: Work) -> bool | None:
+    async def _outward(self, run: Run, work: Work) -> bool | None:
         """Whether a connector call's operation is declared outward; None when it cannot be
         read, and for any other step."""
-        if not isinstance(work, ConnectorRule) or self._connectors is None:
+        pool = self._connector_pool(run)
+        if not isinstance(work, ConnectorRule) or pool is None:
             return None
-        resolved = await self._connectors.resolve(work.capability)
+        resolved = await pool.resolve(work.capability)
         operation = None if resolved is None else resolved.declaration.operation(work.operation)
         return None if operation is None else operation.outward
 
@@ -1989,7 +2029,7 @@ class RunEngine:
         whose adapter is not configured fails here, as it would when called, and its reason
         says which; a step whose adapter cannot estimate is refused by the caller."""
         if isinstance(work, WaitWork) and work.until is not None:
-            resolved = await self._connector(step.id, work.until.capability)
+            resolved = await self._connector(run, step.id, work.until.capability)
             operation = resolved.declaration.operation(work.until.operation)
             if operation is None:
                 raise _StepFailed(
@@ -2005,7 +2045,7 @@ class RunEngine:
             calls = int(work.until.timeout_seconds // work.until.poll_seconds) + 1
             return _Demand(_times(operation.demand.document(), calls), adapter=resolved.adapter)
         if isinstance(work, ConnectorRule):
-            resolved = await self._connector(step.id, work.capability)
+            resolved = await self._connector(run, step.id, work.capability)
             operation = resolved.declaration.operation(work.operation)
             if operation is None:
                 raise _StepFailed(
@@ -2027,7 +2067,8 @@ class RunEngine:
         """Input counted before the call, output bounded by the limit the step sets; money at
         the price table, with every input token priced as the dearest input kind, because
         whether it will be read from a cache is not knowable before the call."""
-        resolved = None if self._models is None else await self._models.resolve(work.purpose)
+        models = self._model_pool(run)
+        resolved = None if models is None else await models.resolve(work.purpose)
         if resolved is None:
             raise _StepFailed(
                 reason=f"no model is configured for the purpose {work.purpose!r} "
@@ -2270,7 +2311,8 @@ class RunEngine:
         step is the model's, once it passes the pattern; the tokens are counted; the model
         that answered goes into the provenance as the adapter's version, because a variable
         method is reproducible only at a pinned one."""
-        resolved = None if self._models is None else await self._models.resolve(work.purpose)
+        models = self._model_pool(run)
+        resolved = None if models is None else await models.resolve(work.purpose)
         if resolved is None:
             raise _StepFailed(
                 reason=f"no model is configured for the purpose {work.purpose!r} "
@@ -2346,13 +2388,14 @@ class RunEngine:
 
     # --- connector steps ------------------------------------------------------------------------
 
-    async def _connector(self, step_id: StepId, capability: str) -> ResolvedConnector:
+    async def _connector(self, run: Run, step_id: StepId, capability: str) -> ResolvedConnector:
         """The connector configured for the capability. None configured is a failed step, not
         an exception: the run escalates at the boundary with the reason, and a resume after
         the configuration changed retries it (the same as a model that is not configured)."""
         resolved = None
-        if self._connectors is not None:
-            resolved = await self._connectors.resolve(capability)
+        pool = self._connector_pool(run)
+        if pool is not None:
+            resolved = await pool.resolve(capability)
         if resolved is None:
             raise _StepFailed(
                 reason=str(NoConnector(step_id, capability)),
@@ -2370,7 +2413,7 @@ class RunEngine:
         """One operation, called once for this attempt of the step. What comes back is the
         result as the contract shapes it — output, effect, consumption — and, for an outward
         effect, the egress entry the commit writes beside `step.finished`."""
-        resolved = await self._connector(step_run.step_id, work.capability)
+        resolved = await self._connector(run, step_run.step_id, work.capability)
         operation = resolved.declaration.operation(work.operation)
         if operation is None:
             raise _StepFailed(
@@ -2387,7 +2430,7 @@ class RunEngine:
                 step_run.step_id, "only a reading carries an expectation; a write acts once"
             )
         span.set_attribute("adapter", resolved.adapter)
-        if run.rehearsal and operation.outward:
+        if run.rehearsal and operation.outward and not self._replaying(run):
             return await self._rehearsed(run, resolved, operation, read)
         result = await self._call(run, step_run, resolved, operation, input, work.credentials, span)
         document = result.document()
@@ -2407,8 +2450,16 @@ class RunEngine:
         inputs = list(read)
         if not operation.outward:
             inputs.append(self._source(operation, input, document["output"]))
-        egress = result.effect if operation.outward else None
-        trace = Trace(inputs=tuple(inputs), adapter_version=resolved.version, egress=egress)
+        # A replay sends an outward operation to its recording, which acts on nothing: the
+        # step is rehearsed and no egress is written, as for any rehearsal (ADR-0108).
+        rehearsed = run.rehearsal and operation.outward
+        egress = result.effect if operation.outward and not rehearsed else None
+        trace = Trace(
+            inputs=tuple(inputs),
+            adapter_version=resolved.version,
+            egress=egress,
+            rehearsed=rehearsed,
+        )
         return document, trace, result.consumption, resolved.adapter
 
     # --- rehearsal (ADR-0030) ------------------------------------------------------------------
@@ -2609,7 +2660,7 @@ class RunEngine:
         timeout counts from when the wait began, so a parked wait resumed, or one recovered
         after a restart, waits only what remains; a poll interval beyond the engine's limit for
         waiting inline parks the run until the next check (ADR-0103)."""
-        resolved = await self._connector(step_run.step_id, until.capability)
+        resolved = await self._connector(run, step_run.step_id, until.capability)
         operation = resolved.declaration.operation(until.operation)
         if operation is None:
             raise _StepFailed(
@@ -2714,7 +2765,7 @@ class RunEngine:
         span: Span,
         held: autonomy.Held,
     ) -> tuple[Run, StepRun]:
-        resolved = await self._workers.resolve(step.required_capabilities)
+        resolved = await self._worker_pool(run).resolve(step.required_capabilities)
         if resolved is None:
             # No configured worker offers the capabilities: a failed step, the run escalates
             # at the boundary, and a resume after the configuration changed retries it.

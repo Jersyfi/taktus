@@ -1,0 +1,35 @@
+{
+  "consumption": {
+    "quota_units": 2.0
+  },
+  "effect": {
+    "content_digest": "sha256:f6a01e44f87aa7b26436bd5f0f6e5316c2f152356f39938387a781bafdbdd025",
+    "kind": "write",
+    "records": [
+      {
+        "id": "7",
+        "kind": "vcs.pullrequest",
+        "url": "http://127.0.0.1:20569/acme/product/pull/7"
+      }
+    ],
+    "replayed": false
+  },
+  "output": {
+    "author": {
+      "account": "1006",
+      "kind": "person"
+    },
+    "base": "main",
+    "body": "Closes #2.\n\n*Opened by Taktus, process P-03 Implementation: the change was made by a coding worker\nin an isolated workspace, put on this branch by the run, and the pipeline's verdict was\nread before this pull request was opened. A person merges. What follows is the worker's\nsummary, and the last section is the one the repository generates.*\n\n<!-- commit-type: feat -->\n## What this is about\n\nA plan and a greeting.\n\n## Decisions required\n\nNone\n\n## Behaviour changes\n\nNone\n\n## What was done\n\nWrote notes/plan.md and hello.txt, edited the greeting, and ran the check.\n\n## Why this way\n\nThe task asked for it.\n\n## What to check\n\nThat the greeting reads well.\n\n## Needed from the owner\n\n<!-- generated -->\nNothing is open.\n<!-- end -->\n\n<!-- taktus-idempotency-key taktus:run_90302631bc80c9ec284b:open-pr:1 -->\n",
+    "created_at": "2026-10-18T18:38:55Z",
+    "head": "taktus/issue-2",
+    "is_pull_request": true,
+    "labels": [],
+    "merged": false,
+    "milestone": null,
+    "number": 7,
+    "state": "open",
+    "title": "feat: write a greeting (#2)",
+    "url": "http://127.0.0.1:20569/acme/product/pull/7"
+  }
+}

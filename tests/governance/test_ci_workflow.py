@@ -116,3 +116,15 @@ def test_the_slow_suites_run_in_lanes_of_their_own() -> None:
     for name, text in runs.items():
         if name not in {"conformance", "test"}:
             assert "make gate-conformance" not in text and "make test" not in text, name
+
+
+def test_every_commit_on_main_rehearses_the_self_development_bundles() -> None:
+    """Ring 3 (ADR-0096 §1, ADR-0108, #393): the replay runs on a push to `main` and on nothing
+    else, against a database that may not be skipped, and is handed no secret."""
+    job = load(CI)["jobs"]["rehearse"]
+    assert job["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    runs = [step for step in job["steps"] if "run" in step]
+    assert runs[-1]["run"] == "make rehearse"
+    assert runs[-1]["env"] == {"TAKTUS_REQUIRE_DATABASE": "1"}
+    assert "secrets." not in yaml.safe_dump(job), "a replay needs no credential"
+    assert "environment" not in job

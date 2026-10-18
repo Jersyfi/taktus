@@ -43,8 +43,16 @@ PARALLEL ?= -n auto --maxprocesses=8
 # The gate directories run under their own targets; `make gates` runs every test exactly once.
 .PHONY: test
 test: env ## Unit and domain tests — everything under tests/ that is not a gate; PARALLEL= runs them in one process
-	$(UV) run tools/gate.py test tests $(PARALLEL) -m 'not timing' $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
-	$(UV) run tools/gate.py timing tests -m timing $(foreach g,architecture conformance governance exactness,--ignore=tests/$(g))
+	$(UV) run tools/gate.py test tests $(PARALLEL) -m 'not timing' $(foreach g,architecture conformance governance exactness rehearsal,--ignore=tests/$(g))
+	$(UV) run tools/gate.py timing tests -m timing $(foreach g,architecture conformance governance exactness rehearsal,--ignore=tests/$(g))
+
+# The self-development bundles, replayed from their recordings against a database (ADR-0108,
+# ADR-0096 §1 ring 3): CI's job `rehearse` runs it on every commit on `main`, never on a pull
+# request. It needs no credential and reaches nothing outside; a change to a bundle runs it
+# before it is pushed.
+.PHONY: rehearse
+rehearse: env ## Replay P-01, P-02, P-03 and S-07 from tests/rehearsal/recordings; every step must reach the state it reached when recorded
+	$(UV) run tools/gate.py rehearse tests/rehearsal
 
 # The images the container tests need (tests/images.py). Each is built only when its Dockerfile
 # or a file it copies changed; an unchanged one is not handed to the builder at all. The tests
@@ -204,4 +212,4 @@ reserve: need-uv need-git ## Reserve a record number on the remote before writin
 	@$(UV) run tools/reserve.py $(if $(ID),--id $(ID),--kind $(KIND))
 
 .PHONY: gates
-gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web test ## Everything CI runs
+gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web test rehearse ## Everything CI runs

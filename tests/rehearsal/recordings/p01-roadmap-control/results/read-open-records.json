@@ -1,0 +1,25 @@
+{
+  "consumption": {
+    "quota_units": 2.0
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "output": {
+    "commit": "0000000000000000000000000000000000000009",
+    "entries": [
+      {
+        "name": "DEC-0999-an-open-decision.md",
+        "path": "docs/decisions/open/DEC-0999-an-open-decision.md",
+        "type": "file"
+      },
+      {
+        "name": "README.md",
+        "path": "docs/decisions/open/README.md",
+        "type": "file"
+      }
+    ],
+    "path": "docs/decisions/open",
+    "ref": "main"
+  }
+}

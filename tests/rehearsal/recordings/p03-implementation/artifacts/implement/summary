@@ -1,0 +1,24 @@
+<!-- commit-type: feat -->
+## What this is about
+
+A plan and a greeting.
+
+## Decisions required
+
+None
+
+## Behaviour changes
+
+None
+
+## What was done
+
+Wrote notes/plan.md and hello.txt, edited the greeting, and ran the check.
+
+## Why this way
+
+The task asked for it.
+
+## What to check
+
+That the greeting reads well.

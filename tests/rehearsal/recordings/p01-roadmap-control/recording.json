@@ -1,0 +1,186 @@
+{
+  "budget": {
+    "quota": {
+      "units": 60.0
+    }
+  },
+  "format": "taktus.recording/v1",
+  "inputs": {
+    "records_path": "docs/decisions/open",
+    "report_issue": 6,
+    "roadmap_path": "docs/roadmap.md"
+  },
+  "margin": 0.0,
+  "operations": [
+    {
+      "capability": "repository.comments",
+      "demand": {
+        "quota_units": 3.0
+      },
+      "effect": "write",
+      "idempotency": "marked",
+      "name": "repository.comments.create",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.files",
+      "demand": {
+        "quota_units": 2.0
+      },
+      "effect": "read",
+      "name": "repository.files.list",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.files",
+      "demand": {
+        "quota_units": 2.0
+      },
+      "effect": "read",
+      "name": "repository.files.read",
+      "summary": "as recorded"
+    },
+    {
+      "capability": "repository.issues",
+      "demand": {
+        "quota_units": 20.0
+      },
+      "effect": "read",
+      "name": "repository.issues.list",
+      "summary": "as recorded"
+    }
+  ],
+  "process": "p01-roadmap-control",
+  "process_version": "p01-roadmap-control@4",
+  "run_id": "run_cd99e9b422c0bd7d87f1",
+  "state": "finished",
+  "steps": [
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 2.0
+        },
+        "kind": "connector",
+        "operation": "repository.files.read",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:daa55c50d9d3d8c1acddccc4d2be623fbd8708f45889a55208b6c1ed159ea27f",
+          "parts": {
+            "input.path": "sha256:f80b90727cc5419857028075bfae8a6e8475e8aed0900e5b22c4d6c5e063cfa2",
+            "input.ref": "sha256:e4a9e4d8baa71a9d8ebf56ec8ae3ea1e82be9f96ae6fe89e36d701d4a5337f30",
+            "operation": "sha256:c674c6e0ab7c560c167b744f4cb79397c29110d1312fc988ada489e2b717e464"
+          }
+        },
+        "result": "results/read-roadmap.json"
+      },
+      "id": "read-roadmap",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 1.0
+        },
+        "estimate": {
+          "quota_units": 20.0
+        },
+        "kind": "connector",
+        "operation": "repository.issues.list",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:47f790356e68c51ff4335718ebd77e42a1f04dd5c92e938ea10e5d54f1c3603b",
+          "parts": {
+            "input.state": "sha256:35ff74aeea25311f4fe759a6b762c8cd41a79adb23dd5615b92cf215175a63e5",
+            "operation": "sha256:e34bbfc18223f44a329bbb2974f23f7238a8169d17ba0aef2d4da4c9a48d610a"
+          }
+        },
+        "result": "results/read-issues.json"
+      },
+      "id": "read-issues",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 2.0
+        },
+        "kind": "connector",
+        "operation": "repository.files.list",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:c0600ea87874f4f562d6def7e81c0053b27ef8b14396845c6526dda85f4e11d5",
+          "parts": {
+            "input.path": "sha256:1b1a9006257a1a9f2a6f2cda80c13e8f6b84cc60b258e2ab28e505de0696b859",
+            "input.ref": "sha256:e4a9e4d8baa71a9d8ebf56ec8ae3ea1e82be9f96ae6fe89e36d701d4a5337f30",
+            "operation": "sha256:f250aaddd9bc5ca760c47debd039d2e69bdd78371a2fde59f572b32e1b6ce033"
+          }
+        },
+        "result": "results/read-open-records.json"
+      },
+      "id": "read-open-records",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "order",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "reconcile",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "id": "compose-report",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    },
+    {
+      "answer": {
+        "adapter": "connector.channel.repo",
+        "consumption": {
+          "quota_units": 2.0
+        },
+        "estimate": {
+          "quota_units": 3.0
+        },
+        "kind": "connector",
+        "operation": "repository.comments.create",
+        "outcome": "succeeded",
+        "request": {
+          "digest": "sha256:0f5953f94eee1a932107cae5964e92adc975b46dee04a0d2a1b6b564d5441542",
+          "parts": {
+            "input.body": "sha256:b7de61edecb923246ae2f28de3f9bdf9586bfa93c822867fef4a14a464afb64d",
+            "input.number": "sha256:e7f6c011776e8db7cd330b54174fd76f7d0216b612387a5ffcfb81e6f0919683",
+            "operation": "sha256:71db048f3ab8337d0e089a4abd747d1602a47aa52c6f7d028876f01e452b58fb"
+          }
+        },
+        "result": "results/write-report.json"
+      },
+      "id": "write-report",
+      "met_a_person": false,
+      "method": "rule",
+      "state": "succeeded"
+    }
+  ],
+  "taken": "local",
+  "uncalibrated_margin": 1.0
+}

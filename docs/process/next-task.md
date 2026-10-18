@@ -68,7 +68,9 @@ an issue, in the shape of the form `Task`, and stays for its turn.
 - **Verify, then mark ready.** A pull request is opened as a draft, and a draft runs no CI.
   `make check` (under a minute) runs before each commit; `make verify` runs what CI would
   select for the change and stamps the commit. Push the stamped head, then `gh pr ready`: a
-  session hook refuses it unless the stamp names the pushed head (ADR-0096 §4).
+  session hook refuses it unless the stamp names the pushed head (ADR-0096 §4). A change to a
+  bundle under `blueprints/` or to the run engine also runs `make rehearse`, which only `main`'s
+  CI runs: it replays the self-development bundles from their recordings (ADR-0108).
 - **Merge when the pull request is green**: every check in CI. The
   session merges its own pull request once every check is green, with no more running in
   parallel than CI carries, and never one that raises a `BLOCKING` request (M1.22, DEC-0189).

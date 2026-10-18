@@ -1,0 +1,10 @@
+diff --git a/notes/plan.md b/notes/plan.md
+new file mode 100644
+index 0000000..35205ac
+--- /dev/null
++++ b/notes/plan.md
+@@ -0,0 +1,4 @@
++# Plan
++
++1. write hello
++2. check

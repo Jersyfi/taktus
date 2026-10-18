@@ -1,0 +1,122 @@
+{
+  "consumption": {
+    "quota_units": 1.0
+  },
+  "effect": {
+    "kind": "read"
+  },
+  "output": {
+    "complete": true,
+    "issues": [
+      {
+        "author": {
+          "account": "1005",
+          "kind": "person"
+        },
+        "body": "",
+        "created_at": "2026-10-18T18:38:45Z",
+        "is_pull_request": false,
+        "labels": [
+          "report"
+        ],
+        "milestone": null,
+        "number": 6,
+        "state": "open",
+        "title": "Reports of P-01",
+        "url": "http://127.0.0.1:20569/acme/product/issues/6"
+      },
+      {
+        "author": {
+          "account": "1004",
+          "kind": "person"
+        },
+        "body": "### What must be achieved\n\nA greeting is written to hello.txt.\n\n### How it is verified\n\nhello.txt says hello.\n\n### Where the boundary lies\n\nNo other file changes.\n\n### Component\n\nworkers\n\n### Source\n\ndocs/roadmap.md, 0.2.0\n\n### Blocked by\n\nDEC-0999\n",
+        "created_at": "2026-10-18T18:38:45Z",
+        "is_pull_request": false,
+        "labels": [
+          "priority:high",
+          "ready",
+          "task"
+        ],
+        "milestone": "0.2.0",
+        "number": 5,
+        "state": "open",
+        "title": "Blocked by a decision",
+        "url": "http://127.0.0.1:20569/acme/product/issues/5"
+      },
+      {
+        "author": {
+          "account": "1003",
+          "kind": "person"
+        },
+        "body": "### What must be achieved\n\nA greeting is written to hello.txt.\n\n### How it is verified\n\nhello.txt says hello.\n\n### Where the boundary lies\n\nNo other file changes.\n\n### Component\n\nworkers\n\n### Source\n\ndocs/roadmap.md, 0.2.0\n\n### Blocked by\n\nnothing\n",
+        "created_at": "2026-10-18T18:38:45Z",
+        "is_pull_request": false,
+        "labels": [
+          "priority:high",
+          "ready",
+          "task"
+        ],
+        "milestone": null,
+        "number": 4,
+        "state": "open",
+        "title": "Without a milestone",
+        "url": "http://127.0.0.1:20569/acme/product/issues/4"
+      },
+      {
+        "author": {
+          "account": "1002",
+          "kind": "person"
+        },
+        "body": "### What must be achieved\n\nA greeting is written to hello.txt.\n\n### How it is verified\n\n_No response_\n\n### Where the boundary lies\n\nNo other file changes.\n\n### Component\n\nworkers\n\n### Source\n\ndocs/roadmap.md, 0.2.0\n\n### Blocked by\n\nnothing\n",
+        "created_at": "2026-10-18T18:38:45Z",
+        "is_pull_request": false,
+        "labels": [
+          "priority:high",
+          "ready",
+          "task"
+        ],
+        "milestone": "0.2.0",
+        "number": 3,
+        "state": "open",
+        "title": "Without a verification",
+        "url": "http://127.0.0.1:20569/acme/product/issues/3"
+      },
+      {
+        "author": {
+          "account": "1001",
+          "kind": "person"
+        },
+        "body": "### What must be achieved\n\nA greeting is written to hello.txt.\n\n### How it is verified\n\nhello.txt says hello.\n\n### Where the boundary lies\n\nNo other file changes.\n\n### Component\n\nworkers\n\n### Source\n\ndocs/roadmap.md, 0.2.0\n\n### Blocked by\n\nnothing\n",
+        "created_at": "2026-10-18T18:38:45Z",
+        "is_pull_request": false,
+        "labels": [
+          "priority:high",
+          "ready",
+          "task"
+        ],
+        "milestone": "0.2.0",
+        "number": 2,
+        "state": "open",
+        "title": "Write a greeting",
+        "url": "http://127.0.0.1:20569/acme/product/issues/2"
+      },
+      {
+        "author": {
+          "account": "1000",
+          "kind": "person"
+        },
+        "body": "The first issue of every fake repository.",
+        "created_at": "2026-10-18T18:38:43Z",
+        "is_pull_request": false,
+        "labels": [],
+        "milestone": null,
+        "number": 1,
+        "state": "open",
+        "title": "Seed issue",
+        "url": "http://127.0.0.1:20569/acme/product/issues/1"
+      }
+    ],
+    "state": "open"
+  }
+}
