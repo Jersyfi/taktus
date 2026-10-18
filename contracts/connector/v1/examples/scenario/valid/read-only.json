@@ -1,0 +1,19 @@
+{
+  "credentials": {
+    "actions": "METRICS_TOKEN"
+  },
+  "read": {
+    "operation": "metrics.series.query",
+    "input": {
+      "query": "up{job=\"service\"}"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "metrics.series.query",
+    "input": {
+      "query": "sum(up"
+    },
+    "expected_cause": "invalid"
+  }
+}

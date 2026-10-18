@@ -1,0 +1,24 @@
+{
+  "credentials": {
+    "actions": "CHECK_TOKEN"
+  },
+  "read": {
+    "operation": "check.http.run",
+    "input": {
+      "path": "/health",
+      "expect": {
+        "status": 200,
+        "body_contains": "ready",
+        "max_duration_ms": 5000
+      }
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "check.http.run",
+    "input": {
+      "path": "https://elsewhere.example/health"
+    },
+    "expected_cause": "invalid"
+  }
+}

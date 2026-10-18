@@ -942,12 +942,11 @@
           "$ref": "#/$defs/ScenarioCall"
         },
         "writes": {
-          "description": "Outward operations whose idempotency is native or marked. Each is called twice with one key, then once with another, in the order listed: a write that names what an earlier one created through {{shared}} comes after it.",
+          "description": "Outward operations whose idempotency is native or marked. Each is called twice with one key, then once with another, in the order listed: a write that names what an earlier one created through {{shared}} comes after it. Empty for a connector that declares no operation leaving the system; the suite then reports C-05 as not applicable, and as inconclusive where the declaration has such an operation (ADR-0111).",
           "type": "array",
           "items": {
             "$ref": "#/$defs/ScenarioCall"
-          },
-          "minItems": 1
+          }
         },
         "invalid": {
           "description": "A call the target must refuse, with the cause the error must carry.",

@@ -10,7 +10,8 @@ writes, one call the target must refuse, and the recorded payloads for intake. T
    `{{unique}}` in a write's input is fresh per write, `{{shared}}` is one token for every
    call made with a first key and another for every call made with a new key, the same across
    the writes, so that a later write can name what an earlier one created — a pull request
-   from the branch the scenario's branch write made;
+   from the branch the scenario's branch write made; a scenario without a write, for a
+   connector that only reads, passes C-05 as not applicable (ADR-0111);
 4. calls the invalid case — C-06;
 5. delivers the intake payload signed, unsigned, wrongly signed — and, under a timestamped
    scheme, signed at a moment long before it arrived — and the unsupported and own-action
@@ -344,6 +345,26 @@ async def _writes(
     seen: Seen,
 ) -> None:
     operations = rules.operations_of(capabilities)
+    if not scenario["writes"]:
+        # A connector that only reads has no repeat to recognise (ADR-0111).
+        repeatable = sorted(
+            name
+            for name, op in operations.items()
+            if op.get("effect") in OUTWARD and op.get("idempotency") in REPEATABLE
+        )
+        if repeatable:
+            findings.inconclusive.setdefault(
+                "C-05",
+                f"the scenario names no write, but the declaration has {repeatable}; name one "
+                "of them under writes",
+            )
+        else:
+            findings.ok(
+                "C-05",
+                "not applicable: the declaration has no operation that leaves the system and "
+                "can be repeated",
+            )
+        return
     # {{shared}}: one token for the calls with a first key, one for the calls with a new key.
     first_shared, fresh_shared = secrets.token_hex(4), secrets.token_hex(4)
     for case in scenario["writes"]:
