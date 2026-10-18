@@ -1,10 +1,11 @@
 """The runner: claims runs from the queue and executes them, several instances side by side.
 
-One runner serves the tenants it is given. In a loop it claims due jobs — up to its free
-slots, for each tenant in turn — and executes each in a task of its own through the engine's
-`resume`, which starts a submitted run, continues a halted one, or recovers one whose runner
-died. While a run executes, a heartbeat renews the claim's lease; a runner that dies stops
-renewing, the lease expires, and another runner claims the job and recovers the run at its
+One runner serves the tenants it is given. In a loop it claims due jobs up to its free slots,
+one job per tenant in turn, starting each round with the next tenant, so that a tenant with much
+queued work holds back no other (issue #319). It executes each in a task of its own through the
+engine's `resume`, which starts a submitted run, continues a halted one, or recovers one whose
+runner died. While a run executes, a heartbeat renews the claim's lease; a runner that dies
+stops renewing, the lease expires, and another runner claims the job and recovers the run at its
 last boundary (ADR-0013 A).
 
 A runner can also lose its claim while it is alive: it could not reach the database, or was
@@ -110,6 +111,8 @@ class Runner:
     _stopping: bool = field(default=False, init=False)
     _outcomes: list[Outcome] = field(default_factory=list, init=False)
     _woken: asyncio.Event = field(default_factory=asyncio.Event, init=False)
+    _turn: int = field(default=0, init=False)
+    """Which served tenant the next claim round starts with."""
 
     @property
     def outcomes(self) -> Sequence[Outcome]:
@@ -121,8 +124,11 @@ class Runner:
         return len(self._executing)
 
     async def run(self) -> None:
-        """Claim and execute until `stop()`; returns once every run has landed."""
+        """Claim and execute until `stop()`; returns once every run has landed. A round that
+        claims nothing waits one poll interval, or until a run ends and frees its place."""
         while not self._stopping:
+            # Cleared before the round: a run that ends during it wakes the next wait at once.
+            self._woken.clear()
             claimed = await self._claim_round()
             if claimed == 0:
                 await self._idle()
@@ -142,16 +148,28 @@ class Runner:
     # --- claiming --------------------------------------------------------------------------------
 
     async def _claim_round(self) -> int:
+        """Fill the free places one job per tenant at a time, round robin. A tenant with nothing
+        due drops out of the round; the next round starts one tenant further on."""
+        served = list(await self.options.tenants.served())
+        if not served:
+            return 0
+        start = self._turn % len(served)
+        self._turn = start + 1
+        waiting = served[start:] + served[:start]
         claimed = 0
-        for tenant in await self.options.tenants.served():
-            free = self.options.concurrency - len(self._executing)
-            if free <= 0 or self._stopping:
-                break
-            async with self.work.transaction(tenant):
-                jobs = await self.queue.claim(tenant, self.options.claimant, free)
-            for job in jobs:
-                self._start(tenant, job)
-                claimed += 1
+        while waiting and not self._stopping:
+            still: list[Tenant] = []
+            for tenant in waiting:
+                if self.options.concurrency - len(self._executing) <= 0 or self._stopping:
+                    return claimed
+                async with self.work.transaction(tenant):
+                    jobs = await self.queue.claim(tenant, self.options.claimant, 1)
+                for job in jobs:
+                    self._start(tenant, job)
+                    claimed += 1
+                if jobs:
+                    still.append(tenant)
+            waiting = still
         return claimed
 
     def _start(self, tenant: Tenant, job: Job) -> None:
@@ -161,8 +179,9 @@ class Runner:
         self._executing[job.id] = executing
 
     async def _idle(self) -> None:
-        """Wait one poll interval, or less when `stop()` wakes the loop."""
-        self._woken.clear()
+        """Wait one poll interval, or less when `stop()` or a run that ended wakes the loop."""
+        if self._woken.is_set():
+            return
         sleeper = asyncio.ensure_future(self.clock.sleep(self.options.poll_seconds))
         waker = asyncio.ensure_future(self._woken.wait())
         done, pending = await asyncio.wait({sleeper, waker}, return_when=asyncio.FIRST_COMPLETED)
@@ -241,6 +260,8 @@ class Runner:
                 # A later claim of the same job by this runner is another entry; it stays.
                 del self._executing[executing.job.id]
             self._outcomes.append(outcome)
+            # A place is free: the loop claims again now, not after its poll interval.
+            self._woken.set()
 
     async def _heartbeat(self, executing: _Executing) -> None:
         """Renew the lease while the run executes. A renewal that fails means the claim is no
