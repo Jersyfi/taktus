@@ -100,8 +100,17 @@ def test_a_summary_with_a_placeholder_is_refused_before_the_pull_request_opens(
         rules.check(form_check(), [body, written])
 
 
-def test_a_description_without_a_section_is_refused() -> None:
-    written = summary().replace("## Why this way", "## Why", 1)
+@pytest.mark.parametrize(
+    ("heading", "written_as"),
+    [
+        ("Why this way", "Why"),
+        # #541: the worker left out the two sections the description check also requires.
+        ("Decisions required", "Decisions"),
+        ("Behaviour changes", "Changes"),
+    ],
+)
+def test_a_description_without_a_section_is_refused(heading: str, written_as: str) -> None:
+    written = summary().replace(f"## {heading}", f"## {written_as}", 1)
     steps = yaml.safe_load(P03.read_text(encoding="utf-8"))["steps"]
     template = next(s for s in steps if s["id"] == "pull-request-body")["work"]
     closing = "## Needed from the owner\n\nNothing."

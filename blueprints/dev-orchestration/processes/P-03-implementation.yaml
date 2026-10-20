@@ -82,7 +82,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "20"
+version: "21"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -924,7 +924,7 @@ steps:
       rule: check
       conditions:
         - value: { $from: pull-request-body }
-          matches: '(?s)## What this is about\n+\s*\S.*## What was done\n+\s*\S.*## Why this way\n+\s*\S.*## What to check\n+\s*\S'
+          matches: '(?s)## What this is about\n+\s*\S.*## Decisions required\n+\s*\S.*## Behaviour changes\n+\s*\S.*## What was done\n+\s*\S.*## Why this way\n+\s*\S.*## What to check\n+\s*\S'
         - value: { $from: implement, $artifact: summary }
           not_matches: '…|\b(TODO|TBD|FIXME|XXX)\b'
 
