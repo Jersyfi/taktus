@@ -317,6 +317,33 @@ def test_one_deployment_per_role_and_migrations_with_the_same_image(
     assert external["metadata"]["annotations"]["helm.sh/hook"] == "pre-install,pre-upgrade"
 
 
+def test_the_small_profile_is_one_pod_with_every_role_and_the_standard_is_unchanged() -> None:
+    def control_plane(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            d
+            for d in of_kind(documents, "Deployment")
+            if d["metadata"]["labels"]["app.kubernetes.io/component"] == "control-plane"
+        ]
+
+    assert len(control_plane(render())) == 4
+    small = render("profile=small")
+    [deployment] = control_plane(small)
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    assert {"name": "TAKTUS_ROLES", "value": "all"} in container["env"]
+    assert deployment["spec"]["template"]["spec"]["automountServiceAccountToken"] is True
+    selectors = [
+        d["spec"]["selector"]["taktus-role"]
+        for d in of_kind(small, "Service")
+        if d["metadata"]["name"].endswith("-api")
+    ]
+    assert selectors == ["all"]
+    policy = next(
+        d for d in of_kind(small, "NetworkPolicy") if d["metadata"]["name"].endswith("-api-ingress")
+    )
+    assert policy["spec"]["podSelector"]["matchLabels"]["taktus-role"] == "all"
+    assert "profile must be" in render_fails("profile=huge")
+
+
 def test_the_database_is_its_own_with_a_twenty_gibibyte_volume_that_is_watched(
     rendered: list[dict[str, Any]],
 ) -> None:

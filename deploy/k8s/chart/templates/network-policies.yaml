@@ -114,7 +114,7 @@ spec:
   podSelector:
     matchLabels:
       {{- include "taktus.selector" (dict "root" . "component" "control-plane") | nindent 6 }}
-      taktus-role: api
+      taktus-role: {{ include "taktus.apiRole" . }}
   policyTypes: [Ingress]
   ingress:
     - from:

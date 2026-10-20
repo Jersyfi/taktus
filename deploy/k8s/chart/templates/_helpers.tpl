@@ -147,3 +147,17 @@ seccompProfile:
 {{- define "taktus.chatConnectorUrl" -}}
 {{- printf "http://%s-connector-chat:%v/mcp" (include "taktus.fullname" .) .Values.connectors.chat.port -}}
 {{- end -}}
+
+{{- /* The profile: `standard` or `small`; anything else fails the render. */ -}}
+{{- define "taktus.profile" -}}
+{{- $p := .Values.profile | default "standard" -}}
+{{- if not (has $p (list "standard" "small")) -}}
+{{- fail (printf "profile must be standard or small, not %q" $p) -}}
+{{- end -}}
+{{- $p -}}
+{{- end -}}
+
+{{- /* The role label of the pod that serves the API. */ -}}
+{{- define "taktus.apiRole" -}}
+{{- ternary "all" "api" (eq (include "taktus.profile" .) "small") -}}
+{{- end -}}
