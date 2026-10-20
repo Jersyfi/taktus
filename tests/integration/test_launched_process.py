@@ -113,8 +113,11 @@ async def test_the_process_adapter_is_refused_at_level_3_and_the_run_escalates(
         compute = run.step_run("compute")
         assert compute.state is StepState.FAILED
         assert compute.reason is not None and "ADR-0002" in compute.reason
-        assert compute.assignment_id is None, "no unit was started for the assignment"
-    assert not list((tmp_path / "state" / "units").glob("*/job-asg_*.log"))
+        # The estimate starts no unit (ADR-0115), so the refusal comes at the hand-over: an
+        # assignment was formed, and no unit was started for it.
+    assert not list((tmp_path / "state" / "units").glob("*/job-asg_*.log")), (
+        "no unit was started for the assignment"
+    )
 
 
 @pytest.mark.timing
