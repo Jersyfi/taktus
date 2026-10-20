@@ -7,7 +7,9 @@ nothing. `conformance record` has the instance run the suite against the adapter
 configuration resolves for an identifier, and records the outcome in the adapter's maturity and
 the ledger (ADR-0044). `run` and `submit` drive the control plane: `run` executes a bundle in
 this process, `submit` queues it for the daemon. `capacity` reports what the platform has left
-and the date a person must act by. `cost` recomputes what a run cost from the ledger. `identity`
+and the date a person must act by. `cost` recomputes what a run cost from the ledger. `prices
+import` turns an open model price list into a new price table version, a file, and lists what
+it could not map (#327). `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `tenant` creates, renames and lists the instance's tenants; Taktus generates each
 identifier (ADR-0104). `anchors` configures and shows a tenant's anchors (ADR-0042). `findings`
@@ -66,6 +68,7 @@ from taktus.adapters.driving.cli import (
     ledger_command,
     maturation_command,
     owner_channel_command,
+    prices_command,
     resume_command,
     run_command,
     signal_command,
@@ -100,6 +103,7 @@ app.command("exactness")(exactness_command.exactness)
 app.add_typer(bundle_command.bundle, name="bundle")
 app.command("capacity")(capacity_command.capacity)
 app.command("cost")(cost_command.cost)
+app.add_typer(prices_command.prices, name="prices")
 app.add_typer(findings_command.findings, name="findings")
 app.command("interfaces")(interfaces_command.interfaces)
 app.command("alerts")(alerts_command.alerts)

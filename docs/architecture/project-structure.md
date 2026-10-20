@@ -116,6 +116,8 @@ implements what the adapter declares it needs (`adapters/driving/cli/wiring.py`,
 `adapters/driving/rest/wiring.py`) and starts it. That is why the console script `taktusctl`
 begins in `composition/taktusctl.py` and `taktusd` in `composition/daemon.py` — the one place
 that constructs an adapter and binds it to a port; anything else that did would be a finding.
+A command that only reads a file and writes one, such as `taktusctl prices import`, needs no
+wiring: it calls a pure function of the component and touches no port.
 
 `wire` holds what two readers of one wire format share — today the Server-Sent Events reader,
 used by the conformance suite and by the HTTP worker adapter. Neither may import the other, so
