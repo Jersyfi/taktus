@@ -2,7 +2,7 @@
 
 The same checks as `test_container.py`, from inside the job — what it can see, what it can
 reach — with the answer read back as the step's artifact; and from outside, through the
-cluster's API, that the job, its Secret, its Services and its proxy are gone afterwards.
+cluster's API, that the job, its Secret and its Service are gone afterwards.
 
 **They need a cluster, and skip with the reason where none is configured.** CI configures none
 (NEED-0015), so there they skip, and the skip's reason is printed in the test summary. What
@@ -14,6 +14,9 @@ they need, all of it set up as `deploy/k8s/README.md` §1, §4 and §5 describe:
 - `TAKTUS_TEST_CLUSTER_NAMESPACE`: that namespace, labelled `restricted`, with the default-deny
   policies of §5 and the exceptions for the labels the adapter sets;
 - `TAKTUS_TEST_CLUSTER_WORKER_IMAGE`: the reference worker's image, pullable by the cluster;
+- the instance's egress gateway of the chart in that namespace (`deploy/k8s/README.md` §6,
+  ADR-0115), as the Service `taktus-gateway`, and its key in the file
+  `TAKTUS_EXECUTION_GATEWAY_KEY_FILE` names, for the test that reaches a host;
 - optionally `TAKTUS_TEST_CLUSTER_HOG_IMAGE` (`tests/adapters/execution/hog/`) for the memory
   kill, and `TAKTUS_TEST_CLUSTER_HOSTS`, two hosts the cluster can reach over HTTPS, the first
   allowed and the second not (default `example.com,example.org`);
@@ -94,18 +97,17 @@ def worker_image() -> str:
 def execution(connection: Connection, namespace: str, tmp_path: Path) -> KubernetesExecution:
     (tmp_path / "token").write_text(PLANTED + "\n", encoding="utf-8")
     (tmp_path / "key").write_text("key-77aa\n", encoding="utf-8")
-    configuration = EnvironmentConfiguration(
-        {
-            "TAKTUS_CREDENTIAL_VCS_TOKEN_FILE": str(tmp_path / "token"),
-            "TAKTUS_CREDENTIAL_SIGNING_KEY_FILE": str(tmp_path / "key"),
-        }
-    )
+    variables = {
+        "TAKTUS_CREDENTIAL_VCS_TOKEN_FILE": str(tmp_path / "token"),
+        "TAKTUS_CREDENTIAL_SIGNING_KEY_FILE": str(tmp_path / "key"),
+    }
+    if gateway := os.environ.get("TAKTUS_EXECUTION_GATEWAY_KEY_FILE"):
+        variables["TAKTUS_EXECUTION_GATEWAY_KEY_FILE"] = gateway
     return KubernetesExecution(
-        configuration,
+        EnvironmentConfiguration(variables),
         namespace=namespace,
         state_dir=tmp_path / "state",
         connection=connection,
-        egress_image=os.environ.get("TAKTUS_TEST_CLUSTER_EGRESS_IMAGE", "python:3.13-slim"),
     )
 
 
@@ -173,6 +175,8 @@ async def test_the_job_is_walled_in_and_torn_down(
 async def test_an_empty_allowlist_reaches_nothing_and_a_named_host_is_reached_through_the_proxy(
     execution: KubernetesExecution, worker_image: str
 ) -> None:
+    """Through the instance's one gateway, with the job's token (ADR-0115)."""
+    needed("TAKTUS_EXECUTION_GATEWAY_KEY_FILE")
     allowed, other = os.environ.get("TAKTUS_TEST_CLUSTER_HOSTS", "example.com,example.org").split(
         ","
     )[:2]

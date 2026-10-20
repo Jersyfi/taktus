@@ -157,15 +157,17 @@ so that a resumed assignment finds them in a new unit.
 | `endpoint` | whoever runs the worker | `adapters/driven/workers/http/` | a worker that is already running, at `TAKTUS_WORKER`; the default |
 | `process` | none | `adapters/driven/execution/process.py` | local development, a single user. **Refused from autonomy level 3 upwards, and when the level is unknown** — the rule is `ports/execution.py:refusal()`, and `tests/governance` holds the adapter to it. The unit's memory limit is enforced on Linux (`RLIMIT_DATA`, per process) and refused elsewhere unless `TAKTUS_EXECUTION_MEMORY_UNENFORCED=true` accepts it unenforced (`docs/architecture/platform.md` §5) |
 | `container` | process, filesystem, network | `adapters/driven/execution/container/` | operation. One container per job with limits, credentials in memory only, and a network that reaches the job's hosts — `frame.allowed_hosts` and the worker's service hosts — and nothing else |
-| `cluster` | process, filesystem; network where the cluster enforces network policies | `adapters/driven/execution/kubernetes/` | a cluster the control plane runs in. One Job per job in the execution namespace with limits and a deadline, a `restricted` pod with no service-account token, credentials from a Secret that lives as long as the job, and an egress proxy of its own; refuses hosts, and every job from level 3 upwards, where network policies are not enforced (`deploy/k8s/README.md` §7) |
+| `cluster` | process, filesystem; network where the cluster enforces network policies | `adapters/driven/execution/kubernetes/` | a cluster the control plane runs in. One Job per job in the execution namespace with limits and a deadline, a `restricted` pod with no service-account token, credentials from a Secret that lives as long as the job, and the instance's egress gateway with a token per job (ADR-0115); refuses hosts, and every job from level 3 upwards, where network policies are not enforced (`deploy/k8s/README.md` §7) |
 
 The worker port over the execution port is `adapters/driven/workers/launched.py`: one unit
 per assignment, started with the credentials, the hosts and the autonomy level the assignment
 carries, and with the hosts the worker's own service needs — its agent's or its model's
 provider — which the operator configures per worker and no bundle names
-(`TAKTUS_EXECUTION_SERVICE_HOSTS`, ADR-0089); a *probe* — a unit with no credential and no host — answers `capabilities` once and
-`estimate` before every worker step, which costs one unit start per estimate and is the price
-of never starting a unit with credentials before admission control has said yes (ADR-0005).
+(`TAKTUS_EXECUTION_SERVICE_HOSTS`, ADR-0089). A *probe* — a unit with no credential and no
+host — answers `capabilities` once, and the answer is kept. The estimate before every worker
+step starts no unit: it is what the estimator the worker declares in its capabilities yields
+(`contracts/worker/v1` §5), and a launched worker that declares none has its steps refused for
+want of an estimate. No unit starts before admission control has said yes (ADR-0005, ADR-0115).
 A unit the adapter killed — memory, wall clock — is a failed step with that cause, never a hang.
 
 **The launch convention** is the one thing a unit must know when an adapter starts it: it reads
@@ -206,13 +208,19 @@ from either record (issue #29).
 capability, no privilege escalation, a process limit, a memory limit without swap and a CPU
 limit — the engine kills on memory, the adapter on the wall clock; an engine that reports it
 cannot limit memory or swap is refused before anything is created; a network of its own,
-internal, whose only other member is the job's *egress container*, which forwards the unit's
-port inward so the control plane can reach it and is an HTTP proxy outward that admits
-exactly the job's hosts — `frame.allowed_hosts`, and for an assignment the worker's service
-hosts (ADR-0089) — and answers 403 to every other host, an empty list reaching nothing (this is where DEC-0008's field becomes a wall); one named volume per unit for its
+internal, whose only other member is the instance's *egress gateway* (ADR-0115). The gateway
+joins the job's network for the job's life. It forwards `/units/<unit>/<port>/…` inward so the
+control plane can reach the unit, listening for that only on the network it started on. Outward
+it is an HTTP proxy that admits exactly the hosts the job's token names — `frame.allowed_hosts`,
+and for an assignment the worker's service hosts (ADR-0089) — answers 403 to every other host
+and 407 without a token its key signed, and refuses every address on a job's network. A job
+without hosts gets no token and reaches nothing (this is where DEC-0008's field becomes a wall).
+The token reaches the unit as its proxy variables, in memory, as a credential does. The gateway's
+key is `execution.gateway.key`; without one a key is drawn for the process, whose gateway is its
+own and is removed when it closes. One named volume per unit for its
 state and no other mount, the engine's socket never among them. The adapter speaks the
 engine's HTTP API over its socket — Docker or Podman — so that the control plane image needs
-no client. Where the egress container publishes the unit's port on the host, the engine
+no client. Where the gateway publishes its inbound port on the host, the engine
 chooses the host port from its own record, which does not see a port another program holds;
 a start the engine refuses with `address already in use` is repeated, up to five times, and
 the engine chooses again. `tests/adapters/execution/test_container.py` proves every one of these from inside
@@ -221,9 +229,10 @@ at a boundary and resumes it in a new container.
 
 **The cluster adapter's wall** is the same shape in a cluster's terms, specified in
 `deploy/k8s/README.md` §4 to §7: a Job instead of a container, a Pod Security level instead of
-engine flags, a namespace's default-deny network policy instead of an internal network, and an
-egress proxy that is a second Job instead of a second container. The proxy asks for a token
-only the job's own unit holds, because a namespace's policy cannot pair a unit with its proxy.
+engine flags, a namespace's default-deny network policy instead of an internal network, and the
+same gateway as a Deployment of the chart instead of a container (ADR-0115). It admits the hosts
+the job's token names, because a namespace's policy cannot tell one job from another; the token
+is in the job's Secret, signed with the key the runner and the gateway share.
 Credentials come from a Secret created for the job: a file credential is mounted at its path,
 an env credential is a variable from the Secret. The adapter speaks the cluster's API with
 `httpx` and makes only the calls of the Role Taktus's service account holds.

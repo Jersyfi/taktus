@@ -250,6 +250,11 @@ class Execution(Protocol):
         `ExecutionError` when the unit does not come up."""
         ...
 
+    async def close(self) -> None:
+        """Release what the adapter holds for every job rather than for one: a gateway it
+        started for this process alone (ADR-0115). Jobs still running are not ended by it."""
+        ...
+
 
 def refusal(isolation: Isolation, autonomy_level: AutonomyLevel | None) -> str | None:
     """The rule of ADR-0002, fail-closed: why a job at this level may not run with this

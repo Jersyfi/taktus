@@ -49,6 +49,7 @@ from taktus.ports.worker import (
     Estimate,
     EstimateRequest,
     Event,
+    NoEstimator,
     Outcome,
     StepBoundary,
     StepStarted,
@@ -87,6 +88,9 @@ class FakeWorker:
     without a limit and without a stop requested, as one does at its unit's wall clock
     (ADR-0102)."""
     unreachable: str | None = None  # every call fails with this WorkerError, as a dead unit does
+    no_estimator: bool = False
+    """The worker declares no estimator, and is a launched worker: its estimate is refused
+    without starting a unit (ADR-0115)."""
     capacity: int | None = None
     full_for: int = 0
     estimate_full_for: int = 0
@@ -129,6 +133,8 @@ class FakeWorker:
     async def estimate(self, request: EstimateRequest) -> Estimate:
         if self.unreachable is not None:
             raise WorkerError(self.unreachable)
+        if self.no_estimator:
+            raise NoEstimator("the worker declares no estimator in its capabilities")
         if self.estimate_full_for > 0:
             self.estimate_full_for -= 1
             self.refused += 1

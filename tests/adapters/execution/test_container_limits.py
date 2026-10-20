@@ -72,7 +72,7 @@ async def test_a_memory_kill_the_engine_did_not_report_is_read_from_the_kernels_
         id="asg",
         endpoint="http://x",
         unit="u",
-        egress="e",
+        gateway="g",
         network="n",
         engine=_Engine(log),  # type: ignore[arg-type]
     )

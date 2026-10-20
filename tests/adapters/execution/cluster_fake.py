@@ -6,7 +6,8 @@ cluster address for a Service — and, for every Job, a pod that runs and is rea
 answers exactly the paths of `api.PATHS`, and it records every call by (resource, verb), so
 that a test can hold the adapter to the Role of `deploy/k8s/README.md` §1: a call outside it is
 answered 403 and listed in `forbidden`. Deleting an object deletes what it owns, as the
-garbage collector does.
+garbage collector does. The instance's egress gateway is the chart's, not the adapter's: its
+Service is there before the adapter asks, and is not among the objects it created.
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ import httpx
 from taktus.adapters.driven.execution.kubernetes.api import PERMITTED
 
 type Json = dict[str, Any]
+
+GATEWAY_ADDRESS = "10.96.0.2"
 
 PATH = re.compile(
     r"^/(?:api/v1|apis/batch/v1)/namespaces/(?P<namespace>[^/]+)/(?P<resource>[a-z]+)"
@@ -45,6 +48,17 @@ class FakeCluster:
     logs: dict[str, bytes] = field(default_factory=dict)
     on_pod: Callable[[Json], None] | None = None
     """Called with each pod as it is created: a test makes it fail, wait, or be killed."""
+    installed: dict[str, dict[str, Json]] = field(
+        default_factory=lambda: {
+            "services": {
+                "taktus-gateway": {
+                    "metadata": {"name": "taktus-gateway"},
+                    "spec": {"clusterIP": GATEWAY_ADDRESS, "ports": [{"port": 3128}]},
+                }
+            }
+        }
+    )
+    """What the chart installed beside the adapter's objects: read, never created by it."""
     _uids: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
     _addresses: itertools.count[int] = field(default_factory=lambda: itertools.count(10))
 
@@ -86,7 +100,7 @@ class FakeCluster:
             return self._create(resource, json.loads(request.content))
         if verb == "get":
             assert name is not None
-            found = self.of(resource).get(name)
+            found = self.of(resource).get(name) or self.installed.get(resource, {}).get(name)
             return httpx.Response(200, json=found) if found else _status(404, "not found")
         if verb == "list":
             wanted = dict(

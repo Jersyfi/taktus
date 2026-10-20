@@ -104,7 +104,7 @@ The agent calls its provider's API to work at all, and that host is in no step's
 execution kind that enforces a unit's reach (`container`, `cluster`), the operator names it for
 this worker: `TAKTUS_EXECUTION_SERVICE_HOSTS`, or `TAKTUS_WORKER_<NAME>_EXECUTION_SERVICE_HOSTS`
 for a named worker, `serviceHosts` in the chart. The unit reaches it for an assignment and for
-the conformance suite, never for a probe; the frame the worker holds tool calls against stays the
+the conformance suite, never for the probe that answers the capabilities; the frame the worker holds tool calls against stays the
 step's (ADR-0089).
 
 Launched, the worker reads its authentication mode from `CODING_AGENT_AUTH`, since an execution

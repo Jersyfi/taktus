@@ -9,13 +9,16 @@ ends the unit when the assignment's stream has ended. The unit's checkpoints liv
 which the execution adapter keeps across jobs, so that a resumed assignment finds them in a new
 unit.
 
-Two calls need a unit before there is an assignment: `capabilities`, which the pool asks once,
-and `estimate`, which the engine asks before every worker step. Each is answered by a *probe*:
-a unit started with no credential and no host, not even the service hosts, asked, and ended. A
-probe carries no task, so it is launched at autonomy level 1 for `capabilities` and at the
-assignment's level for `estimate`; that costs one unit start per estimate, and the cost is the
-price of never starting a unit with credentials before admission control has said yes
-(ADR-0005).
+One call needs a unit before there is an assignment: `capabilities`, which the pool asks once.
+It is answered by a *probe*: a unit started at autonomy level 1 with no credential and no host,
+not even the service hosts, asked, and ended. The answer is kept for the adapter's life, so
+that a probe starts once.
+
+The estimate the engine asks before every worker step starts no unit (ADR-0115). It is what the
+estimator the worker declares in its capabilities yields for the request; the engine calibrates
+it from the ledger as it calibrates any estimate (ADR-0005). A worker that declares no estimator
+cannot be estimated without a unit before admission, and the estimate is refused with
+`NoEstimator`: the step is refused for want of an estimate, and nothing started.
 
 A unit that the execution adapter killed — memory, wall clock — is reported as a failed step
 with that cause, not as a broken stream: the stream's error is replaced by the job's exit.
@@ -51,6 +54,7 @@ from taktus.ports.worker import (
     Estimate,
     EstimateRequest,
     Event,
+    NoEstimator,
     StopRequest,
     WorkerAtCapacity,
     WorkerError,
@@ -82,6 +86,8 @@ class LaunchedWorker:
         self._stream_timeout = stream_timeout
         self._running: dict[str, _Running] = {}
         self._lock = asyncio.Lock()
+        self._capabilities: Capabilities | None = None
+        self._asked = asyncio.Lock()
 
     async def __aenter__(self) -> Self:
         return self
@@ -97,17 +103,25 @@ class LaunchedWorker:
     async def close(self) -> None:
         for assignment_id in list(self._running):
             await self._end(assignment_id)
+        await self._execution.close()
 
     # --- the port ---------------------------------------------------------------------------
 
     async def capabilities(self) -> Capabilities:
-        async with self._probe("probe-capabilities", PROBE_LEVEL) as worker:
-            return await worker.capabilities()
+        async with self._asked:
+            if self._capabilities is None:
+                async with self._probe("probe-capabilities", PROBE_LEVEL) as worker:
+                    self._capabilities = await worker.capabilities()
+            return self._capabilities
 
     async def estimate(self, request: EstimateRequest) -> Estimate:
-        job_id = f"probe-{request.assignment_id or 'estimate'}"
-        async with self._probe(job_id, request.frame.autonomy_level) as worker:
-            return await worker.estimate(request)
+        estimator = (await self.capabilities()).estimator
+        if estimator is None:
+            raise NoEstimator(
+                "the worker declares no estimator in its capabilities, and a launched worker "
+                "is not started to be asked before admission (ADR-0115)"
+            )
+        return estimator.of(request)
 
     async def assign(self, assignment: Assignment) -> AssignmentState:
         request = JobRequest(

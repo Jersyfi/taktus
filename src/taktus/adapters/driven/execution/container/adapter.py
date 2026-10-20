@@ -10,10 +10,12 @@ The default in operation (ADR-0002). Every job gets:
   or swap (`/info`: `MemoryLimit`, `SwapLimit`) would take the limits and silently not apply
   them, so the job is refused before anything is created (`limits_refusal`);
 - **a network of its own**, internal: no route out, no route in. The only other member is the
-  job's **egress container** (`egress.py`), which sits on that network and on the network the
-  control plane reaches. Inbound, it forwards the unit's port so the control plane can talk to
-  the worker contract; outbound, it is an HTTP proxy that admits exactly `allowed_hosts` and
-  refuses everything else. An empty list — the default — means the unit reaches nothing;
+  instance's **egress gateway** (`egress.py`, ADR-0115), which joins the job's network for the
+  job's life. Inbound, it forwards `/units/<unit>/<port>/…` to the unit's worker contract, so
+  that the control plane reaches it; outbound, it is an HTTP proxy that admits exactly the hosts
+  the job's token names and refuses everything else. The token is minted per job, signed with
+  the gateway's key, and reaches the unit as its proxy variables, in memory, as a credential
+  does. A job without hosts gets no token and no proxy variable: it reaches nothing;
 - **credentials in memory only**: the unit's container starts with a tmpfs, the launcher waits,
   this adapter writes each value into that tmpfs through an exec whose environment carries it,
   the launcher exports the env kind and removes the files, and the unit starts. No value is on
@@ -27,15 +29,23 @@ The default in operation (ADR-0002). Every job gets:
 - **no socket**: the engine's socket is never mounted into a job. The list of mounts is the
   state volume and nothing else.
 
-The control plane reaches the unit through the egress container: on a developer's machine at a
-port it publishes on 127.0.0.1; from a control plane that runs in a container, by name on the
-network both share (`TAKTUS_EXECUTION_NETWORK`). A cluster adapter is the same shape with a pod
-instead of two containers and a network policy instead of a proxy; the port does not change.
+**The gateway is the instance's, not the job's.** It is started with the first job and serves
+every later one. Its key is the configured `execution.gateway.key`; without one, a key is drawn
+for this process, its gateway is this process's alone, and `close` removes it. The gateway's
+name follows from its key, so that processes configured with the same key share one gateway.
+It reaches the network the control plane reaches: on a developer's machine its inbound port is
+published on 127.0.0.1; from a control plane that runs in a container, it is reached by name on
+the network both share (`TAKTUS_EXECUTION_NETWORK`). It listens inbound only on that network,
+never on a job's, and its proxy refuses every address on a job's network, so that no unit
+reaches another through it. A cluster adapter is the same shape with a pod instead of a
+container and a network policy instead of an internal network; the port does not change.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -45,7 +55,11 @@ from pathlib import Path
 import structlog
 
 from taktus.adapters.driven.execution._common import (
+    PROXY_VARIABLES,
     ResolvedCredential,
+    gateway_key,
+    job_token,
+    proxy_url,
     resolve_credentials,
     wait_until_healthy,
 )
@@ -73,6 +87,11 @@ LAUNCHER = "/taktus/launch"
 EGRESS_SCRIPT = "/taktus/egress.py"
 CREDENTIALS_DIR = "/run/taktus/credentials"
 PROXY_PORT = 3128
+INBOUND_PORT = 8080
+"""The gateway's port for the control plane: `/units/<unit>/<port>/…` reaches a unit."""
+GATEWAY_KEY_PATH = "/run/taktus/gateway/key"
+"""Where the gateway holds its key: a memory-backed directory, written after the start."""
+GATEWAY_LABEL = {"taktus/role": "gateway"}
 PIDS_LIMIT = 512
 EGRESS_MEMORY_BYTES = 64 * 1024 * 1024
 KILLED = 137
@@ -123,7 +142,8 @@ class ContainerJob:
     endpoint: str
     unit: str
     """The unit container's id."""
-    egress: str
+    gateway: str
+    """The name of the instance's gateway, which serves this job and outlives it."""
     network: str
     engine: Engine = field(repr=False)
     killed: JobExit | None = None
@@ -170,11 +190,33 @@ class ContainerExecution:
         self._state_dir = state_dir
         self._network = network
         self._egress_image = egress_image
+        self._key: bytes | None = None
+        self._drawn = False
+        self._gateway: _Gateway | None = None
+        self._gateway_lock = asyncio.Lock()
+
+    async def close(self) -> None:
+        """Remove the gateway when its key was drawn for this process and no other adapter of
+        the process uses it: nobody else can. A gateway of a configured key is the instance's
+        and stays."""
+        gateway, self._gateway = self._gateway, None
+        if gateway is None or not self._drawn:
+            return
+        _USERS[gateway.name] -= 1
+        if _USERS[gateway.name] > 0:
+            return
+        del _USERS[gateway.name]
+        async with Engine(self._socket) as engine:
+            try:
+                await engine.remove(gateway.name)
+            except EngineError as error:
+                log.warning("gateway not removed", gateway=gateway.name, error=str(error))
 
     @asynccontextmanager
     async def launch(self, request: JobRequest) -> AsyncIterator[ContainerJob]:
         unit_environment(request)  # refused before anything starts
         credentials = resolve_credentials(self._configuration, request.credentials)
+        key = self._gateway_key()
         suffix = secrets.token_hex(3)
         names = _Names(f"{request.job_id}-{suffix}".lower().replace("_", "-"))
         engine = Engine(self._socket)
@@ -188,13 +230,11 @@ class ContainerExecution:
             raise ExecutionRefused(why)
         job: ContainerJob | None = None
         timer: asyncio.Task[None] | None = None
+        gateway: _Gateway | None = None
         try:
-            job = await self._start(engine, request, names, credentials)
-            wall = min(
-                request.wall_seconds or request.unit.limits.wall_seconds,
-                request.unit.limits.wall_seconds,
-            )
-            timer = asyncio.create_task(self._kill_after(job, wall), name=f"wall-{job.id}")
+            gateway = await self._ensure_gateway(engine, key)
+            job = await self._start(engine, request, names, credentials, gateway, key)
+            timer = asyncio.create_task(self._kill_after(job, request.wall), name=f"wall-{job.id}")
 
             async def ended() -> str | None:
                 exit = await job.exit() if job is not None else None
@@ -207,8 +247,105 @@ class ContainerExecution:
         finally:
             if timer is not None:
                 timer.cancel()
-            await self._remove(engine, names, request, job)
+            await self._remove(engine, names, request, job, gateway)
             await engine.close()
+
+    # --- the gateway --------------------------------------------------------------------------
+
+    def _gateway_key(self) -> bytes:
+        """The configured key, else the one drawn for this process: every worker of the
+        process shares it, and so shares one gateway."""
+        if self._key is None:
+            configured = gateway_key(self._configuration)
+            if configured is not None:
+                self._key = configured.reveal().strip().encode()
+            else:
+                self._key = _drawn_key()
+                self._drawn = True
+        return self._key
+
+    async def _ensure_gateway(self, engine: Engine, key: bytes) -> _Gateway:
+        """The running gateway of this key: this process's, one another process with the same
+        key started, or a new one. One that is there but not running is replaced."""
+        async with self._gateway_lock:
+            name = _gateway_name(key)
+            inspected = await engine.inspect(name)
+            running = bool(((inspected or {}).get("State") or {}).get("Running"))
+            if self._gateway is not None and running:
+                return self._gateway
+            if not running:
+                if inspected is not None:
+                    await engine.remove(name)
+                try:
+                    await self._create_gateway(engine, name, key)
+                except EngineError:
+                    # Another process with the same key may have created it a moment earlier.
+                    if not await _comes_up(engine, name):
+                        raise
+                inspected = await engine.inspect(name)
+            if self._gateway is None and self._drawn:
+                _USERS[name] = _USERS.get(name, 0) + 1
+            self._gateway = _Gateway(name=name, inbound=self._inbound_of(name, inspected or {}))
+            return self._gateway
+
+    async def _create_gateway(self, engine: Engine, name: str, key: bytes) -> None:
+        await engine.ensure_image(self._egress_image)
+        publish = self._network is None
+        config = {
+            "Image": self._egress_image,
+            "Cmd": [
+                "python3",
+                EGRESS_SCRIPT,
+                "--listen",
+                str(PROXY_PORT),
+                "--key-file",
+                GATEWAY_KEY_PATH,
+                "--inbound",
+                str(INBOUND_PORT),
+                "--refuse-job-networks",
+            ],
+            "Labels": dict(GATEWAY_LABEL),
+            "ExposedPorts": {f"{INBOUND_PORT}/tcp": {}},
+            "HostConfig": {
+                "NetworkMode": self._network or "bridge",
+                "CapDrop": ["ALL"],
+                "SecurityOpt": ["no-new-privileges"],
+                "Memory": EGRESS_MEMORY_BYTES,
+                "MemorySwap": EGRESS_MEMORY_BYTES,
+                "PidsLimit": 64,
+                "Tmpfs": {GATEWAY_KEY_PATH.rpartition("/")[0]: "rw,noexec,nosuid,size=64k"},
+                "PortBindings": {f"{INBOUND_PORT}/tcp": [{"HostIp": "127.0.0.1", "HostPort": ""}]}
+                if publish
+                else {},
+            },
+        }
+        container = await engine.create_container(name, config)
+        await engine.put_file(
+            container, EGRESS_SCRIPT, (HERE / "egress.py").read_bytes(), mode=0o644
+        )
+        if publish:
+            await start_publishing(engine, container)
+        else:
+            await engine.start(container)
+        # The key into memory, through a command whose environment carries it.
+        code = await engine.exec(
+            container,
+            ["sh", "-c", f'umask 077; printf "%s" "$TAKTUS_GATEWAY_KEY" > "{GATEWAY_KEY_PATH}"'],
+            env=[f"TAKTUS_GATEWAY_KEY={key.decode()}"],
+        )
+        if code != 0:
+            raise ExecutionError(f"the gateway's key could not be placed into it (exit {code})")
+        log.info("gateway started", gateway=name, network=self._network or "bridge")
+
+    def _inbound_of(self, name: str, inspected: Json) -> str:
+        if self._network is not None:
+            return f"http://{name}:{INBOUND_PORT}"
+        bindings = ((inspected.get("NetworkSettings") or {}).get("Ports") or {}).get(
+            f"{INBOUND_PORT}/tcp"
+        ) or []
+        if not bindings:
+            raise ExecutionError(f"the gateway {name} published no port for the control plane")
+        return f"http://127.0.0.1:{bindings[0]['HostPort']}"
 
     # --- start --------------------------------------------------------------------------------
 
@@ -218,49 +355,13 @@ class ContainerExecution:
         request: JobRequest,
         names: _Names,
         credentials: tuple[ResolvedCredential, ...],
+        gateway: _Gateway,
+        key: bytes,
     ) -> ContainerJob:
         unit = request.unit
         image = await engine.ensure_image(unit.program)
-        await engine.ensure_image(self._egress_image)
         network = await engine.create_network(names.network, internal=True)
-
-        # The egress container: on the reachable network first, with the unit's port published
-        # when no shared network is named; then joined to the job's network.
-        publish = self._network is None
-        egress_config = {
-            "Image": self._egress_image,
-            "Cmd": [
-                "python3",
-                EGRESS_SCRIPT,
-                "--listen",
-                str(PROXY_PORT),
-                "--forward",
-                str(unit.port),
-                "--to",
-                f"{names.unit}:{unit.port}",
-                "--allow",
-                ",".join(request.allowed_hosts),
-            ],
-            "ExposedPorts": {f"{unit.port}/tcp": {}},
-            "HostConfig": {
-                "NetworkMode": self._network or "bridge",
-                "CapDrop": ["ALL"],
-                "SecurityOpt": ["no-new-privileges"],
-                "Memory": EGRESS_MEMORY_BYTES,
-                "MemorySwap": EGRESS_MEMORY_BYTES,
-                "PidsLimit": 64,
-                "PortBindings": {f"{unit.port}/tcp": [{"HostIp": "127.0.0.1", "HostPort": ""}]}
-                if publish
-                else {},
-            },
-        }
-        egress = await engine.create_container(names.egress, egress_config)
-        await engine.put_file(egress, EGRESS_SCRIPT, (HERE / "egress.py").read_bytes(), mode=0o644)
-        if publish:
-            await start_publishing(engine, egress)
-        else:
-            await engine.start(egress)
-        await engine.connect(network, egress)
+        await engine.connect(network, gateway.name)
 
         # The unit's container: the image's own command behind the launcher, a tmpfs for the
         # credentials (and one for the directory of every file credential), the state volume,
@@ -279,10 +380,18 @@ class ContainerExecution:
             f"{UNIT_WALL_SECONDS_VARIABLE}={request.wall}",
             f"TAKTUS_CREDENTIALS_DIR={CREDENTIALS_DIR}",
         ]
+        # The proxy variables carry the job's token: into memory with the credentials, never
+        # into the container's recorded configuration.
+        proxy: tuple[tuple[str, str], ...] = ()
         if request.allowed_hosts:
-            proxy = f"http://{names.egress}:{PROXY_PORT}"
-            environment += [f"{name}={proxy}" for name in ("HTTP_PROXY", "HTTPS_PROXY")]
-            environment += [f"{name}={proxy}" for name in ("http_proxy", "https_proxy")]
+            token = job_token(
+                key,
+                job=names.tag,
+                hosts=request.allowed_hosts,
+                seconds=request.wall + unit.start_timeout_seconds,
+            )
+            url = proxy_url(token, gateway.name, PROXY_PORT)
+            proxy = tuple((variable, url) for variable in PROXY_VARIABLES)
         unit_config = {
             "Image": unit.program,
             "Entrypoint": [LAUNCHER],
@@ -310,61 +419,59 @@ class ContainerExecution:
         container = await engine.create_container(names.unit, unit_config)
         await engine.put_file(container, LAUNCHER, (HERE / "launch.sh").read_bytes(), mode=0o755)
         await engine.start(container)
-        await self._inject(engine, container, credentials)
+        await self._inject(engine, container, credentials, proxy)
 
-        if publish:
-            inspected = await engine.inspect(egress) or {}
-            bindings = ((inspected.get("NetworkSettings") or {}).get("Ports") or {}).get(
-                f"{unit.port}/tcp"
-            ) or []
-            if not bindings:
-                raise ExecutionError("the egress container published no port for the unit")
-            endpoint = f"http://127.0.0.1:{bindings[0]['HostPort']}"
-        else:
-            endpoint = f"http://{names.egress}:{unit.port}"
         log.info(
             "job started",
             job=request.job_id,
             unit=names.unit,
-            egress=names.egress,
+            gateway=gateway.name,
             allowed_hosts=list(request.allowed_hosts),
             credentials=[c.reference.name for c in credentials],
         )
         return ContainerJob(
             id=request.job_id,
-            endpoint=endpoint,
+            endpoint=f"{gateway.inbound}/units/{names.unit}/{unit.port}",
             unit=container,
-            egress=egress,
+            gateway=gateway.name,
             network=network,
             engine=engine,
         )
 
     @staticmethod
     async def _inject(
-        engine: Engine, container: str, credentials: tuple[ResolvedCredential, ...]
+        engine: Engine,
+        container: str,
+        credentials: tuple[ResolvedCredential, ...],
+        variables: tuple[tuple[str, str], ...] = (),
     ) -> None:
         """Each value into the memory-backed directory, through a command whose environment
         carries it; then the marker the launcher waits for. The value never appears in a
-        command line: the shell reads it from its own environment."""
-        for credential in credentials:
-            reference = credential.reference
-            if reference.injected_as == "env":
-                target = f"{CREDENTIALS_DIR}/env/{reference.name}"
-            else:
-                target = reference.path or f"{CREDENTIALS_DIR}/files/{reference.name}"
+        command line: the shell reads it from its own environment. `variables` are values that
+        are not credentials and are carried as one: the proxy URL with the job's token."""
+        targets = [
+            (
+                f"{CREDENTIALS_DIR}/env/{c.reference.name}"
+                if c.reference.injected_as == "env"
+                else c.reference.path or f"{CREDENTIALS_DIR}/files/{c.reference.name}",
+                c.reference.name,
+                c.value.reveal(),
+            )
+            for c in credentials
+        ]
+        targets += [(f"{CREDENTIALS_DIR}/env/{name}", name, value) for name, value in variables]
+        for target, name, value in targets:
             directory = target.rpartition("/")[0]
             script = (
                 f'umask 077; mkdir -p "{directory}"; printf "%s" "$TAKTUS_CREDENTIAL_VALUE" > '
                 f'"{target}"'
             )
             code = await engine.exec(
-                container,
-                ["sh", "-c", script],
-                env=[f"TAKTUS_CREDENTIAL_VALUE={credential.value.reveal()}"],
+                container, ["sh", "-c", script], env=[f"TAKTUS_CREDENTIAL_VALUE={value}"]
             )
             if code != 0:
                 raise ExecutionError(
-                    f"credential {reference.name} could not be placed into the unit (exit {code})"
+                    f"credential {name} could not be placed into the unit (exit {code})"
                 )
         code = await engine.exec(
             container, ["sh", "-c", f'touch "{CREDENTIALS_DIR}/.ready"'], env=[]
@@ -384,21 +491,30 @@ class ContainerExecution:
             await job.engine.kill(job.unit)
 
     async def _remove(
-        self, engine: Engine, names: _Names, request: JobRequest, job: ContainerJob | None
+        self,
+        engine: Engine,
+        names: _Names,
+        request: JobRequest,
+        job: ContainerJob | None,
+        gateway: _Gateway | None,
     ) -> None:
-        """Everything but the state volume, and the unit's log kept under the state directory
-        on this side, so that a job that failed can be read about."""
+        """The unit and the job's network, after the gateway left it; the unit's log kept under
+        the state directory on this side, so that a job that failed can be read about. The
+        gateway and the state volume stay."""
         if job is not None and job.killed is None:
             exit = await job.exit()
             if exit is None:
                 job.killed = JobExit(killed="stop", reason="the job is over")
-        for container in (names.unit, names.egress):
+        try:
+            await self._keep_log(engine, names.unit, request)
+            await engine.remove(names.unit)
+        except EngineError as error:
+            log.warning("container not removed", container=names.unit, error=str(error))
+        if gateway is not None:
             try:
-                if container == names.unit:
-                    await self._keep_log(engine, container, request)
-                await engine.remove(container)
+                await engine.disconnect(names.network, gateway.name)
             except EngineError as error:
-                log.warning("container not removed", container=container, error=str(error))
+                log.warning("gateway not taken off", network=names.network, error=str(error))
         try:
             await engine.remove_network(names.network)
         except EngineError as error:
@@ -431,6 +547,44 @@ def limits_refusal(info: Json) -> str | None:
 
 
 @dataclass(frozen=True)
+class _Gateway:
+    name: str
+    inbound: str
+    """Where the control plane reaches the gateway's inbound port."""
+
+
+_DRAWN: list[bytes] = []
+"""The gateway key drawn for this process, once, where none is configured."""
+_USERS: dict[str, int] = {}
+"""How many adapters of this process use a gateway of the drawn key, by its name."""
+
+
+def _drawn_key() -> bytes:
+    if not _DRAWN:
+        _DRAWN.append(secrets.token_urlsafe(32).encode())
+    return _DRAWN[0]
+
+
+async def _comes_up(engine: Engine, name: str, within: float = 10.0) -> bool:
+    """Whether a gateway of that name is running, or starts running within a few seconds."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + within
+    while True:
+        state = ((await engine.inspect(name)) or {}).get("State") or {}
+        if state.get("Running"):
+            return True
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(0.2)
+
+
+def _gateway_name(key: bytes) -> str:
+    """The gateway's name, the same for every process with the same key and saying nothing of
+    the key itself."""
+    return "taktus-gateway-" + hmac.new(key, b"gateway-name", hashlib.sha256).hexdigest()[:12]
+
+
+@dataclass(frozen=True)
 class _Names:
     tag: str
 
@@ -441,10 +595,6 @@ class _Names:
     @property
     def unit(self) -> str:
         return f"taktus-unit-{self.tag}"
-
-    @property
-    def egress(self) -> str:
-        return f"taktus-egress-{self.tag}"
 
     @staticmethod
     def state_volume(unit_name: str) -> str:

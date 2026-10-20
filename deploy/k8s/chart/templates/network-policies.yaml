@@ -3,9 +3,10 @@ Default-deny, both ways, in both namespaces, and then exactly the exceptions (RE
 sets are rendered whether or not the cluster enforces them.
 
 The execution namespace: a unit is reached from the control plane only, on its contract port,
-and reaches the egress proxy only. The proxy alone leaves the cluster, by name through its
-CONNECT check (README §6), to the given ports and never to the cluster's own address ranges.
-The cluster execution adapter labels its pods `taktus/role: unit` and `taktus/role: egress`.
+and reaches the instance's egress gateway only. The gateway alone leaves the cluster, by name
+through its CONNECT check against the job's token (README §6, ADR-0115), to the given ports and
+never to the cluster's own address ranges. The cluster execution adapter labels its pods
+`taktus/role: unit`; the gateway's pods (gateway.yaml) carry `taktus/role: egress`.
 
 The control plane's namespace: the roles reach the name service, their database, the execution
 units and, where given, the API server and the hosts the operator lists; the api role is reached

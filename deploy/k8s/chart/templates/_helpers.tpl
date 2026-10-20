@@ -98,12 +98,30 @@ the pairs. Which names are refused is the daemon's to say, at its start. */}}
 {{- printf "cred-%s" (. | lower | replace "." "-" | replace "_" "-") | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{/* "true" when a worker runs as a Job in the cluster: the one kind, or a worker's own. */}}
+{{- define "taktus.clusterExecution" -}}
+{{- $found := eq .Values.execution.kind "cluster" -}}
+{{- range .Values.execution.workers -}}
+{{- if eq (default $.Values.execution.kind .kind) "cluster" -}}{{- $found = true -}}{{- end -}}
+{{- end -}}
+{{- if $found -}}true{{- end -}}
+{{- end -}}
+
+{{/* The egress gateway's Deployment and Service (gateway.yaml, ADR-0115). */}}
+{{- define "taktus.gatewayName" -}}
+{{- printf "%s-gateway" (include "taktus.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 {{/* Every secret a control plane container reads, as (volume, secret, key, directory, variable). */}}
 {{- define "taktus.secretFiles" -}}
 {{- $files := list -}}
 {{- $files = append $files (dict "volume" "database-url" "secret" (required "database.urlSecret is required: the Secret holding the connection URL" .Values.database.urlSecret) "key" (required "database.urlKey is required" .Values.database.urlKey) "dir" "/run/secrets/taktus/database-url" "variable" "TAKTUS_DATABASE_URL_FILE") -}}
 {{- if .Values.telemetry.otlp.headersSecret -}}
 {{- $files = append $files (dict "volume" "otlp-headers" "secret" .Values.telemetry.otlp.headersSecret "key" (required "telemetry.otlp.headersKey is required with headersSecret" .Values.telemetry.otlp.headersKey) "dir" "/run/secrets/taktus/otlp-headers" "variable" "TAKTUS_OTLP_HEADERS_FILE") -}}
+{{- end -}}
+{{- if include "taktus.clusterExecution" . -}}
+{{- $g := .Values.execution.gateway -}}
+{{- $files = append $files (dict "volume" "gateway-key" "secret" (required "execution.gateway.keySecret is required when a worker runs in the cluster: an existing Secret, in both namespaces, holding the egress gateway's key (README §6)" $g.keySecret) "key" (required "execution.gateway.keyKey is required" $g.keyKey) "dir" "/run/secrets/taktus/gateway-key" "variable" "TAKTUS_EXECUTION_GATEWAY_KEY_FILE") -}}
 {{- end -}}
 {{- range .Values.credentials -}}
 {{- $parameter := required "credentials[].parameter is required" .parameter -}}

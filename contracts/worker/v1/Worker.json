@@ -131,7 +131,8 @@
           "required": ["native_pause", "step_boundary_signal", "streaming_events", "estimate"],
           "additionalProperties": false
         },
-        "max_concurrent_assignments": { "type": "integer", "minimum": 1 }
+        "max_concurrent_assignments": { "type": "integer", "minimum": 1 },
+        "estimator": { "$ref": "#/$defs/Estimator" }
       },
       "required": ["contract", "capabilities", "consumption", "supports", "max_concurrent_assignments"],
       "additionalProperties": false
@@ -379,6 +380,33 @@
       },
       "required": ["confidence", "wall_seconds", "steps"],
       "unevaluatedProperties": false
+    },
+
+    "Estimator": {
+      "title": "Estimator",
+      "description": "How the worker's estimate follows from an estimate request without asking the worker (README §2, ADR-0115). Optional. fixed: every assignment is estimated as estimate. per_item: each once for every item of the list task.inputs[input], and otherwise where the task carries no such list or an empty one; every quantity, wall_seconds and steps are multiplied by the number of items. A launched worker is estimated by its estimator alone, so that no unit starts before admission; one that declares none has its worker steps refused for want of an estimate. A worker reached by endpoint is still asked at POST /v1/estimate. What an estimator yields is never below the worker's own answer for the same request (W-02).",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "fixed" },
+            "estimate": { "$ref": "#/$defs/Estimate" }
+          },
+          "required": ["kind", "estimate"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "per_item" },
+            "input": { "type": "string", "minLength": 1 },
+            "each": { "$ref": "#/$defs/Estimate" },
+            "otherwise": { "$ref": "#/$defs/Estimate" }
+          },
+          "required": ["kind", "input", "each", "otherwise"],
+          "additionalProperties": false
+        }
+      ]
     },
 
     "AssignmentState": {

@@ -1,0 +1,104 @@
+{{- /*
+The instance's egress gateway (README §6, ADR-0115): one Deployment in the execution namespace,
+from the control plane's image, through which every unit reaches the hosts its job's token
+names and nothing else. Rendered when a worker runs as a Job in the cluster. The gateway checks
+each token against its key, a mounted file from the existing Secret `execution.gateway.keySecret`;
+the runner signs the tokens with the same key, from the Secret of the same name in its own
+namespace. Its pods carry `taktus/role: egress`, so that the policies of network-policies.yaml
+hold for them: units reach it, and it reaches the allowed ports outside the cluster's ranges.
+It mounts no service-account token: it never talks to the cluster.
+*/ -}}
+{{- if include "taktus.clusterExecution" . }}
+{{- $g := .Values.execution.gateway -}}
+{{- $name := include "taktus.gatewayName" . -}}
+{{- $keySecret := required "execution.gateway.keySecret is required when a worker runs in the cluster: an existing Secret, in both namespaces, holding the egress gateway's key (README §6)" $g.keySecret -}}
+{{- $keyKey := required "execution.gateway.keyKey is required: the key of the gateway's key inside its Secret" $g.keyKey -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.executionNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: {{ $g.replicas }}
+  selector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" . "component" "gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "taktus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway
+        taktus/role: egress
+    spec:
+      serviceAccountName: {{ .Values.execution.serviceAccount }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: {{ include "taktus.image" (dict "what" "image" "image" .Values.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - taktus.adapters.driven.execution.container.egress
+            - --listen
+            - {{ .Values.execution.egress.proxyPort | quote }}
+            - --key-file
+            - /run/secrets/taktus/gateway/{{ $keyKey }}
+          env:
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          ports:
+            - name: proxy
+              containerPort: {{ .Values.execution.egress.proxyPort }}
+          readinessProbe:
+            tcpSocket:
+              port: proxy
+            periodSeconds: 2
+          resources:
+            {{- toYaml $g.resources | nindent 12 }}
+          securityContext:
+            {{- include "taktus.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - name: key
+              mountPath: /run/secrets/taktus/gateway
+              readOnly: true
+      volumes:
+        - name: key
+          secret:
+            secretName: {{ $keySecret }}
+            defaultMode: 0440
+            items:
+              - key: {{ $keyKey }}
+                path: {{ $keyKey }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.executionNamespace" . }}
+  labels:
+    {{- include "taktus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  selector:
+    {{- include "taktus.selector" (dict "root" . "component" "gateway") | nindent 4 }}
+  ports:
+    - name: proxy
+      port: {{ .Values.execution.egress.proxyPort }}
+      targetPort: proxy
+{{- end }}

@@ -37,6 +37,7 @@ import argparse
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -62,6 +63,7 @@ COMMAND_TIMEOUT = 60
 FAULTS: dict[str, str] = {
     "W-01": "capabilities declares no consumption kind",
     "W-02": "estimate answers 501 instead of an estimate",
+    "W-02-estimator": "the declared estimator yields a tenth of each step's seconds",
     "W-03-gap": "the second event is skipped: seq jumps from 1 to 3",
     "W-03-resume": "Last-Event-ID and ?after= are ignored; the stream always replays from 1",
     "W-04": "consumption is reported for every step at the end, just before assignment.finished",
@@ -366,6 +368,39 @@ class Worker:
                 "estimate": True,
             },
             "max_concurrent_assignments": self.options.max_concurrent,
+            "estimator": self.estimator(),
+        }
+
+    def estimator(self) -> Json:
+        """The estimate as a rule the control plane applies without asking (ADR-0115): a step
+        per command the task carries, else the profile's plan. It never yields less than
+        `estimate` answers for a fresh assignment, which is what W-02 holds it to: a step's
+        seconds are rounded up, and a resumed assignment answers less, never more."""
+        each = math.ceil(float(self.options.estimate_factor) * self.options.step_seconds * 1000)
+        if self.fault == "W-02-estimator":
+            each = each // 10
+        seconds = each / 1000
+        profile = plan_for({}, self.profile, self.options)
+        whole = math.ceil(sum(self.expected(s) for s in profile) * 1000) / 1000
+        if self.fault == "W-02-estimator":
+            whole = whole / 10
+        return {
+            "kind": "per_item",
+            "input": "commands",
+            "each": {
+                "confidence": "low",
+                "compute_seconds": seconds,
+                "resource_class": self.resource_class,
+                "wall_seconds": int(seconds) + 1,
+                "steps": 1,
+            },
+            "otherwise": {
+                "confidence": "low",
+                "compute_seconds": whole,
+                "resource_class": self.resource_class,
+                "wall_seconds": int(whole) + 1,
+                "steps": len(profile),
+            },
         }
 
     def expected(self, step: PlannedStep) -> float:

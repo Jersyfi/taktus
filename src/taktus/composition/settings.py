@@ -56,8 +56,8 @@ class ExecutionKind(StrEnum):
     and a network that reaches the allowed hosts and nothing else."""
     CLUSTER = "cluster"
     """A unit started per job as a Job in a cluster's execution namespace, with limits,
-    credentials from a Secret that lives as long as the job, and an egress proxy of its own
-    (deploy/k8s/README.md §7). The control plane runs in the same cluster."""
+    credentials from a Secret that lives as long as the job, and the instance's egress gateway
+    (deploy/k8s/README.md §7, ADR-0115). The control plane runs in the same cluster."""
 
 
 @dataclass(frozen=True)
@@ -75,15 +75,16 @@ class ExecutionSettings:
     wall_seconds: int
     start_timeout_seconds: int
     network: str | None
-    """`TAKTUS_EXECUTION_NETWORK` (container): the network this process shares with the job's
-    egress container — a control plane that itself runs in a container names its own network
-    here. Unset, the egress container publishes the unit's port on 127.0.0.1 of the machine
-    the engine runs on, which is where a control plane on a developer's machine reaches it."""
+    """`TAKTUS_EXECUTION_NETWORK` (container): the network this process shares with the
+    instance's egress gateway — a control plane that itself runs in a container names its own
+    network here. Unset, the gateway publishes its inbound port on 127.0.0.1 of the machine the
+    engine runs on, which is where a control plane on a developer's machine reaches the units
+    through it (ADR-0115)."""
     engine_socket: str
     """`TAKTUS_EXECUTION_ENGINE_SOCKET` (container): the container engine's socket."""
     egress_image: str
-    """`TAKTUS_EXECUTION_EGRESS_IMAGE` (container): the image the per-job egress container runs
-    from; any image with `python3` on the path."""
+    """`TAKTUS_EXECUTION_EGRESS_IMAGE` (container): the image the instance's egress gateway
+    runs from; any image with `python3` on the path."""
     memory_unenforced: bool = False
     """`TAKTUS_EXECUTION_MEMORY_UNENFORCED` (process): accept that the memory limit is not
     enforced where the system cannot enforce it (every system but Linux). Off, the process
@@ -100,6 +101,10 @@ class ExecutionSettings:
     state_claim: str | None = None
     """`TAKTUS_EXECUTION_STATE_CLAIM` (cluster): an existing volume claim in the execution
     namespace for the unit's state. Unset, the state dies with each job."""
+    gateway_service: str = "taktus-gateway"
+    """`TAKTUS_EXECUTION_GATEWAY_SERVICE` (cluster): the Service of the instance's egress
+    gateway in the execution namespace, which the chart deploys (ADR-0115). A unit whose job
+    names hosts reaches them through it, by its address."""
     cpu_request_share: float = 0.25
     """`TAKTUS_EXECUTION_CPU_REQUEST_SHARE` (cluster): the share of its CPU limit a unit requests
     from the cluster's scheduler, between 0.01 and 1. A unit may still use its whole limit while
@@ -137,6 +142,7 @@ class ExecutionSettings:
             ("TAKTUS_EXECUTION_EGRESS_ENFORCE", str(self.egress_enforced).lower()),
             ("TAKTUS_EXECUTION_SERVICE_ACCOUNT", self.service_account or ""),
             ("TAKTUS_EXECUTION_STATE_CLAIM", self.state_claim or ""),
+            ("TAKTUS_EXECUTION_GATEWAY_SERVICE", self.gateway_service),
             ("TAKTUS_EXECUTION_CPU_REQUEST_SHARE", str(self.cpu_request_share)),
             ("TAKTUS_EXECUTION_SERVICE_HOSTS", ",".join(self.service_hosts)),
             ("TAKTUS_EXECUTION_UNIT_ENV", ",".join(f"{n}={v}" for n, v in self.unit_env)),
@@ -165,7 +171,7 @@ class WorkerConfiguration:
 
     Every key `k` is first read as `worker.<name>.k` — the variable
     `TAKTUS_WORKER_<NAME>_K` — and, where the worker sets nothing, as the instance's own `k`:
-    the execution namespace, the egress image and the limits are shared unless a worker sets
+    the execution namespace, the gateway and the limits are shared unless a worker sets
     its own. Two keys have no such fallback. The endpoint (`worker`, read as
     `worker.<name>.endpoint`) is the worker's alone, because two workers at one endpoint are one
     worker. A credential (`credential.<name>`) is the worker's alone, because each launched
@@ -568,6 +574,7 @@ def load_execution(configuration: Configuration) -> ExecutionSettings:
         egress_enforced=reader.flag("execution.egress.enforce", True),
         service_account=reader.text("execution.service.account", "") or None,
         state_claim=reader.text("execution.state.claim", "") or None,
+        gateway_service=reader.text("execution.gateway.service", "taktus-gateway"),
         cpu_request_share=reader.number("execution.cpu.request.share", 0.25, low=0.01, high=1.0),
         service_hosts=reader.hosts("execution.service.hosts"),
         unit_env=reader.unit_env("execution.unit.env"),

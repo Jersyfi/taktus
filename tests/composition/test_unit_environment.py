@@ -64,6 +64,9 @@ class RecordingExecution:
     def isolation(self) -> Isolation:
         return Isolation.CLUSTER
 
+    async def close(self) -> None:
+        pass
+
     def launch(self, request: JobRequest) -> AbstractAsyncContextManager[Job]:
         self.requests.append(request)
         return self._refused()

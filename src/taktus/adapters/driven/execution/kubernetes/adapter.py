@@ -22,20 +22,23 @@ The third implementation of the execution port (ADR-0002), specified in
   secret;
 - **a Service** that selects the unit's pod; the control plane reaches the worker contract at
   its address;
-- **an egress proxy of its own** when the job names hosts: a second Job, never a sidecar
-  (containers in one pod share a network), behind a Service of its own, running the container
-  adapter's `egress.py` with the job's hosts — for an assignment, the frame's and the worker's
-  service hosts (ADR-0089). The unit finds it in `HTTP(S)_PROXY`, by
-  address, since a unit resolves no names. The proxy admits only the job's unit: it asks for a
-  token that only this job's Secret holds, because the namespace's network policy cannot tell
-  one job's proxy from another's. Without hosts there is no proxy and nothing to reach;
-- **one owner**: the Secret, both Services and the proxy are owned by the unit's Job, so that the
-  cluster's garbage collector removes them with it. The adapter deletes everything itself when
-  the job ends, whatever the outcome; ownership is what still removes it when the control plane
-  died first — the deadline ends the Job, the time to live deletes it, and its objects go too.
+- **the instance's egress gateway** when the job names hosts (ADR-0115): one Deployment of
+  the chart in the execution namespace, behind the Service `gateway_service`, running the
+  container adapter's `egress.py`. The job's Secret holds a token that names the job's hosts —
+  for an assignment, the frame's and the worker's service hosts (ADR-0089) — signed with the
+  gateway's key (`execution.gateway.key`) and valid until the job's deadline. The unit finds
+  the gateway in `HTTP(S)_PROXY`, by address, since a unit resolves no names, with the token as
+  the password. The gateway admits the hosts the token names and nothing else, so that the
+  namespace's network policy, which cannot tell one job from another, need not. Without hosts
+  there is no token and nothing to reach;
+- **one owner**: the Secret and the Service are owned by the unit's Job, so that the cluster's
+  garbage collector removes them with it. The adapter deletes everything itself when the job
+  ends, whatever the outcome; ownership is what still removes it when the control plane died
+  first — the deadline ends the Job, the time to live deletes it, and its objects go too.
 
 It refuses before creating anything, with the port's `ExecutionRefused`: a job it cannot give
-limits to; a job that names hosts on a cluster whose network policies are not enforced
+limits to; a job that names hosts where no gateway key is configured, or no gateway Service
+exists; a job that names hosts on a cluster whose network policies are not enforced
 (`enforce_egress=False`), because a host list nothing enforces is a line in a bundle; and, on
 such a cluster, every job whose autonomy level needs isolation (ADR-0002) — without an enforced
 policy the pod's network is open, and the cluster isolates the process and the filesystem only.
@@ -58,11 +61,15 @@ import httpx
 import structlog
 
 from taktus.adapters.driven.execution._common import (
+    GATEWAY_KEY,
+    PROXY_VARIABLES,
     ResolvedCredential,
+    gateway_key,
+    job_token,
+    proxy_url,
     resolve_credentials,
     wait_until_healthy,
 )
-from taktus.adapters.driven.execution.container import adapter as container
 from taktus.adapters.driven.execution.kubernetes.api import (
     ClusterApi,
     ClusterError,
@@ -85,17 +92,11 @@ from taktus.ports.execution import (
     unit_environment,
 )
 
-EGRESS_SOURCE = Path(container.__file__).resolve().parent / "egress.py"
-PROXY_PORT = 3128
-PROXY_USER = "taktus"
-TOKEN_KEY = "taktus-egress-token"  # noqa: S105 — the name of a key, not a value
 PROXY_URL_KEY = "taktus-egress-url"
-TOKEN_VARIABLE = "TAKTUS_EGRESS_TOKEN"  # noqa: S105 — a variable's name
+GATEWAY_SERVICE = "taktus-gateway"
+"""The gateway's Service in the execution namespace, as the chart names it by default."""
 UNIT_CONTAINER = "unit"
-EGRESS_CONTAINER = "egress"
 WORKSPACE = "/workspace"
-EGRESS_CPU = "100m"
-EGRESS_MEMORY = str(64 * 1024 * 1024)
 MIN_MEMORY_BYTES = 6 * 1024 * 1024
 """Below this a container runtime refuses a memory limit; a smaller one cannot be given."""
 LABEL_JOB = "taktus/job"
@@ -167,10 +168,6 @@ class _Names:
     @property
     def unit(self) -> str:
         return f"taktus-unit-{self.tag}"
-
-    @property
-    def egress(self) -> str:
-        return f"taktus-egress-{self.tag}"
 
     @property
     def secret(self) -> str:
@@ -255,7 +252,7 @@ class KubernetesExecution:
         namespace: str,
         state_dir: Path,
         connection: Connection | None = None,
-        egress_image: str = "python:3.13-slim",
+        gateway_service: str = GATEWAY_SERVICE,
         enforce_egress: bool = True,
         service_account: str | None = None,
         state_claim: str | None = None,
@@ -266,7 +263,9 @@ class KubernetesExecution:
     ) -> None:
         """`namespace` is the execution namespace. `connection` defaults to the pod's own
         service account. `enforce_egress` is the operator's statement that the cluster enforces
-        network policies (`execution.egress.enforce`). `state_claim` names an existing volume
+        network policies (`execution.egress.enforce`). `gateway_service` is the Service of
+        the instance's egress gateway in the namespace (`execution.gateway.service`).
+        `state_claim` names an existing volume
         claim for the unit's state, which outlives jobs; without one the state directory is an
         empty directory that dies with the job, and the startup log says so.
         `cpu_request_share` is the share of its CPU limit a unit requests from the cluster's
@@ -279,7 +278,7 @@ class KubernetesExecution:
         self._namespace = namespace
         self._state_dir = state_dir
         self._connection = connection
-        self._egress_image = egress_image
+        self._gateway_service = gateway_service
         self._enforce_egress = enforce_egress
         self._service_account = service_account
         self._state_claim = state_claim
@@ -293,6 +292,9 @@ class KubernetesExecution:
                 "with each job, so an assignment cannot resume from a checkpoint",
                 namespace=namespace,
             )
+
+    async def close(self) -> None:
+        """Nothing is held beyond a job: the gateway is the chart's."""
 
     def _api(self) -> ClusterApi:
         connection = self._connection or Connection.in_cluster()
@@ -309,13 +311,15 @@ class KubernetesExecution:
                 raise ExecutionRefused(why)
         unit_environment(request)
         credentials = resolve_credentials(self._configuration, request.credentials)
+        key = self._gateway_key(request)
         names = _Names.of(request.job_id, secrets.token_hex(3))
         api = self._api()
         job: ClusterJob | None = None
         timer: asyncio.Task[None] | None = None
         created: list[tuple[str, str]] = []
         try:
-            job = await self._start(api, request, names, credentials, created)
+            gateway = await self._gateway(api) if key is not None else None
+            job = await self._start(api, request, names, credentials, created, key, gateway)
             wall = min(
                 request.wall_seconds or request.unit.limits.wall_seconds,
                 request.unit.limits.wall_seconds,
@@ -345,6 +349,36 @@ class KubernetesExecution:
 
     # --- start --------------------------------------------------------------------------------
 
+    def _gateway_key(self, request: JobRequest) -> bytes | None:
+        """The gateway's key for a job that names hosts, None for one that names none; a job
+        that names hosts where no key is configured is refused."""
+        if not request.allowed_hosts:
+            return None
+        key = gateway_key(self._configuration)
+        if key is None:
+            raise ExecutionRefused(
+                "the job names allowed hosts, and no egress gateway key is configured: set "
+                f"{self._configuration.name(GATEWAY_KEY)}_FILE to the file of the key the "
+                "gateway verifies each job's token with (deploy/k8s/README.md §6)"
+            )
+        return key.reveal().strip().encode()
+
+    async def _gateway(self, api: ClusterApi) -> tuple[str, int]:
+        """The address and port of the instance's gateway, from its Service."""
+        service = await api.get("services", self._gateway_service)
+        if service is None:
+            raise ExecutionRefused(
+                f"the egress gateway's Service {self._gateway_service} does not exist in the "
+                f"namespace {self._namespace}: a job that names hosts has nothing to reach them "
+                "through (deploy/k8s/README.md §6)"
+            )
+        ports = (service.get("spec") or {}).get("ports") or []
+        if not ports:
+            raise ExecutionError(
+                f"the egress gateway's Service {self._gateway_service} has no port"
+            )
+        return _cluster_ip(service), int(ports[0]["port"])
+
     async def _start(
         self,
         api: ClusterApi,
@@ -352,9 +386,10 @@ class KubernetesExecution:
         names: _Names,
         credentials: tuple[ResolvedCredential, ...],
         created: list[tuple[str, str]],
+        key: bytes | None,
+        gateway: tuple[str, int] | None,
     ) -> ClusterJob:
-        hosts = bool(request.allowed_hosts)
-        has_secret = hosts or bool(credentials)
+        hosts = key is not None and gateway is not None
         unit_job = await api.create("jobs", self._unit_job(request, names, credentials, hosts))
         created.append(("jobs", names.unit))
         owner = _owner(unit_job)
@@ -364,58 +399,37 @@ class KubernetesExecution:
         )
         created.append(("services", names.unit))
         data: dict[str, str] = {}
-        if hosts:
-            proxy_service = await api.create(
-                "services", _service(names.egress, names, "egress", PROXY_PORT, owner)
+        if key is not None and gateway is not None:
+            unit = request.unit
+            token = job_token(
+                key,
+                job=names.tag,
+                hosts=request.allowed_hosts,
+                seconds=request.wall + unit.start_timeout_seconds,
             )
-            created.append(("services", names.egress))
-            token = secrets.token_urlsafe(24)
-            address = _cluster_ip(proxy_service)
-            data[TOKEN_KEY] = token
-            data[PROXY_URL_KEY] = f"http://{PROXY_USER}:{token}@{address}:{PROXY_PORT}"
+            data[PROXY_URL_KEY] = proxy_url(token, *gateway)
         for credential in credentials:
             data[credential.reference.name] = credential.value.reveal()
-        if has_secret:
+        if data:
             await api.create("secrets", _secret(names, data, owner))
             created.append(("secrets", names.secret))
-        if hosts:
-            await api.create("jobs", self._egress_job(request, names, owner))
-            created.append(("jobs", names.egress))
         endpoint = f"http://{_cluster_ip(unit_service)}:{request.unit.port}"
         log.info(
             "job started",
             job=request.job_id,
             unit=names.unit,
             namespace=self._namespace,
-            egress=names.egress if hosts else None,
+            gateway=self._gateway_service if hosts else None,
             allowed_hosts=list(request.allowed_hosts),
             credentials=[c.reference.name for c in credentials],
         )
-        cluster_job = ClusterJob(
+        return ClusterJob(
             id=request.job_id,
             endpoint=endpoint,
             name=names.unit,
             api=api,
             selector={LABEL_JOB: names.tag, LABEL_ROLE: "unit"},
         )
-        if hosts:
-            await self._wait_for_proxy(api, names, request.unit.start_timeout_seconds)
-        return cluster_job
-
-    async def _wait_for_proxy(self, api: ClusterApi, names: _Names, within: int) -> None:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + within
-        selector = {LABEL_JOB: names.tag, LABEL_ROLE: "egress"}
-        while True:
-            for pod in await api.list("pods", selector):
-                conditions = (pod.get("status") or {}).get("conditions") or []
-                if any(c.get("type") == "Ready" and c.get("status") == "True" for c in conditions):
-                    return
-            if loop.time() >= deadline:
-                raise ExecutionError(
-                    f"the job's egress proxy {names.egress} was not ready within {within}s"
-                )
-            await asyncio.sleep(0.2)
 
     def _pod_security(self) -> Json:
         return {
@@ -486,7 +500,7 @@ class KubernetesExecution:
             {"name": "TMPDIR", "value": "/tmp"},  # noqa: S108 — an empty directory of the job
         ]
         if hosts:
-            for variable in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+            for variable in PROXY_VARIABLES:
                 environment.append(_from_secret(variable, names.secret, PROXY_URL_KEY))
         mounts: list[Json] = [
             {"name": "tmp", "mountPath": "/tmp"},  # noqa: S108
@@ -541,34 +555,6 @@ class KubernetesExecution:
         return self._job(
             names.unit, names, "unit", deadline, self._pod([unit_container], volumes), None
         )
-
-    def _egress_job(self, request: JobRequest, names: _Names, owner: Json) -> Json:
-        source = EGRESS_SOURCE.read_text(encoding="utf-8")
-        resources = {"cpu": EGRESS_CPU, "memory": EGRESS_MEMORY}
-        proxy: Json = {
-            "name": EGRESS_CONTAINER,
-            "image": self._egress_image,
-            "command": ["python3", "-c", source],
-            "args": [
-                "--listen",
-                str(PROXY_PORT),
-                "--allow",
-                ",".join(request.allowed_hosts),
-                "--token-env",
-                TOKEN_VARIABLE,
-            ],
-            "env": [
-                {"name": "PYTHONDONTWRITEBYTECODE", "value": "1"},
-                _from_secret(TOKEN_VARIABLE, names.secret, TOKEN_KEY),
-            ],
-            "ports": [{"name": "proxy", "containerPort": PROXY_PORT, "protocol": "TCP"}],
-            "readinessProbe": {"tcpSocket": {"port": PROXY_PORT}, "periodSeconds": 1},
-            "resources": {"requests": dict(resources), "limits": dict(resources)},
-            "securityContext": self._container_security(),
-        }
-        unit = request.unit
-        deadline = unit.limits.wall_seconds + unit.start_timeout_seconds
-        return self._job(names.egress, names, "egress", deadline, self._pod([proxy], []), owner)
 
     # --- end ----------------------------------------------------------------------------------
 

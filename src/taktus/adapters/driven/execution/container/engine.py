@@ -97,6 +97,16 @@ class Engine:
     async def connect(self, network: str, container: str) -> None:
         await self._request("POST", f"/networks/{network}/connect", json={"Container": container})
 
+    async def disconnect(self, network: str, container: str) -> None:
+        """Take the container off the network; a container or a network already gone is not
+        an error."""
+        await self._request(
+            "POST",
+            f"/networks/{network}/disconnect",
+            json={"Container": container, "Force": True},
+            ok=(200, 404),
+        )
+
     async def remove_network(self, network: str) -> None:
         await self._request("DELETE", f"/networks/{network}", ok=(204, 404))
 

@@ -58,12 +58,14 @@ PERMITTED: frozenset[tuple[str, str]] = frozenset(
         ("secrets", "create"),
         ("secrets", "delete"),
         ("services", "create"),
+        ("services", "get"),
         ("services", "delete"),
     }
 )
 """Every call the adapter may make, as (resource, verb): the Role of `deploy/k8s/README.md` §1.
 No `get` or `list` on secrets: Taktus writes a job's credentials into the namespace and can never
-read one back. `watch` on jobs is granted and not used yet; polling suffices."""
+read one back. `get` on services reads the address of the instance's egress gateway (ADR-0115).
+`watch` on jobs is granted and not used yet; polling suffices."""
 
 
 class ClusterError(ExecutionError):

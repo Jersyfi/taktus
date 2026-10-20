@@ -179,9 +179,9 @@ execution:
     startTimeoutSeconds: 120
     # The hosts a launched worker's own service needs to work at all — its agent's or its
     # model's provider — by name, as a frame names a host (TAKTUS_EXECUTION_SERVICE_HOSTS,
-    # README §6, ADR-0089). A unit reaches them, through its egress proxy, for an assignment and
-    # for the conformance suite, beside the hosts of the step's frame; a probe reaches none.
-    # A worker of `workers` may set its own. The proxy still connects only on `egress.ports`.
+    # README §6, ADR-0089). A unit reaches them, through the egress gateway, for an assignment
+    # and for the conformance suite, beside the hosts of the step's frame; a probe reaches none.
+    # A worker of `workers` may set its own. The gateway still connects only on `egress.ports`.
     serviceHosts: []
     # The variables a launched worker's own program needs to start, NAME: value
     # (TAKTUS_EXECUTION_UNIT_ENV, README §7, ADR-0090) — the coding worker's CODING_AGENT_AUTH.
@@ -191,12 +191,25 @@ execution:
     # credential the worker is configured with) stops the daemon's start. A secret is a
     # credential under `credentials`. A worker of `workers` replaces the map with its own.
     unitEnv: {}
+  # The instance's egress gateway (README §6, ADR-0115): one Deployment in the execution
+  # namespace, from the control plane's image, through which every unit reaches the hosts its
+  # job's token names. Rendered when a worker runs in the cluster, and then its key is required:
+  # an existing Secret of this name in BOTH namespaces, with the same random value of at least
+  # 32 bytes under `keyKey` (CREDENTIALS.md, gateway key). The runner signs each job's token
+  # with it; the gateway checks it.
+  gateway:
+    replicas: 2
+    keySecret: ""
+    keyKey: ""
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 128Mi }
   egress:
-    proxyImage: "python:3.13-slim"  # the per-job egress proxy (README §6): any image with python3
-    proxyPort: 3128
+    proxyImage: "python:3.13-slim"  # the container adapter's gateway (TAKTUS_EXECUTION=container): any image with python3
+    proxyPort: 3128                 # the gateway's port, in the cluster and in a container
     enforce: true          # false refuses nothing and records that the frame was not enforced (README §6)
-    # Where the proxy may connect: these ports, to any address outside these ranges. The ranges
-    # keep it off the cluster's own networks and the link-local metadata address.
+    # Where the gateway may connect: these ports, to any address outside these ranges. The
+    # ranges keep it off the cluster's own networks and the link-local metadata address.
     ports: [443]
     exceptCidrs:
       - 10.0.0.0/8

@@ -167,6 +167,19 @@ async def test_a_connector_operation_without_a_declared_demand_is_refused() -> N
     assert h.connector.calls == [], "nothing was called"
 
 
+async def test_a_launched_worker_without_an_estimator_is_refused_and_nothing_starts() -> None:
+    """ADR-0115: a launched worker is estimated by the estimator it declares; one that declares
+    none is not started to be asked, and its step has no estimate."""
+    fake = FakeWorker(no_estimator=True)
+    h = Harness(worker("do"), workers=[fake])
+    run = await h.start(Limits(compute=ComputeLimit(seconds=60, resource_class="cpu.small")))
+    assert run.state is RunState.HALTED and run.cause is Cause.NO_ESTIMATE
+    do = run.step_run("do")
+    assert do.state is StepState.REJECTED and "declares no estimator" in (do.reason or "")
+    assert fake.assignments == [], "the worker was never handed the step"
+    assert "step.rejected:do:no_estimate" in await h.kinds(run)
+
+
 async def test_a_rule_demands_nothing_and_that_is_an_estimate() -> None:
     h = Harness(rule("one", {"rule": "constant", "value": 1}))
     run = await h.start()

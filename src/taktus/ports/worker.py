@@ -123,6 +123,10 @@ class Capabilities(Value):
     consumption: ConsumptionDeclaration
     supports: Supports
     max_concurrent_assignments: int = Field(ge=1)
+    estimator: Estimator | None = None
+    """How the worker's estimate follows from an assignment without asking the worker, where it
+    declares one. A launched worker is estimated by it alone, so that no unit starts before
+    admission (ADR-0115); a worker reached by endpoint is still asked."""
 
 
 class Health(Value):
@@ -292,6 +296,54 @@ class Estimate(ConsumptionQuantities):
     confidence: Confidence
     wall_seconds: int = Field(ge=0)
     steps: int = Field(ge=0)
+
+
+class FixedEstimator(Value):
+    """Every assignment is estimated the same: `estimate`."""
+
+    kind: Literal["fixed"]
+    estimate: Estimate
+
+    def of(self, request: EstimateRequest) -> Estimate:
+        return self.estimate
+
+
+class PerItemEstimator(Value):
+    """An assignment is estimated by the items of one list in its task's inputs: `each` once
+    for every item of `task.inputs[input]`, and `otherwise` where the task carries no such
+    list or an empty one."""
+
+    kind: Literal["per_item"]
+    input: str = Field(min_length=1)
+    each: Estimate
+    otherwise: Estimate
+
+    def of(self, request: EstimateRequest) -> Estimate:
+        items = (request.task.inputs or {}).get(self.input)
+        if not isinstance(items, list) or not items:
+            return self.otherwise
+        return Estimate.model_validate(_times(self.each.model_dump(exclude_none=True), len(items)))
+
+
+type Estimator = Annotated[FixedEstimator | PerItemEstimator, Field(discriminator="kind")]
+"""What a worker declares in its capabilities so that its estimate can be had without it
+(contracts/worker/v1 §2, ADR-0115). The engine calibrates what it yields from the ledger, as it
+calibrates an answer of `POST /v1/estimate` (ADR-0005)."""
+
+
+def _times(value: Any, n: int) -> Any:
+    """Every quantity of a dumped estimate `n` times; names, classes and the confidence as
+    they are."""
+    if isinstance(value, bool) or isinstance(value, str):
+        return value
+    if isinstance(value, int | float):
+        return value * n
+    if isinstance(value, dict):
+        return {key: _times(item, n) for key, item in value.items()}
+    return value
+
+
+Capabilities.model_rebuild()
 
 
 class AssignmentState(Value):
@@ -485,6 +537,12 @@ class WorkerAtCapacity(WorkerError):
     same work may be handed over again later. The worker is the one party that sees every
     assignment it holds, from every runner and every instance, so its answer is what decides
     whether there is a free place (ADR-0037)."""
+
+
+class NoEstimator(WorkerError):
+    """The worker declares no estimator, and asking it would start a unit before admission: a
+    launched worker is not started to be asked (ADR-0115). The step has no estimate, and a step
+    without one is refused (ADR-0005, third amendment)."""
 
 
 class UnknownAssignment(WorkerError):

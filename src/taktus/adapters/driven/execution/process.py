@@ -133,6 +133,9 @@ class ProcessExecution:
         """Whether this system lets the adapter enforce a unit's memory limit."""
         return self._system.startswith("linux")
 
+    async def close(self) -> None:
+        """Nothing is held beyond a job: a process unit has no gateway."""
+
     @asynccontextmanager
     async def launch(self, request: JobRequest) -> AsyncIterator[ProcessJob]:
         if (why := refusal(self.isolation, request.autonomy_level)) is not None:

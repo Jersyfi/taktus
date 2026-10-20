@@ -12,7 +12,7 @@ import asyncio
 import json
 import subprocess
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -72,7 +72,9 @@ PROBE = (
 
 
 @pytest.fixture
-def execution(engine_socket: str, tmp_path: Path) -> ContainerExecution:
+async def execution(engine_socket: str, tmp_path: Path) -> AsyncIterator[ContainerExecution]:
+    """The adapter with a gateway key drawn for the test: its gateway is the test's alone, and
+    closing the adapter removes it."""
     (tmp_path / "token").write_text(PLANTED + "\n", encoding="utf-8")
     (tmp_path / "key").write_text("key-77aa\n", encoding="utf-8")
     configuration = EnvironmentConfiguration(
@@ -81,7 +83,11 @@ def execution(engine_socket: str, tmp_path: Path) -> ContainerExecution:
             "TAKTUS_CREDENTIAL_SIGNING_KEY_FILE": str(tmp_path / "key"),
         }
     )
-    return ContainerExecution(configuration, socket=engine_socket, state_dir=tmp_path / "state")
+    adapter = ContainerExecution(configuration, socket=engine_socket, state_dir=tmp_path / "state")
+    try:
+        yield adapter
+    finally:
+        await adapter.close()
 
 
 def unit(image: str, **more: Any) -> ExecutionUnit:
@@ -151,9 +157,14 @@ async def test_the_job_is_walled_in_and_torn_down(
             outputs = await run_commands(job, LOOK_AROUND)
             unit_name = inspected["Name"].lstrip("/")
             network = host_config["NetworkMode"]
-        # Torn down: the containers and the network are gone, the state volume stays.
+            gateway = await engine.inspect(job.gateway) or {}
+            assert network in gateway["NetworkSettings"]["Networks"], "the gateway joined it"
+        # Torn down: the unit and the network are gone, the state volume stays, and the
+        # gateway serves the next job, off this job's network.
         assert await engine.inspect(unit_name) is None
-        assert await engine.inspect(job.egress) is None
+        gateway = await engine.inspect(job.gateway) or {}
+        assert gateway["State"]["Running"]
+        assert network not in gateway["NetworkSettings"]["Networks"]
         listing = subprocess.run(
             ["docker", "network", "ls", "--format", "{{.Name}}"],
             capture_output=True,
@@ -229,7 +240,10 @@ async def test_an_empty_allowlist_reaches_nothing_and_a_named_host_is_reached_th
             outputs["output-2"].startswith("refused 403")
             and "not in the allowlist" in outputs["output-2"]
         )
-        assert outputs["output-3"].strip().startswith("http://taktus-egress-")
+        proxy = outputs["output-3"].strip()
+        assert proxy.startswith("http://taktus:") and f"@{job.gateway}:3128" in proxy, (
+            "the instance's gateway, with the job's token"
+        )
 
         request = JobRequest(
             job_id="asg_nohost", unit=unit(reference_worker_image), autonomy_level=4
@@ -240,6 +254,74 @@ async def test_an_empty_allowlist_reaches_nothing_and_a_named_host_is_reached_th
             )
         assert outputs["output-1"].startswith("unreachable"), outputs["output-1"]
         assert outputs["output-2"].strip() == "no-proxy"
+
+
+async def test_units_share_one_gateway_and_reach_nothing_of_each_other(
+    execution: ContainerExecution, reference_worker_image: str, engine_socket: str
+) -> None:
+    """ADR-0115: two jobs at once are served by one gateway, and each reaches what its own
+    token names and nothing else. A job whose hosts name the other job's unit is refused at the
+    gateway; it has no route to the other unit, and none to the gateway's inbound port, through
+    which the control plane reaches every unit. Without a token, or with a token the gateway's
+    key did not sign, the gateway answers 407."""
+    async with Engine(engine_socket) as engine, two_hosts(engine) as (allowed, other):
+        async with AsyncExitStack() as stack:
+            first = await stack.enter_async_context(
+                execution.launch(
+                    JobRequest(
+                        job_id="asg_first",
+                        unit=unit(reference_worker_image),
+                        autonomy_level=4,
+                        allowed_hosts=(allowed,),
+                    )
+                )
+            )
+            first_name = await unit_name_of(engine, first)
+            second = await stack.enter_async_context(
+                execution.launch(
+                    JobRequest(
+                        job_id="asg_second",
+                        unit=unit(reference_worker_image),
+                        autonomy_level=4,
+                        allowed_hosts=(other, first_name),
+                    )
+                )
+            )
+            assert first.gateway == second.gateway, "one gateway for both jobs"
+            second_name = await unit_name_of(engine, second)
+            gateway = await engine.inspect(first.gateway) or {}
+            networks = gateway["NetworkSettings"]["Networks"]
+            inbound = next(
+                n["IPAddress"] for name, n in networks.items() if not name.startswith("taktus-job-")
+            )
+            port = unit(reference_worker_image).port
+            mine = await run_commands(
+                first,
+                [
+                    REACH.format(host=second_name, port=port),
+                    REACH.format(host=inbound, port=8080),
+                    ASK.format(header=""),
+                    ASK.format(header=FORGED),
+                ],
+                hosts=(allowed,),
+            )
+            theirs = await run_commands(
+                second,
+                [
+                    PROBE.format(host=allowed),
+                    PROBE.format(host=other),
+                    PROBE.format(host=first_name),
+                ],
+                hosts=(other, first_name),
+            )
+    assert theirs["output-1"].startswith("refused 403"), "the first job's host is not the second's"
+    assert theirs["output-2"].strip() == "reached 200", "its own host is"
+    assert mine["output-1"].startswith("unreachable"), "no route to another unit"
+    assert mine["output-2"].startswith("unreachable"), "no route to the gateway's inbound port"
+    assert mine["output-3"].startswith("refused 407"), "no token, no proxy"
+    assert mine["output-4"].startswith("refused 407"), "a token the gateway did not sign"
+    assert theirs["output-3"].startswith("refused 502"), theirs["output-3"]
+    assert "job's network" in theirs["output-3"], "a token that names a unit does not reach it"
 
 
 async def test_a_job_that_exceeds_its_memory_limit_is_killed_and_says_so(
@@ -293,6 +375,32 @@ async def test_the_wall_clock_kills_a_job(
 
 
 # --- helpers ----------------------------------------------------------------------------------
+
+# A plain connection, past any proxy: what the job's network itself lets through.
+REACH = (
+    'python3 -c "import socket\n'
+    "try:\n"
+    "    socket.create_connection(('{host}', {port}), timeout=3)\n"
+    "    print('reached')\n"
+    "except Exception as e:\n"
+    "    print('unreachable', type(e).__name__)\""
+)
+# A request through the proxy the environment names, with the authorisation the command gives
+# in place of the job's own token.
+ASK = (
+    'python3 -c "import os, socket, urllib.parse\n'
+    "proxy = urllib.parse.urlsplit(os.environ['HTTP_PROXY'])\n"
+    "s = socket.create_connection((proxy.hostname, proxy.port), timeout=5)\n"
+    "s.sendall(b'CONNECT example.org:443 HTTP/1.1\\r\\n{header}\\r\\n')\n"
+    "line = s.recv(200).split(b'\\r\\n')[0].decode()\n"
+    "print('refused' if ' 200 ' not in line else 'reached', line.split(' ')[1])\""
+)
+# A token in the gateway's shape whose signature no key of the instance made.
+FORGED = "Proxy-Authorization: Basic dGFrdHVzOmV5SjJJam94ZlEuQUFBQQ==\\r\\n"
+
+
+async def unit_name_of(engine: Engine, job: ContainerJob) -> str:
+    return ((await engine.inspect(job.unit)) or {})["Name"].lstrip("/")
 
 
 def listed(kind: str) -> list[str]:

@@ -12,7 +12,9 @@ set and in every report that relies on it (point 6) · amended 2026-10-11 (NTC-0
 budget holds the money of compute seconds at the run's price table, and refuses compute the table
 does not price (§*Fourth amendment*) · amended 2026-10-15 (DEC-0202): a worker that reports money
 per step halts at what is left of the run's money, and a worker step whose estimate fits is
-never refused for its calibrated error (§*Seventh amendment*)
+never refused for its calibrated error (§*Seventh amendment*) · amended 2026-10-20 (ADR-0115):
+a launched worker is estimated by the estimator it declares, and no unit starts before
+admission (§*Eighth amendment*)
 
 ## Context
 A limit enforced by aborting destroys work and money at the same time: the tokens are spent and the
@@ -347,6 +349,25 @@ step `stopped` with its checkpoint; a runner completes its job, and nothing cont
 person resumes it with a raised limit, and the step continues from its checkpoint, or gives
 the task back (ADR-0097). An agent that ends on its limit of turns ends its assignment `stopped`
 at its last boundary the same way (#380).
+
+## Eighth amendment — a launched worker is estimated without a unit (2026-10-20)
+
+A launched worker exists only while a job does. Until now the engine's question for its
+estimate started a unit with no credential, asked it and ended it: two units per worker step
+(`docs/research/2026-10-12-devops-review.md` §E2). ADR-0115 decides it, and what follows is
+built (#324).
+
+- **A worker declares its estimator in its capabilities** (`contracts/worker/v1` §5): `fixed`,
+  or `per_item` over a list in the task's inputs. A launched worker is estimated by it, and no
+  unit starts before admission.
+- **Calibration is unchanged.** What the estimator yields is the worker's estimate, recorded and
+  scaled by the worker's measured error as point 4 of the second amendment says.
+- **A launched worker without an estimator is refused**, `no_estimate`, as the third amendment's
+  point 2 refuses every step that cannot be estimated. A worker reached by endpoint is still
+  asked.
+
+The table of the third amendment, point 2, reads for `worker`: the worker's declared estimator
+for a launched worker, its answer to `POST /v1/estimate` for one reached by endpoint.
 
 ## Where this promise ends
 

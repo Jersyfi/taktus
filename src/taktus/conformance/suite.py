@@ -182,7 +182,7 @@ async def run_suite(options: SuiteOptions) -> Report:
             await _health(client, report)
             capabilities = await _w01(client, findings)
             declared = _declared_tools(capabilities)
-            estimate = await _w02(client, findings, declared, options)
+            estimate = await _w02(client, findings, declared, options, capabilities)
             fitting = _fitting_limits(capabilities, estimate)
 
             main = await _run(client, options, "main", declared, fitting)
@@ -272,7 +272,11 @@ def _declared_tools(capabilities: Json) -> list[str]:
 
 
 async def _w02(
-    client: WorkerClient, findings: Findings, declared: list[str], options: SuiteOptions
+    client: WorkerClient,
+    findings: Findings,
+    declared: list[str],
+    options: SuiteOptions,
+    capabilities: Json,
 ) -> Json | None:
     assignment = _assignment(options, declared, {"quota": {"units": GENEROUS}})
     body = {k: assignment[k] for k in ("task", "context", "frame")}
@@ -287,12 +291,69 @@ async def _w02(
     if why is not None:
         findings.fail("W-02", f"the body does not validate against Estimate: {why}")
         return None
+    estimator = capabilities.get("estimator")
+    if isinstance(estimator, dict):
+        yielded = declared_estimate(estimator, body["task"])
+        short = below(yielded, estimate)
+        if short:
+            findings.fail(
+                "W-02",
+                f"the declared {estimator.get('kind')} estimator yields less than the answer of "
+                f"POST /v1/estimate for the same request: {', '.join(short)}",
+            )
+            return estimate
     findings.ok(
         "W-02",
         f"answered with confidence {estimate['confidence']!r}, {estimate['steps']} step(s), "
-        f"{estimate['wall_seconds']}s wall time",
+        f"{estimate['wall_seconds']}s wall time"
+        + (
+            f"; its declared {estimator.get('kind')} estimator yields no less"
+            if isinstance(estimator, dict)
+            else ""
+        ),
     )
     return estimate
+
+
+def declared_estimate(estimator: Json, task: Json) -> Json:
+    """What a declared estimator yields for a task (contracts/worker/v1 §5): `fixed` its
+    estimate; `per_item` its `each` once per item of `task.inputs[input]`, else `otherwise`."""
+    if estimator.get("kind") == "fixed":
+        return dict(estimator.get("estimate") or {})
+    items = (task.get("inputs") or {}).get(estimator.get("input"))
+    if not isinstance(items, list) or not items:
+        return dict(estimator.get("otherwise") or {})
+    each: Json = _times(dict(estimator.get("each") or {}), len(items))
+    return each
+
+
+def _times(value: Any, n: int) -> Any:
+    if isinstance(value, bool | str):
+        return value
+    if isinstance(value, int | float):
+        return value * n
+    if isinstance(value, dict):
+        return {key: _times(item, n) for key, item in value.items()}
+    return value
+
+
+def below(declared: Json, answered: Json, path: str = "") -> list[str]:
+    """Every quantity of the worker's answer that the declared estimate does not reach, as
+    `name: declared < answered`; the confidence and the count of steps describe and are not
+    held."""
+    short: list[str] = []
+    for name, value in answered.items():
+        if not path and name in ("confidence", "steps", "resource_class"):
+            continue
+        where = f"{path}{name}"
+        mine = declared.get(name) if isinstance(declared, dict) else None
+        if isinstance(value, dict):
+            short += below(mine if isinstance(mine, dict) else {}, value, f"{where}.")
+        elif isinstance(value, int | float) and not isinstance(value, bool):
+            held = mine if isinstance(mine, int | float) else 0
+            if held + 1e-6 < value:
+                short.append(f"{where}: {held} < {value}")
+    return short
 
 
 # --- building assignments -----------------------------------------------------------------------

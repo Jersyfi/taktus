@@ -279,6 +279,7 @@ from taktus.ports.worker import (
     Context,
     Frame,
     Limits,
+    NoEstimator,
     Outcome,
     ResolvedWorker,
     StepBoundary,
@@ -3087,18 +3088,25 @@ class RunEngine:
         # step with that cause; the run escalates and nothing is left half done. A worker at
         # capacity while it estimates — a platform without room for its unit — makes the step
         # wait, as at the hand-over (ADR-0037 §6).
+        # A launched worker is estimated by the estimator it declares, and starts no unit for
+        # it; one that declares none has no estimate, and its step is refused (ADR-0115).
+        why_not: str | None = None
         try:
             async with self._telemetry.span("worker.estimate", call):
                 estimate = await worker.estimate(assignment.estimate_request())
+        except NoEstimator as error:
+            estimate = None
+            why_not = str(error)
         except WorkerAtCapacity as error:
             return await self._full(run, step_run, work, adapter, resuming, span, error)
         except WorkerError as error:
             return await self._unavailable(run, step_run, adapter, span, error)
         demand = ConsumptionQuantities.model_validate(
-            {**estimate.quantities(), "resource_class": estimate.resource_class}
+            {}
+            if estimate is None
+            else {**estimate.quantities(), "resource_class": estimate.resource_class}
         )
-        why_not: str | None = None
-        if isinstance(work, MlWork) and work.fallback is not None:
+        if why_not is None and isinstance(work, MlWork) and work.fallback is not None:
             # A moved step may hand its case to the language model it was moved from: it is
             # admitted for both, the prediction and the completion (ADR-0114 §4).
             try:

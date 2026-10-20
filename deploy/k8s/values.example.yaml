@@ -12,6 +12,9 @@ image:
 execution:
   namespace: taktus-execution
   image: "taktus-worker-coding:0.1.0"
+  gateway:
+    keySecret: taktus-gateway
+    keyKey: key
 
 database:
   passwordSecret: taktus-database
