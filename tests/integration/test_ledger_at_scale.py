@@ -18,6 +18,7 @@ every entry once; its time is printed, not bounded.
 
 from __future__ import annotations
 
+import statistics
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -203,8 +204,8 @@ async def test_half_a_million_entries_cost_a_run_start_and_a_ledger_read_what_th
         headers = {"Authorization": f"Bearer {key}"}
         async with httpx.AsyncClient(base_url=base, timeout=120) as http:
             # The first request pays for the connection and the warm caches. The bound holds
-            # for the request itself: the fastest of several, so that a parallel `make verify`
-            # stealing the processor during one of them does not fail the requirement (#528).
+            # for the request itself: the median of five, so that a parallel `make verify` stealing
+            # the processor during one request does not fail the requirement (#528).
             answer = await http.get(f"/runs/{run_id}/ledger", headers=headers)
             # Later reads move the checkpoint on, so the first answer is the one inspected.
             timed: list[float] = []
@@ -213,10 +214,10 @@ async def test_half_a_million_entries_cost_a_run_start_and_a_ledger_read_what_th
                 again = await http.get(f"/runs/{run_id}/ledger", headers=headers)
                 timed.append(time.perf_counter() - started)
                 assert again.status_code == 200, again.text
-        reading = min(timed)
+        reading = statistics.median(timed)
         print(
-            f"GET /runs/{{id}}/ledger: best {reading * 1000:.1f} ms of {LEDGER_READS}, "
-            f"worst {max(timed) * 1000:.1f} ms"
+            f"GET /runs/{{id}}/ledger: median {reading * 1000:.1f} ms of {LEDGER_READS}, "
+            f"best {min(timed) * 1000:.1f} ms, worst {max(timed) * 1000:.1f} ms"
         )
         assert answer.status_code == 200, answer.text
         assert reading < LEDGER_SECONDS, timed
