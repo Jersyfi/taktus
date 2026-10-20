@@ -1,0 +1,27 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "time.clock"
+  ],
+  "credential": "VENDOR_TOKEN",
+  "operations": [
+    {
+      "tool": "get_current_time",
+      "name": "time.clock.now",
+      "capability": "time.clock",
+      "effect": "read",
+      "demand": {
+        "quota_units": 2
+      }
+    },
+    {
+      "tool": "convert_time",
+      "name": "time.clock.convert",
+      "capability": "time.clock",
+      "effect": "read",
+      "demand": {
+        "quota_units": 2
+      }
+    }
+  ]
+}

@@ -109,7 +109,7 @@ from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
-from taktus.composition.maturity import CatalogMaturities
+from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
 from taktus.composition.proposals import InstanceChanges
@@ -381,6 +381,10 @@ class LocalWiring:
             )
             yield Services(
                 conformance=conformance,
+                catalogue=InstanceCatalogue(
+                    pools,
+                    CatalogMaturities(stores.of(AdapterMaturity), stores.work, pools),
+                ),
                 deactivate=DeactivateProcessHandler(stores.of(Process), stores.work, ledger),
                 register_version=register_version,
                 commission=commission,

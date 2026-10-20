@@ -262,7 +262,7 @@
     },
     "Capabilities": {
       "title": "Capabilities",
-      "description": "What the connector declares about itself, served as the MCP resource taktus://connector/v1/capabilities. Capabilities are named by function, never by product. Every operation listed here is an MCP tool of the same name, and every tool the connector serves is listed here; intake is the one tool that is not an operation. permissions is constant passthrough: the connector acts with the credentials of the requesting identity and never widens what that identity may do; it is declared so that a reader sees the obligation.",
+      "description": "What the connector declares about itself, served as the MCP resource taktus://connector/v1/capabilities. Capabilities are named by function, never by product. Every operation listed here is an MCP tool of the same name, and every tool the connector serves is listed here; intake is the one tool that is not an operation. permissions is constant passthrough: the connector acts with the credentials of the requesting identity and never widens what that identity may do; it is declared so that a reader sees the obligation. wrapped is present when the connector puts a vendor's own MCP server behind this contract (ADR-0117): manifest is then the digest of the manifest that declares the server's operations, and without one every operation is a read.",
       "type": "object",
       "properties": {
         "contract": {
@@ -303,6 +303,9 @@
         },
         "permissions": {
           "const": "passthrough"
+        },
+        "wrapped": {
+          "$ref": "#/$defs/Wrapped"
         }
       },
       "required": [
@@ -313,6 +316,44 @@
         "consumption",
         "permissions"
       ],
+      "additionalProperties": false,
+      "if": {
+        "required": [
+          "wrapped"
+        ],
+        "properties": {
+          "wrapped": {
+            "not": {
+              "required": [
+                "manifest"
+              ]
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operations": {
+            "items": {
+              "properties": {
+                "effect": {
+                  "const": "read"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Wrapped": {
+      "title": "Wrapped",
+      "description": "That the connector serves a vendor's own MCP server through this contract rather than its own code, and under which manifest (ADR-0117). manifest is the digest of the manifest's bytes, so that a changed manifest is another configuration and a conformance pass taken under the old one no longer counts. Absent manifest: the vendor's server is served read only, with the tools it marks as reading and nothing else, and its maturity stays experimental.",
+      "type": "object",
+      "properties": {
+        "manifest": {
+          "$ref": "../../shared/v1/Artifact.json#/$defs/digest"
+        }
+      },
       "additionalProperties": false
     },
     "CredentialReference": {
@@ -1051,6 +1092,200 @@
         }
       },
       "minProperties": 1,
+      "additionalProperties": false
+    },
+    "ResultPointer": {
+      "title": "ResultPointer",
+      "description": "A JSON pointer (RFC 6901) into the structured content a vendor's tool answers with, naming one value of it. At least one segment: the whole answer is never a single value.",
+      "type": "string",
+      "pattern": "^(/([^/~]|~[01])*)+$"
+    },
+    "ManifestRecord": {
+      "title": "ManifestRecord",
+      "description": "Where an outward tool's answer names the record it created, updated or delivered: the record's kind, and pointers to its identifier and, where the vendor gives one, its address. The effect report names that record, and the egress entry references it.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "What the record is, as a lowercase dotted token, as Record.kind.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "id": {
+          "$ref": "#/$defs/ResultPointer"
+        },
+        "url": {
+          "$ref": "#/$defs/ResultPointer"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "ManifestOperation": {
+      "title": "ManifestOperation",
+      "description": "One tool of a vendor's MCP server, declared as an operation of this contract. tool is the vendor's own name for it; name, capability, effect, idempotency, demand and summary mean what they mean in Operation. Two idempotencies are offered: native, where the vendor's tool takes a key itself — key_argument names the argument the idempotency key is passed in, and replayed points at the boolean of the answer that says the vendor recognised a repeat — and none, where Taktus never repeats the call on its own. marked is not offered: it needs a lookup in the target system before acting, which a wrapper cannot know for a server it did not write. An outward operation names where its answer names the record. demand defaults to one request; summary to the vendor's description of the tool.",
+      "type": "object",
+      "properties": {
+        "tool": {
+          "description": "The tool's name as the vendor's server lists it.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "name": {
+          "$ref": "#/$defs/OperationName"
+        },
+        "capability": {
+          "$ref": "../../shared/v1/Capability.json"
+        },
+        "effect": {
+          "$ref": "#/$defs/Effect"
+        },
+        "idempotency": {
+          "enum": [
+            "native",
+            "none"
+          ]
+        },
+        "key_argument": {
+          "description": "The argument of the vendor's tool that takes the idempotency key.",
+          "type": "string",
+          "minLength": 1
+        },
+        "replayed": {
+          "$ref": "#/$defs/ResultPointer"
+        },
+        "record": {
+          "$ref": "#/$defs/ManifestRecord"
+        },
+        "demand": {
+          "$ref": "#/$defs/Demand"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "tool",
+        "name",
+        "capability",
+        "effect"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "effect": {
+                "const": "read"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "idempotency"
+                  ]
+                },
+                {
+                  "required": [
+                    "key_argument"
+                  ]
+                },
+                {
+                  "required": [
+                    "replayed"
+                  ]
+                },
+                {
+                  "required": [
+                    "record"
+                  ]
+                }
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "idempotency",
+              "record"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "idempotency"
+            ],
+            "properties": {
+              "idempotency": {
+                "const": "native"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "key_argument",
+              "replayed"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "key_argument"
+                  ]
+                },
+                {
+                  "required": [
+                    "replayed"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Manifest": {
+      "title": "Manifest",
+      "description": "What an operator declares about a vendor's own MCP server, so that it can serve as a connector (ADR-0117): which of its tools are operations, under which capability, with which effect and, for an effect that leaves the system, which idempotency. The wrapper serves exactly the tools listed here and refuses every other. A tool the vendor marks as reading may be declared read; a tool the vendor marks as not reading or as destructive may not. credential names the requesting identity's credential the wrapper sends to the vendor's server as a bearer token. The manifest is the wrapper's input, not a wire object: it never travels to Taktus, and the declaration names it by its digest.",
+      "type": "object",
+      "properties": {
+        "contract": {
+          "const": "connector/v1"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "../../shared/v1/Capability.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "credential": {
+          "$ref": "#/$defs/CredentialName"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ManifestOperation"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "contract",
+        "capabilities",
+        "credential",
+        "operations"
+      ],
       "additionalProperties": false
     }
   }

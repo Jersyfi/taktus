@@ -1,5 +1,6 @@
 """`taktusctl conformance record`: the instance runs an adapter's conformance suite against the
 endpoint its configuration resolves for it, and records what it found (ADR-0044).
+`taktusctl conformance list` prints every configured adapter with its maturity (ADR-0117).
 
 The command names the adapter identifier and nothing else that the record could rest on: no
 endpoint, no report, no verdict, no date. The endpoint is the configuration's; the outcome is
@@ -23,7 +24,7 @@ from taktus.adapters.driving.cli.run_command import (
     DEFAULT_WORKER,
     resolve_identity,
 )
-from taktus.adapters.driving.cli.wiring import NotOperable, Wiring
+from taktus.adapters.driving.cli.wiring import CatalogueEntry, NotOperable, Wiring
 from taktus.components.catalog.application.service import RunConformance
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.catalog.ports import NotConfigured, NotRunnable
@@ -108,3 +109,60 @@ def record(
     typer.echo(f"  ledger: {entry.kind} seq {entry.seq}, evidence {entry.content_digest}")
     typer.echo("  the report is in the object store under that digest, with the configuration")
     raise typer.Exit(code=0 if result.passed else EXIT_NOT_PASSED)
+
+
+def listing(
+    ctx: typer.Context,
+    worker: Annotated[
+        str,
+        typer.Option(
+            "--worker",
+            envvar="TAKTUS_WORKER",
+            help="Base URL of the configured worker, as for `taktusctl run`.",
+        ),
+    ] = DEFAULT_WORKER,
+    state_dir: Annotated[
+        Path,
+        typer.Option(
+            "--state-dir",
+            envvar="TAKTUS_STATE_DIR",
+            help="Where the state is, without a database (development only).",
+        ),
+    ] = Path(DEFAULT_STATE_DIR),
+    tenant: Annotated[
+        str,
+        typer.Option("--tenant", envvar="TAKTUS_TENANT", help="The tenant whose records they are."),
+    ] = DEFAULT_TENANT,
+) -> None:
+    """List every configured adapter with its maturity and what keeps it from *verified*.
+
+    A connector that serves a vendor's MCP server says so, and under which manifest; without
+    one it is read only and stays experimental (ADR-0117). It reads the declarations and the
+    records; it runs no suite and records nothing.
+    """
+    wiring: Wiring = ctx.obj
+    where = Path(os.path.expanduser(state_dir))
+
+    async def act() -> list[CatalogueEntry]:
+        async with wiring.services(state_dir=where, worker_endpoint=worker) as services:
+            if services.catalogue is None:
+                raise NotOperable("this instance keeps no catalogue of its adapters")
+            return await services.catalogue.entries(tenant)
+
+    try:
+        entries = asyncio.run(act())
+    except NotOperable as error:
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(code=EXIT_NOT_RUN) from error
+    for entry in entries:
+        maturity = entry.maturity or "not an integration"
+        serves = ", ".join(entry.serves) or "nothing declared"
+        typer.echo(f"{entry.adapter}  {maturity}  serves {serves}")
+        if entry.vendor_server:
+            typer.echo(
+                f"  a vendor's MCP server, under the manifest {entry.manifest}"
+                if entry.manifest
+                else "  a vendor's MCP server without a manifest: read only"
+            )
+        for gap in entry.missing:
+            typer.echo(f"  missing: {gap}")

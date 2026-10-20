@@ -1,0 +1,36 @@
+{
+  "contract": "connector/v1",
+  "version": "1.0.0+vendor.2026.10.19",
+  "capabilities": [
+    "notes.pages"
+  ],
+  "operations": [
+    {
+      "name": "notes.pages.create",
+      "capability": "notes.pages",
+      "effect": "write",
+      "idempotency": "native",
+      "demand": {
+        "quota_units": 1
+      },
+      "summary": "Create a note. The vendor's tool recognises a repeated request_id itself."
+    }
+  ],
+  "credentials": [
+    {
+      "name": "VENDOR_TOKEN",
+      "purpose": "actions"
+    }
+  ],
+  "consumption": {
+    "kinds": [
+      "quota"
+    ],
+    "unit": "requests",
+    "window_seconds": 60
+  },
+  "permissions": "passthrough",
+  "wrapped": {
+    "manifest": "sha256:4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f"
+  }
+}

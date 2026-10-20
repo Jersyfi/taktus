@@ -156,6 +156,14 @@ class IntakeDeclaration(Value):
         return self
 
 
+class Wrapped(Value):
+    """That a connector serves a vendor's own MCP server rather than its own code (ADR-0117).
+    `manifest` is the digest of the manifest that declares the server's operations. Without
+    one, every operation is a read, and the adapter's maturity stays *experimental*."""
+
+    manifest: Digest | None = None
+
+
 class Capabilities(Value):
     """`Capabilities`: what a connector declares about itself, served as one MCP resource."""
 
@@ -167,6 +175,7 @@ class Capabilities(Value):
     credentials: tuple[CredentialNeed, ...]
     consumption: ConsumptionDeclaration
     permissions: Literal["passthrough"]
+    wrapped: Wrapped | None = None
 
     @model_validator(mode="after")
     def _operations_belong_to_declared_capabilities(self) -> Capabilities:
@@ -177,6 +186,14 @@ class Capabilities(Value):
         for op in self.operations:
             if op.capability not in declared:
                 raise ValueError(f"operation {op.name!r} belongs to an undeclared capability")
+        if self.wrapped is not None and self.wrapped.manifest is None:
+            # A vendor's server without a manifest is read only (ADR-0117): an effect nobody
+            # declared is never believed to stay inside.
+            outward = [op.name for op in self.operations if op.effect is not Effect.READ]
+            if outward:
+                raise ValueError(
+                    f"a vendor's server without a manifest declares only reads, not {outward}"
+                )
         return self
 
     def operation(self, name: str) -> Operation | None:

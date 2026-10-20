@@ -67,6 +67,28 @@ class Moves(Protocol):
 
 
 @dataclass(frozen=True)
+class CatalogueEntry:
+    """One configured adapter as `taktusctl conformance list` prints it."""
+
+    adapter: str
+    family: str
+    maturity: str | None
+    """`experimental`, `verified` or `reference`; None for an adapter that is no integration."""
+    missing: tuple[str, ...]
+    serves: tuple[str, ...]
+    vendor_server: bool = False
+    """A connector that serves a vendor's MCP server (ADR-0117)."""
+    manifest: str | None = None
+    """The digest of the manifest it serves the vendor's server under; None without one."""
+
+
+class Catalogue(Protocol):
+    async def entries(self, tenant: Tenant) -> list[CatalogueEntry]:
+        """Every adapter the instance is configured with, with its maturity."""
+        ...
+
+
+@dataclass(frozen=True)
 class Services:
     identities: IdentityDirectory
     """The identity component: the identity an invocation names must be one it knows, and the
@@ -115,6 +137,8 @@ class Services:
     conformance: RunConformanceHandler | None = None
     """The instance runs an adapter's conformance suite and records it (`taktusctl
     conformance record`, ADR-0044)."""
+    catalogue: Catalogue | None = None
+    """Every configured adapter with its maturity (`taktusctl conformance list`, ADR-0117)."""
     deactivate: DeactivateProcessHandler | None = None
     """A process is switched off: its triggers no longer start runs (`taktusctl deactivate`)."""
     measures: StepMeasures | None = None

@@ -276,6 +276,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   (ADR-0114). A move that cannot be applied is logged, and `taktusctl maturation apply`
   (`adapters/driving/cli/maturation_command.py`) applies it once the cause is gone; `taktusctl
   maturation moves` and `rollback` measure and undo a move.
+- **The maturity of every configured adapter** is `taktusctl conformance list`
+  (`adapters/driving/cli/conformance_command.py`), answered by `composition/maturity.py` over
+  the three pools and the catalog's records. `composition/pools.py` names, in the configuration
+  a maturity rests on, the manifest a connector serves a vendor's MCP server under, and the run's
+  maturity port keeps such a connector without one *experimental* (ADR-0117).
 - **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays; it raises a run's money or its quota (DEC-0208).
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread

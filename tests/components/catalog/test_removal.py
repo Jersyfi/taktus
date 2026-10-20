@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import pytest
 
 from taktus.components.catalog.domain.model import (
+    NO_MANIFEST,
     AdapterMaturity,
     Configuration,
     ConformanceResult,
@@ -15,6 +16,7 @@ from taktus.components.catalog.domain.model import (
     RunSummary,
     StepFinding,
     Verdict,
+    Wrapped,
 )
 from taktus.components.catalog.domain.service import removal
 from taktus.shared.v1 import ConsumptionQuantities, Step
@@ -238,6 +240,37 @@ def test_verified_needs_both_halves_and_the_record_names_what_is_missing() -> No
     assert "no registered process that uses the integration" in untested.missing(now)[1]
     both = removed.model_copy(update={"conformance": passed(now)})
     assert both.maturity(now) is Maturity.VERIFIED and both.missing(now) == ()
+
+
+def test_a_vendors_server_without_a_manifest_never_rises_above_experimental() -> None:
+    """ADR-0117: both halves passed, and still *experimental* while the vendor's server is
+    served without a manifest; with one, *verified*. A changed manifest is another
+    configuration, and the pass taken under the old one no longer counts."""
+    bare = Configuration(
+        adapter="connector.time.clock",
+        serves=("time.clock",),
+        operations=("time.clock.get_current_time",),
+        version="1.0.0",
+        wrapped=Wrapped(),
+    )
+    record = AdapterMaturity(
+        id="connector.time.clock",
+        tenant="t",
+        family="connector",
+        updated_at=AT,
+        conformance=passed(bare),
+        removal=result(Verdict.CHANGED),
+    )
+    assert record.conformance_holds(bare) and record.removal_passed
+    assert record.maturity(bare) is Maturity.EXPERIMENTAL
+    assert record.missing(bare) == (NO_MANIFEST,)
+    declared = bare.model_copy(update={"wrapped": Wrapped(manifest="sha256:" + "1" * 64)})
+    under_manifest = record.model_copy(update={"conformance": passed(declared)})
+    assert under_manifest.maturity(declared) is Maturity.VERIFIED
+    changed = declared.model_copy(update={"wrapped": Wrapped(manifest="sha256:" + "2" * 64)})
+    assert under_manifest.maturity(changed) is Maturity.EXPERIMENTAL
+    gaps = under_manifest.missing(changed)
+    assert "the manifest of the vendor's server it serves changed" in gaps[0]
 
 
 def test_a_verdict_names_the_configuration_it_was_taken_under() -> None:

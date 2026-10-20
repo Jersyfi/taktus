@@ -1,0 +1,25 @@
+{
+  "credentials": {
+    "actions": "VENDOR_TOKEN"
+  },
+  "read": {
+    "operation": "notes.pages.list",
+    "input": {}
+  },
+  "writes": [
+    {
+      "operation": "notes.pages.create",
+      "input": {
+        "title": "suite {{unique}}",
+        "body": "written by the conformance suite"
+      }
+    }
+  ],
+  "invalid": {
+    "operation": "notes.pages.get",
+    "input": {
+      "id": "missing"
+    },
+    "expected_cause": "invalid"
+  }
+}

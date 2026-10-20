@@ -185,6 +185,11 @@ When any of them changes, the pass no longer counts, and the instance needs to r
 again. The suite writes into the target the scenario points at, so the instance's scenario points
 at a sandbox too.
 
+A connector that serves a vendor's MCP server says so in its declaration, under `wrapped`
+(README §10). Without a manifest of the server's effects it stays `experimental` whatever it
+passed, because nobody declared what its tools do; the instance's record says so. Its manifest
+is part of what the pass was taken under: a changed manifest needs the suite again.
+
 ---
 
 ## 8. Proving the suite itself
@@ -224,6 +229,11 @@ one (ADR-0013 B and C). Nothing about it needs a database or a running Taktus.
    deployment names it, the date, who ran it, and the commit of this repository the suite came
    from (`git rev-parse HEAD`). Put them where your organisation keeps evidence. The exit code says
    what the instance would record: `0` passed, `1` failed, `2` incomplete.
+
+For a vendor's MCP server behind the vendor connector (README §10), the scenario names the
+operations as the connector declares them: the manifest's names, or without a manifest the
+capability, a dot and the tool's name. Keep the manifest with the evidence: its digest is in the
+declaration, and the report counts for that manifest only.
 
 The report kept this way is evidence for a person. A Taktus instance does not import it: it would
 be asserted, not measured by the instance.

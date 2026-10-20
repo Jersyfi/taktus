@@ -5,8 +5,10 @@ The commands, one by one. `conformance run` drives the conformance suite
 the caller names; the suite is not part of the control plane, needs no wiring and records
 nothing. `conformance record` has the instance run the suite against the adapter its
 configuration resolves for an identifier, and records the outcome in the adapter's maturity and
-the ledger (ADR-0044). `run` and `submit` drive the control plane: `run` executes a bundle in
-this process, `submit` queues it for the daemon. `capacity` reports what the platform has left
+the ledger (ADR-0044); `conformance list` prints every configured adapter with its maturity,
+and says which connectors serve a vendor's MCP server and under which manifest (ADR-0117).
+`run` and `submit` drive the control plane: `run` executes a bundle in this process, `submit`
+queues it for the daemon. `capacity` reports what the platform has left
 and the date a person must act by. `cost` recomputes what a run cost from the ledger. `prices
 import` turns an open model price list into a new price table version, a file, and lists what
 it could not map (#327). `identity`
@@ -95,6 +97,7 @@ app = typer.Typer(
 conformance = typer.Typer(help="Check an adapter against its contract.", no_args_is_help=True)
 app.add_typer(conformance, name="conformance")
 conformance.command("record")(conformance_command.record)
+conformance.command("list")(conformance_command.listing)
 app.command("run")(run_command.run)
 app.command("submit")(submit_command.submit)
 app.command("resume")(resume_command.resume)

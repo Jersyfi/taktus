@@ -18,6 +18,7 @@ import json
 import os
 import random
 import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -823,6 +824,90 @@ def start_check_connector(tmp_path: Path) -> Iterator[StartConnector]:
     """The fake service to check and the check connector, each a process of its own."""
     started: list[subprocess.Popen[bytes]] = []
     yield _metrics_starter(started, tmp_path, "httpcheck", CHECK_ACTIONS)
+    stop_all(started)
+
+
+# --- a vendor's MCP server behind the vendor connector (ADR-0117) ---------------------------------
+
+VENDOR = ROOT / "tests" / "conformance" / "vendor"
+VENDOR_TIME = ROOT / "tests" / "fakes" / "vendor_time_server.py"
+VENDOR_NOTES = ROOT / "tests" / "fakes" / "vendor_notes_server.py"
+VENDOR_ACTIONS = "VENDOR_TOKEN"
+
+
+def _wait_listening(process: subprocess.Popen[bytes], port: int, log: Path, what: str) -> None:
+    """A server without a readiness path is ready when its port takes a connection."""
+    deadline = time.monotonic() + READY_SECONDS
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"the {what} exited early; see {log}")
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1.0):
+                return
+        except OSError:
+            time.sleep(0.1)
+    raise RuntimeError(f"the {what} did not start listening; see {log}")
+
+
+@pytest.fixture
+def start_vendor_connector(tmp_path: Path) -> Iterator[StartConnector]:
+    """A vendor's MCP server and the vendor connector in front of it, each a process of its own.
+
+    `server="time"` is the MCP project's reference time server, which admits anyone and only
+    reads; `server="notes"` the stand-in with tools that write, which admits only the random
+    token the connector reads under `VENDOR_TOKEN`. `manifest` is a manifest file, or None for
+    a server served without one (with `capability`)."""
+    started: list[subprocess.Popen[bytes]] = []
+
+    def start(
+        *,
+        server: str = "time",
+        manifest: Path | None = None,
+        capability: str | None = None,
+        scenario: Path | None = None,
+        fault: str | None = None,
+        admits: str = "the token",
+    ) -> RunningConnector:
+        """`admits`: whom the stand-in admits — `the token` the connector reads, `anyone`, or
+        `another token` than that."""
+        token = "vtk-" + secrets.token_hex(12)
+        name = f"{server}-{'manifest' if manifest else 'bare'}-{fault or 'honest'}-{admits[:5]}"
+        port = free_port()
+        service_url = f"http://127.0.0.1:{port}"
+        log = tmp_path / f"vendor-{name}.log"
+        vendor_env = {**_clean_environment()}
+        if server == "notes" and admits != "anyone":
+            admitted = token if admits == "the token" else "other-" + secrets.token_hex(12)
+            vendor_env["FAKE_VENDOR_TOKENS"] = admitted
+        script = VENDOR_NOTES if server == "notes" else VENDOR_TIME
+        with log.open("wb") as handle:
+            process = subprocess.Popen(  # noqa: S603 — a script of the gate, fixed arguments
+                [sys.executable, str(script), "--port", str(port)],
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                env=vendor_env,
+            )
+        started.append(process)
+        _wait_listening(process, port, log, f"vendor's {server} server")
+        env = {**_clean_environment(), **_secret_files(tmp_path, name, {VENDOR_ACTIONS: token})}
+        args = ["--upstream", f"{service_url}/mcp"]
+        if manifest is not None:
+            args += ["--manifest", str(manifest)]
+        else:
+            args += ["--capability", capability or f"{server}.clock"]
+        if fault:
+            args += ["--fault", fault]
+        endpoint, connector_log = _start_connector(started, tmp_path, "vendor", args, env, name)
+        return RunningConnector(
+            f"{endpoint}/mcp",
+            connector_log,
+            service_url,
+            {VENDOR_ACTIONS: token},
+            started[-1],
+            scenario=scenario or VENDOR / f"{server}-scenario.json",
+        )
+
+    yield start
     stop_all(started)
 
 
