@@ -20,6 +20,11 @@ A model is reached by *purpose* — `reasoning`, `triage` — never by product: 
 purpose, configuration maps it to an endpoint and a model name (ADR-0003). Which model
 answered is recorded in the provenance of every result (`Completion.model`), because a step
 that is `sourced` or `tolerant` is only reproducible at a pinned version.
+
+**Where a model processes.** Every configured model declares its location — the organisation's
+own infrastructure, the European Union, or elsewhere — and the exactness classes it may produce
+a result for. A tenant's residency rule permits a location; a step is routed only to a model
+the rule admits (ADR-0116).
 """
 
 from __future__ import annotations
@@ -40,6 +45,29 @@ type OutputCap = Literal["hard", "soft", "none"]
 type Billing = Literal["per_token", "per_window", "per_hardware_time"]
 type ProviderLimit = Literal["hard", "alert", "none", "unknown"]
 type PriceKindName = Literal["input", "output", "cache_read", "cache_write"]
+type Location = Literal["own", "eu", "elsewhere"]
+"""Where a model processes what it is sent, as its operator declares it: the organisation's own
+infrastructure, inside the European Union, or anywhere else (ADR-0116 §2)."""
+type Permitted = Literal["own", "eu", "anywhere"]
+"""Where a residency rule lets data be processed (ADR-0116 §3)."""
+
+LOCATIONS: tuple[Location, ...] = ("own", "eu", "elsewhere")
+PERMITTED: tuple[Permitted, ...] = ("own", "eu", "anywhere")
+"""Both from the narrowest to the widest: a location is admitted where its rank is at most the
+rule's."""
+MODEL_CLASSES: tuple[str, ...] = ("sourced", "tolerant", "free")
+"""The exactness classes a model may produce a result for. Never `exact`: a language model
+proposes an exact value and never produces it (ADR-0014)."""
+
+
+def admits(permitted: Permitted, location: Location) -> bool:
+    """Whether a rule that permits `permitted` lets data be processed at `location`."""
+    return LOCATIONS.index(location) <= PERMITTED.index(permitted)
+
+
+def narrower(first: Permitted, second: Permitted) -> Permitted:
+    """The narrower of two permitted locations: where both hold."""
+    return first if PERMITTED.index(first) <= PERMITTED.index(second) else second
 
 
 class Calculability(Value):
@@ -122,6 +150,10 @@ class ResolvedModel:
     adapter: str
     model: Model
     version: str | None = None
+    location: Location = "elsewhere"
+    """Where it processes, as its operator declared it; `elsewhere` where nobody did."""
+    classes: tuple[str, ...] = MODEL_CLASSES
+    """The exactness classes of a step it may produce a result for."""
 
 
 # --- the price table (Model.json#/$defs/PriceTable) ----------------------------------------------

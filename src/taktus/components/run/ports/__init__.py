@@ -13,6 +13,7 @@ from taktus.components.run.ports.levels import Breach, Levels, LoweredLevels, Pr
 from taktus.components.run.ports.maturity import Maturities, Standing
 from taktus.components.run.ports.models import ModelPool
 from taktus.components.run.ports.replay import Replay
+from taktus.components.run.ports.residency import Residency
 from taktus.components.run.ports.workers import WorkerPool
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "NotRaised",
     "ProposalDecided",
     "Replay",
+    "Residency",
     "Standing",
     "Verdict",
     "WorkerPool",

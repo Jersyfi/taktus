@@ -39,7 +39,13 @@ from taktus.shared.v1.method import (
     Method,
 )
 from taktus.shared.v1.plan import Commissioned, Plan, PlanResult, PlanStatus
-from taktus.shared.v1.provenance import InputKind, Provenance, ProvenanceInput
+from taktus.shared.v1.provenance import (
+    InputKind,
+    Provenance,
+    ProvenanceInput,
+    ProvenanceRoute,
+    RouteSkip,
+)
 from taktus.shared.v1.step import Fallback, Rejected, Step, StepId
 from taktus.shared.v1.value import Value
 
@@ -92,11 +98,13 @@ __all__ = [
     "PriceKinds",
     "Provenance",
     "ProvenanceInput",
+    "ProvenanceRoute",
     "RaisedBy",
     "Reference",
     "Rejected",
     "ReplyTo",
     "ResourceClass",
+    "RouteSkip",
     "Step",
     "StepId",
     "TokensByModel",

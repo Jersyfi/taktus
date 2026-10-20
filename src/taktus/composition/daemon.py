@@ -383,7 +383,7 @@ async def wire(
                     settings.connectors,
                     also=[(LOOPBACK, loopback), *served_directory(settings.knowledge_directory)],
                 ),
-                model_pool(settings.model),
+                model_pool(settings.models),
             )
             prices = settings.budget.table()
             weights = settings.budget.weights()
@@ -415,6 +415,7 @@ async def wire(
                         capacity=rules_of(settings.capacity),
                         unit_memory_bytes=memory_demand(settings.workers),
                         park_waits_after_seconds=settings.poll_seconds,
+                        model_cool_down_seconds=settings.model.cool_down_seconds,
                     ),
                     platform=HostPlatform(clock, state_dir=settings.state_dir),
                     connectors=connectors,
@@ -429,6 +430,7 @@ async def wire(
                     administration=settings.administration,
                     decisions=decisions.requests,
                     levels=decisions.levels,
+                    residency=decisions.residency,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -508,6 +510,7 @@ async def wire(
                     ),
                     connectors=settings.connectors,
                     model_endpoint=settings.model.endpoint,
+                    models=settings.models,
                 ),
                 PostgresRepository(persistence, AdapterMaturity),
                 persistence,

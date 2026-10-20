@@ -246,7 +246,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   to the owner what needs a person's action, a level that fell by rule and a raise Taktus
   proposes among it (`composition/alerts.py`, ADR-0106, ADR-0110). The run reaches the
   governance component's `Corrections` through `composition/decisions.py`, and `taktusctl
-  corrections` reads and configures it; deadlines and
+  corrections` reads and configures it. It reaches the tenant's residency rule,
+  `TenantResidency`, the same way, and `taktusctl residency` shows and sets it. The models
+  configured in `TAKTUS_MODELS` reach the run as one pool in chain order
+  (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the
+  model contract's suite with its own endpoint (`composition/conformance.py`); deadlines and
   budget windows arrive with governance.
 - **`automation`** leads through the leadership port under its own name, as the scheduler does,
   and while it leads reacts to events (`composition/reactions.py`, ADR-0048). The intake writes

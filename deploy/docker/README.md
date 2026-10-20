@@ -88,6 +88,37 @@ up-dev` layers the reference worker in its own image over the deployment:
 make up-dev
 ```
 
+## Models, and a gateway in front of them
+
+A step on a model names a purpose, and Taktus routes it through that purpose's chain of models
+(ADR-0116). `TAKTUS_MODELS` names the models in order, and each is configured under
+`TAKTUS_MODELS_<NAME>_…` (`.env.example`). Each declares where it processes, `own`, `eu` or
+`elsewhere`. `taktusctl residency set --location eu` keeps a tenant's steps on models the rule
+permits. A model that answers `429` or fails is passed over for a while, and the step moves to
+the next model at its boundary. The provenance of every answer names the model that gave it.
+
+**A gateway is supported as a pass-through, and only so.** A gateway is a proxy that answers
+for several providers in one dialect. Taktus does its own routing, because a gateway's fallback
+hides from the ledger which model answered, where it processed, what it cost and how long the
+step waited (ADR-0116 §8). A gateway may stand behind a model of the chain in this profile:
+
+| Setting of the gateway | Pass-through profile |
+|---|---|
+| aliases | one alias for one model of one provider; each alias is one entry of `TAKTUS_MODELS` |
+| fallbacks, retries on another model, load balancing, automatic model choice | off |
+| response cache, semantic cache | off |
+| prompt rewriting, compression, injected system prompts | off; conformance check M-02 fails an endpoint that adds text |
+| its own budgets | off, or set above Taktus's budget as an outer backstop only |
+| location | declared as the widest location of the provider behind the alias |
+
+Run `taktusctl conformance run --contract model/v1` against each alias. A gateway set up
+otherwise is not supported: Taktus cannot show which model answered or keep a residency rule.
+
+**OmniRoute is not supported.** By default it chooses the model itself, falls back to other
+providers on its own, and compresses prompts. Each of these breaks the provenance or the
+residency rule above. It also reaches models through consumer subscriptions in ways a
+provider's terms may forbid (`docs/research/2026-10-12-market-review.md`, part 3).
+
 ## Verifying the promise
 
 ```bash

@@ -208,6 +208,7 @@ from taktus.components.run.domain.service import (
     interfaces,
     prediction,
     provenance,
+    routing,
     rules,
     waiting,
 )
@@ -231,6 +232,7 @@ from taktus.components.run.ports import (
     NotRaised,
     ProposalDecided,
     Replay,
+    Residency,
     Verdict,
     WorkerPool,
 )
@@ -252,6 +254,7 @@ from taktus.ports.model import (
     Calculability,
     ModelAtLimit,
     ModelError,
+    Permitted,
     PriceTable,
     Prompt,
     WeightingTable,
@@ -305,6 +308,7 @@ from taktus.shared.v1 import (
     Plan,
     PriceKinds,
     ProvenanceInput,
+    ProvenanceRoute,
     Step,
     StepId,
     add_tokens_by_model,
@@ -471,6 +475,8 @@ class Trace:
     egress: EffectReport | None = None
     rehearsed: bool = False
     """The step answered from a recording instead of acting outward (ADR-0030)."""
+    route: ProvenanceRoute | None = None
+    """For a step on a model: the route it took through its purpose's chain (ADR-0116 §7)."""
 
 
 @dataclass(frozen=True)
@@ -505,6 +511,9 @@ class EngineOptions:
     decision_days: int = 3
     """How many days after it is raised a decision request an anchor raises is due
     (ADR-0042)."""
+    model_cool_down_seconds: float = 60.0
+    """How long a model is passed over after it failed, or answered at its rate limit without
+    naming a delay (`TAKTUS_MODEL_COOL_DOWN_SECONDS`, ADR-0116 §5)."""
     park_waits_after_seconds: float | None = None
     """A `wait` step that would wait longer than this parks its run: the run halts with cause
     `parked`, and its runner defers the job to the wait's next check, holding no place
@@ -552,6 +561,7 @@ class RunEngine:
         administration: Administration | None = None,
         replay: Replay | None = None,
         levels: Levels | None = None,
+        residency: Residency | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -571,6 +581,15 @@ class RunEngine:
         self._decisions = decisions
         """Where an anchored step raises its decision requests. None with anchors wired: an
         anchored step cannot ask, and fails without its act."""
+        self._residency = residency
+        """Where a step on a model learns the location its tenant's rule permits. None: every
+        tenant permits `anywhere` (ADR-0116 §3)."""
+        self._cooling: dict[str, datetime] = {}
+        """Every model cooling down, by adapter, with when its cool-down ends: for every run and
+        tenant this engine executes (ADR-0116 §5)."""
+        self._moving: set[str] = set()
+        """Runs whose current step went back to its boundary to move to the next model of its
+        purpose's chain: it runs again at once (ADR-0116 §6)."""
         self._levels = levels
         """Where decisions and breaches are counted, and the lowered levels read (ADR-0110).
         None: nothing is counted, and no level falls by rule."""
@@ -752,12 +771,12 @@ class RunEngine:
             pool = self._model_pool(run)
             if not isinstance(work, LlmWork) or pool is None:
                 continue
-            resolved = await pool.resolve(work.purpose)
-            if resolved is None or any(m[0] == resolved.adapter for m in models):
-                continue
-            prices = self._options.prices
-            priced = prices is not None and (resolved.version or "") in prices.prices
-            models.append((resolved.adapter, resolved.model.calculability(), priced))
+            for resolved in await pool.chain(work.purpose):
+                if any(m[0] == resolved.adapter for m in models):
+                    continue
+                prices = self._options.prices
+                priced = prices is not None and (resolved.version or "") in prices.prices
+                models.append((resolved.adapter, resolved.model.calculability(), priced))
         by_assignment = (
             [f"the worker step(s) {', '.join(worker_steps)}"]
             if worker_steps and run.budget.currency is not None
@@ -1313,6 +1332,7 @@ class RunEngine:
             self._observed.pop(run.id, None)
             self._limit_halts.discard(run.id)
             self._at_capacity.discard(run.id)
+            self._moving.discard(run.id)
             self._immature.discard(run.id)
             self._administering.discard(run.id)
 
@@ -1358,6 +1378,11 @@ class RunEngine:
                 self._immature.discard(run.id)
                 self._administering.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
+            if run.id in self._moving:
+                # The step went back to its boundary to move to the next model of its
+                # purpose's chain: it is admitted again at once (ADR-0116 §6).
+                self._moving.discard(run.id)
+                continue
             capacity = run.id in self._at_capacity
             self._at_capacity.discard(run.id)
             if step_run.state is StepState.FAILED:
@@ -1900,17 +1925,21 @@ class RunEngine:
                 run = run.with_step_run(step_run.model_copy(update={"block": held_back}))
         return run
 
-    def _ended(self, step_run: StepRun) -> dict[str, Any]:
+    def _ended(self, step_run: StepRun, answered_by: str | None = None) -> dict[str, Any]:
         """What the end of a local step's block adds to its record: for a wait on a provider's
-        limit, that the provider answered."""
+        limit, that the provider answered — and, where the step moved to another model of its
+        purpose's chain, which one answered (ADR-0116 §6)."""
         if step_run.block is None or step_run.block.cause != block.AT_PROVIDER_LIMIT:
             return {}
-        return waiting.details(
+        details = waiting.details(
             adapter=step_run.adapter,
             waits=step_run.waits,
             ended="answered",
             ceiling_seconds=self._options.capacity_ceiling_seconds,
         )
+        if answered_by is not None and answered_by != step_run.adapter:
+            details["answered_by"] = answered_by
+        return details
 
     async def _at_limit(
         self, run: Run, step_run: StepRun, limited: _AtLimit, span: Span
@@ -1924,7 +1953,10 @@ class RunEngine:
         runner defers the job by it. A delay that reaches past the ceiling ends the wait now:
         the provider has said it will not answer within it (ADR-0043, amendment)."""
         span.record_failure("provider at its rate limit")
-        self._at_capacity.add(run.id)
+        if limited.moves:
+            self._moving.add(run.id)
+        else:
+            self._at_capacity.add(run.id)
         now = self._clock.now()
         since = step_run.waiting_since or now
         waits = step_run.waits + 1
@@ -1946,7 +1978,7 @@ class RunEngine:
         named_past = retry_after is not None and waiting.over(
             since, now + timedelta(seconds=retry_after), ceiling
         )
-        if past or named_past:
+        if (past or named_past) and not limited.moves:
             run, step_run = await self._close_block(
                 run,
                 step_run,
@@ -1973,10 +2005,11 @@ class RunEngine:
                 outcome=block.AT_PROVIDER_LIMIT,
             )
             return run, step_run
+        moving = " — moving to the next model of the purpose's chain" if limited.moves else ""
         step_run = step_run.to(
             StepState.STOPPED,
             reason=f"waiting for the provider of {limited.adapter} since {since.isoformat()} "
-            f"({waits} times asked; ceiling {ceiling}s): {limited.reason}",
+            f"({waits} times asked; ceiling {ceiling}s){moving}: {limited.reason}",
             finished_at=now,
         )
         run = await self._commit(
@@ -1999,6 +2032,9 @@ class RunEngine:
         attempt = step_run.attempt
         if step_run.state is StepState.FAILED and not step_run.retryable:
             attempt += 1
+        # The model a wait at a provider's limit asked, before admission names the one the
+        # step is routed to now (ADR-0116 §6).
+        waited_on = step_run.adapter
         # A wait resumed — parked, or recovered after a restart — counts from when it began,
         # and what its earlier checks used stays counted (ADR-0103).
         resumed = step_run.state in (StepState.STOPPED, StepState.RUNNING)
@@ -2043,6 +2079,7 @@ class RunEngine:
         run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
         trace = Trace()
         consumption: Consumption | None = None
+        answered_by: str | None = None
         try:
             result_digest: str | None = None
             artifacts: tuple[Artifact, ...] = ()
@@ -2055,6 +2092,7 @@ class RunEngine:
                     )
             else:
                 value, trace, consumption, adapter = await self._evaluate(run, step_run, work, span)
+                answered_by = adapter
                 if adapter is not None:
                     step_run = step_run.model_copy(update={"adapter": adapter})
                 content = json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -2087,6 +2125,10 @@ class RunEngine:
             span.record_failure(failure.outcome)
             run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
             run, step_run = await self._lacking(run, step_run, failure.lack)
+            if failure.moves:
+                # The attempt failed on one model of the chain; the step moves to the next at
+                # its boundary. A failure is not a block: none is booked (ADR-0116 §6).
+                self._moving.add(run.id)
             step_run = step_run.to(
                 StepState.FAILED,
                 adapter=failure.adapter,
@@ -2103,7 +2145,8 @@ class RunEngine:
                 interface=failure.interface,
             )
             return run, step_run
-        run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
+        ended = self._ended(step_run.model_copy(update={"adapter": waited_on}), answered_by)
+        run, step_run = await self._close_block(run, step_run, **ended)
         now = self._clock.now()
         checkpoint = Checkpoint(
             ref=f"ckpt/{run.id}/{step.id}",
@@ -2307,12 +2350,13 @@ class RunEngine:
         """Input counted before the call, output bounded by the limit the step sets; money at
         the price table, with every input token priced as the dearest input kind, because
         whether it will be read from a cache is not knowable before the call."""
-        models = self._model_pool(run)
-        resolved = None if models is None else await models.resolve(work.purpose)
+        routed = await self._route(run, step, work)
+        # Every member that fits cooling down: the step admits on the first, and waits at its
+        # boundary without a call (ADR-0116 §6).
+        resolved = routed.chosen or routed.fitting
         if resolved is None:
             raise _StepFailed(
-                reason=f"no model is configured for the purpose {work.purpose!r} "
-                "(TAKTUS_MODEL_ENDPOINT, TAKTUS_MODEL_NAME)",
+                reason=_no_model(routed),
                 retryable=True,
                 consumption=None,
                 adapter=None,
@@ -2551,12 +2595,23 @@ class RunEngine:
         step is the model's, once it passes the pattern; the tokens are counted; the model
         that answered goes into the provenance as the adapter's version, because a variable
         method is reproducible only at a pinned one."""
-        models = self._model_pool(run)
-        resolved = None if models is None else await models.resolve(work.purpose)
+        routed = await self._route(run, run.step(step_run.step_id), work)
+        resolved = routed.chosen
+        if resolved is None and routed.fitting is not None:
+            # Every member that fits is cooling down: nothing is called, and the step waits at
+            # its boundary until the first cool-down ends (ADR-0116 §6).
+            ends = min(
+                self._cooling[s.adapter] for s in routed.skipped if s.reason == "cooling_down"
+            )
+            raise _AtLimit(
+                adapter=routed.fitting.adapter,
+                reason=f"every model of the purpose {work.purpose!r} that fits the step is "
+                "cooling down after a rate limit or a failure",
+                retry_after_seconds=max((ends - self._clock.now()).total_seconds(), 0.0),
+            )
         if resolved is None:
             raise _StepFailed(
-                reason=f"no model is configured for the purpose {work.purpose!r} "
-                "(TAKTUS_MODEL_ENDPOINT, TAKTUS_MODEL_NAME)",
+                reason=_no_model(routed),
                 retryable=True,
                 consumption=None,
                 adapter=None,
@@ -2580,10 +2635,12 @@ class RunEngine:
                 call.set_attribute("model.name", completion.model)
                 call.set_attribute("model.finish", completion.finish)
         except ModelAtLimit as error:
+            delay = error.retry_after_seconds
             raise _AtLimit(
                 adapter=resolved.adapter,
                 reason=str(error),
-                retry_after_seconds=error.retry_after_seconds,
+                retry_after_seconds=delay,
+                moves=await self._cool(run, step_run, work, resolved.adapter, delay),
             ) from error
         except ModelError as error:
             raise _StepFailed(
@@ -2592,6 +2649,7 @@ class RunEngine:
                 consumption=None,
                 adapter=resolved.adapter,
                 outcome="model unavailable",
+                moves=await self._cool(run, step_run, work, resolved.adapter, None),
             ) from error
         consumption = Consumption(
             tokens_in=completion.tokens_in,
@@ -2618,13 +2676,39 @@ class RunEngine:
                 adapter=resolved.adapter,
                 outcome="answer failed the check",
             )
-        trace = Trace(inputs=read, adapter_version=completion.model)
+        trace = Trace(inputs=read, adapter_version=completion.model, route=routed.record())
         return (
             {"text": completion.text, "model": completion.model},
             trace,
             consumption,
             resolved.adapter,
         )
+
+    async def _route(self, run: Run, step: Step, work: LlmWork) -> routing.Route:
+        """The step's route through its purpose's chain, at this moment (ADR-0116 §4)."""
+        models = self._model_pool(run)
+        chain = [] if models is None else await models.chain(work.purpose)
+        permitted: Permitted = "anywhere"
+        if self._residency is not None:
+            permitted = await self._residency.permitted(run.tenant, work.data_class)
+        needs = routing.Needs(
+            purpose=work.purpose,
+            exactness=step.exactness,
+            permitted=permitted,
+            data_class=work.data_class,
+        )
+        return routing.route(chain, needs, self._cooling, self._clock.now())
+
+    async def _cool(
+        self, run: Run, step_run: StepRun, work: LlmWork, adapter: str, delay: float | None
+    ) -> bool:
+        """The model failed, or answered at its rate limit: it cools down for the delay its
+        provider named, or for the engine's cool-down where it named none. Whether another
+        model of the chain fits the step now, so that the step moves there (ADR-0116 §5)."""
+        seconds = self._options.model_cool_down_seconds if delay is None else delay
+        self._cooling[adapter] = self._clock.now() + timedelta(seconds=seconds)
+        routed = await self._route(run, run.step(step_run.step_id), work)
+        return routed.chosen is not None
 
     # --- connector steps ------------------------------------------------------------------------
 
@@ -3974,6 +4058,7 @@ class RunEngine:
                             entry=entry,
                             adapter_version=trace.adapter_version,
                             at=self._clock.now(),
+                            route=trace.route,
                         ),
                     )
                     if trace.egress is not None:
@@ -4080,6 +4165,9 @@ class _AtLimit(Exception):
     reason: str
     retry_after_seconds: float | None = None
     """The delay the provider asked for in its `Retry-After`; None when it named none."""
+    moves: bool = False
+    """Another model of the purpose's chain fits the step: it moves there at its boundary
+    instead of waiting (ADR-0116 §6)."""
 
 
 @dataclass(frozen=True)
@@ -4113,6 +4201,14 @@ class _StepFailed(Exception):
     interface: str | None = None
     """For a call through a connector that failed in a way that speaks about its interface: the
     token `interface.failed` records (ADR-0047)."""
+    moves: bool = False
+    """The call failed on one model of the purpose's chain, and another fits the step: it moves
+    there at its boundary instead of escalating (ADR-0116 §6)."""
+
+
+def _no_model(routed: routing.Route) -> str:
+    """Why no model serves the step, naming the settings that configure one."""
+    return f"{routed.why_none()} (TAKTUS_MODELS, TAKTUS_MODEL_ENDPOINT, TAKTUS_MODEL_NAME)"
 
 
 def _digest(content: bytes) -> str:

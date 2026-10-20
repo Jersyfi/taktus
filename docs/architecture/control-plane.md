@@ -265,6 +265,9 @@ duration (ADR-0037; `tests/integration/test_capacity_wait.py`).
 **A provider at its rate limit.** A model provider that answers `429` is treated the same way:
 nothing was produced, the step goes back to its boundary, the run halts with cause `capacity`,
 and the runner tries again later. Past the engine's ceiling the run escalates (ADR-0043).
+Where another model of the purpose's chain fits the step, the step is admitted again at once on
+that model instead, and the wait is booked all the same. A model that failed moves the step the
+same way, with no block booked (ADR-0116).
 
 **Blocked time.** Every block of a run — a stretch in which a step could not go on — is booked to
 one of the seven accounts of [throughput.md](throughput.md) §1. The step run carries the block

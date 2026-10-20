@@ -124,6 +124,7 @@ from taktus.composition.settings import (
     load_findings_connector,
     load_knowledge_directory,
     load_model,
+    load_models,
     load_telemetry,
     load_tenants,
     load_workers,
@@ -183,6 +184,7 @@ class LocalWiring:
             telemetry = telemetry_of(load_telemetry(self._configuration))
             connectors = load_connectors(self._configuration)
             model = load_model(self._configuration)
+            models = load_models(self._configuration)
             budget = load_budget(self._configuration)
             capacity = load_capacity(self._configuration)
             prices = budget.table()
@@ -239,7 +241,7 @@ class LocalWiring:
                     connectors,
                     also=[(LOOPBACK, loopback), *served_directory(knowledge_directory)],
                 ),
-                model_pool(model),
+                model_pool(models),
             )
 
             def engine_for(
@@ -267,6 +269,7 @@ class LocalWiring:
                         seeds=seeds,
                         capacity=rules_of(capacity),
                         unit_memory_bytes=memory_demand(configured),
+                        model_cool_down_seconds=model.cool_down_seconds,
                     ),
                     platform=HostPlatform(clock, state_dir=state_dir),
                     recordings=recordings,
@@ -279,6 +282,7 @@ class LocalWiring:
                     administration=administration,
                     decisions=decisions.requests,
                     levels=decisions.levels,
+                    residency=decisions.residency,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -321,6 +325,7 @@ class LocalWiring:
                     ),
                     connectors=connectors,
                     model_endpoint=model.endpoint,
+                    models=models,
                 ),
                 stores.of(AdapterMaturity),
                 stores.work,
@@ -465,6 +470,7 @@ class LocalWiring:
                 corridors=signals.corridors,
                 signals=signals.watch,
                 corrections=decisions.corrections,
+                residency=decisions.residency,
             )
             telemetry.shutdown()
 

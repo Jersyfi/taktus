@@ -26,7 +26,7 @@ from taktus.conformance.contracts import contracts_root
 from taktus.ports.administration import NONE, Administration
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
 from taktus.ports.execution import variable_refusal
-from taktus.ports.model import PriceTable, WeightingTable
+from taktus.ports.model import LOCATIONS, MODEL_CLASSES, PriceTable, WeightingTable
 from taktus.ports.worker import Host
 
 
@@ -295,6 +295,52 @@ def load_telemetry(configuration: Configuration) -> TelemetrySettings:
     )
 
 
+MODEL_CREDENTIAL = "credential.model_api_key"
+
+
+class ModelConfiguration:
+    """The configuration port as one member of `TAKTUS_MODELS` reads it (ADR-0116 §1).
+
+    Every key `model.k` is first read as `models.<member>.k` — the variable
+    `TAKTUS_MODELS_<MEMBER>_K` — and, where the member sets nothing, as the instance's own
+    `model.k`. Four keys have no such fallback: the endpoint, the model name, the purposes and
+    the credential are the member's alone, because two members at one endpoint and model are
+    one member. The credential `credential.model_api_key` is read as
+    `models.<member>.credential.api_key`, the file `TAKTUS_MODELS_<MEMBER>_CREDENTIAL_API_KEY_FILE`
+    names."""
+
+    ALONE = ("model.endpoint", "model.name", "model.purposes", MODEL_CREDENTIAL)
+
+    def __init__(self, configuration: Configuration, name: str) -> None:
+        self._configuration = configuration
+        self._prefix = f"models.{worker_segment(name)}."
+
+    def _own(self, key: str) -> str:
+        if key == MODEL_CREDENTIAL:
+            return self._prefix + "credential.api_key"
+        return self._prefix + key.removeprefix("model.")
+
+    def _where(self, key: str) -> str:
+        own = self._own(key)
+        if key in self.ALONE or self._configuration.source(own) is not None:
+            return own
+        return key
+
+    def get(self, key: str) -> str | None:
+        return self._configuration.get(self._where(key))
+
+    def secret(self, key: str) -> Secret | None:
+        return self._configuration.secret(self._where(key))
+
+    def source(self, key: str) -> str | None:
+        return self._configuration.source(self._where(key))
+
+    def name(self, key: str) -> str:
+        """The variable the operator sets for this member: its own, even where the value in
+        effect is the instance's."""
+        return self._configuration.name(self._own(key))
+
+
 @dataclass(frozen=True)
 class ModelSettings:
     """One model behind the chat-completions dialect, for every purpose it is configured for.
@@ -326,19 +372,52 @@ class ModelSettings:
     """`TAKTUS_MODEL_USAGE_KINDS`: the price kinds the endpoint reports per call, comma-separated
     — `input`, `output`, `cache_read`, `cache_write`. Money is recomputable exactly only from
     kinds that are reported; conformance check M-04 holds the endpoint to this declaration."""
+    member: str | None = None
+    """Its name in `TAKTUS_MODELS`; None for the one model of an instance that names none."""
+    location: str = "elsewhere"
+    """`TAKTUS_MODEL_LOCATION`: where the endpoint processes what it is sent — `own`, `eu` or
+    `elsewhere`, the default. A tenant's residency rule routes a step only to a model whose
+    location it permits (ADR-0116 §2)."""
+    classes: tuple[str, ...] = MODEL_CLASSES
+    """`TAKTUS_MODEL_EXACTNESS`: the exactness classes of a step the model may produce a result
+    for, out of `sourced`, `tolerant` and `free`; all three by default. Never `exact`."""
+    cool_down_seconds: float = 60.0
+    """`TAKTUS_MODEL_COOL_DOWN_SECONDS`: how long a model is passed over after a failure, or
+    after a rate limit whose answer named no delay (ADR-0116 §5). The instance's alone."""
+
+    @property
+    def identifier(self) -> str:
+        """The adapter identifier the ledger records: `model.<member>`, or `model.endpoint` for
+        the one unnamed model — never a product name (ADR-0003)."""
+        return f"model.{self.member}" if self.member else "model.endpoint"
 
     def effective(self) -> list[tuple[str, str]]:
         credential = "" if self.credential is None else f"*** (from {self.credential_source})"
-        return [
-            ("TAKTUS_MODEL_ENDPOINT", self.endpoint or ""),
-            ("TAKTUS_MODEL_NAME", self.name),
-            ("TAKTUS_MODEL_PURPOSES", ",".join(self.purposes)),
-            ("TAKTUS_MODEL_BILLING", self.billing),
-            ("TAKTUS_MODEL_OUTPUT_CAP", self.output_cap),
-            ("TAKTUS_MODEL_PROVIDER_LIMIT", self.provider_limit),
-            ("TAKTUS_MODEL_USAGE_KINDS", ",".join(self.usage_kinds)),
-            ("TAKTUS_CREDENTIAL_MODEL_API_KEY", credential),
+        prefix = "TAKTUS_MODEL" if self.member is None else f"TAKTUS_MODELS_{_upper(self.member)}"
+        key = (
+            "TAKTUS_CREDENTIAL_MODEL_API_KEY"
+            if self.member is None
+            else f"{prefix}_CREDENTIAL_API_KEY"
+        )
+        lines = [
+            (f"{prefix}_ENDPOINT", self.endpoint or ""),
+            (f"{prefix}_NAME", self.name),
+            (f"{prefix}_PURPOSES", ",".join(self.purposes)),
+            (f"{prefix}_BILLING", self.billing),
+            (f"{prefix}_OUTPUT_CAP", self.output_cap),
+            (f"{prefix}_PROVIDER_LIMIT", self.provider_limit),
+            (f"{prefix}_USAGE_KINDS", ",".join(self.usage_kinds)),
+            (f"{prefix}_LOCATION", self.location),
+            (f"{prefix}_EXACTNESS", ",".join(self.classes)),
+            (key, credential),
         ]
+        if self.member is None:
+            lines.append(("TAKTUS_MODEL_COOL_DOWN_SECONDS", str(self.cool_down_seconds)))
+        return lines
+
+
+def _upper(name: str) -> str:
+    return worker_segment(name).upper()
 
 
 @dataclass(frozen=True)
@@ -475,11 +554,9 @@ def load_budget(configuration: Configuration) -> BudgetSettings:
     )
 
 
-MODEL_CREDENTIAL = "credential.model_api_key"
-
-
-def load_model(configuration: Configuration) -> ModelSettings:
-    """The model settings alone: `taktusctl` reads them too."""
+def load_model(configuration: Configuration, *, member: str | None = None) -> ModelSettings:
+    """The model settings alone: `taktusctl` reads them too. `member` names a member of
+    `TAKTUS_MODELS`, read through its `ModelConfiguration`."""
     reader = _Reader(configuration)
     endpoint = reader.text("model.endpoint", "") or None
     if endpoint is not None and not (
@@ -509,7 +586,60 @@ def load_model(configuration: Configuration) -> ModelSettings:
             "model.provider.limit", "unknown", ("hard", "alert", "none", "unknown")
         ),
         usage_kinds=_usage_kinds(reader, configuration),
+        member=member,
+        location=reader.choice("model.location", "elsewhere", LOCATIONS),
+        classes=_exactness_classes(reader, configuration),
+        cool_down_seconds=reader.number("model.cool.down.seconds", 60.0, low=0.0),
     )
+
+
+def _exactness_classes(reader: _Reader, configuration: Configuration) -> tuple[str, ...]:
+    """The exactness classes the operator declares a model may produce for: known classes,
+    never `exact` (ADR-0014, ADR-0116 §2)."""
+    classes = reader.names("model.exactness", MODEL_CLASSES)
+    if "exact" in classes:
+        raise ConfigurationError(
+            configuration.name("model.exactness"),
+            "names exact; a language model proposes an exact value and never produces it "
+            f"(ADR-0014): one or more of {', '.join(MODEL_CLASSES)}",
+        )
+    unknown = [c for c in classes if c not in MODEL_CLASSES]
+    if unknown:
+        raise ConfigurationError(
+            configuration.name("model.exactness"),
+            f"{', '.join(unknown)} is not an exactness class; one of {', '.join(MODEL_CLASSES)}",
+        )
+    return classes
+
+
+def load_models(configuration: Configuration) -> tuple[ModelSettings, ...]:
+    """Every model the instance is configured with, in the order a purpose's chain takes them
+    (ADR-0116 §1). `TAKTUS_MODELS` unset: the one model configured by `TAKTUS_MODEL_*`, or none.
+    Set, it names the members in order, and each reads its own settings under
+    `TAKTUS_MODELS_<MEMBER>_…` (`ModelConfiguration`)."""
+    reader = _Reader(configuration)
+    names = reader.names("models", ())
+    if not names:
+        single = load_model(configuration)
+        return () if single.endpoint is None else (single,)
+    setting = configuration.name("models")
+    models: list[ModelSettings] = []
+    for name in names:
+        if len(name) > WORKER_NAME_LENGTH or WORKER_NAME.fullmatch(name) is None:
+            raise ConfigurationError(
+                setting,
+                f"{name!r} is not a model's name: lowercase letters and digits, words joined by "
+                f"hyphens, at most {WORKER_NAME_LENGTH} characters",
+            )
+        scoped = ModelConfiguration(configuration, name)
+        loaded = load_model(scoped, member=name)
+        if loaded.endpoint is None:
+            raise ConfigurationError(
+                scoped.name("model.endpoint"),
+                f"is not set; the model {name} of {setting} needs the base URL of its endpoint",
+            )
+        models.append(loaded)
+    return tuple(models)
 
 
 PRICE_KIND_NAMES = ("input", "output", "cache_read", "cache_write")
@@ -847,8 +977,11 @@ class Settings:
     telemetry: TelemetrySettings
     """Where spans are exported, if anywhere."""
     model: ModelSettings
+    """The instance's own model settings, `TAKTUS_MODEL_*`: the one model where
+    `TAKTUS_MODELS` names none, and the defaults of every member where it does."""
+    models: tuple[ModelSettings, ...]
+    """The models `llm` steps are routed to, in chain order (ADR-0116); empty for none."""
     budget: BudgetSettings
-    """The model `llm` steps ask, if one is configured."""
     capacity: CapacitySettings
     """What the capacity report is told: thresholds, the database's volume, the interval."""
     connectors: Mapping[str, str]
@@ -929,6 +1062,12 @@ class Settings:
             *(line for worker in self.workers for line in worker.effective()),
             *self.telemetry.effective(),
             *self.model.effective(),
+            *(
+                [("TAKTUS_MODELS", ",".join(m.member for m in self.models if m.member))]
+                if any(m.member for m in self.models)
+                else []
+            ),
+            *(line for model in self.models if model.member for line in model.effective()),
             *self.budget.effective(),
             *self.capacity.effective(),
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
@@ -995,6 +1134,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         workers=load_workers(configuration),
         telemetry=load_telemetry(configuration),
         model=load_model(configuration),
+        models=load_models(configuration),
         budget=load_budget(configuration),
         capacity=load_capacity(configuration),
         connectors=reader.connectors(),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field, model_validator
 
@@ -60,6 +61,23 @@ class ProvenanceInput(Value):
         return self
 
 
+class RouteSkip(Value):
+    """A member of the chain the route passed over, and why (ADR-0116 §4)."""
+
+    adapter: str = Field(min_length=1)
+    reason: Literal["residency", "exactness", "cooling_down"]
+
+
+class ProvenanceRoute(Value):
+    """The route a step on a model took through its purpose's chain (ADR-0116 §7)."""
+
+    purpose: str = Field(pattern=r"^[a-z][a-z0-9_-]*$")
+    adapter: str = Field(min_length=1)
+    permitted: Literal["own", "eu", "anywhere"]
+    data_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
+    skipped: tuple[RouteSkip, ...]
+
+
 class Provenance(Value):
     id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
@@ -71,6 +89,7 @@ class Provenance(Value):
     prompt: str | None = Field(default=None, pattern=MODEL_PATTERN)
     adapter: str | None = Field(default=None, min_length=1)
     adapter_version: str | None = Field(default=None, min_length=1)
+    route: ProvenanceRoute | None = None
     inputs: tuple[ProvenanceInput, ...]
     outputs: tuple[str, ...]
     result_digest: Digest | None = None
@@ -86,6 +105,8 @@ class Provenance(Value):
             findings.append(f"a {self.method} step produces no result and carries no exactness")
         if self.adapter_version is not None and self.adapter is None:
             findings.append("an adapter version names its adapter")
+        if self.route is not None and self.route.adapter != self.adapter:
+            findings.append("a route names the adapter that produced the record's result")
         if any(not output for output in self.outputs):
             findings.append("an output identifier is never empty")
         if len(set(self.outputs)) != len(self.outputs):

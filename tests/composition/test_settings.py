@@ -619,5 +619,67 @@ def test_a_named_worker_reads_only_its_own_credentials(tmp_path: Path) -> None:
     assert other.get("conformance.worker.task") == "/tasks/second.json"
 
 
+async def test_models_named_in_order_form_each_purpose_s_chain(tmp_path: Path) -> None:
+    """ADR-0116 §1: `TAKTUS_MODELS` names the members in chain order; each reads its own
+    endpoint, name, purposes and credential, and falls back to the instance's for the rest."""
+    from taktus.composition.execution import model_pool
+    from taktus.composition.settings import load_models
+
+    key = tmp_path / "second.key"
+    key.write_text("second-secret", encoding="utf-8")
+    loaded = settings(
+        TAKTUS_MODELS="first,second-eu",
+        TAKTUS_MODEL_LOCATION="eu",
+        TAKTUS_MODEL_BILLING="per_window",
+        TAKTUS_MODELS_FIRST_ENDPOINT="http://127.0.0.1:9/v1",
+        TAKTUS_MODELS_FIRST_NAME="first-model",
+        TAKTUS_MODELS_FIRST_PURPOSES="reasoning",
+        TAKTUS_MODELS_FIRST_LOCATION="elsewhere",
+        TAKTUS_MODELS_FIRST_EXACTNESS="free",
+        TAKTUS_MODELS_SECOND_EU_ENDPOINT="http://127.0.0.1:10/v1",
+        TAKTUS_MODELS_SECOND_EU_NAME="second-model",
+        TAKTUS_MODELS_SECOND_EU_CREDENTIAL_API_KEY_FILE=str(key),
+    )
+    first, second = loaded.models
+    assert (first.identifier, first.location, first.classes) == (
+        "model.first",
+        "elsewhere",
+        ("free",),
+    )
+    assert (second.identifier, second.location, second.purposes) == (
+        "model.second-eu",
+        "eu",
+        ("*",),
+    )
+    assert second.billing == "per_window" and first.credential is None
+    assert _revealed(second.credential) == "second-secret"
+    effective = dict(loaded.effective())
+    assert effective["TAKTUS_MODELS"] == "first,second-eu"
+    assert effective["TAKTUS_MODELS_SECOND_EU_CREDENTIAL_API_KEY"].startswith("***")
+    assert "second-secret" not in json.dumps(loaded.effective())
+    pool = model_pool(loaded.models)
+    chain = await pool.chain("reasoning")
+    assert [(m.adapter, m.location) for m in chain] == [
+        ("model.first", "elsewhere"),
+        ("model.second-eu", "eu"),
+    ]
+    assert [m.adapter for m in await pool.chain("triage")] == ["model.second-eu"]
+    with pytest.raises(ConfigurationError, match="TAKTUS_MODELS_LONE_ENDPOINT"):
+        load_models(EnvironmentConfiguration({"TAKTUS_MODELS": "lone"}))
+
+
+def test_a_model_is_never_declared_for_exact_results() -> None:
+    from taktus.composition.settings import load_model
+
+    with pytest.raises(ConfigurationError, match=r"TAKTUS_MODEL_EXACTNESS.*exact"):
+        load_model(EnvironmentConfiguration({"TAKTUS_MODEL_EXACTNESS": "sourced,exact"}))
+    with pytest.raises(ConfigurationError, match="TAKTUS_MODEL_LOCATION"):
+        load_model(EnvironmentConfiguration({"TAKTUS_MODEL_LOCATION": "moon"}))
+    unnamed = settings(TAKTUS_MODEL_ENDPOINT="http://127.0.0.1:9/v1", TAKTUS_MODEL_NAME="m")
+    (only,) = unnamed.models
+    assert (only.identifier, only.location) == ("model.endpoint", "elsewhere")
+    assert settings().models == ()
+
+
 def _revealed(secret: Secret | None) -> str | None:
     return None if secret is None else secret.reveal()

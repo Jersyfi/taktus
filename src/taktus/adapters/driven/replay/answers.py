@@ -259,8 +259,15 @@ class ReplayModelPool:
                     adapter=answer.adapter,
                     model=ReplayModel(self._recording, self._directory, purpose),
                     version=answer.version,
+                    location="own",
                 )
         return None
+
+    async def chain(self, purpose: str) -> list[ResolvedModel]:
+        """The recorded model alone: a replay answers from its recording, which leaves the
+        instance for no location (ADR-0116, where the promise ends)."""
+        resolved = await self.resolve(purpose)
+        return [] if resolved is None else [resolved]
 
 
 # --- worker ---------------------------------------------------------------------------------

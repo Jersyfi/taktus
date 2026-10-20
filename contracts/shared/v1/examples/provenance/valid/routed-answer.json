@@ -1,0 +1,22 @@
+{
+  "id": "prov_01j9r0a2",
+  "run_id": "run_01j9r0a1",
+  "step_id": "draft",
+  "process_version": "triage@3",
+  "method": "llm",
+  "exactness": "sourced",
+  "adapter": "model.second",
+  "adapter_version": "second-model-2026-10",
+  "route": {
+    "purpose": "reasoning",
+    "adapter": "model.second",
+    "permitted": "eu",
+    "data_class": "personal",
+    "skipped": [{ "adapter": "model.first", "reason": "cooling_down" }]
+  },
+  "inputs": [],
+  "outputs": ["result"],
+  "result_digest": "sha256:73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049",
+  "ledger_seq": 9,
+  "recorded_at": "2026-10-20T09:00:04Z"
+}
