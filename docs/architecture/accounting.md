@@ -90,7 +90,10 @@ What is built of this page (ADR-0010, amendment of 2026-09-30):
   workers reported themselves.
 - **Money.** The breakdown at a versioned price table (`contracts/model/v1`, `PriceTable`), the
   one the run's budget statement names by digest: `taktusctl cost <run>` prints it, or prices
-  the same breakdown at another table with `--prices`. The money is the tokens per model and
+  the same breakdown at another table with `--prices`. A new table version is made by an
+  explicit act, never fetched at run time: `taktusctl prices import <file>` turns an open price
+  list in LiteLLM's shape into a table file — input, output, cache read and cache write per
+  model — and lists the entries it could not map; tiered prices are not read (#327). The money is the tokens per model and
   kind plus the compute seconds per resource class, with both parts shown (ADR-0010, second
   amendment). A model named with a snapshot date, as a coding agent names it, is priced at
   the table's entry for the undated name where the table has none for the dated one; its
