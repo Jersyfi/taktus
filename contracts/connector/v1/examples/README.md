@@ -18,7 +18,7 @@ The directory name is the definition in kebab-case: `call-context` is `CallConte
 | Check | Fixture | What the schema refuses |
 |---|---|---|
 | C-01 | `capabilities/invalid/C-01-…` | a declaration without a capability |
-| C-02 | `operation/invalid/C-02-…`, `effect-report/invalid/C-02-…`, `result/invalid/C-02-…` | an outward operation without idempotency; an outward effect without a record; a result without an effect |
+| C-02 | `operation/invalid/C-02-…`, `effect-report/invalid/C-02-…`, `result/invalid/C-02-…`, `manifest/invalid/C-02-…`, `capabilities/invalid/C-02-…` | an outward operation without idempotency; an outward effect without a record; a result without an effect; a vendor's tool declared outward without its idempotency or its record; a vendor's server without a manifest that declares a write |
 | C-03 | `capabilities/invalid/C-03-…` | permissions other than `passthrough` |
 | C-04 | `call-context/invalid/C-04-…` | a credential with a value in the context |
 | C-05 | `effect-report/invalid/C-05-…` | an outward effect that does not say whether it was replayed |

@@ -6,7 +6,7 @@ serves: [P10, P11, P12, P14]
 state: specified
 version: 0.6.0
 tests: []
-adrs: {ADR-0008: e6a4e033abd4, ADR-0022: 69572977f46b, ADR-0024: 64d7f9095b59, ADR-0042: bfc76a4a3797}
+adrs: {ADR-0008: e6a4e033abd4, ADR-0022: 69572977f46b, ADR-0024: 52ba89e4adec, ADR-0042: bfc76a4a3797}
 supersedes: null
 ---
 

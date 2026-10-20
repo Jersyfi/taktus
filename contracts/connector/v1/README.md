@@ -11,7 +11,7 @@ Rationale: [ADR-0024](../../../docs/adr/ADR-0024-connector-contract.md).
 | File | Contents |
 |---|---|
 | [`Connector.json`](Connector.json) | every declaration, argument and envelope, as JSON Schema 2020-12; shared concepts are referenced from [`contracts/shared/v1`](../../shared/v1) |
-| [`examples/`](examples/) | valid examples per definition and the must-fail fixtures for the conformance checks below |
+| [`examples/`](examples/) | valid examples per definition and the must-fail fixtures for the conformance checks below; `manifest/` holds manifests for a vendor's MCP server (§10) |
 
 Where this text and the schema disagree, the schema is the finding and this text is corrected.
 `make gate-contracts` checks the schema and every example.
@@ -120,6 +120,8 @@ own. §5 says what that means for a call.
 `credentials` names the secrets the connector needs, by name and purpose; the operator creates
 them, and `CREDENTIALS.md` of the repository that deploys the connector describes each as a
 parameter — what it is for, the permissions it needs, how it rotates, and how it is supplied.
+`wrapped` is present when the connector serves a vendor's own MCP server rather than code of its
+own; §10 says what it holds.
 
 ---
 
@@ -447,3 +449,62 @@ Three more serve open standards (ADR-0111): mail — `mail.messages` and `channe
 mailbox — and two that only read, `metrics.series` and `check.http`. The two pass the suite
 with a scenario that names no write. All three pass it against local fakes of their servers,
 fault for fault (`tests/conformance/test_connector_v1_open_standards.py`).
+
+## 10. A vendor's MCP server
+
+A vendor's own MCP server speaks MCP and not this contract: it declares no effect, takes no
+call context and answers errors as text. A connector can serve one behind this contract
+([ADR-0117](../../../docs/adr/ADR-0117-a-vendors-mcp-server-becomes-a-connector-under-a-manifest-of-its-effects.md)).
+Its declaration then carries `wrapped`.
+
+**A manifest declares what the vendor did not.** It is `Connector.json#/$defs/Manifest`, the
+operator's input to the connector, never a wire object:
+
+```json
+{
+  "contract": "connector/v1",
+  "capabilities": ["notes.pages"],
+  "credential": "VENDOR_TOKEN",
+  "operations": [
+    { "tool": "list_notes", "name": "notes.pages.list", "capability": "notes.pages",
+      "effect": "read" },
+    { "tool": "create_note", "name": "notes.pages.create", "capability": "notes.pages",
+      "effect": "write", "idempotency": "native",
+      "key_argument": "request_id", "replayed": "/replayed",
+      "record": { "kind": "note", "id": "/id", "url": "/url" } },
+    { "tool": "archive_note", "name": "notes.pages.archive", "capability": "notes.pages",
+      "effect": "write", "idempotency": "none", "record": { "kind": "note", "id": "/id" } }
+  ]
+}
+```
+
+`tool` is the vendor's name for the tool; the rest of each entry means what it means in an
+operation (§3). An outward tool names, as JSON pointers into its answer, where the record it
+acted on is: that is what the effect report names (§5). Two idempotencies are offered. With
+`native`, the idempotency key is passed in the tool's argument `key_argument`, and `replayed`
+points at the answer's flag that says the vendor recognised a repeat. With `none`, Taktus never
+repeats the call on its own (§4). `marked` is not offered: it needs a lookup in the target
+before acting, which a connector cannot know for a server it did not write. `demand` defaults to
+two requests, the listing and the call; `summary` to the vendor's description of the tool.
+
+The declaration names the manifest by the digest of its bytes, `wrapped.manifest`. A changed
+manifest is therefore another configuration, and a conformance pass taken under the old one no
+longer counts.
+
+**Without a manifest, read only.** Only the tools the vendor marks as reading — MCP's
+`readOnlyHint`, and not `destructiveHint` — are served, each a read of the capability the
+operator names, under the name `<capability>.<tool>`. The declaration carries `wrapped` without a
+manifest. The schema refuses such a declaration with anything but reads, and so does Taktus. Its
+maturity stays `experimental` whatever it passed.
+
+**A write nobody declared is refused.** A tool that is not declared is not served, and a call to
+it never reaches the vendor's server. A manifest that calls a tool a read whose vendor marks it
+as acting does not start. Each call reads the vendor's listing again before it calls the tool,
+and a tool that has gone, or that is now marked as acting where it is declared a read, ends the
+call as `unexpected` without calling it.
+
+The vendor connector under `src/taktus/adapters/driven/connectors/vendor/` is this section's
+implementation. It reaches the vendor's server at an MCP URL and runs no vendor's server
+itself. It passes the suite against the MCP project's reference time server, without a manifest
+and with one, and against a stand-in with tools that write under its manifest
+(`tests/conformance/test_connector_v1_vendor.py`).

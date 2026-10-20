@@ -1,0 +1,33 @@
+{
+  "contract": "connector/v1",
+  "version": "1.0.0+vendor.2026.10.19",
+  "capabilities": [
+    "time.clock"
+  ],
+  "operations": [
+    {
+      "name": "time.clock.get_current_time",
+      "capability": "time.clock",
+      "effect": "read",
+      "demand": {
+        "quota_units": 1
+      },
+      "summary": "Get current time in a specific timezone"
+    }
+  ],
+  "credentials": [
+    {
+      "name": "VENDOR_TOKEN",
+      "purpose": "actions"
+    }
+  ],
+  "consumption": {
+    "kinds": [
+      "quota"
+    ],
+    "unit": "requests",
+    "window_seconds": 60
+  },
+  "permissions": "passthrough",
+  "wrapped": {}
+}

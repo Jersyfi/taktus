@@ -1,0 +1,20 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "notes.pages"
+  ],
+  "credential": "VENDOR_TOKEN",
+  "operations": [
+    {
+      "tool": "list_notes",
+      "name": "notes.pages.list",
+      "capability": "notes.pages",
+      "effect": "read",
+      "summary": "List the notes the requesting identity can see.",
+      "record": {
+        "kind": "note",
+        "id": "/id"
+      }
+    }
+  ]
+}

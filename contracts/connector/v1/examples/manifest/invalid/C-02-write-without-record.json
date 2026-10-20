@@ -1,0 +1,16 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "notes.pages"
+  ],
+  "credential": "VENDOR_TOKEN",
+  "operations": [
+    {
+      "tool": "archive_note",
+      "name": "notes.pages.archive",
+      "capability": "notes.pages",
+      "effect": "write",
+      "idempotency": "none"
+    }
+  ]
+}

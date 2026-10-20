@@ -1,0 +1,26 @@
+{
+  "contract": "connector/v1",
+  "capabilities": [
+    "notes.pages"
+  ],
+  "credential": "VENDOR_TOKEN",
+  "operations": [
+    {
+      "tool": "create_note",
+      "name": "notes.pages.create",
+      "capability": "notes.pages",
+      "effect": "write",
+      "idempotency": "native",
+      "replayed": "/replayed",
+      "record": {
+        "kind": "note",
+        "id": "/id",
+        "url": "/url"
+      },
+      "demand": {
+        "quota_units": 1
+      },
+      "summary": "Create a note. The vendor's tool recognises a repeated request_id itself."
+    }
+  ]
+}

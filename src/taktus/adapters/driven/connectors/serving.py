@@ -1,7 +1,8 @@
 """What the connectors over open standards share: the MCP server around their operations.
 
 The mail, metrics and check connectors (ADR-0111) differ in what they reach and agree in how
-they serve the contract (`contracts/connector/v1`). This module holds the agreement: the
+they serve the contract (`contracts/connector/v1`). So does the vendor connector, which puts a
+vendor's MCP server behind it (ADR-0117). This module holds the agreement: the
 declaration as a resource, one tool per operation, the intake tool where there is an intake,
 `GET /health`, and the faults the conformance suite is proven against. Each connector supplies
 its declaration, its operations and, for the mail connector, its intake.

@@ -93,6 +93,20 @@ class ProcessFinding(Value):
     """Why the process was not run, or what the two runs showed, in words."""
 
 
+class Wrapped(Value):
+    """That a connector serves a vendor's own MCP server, and under which manifest (ADR-0117).
+    `manifest` is the manifest's digest; None when the server is served without one, read
+    only."""
+
+    manifest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+NO_MANIFEST = (
+    "it serves a vendor's MCP server without a manifest of its effects, which keeps it "
+    "experimental and read only (ADR-0117)"
+)
+
+
 class Configuration(Value):
     """What stood behind the integration's identifier when the verdict was taken. The same
     identifier can name different adapters on different days — a worker that serves other
@@ -114,6 +128,16 @@ class Configuration(Value):
     environment: tuple[str, ...] | None = None
     """For a launched worker: the names of the variables its unit is configured with
     (ADR-0090), never their values. Absent where it names none, as `hosts` is."""
+    wrapped: Wrapped | None = None
+    """For a connector that serves a vendor's MCP server: the manifest it serves it under
+    (ADR-0117). Absent for every other adapter, so that a configuration without it reads as it
+    did before."""
+
+    @property
+    def without_manifest(self) -> bool:
+        """A vendor's server served without a manifest: read only, and never above
+        *experimental* (ADR-0117)."""
+        return self.wrapped is not None and self.wrapped.manifest is None
 
 
 class RemovalResult(Value):
@@ -208,6 +232,8 @@ def difference(recorded: Configuration, current: Configuration) -> str:
         )
     if recorded.operations != current.operations:
         parts.append("its declared operations changed")
+    if recorded.wrapped != current.wrapped:
+        parts.append("the manifest of the vendor's server it serves changed")
     return "; ".join(parts)
 
 
@@ -246,7 +272,11 @@ class AdapterMaturity(Value):
     def maturity(self, current: Configuration | None) -> Maturity:
         """*verified* exactly when both halves have passed, the conformance half for the
         configuration that resolves the identifier now (`current`; None when nothing does).
-        *reference* is the project's word about its own adapters and is not derived here."""
+        *reference* is the project's word about its own adapters and is not derived here.
+        A vendor's server served without a manifest stays *experimental* whatever it passed
+        (ADR-0117)."""
+        if current is not None and current.without_manifest:
+            return Maturity.EXPERIMENTAL
         if self.conformance_holds(current) and self.removal_passed:
             return Maturity.VERIFIED
         return Maturity.EXPERIMENTAL
@@ -284,4 +314,6 @@ class AdapterMaturity(Value):
             )
         elif self.removal.verdict is not Verdict.CHANGED:
             gaps.append(f"the last removal test ended {self.removal.verdict}")
+        if current is not None and current.without_manifest:
+            gaps.append(NO_MANIFEST)
         return tuple(gaps)

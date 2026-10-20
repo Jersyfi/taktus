@@ -41,14 +41,29 @@ DEFINITIONS: dict[str, Any] = {
 """Example directory → the port type. `IntakeArguments` is bound as `Delivery`, the name the
 core uses for an event before anything is believed about it."""
 
-NOT_BOUND = {"Scenario", "ScenarioCall", "ScenarioPayload", "IntakeArguments"}
-"""The scenario is the suite's input, not a wire object of the core; IntakeArguments is bound
-under another name (see DEFINITIONS)."""
+NOT_BOUND = {
+    "Scenario",
+    "ScenarioCall",
+    "ScenarioPayload",
+    "IntakeArguments",
+    "Manifest",
+    "ManifestOperation",
+    "ManifestRecord",
+}
+"""The scenario is the suite's input, and the manifest the vendor connector's (ADR-0117); neither
+is a wire object of the core. IntakeArguments is bound under another name (see DEFINITIONS).
+The manifest's binding is the vendor connector's own, held to its examples in
+`tests/adapters/connectors/test_vendor_connector.py`."""
+NOT_PORT_EXAMPLES = {"scenario", "manifest"}
 
 
 @pytest.mark.parametrize(
     ("path", "valid"),
-    [c for c in example_cases(CONNECTOR / "examples") if c[0].parent.parent.name != "scenario"],
+    [
+        c
+        for c in example_cases(CONNECTOR / "examples")
+        if c[0].parent.parent.name not in NOT_PORT_EXAMPLES
+    ],
     ids=lambda p: p.relative_to(CONNECTOR / "examples").as_posix() if isinstance(p, Path) else "",
 )
 def test_connector_examples_through_the_port_types(path: Path, valid: bool) -> None:

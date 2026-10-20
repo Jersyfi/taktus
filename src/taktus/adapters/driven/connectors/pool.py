@@ -30,6 +30,10 @@ class StaticConnectorPool:
                 )
         return None
 
+    def identifiers(self) -> list[str]:
+        """The identifier of every configured member, in order, without reading a declaration."""
+        return [adapter for adapter, _ in self._connectors]
+
     async def members(self) -> list[tuple[str, Capabilities]]:
         """Every configured connector with its declaration — what the removal test reads to
         know what is configured."""

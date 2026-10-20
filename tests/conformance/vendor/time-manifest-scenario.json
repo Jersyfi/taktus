@@ -1,0 +1,21 @@
+{
+  "credentials": {
+    "actions": "VENDOR_TOKEN"
+  },
+  "read": {
+    "operation": "time.clock.convert",
+    "input": {
+      "source_timezone": "Europe/Berlin",
+      "time": "12:00",
+      "target_timezone": "Asia/Tokyo"
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "time.clock.now",
+    "input": {
+      "timezone": "Nowhere/Atlantis"
+    },
+    "expected_cause": "invalid"
+  }
+}

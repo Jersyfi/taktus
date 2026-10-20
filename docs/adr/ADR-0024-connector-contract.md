@@ -187,6 +187,22 @@ request by its head, the comments of one issue, a reference, the labels of one i
   credential names. A scenario that was valid before is valid now and runs as before. `v1` is
   not yet released (ADR-0019), and no published contract is broken (M3.5).
 
+## Amendment — a declaration may serve a vendor's MCP server (2026-10-20)
+
+A vendor's own MCP server speaks MCP and not this contract. ADR-0117 puts one behind it, with a
+manifest of its effects (issue #410).
+
+- **The declaration says when it serves a vendor's server.** `Capabilities.wrapped` is present
+  then. `wrapped.manifest` is the digest of the manifest that declares the server's tools as
+  operations. Without a manifest every operation is a read: the schema and the core's binding
+  both refuse a write.
+- **The manifest is a definition of this contract, not a wire object.** `Manifest` names, per
+  tool, what `Operation` names, and for an outward tool where its answer names the record and,
+  for `native`, which argument takes the key. It offers `native` and `none`, never `marked`.
+- **Nothing that conformed stops conforming.** The change adds an optional field and new
+  definitions. A declaration without `wrapped` is valid and read as before. `v1` is not yet
+  released (ADR-0019), and no published contract is broken (M3.5).
+
 ## Where this promise ends
 
 Effect and idempotency are the connector's declarations, and the run trusts them: a connector

@@ -132,6 +132,14 @@ its moment, needs a third scheme in the contract. It is issue #532.
 - Each is added to an instance by one entry of `TAKTUS_CONNECTORS`. S-01 tests each like any
   connector. No process uses one yet, so each is `untested` and its maturity `experimental`.
 
+## Amendment — `serving.py` serves the vendor connector too (2026-10-20)
+
+§1 said `serving.py` serves only the three connectors. The vendor connector of ADR-0117 puts a
+vendor's MCP server behind the contract, and it serves the contract the way these three do: a
+declaration, one tool per operation, a credential read from its file at the call, the faults
+the suite is proven against. It is served by the same module rather than by a copy of it. The
+existing hand-written connectors still keep their own servers. Nothing changes for the three.
+
 ## Where this promise ends
 
 A message sent is recognised as a repeat only by its copy in the sent folder. Between the SMTP

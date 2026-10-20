@@ -1,4 +1,5 @@
 from taktus.components.catalog.domain.model.maturity import (
+    NO_MANIFEST,
     AdapterMaturity,
     Configuration,
     ConformanceResult,
@@ -10,11 +11,13 @@ from taktus.components.catalog.domain.model.maturity import (
     RunSummary,
     StepFinding,
     Verdict,
+    Wrapped,
     difference,
     judged,
 )
 
 __all__ = [
+    "NO_MANIFEST",
     "AdapterMaturity",
     "Configuration",
     "ConformanceResult",
@@ -26,6 +29,7 @@ __all__ = [
     "RunSummary",
     "StepFinding",
     "Verdict",
+    "Wrapped",
     "difference",
     "judged",
 ]

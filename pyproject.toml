@@ -17,6 +17,9 @@ dependencies = [
   "opentelemetry-sdk",
   "opentelemetry-exporter-otlp",
   "mcp",
+  # The HTTP client the MCP library's streamable HTTP transport takes, named here because the
+  # vendor connector configures it (ADR-0117); the MCP library already brings it.
+  "httpx2",
   "typer",
   "jsonschema",
   "pgvector",
@@ -28,6 +31,9 @@ dependencies = [
 dev = [
   "pytest", "pytest-asyncio", "pytest-xdist", "testcontainers[postgres]",
   "mypy", "types-jsonschema", "types-pyyaml", "ruff", "import-linter", "coverage",
+  # A vendor's MCP server the conformance suite runs against through the vendor connector
+  # (ADR-0117): the MCP project's own reference time server, local, without credentials.
+  "mcp-server-time==2026.10.19",
 ]
 # The ML bench worker's libraries (workers/mlbench), at the exact versions its image installs, so
 # that the tests run the worker as it ships. Never part of the control plane image (DEC-0011).

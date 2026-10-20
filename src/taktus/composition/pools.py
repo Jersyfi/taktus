@@ -13,7 +13,7 @@ from typing import Any
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
-from taktus.components.catalog.domain.model import Configuration
+from taktus.components.catalog.domain.model import Configuration, Wrapped
 from taktus.components.run.domain.model import ConnectorRule, LlmWork, WaitWork, WorkerWork
 from taktus.shared.v1 import Step
 
@@ -50,7 +50,8 @@ class Pools:
         """What stands behind the identifier now: the adapter, what it declared and the version
         it declared — for a model, the model name it is configured with; for a launched worker, the
         hosts its own service may reach (ADR-0089) and the names of its unit's configured
-        variables (ADR-0090). None when no adapter
+        variables (ADR-0090); for a connector that serves a vendor's MCP server, its manifest
+        (ADR-0117). None when no adapter
         of the pools has the identifier. The family is read from the identifier's first
         segment, so that asking about one adapter reads no other's declaration."""
         family = integration.split(".", 1)[0]
@@ -72,11 +73,13 @@ class Pools:
             declaration = await self.connectors.member(integration)
             if declaration is None:
                 return None
+            wrapped = declaration.wrapped
             return Configuration(
                 adapter=integration,
                 serves=tuple(declaration.capabilities),
                 operations=tuple(operation.name for operation in declaration.operations),
                 version=declaration.version,
+                wrapped=None if wrapped is None else Wrapped(manifest=wrapped.manifest),
             )
         if family == "model":
             model = self.models.member(integration)

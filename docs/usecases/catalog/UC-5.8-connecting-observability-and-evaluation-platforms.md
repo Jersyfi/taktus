@@ -7,7 +7,7 @@ serves: [P1, P11, P13]
 state: building
 version: 0.6.0
 tests: [tests/adapters/telemetry/test_opentelemetry.py::test_spans_are_nested_run_step_worker_call, tests/adapters/telemetry/test_opentelemetry.py::test_without_an_endpoint_nothing_is_exported_but_the_trace_exists]
-adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0024: 64d7f9095b59}
+adrs: {ADR-0003: d0268914fed9, ADR-0011: f25413d512b9, ADR-0024: 52ba89e4adec}
 supersedes: null
 ---
 

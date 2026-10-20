@@ -49,6 +49,10 @@ class StaticWorkerPool:
                 return ResolvedWorker(adapter=adapter, worker=worker, version=version)
         return None
 
+    def identifiers(self) -> list[str]:
+        """The identifier of every configured member, in order, without reading a declaration."""
+        return [adapter for adapter, _ in self._workers]
+
     async def members(self) -> list[tuple[str, frozenset[str], str | None]]:
         """Every configured worker with the capabilities and the version it declares — what
         the removal test reads to know what is configured, and records its verdict under."""
