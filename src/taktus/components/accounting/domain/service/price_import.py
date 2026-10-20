@@ -1,6 +1,6 @@
 """An open model price list becomes one version of the price table (#327, DEC-0190).
 
-The list is the shape LiteLLM publishes: one entry per model, each price in money per token
+The list is the open shape such lists share: one entry per model, each price in money per token
 (`input_cost_per_token`, `output_cost_per_token`, `cache_read_input_token_cost`,
 `cache_creation_input_token_cost`). The table prices per `unit_tokens` tokens, so every price is
 multiplied up. A kind the list does not give stays absent, which the table reads as unpriced,
