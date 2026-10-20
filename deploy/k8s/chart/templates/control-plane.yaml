@@ -3,12 +3,14 @@ One deployment per role (ADR-0002), all from the control plane's one image, sele
 TAKTUS_ROLES. Every secret is a file mounted read-only from an existing Secret; its path is in
 the TAKTUS_<KEY>_FILE variable, and no secret is ever an environment variable (CREDENTIALS.md).
 The runner alone mounts Taktus's service-account token: it is the role that creates jobs.
+With `profile: small` one deployment runs every role (`TAKTUS_ROLES=all`) and so mounts it too.
 */ -}}
 {{- $root := . -}}
 {{- $files := include "taktus.secretFiles" . | fromJsonArray -}}
 {{- $image := include "taktus.image" (dict "what" "image" "image" .Values.image) -}}
-{{- range $role := list "api" "runner" "scheduler" "automation" }}
-{{- $spec := index $root.Values.roles $role }}
+{{- $small := eq (include "taktus.profile" $root) "small" }}
+{{- range $role := (ternary (list "all") (list "api" "runner" "scheduler" "automation") $small) }}
+{{- $spec := ternary $root.Values.small (index $root.Values.roles $role) $small }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -35,7 +37,7 @@ spec:
         checksum/config: {{ include (print $root.Template.BasePath "/configmap.yaml") $root | sha256sum }}
     spec:
       serviceAccountName: {{ include "taktus.serviceAccount" $root }}
-      automountServiceAccountToken: {{ eq $role "runner" }}
+      automountServiceAccountToken: {{ or (eq $role "runner") (eq $role "all") }}
       terminationGracePeriodSeconds: {{ add $root.Values.shutdownCeilingSeconds 30 }}
       {{- with $root.Values.image.pullSecret }}
       imagePullSecrets:
@@ -131,7 +133,7 @@ metadata:
 spec:
   selector:
     {{- include "taktus.selector" (dict "root" . "component" "control-plane") | nindent 4 }}
-    taktus-role: api
+    taktus-role: {{ include "taktus.apiRole" . }}
   ports:
     - name: http
       port: 8080

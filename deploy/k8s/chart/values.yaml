@@ -23,7 +23,18 @@ securityContext:
   runAsUser: 999
   runAsGroup: 999
 
-# One deployment per role (ADR-0002). The scheduler is elected; more than one is allowed and idle.
+# `standard`: one deployment per role, as `roles` below. `small`: one deployment running every
+# role in one process (TAKTUS_ROLES=all), sized by `small`, beside the database. Not highly
+# available: a restart of the one pod stops every role until it is back (README §2).
+profile: standard
+
+small:
+  resources:
+    requests: { cpu: 200m, memory: 384Mi }
+    limits: { memory: 768Mi }
+  replicas: 1
+
+# One deployment per role (ADR-0002), for the `standard` profile. The scheduler is elected; more than one is allowed and idle.
 roles:
   api:
     replicas: 1

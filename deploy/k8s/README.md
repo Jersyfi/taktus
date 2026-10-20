@@ -81,7 +81,8 @@ operator's. The parts that carry a decision:
 |---|---|
 | `namespaces.create` | `false` by default: both namespaces exist before the install, created by whoever may create namespaces, with the labels of section 4. The control plane renders into the release's namespace (`helm --namespace`), the execution units' objects into `execution.namespace`. `true` renders both Namespace objects with those labels, for a cluster where the installing identity may (DEC-0060) |
 | `image.repository`, `image.tag`, `image.pullSecret` | the control plane image; the tag is a version, and `latest` or an empty tag fails the render |
-| `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002); the scheduler is elected, more than one is allowed and idle |
+| `profile` | `standard` (default): one deployment per role. `small`: one deployment running every role in one process (`TAKTUS_ROLES=all`), sized by `small.resources`, beside the database. See "Which profile" below |
+| `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002), for the `standard` profile; the scheduler is elected, more than one is allowed and idle |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
 | `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall. A role keeps at most `TAKTUS_OBJECT_CACHE_MB` of them in memory (default 64; set through `env`) |
 | `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6; `defaults.unitEnv` the variables a worker's own program needs to start, section 7 — configuration, never a secret), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none), `unitEnv` (`{}` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
@@ -157,6 +158,16 @@ cluster.
 **Every pod runs under the restricted profile**, the database included: not as root, no
 privilege escalation, every capability dropped, the runtime's default seccomp profile and a
 read-only root filesystem. The control plane's namespace can therefore enforce `restricted` too.
+
+### Which profile
+
+| Profile | Suits | Costs |
+|---|---|---|
+| `small` | one team or a trial on a cluster; the smallest footprint: the control plane in one pod, plus the database | not highly available: a restart of the pod stops every role until it is back, resuming at the last step boundary. The pod holds Taktus's service-account token, as the runner does. Roles cannot be scaled apart |
+| `standard` | an instance that needs roles scaled or restarted apart | one pod per role |
+
+Neither is the highly available profile (#342). For one machine, Docker Compose remains the
+way; the chart is for a cluster.
 
 ## 3. The image, and how it gets there
 
