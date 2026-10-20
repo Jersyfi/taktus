@@ -1,7 +1,7 @@
 # NEED-0032 — The egress gateway's key on the instance
 
 **Kind:** action
-**Raised in:** [#PR_NUMBER](https://github.com/Jersyfi/taktus/pull/PR_NUMBER)
+**Raised in:** [#547](https://github.com/Jersyfi/taktus/pull/547)
 **Issue:** [#546](https://github.com/Jersyfi/taktus/issues/546)
 **Needed by:** 2026-10-31
 **Foreseeable since:** #324, which replaces each job's own egress proxy with one gateway of the instance
