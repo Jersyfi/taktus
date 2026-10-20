@@ -279,15 +279,20 @@ async def test_the_remaining_whole_ledger_reads_cost_what_they_return(
             await wired.ledger.project(chosen, QUALITY)
         print(f"\nthe quality projection built once: {time.perf_counter() - started:.2f} s")
 
-        async def best(name: str, read: Callable[[], Awaitable[Any]]) -> Any:
-            """The best of five, as the bound of the ledger route is measured (#528)."""
+        async def timed_read(name: str, read: Callable[[], Awaitable[Any]]) -> Any:
+            """The median of five, as the bound of the ledger route is measured (#528): the
+            fastest would admit a read that is usually slower."""
             timed: list[float] = []
             for _ in range(LEDGER_READS):
                 started = time.perf_counter()
                 found = await read()
                 timed.append(time.perf_counter() - started)
-            print(f"{name}: best {min(timed) * 1000:.1f} ms of {LEDGER_READS}")
-            assert min(timed) < REMAINING_SECONDS, (name, timed)
+            reading = statistics.median(timed)
+            print(
+                f"{name}: median {reading * 1000:.1f} ms of {LEDGER_READS}, "
+                f"best {min(timed) * 1000:.1f} ms, worst {max(timed) * 1000:.1f} ms"
+            )
+            assert reading < REMAINING_SECONDS, (name, timed)
             return found
 
         async def quality() -> Any:
@@ -303,9 +308,9 @@ async def test_the_remaining_whole_ledger_reads_cost_what_they_return(
         async def measures() -> Any:
             return await StepMeasures(wired.runs, wired.ledger, objects, wired.work).steps(chosen)
 
-        history = await best("the quality history of a raise or a registration", quality)
-        taken = await best("the Takt rate", rate)
-        await best("the measures of the steps", measures)
+        history = await timed_read("the quality history of a raise or a registration", quality)
+        taken = await timed_read("the Takt rate", rate)
+        await timed_read("the measures of the steps", measures)
 
         # Each equals what every entry gives.
         async with wired.work.transaction(chosen):
