@@ -229,3 +229,37 @@ async def test_a_reader_finds_the_head_the_entries_after_a_position_and_a_hash_a
     async with backend.work.transaction(other):
         assert await store.position(other, hashes[2]) is None, "a position is the tenant's own"
         assert await store.head(other) == 0
+
+
+async def test_the_entries_of_some_runs_and_of_some_kinds_since_a_moment_are_read_alone(
+    backend: Backend,
+) -> None:
+    """What the Takt rate reads (ADR-0105 §9): the entries of the given kinds recorded at or
+    after a moment, and the entries of the given kinds of some runs; nothing else, in order."""
+    tenant = await backend.tenant()
+    store = backend.ledger_store
+    day = [datetime(2026, 10, d, tzinfo=UTC) for d in range(1, 6)]
+    rows = [
+        ("budget.set", "r1", day[0]),
+        ("step.finished", "r1", day[1]),
+        ("budget.set", "r2", day[2]),
+        ("step.finished", "r2", day[3]),
+        ("step.finished", "r3", day[4]),
+    ]
+    async with backend.work.transaction(tenant):
+        for seq, (kind, run, ts) in enumerate(rows, start=1):
+            await store.append(
+                tenant,
+                entry(seq, None if seq == 1 else ZERO, kind=kind, ts=ts, refs={"run_id": run}),
+            )
+    async with backend.work.transaction(tenant):
+        recent = await store.of_kinds_since(tenant, {"step.finished"}, since=day[3])
+        both = await store.of_kinds_since(tenant, {"step.finished", "budget.set"}, since=day[2])
+        budgets = await store.of_runs(tenant, {"r1", "r2", "r3"}, {"budget.set"})
+        some = await store.of_runs(tenant, {"r2"}, {"budget.set", "step.finished"})
+        nobody = await store.of_runs(tenant, set(), {"budget.set"})
+    assert [e.seq for e in recent] == [4, 5]
+    assert [e.seq for e in both] == [3, 4, 5]
+    assert [e.seq for e in budgets] == [1, 3]
+    assert [e.seq for e in some] == [3, 4]
+    assert nobody == []

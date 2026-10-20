@@ -45,6 +45,19 @@ class MemoryLedgerStore:
     async def of_run(self, tenant: Tenant, run_id: str) -> Sequence[LedgerEntry]:
         return [e for e in await self.entries(tenant) if e.refs.run_id == run_id]
 
+    async def of_runs(
+        self, tenant: Tenant, run_ids: Collection[str], kinds: Collection[str]
+    ) -> Sequence[LedgerEntry]:
+        wanted = set(run_ids)
+        return [
+            e for e in await self.entries(tenant) if e.refs.run_id in wanted and e.kind in kinds
+        ]
+
+    async def of_kinds_since(
+        self, tenant: Tenant, kinds: Collection[str], *, since: datetime
+    ) -> Sequence[LedgerEntry]:
+        return [e for e in await self.entries(tenant) if e.kind in kinds and e.ts >= since]
+
     async def summary(self, tenant: Tenant, kind: str, *, since: datetime) -> KindSummary:
         of_kind = [e for e in await self.entries(tenant) if e.kind == kind]
         return KindSummary(

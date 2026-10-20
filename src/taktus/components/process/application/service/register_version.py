@@ -55,6 +55,7 @@ from taktus.components.process.domain.model.exactness import (
     InvalidStatement,
 )
 from taktus.components.process.domain.service import autonomy, evaluation, exactness
+from taktus.components.process.domain.service.quality import QUALITY
 from taktus.components.process.ports import LoweredLevels, LoweredVersions
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock
@@ -212,8 +213,7 @@ class RegisterProcessVersionHandler:
     ) -> autonomy.RaiseVerdict:
         named = [old.autonomy.history for old in replaced if old.autonomy.history is not None]
         required = max(named) if len(named) == len(replaced) else None
-        entries = await self._ledger.entries(tenant)
-        quality = autonomy.history(entries, version.process_id)
+        quality = (await self._ledger.project(tenant, QUALITY)).history(version.process_id)
         return autonomy.verdict(
             list(dict.fromkeys(raised)),
             approved_by=command.approved_by,

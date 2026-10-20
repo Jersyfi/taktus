@@ -6,6 +6,9 @@ the model classes recorded beside it, summed, and divided by the window's hours.
 the table in force's `rate_window_days`: thirty days for version 0 (DEC-0131). A run that
 started without a weighting table, or whose table cannot be read, is named, and so is every
 quantity a table does not weigh; nothing is counted as zero (UC-8.5).
+
+The read costs what it returns (ADR-0105 §9): the `step.finished` entries recorded inside the
+window, read by kind and time, and the `budget.set` entries of the runs they belong to.
 """
 
 from __future__ import annotations
@@ -47,6 +50,10 @@ class TaktRate(Value):
     """What the Takte leave out, and why, per run."""
 
 
+FINISHED = "step.finished"
+BUDGET = "budget.set"
+
+
 @dataclass(frozen=True)
 class TaktRateOf:
     tenant: Tenant
@@ -72,20 +79,21 @@ class TaktRateHandler:
         days = self._weights.rate_window_days
         since = until - timedelta(days=days)
         async with self._work.transaction(query.tenant):
-            entries = list(await self._ledger.entries(query.tenant))
-        by_run: dict[str, list[LedgerEntry]] = defaultdict(list)
-        for entry in entries:
-            if entry.refs.run_id is not None:
-                by_run[entry.refs.run_id].append(entry)
+            finished = await self._ledger.of_kinds(query.tenant, {FINISHED}, since=since)
+            by_run: dict[str, list[LedgerEntry]] = defaultdict(list)
+            for entry in finished:
+                if entry.refs.run_id is not None and entry.ts <= until:
+                    by_run[entry.refs.run_id].append(entry)
+            budgets: dict[str, list[LedgerEntry]] = defaultdict(list)
+            for entry in await self._ledger.of_runs(query.tenant, set(by_run), {BUDGET}):
+                if entry.refs.run_id is not None:
+                    budgets[entry.refs.run_id].append(entry)
         takte, runs = 0.0, 0
         tables: set[tuple[str, bool]] = set()
         unweighed: list[str] = []
-        for run_id, of_run in sorted(by_run.items()):
-            inside = [e for e in of_run if e.kind == "step.finished" and since <= e.ts <= until]
-            if not inside:
-                continue
+        for run_id, inside in sorted(by_run.items()):
             runs += 1
-            reference = await self._reference(of_run)
+            reference = await self._reference(budgets[run_id])
             table = await self._table(reference)
             if table is None:
                 why = (
@@ -119,7 +127,7 @@ class TaktRateHandler:
 
     async def _reference(self, entries: list[LedgerEntry]) -> dict[str, Any]:
         """The weighting table the run's latest budget statement names; empty when none."""
-        digests = [e.content_digest for e in entries if e.kind == "budget.set"]
+        digests = [e.content_digest for e in entries if e.kind == BUDGET]
         latest = next((d for d in reversed(digests) if d is not None), None)
         if latest is None:
             return {}

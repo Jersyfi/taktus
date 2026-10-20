@@ -8,7 +8,8 @@ What a case is read from, and nothing else:
 
 - the run and its step runs: what the step consumed, when it started and ended, its result;
 - the object store: the result's content, and what the step read through `$from`;
-- the ledger: a person's correction of the result (`step.corrected`), the newest one counting.
+- the ledger: a person's correction of the result (`step.corrected`), the newest one counting;
+  only the entries of that kind are read (ADR-0105 §9).
 - for a step moved to a trained model, the result's `text` and whether the case fell back to the
   language model it was moved from (ADR-0114).
   Who corrected is in the entry; it never reaches a case or a measure (principle 14).
@@ -75,7 +76,7 @@ class StepMeasures:
         ordered by run."""
         async with self._work.transaction(tenant):
             runs = list(await self._runs.list(tenant))
-            entries = list(await self._ledger.entries(tenant))
+            entries = list(await self._ledger.of_kinds(tenant, {maturation.CORRECTED}))
         corrections: dict[tuple[str, str], str] = {}
         for entry in entries:
             refs = entry.refs

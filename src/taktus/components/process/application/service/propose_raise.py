@@ -15,7 +15,8 @@ from dataclasses import dataclass
 from pydantic import Field
 
 from taktus.components.process.domain.model import InvalidProcess, Process, ProcessVersion
-from taktus.components.process.domain.service.autonomy import QualityHistory, history
+from taktus.components.process.domain.service.autonomy import QualityHistory
+from taktus.components.process.domain.service.quality import QUALITY
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.shared.v1 import Autonomy, LedgerRefs, Value
@@ -68,7 +69,9 @@ class ProposeRaiseHandler:
                 raise InvalidProcess(
                     (f"no active version of {command.process_id!r} is registered",)
                 )
-            quality = history(await self._ledger.entries(command.tenant), active.process_id)
+            quality = (await self._ledger.project(command.tenant, QUALITY)).history(
+                active.process_id
+            )
             required = active.autonomy.history
             evidenced = required is not None and quality.clean >= required
             await self._ledger.record(

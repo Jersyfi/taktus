@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 from fakes import FakeClock
+from fakes.guarded import NoWholeReads
 
 from taktus.adapters.driven.memory import MemoryLedgerStore, MemoryPersistence, MemoryRepository
 from taktus.components.ledger.application.service import ChainedLedger
@@ -33,6 +34,7 @@ from taktus.components.process.domain.model import (
     ProcessVersion,
     RaiseRefused,
 )
+from taktus.components.process.domain.service.autonomy import history
 from taktus.ports.administration import Administration
 from taktus.ports.ledger import Fact
 from taktus.shared.v1 import LedgerEntry, LedgerRefs
@@ -117,7 +119,7 @@ class World:
             self.runs += 1
             run_id = f"run_{self.runs}"
             refs = LedgerRefs(tenant=TENANT, process_version="p@1", run_id=run_id)
-            facts = []
+            facts = [Fact(kind="run.created", refs=refs)]
             if end == "failed_step":
                 facts.append(Fact(kind="step.finished", refs=refs, outcome="failed"))
             kind = "run.escalated" if end == "escalated" else "run.finished"
@@ -362,3 +364,21 @@ async def test_a_credential_named_by_a_reference_is_left_to_admission() -> None:
 async def test_without_a_platform_nothing_is_refused() -> None:
     w = World(Administration(declared={"KUBE": ("here",)}))
     assert (await w.registered(naming("KUBE"))).ref == "p@1"
+
+
+async def test_the_history_a_proposal_and_a_registration_read_is_the_one_of_the_whole_ledger() -> (
+    None
+):
+    """Neither reads the tenant's whole ledger (ADR-0105 §9), and both see the history that
+    `autonomy.history` computes from every entry."""
+    w = World()
+    await w.registered(bundle(2, history=2))
+    await w.ran("finished", "escalated", "finished", "failed_step", "finished", "finished")
+    guard = NoWholeReads(w.ledger)
+    w.propose._ledger = guard  # type: ignore[assignment]
+    w.register._ledger = guard  # type: ignore[assignment]
+    proposal = await w.propose.execute(ProposeRaise(tenant=TENANT, process_id="p"))
+    whole = history(await w.entries(), "p")
+    assert proposal.quality == whole and (whole.clean, whole.ended) == (2, 6)
+    await w.registered(bundle(3, version="2", history=2), approved_by=PERSON)
+    assert autonomy_entries(await w.entries())[-1][:2] == ("autonomy.raised", "raised")
