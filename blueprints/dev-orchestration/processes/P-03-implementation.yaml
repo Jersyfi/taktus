@@ -82,7 +82,7 @@
 # test (S-01) reads the declaration and says *changed* for the integration, not *broke*.
 
 id: p03-implementation
-version: "21"
+version: "22"
 name: P-03 Implementation
 autonomy:
   level: 4
@@ -548,8 +548,14 @@ steps:
             section one of its checks reads — the summary is written in that shape, with the
             same headings at the same level and every required section present and truthful.
             Each heading is copied from the template character for character, never reworded,
-            shortened or lengthened: the check compares the text of the heading. Before the
-            assignment ends, every heading of the summary is compared with the template's.
+            shortened or lengthened: the check compares the text of the heading. The template is
+            the file the repository keeps for pull request descriptions, as its hosting service
+            expects it: for one, `.github/pull_request_template.md` or a file of that name under
+            `docs/` or the repository's root. The summary starts as a copy of that file's
+            headings, in its order, and only the text under them is written. Before the
+            assignment ends, the headings are compared by command, not by reading: the lines that
+            begin with `## ` in the template and in the summary are listed, and the two lists are
+            the same but for the section the repository generates.
             One section is left out: the one whose content the repository generates, which the
             repository puts last. The run appends it after the summary, from the repository's
             own generator, so the summary neither writes nor copies it. The summary carries no

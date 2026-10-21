@@ -3,13 +3,13 @@
     "quota_units": 2.0
   },
   "effect": {
-    "content_digest": "sha256:4ecdbaa6fe6ce99fa74b2fd9418ea2bfcc84b5531a39c8eebc82cf558c81e043",
+    "content_digest": "sha256:0cbaa2d1ee7a7778322feb9ca2e42be991244f3d4e3c56c04133539dc5d96e9d",
     "kind": "write",
     "records": [
       {
         "id": "2#3",
         "kind": "comment",
-        "url": "http://127.0.0.1:20041/acme/product/issues/2#issuecomment-3"
+        "url": "http://127.0.0.1:20890/acme/product/issues/2#issuecomment-3"
       }
     ],
     "replayed": false
@@ -19,9 +19,9 @@
       "account": "a person",
       "kind": "person"
     },
-    "body": "Taktus took this issue: run `run_78d756c192a352276e5f` of `p03-implementation@21` claimed it with the label `in-progress`.\n\n*Written by Taktus, process P-03 Implementation. The run ends in a pull request that\ncloses this issue, or it gives the issue back here and says why. Merging stays with a\nperson.*\n\n<!-- taktus-idempotency-key taktus:run_78d756c192a352276e5f:announce-claim:1 -->\n",
-    "created_at": "2026-10-20T21:15:58Z",
+    "body": "Taktus took this issue: run `run_aeecd19b041956951876` of `p03-implementation@22` claimed it with the label `in-progress`.\n\n*Written by Taktus, process P-03 Implementation. The run ends in a pull request that\ncloses this issue, or it gives the issue back here and says why. Merging stays with a\nperson.*\n\n<!-- taktus-idempotency-key taktus:run_aeecd19b041956951876:announce-claim:1 -->\n",
+    "created_at": "2026-10-21T13:12:20Z",
     "id": "3",
-    "url": "http://127.0.0.1:20041/acme/product/issues/2#issuecomment-3"
+    "url": "http://127.0.0.1:20890/acme/product/issues/2#issuecomment-3"
   }
 }
