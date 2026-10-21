@@ -549,6 +549,7 @@ ledger_entry = Table(
     Index("ledger_entry_hash", "tenant", "hash"),
     # The entries of some kinds, in sequence order, without the others (ADR-0105).
     Index("ledger_entry_kind", "tenant", "kind", "seq"),
+    Index("ledger_entry_kind_ts", "tenant", "kind", "ts"),
 )
 
 ledger_projection = Table(

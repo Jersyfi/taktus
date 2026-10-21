@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from fakes import FakeIdentifiers, FakeModel, FakeWorker, InnerStep
 from fakes.clock import FakeClock
+from fakes.guarded import NoWholeReads
 from fakes.identity import directory
 from fakes.maturity import VERIFIED
 
@@ -488,3 +489,25 @@ async def test_a_step_below_the_floor_is_not_trained() -> None:
         "fewer than 20 cases in class(es) 'k0' (10), 'k1' (10), 'k2' (10)",
     )
     assert "method.proposed" not in await w.kinds()
+
+
+async def test_the_measures_read_the_corrections_only_and_equal_those_of_the_whole_ledger() -> None:
+    """A step's cases are read with the entries of `step.corrected` alone (ADR-0105 §9). The
+    newest correction of a case counts, as it does when every entry is read."""
+    w = World()
+    runs = await w.history(separable(6))
+    for run, label in ((runs[0], "k1"), (runs[0], "k2"), (runs[3], "k1")):
+        await w.correct.execute(CorrectResult(TENANT, run.id, "classify", label, actor=CORRECTOR))
+    guard = NoWholeReads(w.ledger)
+    measures = StepMeasures(w.runs, guard, w.objects, w.persistence, PRICES)  # type: ignore[arg-type]
+    step = next(s for s in await measures.steps(TENANT) if s.step_id == "classify")
+    async with w.persistence.transaction(TENANT):
+        every = list(await w.ledger.entries(TENANT))
+    newest: dict[str, str] = {}
+    for entry in every:
+        if entry.kind == "step.corrected" and entry.content_digest is not None:
+            newest[entry.refs.run_id or ""] = entry.content_digest
+    assert len(newest) == 2
+    by_run = {case.run_id: case for case in step.cases}
+    assert {r for r, c in by_run.items() if c.corrected} == set(newest)
+    assert by_run[runs[0].id].label == "k2" and by_run[runs[3].id].label == "k1"

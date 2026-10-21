@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import statistics
 import time
-from collections.abc import Callable
-from datetime import UTC, datetime
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import pytest
@@ -29,10 +30,15 @@ from sqlalchemy import text
 
 from taktus.adapters.driven.postgres import PostgresProjectionStore
 from taktus.adapters.driven.postgres import _schema as schema
+from taktus.components.accounting.application.service import TaktRateHandler, TaktRateOf
+from taktus.components.accounting.domain.service import TAKT
 from taktus.components.ledger.application.service.chained_ledger import CHECKPOINT
+from taktus.components.process.domain.service.quality import QUALITY
+from taktus.components.run.application.query import StepMeasures
 from taktus.components.run.domain.model import Run, RunState
 from taktus.components.run.domain.service.projections import CALIBRATION
 from taktus.composition.daemon import Wired
+from taktus.composition.settings import weighting_table_in_force
 from taktus.ports.ledger import Fact
 from taktus.ports.persistence import Projected
 from taktus.ports.worker import ComputeLimit, Limits
@@ -47,6 +53,7 @@ ENTRIES = 500_000
 AT = datetime(2026, 10, 12, 8, 0, tzinfo=UTC)
 CALIBRATION_SECONDS = 0.05
 LEDGER_SECONDS = 0.2
+REMAINING_SECONDS = 0.2
 LEDGER_READS = 5
 KINDS = (
     "ARRAY['run.created','run.started','step.admitted','step.started','step.finished',"
@@ -67,7 +74,7 @@ async def seed(wired: Wired, tenant: str) -> float:
     statement = f"""
         INSERT INTO ledger_entry (tenant, seq, ts, kind, prev_hash, hash, refs, method, adapter,
                                   consumption, outcome)
-        SELECT :t, n, :at + n * interval '1 second', {kind},
+        SELECT :t, n, :at + n * interval '1 minute', {kind},
                CASE WHEN n = 1 THEN NULL ELSE {placeholder("n - 1")} END,
                {placeholder("n")},
                jsonb_strip_nulls(jsonb_build_object(
@@ -240,3 +247,89 @@ async def test_half_a_million_entries_cost_a_run_start_and_a_ledger_read_what_th
         by_kind = await plan(wired, chosen, "kind = 'interface.failed' AND seq > 0")
         assert "ledger_entry_kind" in by_kind, by_kind
         assert schema.ledger_entry.name == "ledger_entry"
+
+
+class At:
+    """A clock that stands still at a moment."""
+
+    def __init__(self, moment: datetime) -> None:
+        self.moment = moment
+
+    def now(self) -> datetime:
+        return self.moment
+
+
+@pytest.mark.timing
+async def test_the_remaining_whole_ledger_reads_cost_what_they_return(
+    instances: Callable[..., Instance], chosen: str
+) -> None:
+    """The Takt rate, the measures of a step, the quality history of a raise and of a
+    registration (ADR-0105 §9, issue #522), each over 500 000 entries, one per minute: the Takt
+    rate reads the thirty days it rates from a projection, per day and run (7 200 finished steps of
+    83 333), and the entries of its two partial days."""
+    async with instances("ledger", TAKTUS_ROLES="api", TAKTUS_TENANTS=chosen) as one:
+        assert one.wired is not None
+        wired = one.wired
+        await seed(wired, chosen)
+        await checkpointed(wired, chosen)
+        objects = wired.engine._objects
+        now = AT + timedelta(minutes=ENTRIES)
+
+        # The first read of a projection builds it from the entries of its kinds, once.
+        started = time.perf_counter()
+        async with wired.work.transaction(chosen):
+            await wired.ledger.project(chosen, QUALITY)
+        print(f"\nthe quality projection built once: {time.perf_counter() - started:.2f} s")
+        started = time.perf_counter()
+        async with wired.work.transaction(chosen):
+            await wired.ledger.project(chosen, TAKT)
+        print(f"the Takt projection built once: {time.perf_counter() - started:.2f} s")
+
+        async def timed_read(name: str, read: Callable[[], Awaitable[Any]]) -> Any:
+            """The median of five, as the bound of the ledger route is measured (#528): the
+            fastest would admit a read that is usually slower."""
+            timed: list[float] = []
+            for _ in range(LEDGER_READS):
+                started = time.perf_counter()
+                found = await read()
+                timed.append(time.perf_counter() - started)
+            reading = statistics.median(timed)
+            print(
+                f"{name}: median {reading * 1000:.1f} ms of {LEDGER_READS}, "
+                f"best {min(timed) * 1000:.1f} ms, worst {max(timed) * 1000:.1f} ms"
+            )
+            assert reading < REMAINING_SECONDS, (name, timed)
+            return found
+
+        async def quality() -> Any:
+            async with wired.work.transaction(chosen):
+                return (await wired.ledger.project(chosen, QUALITY)).history("seeded-0")
+
+        async def rate() -> Any:
+            handler = TaktRateHandler(
+                wired.ledger, objects, wired.work, At(now), weighting_table_in_force()
+            )
+            return await handler.execute(TaktRateOf(chosen))
+
+        async def measures() -> Any:
+            return await StepMeasures(wired.runs, wired.ledger, objects, wired.work).steps(chosen)
+
+        history = await timed_read("the quality history of a raise or a registration", quality)
+        taken = await timed_read("the Takt rate", rate)
+        await timed_read("the measures of the steps", measures)
+
+        # Each equals what every entry gives.
+        async with wired.work.transaction(chosen):
+            rebuilt = await wired.ledger.rebuilt(chosen, QUALITY)
+        assert rebuilt.history("seeded-0") == history
+        async with wired.work.transaction(chosen):
+            stored_days = await wired.ledger.project(chosen, TAKT)
+            assert stored_days == await wired.ledger.rebuilt(chosen, TAKT), "the Takt projection"
+        assert history.ended == ENTRIES // 6 // 4 + 1 and history.clean == history.ended
+        assert taken.runs == 30 * 24 * 60 // 6 and taken.window_days == 30
+        plan_ts = await plan(
+            wired,
+            chosen,
+            f"kind = 'step.finished' AND ts >= '{(now - timedelta(days=30)).isoformat()}'",
+        )
+        assert "ledger_entry_kind_ts" in plan_ts, plan_ts

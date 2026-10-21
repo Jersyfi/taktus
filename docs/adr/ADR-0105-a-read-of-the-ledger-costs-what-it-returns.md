@@ -1,6 +1,6 @@
 # ADR-0105 — A read of the ledger costs what it returns
 
-**Status:** accepted · amends ADR-0006: a projection derived from the ledger is allowed · issue #321
+**Status:** accepted · amends ADR-0006: a projection derived from the ledger is allowed · issue #321 · amended by #522 (§9: the four remaining readers)
 
 ## Context
 
@@ -50,6 +50,27 @@ On 2026-10-12, with 500 000 entries in one tenant, a run start took 23.6 s and t
    once. Each holds a correct value for the sequence number it read to. Only the one that takes
    the projection's claim stores its value; the other returns its own and stores nothing.
 
+9. **The four remaining whole-ledger readers name what they need** (#522). Each reads the
+   entries of the kinds it needs, the entries of some runs, or a projection:
+   - *The Takt rate* is the projection `accounting.takt.v1`
+     (`components/accounting/domain/service/takt_window.py`). It keeps, for the last 33 days and
+     per day, each run's breakdown of the steps it finished that day, and per run the budget
+     statement it names. A read takes the whole days of its window from the projection. It reads
+     the two partial days at the ends of the window from the ledger, by kind and time through
+     the index `ledger_entry_kind_ts` (migration 0060), and the budget statement of a run the
+     projection no longer knows through `ledger_entry_run`. A window longer than the days kept
+     is read from the entries alone. The full computation the projection equals is the weighing
+     of the `step.finished` entries inside the window, run by run.
+   - *The measures of a step* read the `step.corrected` entries.
+   - *The quality history of a raise*, read by a proposal and by a registration, is the
+     projection `process.quality.v1` (`components/process/domain/service/quality.py`). Per
+     process it holds the runs that began and did not end, the number of runs that ended, the
+     newest ended run that failed, and the start of each run that ended cleanly after it.
+   - The history's rule is stated by `autonomy.history`, the full computation the projection
+     equals: a run begins at its `run.created` and ends at `run.finished` or `run.escalated`; an
+     entry of a run that has not begun or has ended changes nothing; runs are ordered by their
+     `run.created`.
+
 ## Alternatives
 
 - **Maintain each projection when an entry is recorded.** Every write would pay for every
@@ -78,7 +99,15 @@ On 2026-10-12, with 500 000 entries in one tenant, a run start took 23.6 s and t
 A projection is as current as its last reader. The first read after a long pause pays for every
 entry since. A verification from the checkpoint does not see a change to an entry before the
 checkpoint, and it trusts the checkpoint's row. Only a full verification finds either, and it
-costs what the whole chain costs. The reads that still walk the whole ledger — the Takt rate,
-the measures, the quality history of a raise, and the registration of a version — are not on a
-hot path and are not covered here (#522). The chain's shape is unchanged (#341). Nothing of the ledger
+costs what the whole chain costs. The Takt rate costs what the
+runs of its window return, not what their entries hold: it still weighs and names each run that
+finished a step in the window, so a tenant with ten times as many runs pays ten times as much for
+that part. The projection keeps a breakdown for each run and day of the 33 days, so its stored
+value grows with the runs of those days, not with the history. Its two partial days are read from
+the ledger, one day of entries each at most. The quality projection keeps one number for each run that ended cleanly after a
+process's last failed run, so a process that never fails grows it by a number a run. An entry
+recorded for a run after it ended, or a second `run.created` of a run that ended, is not
+recognised as such by the projection and is ignored by the full computation: a ledger that
+holds either is outside what the equality promises. Other readers of the whole ledger remain
+(the correction figures, the alert sweep); only the four named in #522 are covered. The chain's shape is unchanged (#341). Nothing of the ledger
 is deleted or archived.

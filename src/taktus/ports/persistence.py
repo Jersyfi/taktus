@@ -184,6 +184,27 @@ class LedgerStore(Protocol):
         run's: the database reads them through the index `ledger_entry_run` (ADR-0105)."""
         ...
 
+    async def of_runs(
+        self, tenant: Tenant, run_ids: Collection[str], kinds: Collection[str]
+    ) -> Sequence[LedgerEntry]:
+        """The entries of the given kinds that reference any of these runs, in sequence order,
+        in one read through the index `ledger_entry_run` (ADR-0105 §9)."""
+        ...
+
+    async def of_kinds_since(
+        self,
+        tenant: Tenant,
+        kinds: Collection[str],
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> Sequence[LedgerEntry]:
+        """The entries of the given kinds recorded at or after `since` and at or before
+        `until` (either may be absent), in sequence order,
+        without reading the rest: the database reads them through the index
+        `ledger_entry_kind_ts` (ADR-0105 §9)."""
+        ...
+
     async def summary(self, tenant: Tenant, kind: str, *, since: datetime) -> KindSummary:
         """How many entries of one kind the tenant's chain holds, how many of them were
         recorded at or after `since`, when the first was recorded, and the newest of them —

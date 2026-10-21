@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import timedelta
 
 import pytest
+from fakes.guarded import NoWholeReads
 from fakes.maturity import VERIFIED
 
 from taktus.adapters.driven.models import StaticModelPool
@@ -16,17 +18,18 @@ from taktus.adapters.driving.cli.cost_command import render, render_rate
 from taktus.components.accounting.application.service import (
     CostOfRun,
     CostOfRunHandler,
+    TaktRate,
     TaktRateHandler,
     TaktRateOf,
 )
-from taktus.components.accounting.domain.service import Meter, weigh
+from taktus.components.accounting.domain.service import TAKT, Meter, meter, weigh
 from taktus.components.run.application.service import EngineOptions, RunEngine
 from taktus.components.run.domain.model import Run, RunState
 from taktus.composition.settings import WEIGHTING_TABLES, weighting_table_in_force
 from taktus.conformance.contracts import contracts_root
 from taktus.ports.model import WeightingTable, price
 from taktus.ports.worker import ComputeLimit, Limits
-from taktus.shared.v1 import PriceKinds
+from taktus.shared.v1 import LedgerEntry, PriceKinds
 
 from ..run.test_engine import worker
 from ..run.test_estimates import ISSUE, TABLE
@@ -266,3 +269,73 @@ async def test_a_run_without_a_table_is_named_in_the_rate_not_counted_as_zero() 
     )
     assert rate.runs == 1 and rate.takte == 0.0
     assert rate.unweighed == (f"run {run.id}: started without a weighting table in force",)
+
+
+async def whole_ledger_rate(h: ModelHarness, handler: TaktRateHandler, days: int = 30) -> TaktRate:
+    """The rate as it was computed from every entry of the ledger, before it was read by kind
+    and time (ADR-0105 §9): the result the handler must equal."""
+    until = h.clock.now()
+    since = until - timedelta(days=days)
+    by_run: dict[str, list[LedgerEntry]] = {}
+    async with h.persistence.transaction("t"):
+        for entry in await h.ledger.entries("t"):
+            if entry.refs.run_id is not None:
+                by_run.setdefault(entry.refs.run_id, []).append(entry)
+    takte, runs = 0.0, 0
+    for _, of_run in sorted(by_run.items()):
+        inside = [e for e in of_run if e.kind == "step.finished" and since <= e.ts <= until]
+        if not inside:
+            continue
+        runs += 1
+        digests = [e.content_digest for e in of_run if e.kind == "budget.set"]
+        reference = await handler._reference(
+            next((d for d in reversed(digests) if d is not None), None)
+        )
+        table = await handler._table(reference)
+        assert table is not None
+        takte += weigh(meter(inside), table, reference.get("model_classes") or {}).takte
+    return TaktRate.model_construct(runs=runs, takte=round(takte, 9))
+
+
+async def test_the_rate_reads_the_window_not_the_ledger_and_equals_the_whole_ledgers() -> None:
+    h = weighed(refine_and_do())
+    await h.start(LIMITS)
+    h.clock.current += timedelta(days=40)  # the first run's steps leave the window
+    await h.start(LIMITS)
+    await h.start(LIMITS)
+    guard = NoWholeReads(h.ledger)
+    handler = TaktRateHandler(guard, h.objects, h.persistence, h.clock, V0)  # type: ignore[arg-type]
+    rate = await handler.execute(TaktRateOf("t"))
+    expected = await whole_ledger_rate(h, handler)
+    assert rate.runs == expected.runs == 2
+    assert rate.takte == pytest.approx(expected.takte) and rate.takte > 0
+
+
+@pytest.mark.parametrize("window", [30, 40])
+async def test_the_rate_over_days_equals_the_whole_ledgers_and_the_rebuilt_projection(
+    window: int,
+) -> None:
+    """Runs on many days, the window starting inside a day: the whole days come from the
+    projection, the two partial days from the entries, a window longer than the projection keeps
+    from the entries alone. Each equals the rate computed from every entry, and the stored
+    projection equals the one rebuilt from the ledger (ADR-0105 §3, §9)."""
+    h = weighed(refine_and_do())
+    weights = V0.model_copy(update={"rate_window_days": window})
+    start = h.clock.current
+    for hours in (0, 3, 20, 24 * 3 + 5, 24 * 29 + 22, 24 * 31 + 1, 24 * 35, 24 * 50 + 2):
+        h.clock.current = start + timedelta(hours=hours)
+        await h.start(LIMITS)
+        await h.start(LIMITS)
+    h.clock.current = start + timedelta(days=50, hours=9, minutes=30)
+    guard = NoWholeReads(h.ledger)
+    handler = TaktRateHandler(guard, h.objects, h.persistence, h.clock, weights)  # type: ignore[arg-type]
+    rate = await handler.execute(TaktRateOf("t"))
+    expected = await whole_ledger_rate(h, handler, window)
+    assert rate.runs == expected.runs and rate.runs > 2
+    assert rate.takte == pytest.approx(expected.takte) and rate.takte > 0
+    async with h.persistence.transaction("t"):
+        stored = await h.ledger.project("t", TAKT)
+        rebuilt = await h.ledger.rebuilt("t", TAKT)
+    assert stored == rebuilt
+    again = await handler.execute(TaktRateOf("t"))
+    assert again.takte == rate.takte and again.runs == rate.runs

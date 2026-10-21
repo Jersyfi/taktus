@@ -74,3 +74,20 @@ def meter(entries: Iterable[LedgerEntry]) -> Meter:
         steps=steps,
         currency_reported=money,
     )
+
+
+def combine(left: Meter, right: Meter) -> Meter:
+    """The two breakdowns summed, quantity by quantity: the meter of both sets of entries."""
+
+    def summed(a: Mapping[str, float], b: Mapping[str, float]) -> dict[str, float]:
+        return {key: a.get(key, 0.0) + b.get(key, 0.0) for key in {*a, *b}}
+
+    return Meter(
+        tokens=add_tokens_by_model(dict(left.tokens), dict(right.tokens)) or {},
+        tokens_unattributed=left.tokens_unattributed + right.tokens_unattributed,
+        compute_seconds=summed(left.compute_seconds, right.compute_seconds),
+        quota_units=left.quota_units + right.quota_units,
+        storage_bytes=left.storage_bytes + right.storage_bytes,
+        steps={k: int(v) for k, v in summed(left.steps, right.steps).items()},
+        currency_reported=summed(left.currency_reported, right.currency_reported),
+    )

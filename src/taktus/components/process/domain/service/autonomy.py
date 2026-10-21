@@ -19,10 +19,10 @@ number is the replaced version's, so that the version that raises cannot lower t
 measured against. A version that names none admits no raise.
 
 The quality history is read from the ledger, so that it is reproducible: the runs of the
-process, rehearsals left out, in the order they began. A run counts once it ended: finished
-without a step that failed, it extends the history; escalated, or with a step that failed on
-the way, it ends it. A run that halted or waits counts neither way. Result defects are counted
-from the runs a caller names; nothing records them yet (UC-4.10, `0.5.0`).
+process, rehearsals left out, in the order they began (their `run.created`). A run counts once
+it ended: finished without a step that failed, it extends the history; escalated, or with a step
+that failed before it ended, it ends it. A run that halted or waits counts neither way. Result
+defects are counted from the runs a caller names; nothing records them yet (UC-4.10, `0.5.0`).
 
 Pure: statements, ledger entries and the approval in, a verdict out.
 """
@@ -126,7 +126,12 @@ def history(
     defects: frozenset[str] = frozenset(),
 ) -> QualityHistory:
     """The quality history of a process from the tenant's ledger. `defects` names the runs a
-    result defect was found in."""
+    result defect was found in.
+
+    This is the full computation, from every entry. The ledger's projection of it
+    (`quality.py`, ADR-0105 §9) must equal it. A run begins with its `run.created` and ends with
+    `run.finished` or `run.escalated`; an entry of a run that has not begun or has ended changes
+    nothing. The runs are ordered by their `run.created`."""
     order: list[str] = []
     failed: set[str] = set(defects)
     ended: dict[str, bool] = {}
@@ -137,8 +142,12 @@ def history(
             continue
         if version.split("@", 1)[0] != process_id:
             continue
-        if run_id not in order:
-            order.append(run_id)
+        if entry.kind == "run.created":
+            if run_id not in order:
+                order.append(run_id)
+            continue
+        if run_id not in order or run_id in ended:
+            continue
         if entry.kind == "step.finished" and (entry.outcome or "") not in CLEAN_STEP_OUTCOMES:
             failed.add(run_id)
         elif entry.kind == "run.escalated":

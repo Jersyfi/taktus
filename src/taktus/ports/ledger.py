@@ -19,6 +19,7 @@ rebuilt from it at any time.
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
+from datetime import datetime
 from typing import Any, Literal, Protocol
 
 from pydantic import Field
@@ -92,8 +93,24 @@ class Ledger(Protocol):
         read without reading the rest of the chain."""
         ...
 
-    async def of_kinds(self, tenant: Tenant, kinds: Collection[str]) -> Sequence[LedgerEntry]:
-        """The entries of these kinds, in sequence order, read without reading the others."""
+    async def of_kinds(
+        self,
+        tenant: Tenant,
+        kinds: Collection[str],
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> Sequence[LedgerEntry]:
+        """The entries of these kinds, in sequence order, read without reading the others.
+        With `since` or `until`, only those recorded at or after the one and at or before the
+        other, read through an index by time."""
+        ...
+
+    async def of_runs(
+        self, tenant: Tenant, run_ids: Collection[str], kinds: Collection[str]
+    ) -> Sequence[LedgerEntry]:
+        """The entries of these kinds that reference any of these runs, in sequence order,
+        in one read."""
         ...
 
     async def project[S](self, tenant: Tenant, projection: Projection[S]) -> S:
