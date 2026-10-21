@@ -193,10 +193,12 @@ execution:
     unitEnv: {}
   # The instance's egress gateway (README §6, ADR-0115): one Deployment in the execution
   # namespace, from the control plane's image, through which every unit reaches the hosts its
-  # job's token names. Rendered when a worker runs in the cluster, and then its key is required:
-  # an existing Secret of this name in BOTH namespaces, with the same random value of at least
-  # 32 bytes under `keyKey` (CREDENTIALS.md, gateway key). The runner signs each job's token
-  # with it; the gateway checks it.
+  # job's token names. Rendered when a worker runs in the cluster. Its key is made by the chart
+  # on the first install and kept across upgrades, in both namespaces (gateway-key.yaml,
+  # DEC-0216). An operator who wants a key of their own names an existing Secret of that name in
+  # BOTH namespaces, with the same random value of at least 32 bytes under `keyKey`
+  # (CREDENTIALS.md, gateway key). The runner signs each job's token with it; the gateway checks
+  # it.
   gateway:
     replicas: 2
     keySecret: ""

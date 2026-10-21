@@ -97,8 +97,8 @@ measured before and after the release, and recorded on the pull request.
 - The cluster adapter needs a gateway key and the gateway's Service where a job names hosts; it
   refuses such a job without them, before creating anything. Its Role gains `get` on Services,
   to read the gateway's address.
-- An instance upgraded to this version needs the gateway key's Secret in both namespaces before
-  its pods start (NEED-0032).
+- An instance upgraded to this version gets the gateway's key from the chart, which makes it on
+  the first install and keeps it across upgrades in both namespaces (DEC-0216).
 
 ## Where this promise ends
 

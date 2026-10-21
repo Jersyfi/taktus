@@ -1,0 +1,37 @@
+{{- /*
+The egress gateway's key (ADR-0115, DEC-0216): a random value the runner signs each job's token
+with and the gateway checks it with. Nobody outside the instance needs it, so the chart makes it
+and nobody has to provide it. It is drawn once, on the first install, and every later upgrade
+reads it back from the control plane's namespace and writes the same value again, so a token
+signed before an upgrade still holds. The same value is written in both namespaces, because the
+runner and the gateway live apart. An uninstall keeps both Secrets (CLAUDE.md §9). An operator who
+wants a key of their own names an existing Secret in `execution.gateway.keySecret`, and then
+nothing here is rendered.
+*/ -}}
+{{- if and (include "taktus.clusterExecution" .) (not .Values.execution.gateway.keySecret) }}
+{{- $name := include "taktus.gatewayKeySecret" . -}}
+{{- $existing := lookup "v1" "Secret" (include "taktus.controlPlaneNamespace" .) $name -}}
+{{- $value := "" -}}
+{{- if and $existing $existing.data (hasKey $existing.data "key") -}}
+{{- $value = index $existing.data "key" -}}
+{{- else -}}
+{{- $value = randAlphaNum 64 | b64enc -}}
+{{- end -}}
+{{- range $namespace := list (include "taktus.controlPlaneNamespace" $) (include "taktus.executionNamespace" $) }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "taktus.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  annotations:
+    # A token signed with it stays valid across an upgrade; an uninstall leaves it (CLAUDE.md §9).
+    helm.sh/resource-policy: keep
+type: Opaque
+data:
+  key: {{ $value }}
+{{- end }}
+{{- end }}

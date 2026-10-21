@@ -73,3 +73,11 @@ kubectl -n "$CONTROL" get secret taktus-gateway -o name | wc -l
 kubectl -n "$EXECUTION" get secret taktus-gateway -o name | wc -l
 kubectl -n "$EXECUTION" get deploy -l app.kubernetes.io/component=gateway
 ```
+
+## Outcome
+
+**Provided:** 2026-10-21
+**How:** **superseded, not provided.** The owner answered that the chart makes the key itself instead of asking for it (DEC-0216). The chart draws it on the first install and keeps it across upgrades, in both namespaces.
+**Superseded by:** DEC-0216
+**Confirmed by:** nothing to confirm: no Secret was created by hand.
+**Recorded in:** [#547](https://github.com/Jersyfi/taktus/pull/547)

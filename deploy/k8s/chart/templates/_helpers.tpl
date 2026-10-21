@@ -121,7 +121,7 @@ the pairs. Which names are refused is the daemon's to say, at its start. */}}
 {{- end -}}
 {{- if include "taktus.clusterExecution" . -}}
 {{- $g := .Values.execution.gateway -}}
-{{- $files = append $files (dict "volume" "gateway-key" "secret" (required "execution.gateway.keySecret is required when a worker runs in the cluster: an existing Secret, in both namespaces, holding the egress gateway's key (README §6)" $g.keySecret) "key" (required "execution.gateway.keyKey is required" $g.keyKey) "dir" "/run/secrets/taktus/gateway-key" "variable" "TAKTUS_EXECUTION_GATEWAY_KEY_FILE") -}}
+{{- $files = append $files (dict "volume" "gateway-key" "secret" (include "taktus.gatewayKeySecret" .) "key" (include "taktus.gatewayKeyKey" .) "dir" "/run/secrets/taktus/gateway-key" "variable" "TAKTUS_EXECUTION_GATEWAY_KEY_FILE") -}}
 {{- end -}}
 {{- range .Values.credentials -}}
 {{- $parameter := required "credentials[].parameter is required" .parameter -}}
@@ -178,4 +178,18 @@ seccompProfile:
 {{- /* The role label of the pod that serves the API. */ -}}
 {{- define "taktus.apiRole" -}}
 {{- ternary "all" "api" (eq (include "taktus.profile" .) "small") -}}
+{{- end -}}
+
+{{/* The Secret holding the egress gateway's key: the operator's, where `execution.gateway.keySecret`
+names one; otherwise the one the chart creates and keeps (gateway-key.yaml, DEC-0216). */}}
+{{- define "taktus.gatewayKeySecret" -}}
+{{- .Values.execution.gateway.keySecret | default (printf "%s-gateway-key" (include "taktus.fullname" .)) -}}
+{{- end -}}
+
+{{- define "taktus.gatewayKeyKey" -}}
+{{- if .Values.execution.gateway.keySecret -}}
+{{- required "execution.gateway.keyKey is required with keySecret" .Values.execution.gateway.keyKey -}}
+{{- else -}}
+key
+{{- end -}}
 {{- end -}}

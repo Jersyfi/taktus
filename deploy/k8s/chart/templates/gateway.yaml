@@ -2,8 +2,9 @@
 The instance's egress gateway (README §6, ADR-0115): one Deployment in the execution namespace,
 from the control plane's image, through which every unit reaches the hosts its job's token
 names and nothing else. Rendered when a worker runs as a Job in the cluster. The gateway checks
-each token against its key, a mounted file from the existing Secret `execution.gateway.keySecret`;
-the runner signs the tokens with the same key, from the Secret of the same name in its own
+each token against its key, a mounted file from the Secret `taktus.gatewayKeySecret` names: the
+chart's own (gateway-key.yaml), or the operator's where `execution.gateway.keySecret` names one.
+The runner signs the tokens with the same key, from the Secret of the same name in its own
 namespace. Its pods carry `taktus/role: egress`, so that the policies of network-policies.yaml
 hold for them: units reach it, and it reaches the allowed ports outside the cluster's ranges.
 It mounts no service-account token: it never talks to the cluster.
@@ -11,8 +12,8 @@ It mounts no service-account token: it never talks to the cluster.
 {{- if include "taktus.clusterExecution" . }}
 {{- $g := .Values.execution.gateway -}}
 {{- $name := include "taktus.gatewayName" . -}}
-{{- $keySecret := required "execution.gateway.keySecret is required when a worker runs in the cluster: an existing Secret, in both namespaces, holding the egress gateway's key (README §6)" $g.keySecret -}}
-{{- $keyKey := required "execution.gateway.keyKey is required: the key of the gateway's key inside its Secret" $g.keyKey -}}
+{{- $keySecret := include "taktus.gatewayKeySecret" . -}}
+{{- $keyKey := include "taktus.gatewayKeyKey" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
