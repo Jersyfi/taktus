@@ -2,7 +2,7 @@
 (ADR-0116, UC-8.2).
 
 Revision: 0061
-Revises: 0059
+Revises: 0060
 
 What this adds: `residency_rule`, one row per tenant that set where its data may be processed.
 A tenant without a row holds `anywhere` (NTC-0217). The table starts empty. Tenant and row-level
