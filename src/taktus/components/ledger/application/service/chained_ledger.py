@@ -54,10 +54,15 @@ class ChainedLedger:
         return await self._store.of_run(tenant, run_id)
 
     async def of_kinds(
-        self, tenant: Tenant, kinds: Collection[str], *, since: datetime | None = None
+        self,
+        tenant: Tenant,
+        kinds: Collection[str],
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> Sequence[LedgerEntry]:
-        if since is not None:
-            return await self._store.of_kinds_since(tenant, kinds, since=since)
+        if since is not None or until is not None:
+            return await self._store.of_kinds_since(tenant, kinds, since=since, until=until)
         found: list[LedgerEntry] = []
         async for batch in self._batches(tenant, 0, None, frozenset(kinds)):
             found.extend(batch)

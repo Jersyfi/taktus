@@ -94,10 +94,16 @@ class Ledger(Protocol):
         ...
 
     async def of_kinds(
-        self, tenant: Tenant, kinds: Collection[str], *, since: datetime | None = None
+        self,
+        tenant: Tenant,
+        kinds: Collection[str],
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> Sequence[LedgerEntry]:
         """The entries of these kinds, in sequence order, read without reading the others.
-        With `since`, only those recorded at or after it, read through an index by time."""
+        With `since` or `until`, only those recorded at or after the one and at or before the
+        other, read through an index by time."""
         ...
 
     async def of_runs(

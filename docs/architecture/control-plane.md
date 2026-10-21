@@ -365,12 +365,15 @@ built again from the first entry. A write of a projection never waits: a second 
 first holding the projection's claim and stores nothing.
 
 The four readers that still walked the whole ledger name what they need too (ADR-0105 §9, #522).
-The Takt rate reads the `step.finished` entries of its window through `ledger_entry_kind_ts`
-(`Ledger.of_kinds(..., since=)`) and the `budget.set` entries of their runs
-(`Ledger.of_runs`). The measures read `step.corrected`. The quality history of a raise is the
+The Takt rate is the projection `accounting.takt.v1`
+(`components/accounting/domain/service/takt_window.py`): per day and run, what the run's steps
+finished that day used, and per run the budget statement it names, for the last 33 days. A read
+takes the whole days of its window from the projection and the two partial days at its ends from
+the ledger through `ledger_entry_kind_ts` (`Ledger.of_kinds(..., since=, until=)`); a run the
+projection no longer knows is read with `Ledger.of_runs`. The measures read `step.corrected`. The quality history of a raise is the
 projection `process.quality.v1`, read by a proposal and by a registration; `autonomy.history` is
 the full computation it equals. With 500 000 entries the history took 9 ms, the Takt rate over
-30 days (7 200 finished steps) 125 ms and the measures 2 ms
+30 days (7 200 finished steps) 30 ms and the measures 2 ms
 (`tests/integration/test_ledger_at_scale.py`).
 
 **A chain is verified from its last verified checkpoint.** The checkpoint is the sequence number

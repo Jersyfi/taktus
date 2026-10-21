@@ -120,18 +120,22 @@ class PostgresLedgerStore:
         return [_entry(row) for row in rows]
 
     async def of_kinds_since(
-        self, tenant: Tenant, kinds: Collection[str], *, since: datetime
+        self,
+        tenant: Tenant,
+        kinds: Collection[str],
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> Sequence[LedgerEntry]:
         """One statement over the index `ledger_entry_kind_ts` (migration 0060)."""
         connection = self._persistence.connection(tenant)
+        where = (s.ledger_entry.c.tenant == tenant) & s.ledger_entry.c.kind.in_(sorted(kinds))
+        if since is not None:
+            where = where & (s.ledger_entry.c.ts >= since)
+        if until is not None:
+            where = where & (s.ledger_entry.c.ts <= until)
         rows = await connection.execute(
-            select(s.ledger_entry)
-            .where(
-                (s.ledger_entry.c.tenant == tenant)
-                & s.ledger_entry.c.kind.in_(sorted(kinds))
-                & (s.ledger_entry.c.ts >= since)
-            )
-            .order_by(s.ledger_entry.c.seq)
+            select(s.ledger_entry).where(where).order_by(s.ledger_entry.c.seq)
         )
         return [_entry(row) for row in rows]
 

@@ -54,9 +54,20 @@ class MemoryLedgerStore:
         ]
 
     async def of_kinds_since(
-        self, tenant: Tenant, kinds: Collection[str], *, since: datetime
+        self,
+        tenant: Tenant,
+        kinds: Collection[str],
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> Sequence[LedgerEntry]:
-        return [e for e in await self.entries(tenant) if e.kind in kinds and e.ts >= since]
+        return [
+            e
+            for e in await self.entries(tenant)
+            if e.kind in kinds
+            and (since is None or e.ts >= since)
+            and (until is None or e.ts <= until)
+        ]
 
     async def summary(self, tenant: Tenant, kind: str, *, since: datetime) -> KindSummary:
         of_kind = [e for e in await self.entries(tenant) if e.kind == kind]

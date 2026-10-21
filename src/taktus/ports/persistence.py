@@ -192,9 +192,15 @@ class LedgerStore(Protocol):
         ...
 
     async def of_kinds_since(
-        self, tenant: Tenant, kinds: Collection[str], *, since: datetime
+        self,
+        tenant: Tenant,
+        kinds: Collection[str],
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> Sequence[LedgerEntry]:
-        """The entries of the given kinds recorded at or after `since`, in sequence order,
+        """The entries of the given kinds recorded at or after `since` and at or before
+        `until` (either may be absent), in sequence order,
         without reading the rest: the database reads them through the index
         `ledger_entry_kind_ts` (ADR-0105 §9)."""
         ...

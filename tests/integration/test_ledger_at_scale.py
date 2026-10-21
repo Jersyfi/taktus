@@ -31,6 +31,7 @@ from sqlalchemy import text
 from taktus.adapters.driven.postgres import PostgresProjectionStore
 from taktus.adapters.driven.postgres import _schema as schema
 from taktus.components.accounting.application.service import TaktRateHandler, TaktRateOf
+from taktus.components.accounting.domain.service import TAKT
 from taktus.components.ledger.application.service.chained_ledger import CHECKPOINT
 from taktus.components.process.domain.service.quality import QUALITY
 from taktus.components.run.application.query import StepMeasures
@@ -264,7 +265,8 @@ async def test_the_remaining_whole_ledger_reads_cost_what_they_return(
 ) -> None:
     """The Takt rate, the measures of a step, the quality history of a raise and of a
     registration (ADR-0105 §9, issue #522), each over 500 000 entries, one per minute: the Takt
-    rate reads the thirty days it rates, 7 200 finished steps of 83 333."""
+    rate reads the thirty days it rates from a projection, per day and run (7 200 finished steps of
+    83 333), and the entries of its two partial days."""
     async with instances("ledger", TAKTUS_ROLES="api", TAKTUS_TENANTS=chosen) as one:
         assert one.wired is not None
         wired = one.wired
@@ -278,6 +280,10 @@ async def test_the_remaining_whole_ledger_reads_cost_what_they_return(
         async with wired.work.transaction(chosen):
             await wired.ledger.project(chosen, QUALITY)
         print(f"\nthe quality projection built once: {time.perf_counter() - started:.2f} s")
+        started = time.perf_counter()
+        async with wired.work.transaction(chosen):
+            await wired.ledger.project(chosen, TAKT)
+        print(f"the Takt projection built once: {time.perf_counter() - started:.2f} s")
 
         async def timed_read(name: str, read: Callable[[], Awaitable[Any]]) -> Any:
             """The median of five, as the bound of the ledger route is measured (#528): the
@@ -316,6 +322,9 @@ async def test_the_remaining_whole_ledger_reads_cost_what_they_return(
         async with wired.work.transaction(chosen):
             rebuilt = await wired.ledger.rebuilt(chosen, QUALITY)
         assert rebuilt.history("seeded-0") == history
+        async with wired.work.transaction(chosen):
+            stored_days = await wired.ledger.project(chosen, TAKT)
+            assert stored_days == await wired.ledger.rebuilt(chosen, TAKT), "the Takt projection"
         assert history.ended == ENTRIES // 6 // 4 + 1 and history.clean == history.ended
         assert taken.runs == 30 * 24 * 60 // 6 and taken.window_days == 30
         plan_ts = await plan(
