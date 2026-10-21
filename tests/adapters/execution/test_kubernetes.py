@@ -1,11 +1,12 @@
 """The cluster adapter against a fake of the cluster's API: always runs, needs nothing.
 
-What a frame turns into — the Job, its Secret, its Services, its egress proxy — read from the
-objects the fake keeps; what is refused before anything is created; that everything is deleted
-whatever the outcome; and that no call leaves the Role of Taktus's service account
-(`deploy/k8s/README.md` §1). The unit itself is a stand-in that answers health on this machine,
-at the address the fake gives the unit's Service. `test_kubernetes_cluster.py` holds the same
-adapter to the container adapter's tests on a real cluster."""
+What a frame turns into — the Job, its Secret, its Service, and the token that names its hosts
+at the instance's egress gateway (ADR-0115) — read from the objects the fake keeps; what is
+refused before anything is created; that everything is deleted whatever the outcome; and that
+no call leaves the Role of Taktus's service account (`deploy/k8s/README.md` §1). The unit
+itself is a stand-in that answers health on this machine, at the address the fake gives the
+unit's Service. `test_kubernetes_cluster.py` holds the same adapter to the container adapter's
+tests on a real cluster."""
 
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ import base64
 import json
 import os
 import re
+import time
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
@@ -23,8 +25,7 @@ import pytest
 
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.execution import KubernetesExecution
-from taktus.adapters.driven.execution.container.egress import Allowlist, proxy
-from taktus.adapters.driven.execution.kubernetes.adapter import EGRESS_SOURCE
+from taktus.adapters.driven.execution.container.egress import mint, proxy, signed, verify
 from taktus.adapters.driven.execution.kubernetes.api import Connection
 from taktus.ports.configuration import Secret
 from taktus.ports.execution import (
@@ -39,12 +40,13 @@ from taktus.ports.execution import (
 from taktus.ports.worker import CredentialReference
 from taktus.shared.v1 import AutonomyLevel
 
-from .cluster_fake import FakeCluster, restricted_violations
+from .cluster_fake import GATEWAY_ADDRESS, FakeCluster, restricted_violations
 
 NAMESPACE = "execution"
 LIMITS = ResourceLimits(cpus=0.5, memory_bytes=256 * 1024 * 1024, wall_seconds=120)
 PLANTED = "planted-credential-value-for-this-test"
 FILE_VALUE = "key-77aa"
+GATEWAY_KEY = b"gateway-key-for-this-test"
 CREDENTIALS = (
     CredentialReference(name="VCS_TOKEN", injected_as="env"),
     CredentialReference(name="SIGNING_KEY", injected_as="file", path="/run/secrets/key"),
@@ -75,12 +77,23 @@ def cluster() -> FakeCluster:
 def configuration(tmp_path: Path) -> EnvironmentConfiguration:
     (tmp_path / "token").write_text(PLANTED + "\n", encoding="utf-8")
     (tmp_path / "key").write_text(FILE_VALUE + "\n", encoding="utf-8")
+    (tmp_path / "gateway").write_bytes(GATEWAY_KEY + b"\n")
     return EnvironmentConfiguration(
         {
             "TAKTUS_CREDENTIAL_VCS_TOKEN_FILE": str(tmp_path / "token"),
             "TAKTUS_CREDENTIAL_SIGNING_KEY_FILE": str(tmp_path / "key"),
+            "TAKTUS_EXECUTION_GATEWAY_KEY_FILE": str(tmp_path / "gateway"),
         }
     )
+
+
+def hosts_of(cluster: FakeCluster) -> list[str]:
+    """The hosts the token in the job's Secret names, as the gateway reads them."""
+    url = cluster.secret_values()["taktus-egress-url"]
+    token = url.removeprefix("http://taktus:").split("@", 1)[0]
+    allowlist = verify(GATEWAY_KEY, token, now=0)
+    assert allowlist is not None, "the gateway's key signed it"
+    return sorted(allowlist.entries)
 
 
 def execution_for(
@@ -122,9 +135,10 @@ async def test_the_job_a_frame_produces_carries_every_field(
     request = request_for(unit_port, credentials=CREDENTIALS, allowed_hosts=("api.example.org",))
     async with execution.launch(request) as job:
         jobs = dict(cluster.of("jobs"))
+        assert list(jobs) == [job.name], "one Job: the unit's, and no proxy of its own"
         unit = jobs[job.name]
-        egress = next(j for n, j in jobs.items() if n != job.name)
         secret = next(iter(cluster.of("secrets").values()))
+        hosts = hosts_of(cluster)
         services = dict(cluster.of("services"))
         assert job.endpoint == f"http://127.0.0.1:{unit_port}", "the unit's Service address"
 
@@ -164,7 +178,7 @@ async def test_the_job_a_frame_produces_carries_every_field(
         {"key": "SIGNING_KEY", "path": "SIGNING_KEY", "mode": 0o440}
     ]
     # The recorded configuration of every object but the Secret carries no value.
-    recorded = json.dumps([unit, egress, *services.values()])
+    recorded = json.dumps([unit, *services.values()])
     assert PLANTED not in recorded and FILE_VALUE not in recorded
     assert base64.b64encode(PLANTED.encode()).decode() not in recorded
     # The Secret carries the values, is immutable, and is owned by the unit's Job.
@@ -172,28 +186,15 @@ async def test_the_job_a_frame_produces_carries_every_field(
     assert values["VCS_TOKEN"] == PLANTED and values["SIGNING_KEY"] == FILE_VALUE
     assert secret["immutable"] is True
     uid = unit["metadata"]["uid"]
-    for owned in (secret, egress, *services.values()):
+    for owned in (secret, *services.values()):
         assert owned["metadata"]["ownerReferences"][0]["uid"] == uid
-    # The egress proxy: a Job of its own with the frame's hosts, restricted too, a token from
-    # the Secret, and a Service whose address is in the unit's proxy URL.
-    proxy_pod = egress["spec"]["template"]["spec"]
-    assert restricted_violations(proxy_pod) == []
-    assert proxy_pod["automountServiceAccountToken"] is False
-    (proxy_container,) = proxy_pod["containers"]
-    args = proxy_container["args"]
-    assert args[args.index("--allow") + 1] == "api.example.org"
-    assert proxy_container["command"][:2] == ["python3", "-c"]
-    assert proxy_container["command"][2] == EGRESS_SOURCE.read_text(encoding="utf-8")
-    assert proxy_container["resources"]["limits"] == proxy_container["resources"]["requests"]
-    assert egress["spec"]["backoffLimit"] == 0
-    proxy_service = next(
-        s for s in services.values() if s["metadata"]["labels"]["taktus/role"] == "egress"
-    )
-    token = values["taktus-egress-token"]
-    assert values["taktus-egress-url"] == (
-        f"http://taktus:{token}@{proxy_service['spec']['clusterIP']}:3128"
-    )
-    assert token not in recorded
+    # The instance's gateway, by its Service's address, with a token that names the frame's
+    # hosts, signed with the gateway's key; the token is in the Secret and nowhere else.
+    url = values["taktus-egress-url"]
+    assert url.startswith("http://taktus:") and url.endswith(f"@{GATEWAY_ADDRESS}:3128")
+    assert hosts == ["api.example.org"]
+    token = url.removeprefix("http://taktus:").split("@", 1)[0]
+    assert token not in recorded and "taktus-egress-token" not in values
     unit_service = services[unit["metadata"]["name"]]
     assert unit_service["spec"]["selector"] == {
         "taktus/job": unit["metadata"]["labels"]["taktus/job"],
@@ -228,10 +229,8 @@ async def test_the_proxy_admits_the_frames_hosts_and_the_workers_service_hosts(
     hosts = reach(unit, ("api.example.org",))
     assert hosts == ("api.example.org", "model.example.net"), "the frame's first, each once"
     execution = execution_for(cluster, configuration, tmp_path)
-    async with execution.launch(request_for(unit_port, unit=unit, allowed_hosts=hosts)) as job:
-        egress = next(j for n, j in cluster.of("jobs").items() if n != job.name)
-    args = egress["spec"]["template"]["spec"]["containers"][0]["args"]
-    assert args[args.index("--allow") + 1] == "api.example.org,model.example.net"
+    async with execution.launch(request_for(unit_port, unit=unit, allowed_hosts=hosts)):
+        assert hosts_of(cluster) == ["api.example.org", "model.example.net"]
 
 
 async def test_the_variables_the_units_configuration_names_are_plain_values_in_the_pod(
@@ -281,7 +280,7 @@ async def test_a_credential_under_a_configured_variables_name_is_refused_before_
     assert cluster.everything() == [], "nothing was created"
 
 
-async def test_service_hosts_alone_start_a_proxy_and_a_frame_without_hosts_reaches_them(
+async def test_service_hosts_alone_get_a_token_and_a_frame_without_hosts_reaches_them(
     cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path, unit_port: int
 ) -> None:
     unit = ExecutionUnit(
@@ -293,10 +292,8 @@ async def test_service_hosts_alone_start_a_proxy_and_a_frame_without_hosts_reach
     )
     execution = execution_for(cluster, configuration, tmp_path)
     request = request_for(unit_port, unit=unit, allowed_hosts=reach(unit, ()))
-    async with execution.launch(request) as job:
-        egress = next(j for n, j in cluster.of("jobs").items() if n != job.name)
-    args = egress["spec"]["template"]["spec"]["containers"][0]["args"]
-    assert args[args.index("--allow") + 1] == "model.example.net"
+    async with execution.launch(request):
+        assert hosts_of(cluster) == ["model.example.net"]
 
 
 async def test_service_hosts_on_a_cluster_that_does_not_enforce_network_policies_are_refused(
@@ -429,6 +426,28 @@ async def test_below_level_3_a_job_without_hosts_runs_where_policies_are_not_enf
         assert job.endpoint.endswith(f":{unit_port}")
 
 
+async def test_hosts_without_a_gateway_key_are_refused(
+    cluster: FakeCluster, tmp_path: Path, unit_port: int
+) -> None:
+    execution = execution_for(cluster, EnvironmentConfiguration({}), tmp_path)
+    request = request_for(unit_port, allowed_hosts=("api.example.org",))
+    with pytest.raises(ExecutionRefused, match="TAKTUS_EXECUTION_GATEWAY_KEY_FILE"):
+        async with execution.launch(request):
+            pass
+    assert cluster.calls == []
+
+
+async def test_hosts_without_the_gateways_service_are_refused(
+    cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path, unit_port: int
+) -> None:
+    execution = execution_for(cluster, configuration, tmp_path, gateway_service="elsewhere")
+    request = request_for(unit_port, allowed_hosts=("api.example.org",))
+    with pytest.raises(ExecutionRefused, match="Service elsewhere does not exist"):
+        async with execution.launch(request):
+            pass
+    assert cluster.everything() == [], "nothing was created"
+
+
 async def test_a_credential_that_is_not_configured_is_refused(
     cluster: FakeCluster, tmp_path: Path, unit_port: int
 ) -> None:
@@ -457,10 +476,11 @@ async def test_everything_is_deleted_on_success(
     execution = execution_for(cluster, configuration, tmp_path)
     request = request_for(unit_port, credentials=CREDENTIALS, allowed_hosts=("a.example.org",))
     async with execution.launch(request):
-        assert len(cluster.of("jobs")) == 2
+        assert len(cluster.of("jobs")) == 1, "the unit's Job alone"
     assert_all_deleted(cluster)
     deleted = [(r, n) for r, n, _ in cluster.deletions]
-    assert len([r for r, _ in deleted if r == "jobs"]) == 2, "both jobs, explicitly"
+    assert len([r for r, _ in deleted if r == "jobs"]) == 1, "the Job, explicitly"
+    assert ("services", "taktus-gateway") not in deleted, "the chart's gateway stays"
 
 
 async def test_everything_is_deleted_on_failure(
@@ -612,42 +632,53 @@ async def test_the_wall_clock_deletes_the_job(
         assert job.name not in cluster.of("jobs"), "the job was deleted, and its pod with it"
 
 
-# --- the proxy admits its own unit only ------------------------------------------------------
+# --- the gateway admits what a job's token names, and nothing else -----------------------------
 
 
-async def test_the_proxy_answers_407_without_the_jobs_token() -> None:
-    """In a cluster the namespace's policy cannot tell one job's proxy from another's; the token
-    can. Without it, or with another job's, the proxy refuses before it looks at the host."""
+def token_for(*hosts: str, expires: int | None = None, key: bytes = GATEWAY_KEY) -> str:
+    when = int(time.time()) + 600 if expires is None else expires
+    return mint(key, job="test", hosts=hosts, expires=when)
+
+
+async def test_the_gateway_answers_407_without_a_token_its_key_signed() -> None:
+    """In a cluster the namespace's policy cannot tell one job from another; the token can.
+    Without one, with one another key signed, or with one whose job's time is over, the gateway
+    refuses before it looks at the host. With one, it admits the hosts that token names alone."""
 
     async def upstream(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         writer.close()
 
     target = await asyncio.start_server(upstream, "127.0.0.1", 0)
     target_port = target.sockets[0].getsockname()[1]
-    server = await asyncio.start_server(
-        proxy(Allowlist([f"127.0.0.1:{target_port}"]), "the-token"), "127.0.0.1", 0
-    )
+    server = await asyncio.start_server(proxy(signed(lambda: GATEWAY_KEY)), "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
 
-    async def connect(authorisation: str | None) -> bytes:
+    async def connect(token: str | None) -> bytes:
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
-        header = f"Proxy-Authorization: {authorisation}\r\n" if authorisation else ""
+        header = (
+            "Proxy-Authorization: Basic "
+            + base64.b64encode(f"taktus:{token}".encode()).decode()
+            + "\r\n"
+            if token is not None
+            else ""
+        )
         writer.write(f"CONNECT 127.0.0.1:{target_port} HTTP/1.1\r\n{header}\r\n".encode())
         await writer.drain()
         line = await reader.readline()
         writer.close()
         return line
 
-    good = "Basic " + base64.b64encode(b"taktus:the-token").decode()
-    wrong = "Basic " + base64.b64encode(b"taktus:another-jobs-token").decode()
     async with server, target:
         assert b"407" in await connect(None)
-        assert b"407" in await connect(wrong)
-        assert b"200" in await connect(good)
+        assert b"407" in await connect(token_for(f"127.0.0.1:{target_port}", key=b"another"))
+        assert b"407" in await connect(token_for(f"127.0.0.1:{target_port}", expires=1))
+        assert b"407" in await connect("not-a-token")
+        assert b"403" in await connect(token_for("api.example.org"))
+        assert b"200" in await connect(token_for(f"127.0.0.1:{target_port}"))
 
 
-async def test_a_client_that_sends_the_proxy_url_credentials_reaches_through_the_proxy() -> None:
-    """The unit finds its proxy as `http://taktus:<token>@address:port`; a client that honours
+async def test_a_client_that_sends_the_proxy_url_credentials_reaches_through_the_gateway() -> None:
+    """The unit finds the gateway as `http://taktus:<token>@address:port`; a client that honours
     the variable sends the token by itself — here httpx, as the workers' Python would."""
 
     async def upstream(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -658,20 +689,20 @@ async def test_a_client_that_sends_the_proxy_url_credentials_reaches_through_the
 
     target = await asyncio.start_server(upstream, "127.0.0.1", 0)
     target_port = target.sockets[0].getsockname()[1]
-    server = await asyncio.start_server(
-        proxy(Allowlist([f"127.0.0.1:{target_port}"]), "tok-1"), "127.0.0.1", 0
-    )
+    server = await asyncio.start_server(proxy(signed(lambda: GATEWAY_KEY)), "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
+    mine = token_for(f"127.0.0.1:{target_port}")
+    other = token_for("api.example.org")
     async with server, target:
-        async with httpx.AsyncClient(proxy=f"http://taktus:tok-1@127.0.0.1:{port}") as client:
+        async with httpx.AsyncClient(proxy=f"http://taktus:{mine}@127.0.0.1:{port}") as client:
             response = await client.get(f"http://127.0.0.1:{target_port}/")
-        async with httpx.AsyncClient(proxy=f"http://taktus:other@127.0.0.1:{port}") as client:
+        async with httpx.AsyncClient(proxy=f"http://taktus:{other}@127.0.0.1:{port}") as client:
             refused = await client.get(f"http://127.0.0.1:{target_port}/")
     assert response.text == "reached"
-    assert refused.status_code == 407
+    assert refused.status_code == 403, "another job's hosts are not this one's"
 
 
-async def test_a_client_that_negotiates_the_scheme_reaches_through_the_proxy(
+async def test_a_client_that_negotiates_the_scheme_reaches_through_the_gateway(
     tmp_path: Path,
 ) -> None:
     """git asks without credentials first and sends the token only once the 407 names a scheme
@@ -687,16 +718,15 @@ async def test_a_client_that_negotiates_the_scheme_reaches_through_the_proxy(
 
     target = await asyncio.start_server(upstream, "127.0.0.1", 0)
     target_port = target.sockets[0].getsockname()[1]
-    server = await asyncio.start_server(
-        proxy(Allowlist([f"127.0.0.1:{target_port}"]), "tok-1"), "127.0.0.1", 0
-    )
+    server = await asyncio.start_server(proxy(signed(lambda: GATEWAY_KEY)), "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
+    token = token_for(f"127.0.0.1:{target_port}")
     environment = {
         "HOME": str(tmp_path),
         "PATH": os.environ["PATH"],
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
-        "http_proxy": f"http://taktus:tok-1@127.0.0.1:{port}",
+        "http_proxy": f"http://taktus:{token}@127.0.0.1:{port}",
     }
     async with server, target:
         git = await asyncio.create_subprocess_exec(
@@ -711,3 +741,19 @@ async def test_a_client_that_negotiates_the_scheme_reaches_through_the_proxy(
     # A word, not a substring: the target's random port may contain "407" (#450).
     assert re.search(rb"\b407\b", error) is None, error
     assert requests and b"/repository.git/info/refs" in requests[0]
+
+
+async def test_the_gateway_refuses_an_address_no_token_may_reach() -> None:
+    """The container gateway's guard (`--refuse-job-networks`): an address on a job's network
+    is refused whatever the token names, before anything is connected."""
+    server = await asyncio.start_server(
+        proxy(signed(lambda: GATEWAY_KEY), forbidden=lambda address: address.is_loopback),
+        "127.0.0.1",
+        0,
+    )
+    port = server.sockets[0].getsockname()[1]
+    token = token_for("127.0.0.1:9")
+    async with server:
+        async with httpx.AsyncClient(proxy=f"http://taktus:{token}@127.0.0.1:{port}") as client:
+            refused = await client.get("http://127.0.0.1:9/")
+    assert refused.status_code == 502 and "job's network" in refused.text

@@ -19,5 +19,23 @@
     "streaming_events": true,
     "estimate": true
   },
-  "max_concurrent_assignments": 8
+  "max_concurrent_assignments": 8,
+  "estimator": {
+    "kind": "per_item",
+    "input": "commands",
+    "each": {
+      "confidence": "low",
+      "compute_seconds": 0.3,
+      "resource_class": "cpu.small",
+      "wall_seconds": 1,
+      "steps": 1
+    },
+    "otherwise": {
+      "confidence": "low",
+      "compute_seconds": 1.2,
+      "resource_class": "cpu.small",
+      "wall_seconds": 2,
+      "steps": 4
+    }
+  }
 }

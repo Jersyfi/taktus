@@ -98,12 +98,30 @@ the pairs. Which names are refused is the daemon's to say, at its start. */}}
 {{- printf "cred-%s" (. | lower | replace "." "-" | replace "_" "-") | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{/* "true" when a worker runs as a Job in the cluster: the one kind, or a worker's own. */}}
+{{- define "taktus.clusterExecution" -}}
+{{- $found := eq .Values.execution.kind "cluster" -}}
+{{- range .Values.execution.workers -}}
+{{- if eq (default $.Values.execution.kind .kind) "cluster" -}}{{- $found = true -}}{{- end -}}
+{{- end -}}
+{{- if $found -}}true{{- end -}}
+{{- end -}}
+
+{{/* The egress gateway's Deployment and Service (gateway.yaml, ADR-0115). */}}
+{{- define "taktus.gatewayName" -}}
+{{- printf "%s-gateway" (include "taktus.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 {{/* Every secret a control plane container reads, as (volume, secret, key, directory, variable). */}}
 {{- define "taktus.secretFiles" -}}
 {{- $files := list -}}
 {{- $files = append $files (dict "volume" "database-url" "secret" (required "database.urlSecret is required: the Secret holding the connection URL" .Values.database.urlSecret) "key" (required "database.urlKey is required" .Values.database.urlKey) "dir" "/run/secrets/taktus/database-url" "variable" "TAKTUS_DATABASE_URL_FILE") -}}
 {{- if .Values.telemetry.otlp.headersSecret -}}
 {{- $files = append $files (dict "volume" "otlp-headers" "secret" .Values.telemetry.otlp.headersSecret "key" (required "telemetry.otlp.headersKey is required with headersSecret" .Values.telemetry.otlp.headersKey) "dir" "/run/secrets/taktus/otlp-headers" "variable" "TAKTUS_OTLP_HEADERS_FILE") -}}
+{{- end -}}
+{{- if include "taktus.clusterExecution" . -}}
+{{- $g := .Values.execution.gateway -}}
+{{- $files = append $files (dict "volume" "gateway-key" "secret" (include "taktus.gatewayKeySecret" .) "key" (include "taktus.gatewayKeyKey" .) "dir" "/run/secrets/taktus/gateway-key" "variable" "TAKTUS_EXECUTION_GATEWAY_KEY_FILE") -}}
 {{- end -}}
 {{- range .Values.credentials -}}
 {{- $parameter := required "credentials[].parameter is required" .parameter -}}
@@ -160,4 +178,18 @@ seccompProfile:
 {{- /* The role label of the pod that serves the API. */ -}}
 {{- define "taktus.apiRole" -}}
 {{- ternary "all" "api" (eq (include "taktus.profile" .) "small") -}}
+{{- end -}}
+
+{{/* The Secret holding the egress gateway's key: the operator's, where `execution.gateway.keySecret`
+names one; otherwise the one the chart creates and keeps (gateway-key.yaml, DEC-0216). */}}
+{{- define "taktus.gatewayKeySecret" -}}
+{{- .Values.execution.gateway.keySecret | default (printf "%s-gateway-key" (include "taktus.fullname" .)) -}}
+{{- end -}}
+
+{{- define "taktus.gatewayKeyKey" -}}
+{{- if .Values.execution.gateway.keySecret -}}
+{{- required "execution.gateway.keyKey is required with keySecret" .Values.execution.gateway.keyKey -}}
+{{- else -}}
+key
+{{- end -}}
 {{- end -}}

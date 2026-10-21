@@ -118,7 +118,8 @@ reports the window as exhausted, the assignment ends `stopped` at the last bound
 cause — an exhausted window blocks, it does not cost more.
 
 The estimate is rough and honest about it: `confidence: low`, the configured expectation of
-one assignment (`--estimate-*`). The limits are checked against it before the agent starts
+one assignment (`--estimate-*`). The worker also declares it in its capabilities as a `fixed`
+estimator, so that a unit started per job is not started to be asked (ADR-0115). The limits are checked against it before the agent starts
 (W-10): a missing limit of the worker's kind, an estimate above it, too few `max_steps` or a
 deadline before the estimated end all reject.
 
@@ -146,7 +147,7 @@ The agent calls its provider's API to work at all, and that host is in no step's
 execution kind that enforces a unit's reach (`container`, `cluster`), the operator names it for
 this worker: `TAKTUS_EXECUTION_SERVICE_HOSTS`, or `TAKTUS_WORKER_<NAME>_EXECUTION_SERVICE_HOSTS`
 for a named worker, `serviceHosts` in the chart. The unit reaches it for an assignment and for
-the conformance suite, never for a probe; the frame the worker holds tool calls against stays the
+the conformance suite, never for the probe that answers the capabilities; the frame the worker holds tool calls against stays the
 step's (ADR-0089).
 
 **Launched, the worker needs its authentication mode in its unit's environment.** An execution

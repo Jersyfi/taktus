@@ -26,5 +26,19 @@
     "streaming_events": true,
     "estimate": true
   },
-  "max_concurrent_assignments": 2
+  "max_concurrent_assignments": 2,
+  "estimator": {
+    "kind": "fixed",
+    "estimate": {
+      "confidence": "low",
+      "tokens_in": 400000,
+      "tokens_out": 40000,
+      "currency": {
+        "eur": 4.0
+      },
+      "quota_units": 20,
+      "wall_seconds": 1800,
+      "steps": 20
+    }
+  }
 }

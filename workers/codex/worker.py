@@ -323,6 +323,9 @@ class Worker:
                 "estimate": True,
             },
             "max_concurrent_assignments": MAX_CONCURRENT,
+            # The same estimate for every assignment, declared so that a unit started per job
+            # is not started to be asked (ADR-0115).
+            "estimator": {"kind": "fixed", "estimate": self.estimate({})},
         }
 
     def estimate(self, request: Json) -> Json:

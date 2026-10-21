@@ -243,6 +243,30 @@ limit guarantee. `confidence: "low"` is a valid answer; a missing endpoint is no
 `wall_seconds` and `steps` are always present; the quantities are those the worker's consumption
 kinds cover. A shell script with no model and no tokens still answers.
 
+**An estimator, declared.** A worker may also say in its capabilities how its estimate follows
+from the request, as `estimator`, so that the control plane can estimate an assignment without
+asking it (ADR-0115). There are two kinds:
+
+- `fixed`: every assignment is estimated as the `estimate` it names;
+- `per_item`: `each` once for every item of the list `task.inputs[input]`, and `otherwise` where
+  the task carries no such list or an empty one. Every quantity, `wall_seconds` and `steps` are
+  multiplied by the number of items.
+
+```json
+"estimator": { "kind": "per_item", "input": "commands",
+               "each":      { "confidence": "low", "compute_seconds": 0.3,
+                              "resource_class": "cpu.small", "wall_seconds": 1, "steps": 1 },
+               "otherwise": { "confidence": "low", "compute_seconds": 1.2,
+                              "resource_class": "cpu.small", "wall_seconds": 2, "steps": 4 } }
+```
+
+A worker the control plane starts per job is estimated by its estimator alone: asking it would
+start a unit before admission has said yes. Such a worker that declares no estimator has its steps
+refused for want of an estimate. A worker reached at an endpoint is still asked here. Whatever an
+estimator yields for a request is never below what the worker answers here for the same request,
+in any quantity it names (W-02): the worker holds its own estimate against its limits (W-10), and
+an assignment admitted at a lower estimate would be rejected.
+
 ---
 
 ## 6. Stopping
@@ -289,7 +313,7 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 | # | Check |
 |---|---|
 | W-01 | `capabilities` returns valid schema and declares at least one consumption kind |
-| W-02 | `estimate` answers even at `confidence: low` |
+| W-02 | `estimate` answers even at `confidence: low`; a declared estimator yields no less |
 | W-03 | events carry a gapless `seq`; the stream resumes from `seq` |
 | W-04 | `consumption.reported` appears per step, not only at the end |
 | W-05 | `step.boundary` appears at least once per assignment |

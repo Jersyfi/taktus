@@ -35,11 +35,12 @@ data:
   TAKTUS_EXECUTION_UNIT_ENV: {{ include "taktus.unitEnv" (dict "what" "execution.defaults.unitEnv" "env" $execution.defaults.unitEnv) | quote }}
   TAKTUS_EXECUTION_EGRESS_IMAGE: {{ include "taktus.imageRef" (dict "what" "execution.egress.proxyImage" "ref" $execution.egress.proxyImage) | quote }}
   # Read by the cluster execution adapter (TAKTUS_EXECUTION=cluster): where its jobs go, the
-  # account they run as, whether a frame's host list must be enforced, and the claim the units'
-  # state lives on (README §6, §7).
+  # account they run as, whether a frame's host list must be enforced, the egress gateway a
+  # unit reaches its hosts through, and the claim the units' state lives on (README §6, §7).
   TAKTUS_EXECUTION_NAMESPACE: {{ include "taktus.executionNamespace" . | quote }}
   TAKTUS_EXECUTION_SERVICE_ACCOUNT: {{ $execution.serviceAccount | quote }}
   TAKTUS_EXECUTION_EGRESS_ENFORCE: {{ $execution.egress.enforce | quote }}
+  TAKTUS_EXECUTION_GATEWAY_SERVICE: {{ include "taktus.gatewayName" . | quote }}
   {{- with $execution.stateClaim }}
   TAKTUS_EXECUTION_STATE_CLAIM: {{ . | quote }}
   {{- end }}

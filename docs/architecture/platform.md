@@ -149,6 +149,16 @@ passed over either: the verdict names it under `unobserved`, for the caller to r
 The function is built and tested, and the run engine calls it before a worker step is admitted
 (`execute_run.py`, beside the budget admission of worker steps).
 
+**What a worker step starts** (ADR-0115). Its estimate starts nothing: a launched worker is
+estimated by the estimator it declares in its capabilities, which one probe answers once per
+process. The step itself starts one unit. On a container engine that is one container and one
+internal network; the instance's one egress gateway serves every job and takes 64 MiB, which is
+part of the reserve above. In the cluster it is one Job, one Service and one Secret; the gateway is
+the chart's Deployment of two small replicas. Measured with the container adapter on a
+developer's machine on 2026-10-21, five worker steps of the reference worker took 1.2 to 1.6 s
+each from estimate to end, every one creating one network and one container. The review of
+2026-10-12 had measured two units, two networks and four containers per step.
+
 ## 5. Every job carries a memory limit, and the limit is real
 
 `ResourceLimits.memory_bytes` is mandatory on every execution unit. A limit nothing enforces is

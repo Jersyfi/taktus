@@ -12,6 +12,7 @@ The values files are read without helm: none may carry a secret value, a hostnam
 
 from __future__ import annotations
 
+import base64
 import ipaddress
 import os
 import re
@@ -214,7 +215,7 @@ def test_taktus_holds_a_role_never_a_cluster_role_exactly_as_the_plan_states_it(
         ("", "pods"): {"get", "list"},
         ("", "pods/log"): {"get", "list"},
         ("", "secrets"): {"create", "delete"},
-        ("", "services"): {"create", "delete"},
+        ("", "services"): {"create", "get", "delete"},
     }
     # Every call the cluster adapter's client permits itself is one the Role grants.
     for resource, verb in PERMITTED:
@@ -422,6 +423,93 @@ def test_the_cluster_adapter_is_wired_to_the_namespace_the_account_and_the_state
     }
     assert (EXECUTION_NAMESPACE, "unit-state") in claims
     assert {d["kind"] for d in documents} <= ALLOWED_KINDS
+
+
+def test_a_worker_in_the_cluster_brings_the_instances_one_egress_gateway() -> None:
+    """ADR-0115: one Deployment in the execution namespace, restricted, without a token, with
+    the label the egress policies select; the key a mounted file from the existing Secret, the
+    same Secret's name in the runner, whose adapter finds the gateway by its Service."""
+    documents = render("execution.kind=cluster")
+    gateways = [
+        d for d in of_kind(documents, "Deployment") if d["metadata"]["name"] == "taktus-gateway"
+    ]
+    assert len(gateways) == 1
+    [gateway] = gateways
+    assert gateway["metadata"]["namespace"] == EXECUTION_NAMESPACE
+    assert gateway["spec"]["replicas"] == 2, "two, so that a restart is no outage"
+    template = gateway["spec"]["template"]
+    assert template["metadata"]["labels"]["taktus/role"] == "egress"
+    spec = template["spec"]
+    assert spec["automountServiceAccountToken"] is False
+    [container] = spec["containers"]
+    assert container["command"][:3] == [
+        "python",
+        "-m",
+        "taktus.adapters.driven.execution.container.egress",
+    ]
+    key_file = container["command"][container["command"].index("--key-file") + 1]
+    [volume] = spec["volumes"]
+    assert volume["secret"]["secretName"] == "taktus-gateway-key"
+    assert key_file == "/run/secrets/taktus/gateway/key"
+    assert container["securityContext"]["readOnlyRootFilesystem"] is True
+    [service] = [
+        d for d in of_kind(documents, "Service") if d["metadata"]["name"] == "taktus-gateway"
+    ]
+    assert service["metadata"]["namespace"] == EXECUTION_NAMESPACE
+    assert service["spec"]["ports"][0]["port"] == 3128
+    [config] = of_kind(documents, "ConfigMap")
+    assert config["data"]["TAKTUS_EXECUTION_GATEWAY_SERVICE"] == "taktus-gateway"
+    runner = next(
+        d for d in of_kind(documents, "Deployment") if d["metadata"]["name"] == "taktus-runner"
+    )
+    env = {
+        e["name"]: e.get("value")
+        for e in runner["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert env["TAKTUS_EXECUTION_GATEWAY_KEY_FILE"] == "/run/secrets/taktus/gateway-key/key"
+    without = render("execution.kind=endpoint", "execution.endpoint=http://worker:9000")
+    assert not [d for d in without if d["metadata"]["name"] == "taktus-gateway"], (
+        "no worker in the cluster, no gateway"
+    )
+
+
+def test_the_chart_makes_the_gateways_key_in_both_namespaces_and_keeps_it() -> None:
+    """DEC-0216: nobody provides the key. The chart draws it once, writes the same value in
+    both namespaces, and an uninstall keeps it; the gateway and the runner mount it."""
+    documents = render("execution.kind=cluster")
+    secrets = [
+        d for d in of_kind(documents, "Secret") if d["metadata"]["name"] == "taktus-gateway-key"
+    ]
+    assert sorted(s["metadata"]["namespace"] for s in secrets) == sorted(
+        [RELEASE_NAMESPACE, EXECUTION_NAMESPACE]
+    )
+    values = {s["data"]["key"] for s in secrets}
+    assert len(values) == 1, "the same key on both sides"
+    assert len(base64.b64decode(values.pop())) >= 32
+    for secret in secrets:
+        assert secret["metadata"]["annotations"]["helm.sh/resource-policy"] == "keep"
+    [gateway] = [
+        d for d in of_kind(documents, "Deployment") if d["metadata"]["name"] == "taktus-gateway"
+    ]
+    [volume] = gateway["spec"]["template"]["spec"]["volumes"]
+    assert volume["secret"]["secretName"] == "taktus-gateway-key"
+
+
+def test_an_operators_own_gateway_key_replaces_the_charts() -> None:
+    documents = render(
+        "execution.kind=cluster",
+        "execution.gateway.keySecret=my-key",
+        "execution.gateway.keyKey=value",
+    )
+    assert not [d for d in of_kind(documents, "Secret") if "gateway" in d["metadata"]["name"]]
+    [gateway] = [
+        d for d in of_kind(documents, "Deployment") if d["metadata"]["name"] == "taktus-gateway"
+    ]
+    [volume] = gateway["spec"]["template"]["spec"]["volumes"]
+    assert volume["secret"]["secretName"] == "my-key"
+    assert render_fails(
+        "execution.kind=cluster", "execution.gateway.keySecret=my-key", "execution.gateway.keyKey="
+    )
 
 
 def test_service_hosts_are_configuration_for_the_instance_and_each_worker() -> None:

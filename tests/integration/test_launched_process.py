@@ -1,7 +1,8 @@
 """The whole slice with an execution unit the control plane starts itself: `TAKTUS_EXECUTION=
-process`. Every worker step starts the reference worker as a fresh unit — a probe for the
-estimate, a unit for the assignment — and a stop mid-step resumes in a new unit from the
-checkpoint the previous one left in the unit's state."""
+process`. Every worker step starts the reference worker as a fresh unit for its assignment,
+and its estimate starts none: the worker's declared estimator gives it (ADR-0115). A stop
+mid-step resumes in a new unit from the checkpoint the previous one left in the unit's
+state."""
 
 from __future__ import annotations
 
@@ -59,10 +60,10 @@ async def test_a_run_completes_through_units_started_per_job(tmp_path: Path) -> 
         assert await verifies(services)
     units = tmp_path / "state" / "units" / "unit"
     logs = sorted(p.name for p in units.glob("job-*.log"))
-    assert len(logs) == 3, logs
+    assert len(logs) == 2, logs
     assert logs[0].startswith("job-asg_"), "one unit served the assignment"
-    assert logs[1].startswith("job-probe-asg_"), "one probe answered its estimate"
-    assert logs[2] == "job-probe-capabilities.log", "one probe answered the capabilities"
+    assert logs[1] == "job-probe-capabilities.log", "one probe answered the capabilities"
+    # The estimate started no unit: the worker's declared estimator gave it (ADR-0115).
     assert list(units.glob("ckpt_*.json")), "the unit's checkpoints outlive the job"
 
 
@@ -112,8 +113,11 @@ async def test_the_process_adapter_is_refused_at_level_3_and_the_run_escalates(
         compute = run.step_run("compute")
         assert compute.state is StepState.FAILED
         assert compute.reason is not None and "ADR-0002" in compute.reason
-        assert compute.assignment_id is None, "no unit was started for the assignment"
-    assert not list((tmp_path / "state" / "units").glob("*/job-asg_*.log"))
+        # The estimate starts no unit (ADR-0115), so the refusal comes at the hand-over: an
+        # assignment was formed, and no unit was started for it.
+    assert not list((tmp_path / "state" / "units").glob("*/job-asg_*.log")), (
+        "no unit was started for the assignment"
+    )
 
 
 @pytest.mark.timing

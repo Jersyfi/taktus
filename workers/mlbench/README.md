@@ -66,7 +66,9 @@ step's fallback reads (`docs/architecture/methods.md` §2: "confidence < 0.9 →
 
 ## The contract around it
 
-Everything the reference worker does, it does too: an estimate, a resumable event stream,
+Everything the reference worker does, it does too, except declare an estimator: its estimate
+follows from the dataset, so it is reached by endpoint, and launched per job its steps would be
+refused for want of an estimate (ADR-0115). It has an estimate, a resumable event stream,
 consumption in `compute` seconds of its resource class after every step, a boundary and a
 checkpoint after every step, a stop that lands on the boundary, refusal of a tool or a host
 outside the frame, rejection before the start when the limits do not fit, a halt at the next

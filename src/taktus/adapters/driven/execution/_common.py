@@ -1,9 +1,11 @@
 """What every execution adapter needs: the credential values a job names, read once at launch
-through the configuration port, and the wait until a unit answers health."""
+through the configuration port, the wait until a unit answers health, and a job's token at the
+instance's egress gateway (ADR-0115)."""
 
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 
@@ -76,3 +78,40 @@ async def wait_until_healthy(
                     f"{within_seconds:g}s"
                 )
             await asyncio.sleep(0.1)
+
+
+# --- the instance's egress gateway (ADR-0115) ------------------------------------------------
+
+GATEWAY_KEY = "execution.gateway.key"
+"""The configuration key of the key the gateway verifies each job's token with:
+`TAKTUS_EXECUTION_GATEWAY_KEY_FILE` (CREDENTIALS.md)."""
+PROXY_VARIABLES = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
+TOKEN_SLACK_SECONDS = 60
+"""How long a job's token outlives the job's own deadline: the time it takes to end it."""
+
+
+def gateway_key(configuration: Configuration) -> Secret | None:
+    """The configured gateway key, or None when none is configured. A key configured but not
+    readable is a refusal in the operator's terms."""
+    try:
+        return configuration.secret(GATEWAY_KEY)
+    except ConfigurationError as error:
+        raise ExecutionRefused(str(error)) from None
+
+
+def job_token(key: bytes, *, job: str, hosts: tuple[str, ...], seconds: int) -> str:
+    """The token that admits one job's hosts at the gateway, for `seconds` and a little more."""
+    from taktus.adapters.driven.execution.container import egress  # the format's one home
+
+    expires = int(time.time()) + seconds + TOKEN_SLACK_SECONDS
+    return egress.mint(key, job=job, hosts=hosts, expires=expires)
+
+
+def proxy_url(token: str, address: str, port: int) -> str:
+    """Where a unit finds the gateway, with its job's token as the password: a value, carried
+    as a secret is carried."""
+    return f"http://{PROXY_USER}:{token}@{address}:{port}"
+
+
+PROXY_USER = "taktus"
+"""The user a unit presents its token as; the gateway's (`egress.PROXY_USER`)."""

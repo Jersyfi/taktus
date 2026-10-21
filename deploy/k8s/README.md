@@ -31,7 +31,7 @@ Two namespaces, and the boundary between them is the point.
 | Namespace | What runs there | Who may write in it |
 |---|---|---|
 | **the control plane's** | `taktusd` in its roles (`api`, `runner`, `scheduler`, `automation`), the database if it is deployed with Taktus, the ingress object | the deployment identity (a person with `helm`; CI never deploys) |
-| **the execution namespace** | one Job per execution unit with what it lives with — its Secret, its Services, its egress proxy — and nothing permanent | Taktus's own service account, and only for those objects and the jobs' logs |
+| **the execution namespace** | one Job per execution unit with what it lives with — its Secret and its Service — and the instance's egress gateway (section 6), which the chart deploys | Taktus's own service account, and only for those objects and the jobs' logs |
 
 Nothing else. A third namespace holds whatever else the cluster runs; Taktus neither
 administers the cluster nor reaches into it (ADR-0025 §1, DEC-0023).
@@ -49,15 +49,15 @@ administers the cluster nor reaches into it (ADR-0025 §1, DEC-0023).
 
   | Resource | Verbs | What for (§7) |
   |---|---|---|
-  | `batch/jobs` | `create`, `get`, `list`, `watch`, `delete` | the unit's Job, and the egress proxy's, which is a Job too |
+  | `batch/jobs` | `create`, `get`, `list`, `watch`, `delete` | the unit's Job |
   | `pods`, `pods/log` | `get`, `list` | whether a job's pod is ready and how it ended; the unit's log lines |
   | `secrets` | `create`, `delete` | the credentials a job names, for the job's lifetime |
-  | `services` | `create`, `delete` | the address the control plane reaches the unit at, and the one the unit reaches its proxy at |
+  | `services` | `create`, `get`, `delete` | the address the control plane reaches the unit at; `get` reads the address of the egress gateway's Service (section 6) |
 
   Nothing else, anywhere: no shell (`pods/exec`), no port forwarding, no node access, no read of
   a Secret — it can write a job's credentials into the namespace and can never read one back —
   no read of another namespace, and no permission over the cluster's own objects. It cannot
-  create a pod directly; the proxy runs as a Job for that reason. It is a namespaced Role and a
+  create a pod directly, and it creates no Deployment: the egress gateway is the chart's. It is a namespaced Role and a
   RoleBinding, never a ClusterRole. `src/taktus/adapters/driven/execution/kubernetes/api.py`
   holds the same list as `PERMITTED`, and the client refuses every other call before sending
   it (DEC-0061).
@@ -85,7 +85,7 @@ operator's. The parts that carry a decision:
 | `roles.<role>.replicas`, `.resources` | one deployment per role (ADR-0002), for the `standard` profile; the scheduler is elected, more than one is allowed and idle |
 | `database.deploy`, `.size`, `.storageClass`, `.passwordSecret`/`.passwordKey`, `.urlSecret`/`.urlKey` | a PostgreSQL of its own (DEC-0032) on a volume of 20 Gi (DEC-0033); its password and the instance's connection URL are existing Secrets |
 | `state.size`, `.storageClass` | one volume for artifact bytes, shared by every role (`TAKTUS_STATE_DIR`); kept on uninstall. A role keeps at most `TAKTUS_OBJECT_CACHE_MB` of them in memory (default 64; set through `env`) |
-| `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6; `defaults.unitEnv` the variables a worker's own program needs to start, section 7 — configuration, never a secret), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), and the egress proxy's image, port, allowed ports and excluded ranges. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none), `unitEnv` (`{}` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
+| `execution.*` | `kind` (`cluster` for the cluster adapter of section 7, `endpoint` by default), the execution namespace, the jobs' account, the unit's image, the per-job defaults (`defaults.cpuRequestShare` the share of the CPU limit a unit requests, section 7; `defaults.serviceHosts` the hosts a worker's own service needs, section 6; `defaults.unitEnv` the variables a worker's own program needs to start, section 7 — configuration, never a secret), the claim the units' state lives on (`stateClaim`, rendered and kept on uninstall), the egress gateway (`gateway.replicas`, and optionally `gateway.keySecret` with `gateway.keyKey`, an existing Secret in both namespaces that holds its key; without them the chart makes the key and keeps it; section 6), and the egress port, allowed ports and excluded ranges, with `egress.proxyImage` the container adapter's gateway image. `workers[]` names several workers in the order a step is resolved in (`TAKTUS_WORKERS`, ADR-0078): each entry a `name` and what it sets itself — `kind`, `endpoint` (required for kind `endpoint`), `image`, `unitPort`, `cpus`, `cpuRequestShare`, `memoryMb`, `wallSeconds`, `startTimeoutSeconds`, an existing `stateClaim`, `serviceHosts` (`[]` for none), `unitEnv` (`{}` for none) — and the settings above for the rest. A name that is not lowercase words joined by hyphens, a name twice, or an endpoint worker without its endpoint fails the render |
 | `credentials[]` | one entry per parameter of `CREDENTIALS.md`: `parameter`, `secret`, `key`, optional `mountPath`; mounted as a file, its path in `TAKTUS_<PARAMETER>_FILE`. A credential of one of several workers has the parameter `worker.<worker>.credential.<name>`, and only that worker receives it |
 | `administration.platform`, `.administers` | the platform this instance runs on and, per credential parameter, the platforms it administers or `none` — `TAKTUS_PLATFORM`, `TAKTUS_ADMINISTERS` (ADR-0052). A process naming a credential that administers this platform, or one declared about nothing, is refused; with no platform nothing is checked |
 | `connectors.repository.*` | the repository channel's connector as a deployment of its own, from the control plane's image, acting as Taktus's own app (ADR-0033): the repository it serves, the app's identifier, the Secrets holding the app's key and the webhook secret — mounted as files — and `findings`, which makes it the connector product findings go through. Enabled, it sets `TAKTUS_CONNECTORS` (`channel.repo`) and, with `findings`, `TAKTUS_FINDINGS_CONNECTOR`; it is reached from the roles alone and reaches the name service and the service's API outside the cluster (#66) |
@@ -233,18 +233,18 @@ needs:
 
 - **Ingress:** from the control plane's namespace only, to the unit's contract port, selected
   by a namespace label. Nothing else may reach a job, and no job may reach another job.
-- **Egress:** to the per-job egress proxy (section 6), and to nothing else. Not to the
+- **Egress:** to the instance's egress gateway (section 6), and to nothing else. Not to the
   cluster's DNS — with a proxy the job does not resolve names itself — not to the API server,
   not to the node, not to the link-local metadata address, not to the control plane's database.
 
 The adapter labels what it creates so that the policies can select it: every object carries
-`taktus/job: <the job's tag>` and `taktus/role`, which is `unit` for the unit's pod and `egress`
-for the proxy's. So the exceptions are: ingress to `taktus/role: unit` on the contract port
+`taktus/job: <the job's tag>` and `taktus/role: unit`; the chart's egress gateway carries
+`taktus/role: egress`. So the exceptions are: ingress to `taktus/role: unit` on the contract port
 from the control plane's namespace; egress from `taktus/role: unit` to `taktus/role: egress` on
 port 3128; ingress to `taktus/role: egress` on port 3128 from `taktus/role: unit`; and egress
 from `taktus/role: egress` to the cluster's DNS and to addresses outside the cluster, because
-the proxy resolves the names the frame lists and connects to them. A policy cannot pair one
-job's unit with its own proxy; the proxy's token does that (section 6).
+the gateway resolves the names the frame lists and connects to them. A policy cannot tell one
+job from another; the job's token at the gateway does that (section 6).
 
 In the control plane's namespace, the same default-deny, with egress to its database, to the
 execution namespace's API-server-mediated job creation, to the hosts its connectors and models
@@ -253,7 +253,7 @@ need, and to the OTLP collector when one is configured.
 Both policies are in the chart, and both are rendered whether or not the cluster enforces
 them — see the next section for what happens when it does not.
 
-The chart renders these exceptions by those labels. The proxy may leave the cluster to the
+The chart renders these exceptions by those labels. The gateway may leave the cluster to the
 ports in `execution.egress.ports` (443 by default), to any
 address outside `execution.egress.exceptCidrs` — the private, shared and link-local ranges, so
 neither the cluster's own networks nor the metadata address — and to the name service.
@@ -274,32 +274,46 @@ that change, several names share an address, and a policy written from today's r
 wrong tomorrow and too wide today.
 
 So the host list is **not** enforced by the network policy. It is enforced the way the
-container adapter already enforces it: by an **egress proxy of its own per job**, which sees
-the hostname in the client's `CONNECT` and refuses every name that is not in the frame's list.
-On Kubernetes it is a second pod, not a sidecar in the job's pod: containers in one pod share a
-network namespace, so a sidecar can be walked around and is a boundary only in a diagram. With
-a second pod, the job's default-deny egress policy permits exactly one destination — the proxy
-— and the only way out is through it.
+container adapter enforces it: by the instance's **egress gateway** (ADR-0115), which sees the
+hostname in the client's `CONNECT` and refuses every name that the job's token does not name.
+It is a Deployment of its own in the execution namespace (`templates/gateway.yaml`, two
+replicas behind the Service `<release>-gateway`), not a sidecar in the job's pod: containers in
+one pod share a network namespace, so a sidecar can be walked around and is a boundary only in a
+diagram. The job's default-deny egress policy permits exactly one destination — the gateway —
+and the only way out is through it. One gateway serves every job; until ADR-0115 every job
+brought a proxy of its own, a second Job with its own Service.
 
 What that gives, plainly:
 
-- A name not in the list is refused at the proxy, by name.
+- A name not in the list is refused at the gateway, by name.
 - A connection to a bare address is refused too: it is not a name in the list, and the policy
-  would not have let it past the proxy anyway.
-- The proxy sees the `CONNECT` host, not the traffic: TLS stays end to end between the job and
+  would not have let it past the gateway anyway.
+- The gateway sees the `CONNECT` host, not the traffic: TLS stays end to end between the job and
   the host it was allowed to reach.
 
-**What the network policy still earns:** it is what makes the proxy unavoidable. Without it the
-job could ignore `HTTPS_PROXY` and dial out directly. Policy and proxy are two halves of one
-mechanism; neither is the mechanism.
+**What the network policy still earns:** it is what makes the gateway unavoidable. Without it
+the job could ignore `HTTPS_PROXY` and dial out directly. Policy and gateway are two halves of
+one mechanism; neither is the mechanism.
 
-**What the policy cannot do: pair a unit with its own proxy.** The exceptions of section 5
-select by role, so every unit may reach every proxy, and a unit could use another job's host
-list. The proxy therefore asks for a token: a random value created for the job, held in the
-job's Secret, and handed to both. The unit finds it in its proxy address
+**What the policy cannot do: tell one job from another.** The exceptions of section 5 select by
+role, so every unit reaches the gateway. The gateway therefore asks each request for the job's
+token, and admits the hosts that token names and nothing else. The runner mints the token per
+job: the job's hosts and its deadline, signed with the gateway's key (HMAC-SHA256). It is held
+in the job's Secret, and the unit finds it in its proxy address
 (`http://taktus:<token>@<address>:3128`), which every common client turns into a
-`Proxy-Authorization` header by itself; the proxy answers 407 to a request without it. The
-token is in no recorded configuration and lives as long as the job.
+`Proxy-Authorization` header by itself. The gateway answers 407 to a request without a token its
+key signed, or whose job's deadline has passed, and 403 to a host its token does not name. The
+token is in no recorded configuration.
+
+**The gateway's key** is a random value, in a Secret of the same name in **both** namespaces:
+the gateway mounts it in the execution namespace, and the runner, which signs the tokens, in the
+control plane's (`CREDENTIALS.md`, *Egress gateway key*). The chart makes it on the first install,
+`<release>-gateway-key`, and writes the same value again at every upgrade, read back from the
+control plane's namespace; nobody provides it (DEC-0216). An uninstall keeps both. An operator who
+wants a key of their own names an existing Secret of the same name in both namespaces, with at
+least 32 random bytes, in `execution.gateway.keySecret` and `keyKey`. Rotating it: write a new value into both Secrets and restart the gateway and the
+runner; tokens signed with the old key are refused from then on, so a rotation while jobs run cuts
+their egress.
 
 **If a cluster cannot enforce a NetworkPolicy at all**, the mechanism has no second half and
 the host list means nothing more than a line in a bundle. Then the adapter **refuses to start a
@@ -317,16 +331,17 @@ the operator chose. So the operator names it as configuration, per worker:
 lowercase, optionally with a port, no wildcard — and is validated the same way at startup.
 
 - **An assignment's job** gets the frame's hosts and the service hosts, each once, in its
-  proxy's list. The frame handed to the worker is still the step's: the worker refuses a tool
+  token. The frame handed to the worker is still the step's: the worker refuses a tool
   call to a service host the frame does not name (W-13). The service host is reachable by the
   agent, not granted to the step.
 - **The conformance suite's unit** gets the suite's hosts (`conformance.worker.hosts`) and the
   service hosts, so that the suite exercises the worker as a run would.
-- **A probe** — the unit started to answer capabilities or an estimate — gets none, and no
-  credential either.
+- **A probe** — the unit started once to answer the capabilities — gets none, and no
+  credential either. An estimate starts no unit at all: it is what the estimator the worker
+  declares yields (ADR-0115).
 - **Empty**, the default, changes nothing: a unit reaches the frame's hosts alone.
 
-The proxy still connects only on `execution.egress.ports` and to no address in
+The gateway still connects only on `execution.egress.ports` and to no address in
 `execution.egress.exceptCidrs`; a service host on another port needs that port there too.
 With `execution.egress.enforce: false` a job that names hosts is refused, and service hosts
 are hosts: a worker that names them cannot run on such a cluster at all.
@@ -354,16 +369,16 @@ with `httpx` alone, through the calls of the Role of section 1 and no other. It:
    asks for it there, as the container adapter does. The pod's recorded configuration names the
    Secret's keys and never a value;
 2. when the job names hosts — the frame's, and for an assignment the worker's service hosts
-   (section 6) — creates the egress proxy as a second Job and a Service, with that host list
-   and the job's token, and waits for it to be ready within
-   `startTimeoutSeconds`. Without hosts there is no proxy, and the job reaches nothing;
+   (section 6) — reads the address of the egress gateway's Service
+   (`TAKTUS_EXECUTION_GATEWAY_SERVICE`) and puts into the job's Secret the gateway's address with
+   a token that names those hosts. Without hosts there is no token, and the job reaches nothing;
 3. reaches the unit at its Service's address and speaks the worker contract to it, exactly as
    the other two adapters do — the port's interface does not change. The unit must answer
    health within `startTimeoutSeconds`; when it does not, the error says what the cluster says
    about the pod (an image that cannot be pulled, a pod that cannot be scheduled);
 4. ends a job that exceeds the wall clock by deleting it, keeps the unit's log lines under the
-   control plane's state directory, and deletes the job, its Secret, its Services and the proxy
-   when the assignment ends, whatever the outcome. Every one of them is owned by the unit's Job,
+   control plane's state directory, and deletes the job, its Secret and its Service when the
+   assignment ends, whatever the outcome. Every one of them is owned by the unit's Job,
    so that the cluster removes them too when the control plane died before it could: the
    deadline ends the Job, its time to live deletes it, and what it owns goes with it;
 5. refuses, with the port's `ExecutionRefused` and before creating anything, a job it cannot
@@ -395,8 +410,8 @@ its own `cpuRequestShare`. A unit whose CPU request is below its limit leaves th
 highest quality-of-service class, *Guaranteed*, for *Burstable*. When the node itself runs out
 of memory — because other pods use more than they requested — the kernel then picks such a unit
 sooner than a *Guaranteed* pod. Its memory request equal to its limit still keeps it out of the
-first rank the node evicts for memory: the pods using more memory than they requested. The egress proxy's
-requests stay equal to its limits.
+first rank the node evicts for memory: the pods using more memory than they requested. The
+egress gateway's pods request their memory limit too.
 
 Admission does not count a unit's CPU, from its limit or its request. Admission against the
 platform (ADR-0031) holds memory alone, and only for units started on the platform the control

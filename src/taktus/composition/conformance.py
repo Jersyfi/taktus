@@ -144,6 +144,8 @@ def worker_target(
             raise NotRunnable(
                 f"the execution unit for the suite could not be started: {error}"
             ) from error
+        finally:
+            await execution.close()
 
     return launched
 

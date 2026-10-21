@@ -2,12 +2,17 @@
 
 A fake execution adapter records every job request and starts nothing, so that each call ends
 in a `WorkerError` after its request was made. An assignment's job reaches the frame's hosts and
-the worker's service hosts; a probe — capabilities, estimate — reaches none of them."""
+the worker's service hosts; the probe that answers the capabilities reaches none of them, and an
+estimate starts no unit at all (ADR-0115)."""
 
 from __future__ import annotations
 
+import asyncio
+import json
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from dataclasses import dataclass
+from typing import Any
 
 import pytest
 
@@ -18,6 +23,7 @@ from taktus.ports.execution import (
     ExecutionUnit,
     Isolation,
     Job,
+    JobExit,
     JobRequest,
     ResourceLimits,
 )
@@ -28,6 +34,7 @@ from taktus.ports.worker import (
     Context,
     Frame,
     Limits,
+    NoEstimator,
     Task,
     WorkerAtCapacity,
     WorkerError,
@@ -51,6 +58,9 @@ class RecordingExecution:
     def isolation(self) -> Isolation:
         return Isolation.CLUSTER
 
+    async def close(self) -> None:
+        pass
+
     def launch(self, request: JobRequest) -> AbstractAsyncContextManager[Job]:
         self.requests.append(request)
         return self._refused()
@@ -70,10 +80,97 @@ class FullExecution(RecordingExecution):
         yield  # pragma: no cover
 
 
-def assignment(hosts: tuple[str, ...]) -> Assignment:
+ESTIMATOR = {
+    "kind": "per_item",
+    "input": "commands",
+    "each": {
+        "confidence": "low",
+        "compute_seconds": 0.5,
+        "resource_class": "cpu.small",
+        "wall_seconds": 1,
+        "steps": 1,
+    },
+    "otherwise": {
+        "confidence": "low",
+        "compute_seconds": 3.0,
+        "resource_class": "cpu.small",
+        "wall_seconds": 4,
+        "steps": 4,
+    },
+}
+
+
+def capabilities(estimator: dict[str, Any] | None) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "contract": "worker/v1",
+        "capabilities": ["shell.script"],
+        "consumption": {"kinds": ["compute"], "resource_classes": ["cpu.small"]},
+        "supports": {
+            "native_pause": False,
+            "step_boundary_signal": True,
+            "streaming_events": True,
+            "estimate": True,
+        },
+        "max_concurrent_assignments": 1,
+    }
+    if estimator is not None:
+        body["estimator"] = estimator
+    return body
+
+
+@dataclass
+class _Job:
+    id: str
+    endpoint: str
+
+    async def exit(self) -> JobExit | None:
+        return None
+
+
+class ServingExecution(RecordingExecution):
+    """Every unit it starts is one small server that answers the capabilities."""
+
+    def __init__(self, endpoint: str) -> None:
+        super().__init__()
+        self.endpoint = endpoint
+
+    def launch(self, request: JobRequest) -> AbstractAsyncContextManager[Job]:
+        self.requests.append(request)
+        return self._serving(request)
+
+    @asynccontextmanager
+    async def _serving(self, request: JobRequest) -> AsyncIterator[Job]:
+        yield _Job(request.job_id, self.endpoint)
+
+
+@asynccontextmanager
+async def serving(body: dict[str, Any]) -> AsyncIterator[ServingExecution]:
+    payload = json.dumps(body).encode()
+
+    async def answer(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await reader.readuntil(b"\r\n\r\n")
+        writer.write(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n"
+            + f"Content-Length: {len(payload)}\r\n\r\n".encode()
+            + payload
+        )
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(answer, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    async with server:
+        yield ServingExecution(f"http://127.0.0.1:{port}")
+
+
+def assignment(hosts: tuple[str, ...], *, commands: list[str] | None = None) -> Assignment:
     return Assignment(
         assignment_id="asg_hosts01",
-        task=Task(goal="change the code", acceptance=["done"]),
+        task=Task(
+            goal="change the code",
+            acceptance=["done"],
+            inputs=None if commands is None else {"commands": commands},
+        ),
         context=Context(),
         frame=Frame(
             autonomy_level=2, allowed_tools=("shell.script",), allowed_hosts=hosts, max_steps=5
@@ -109,10 +206,30 @@ async def test_a_probe_reaches_no_host() -> None:
     async with LaunchedWorker(execution, UNIT) as worker:
         with pytest.raises(WorkerError):
             await worker.capabilities()
-        with pytest.raises(WorkerError):
-            await worker.estimate(assignment(("repo.example.org",)).estimate_request())
-    assert [r.allowed_hosts for r in execution.requests] == [(), ()]
-    assert [r.credentials for r in execution.requests] == [(), ()]
+    assert [r.allowed_hosts for r in execution.requests] == [()]
+    assert [r.credentials for r in execution.requests] == [()]
+
+
+async def test_the_estimate_starts_no_unit_and_is_what_the_declared_estimator_yields() -> None:
+    """ADR-0115: one probe answers the capabilities, once; every estimate after it is the
+    declared estimator's, and no unit starts for it."""
+    async with serving(capabilities(ESTIMATOR)) as execution:
+        async with LaunchedWorker(execution, UNIT) as worker:
+            await worker.capabilities()
+            few = await worker.estimate(assignment((), commands=["a", "b"]).estimate_request())
+            none = await worker.estimate(assignment(()).estimate_request())
+    assert len(execution.requests) == 1, "the capabilities' probe and nothing else"
+    assert execution.requests[0].job_id == "probe-capabilities"
+    assert few.compute_seconds == 1.0 and few.steps == 2 and few.wall_seconds == 2
+    assert none.compute_seconds == 3.0 and none.steps == 4
+
+
+async def test_a_worker_that_declares_no_estimator_is_not_started_to_be_asked() -> None:
+    async with serving(capabilities(None)) as execution:
+        async with LaunchedWorker(execution, UNIT) as worker:
+            with pytest.raises(NoEstimator, match="declares no estimator"):
+                await worker.estimate(assignment(()).estimate_request())
+    assert [r.job_id for r in execution.requests] == ["probe-capabilities"]
 
 
 async def test_without_service_hosts_a_job_reaches_the_frames_hosts_alone() -> None:

@@ -93,7 +93,9 @@ not start, and the assignment ends `stopped` with the boundary's `checkpoint_ref
 the halt comes at the boundary after it.
 
 A step's expected seconds are its planned seconds times `--estimate-factor`, and so is the
-estimate. Below 1 the worker underestimates, as a real worker may: the suite's `tight` run can
+estimate. The capabilities declare the same as a `per_item` estimator over the task's
+`commands`, a step's seconds rounded up to the millisecond and the profile's plan where the task
+names no command, so that a unit started per job is not started to be asked (ADR-0115). Below 1 the worker underestimates, as a real worker may: the suite's `tight` run can
 then make it cross a limit its estimate fits, which is how W-14 is observed. At 1 it estimates
 what it plans, and its measured seconds exceed the plan by the time a command takes to start.
 Above 1 it overestimates, and no limit its estimate fits is ever crossed. An assignment whose `context.checkpoint_ref` names a checkpoint
@@ -113,6 +115,7 @@ that check and only on that check.
 |---|---|---|
 | `W-01` | W-01 | declares no consumption kind |
 | `W-02` | W-02 | answers `501` to `POST /v1/estimate` |
+| `W-02-estimator` | W-02 | declares an estimator that yields a tenth of each step's seconds |
 | `W-03-gap` | W-03 | skips `seq` 2 |
 | `W-03-resume` | W-03 | ignores `Last-Event-ID` and `?after=`; always replays from 1 |
 | `W-04` | W-04 | reports every step's consumption at the end, just before `assignment.finished` |

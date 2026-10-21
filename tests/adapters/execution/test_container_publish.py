@@ -1,4 +1,4 @@
-"""The egress container publishes the unit's port on a host port the engine chooses. The engine
+"""The egress gateway publishes its inbound port on a host port the engine chooses. The engine
 chooses from its own record, which does not see a port another program holds, and then fails
 the start with `address already in use`. Without an engine: the start is repeated on exactly
 that answer, and on no other."""

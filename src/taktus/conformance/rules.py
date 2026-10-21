@@ -75,7 +75,9 @@ REQUIREMENTS: dict[str, str] = {
     "W-01": "GET /v1/capabilities answers 200 with a body that validates against "
     "Worker.json#/$defs/Capabilities and lists at least one consumption kind",
     "W-02": "POST /v1/estimate answers 200 with a body that validates against "
-    "Worker.json#/$defs/Estimate; confidence, wall_seconds and steps are always present",
+    "Worker.json#/$defs/Estimate; confidence, wall_seconds and steps are always present; where "
+    "the capabilities declare an estimator, what it yields for the same request is no less "
+    "than the answer in any quantity and in wall_seconds",
     "W-03": "every event validates against Worker.json#/$defs/Event; seq starts at 1 and "
     "increases by exactly 1; the SSE id field carries seq and the SSE event field carries type; "
     "the stream ends with assignment.finished; a client that sends the last seq it has seen in "

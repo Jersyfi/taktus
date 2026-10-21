@@ -168,7 +168,7 @@ def execution_of(
             configuration,
             namespace=settings.namespace,
             state_dir=state_dir,
-            egress_image=settings.egress_image,
+            gateway_service=settings.gateway_service,
             enforce_egress=settings.egress_enforced,
             service_account=settings.service_account,
             state_claim=settings.state_claim,
