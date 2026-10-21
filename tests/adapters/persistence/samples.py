@@ -28,6 +28,7 @@ from taktus.components.governance.domain.model import (
     Happening,
     Incident,
     IncidentKind,
+    ResidencyRule,
     RunSeen,
     WatchConfiguration,
 )
@@ -586,6 +587,12 @@ def lowering_incident(tenant: str = "t") -> Incident:
         rule="anchor.breach",
         facts={"anchors": "anc-write", "level_before": "3", "level_after": "2"},
         raised_at=AT,
+    )
+
+
+def residency_rule(tenant: str = "t") -> ResidencyRule:
+    return ResidencyRule(
+        id=tenant, tenant=tenant, location="eu", classes={"personal": "own"}, configured_at=AT
     )
 
 

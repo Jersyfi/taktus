@@ -143,6 +143,17 @@ recorded in the ledger as `model.endpoint`. Over the dialect it counts input as 
 run's `llm` step is `components/run` (`examples/README.md`). The evidence of what providers
 permit is `docs/research/2026-09-30-what-providers-allow.md`.
 
+**A chain of models per purpose (ADR-0116).** `TAKTUS_MODELS` names several models in order,
+each configured under `TAKTUS_MODELS_<MEMBER>_…` and recorded as `model.<member>`. The chain
+of a purpose is every member that serves it, in that order. Each member declares where it
+processes (`…_LOCATION`: `own`, `eu`, `elsewhere`) and the exactness classes it may produce for
+(`…_EXACTNESS`). A step is routed to the first member that its tenant's residency rule admits,
+that may produce its class, and that is not cooling down
+(`components/run/domain/service/routing.py`). A member that answered `429` or failed cools
+down, and the step moves to the next member at its boundary. The provenance record names the
+member and the route (`route`). `tests/components/run/test_model_routing.py` proves it. A
+gateway stands behind a member only as a pass-through: `deploy/docker/README.md`.
+
 ### 2.4 The execution port
 
 The worker contract says how the core talks to an execution unit. It says nothing about how

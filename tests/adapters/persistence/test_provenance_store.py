@@ -77,6 +77,13 @@ async def test_records_come_back_per_run_in_ledger_order_with_every_field(
         prompt="extract@3",
         adapter="worker.http",
         adapter_version="1.1.0",
+        route={
+            "purpose": "reasoning",
+            "adapter": "worker.http",
+            "permitted": "eu",
+            "data_class": "personal",
+            "skipped": [{"adapter": "model.first", "reason": "cooling_down"}],
+        },
     )
     first = record("prov_1", "r1", "a", 3, outputs=("result",), result=1)
     other = record("prov_0", "r0", "z", 1, outputs=("art",))

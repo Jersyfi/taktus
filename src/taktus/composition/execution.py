@@ -24,7 +24,7 @@ from taktus.adapters.driven.execution import (
     KubernetesExecution,
     ProcessExecution,
 )
-from taktus.adapters.driven.models import OpenAiCompatibleModel, StaticModelPool
+from taktus.adapters.driven.models import Declared, OpenAiCompatibleModel, StaticModelPool
 from taktus.adapters.driven.telemetry import (
     OpenTelemetryTelemetry,
     exporter_for,
@@ -48,25 +48,38 @@ UNIT_NAME = "unit"
 
 
 MODEL_ADAPTER = "model.endpoint"
-"""The adapter identifier of the one configured model: reached by endpoint, never a product."""
+"""The adapter identifier of the one unnamed model: reached by endpoint, never a product."""
 
 
-def model_pool(settings: ModelSettings, *, timeout: float = 120.0) -> StaticModelPool:
-    """The configured model as the run's pool, under `model.endpoint` for the purposes it
-    serves; an empty pool when no endpoint is configured."""
-    if settings.endpoint is None:
-        return StaticModelPool()
-    model = OpenAiCompatibleModel(
-        settings.endpoint,
-        settings.name,
-        credential=settings.credential,
-        timeout=timeout,
-        billing=settings.billing,  # type: ignore[arg-type]  # validated by load_model
-        output_cap=settings.output_cap,  # type: ignore[arg-type]
-        provider_limit=settings.provider_limit,  # type: ignore[arg-type]
-        usage_kinds=settings.usage_kinds,  # type: ignore[arg-type]
-    )
-    return StaticModelPool([(MODEL_ADAPTER, settings.purposes, model, settings.name)])
+def model_pool(
+    models: ModelSettings | Sequence[ModelSettings], *, timeout: float = 120.0
+) -> StaticModelPool:
+    """The configured models as the run's pool, in chain order, each under its identifier —
+    `model.<member>`, or `model.endpoint` for the one unnamed model — for the purposes it
+    serves, with where it processes and what it may produce for (ADR-0116). An empty pool
+    when no endpoint is configured."""
+    configured = [models] if isinstance(models, ModelSettings) else list(models)
+    members = []
+    declared: dict[str, Declared] = {}
+    for settings in configured:
+        if settings.endpoint is None:
+            continue
+        model = OpenAiCompatibleModel(
+            settings.endpoint,
+            settings.name,
+            credential=settings.credential,
+            timeout=timeout,
+            billing=settings.billing,  # type: ignore[arg-type]  # validated by load_model
+            output_cap=settings.output_cap,  # type: ignore[arg-type]
+            provider_limit=settings.provider_limit,  # type: ignore[arg-type]
+            usage_kinds=settings.usage_kinds,  # type: ignore[arg-type]
+        )
+        members.append((settings.identifier, settings.purposes, model, settings.name))
+        declared[settings.identifier] = Declared(
+            location=settings.location,  # type: ignore[arg-type]  # validated by load_model
+            classes=settings.classes,
+        )
+    return StaticModelPool(members, declared)
 
 
 def connector_pool(

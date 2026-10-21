@@ -485,6 +485,9 @@ class LlmWork(Value):
     values: dict[str, Any] = Field(default_factory=dict)
     max_output_tokens: int = Field(default=2048, ge=1)
     pattern: str | None = None
+    data_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
+    """The class of the data the prompt carries, as the process declares it: the tenant's
+    residency rule for that class steers which model the step is routed to (ADR-0116 §3)."""
 
 
 LABEL = "label"

@@ -3,6 +3,6 @@ endpoints answer — a vendor's API, a local server — and is the only place a 
 format lives; `pool.py` maps purposes to configured models."""
 
 from taktus.adapters.driven.models.openai_compatible import OpenAiCompatibleModel
-from taktus.adapters.driven.models.pool import StaticModelPool
+from taktus.adapters.driven.models.pool import Declared, StaticModelPool
 
-__all__ = ["OpenAiCompatibleModel", "StaticModelPool"]
+__all__ = ["Declared", "OpenAiCompatibleModel", "StaticModelPool"]

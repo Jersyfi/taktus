@@ -1,6 +1,6 @@
 # ADR-0043 — Every block is booked to an account when it ends
 
-**Status:** accepted · amended 2026-10-09 (ADR-0046): a failure for want of an adapter is a block · amended 2026-10-11 (NTC-0168): a sum of waits answered by one person is withheld · amended 2026-10-18 (ADR-0103): a `wait` step longer than the engine waits inline parks its run, and its block stays one stretch
+**Status:** accepted · amended 2026-10-09 (ADR-0046): a failure for want of an adapter is a block · amended 2026-10-11 (NTC-0168): a sum of waits answered by one person is withheld · amended 2026-10-18 (ADR-0103): a `wait` step longer than the engine waits inline parks its run, and its block stays one stretch · amended 2026-10-20 (ADR-0116): a provider at its rate limit moves the step to the next member of its purpose's chain where one fits
 
 ## Context
 ADR-0015 §1 requires every run to record each block with its cause, its duration and the work it
@@ -88,6 +88,10 @@ worker step at capacity does (ADR-0037): it goes back to its boundary as `stoppe
 says `step.waiting` with outcome `at_provider_limit`, and the run halts with cause `capacity`.
 The runner defers the job, and the next claim asks the model again. Past the engine's capacity
 ceiling, one hour by default, the step fails and the run escalates with cause `capacity`.
+
+*Amended 2026-10-20 (ADR-0116):* where another member of the purpose's chain fits the step, the
+step is admitted again at once and routed to that member. The block ends when it answers, and
+its record names it as `answered_by`. Only a step that no other member fits waits as above.
 
 ### 6. The accounts are read from the ledger and the records alone
 The query `BlockedTime` of the `run` component has three reads:

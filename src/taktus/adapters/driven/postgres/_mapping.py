@@ -1314,6 +1314,31 @@ class CorrectionLimitsMapper:
         return [dict(row.limits) for row in rows]
 
 
+class ResidencyRuleMapper:
+    """One row per tenant that set its residency rule; the rule stays a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.residency_rule, tenant, id)
+        return None if row is None else dict(row.rule)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.residency_rule,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "configured_at": _at(document["configured_at"]),
+                "rule": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.residency_rule, tenant, s.residency_rule.c.id)
+        return [dict(row.rule) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -1339,4 +1364,5 @@ MAPPERS: dict[str, Mapper] = {
     "watch_configuration": WatchConfigurationMapper(),
     "corridor": CorridorMapper(),
     "correction_limits": CorrectionLimitsMapper(),
+    "residency_rule": ResidencyRuleMapper(),
 }

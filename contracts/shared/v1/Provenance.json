@@ -53,6 +53,10 @@
       "description": "Digest of the value the step produced, where it produced one.",
       "$ref": "Artifact.json#/$defs/digest"
     },
+    "route": {
+      "description": "For a step on a model: the route it took through its purpose's chain (ADR-0116). The member that produced the result, the location the step permitted, its data class where it declared one, and every member passed over with the reason. Identifiers and tokens only.",
+      "$ref": "#/$defs/route"
+    },
     "ledger_seq": {
       "description": "Sequence number of the ledger entry, in the tenant's chain, that recorded this step's completion.",
       "type": "integer",
@@ -74,9 +78,50 @@
     {
       "if": { "required": ["adapter_version"] },
       "then": { "required": ["adapter"] }
+    },
+    {
+      "if": { "required": ["route"] },
+      "then": { "required": ["adapter"] }
     }
   ],
   "$defs": {
+    "route": {
+      "title": "ProvenanceRoute",
+      "type": "object",
+      "properties": {
+        "purpose": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
+        "adapter": {
+          "description": "The model of the chain that produced the result, as the record's adapter names it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "permitted": {
+          "description": "Where the tenant's residency rule let the step's data be processed.",
+          "type": "string",
+          "enum": ["own", "eu", "anywhere"]
+        },
+        "data_class": {
+          "description": "The data class the step declared, where it declared one.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "skipped": {
+          "description": "Every member of the chain the route passed over, in chain order, with the reason.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "adapter": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "enum": ["residency", "exactness", "cooling_down"] }
+            },
+            "required": ["adapter", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["purpose", "adapter", "permitted", "skipped"],
+      "additionalProperties": false
+    },
     "input": {
       "title": "ProvenanceInput",
       "description": "One thing a step read, and when. An artifact or a result of an earlier step run, named by run and step; or an external source, named by the capability it was read through and a reference the connector understands.",

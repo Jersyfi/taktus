@@ -23,6 +23,10 @@ from taktus.components.governance.application.service.report_capacity import (
     ReportCapacity,
     ReportCapacityHandler,
 )
+from taktus.components.governance.application.service.residency import (
+    ConfigureResidency,
+    TenantResidency,
+)
 from taktus.components.governance.application.service.signal_incidents import (
     RaiseRed,
     SignalIncidents,
@@ -36,6 +40,7 @@ __all__ = [
     "ConfigureAnchors",
     "ConfigureAnchorsHandler",
     "ConfigureCorrections",
+    "ConfigureResidency",
     "ConfigureWatch",
     "Corrections",
     "DatabaseStore",
@@ -45,6 +50,7 @@ __all__ = [
     "ReportCapacity",
     "ReportCapacityHandler",
     "SignalIncidents",
+    "TenantResidency",
     "UnknownIncident",
     "Verdict",
     "Watch",

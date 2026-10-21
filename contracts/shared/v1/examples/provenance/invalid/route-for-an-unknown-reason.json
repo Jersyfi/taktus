@@ -1,0 +1,19 @@
+{
+  "id": "prov_01j9r0a3",
+  "run_id": "run_01j9r0a1",
+  "step_id": "draft",
+  "process_version": "triage@3",
+  "method": "llm",
+  "exactness": "sourced",
+  "adapter": "model.second",
+  "route": {
+    "purpose": "reasoning",
+    "adapter": "model.second",
+    "permitted": "anywhere",
+    "skipped": [{ "adapter": "model.first", "reason": "cheaper" }]
+  },
+  "inputs": [],
+  "outputs": ["result"],
+  "ledger_seq": 9,
+  "recorded_at": "2026-10-20T09:00:04Z"
+}

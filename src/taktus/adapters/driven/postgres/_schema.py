@@ -299,6 +299,17 @@ correction_limits = Table(
 )
 """One row per tenant that set its correction limits (ADR-0110)."""
 
+residency_rule = Table(
+    "residency_rule",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    _at("configured_at"),
+    Column("rule", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that set its residency rule (ADR-0116)."""
+
 trigger_state = Table(
     "trigger_state",
     metadata,
@@ -582,6 +593,7 @@ provenance = Table(
     Column("prompt", Text),
     Column("adapter", Text),
     Column("adapter_version", Text),
+    Column("route", JSONB),
     Column("inputs", JSONB, nullable=False),
     Column("outputs", JSONB, nullable=False),
     Column("result_digest", Text),

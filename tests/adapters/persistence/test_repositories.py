@@ -15,6 +15,7 @@ from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CorrectionLimits,
     Incident,
+    ResidencyRule,
     WatchConfiguration,
 )
 from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
@@ -47,6 +48,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (Corridor, samples.corridor),
     (Incident, samples.lowering_incident),
     (CorrectionLimits, samples.correction_limits),
+    (ResidencyRule, samples.residency_rule),
 ]
 
 

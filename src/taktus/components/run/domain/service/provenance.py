@@ -22,6 +22,7 @@ from taktus.shared.v1 import (
     LedgerEntry,
     Provenance,
     ProvenanceInput,
+    ProvenanceRoute,
     StepId,
     Value,
 )
@@ -38,6 +39,9 @@ record like any step that completed."""
 FIXED_BYTES = 1024
 BYTES_PER_INPUT = 384
 BYTES_PER_OUTPUT = 80
+ROUTE_BYTES = 320
+BYTES_PER_SKIP = 112
+"""What a route adds to the bound (ADR-0116 §7): a fixed part, and each member passed over."""
 
 
 class ChainVerification(Value):
@@ -57,6 +61,7 @@ def record(
     entry: LedgerEntry,
     adapter_version: str | None,
     at: datetime,
+    route: ProvenanceRoute | None = None,
 ) -> Provenance:
     """The provenance of a step run that just finished, bound to the ledger entry that says
     so. Everything the ledger entry also carries is taken from the step run, so that the two
@@ -73,6 +78,7 @@ def record(
         model=step.model,
         adapter=step_run.adapter,
         adapter_version=adapter_version if step_run.adapter is not None else None,
+        route=route if step_run.adapter is not None else None,
         inputs=tuple(inputs),
         outputs=tuple(artifact.id for artifact in step_run.artifacts),
         result_digest=None if checkpoint is None else checkpoint.result_digest,
@@ -89,11 +95,13 @@ def size_bytes(provenance: Provenance) -> int:
 
 def size_bound(provenance: Provenance) -> int:
     """The most bytes ADR-0021 §4 allows this record: a fixed part plus its inputs and
-    outputs."""
+    outputs, and its route where it has one (ADR-0116 §7)."""
+    route = provenance.route
     return (
         FIXED_BYTES
         + BYTES_PER_INPUT * len(provenance.inputs)
         + BYTES_PER_OUTPUT * len(provenance.outputs)
+        + (0 if route is None else ROUTE_BYTES + BYTES_PER_SKIP * len(route.skipped))
     )
 
 

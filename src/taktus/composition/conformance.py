@@ -48,7 +48,7 @@ from taktus.components.catalog.domain.model import Configuration, Family
 from taktus.components.catalog.ports import NotConfigured, NotRunnable, SuiteRun
 from taktus.composition.execution import execution_of, worker_unit
 from taktus.composition.pools import Pools
-from taktus.composition.settings import ExecutionKind, WorkerSettings
+from taktus.composition.settings import ExecutionKind, ModelSettings, WorkerSettings
 from taktus.conformance import (
     ConnectorSuiteOptions,
     ModelSuiteOptions,
@@ -183,12 +183,15 @@ class InstanceSuites:
         workers: Mapping[str, WorkerSuite],
         connectors: Mapping[str, str],
         model_endpoint: str | None,
+        models: Sequence[ModelSettings] = (),
     ) -> None:
         self._pools = pools
         self._settings = settings
         self._workers = workers
         self._connectors = connectors
         self._model_endpoint = model_endpoint
+        self._models = {m.identifier: m for m in models if m.member is not None}
+        """The members of `TAKTUS_MODELS`, each with its own endpoint and credential."""
 
     async def run(self, integration: str) -> SuiteRun:
         family = integration.split(".", 1)[0]
@@ -282,16 +285,25 @@ class InstanceSuites:
 
     async def _model_suite(self, integration: str) -> Report:
         member = self._pools.models.member(integration)
-        if member is None or self._model_endpoint is None:
+        named = self._models.get(integration)
+        endpoint = self._model_endpoint if named is None else named.endpoint
+        if member is None or endpoint is None:
             raise NotConfigured(f"no configured adapter {integration!r}")
         _, model, name = member
         declaration: dict[str, Any] = {"contract": "model/v1", **model.calculability().document()}
+        credential = (
+            self._model_credential()
+            if named is None
+            else None
+            if named.credential is None
+            else named.credential.reveal()
+        )
         return await run_model_suite(
             ModelSuiteOptions(
-                endpoint=self._model_endpoint,
+                endpoint=endpoint,
                 model=name or "",
                 declaration=declaration,
-                credential_value=self._model_credential(),
+                credential_value=credential,
                 timeout=self._seconds("conformance.timeout", 120.0),
             )
         )

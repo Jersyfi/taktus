@@ -1,6 +1,6 @@
 # ADR-0021 — Failure, result defect, incident
 
-**Status:** accepted · amends ADR-0017 (the register's `DEFECT` is a documentation defect)
+**Status:** accepted · amends ADR-0017 (the register's `DEFECT` is a documentation defect) · amended 2026-10-20 (ADR-0116): a record of a step on a model carries its route
 
 ## Context
 The run model knows one kind of going wrong. A step does not complete: the worker fails, a rule
@@ -107,6 +107,8 @@ order of magnitude. The bound, stated so that a test can measure it:
   artifacts and results the step read; the number of outputs is the number of artifacts it
   produced. Neither is inflated by provenance: a step that reads a hundred artifacts reads a
   hundred artifacts.
+- **A route.** *Amended 2026-10-20 (ADR-0116):* a record of a step on a model carries its route.
+  The route adds at most 320 bytes, plus 112 bytes for every member it passed over.
 
 `tests/components/run/test_provenance.py` and `tests/adapters/persistence` measure both.
 
