@@ -48,6 +48,10 @@ ask questions in either and is answered there.
   §9).
 - The message is in the language the owner configured — for this tenant, German — and links to every
   file, issue and pull request it concerns.
+- Every link a message carries to what Taktus holds opens a page of the web app, under the reader's
+  sign-in, never a route of the HTTP surface that answers a person with a key request. The web app
+  lists every open report, so that what reached the owner through any channel is found there too
+  (DEC-0218).
 - A report states what is needed, the steps to provide it, the work that stands still for want of it,
   and the date by which it is needed (ADR-0028). A report without one of the four is not sent.
 - An answer in the channel is filed where it belongs only after Taktus reflected its interpretation
