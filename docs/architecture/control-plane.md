@@ -88,7 +88,8 @@ provisional operator identity of DEC-0013 in `0.2.0`:
   `POST /administration/tenants` adds one, Taktus generates its identifier, and its display
   name may change. Each creation is the first entry of the new tenant's chain,
   `tenant.created`; a rename is `tenant.renamed`. Every role reads the registry at every
-  round, so the new tenant is served without a restart.
+  round, so the new tenant is served without a restart. The web app lists, creates and renames
+  them at `#/tenants`, with the administration key the page asks for (ADR-0122).
 - **The command line names an identity the component knows** (`--identity`); the component
   supplies its organisational path. **A scheduled run acts for the identity that registered
   the process's active version** (ADR-0035, amended).
@@ -542,3 +543,10 @@ from its pseudonym key, to the intake of the project's own instance, `POST /find
 That intake is opened by `TAKTUS_FINDINGS_INTAKE_TENANT`. It verifies the signature, holds a new
 sender until the tenant's owner confirms it in the owner's channel, limits each sender's rate,
 and opens or adds to the issue through its own connector, as the project's one app.
+
+**A review in the web app acts only on what was read back (ADR-0122).** `GET /findings` shows
+every finding of the instance with what the rule made of it and the text it would leave in, for
+the tenant's owner and whom the owner named. An answer in review goes to `POST
+/findings/{lack}/review`, which does nothing and says the answer back with the text and a
+digest. `POST /findings/{lack}/review/confirm` acts only where the digest still matches the
+reader, the answer and the text as they are now. The web app shows it at `#/findings`.

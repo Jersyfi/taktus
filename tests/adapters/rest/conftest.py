@@ -32,12 +32,17 @@ from taktus.components.decision.application.service import (
     ConfirmRequestHandler,
 )
 from taktus.components.decision.domain.model import Request
+from taktus.components.governance.application.service import Corrections
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
-from taktus.components.reporting.application.service import FindingsIntake, LiveChanges
+from taktus.components.reporting.application.service import (
+    FindingsIntake,
+    LiveChanges,
+    ProductFindings,
+)
 from taktus.components.run.domain.model import Run
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
@@ -127,10 +132,16 @@ class Services:
     `tests/composition/test_proposals.py`."""
     findings_intake: FindingsIntake | None = None
     """The intake of other instances' findings; None: not open (ADR-0118)."""
+    findings: ProductFindings | None = None
+    """The instance's own product findings; None: the wiring records none (ADR-0122)."""
 
     @property
     def work(self) -> UnitOfWork:
         return self.persistence
+
+    @property
+    def corrections(self) -> Corrections:
+        return self.decisions.corrections
 
     @property
     def identities(self) -> IdentityDirectory:

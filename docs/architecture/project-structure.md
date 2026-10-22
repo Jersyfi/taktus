@@ -291,6 +291,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   the three pools and the catalog's records. `composition/pools.py` names, in the configuration
   a maturity rests on, the manifest a connector serves a vendor's MCP server under, and the run's
   maturity port keeps such a connector without one *experimental* (ADR-0117).
+- **What governs the work** is read on the HTTP surface by `adapters/driving/rest/autonomy.py`
+  (`GET /autonomy`) and `adapters/driving/rest/review.py` (`GET /findings` and the review).
+  `RestServices` hands them the governance component's `Corrections` and the reporting
+  component's `ProductFindings`; the daemon's `Wired` gives the ones it built (ADR-0122).
 - **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays; it raises a run's money or its quota (DEC-0208).
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread

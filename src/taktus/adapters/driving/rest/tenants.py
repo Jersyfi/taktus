@@ -47,7 +47,7 @@ class TenantName(BaseModel):
     )
 
 
-def _document(entry: TenantEntry) -> dict[str, Any]:
+def tenant_document(entry: TenantEntry) -> dict[str, Any]:
     return {"id": entry.id, "name": entry.name, "created_at": entry.created_at.isoformat()}
 
 
@@ -84,7 +84,9 @@ def router(services: RestServices) -> APIRouter:
     async def listed(authorization: str | None = Header(default=None)) -> JSONResponse:
         if (refusal := admitted(authorization)) is not None:
             return refusal
-        return JSONResponse({"tenants": [_document(e) for e in await services.tenants.every()]})
+        return JSONResponse(
+            {"tenants": [tenant_document(e) for e in await services.tenants.every()]}
+        )
 
     @routes.post(
         "/administration/tenants",
@@ -109,7 +111,7 @@ def router(services: RestServices) -> APIRouter:
             entry = await services.tenants.create(body.name, by=body.by)
         except BadName as error:
             return problem(422, str(error))
-        return JSONResponse(_document(entry), status_code=201)
+        return JSONResponse(tenant_document(entry), status_code=201)
 
     @routes.patch(
         "/administration/tenants/{tenant}",
@@ -134,6 +136,6 @@ def router(services: RestServices) -> APIRouter:
             return problem(404, str(error))
         except BadName as error:
             return problem(422, str(error))
-        return JSONResponse(_document(entry))
+        return JSONResponse(tenant_document(entry))
 
     return routes

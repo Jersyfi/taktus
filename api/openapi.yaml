@@ -1493,8 +1493,207 @@ paths:
           description: '`limited`: over the sender''s rate, or too many new senders.'
           content:
             application/problem+json: {}
+  /findings:
+    get:
+      tags:
+      - findings
+      summary: This instance's product findings, and what each one is
+      description: Every lack of the product this instance met, with what the rule over the release's
+        list made of it — a product candidate, or local of configuration or of own development — how often
+        it was met, how long it held runs up, and exactly the words it would leave in. `in_review` marks
+        a candidate that waits for a person's answer at the level `review` (ADR-0118 §4). Read by the
+        owner and whom the owner named. No field names a person.
+      operationId: listed_findings_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The findings.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance records no product findings.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or the body does not validate.
+          content:
+            application/problem+json: {}
+  /findings/{lack}/review:
+    post:
+      tags:
+      - findings
+      summary: An answer to a candidate in review, read back
+      description: '`send`, `not` or `local`, as `taktusctl findings review` takes it. Nothing is done:
+        the answer comes back in words, with exactly the text that would leave and a `confirmation` to
+        send with the confirmation (ADR-0008).'
+      operationId: review_findings__lack__review_post
+      parameters:
+      - name: lack
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Lack
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewAnswer'
+      responses:
+        '200':
+          description: The reading, the text, and the confirmation to send.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance records no product findings.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or the body does not validate.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The lack is not in review.
+          content:
+            application/problem+json: {}
+  /findings/{lack}/review/confirm:
+    post:
+      tags:
+      - findings
+      summary: Confirm, or reject, the reading of an answer in review
+      description: 'Confirmed, the answer is done as it was read back: `send` sends what the other side
+        has not been given of it, `local` remembers it as local for us, `not` does nothing. Rejected,
+        nothing is done. A text that changed since it was read back is refused, and the answer is read
+        back again.'
+      operationId: confirm_findings__lack__review_confirm_post
+      parameters:
+      - name: lack
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Lack
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewConfirmation'
+      responses:
+        '200':
+          description: What was done.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
+          content:
+            application/problem+json: {}
+        '404':
+          description: This instance records no product findings.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter or the body does not validate.
+          content:
+            application/problem+json: {}
+        '409':
+          description: Not in review, or what would leave changed since it was read back.
+          content:
+            application/problem+json: {}
+        '502':
+          description: The way out did not take it.
+          content:
+            application/problem+json: {}
+  /autonomy:
+    get:
+      tags:
+      - autonomy
+      summary: Each process's level, why it is there, and its correction rates
+      description: 'For every process you may see: the level its active version states and why (ADR-0026),
+        the level a rule lowered it to and the incident that says why, the level in force, and the correction
+        rate of the process and of each of its action classes over 7 and 28 days, with any raise Taktus
+        proposed since the unit''s last change of level (ADR-0110). With the tenant''s limits. Counted
+        per process and action class: no figure names a person (principle 14, ADR-0015).'
+      operationId: autonomy_autonomy_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The levels and their rates.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
 components:
   schemas:
+    Answer:
+      type: string
+      enum:
+      - send
+      - not
+      - local
     AnswerBody:
       properties:
         option:
@@ -1575,6 +1774,39 @@ components:
           description: What the rehearsal is given; without it, the active version's last run's.
       type: object
       title: RehearseBody
+    ReviewAnswer:
+      properties:
+        answer:
+          $ref: '#/components/schemas/Answer'
+          description: '`send` it now, `not` now, or `local` for us.'
+      additionalProperties: false
+      type: object
+      required:
+      - answer
+      title: ReviewAnswer
+      description: An answer to one candidate in review. A field the surface does not know is refused.
+    ReviewConfirmation:
+      properties:
+        answer:
+          $ref: '#/components/schemas/Answer'
+        confirmation:
+          type: string
+          maxLength: 64
+          minLength: 64
+          title: Confirmation
+          description: 'The `confirmation` the reading carried: a digest of what was read back.'
+        confirmed:
+          type: boolean
+          title: Confirmed
+          description: 'True: do it. False: nothing is done.'
+      additionalProperties: false
+      type: object
+      required:
+      - answer
+      - confirmation
+      - confirmed
+      title: ReviewConfirmation
+      description: The reading of an answer, confirmed or rejected.
     RollbackBody:
       properties:
         approve_raise:

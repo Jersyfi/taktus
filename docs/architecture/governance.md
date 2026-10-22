@@ -70,6 +70,13 @@ approval and the quality history: registration measures the replaced version at 
 level. The owner hears of a fall and of a proposed raise through the owner-facing channel. The
 tenant's limits are `taktusctl corrections configure`; the shipped default is NTC-0215.
 
+**Where a person reads it** (ADR-0122, DEC-0218). `GET /autonomy` answers, for every process
+the reader may see, the level its version states and why, the level a rule lowered it to and
+the incident that says why, the level in force, and each unit's rates over 7 and 28 days. The
+web app shows it at `#/autonomy`, and its start page says how many processes run below their
+stated level and how many raises wait. The rates are counted per process and action class, from
+entries that carry no actor, so no figure can name a person.
+
 ---
 
 ## 2. Anchors
