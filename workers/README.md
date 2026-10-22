@@ -4,6 +4,10 @@ Separate deployables behind the worker contract (`contracts/worker/v1`). None of
 anything from `src/taktus`; each is reached over HTTP and Server-Sent Events, as a foreign worker
 would be. How any of them is checked: `contracts/worker/v1/CONFORMANCE.md`.
 
+Each worker states what it offers in `CAPABILITIES`, a list in its `worker.py`. The release's
+list of what it ships is generated from it (`make generate`, ADR-0118), so a lack a worker would
+serve is classified as the instance's configuration, not the product's.
+
 Each worker has its own image (`<worker>/Dockerfile`), built from the repository root. None of
 them is part of the control plane image: a worker executes foreign code, and the control plane
 carries none of it (DEC-0011). The control plane reaches a worker through the execution port —

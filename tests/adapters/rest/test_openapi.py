@@ -52,6 +52,7 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/decisions/{request_id}",
         "/decisions/{request_id}/answer",
         "/decisions/{request_id}/confirm",
+        "/findings/intake",
         "/owner/reports",
         "/owner/reports/{report_id}",
         "/owner/reports/{report_id}/text",

@@ -13,6 +13,13 @@ or that it ended and how long it waited. An occurrence it has not heard of is se
 of while it lasted is sent again once it ended, with its waiting; one it heard of as ended is
 never sent again. So a finding is sent once, and every report after it adds to it.
 
+**What a lack is (ADR-0118).** A rule over the list of what the release ships classifies every
+lack. Where a shipped adapter offers what was lacking, the lack is *local: configuration*: the
+instance did not configure it. Where what was lacking lies outside the product's vocabulary —
+its first segment is the first segment of nothing the release ships — or an operation's
+capability is one no shipped connector serves, so that the connector that served it is the
+project's own, the lack is *local: own development*. Everything else is a *product candidate*.
+
 Pure: blocks and reports in, findings and what to send out.
 """
 
@@ -27,10 +34,12 @@ from pydantic import ValidationError
 from taktus.components.reporting.domain.model.finding import (
     LACK_CAUSES,
     Blocked,
+    Classified,
     Finding,
     Lack,
     Occurrence,
     Reported,
+    Shipped,
 )
 
 type State = Literal["met", "ended"]
@@ -94,3 +103,28 @@ def to_send(
         if known is None or (known.state == "met" and state == "ended"):
             sends.append((occurrence, state))
     return tuple(sends)
+
+
+def _namespace(name: str) -> str:
+    return name.split(".", 1)[0]
+
+
+def classify(lack: Lack, shipped: Shipped) -> Classified:
+    """What the lack is, by the release's list alone: a rule, never a probabilistic method."""
+    wanted = lack.lacking.split(",")
+    if lack.cause == "no_worker":
+        by = tuple(w.name for w in shipped.workers if set(wanted) <= set(w.capabilities))
+    elif lack.cause == "no_connector":
+        by = tuple(c.name for c in shipped.connectors if lack.lacking in c.capabilities)
+    else:
+        by = tuple(c.name for c in shipped.connectors if lack.lacking in c.operations)
+    if by:
+        return Classified(kind="configuration", adapters=by)
+    if any(_namespace(name) not in shipped.namespaces for name in wanted):
+        return Classified(kind="own")
+    if lack.cause == "operation_unsupported":
+        capability = lack.lacking.rsplit(".", 1)[0]
+        if not any(capability in c.capabilities for c in shipped.connectors):
+            # The connector that served the capability is not one the release ships.
+            return Classified(kind="own")
+    return Classified(kind="product")

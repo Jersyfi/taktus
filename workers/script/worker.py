@@ -57,6 +57,8 @@ type Json = dict[str, Any]
 CONTRACT = "worker/v1"
 VERSION = "1.2.0"  # this worker's own version, recorded in the provenance of what it produces
 TOOL = "shell.script"
+CAPABILITIES = [TOOL, "shell.sandboxed", "workspace.isolated"]
+"""What this worker offers; the release's list of what it ships reads it (ADR-0118)."""
 MAX_CONCURRENT = 4
 COMMAND_TIMEOUT = 60
 
@@ -359,7 +361,7 @@ class Worker:
         return {
             "contract": CONTRACT,
             "version": VERSION,
-            "capabilities": [TOOL, "shell.sandboxed", "workspace.isolated"],
+            "capabilities": list(CAPABILITIES),
             "consumption": {"kinds": kinds, "resource_classes": [self.resource_class]},
             "supports": {
                 "native_pause": False,

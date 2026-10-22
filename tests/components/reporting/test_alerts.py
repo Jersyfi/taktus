@@ -49,6 +49,8 @@ def test_the_decision_to_report_is_a_rule_over_recorded_facts() -> None:
         "channels",
         "raising",
         "clock",
+        # The product findings: their local lacks, by the rule over the release's list.
+        "findings",
     ]
     assert set(rule.FAILED_STEP) == {
         "configuration",

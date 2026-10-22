@@ -1445,6 +1445,54 @@ paths:
           description: The body does not validate.
           content:
             application/problem+json: {}
+  /findings/intake:
+    post:
+      tags:
+      - findings
+      summary: A finding or a report from another instance
+      description: 'One signed submission from a sending instance: a product finding''s occurrence, closed
+        values only, or a report a person wrote by hand. No credential is admitted; the signature over
+        the payload is verified first. A sender''s first submission registers its key and asks the owner
+        of the intake''s tenant to confirm it, in the owner''s channel; until then every submission is
+        `held`. A confirmed sender''s finding opens the lack''s issue in the repository, or adds an occurrence
+        to the open one, through this instance''s own connector.'
+      operationId: intake_findings_intake_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Submitted'
+        required: true
+      responses:
+        '200':
+          description: '`known`: the repository holds it already.'
+          content:
+            application/json:
+              schema: {}
+        '201':
+          description: '`opened` or `added`: the issue was opened or added to.'
+        '202':
+          description: '`held`: the sender waits for the owner''s confirmation.'
+        '401':
+          description: '`forged`: the signature does not verify.'
+          content:
+            application/problem+json: {}
+        '403':
+          description: '`refused`: the key names a sender another key registered.'
+          content:
+            application/problem+json: {}
+        '404':
+          description: The intake is not open on this instance.
+          content:
+            application/problem+json: {}
+        '422':
+          description: '`invalid`: the payload is not a submission.'
+          content:
+            application/problem+json: {}
+        '429':
+          description: '`limited`: over the sender''s rate, or too many new senders.'
+          content:
+            application/problem+json: {}
 components:
   schemas:
     AnswerBody:
@@ -1550,6 +1598,34 @@ components:
       required:
       - version
       title: RollbackBody
+    Submitted:
+      properties:
+        key:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Key
+          description: The sender's public key, base64url.
+        payload:
+          type: string
+          maxLength: 40000
+          minLength: 1
+          title: Payload
+          description: The submission as JSON text, exactly as it was signed.
+        signature:
+          type: string
+          maxLength: 400
+          minLength: 1
+          title: Signature
+          description: The signature over the payload, base64url.
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      - payload
+      - signature
+      title: Submitted
+      description: One signed submission. A field the surface does not know is refused.
     TenantName:
       properties:
         name:

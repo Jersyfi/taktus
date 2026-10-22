@@ -20,6 +20,7 @@ from pathlib import Path
 import yaml
 from pydantic import TypeAdapter, ValidationError
 
+from taktus.components.reporting.domain.model import LEVELS
 from taktus.components.reporting.domain.service import texts
 from taktus.components.run.domain.service import budget as budgeting
 from taktus.conformance.contracts import contracts_root
@@ -874,6 +875,19 @@ class FindingsShape:
     labels: tuple[str, ...] = ()
     """`TAKTUS_FINDINGS_LABELS`: the labels a finding's issue is opened with, comma-separated;
     none by default."""
+    level: str = "off"
+    """`TAKTUS_FINDINGS_LEVEL`: how a product candidate leaves this instance (ADR-0118). `off`,
+    the default: it is recorded and shown, and nothing is sent. `review`: each leaves once a
+    person said yes to its text (`taktusctl findings review`). `automatic`: the scheduler sends
+    every candidate the rule raised. A report by hand is confirmed first at every level."""
+    intake: str | None = None
+    """`TAKTUS_FINDINGS_INTAKE`: the address of another instance's intake, where this instance
+    submits its candidates when it has no connector of its own to the repository."""
+    intake_tenant: str | None = None
+    """`TAKTUS_FINDINGS_INTAKE_TENANT`: the tenant whose owner confirms new senders, where this
+    instance opens its intake to other instances' findings. Unset, the default: no intake."""
+    intake_rate: int = 30
+    """`TAKTUS_FINDINGS_INTAKE_RATE`: how many submissions one sender may make in an hour."""
 
     def form(self) -> str | None:
         """The form the file holds, validated; None when no file is configured."""
@@ -891,6 +905,10 @@ class FindingsShape:
         return [
             ("TAKTUS_FINDINGS_FORM", "" if self.form_file is None else str(self.form_file)),
             ("TAKTUS_FINDINGS_LABELS", ",".join(self.labels)),
+            ("TAKTUS_FINDINGS_LEVEL", self.level),
+            ("TAKTUS_FINDINGS_INTAKE", self.intake or ""),
+            ("TAKTUS_FINDINGS_INTAKE_TENANT", self.intake_tenant or ""),
+            ("TAKTUS_FINDINGS_INTAKE_RATE", str(self.intake_rate)),
         ]
 
 
@@ -903,7 +921,21 @@ def load_findings(configuration: Configuration) -> FindingsShape:
         if not reader.text("findings.labels", "").strip()
         else reader.names("findings.labels", ())
     )
-    return FindingsShape(form_file=Path(form).expanduser() if form else None, labels=labels)
+    intake = reader.url("findings.intake", "") or None
+    if intake is not None and load_findings_connector(configuration) is not None:
+        raise ConfigurationError(
+            configuration.name("findings.intake"),
+            "an instance sends through its own connector or to an intake, not both: unset "
+            f"{configuration.name('findings.connector')} or this",
+        )
+    return FindingsShape(
+        form_file=Path(form).expanduser() if form else None,
+        labels=labels,
+        level=reader.choice("findings.level", "off", LEVELS),
+        intake=intake,
+        intake_tenant=reader.text("findings.intake.tenant", "").strip() or None,
+        intake_rate=reader.integer("findings.intake.rate", 30, low=1),
+    )
 
 
 def load_findings_connector(configuration: Configuration) -> str | None:

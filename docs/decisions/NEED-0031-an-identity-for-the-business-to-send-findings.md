@@ -72,3 +72,15 @@ business's instance has run with the setting, this prints the number of findings
 ```bash
 gh issue list --repo Jersyfi/taktus --search "taktus-finding in:body" --state all --json number --jq length
 ```
+
+## Outcome
+
+**Provided:** 2026-10-22
+**How:** **superseded, not provided.** The owner rejected a second app: Taktus is one app on the
+repository service (DEC-0214). He approved another way instead (DEC-0217). An instance outside
+the project submits its product candidates, signed with a key of its own, to the intake of the
+project's own instance. That instance opens or adds to the issue with the project's one app
+(ADR-0118). Nothing is needed from the owner for the sending instance.
+**Superseded by:** DEC-0217
+**Confirmed by:** nothing to confirm: no app was created.
+**Recorded in:** the pull request that closes [#555](https://github.com/Jersyfi/taktus/issues/555)

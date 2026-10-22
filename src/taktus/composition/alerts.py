@@ -22,7 +22,7 @@ from pydantic import ValidationError
 
 from taktus.components.governance.application.service import Corrections
 from taktus.components.governance.domain.model import Incident, Proposed
-from taktus.components.reporting.application.service import Alerts, Reported
+from taktus.components.reporting.application.service import Alerts, ProductFindings, Reported
 from taktus.components.reporting.domain.model import (
     BackupRun,
     BackupState,
@@ -188,7 +188,9 @@ def alerts(
     *,
     backup_expected_hours: int | None,
     corrections: Corrections | None = None,
+    findings: ProductFindings | None = None,
 ) -> Alerts:
+    """Given `findings`, a local lack is one more alert (ADR-0118)."""
     return Alerts(
         RecordedSignals(
             ledger,
@@ -202,6 +204,7 @@ def alerts(
         owner.channel,
         owner.raising,
         clock,
+        findings,
     )
 
 

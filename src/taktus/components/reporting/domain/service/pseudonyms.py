@@ -13,6 +13,10 @@ identifier. The instance holds the key, so its operator can say which run a pseu
 The *source* is derived from the same key: the identifier of the sender, one tenant of one
 instance. It is random, so it names no person, no operator and no tenant.
 
+The *signing seed* is derived from it too, under a purpose of its own: the seed of the private
+key a sender signs what it submits to an intake with (ADR-0118). An HMAC cannot be reversed, so
+the seed says nothing of the key, and nothing new is kept.
+
 Pure: a key in, references out.
 """
 
@@ -43,6 +47,11 @@ class Pseudonyms:
     def source(self) -> str:
         """The sender's identifier: `src_` and twenty hex digits."""
         return "src_" + self._digest("source", "")[:20]
+
+    @property
+    def signing(self) -> bytes:
+        """The seed of the sender's signing key: thirty-two bytes, never sent."""
+        return hmac.new(self._key, b"signing\x00", hashlib.sha256).digest()
 
     def run(self, run_id: str) -> str:
         return "r-" + self._digest("run", run_id)[:16]

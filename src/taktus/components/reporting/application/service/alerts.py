@@ -13,6 +13,9 @@ facts: it is said once, however often the scheduler looks. A message that was no
 tried again once an hour while the alert is in effect. A cleared alert, or one the owner
 answered that it is done, sends nothing more. A tenant without an owner-facing channel raises
 nothing, and the view says that the report was not delivered and why.
+
+Given the product findings, a local lack is one more alert: a step lacks what the project
+itself must provide, and only its owner hears of it (ADR-0118).
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from taktus.components.reporting.application.service.broken_interfaces import (
 )
 from taktus.components.reporting.application.service.configure_channel import ChannelOf
 from taktus.components.reporting.application.service.errors import ReportingError
+from taktus.components.reporting.application.service.product_findings import ProductFindings
 from taktus.components.reporting.application.service.raise_report import (
     DeliverReport,
     RaiseReport,
@@ -88,7 +92,10 @@ class Alerts:
         channels: ChannelOf,
         raising: RaiseReportHandler,
         clock: Clock,
+        findings: ProductFindings | None = None,
     ) -> None:
+        """Given `findings`, every local lack is an alert too (ADR-0118)."""
+        self._findings = findings
         self._signals = signals
         self._reports = reports
         self._channels = channels
@@ -111,6 +118,8 @@ class Alerts:
             *rule.lowered(signalled.lowered),
             *rule.raises(signalled.raises),
         ]
+        if self._findings is not None:
+            found += rule.local_lacks(await self._findings.classified(tenant))
         backup = rule.backup(signalled.backup, self._clock.now())
         if backup is not None:
             found.append(backup)

@@ -1,6 +1,6 @@
 """What needs a person's action, noticed from recorded facts (ADR-0106, issue #323).
 
-Five signals, each read from what another part of the instance recorded:
+Six signals, each read from what another part of the instance recorded:
 
 - a **capacity crossing**: a `capacity.<resource>` entry of the ledger, outcome `act` when a
   storage or memory finding turned to *act*, `ok` when it cleared (platform.md §3);
@@ -10,7 +10,10 @@ Five signals, each read from what another part of the instance recorded:
   program recorded them, and when the tenant began to be watched;
 - a **level lowered** by rule: an incident the governance component raised when a process
   breached an anchor or a correction rate rose above the tenant's limit (ADR-0110);
-- a **raise proposed** on the corrections: Taktus proposes it, and only a person applies it.
+- a **raise proposed** on the corrections: Taktus proposes it, and only a person applies it;
+- a **local lack**: a step lacks what the project itself must provide — an adapter the release
+  ships that is not configured, or something of the project's own development (ADR-0118). It
+  never leaves the instance as a product finding; it reaches the tenant's owner here.
 
 An **alert** is one condition made from them, with the words its report is said in. It goes to
 the owner of the tenant through the owner-facing channel, as a report of kind `failure`
@@ -38,7 +41,7 @@ type Identifier = Annotated[
     str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$", max_length=128)
 ]
 
-type AlertKind = Literal["capacity", "claim_lost", "backup", "lowered", "raise"]
+type AlertKind = Literal["capacity", "claim_lost", "backup", "lowered", "raise", "local_lack"]
 
 ID_PREFIXES: dict[str, str] = {
     "capacity": "capacity-",
@@ -46,6 +49,7 @@ ID_PREFIXES: dict[str, str] = {
     "backup": "backup-",
     "lowered": "level-lowered-",
     "raise": "raise-proposed-",
+    "local_lack": "local-lack-",
 }
 """Every report of an alert has an identifier that starts with its kind's prefix."""
 

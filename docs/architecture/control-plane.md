@@ -510,8 +510,8 @@ in the database keeps tenants apart even when a query forgets the filter. Until 
 component exists there is one tenant, `default`, created by the first migration.
 
 An **instance** separates *deployments* with a different cadence and a different blast radius:
-its own database, its own secret store, its own configuration. Two instances share nothing and
-never call each other. The Taktus project runs two — a development instance on `main`, a
+its own database, its own secret store, its own configuration. Two instances share nothing.
+One calls another for one thing only: to submit a finding to its intake (ADR-0118). The Taktus project runs two — a development instance on `main`, a
 project instance on a tagged release — so that a faulty version under development cannot take
 down productive work (ADR-0013 D).
 
@@ -528,3 +528,17 @@ lacking, the operator's form, a person's text — against the tenant's own value
 of personal data, and withholds what fails (`components/reporting/domain/service/leaving.py`).
 A report by hand (`taktusctl findings report`) is shown exactly as it would be sent, and sent
 only once the person confirms it.
+
+**Only a lack of the product leaves, and only as the operator chooses (ADR-0118).** The release
+carries the list of what it ships (`composition/shipped.json`). A rule classifies every lack
+against it. A lack a shipped adapter would serve is *local: configuration*. A lack outside the
+product's vocabulary, or on a connector the release does not ship, is *local: own development*.
+Everything else is a *product candidate*. A local lack never leaves: it is an alert to the
+tenant's own owner (ADR-0106). `TAKTUS_FINDINGS_LEVEL` says how a candidate leaves: `off`, the
+default; `review`, on a person's yes (`taktusctl findings review`); or `automatic`. The level is
+recorded with the setting. An instance outside the project has no connector to the repository.
+It sets `TAKTUS_FINDINGS_INTAKE` instead and submits each occurrence, signed with a key derived
+from its pseudonym key, to the intake of the project's own instance, `POST /findings/intake`.
+That intake is opened by `TAKTUS_FINDINGS_INTAKE_TENANT`. It verifies the signature, holds a new
+sender until the tenant's owner confirms it in the owner's channel, limits each sender's rate,
+and opens or adds to the issue through its own connector, as the project's one app.
