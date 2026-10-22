@@ -222,6 +222,8 @@ the suite against the real agent ended `incomplete` on both.
 | `code.test` | Bash, for a command that runs tests (`pytest`, `npm test`, `make test`, …) — without `shell.sandboxed`, any other command is refused |
 | `web.fetch` | WebFetch, when the frame allows at least one host |
 
+A tool's name is read without regard to case: a call of `bash` is a call of Bash (#394).
+
 ## What an assignment does
 
 `context.workspace` of kind `git` with a `location` is cloned into `<state>/workspaces/<id>`
