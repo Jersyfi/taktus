@@ -12,6 +12,9 @@
 	import { motion } from '../lib/motion.svelte';
 	import OverviewView from '../lib/OverviewView.svelte';
 	import type { OverviewLevel } from '../lib/types';
+	// What governs the work (ADR-0122): a section of its own.
+	import { currentAdministrationKey, governanceLines, type Line } from '../lib/governance';
+	import GovernanceLines from '../lib/GovernanceLines.svelte';
 
 	let key = $state(currentKey());
 	let refused = $state(false);
@@ -41,6 +44,13 @@
 		});
 	});
 	onDestroy(() => stop?.abort());
+
+	// What governs the work (ADR-0122): read once on opening, one line per kind.
+	let governs: Line[] = $state([]);
+	$effect(() => {
+		if (!key) return;
+		void governanceLines(surface(location.href), key, currentAdministrationKey()).then((found) => (governs = found));
+	});
 </script>
 
 {#if !key}
@@ -51,6 +61,7 @@
 {:else}
 	<p class="status">Reading the overview…</p>
 {/if}
+{#if key && governs.length}<GovernanceLines lines={governs} />{/if}
 
 <style>
 	.status {

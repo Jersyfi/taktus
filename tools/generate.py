@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -249,8 +250,128 @@ def web_fixtures() -> str:
         "run_level": run_level(facts).document(),
         "process_level": process_level(process).document(),
         "origin": origin.document(),
+        "governance": governance_fixtures(at, process_level(process).process),
     }
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+
+
+def governance_fixtures(at: Any, process: Any) -> dict[str, Any]:
+    """What the governance pages draw, written by the surface's own functions (ADR-0122): the
+    answer of `GET /autonomy`, of `GET /findings`, a need as `GET /owner/reports` answers it,
+    and the tenants as `GET /administration/tenants` answers them."""
+    from datetime import timedelta
+
+    from taktus.adapters.driving.rest import autonomy, review, tenants
+    from taktus.components.governance.domain.model import (
+        Figures,
+        Incident,
+        IncidentKind,
+        Lowered,
+        Rate,
+        Unit,
+        shipped_limits,
+    )
+    from taktus.components.reporting.application.query import view as report_view
+    from taktus.components.reporting.application.service import Outgoing
+    from taktus.components.reporting.domain.model import (
+        Classified,
+        Finding,
+        Lack,
+        Occurrence,
+        Offered,
+        Report,
+        ReportKind,
+    )
+    from taktus.components.reporting.domain.service import texts
+    from taktus.ports.persistence import TenantEntry
+
+    def rate(days: int, released: int, corrected: int, rejected: int) -> Rate:
+        return Rate(
+            window=timedelta(days=days),
+            since=at - timedelta(days=days),
+            decided=released + corrected + rejected,
+            released=released,
+            corrected=corrected,
+            rejected=rejected,
+        )
+
+    figures = [
+        Figures(
+            unit=Unit(process_id="example"),
+            at=at,
+            week=rate(7, 1, 1, 2),
+            month=rate(28, 9, 1, 2),
+            counted_since=at - timedelta(days=20),
+        ),
+        Figures(
+            unit=Unit(process_id="example", action="mail.send"),
+            at=at,
+            week=rate(7, 0, 0, 0),
+            month=rate(28, 3, 0, 0),
+            counted_since=at - timedelta(days=12),
+        ),
+    ]
+    lowering = Incident(
+        id="inc_example",
+        tenant="default",
+        kind=IncidentKind.CORRECTIONS,
+        process_id="example",
+        process_version="example@1",
+        run_id="run_example",
+        rule="corrections.rate",
+        facts={
+            "rate": 0.75,
+            "limit": 0.25,
+            "unit": "process",
+            "level_before": "2",
+            "level_after": "1",
+        },
+        raised_at=at,
+    )
+    processes = [autonomy.process_document(process, Lowered(level=1), figures, [], [lowering])]
+
+    def finding(lacking: str, run: str) -> Finding:
+        return Finding(
+            lack=Lack(cause="no_worker", lacking=lacking),
+            occurrences=(Occurrence(run_id=run, step_id="draft", since=at, seconds=600),),
+        )
+
+    candidate, local = finding("code.review", "run_example"), finding("code.edit", "run_example")
+    outgoing = [
+        Outgoing(candidate, candidate, texts.shown(candidate), (), Classified(kind="product")),
+        Outgoing(
+            local,
+            local,
+            texts.shown(local),
+            (),
+            Classified(kind="configuration", adapters=("coder",)),
+        ),
+    ]
+    need = Report(
+        id="need_example",
+        tenant="default",
+        kind=ReportKind.NEED,
+        title="A token for the live test",
+        needed=("A token in the environment `live`.",),
+        steps=("Create it.", "Store it."),
+        standing_still=("The live test.",),
+        due=at.date() + timedelta(days=7),
+        offered=(Offered(id="done", label="It is done"),),
+        raised_at=at,
+    )
+    return {
+        "autonomy": autonomy.autonomy_document(processes, shipped_limits("default")),
+        "findings": review.findings_document("review", outgoing, frozenset({candidate.lack.key})),
+        "reports": {"reports": [report_view(need, "idn_owner")]},
+        "tenants": {
+            "tenants": [
+                tenants.tenant_document(TenantEntry(id="default", name="Default", created_at=at)),
+                tenants.tenant_document(
+                    TenantEntry(id="tnt_example", name="Acme Software", created_at=at)
+                ),
+            ]
+        },
+    }
 
 
 class _NoServices:

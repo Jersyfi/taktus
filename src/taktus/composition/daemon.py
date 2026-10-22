@@ -77,6 +77,7 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
+    Corrections,
     ExpectedRuns,
     ReportCapacity,
     ReportCapacityHandler,
@@ -255,6 +256,10 @@ class Wired:
     @property
     def administration_key(self) -> Secret | None:
         return self.settings.administration_key
+
+    @property
+    def corrections(self) -> Corrections:
+        return self.decisions.corrections
 
     @property
     def decision_queries(self) -> DecisionQueries:

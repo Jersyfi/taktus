@@ -18,11 +18,12 @@ from taktus.components.decision.application.service import (
     AnswerRequestHandler,
     ConfirmRequestHandler,
 )
+from taktus.components.governance.application.service import Corrections
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.domain.model import ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
-from taktus.components.reporting.application.service import FindingsIntake
+from taktus.components.reporting.application.service import FindingsIntake, ProductFindings
 from taktus.components.reporting.domain.model import Change, Reader, Scope, Snapshot
 from taktus.components.run.domain.model import Run
 from taktus.ports.configuration import Secret
@@ -118,6 +119,18 @@ class RestServices(Protocol):
     def findings_intake(self) -> FindingsIntake | None:
         """The intake of other instances' findings; None where the operator opened none
         (ADR-0118)."""
+        ...
+
+    @property
+    def findings(self) -> ProductFindings | None:
+        """The product findings of this instance, classified and reviewed; None where the
+        wiring records none (UC-6.12, ADR-0118)."""
+        ...
+
+    @property
+    def corrections(self) -> Corrections:
+        """The corrections of what Taktus proposed, counted per process and action class, and
+        the levels a rule lowered (UC-7.5, ADR-0110)."""
         ...
 
     @property

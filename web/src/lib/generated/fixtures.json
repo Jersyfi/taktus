@@ -1811,5 +1811,219 @@
       }
     ],
     "summary": "The free result of draft comes from a language model step. On its path: 1 language model, 1 statistics, and 1 source read."
+  },
+  "governance": {
+    "autonomy": {
+      "summary": "1 process; 1 of them runs below the stated level by rule.",
+      "processes": [
+        {
+          "id": "example",
+          "name": "Example",
+          "version": "1",
+          "stated": {
+            "level": 2,
+            "reason": "a person confirms each step",
+            "toward_next": "twenty runs without a result defect"
+          },
+          "stated_text": "Runs at autonomy level 2: a person confirms each step. Toward level 3: twenty runs without a result defect.",
+          "lowered": {
+            "level": 1,
+            "actions": {}
+          },
+          "in_force": 1,
+          "text": "Runs at autonomy level 1, lowered by rule from the stated 2: a person confirms each step.",
+          "lowerings": [
+            {
+              "incident": "inc_example",
+              "rule": "corrections.rate",
+              "raised_at": "2026-10-10T09:00:00+00:00",
+              "run": "run_example",
+              "unit": "process",
+              "level_before": "2",
+              "level_after": "1",
+              "facts": {
+                "rate": 0.75,
+                "limit": 0.25,
+                "unit": "process",
+                "level_before": "2",
+                "level_after": "1"
+              }
+            }
+          ],
+          "units": [
+            {
+              "action": null,
+              "level": 1,
+              "week": {
+                "days": 7,
+                "since": "2026-10-03T09:00:00+00:00",
+                "decided": 4,
+                "released": 1,
+                "corrected": 1,
+                "rejected": 2,
+                "rate": 0.75
+              },
+              "month": {
+                "days": 28,
+                "since": "2026-09-12T09:00:00+00:00",
+                "decided": 12,
+                "released": 9,
+                "corrected": 1,
+                "rejected": 2,
+                "rate": 0.25
+              },
+              "text": "The process: 3 of 4 corrected or rejected over 7 days (75 %); 3 of 12 corrected or rejected over 28 days (25 %).",
+              "counted_since": "2026-09-20T09:00:00+00:00"
+            },
+            {
+              "action": "mail.send",
+              "level": 1,
+              "week": {
+                "days": 7,
+                "since": "2026-10-03T09:00:00+00:00",
+                "decided": 0,
+                "released": 0,
+                "corrected": 0,
+                "rejected": 0,
+                "rate": null
+              },
+              "month": {
+                "days": 28,
+                "since": "2026-09-12T09:00:00+00:00",
+                "decided": 3,
+                "released": 3,
+                "corrected": 0,
+                "rejected": 0,
+                "rate": 0.0
+              },
+              "text": "The action mail.send: nothing decided over 7 days; 0 of 3 corrected or rejected over 28 days (0 %).",
+              "counted_since": "2026-09-28T09:00:00+00:00"
+            }
+          ],
+          "raises_proposed": []
+        }
+      ],
+      "limits": {
+        "raise_decisions": 20,
+        "raise_weeks": 4,
+        "raise_rate": 0.05,
+        "lower_rate": 0.25,
+        "lower_window_days": 7,
+        "lower_minimum": 4,
+        "shipped_default": true
+      }
+    },
+    "findings": {
+      "level": "review",
+      "summary": "2 lacks met, 1 of them kept here; 1 waits for a review.",
+      "in_review": 1,
+      "findings": [
+        {
+          "lack": {
+            "key": "eb83ed646ee6dfcb",
+            "cause": "no_worker",
+            "lacking": "code.review"
+          },
+          "title": "Product finding: no worker offers code.review",
+          "kind": "product",
+          "classified": {
+            "kind": "product",
+            "adapters": []
+          },
+          "local_for_us": false,
+          "leaves": true,
+          "in_review": true,
+          "occurrences": [
+            {
+              "run": "run_example",
+              "step": "draft",
+              "since": "2026-10-10T09:00:00+00:00",
+              "seconds": 600.0
+            }
+          ],
+          "waited_seconds": 600.0,
+          "text": "Product finding: no worker offers code.review\n\nAn instance of Taktus met something the product lacks. A step needed a worker that offers `code.review`. No configured worker offers it. The step failed for it, and its run waited until the step could start again.\n\nWhat would resolve it: the product offers `code.review` among its workers, through an adapter or an operation of one it has, or says why it does not.\n\nWhere it was met: run `run_example`, step `draft`, cause `no_worker`, as the blocked-time accounts of the instance record it (UC-6.12).\n\n---\n\nRaised by an instance of Taktus from its blocked-time accounts (UC-6.12, ADR-0046).\n\nOccurrence 1: run `run_example`, step `draft`, cause `no_worker`, blocked since 2026-10-10T09:00:00Z, waited 600 s.\nIn all: 1 occurrence, 600 s waited over the 1 that ended.\n\n<!-- taktus-finding lack=eb83ed646ee6dfcb occurrence=35158ec5910f5f94 state=ended seconds=600 -->",
+          "withheld": [],
+          "said": "Product finding: no worker offers code.review: a product candidate; it may leave, at the level the operator set."
+        },
+        {
+          "lack": {
+            "key": "b825ce779b9e3752",
+            "cause": "no_worker",
+            "lacking": "code.edit"
+          },
+          "title": "Product finding: no worker offers code.edit",
+          "kind": "configuration",
+          "classified": {
+            "kind": "configuration",
+            "adapters": [
+              "coder"
+            ]
+          },
+          "local_for_us": false,
+          "leaves": false,
+          "in_review": false,
+          "occurrences": [
+            {
+              "run": "run_example",
+              "step": "draft",
+              "since": "2026-10-10T09:00:00+00:00",
+              "seconds": 600.0
+            }
+          ],
+          "waited_seconds": 600.0,
+          "text": "Product finding: no worker offers code.edit\n\nAn instance of Taktus met something the product lacks. A step needed a worker that offers `code.edit`. No configured worker offers it. The step failed for it, and its run waited until the step could start again.\n\nWhat would resolve it: the product offers `code.edit` among its workers, through an adapter or an operation of one it has, or says why it does not.\n\nWhere it was met: run `run_example`, step `draft`, cause `no_worker`, as the blocked-time accounts of the instance record it (UC-6.12).\n\n---\n\nRaised by an instance of Taktus from its blocked-time accounts (UC-6.12, ADR-0046).\n\nOccurrence 1: run `run_example`, step `draft`, cause `no_worker`, blocked since 2026-10-10T09:00:00Z, waited 600 s.\nIn all: 1 occurrence, 600 s waited over the 1 that ended.\n\n<!-- taktus-finding lack=b825ce779b9e3752 occurrence=35158ec5910f5f94 state=ended seconds=600 -->",
+          "withheld": [],
+          "said": "Product finding: no worker offers code.edit: local, of configuration; a shipped adapter offers it once configured."
+        }
+      ]
+    },
+    "reports": {
+      "reports": [
+        {
+          "id": "need_example",
+          "tenant": "default",
+          "kind": "need",
+          "title": "A token for the live test",
+          "needed": [
+            "A token in the environment `live`."
+          ],
+          "steps": [
+            "Create it.",
+            "Store it."
+          ],
+          "standing_still": [
+            "The live test."
+          ],
+          "due": "2026-10-17",
+          "offered": [
+            {
+              "id": "done",
+              "label": "It is done",
+              "recommended": false
+            }
+          ],
+          "links": [],
+          "raised_at": "2026-10-10T09:00:00Z",
+          "state": "open",
+          "deliveries": [],
+          "history": []
+        }
+      ]
+    },
+    "tenants": {
+      "tenants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "created_at": "2026-10-10T09:00:00+00:00"
+        },
+        {
+          "id": "tnt_example",
+          "name": "Acme Software",
+          "created_at": "2026-10-10T09:00:00+00:00"
+        }
+      ]
+    }
   }
 }
