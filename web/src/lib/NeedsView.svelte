@@ -3,10 +3,11 @@
 	can provide, the steps to provide it, what stands still for want of it, by when, its state and
 	the answer filed. Read from `GET /owner/reports`, by the owner and whom the owner named. The
 	history says whether the reader acted, never who did. The decision requests have their own page.
+	Each need leads to its report's page, where it is answered as in the channel (ADR-0120).
 -->
 <script lang="ts">
 	import type { OwnerReport } from './governance';
-	import { requestsLink } from './links';
+	import { reportLink, requestsLink } from './links';
 
 	let { needs }: { needs: OwnerReport[] } = $props();
 
@@ -30,7 +31,7 @@
 		{#each needs as n (n.id)}
 			<li class="need" class:filed={n.state === 'filed'} data-need={n.id} data-state={n.state}>
 				<p class="id">{n.id} · due {n.due}</p>
-				<h2 class="title">{n.title}</h2>
+				<h2 class="title"><a href={reportLink(n.id)}>{n.title}</a></h2>
 				<p class="state">{STATE[n.state] ?? n.state}</p>
 				<div class="grid">
 					<div>
@@ -50,6 +51,9 @@
 					<p class="answer">Provided: {n.filed.answer}{n.filed.by_you ? ', by you' : ''}, {n.filed.at.slice(0, 10)}.</p>
 				{:else if n.reading}
 					<p class="answer">Read as “{n.reading.answer}”; waiting for {n.reading.by_you ? 'your' : 'its'} confirmation.</p>
+				{/if}
+				{#if n.state !== 'filed'}
+					<a class="link answer-link" href={reportLink(n.id)}>Answer it on its page</a>
 				{/if}
 				{#each n.links ?? [] as l (l.url)}
 					<a class="link" href={l.url}>{l.label}</a>
@@ -105,6 +109,9 @@
 	.need.filed {
 		box-shadow: none;
 		color: var(--ink-2);
+	}
+	.title a {
+		text-decoration: none;
 	}
 	.title {
 		font-size: 1.05rem;

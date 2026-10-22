@@ -71,7 +71,7 @@ origin.
 | `src/lib/RequestView.svelte` | one decision request: what happened, the options with the recommended one, what is blocked, by when; an answer by option or in the reader's words, and the reading confirmed before anything takes effect |
 | `src/lib/ChangeView.svelte` | a process changed in dialogue: the request in words, each open proposal as its difference in words, its rehearsal, commissioning and discarding, and a rollback for every earlier version |
 | `src/lib/governance.ts`, `GovernanceLines.svelte` | the shapes of what governs the work, its reads and answers, the start page's line per kind, and the administration key for the tab's session (ADR-0122) |
-| `src/lib/NeedsView.svelte`, `#/needs` | the needs among `GET /owner/reports`: what is needed, the steps, what stands still, by when, the state and the answer filed |
+| `src/lib/NeedsView.svelte`, `#/needs` | the needs among `GET /owner/reports`: what is needed, the steps, what stands still, by when, the state and the answer filed; each need leads to its report's page, where it is answered (ADR-0120) |
 | `src/lib/AutonomyView.svelte`, `#/autonomy` | `GET /autonomy`: each process's level in force, the stated one and why, the incident that lowered it, and each unit's rates over 7 and 28 days against the tenant's limit |
 | `src/lib/FindingsView.svelte`, `#/findings` | `GET /findings`: each lack with its classification and the text it would leave in; at the level `review`, send, not now or local for us, read back and confirmed |
 | `src/lib/TenantsView.svelte`, `#/tenants` | the tenants under the administration key: listed, created and renamed, each said back first |

@@ -41,6 +41,9 @@ The start page reads `GET /owner/reports` and lists the reports that are not fil
 first. Each item leads to its page. A line above the list says how many wait. A reader who may
 not read the reports gets `403`, and the section is not shown.
 
+The needs page (ADR-0122) shows the needs among the reports. Each need there leads to its
+report's page, where it is answered.
+
 ### 4. An old link sends a browser to the page
 `GET /owner/reports/{id}` from a browser is redirected to the page with `303 See Other`. The
 request counts as a browser's when its `Accept` header names `text/html` and it carries no
