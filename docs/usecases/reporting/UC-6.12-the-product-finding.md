@@ -4,7 +4,7 @@ title: The product finding
 component: reporting
 epic: E6
 serves: [P11, P12, P14]
-state: built
+state: building
 version: 0.2.0
 tests: [tests/adapters/connectors/test_product_findings.py::test_one_lack_met_twice_is_one_issue_with_two_occurrences, tests/adapters/connectors/test_product_findings.py::test_an_instance_not_enabled_records_and_shows_and_sends_nothing, tests/components/reporting/test_product_findings.py::test_no_other_block_is_a_finding, tests/components/reporting/test_product_findings.py::test_a_lack_not_named_by_an_identifier_is_never_a_finding, tests/components/reporting/test_product_findings.py::test_no_value_of_a_finding_can_hold_a_person, tests/components/reporting/test_product_findings.py::test_a_finding_closed_by_the_product_is_not_reopened_and_a_new_lack_opens_anew, tests/components/run/test_blocked_time.py::test_a_lack_of_an_adapter_is_a_block_that_lasts_until_the_step_can_start, tests/integration/test_findings_command.py::test_the_operator_sees_each_finding_ready_to_send_by_hand, tests/composition/test_settings.py::test_findings_are_sent_only_where_the_operator_names_a_connector, tests/adapters/connectors/test_product_findings.py::test_a_finding_from_an_instance_outside_carries_nothing_of_its_tenant, tests/adapters/connectors/test_product_findings.py::test_a_lack_that_names_the_tenants_content_is_withheld_and_shown, tests/adapters/connectors/test_product_findings.py::test_the_same_lack_on_two_instances_is_one_finding, tests/components/reporting/test_product_findings.py::test_sending_is_off_by_default_and_each_change_of_the_setting_is_recorded, tests/components/reporting/test_product_findings.py::test_one_lack_is_one_finding_across_instances, tests/components/reporting/test_product_findings.py::test_a_report_by_hand_is_checked_by_the_same_rule_and_sent_once_it_may_leave, tests/integration/test_findings_command.py::test_a_report_by_hand_is_checked_then_shown_and_sent_only_once_confirmed]
 adrs: {ADR-0006: 92211d7edd40, ADR-0015: 3a42705e5561, ADR-0027: 8f3f450eeecb, ADR-0033: eb18bea6bfb4, ADR-0043: 5bcc93809622, ADR-0046: f1891033c571, ADR-0112: fc3c6da7a49a}
@@ -31,7 +31,13 @@ requirement behind the rule that every friction is a product finding.
 - A finding raised by an instance carries the run, the cause of the block and the time waited, taken
   from the blocked-time accounts (ADR-0015).
 - An instance raises a finding on its own only for a block whose recorded cause is a lack of the
-  product — a capability no configured adapter offers, an operation a connector does not support. The
+  product — a capability no adapter the product ships offers, an operation no connector the
+  product ships supports. Which adapters, capabilities and operations a release ships is a list
+  the release carries.
+- A lack is **local** where an adapter the product ships would serve it once configured, or where
+  it lies in an adapter, a process or a bundle the project brought itself. A local lack never
+  leaves the instance. It reaches the project's own owner-facing channel (UC-6.11), saying what
+  to configure where that applies. The
   decision to raise is a rule over the recorded block, never a probabilistic method. Anything else a
   person raises by hand, from the run.
 - The same lack met again adds to the open finding — one more occurrence, the waiting summed — and does
@@ -40,8 +46,12 @@ requirement behind the rule that every friction is a product finding.
   causes, durations and counts only, in the shape of a ledger entry (ADR-0006). The Taktus repository
   is public.
 - An instance that does not belong to the Taktus project raises findings in the Taktus repository only
-  where its operator enabled it. Otherwise the finding is recorded on the instance and shown to its
-  operator, who can send it by hand.
+  where its operator enabled it, at one of three levels: *off*, the default, where a finding is
+  recorded on the instance and shown to its operator, who can send it by hand; *review*, where each
+  is shown with the text that would leave and leaves only on the operator's yes, and "local for
+  us" is remembered for that lack; *automatic*, where a finding the rule raised leaves on its own
+  and a report by hand is still reviewed. A finding leaves through the Taktus project's own
+  instance, never through an account or an app of the sending one (DEC-0214, DEC-0217).
 - A finding names no person, neither as the one who met the lack nor as the cause of the waiting
   (principle 14).
 
