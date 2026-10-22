@@ -61,6 +61,7 @@ tenant = Table(
     Column("id", Text, primary_key=True),
     Column("name", Text, nullable=False),
     _at("created_at"),
+    Column("lock_key", Integer, Identity(always=True), unique=True),
 )
 
 # --- process ------------------------------------------------------------------------------------

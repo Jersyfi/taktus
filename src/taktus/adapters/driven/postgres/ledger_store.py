@@ -11,6 +11,7 @@ from sqlalchemy.engine import Row
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.elements import ColumnClause, ColumnElement
 
+from taktus.adapters.driven.postgres import _locks
 from taktus.adapters.driven.postgres import _schema as s
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
 from taktus.ports.persistence import DuplicateSequence, KindSummary, Tenant
@@ -26,7 +27,8 @@ class PostgresLedgerStore:
     (`migrations/versions/0001_first_schema.py`).
 
     Several instances share one chain per tenant. `last` claims the chain with a transaction
-    advisory lock before reading, so that a second instance's `last` waits until the first
+    advisory lock before reading (namespace `_locks.LEDGER`, key the tenant's unique
+    `lock_key`, issue #317), so that a second instance's `last` waits until the first
     has appended and committed, and then reads that entry: two instances append in sequence
     rather than fail on the primary key. The key `(tenant, seq)` remains the backstop.
 
@@ -67,9 +69,9 @@ class PostgresLedgerStore:
 
     async def last(self, tenant: Tenant) -> LedgerEntry | None:
         connection = self._persistence.connection(tenant)
-        await connection.execute(
-            select(func.pg_advisory_xact_lock(func.hashtext(f"taktus.ledger:{tenant}")))
-        )
+        # The tenant's own row is visible to its own transaction (policy `tenant_isolation`).
+        key = select(s.tenant.c.lock_key).where(s.tenant.c.id == tenant).scalar_subquery()
+        await connection.execute(select(func.pg_advisory_xact_lock(_locks.LEDGER, key)))
         row = (
             await connection.execute(
                 select(s.ledger_entry)
