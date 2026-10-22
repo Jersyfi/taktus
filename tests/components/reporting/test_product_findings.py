@@ -21,18 +21,28 @@ from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.reporting.application.service import (
     DISABLED,
     ENABLED,
+    LOCAL,
     REPORTED,
     SENT,
     Kept,
+    NotACandidate,
     NotEnabled,
     ProductFindings,
     Sending,
     Sent,
     Withheld,
 )
-from taktus.components.reporting.domain.model import Blocked, Finding, Lack, Occurrence, Reported
+from taktus.components.reporting.domain.model import (
+    Blocked,
+    Finding,
+    Lack,
+    Occurrence,
+    Reported,
+    Shipped,
+    ShippedAdapter,
+)
 from taktus.components.reporting.domain.service import leaving, texts
-from taktus.components.reporting.domain.service.findings import findings, lack_of
+from taktus.components.reporting.domain.service.findings import classify, findings, lack_of
 from taktus.components.reporting.domain.service.pseudonyms import Pseudonyms
 from taktus.components.reporting.ports import Held
 from taktus.components.run.domain.model import block as run_block
@@ -428,3 +438,82 @@ def test_a_pseudonym_is_the_same_under_one_key_and_cannot_be_computed_without_it
     assert re.fullmatch(r"src_[0-9a-f]{20}", one.source) and one.source != other.source
     with pytest.raises(ValueError):
         Pseudonyms(b"short")
+
+
+# --- what a lack is: the rule over the release's list (ADR-0118) -------------------------------
+
+SHIPPED = Shipped(
+    workers=(ShippedAdapter(name="coder", capabilities=("code.edit", "code.read")),),
+    connectors=(
+        ShippedAdapter(
+            name="repo",
+            capabilities=("repository.issues",),
+            operations=("repository.issues.create", "repository.issues.list"),
+        ),
+        ShippedAdapter(
+            name="wiki", capabilities=("knowledge.pages",), operations=("knowledge.pages.read",)
+        ),
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("cause", "lacking", "kind", "by"),
+    [
+        # Nothing shipped offers it, in the product's vocabulary: a product candidate.
+        ("no_worker", "code.review", "product", ()),
+        ("no_connector", "repository.wiki", "product", ()),
+        ("operation_unsupported", "repository.issues.lock", "product", ()),
+        # A shipped adapter offers it, and the instance did not configure it.
+        ("no_worker", "code.edit,code.read", "configuration", ("coder",)),
+        ("no_connector", "knowledge.pages", "configuration", ("wiki",)),
+        ("operation_unsupported", "repository.issues.create", "configuration", ("repo",)),
+        # The project's own vocabulary, or a connector the release does not ship.
+        ("no_worker", "code.edit,crm.score", "own", ()),
+        ("no_connector", "crm.contacts", "own", ()),
+        ("operation_unsupported", "crm.contacts.merge", "own", ()),
+        ("operation_unsupported", "repository.wiki.read", "own", ()),
+    ],
+)
+def test_a_lack_is_classified_by_the_list_of_what_the_release_ships(
+    cause: str, lacking: str, kind: str, by: tuple[str, ...]
+) -> None:
+    classified = classify(Lack.model_validate({"cause": cause, "lacking": lacking}), SHIPPED)
+    assert classified.kind == kind and classified.adapters == by
+    assert classified.local == (kind != "product")
+
+
+async def test_a_local_lack_is_shown_and_never_sent() -> None:
+    channel = Channel()
+    findings_ = ProductFindings(
+        Source([blocked("run_1", cause="no_connector", lacking="knowledge.pages")]),
+        kept(),
+        Sending(channel, "http://findings.invalid/mcp"),
+        shipped=SHIPPED,
+    )
+    assert await findings_.send(TENANT) == Sent()
+    assert channel.issues == {}
+    (one,) = await findings_.outgoing(TENANT)
+    assert one.classified.kind == "configuration" and not one.leaves
+    with pytest.raises(NotACandidate):
+        await findings_.send_one(TENANT, one.finding.lack.key)
+
+
+async def test_at_review_the_scheduler_sends_nothing_and_a_persons_yes_sends_one() -> None:
+    channel, on_instance = Channel(), kept()
+    source = Source([blocked("run_1"), blocked("run_2", cause="no_connector", lacking="x.y")])
+    findings_ = ProductFindings(
+        source, on_instance, Sending(channel, "http://findings.invalid/mcp", level="review")
+    )
+    assert await findings_.send(TENANT) == Sent() and channel.issues == {}
+    first, second = await findings_.pending(TENANT)
+    assert await findings_.send_one(TENANT, first.finding.lack.key) == Sent(opened=1)
+    assert [p.finding.lack.key for p in await findings_.pending(TENANT)] == [
+        second.finding.lack.key
+    ]
+    await findings_.call_local(TENANT, second.finding.lack.key)
+    await findings_.call_local(TENANT, second.finding.lack.key)
+    assert await findings_.pending(TENANT) == ()
+    assert len(await entries_of(on_instance, LOCAL)) == 1, "remembered once"
+    (enabled,) = await entries_of(on_instance, ENABLED)
+    assert enabled.outcome == "review", "the level is recorded with the setting"

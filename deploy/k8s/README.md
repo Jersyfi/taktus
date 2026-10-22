@@ -106,6 +106,7 @@ The Taktus project's own instance is an example. Its operator's private values s
 | `configFiles.budget-seeds.yaml` from `docs/runs/first-run.seeds.yaml`, `env.TAKTUS_BUDGET_SEEDS: /etc/taktus/files/budget-seeds.yaml` | the calibration seed of the project's first live run |
 | `configFiles.finding-form.md` from `.github/finding-form.md`, `env.TAKTUS_FINDINGS_FORM: /etc/taktus/files/finding-form.md`, `env.TAKTUS_FINDINGS_LABELS: task` | the shape of the project's issue form `Task`, for findings sent with `connectors.repository.findings` |
 | `env.TAKTUS_CHANGE_PROCESS: s07-change-in-dialogue` | the project's process that turns a change in words into a proposal |
+| `env.TAKTUS_FINDINGS_LEVEL: automatic`, `env.TAKTUS_FINDINGS_INTAKE_TENANT: <the project's tenant>` | the project's own findings keep leaving on their own, and its intake takes the findings other instances submit (ADR-0118, NEED-0033). The ingress routes `<prefix>/findings/intake` with the rest of the API; nothing else opens |
 
 `helm --set-file configFiles.budget-seeds\.yaml=docs/runs/first-run.seeds.yaml` reads a file
 into the values. `taktusctl guides` is told the project's manifest with

@@ -1,0 +1,181 @@
+{
+  "connectors": [
+    {
+      "capabilities": [
+        "knowledge.pages"
+      ],
+      "name": "bookstack",
+      "operations": [
+        "knowledge.pages.list",
+        "knowledge.pages.read",
+        "knowledge.pages.write"
+      ]
+    },
+    {
+      "capabilities": [
+        "knowledge.pages"
+      ],
+      "name": "directory",
+      "operations": [
+        "knowledge.pages.list",
+        "knowledge.pages.read",
+        "knowledge.pages.write"
+      ]
+    },
+    {
+      "capabilities": [
+        "channel.repo",
+        "repository.branches",
+        "repository.comments",
+        "repository.files",
+        "repository.issues",
+        "repository.labels",
+        "repository.members",
+        "repository.pipelines",
+        "repository.pullrequests",
+        "repository.refs"
+      ],
+      "name": "github",
+      "operations": [
+        "channel.repo.reply",
+        "repository.branches.create",
+        "repository.branches.read",
+        "repository.comments.create",
+        "repository.comments.list",
+        "repository.files.list",
+        "repository.files.read",
+        "repository.files.read_many",
+        "repository.issues.close",
+        "repository.issues.create",
+        "repository.issues.list",
+        "repository.issues.milestone",
+        "repository.issues.read",
+        "repository.labels.remove",
+        "repository.labels.set",
+        "repository.members.list",
+        "repository.pipelines.read",
+        "repository.pipelines.status",
+        "repository.pipelines.trigger",
+        "repository.pullrequests.open",
+        "repository.pullrequests.read",
+        "repository.refs.create"
+      ]
+    },
+    {
+      "capabilities": [
+        "check.http"
+      ],
+      "name": "httpcheck",
+      "operations": [
+        "check.http.run"
+      ]
+    },
+    {
+      "capabilities": [
+        "orchestrator.changes",
+        "orchestrator.conformance",
+        "orchestrator.guides",
+        "orchestrator.integrations",
+        "orchestrator.maturation",
+        "orchestrator.maturity",
+        "orchestrator.removal"
+      ],
+      "name": "loopback",
+      "operations": [
+        "orchestrator.changes.propose",
+        "orchestrator.changes.read",
+        "orchestrator.conformance.run",
+        "orchestrator.guides.measure",
+        "orchestrator.guides.publish",
+        "orchestrator.guides.render",
+        "orchestrator.guides.report",
+        "orchestrator.guides.sources",
+        "orchestrator.integrations.describe",
+        "orchestrator.integrations.list",
+        "orchestrator.maturation.measures",
+        "orchestrator.maturation.propose",
+        "orchestrator.maturity.record",
+        "orchestrator.removal.exercise"
+      ]
+    },
+    {
+      "capabilities": [
+        "channel.mail",
+        "mail.messages"
+      ],
+      "name": "mail",
+      "operations": [
+        "channel.mail.reply",
+        "mail.messages.read",
+        "mail.messages.send"
+      ]
+    },
+    {
+      "capabilities": [
+        "metrics.series"
+      ],
+      "name": "prometheus",
+      "operations": [
+        "metrics.series.query",
+        "metrics.series.range"
+      ]
+    },
+    {
+      "capabilities": [
+        "channel.chat",
+        "chat.members",
+        "chat.threads"
+      ],
+      "name": "slack",
+      "operations": [
+        "channel.chat.reply",
+        "chat.members.list",
+        "chat.threads.post",
+        "chat.threads.read"
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "capabilities": [
+        "code.edit",
+        "code.read",
+        "code.test",
+        "shell.sandboxed",
+        "web.fetch"
+      ],
+      "name": "claudecode",
+      "operations": []
+    },
+    {
+      "capabilities": [
+        "code.edit",
+        "code.read",
+        "code.test",
+        "shell.sandboxed"
+      ],
+      "name": "codex",
+      "operations": []
+    },
+    {
+      "capabilities": [
+        "data.generate",
+        "data.read",
+        "ml.evaluate",
+        "ml.predict",
+        "ml.train"
+      ],
+      "name": "mlbench",
+      "operations": []
+    },
+    {
+      "capabilities": [
+        "shell.sandboxed",
+        "shell.script",
+        "workspace.isolated"
+      ],
+      "name": "script",
+      "operations": []
+    }
+  ]
+}

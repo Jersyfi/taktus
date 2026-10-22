@@ -30,7 +30,6 @@ from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.connectors.directory import DirectoryConnector
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
-from taktus.adapters.driven.connectors.mcp import McpActionConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
     MemoryBackupLog,
@@ -83,7 +82,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
-from taktus.components.reporting.application.service import Kept, ProductFindings, Sending
+from taktus.components.reporting.application.service import Kept, ProductFindings
 from taktus.components.run.application.query import (
     BlockedTime,
     ProvenanceQuery,
@@ -104,7 +103,7 @@ from taktus.composition.execution import (
     telemetry_of,
     unit_environments,
 )
-from taktus.composition.findings import RepositoryChannel, RunBlocks, RunContent
+from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
 from taktus.composition.loopback import Loopback, Pools
@@ -129,6 +128,7 @@ from taktus.composition.settings import (
     load_tenants,
     load_workers,
 )
+from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import signal_wiring
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
@@ -193,6 +193,7 @@ class LocalWiring:
             findings_shape = load_findings(self._configuration)
             shape = findings_shape.form()
             findings_connector = load_findings_connector(self._configuration)
+            findings_sending = sending_of(findings_shape, findings_connector)
             tenants = load_tenants(self._configuration)
             administration = load_administration(self._configuration)
             knowledge_directory = load_knowledge_directory(self._configuration)
@@ -384,6 +385,20 @@ class LocalWiring:
                 clock=clock,
                 lowered=decisions.lowered,
             )
+            findings = ProductFindings(
+                RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
+                Kept(
+                    ledger,
+                    objects,
+                    stores.work,
+                    SystemRandomness(),
+                    RunContent(runs, stores.work, stores.of(Command)),
+                    known_secrets(os.environ),
+                ),
+                findings_sending,
+                shape=shape,
+                shipped=load_shipped(),
+            )
             yield Services(
                 conformance=conformance,
                 catalogue=InstanceCatalogue(
@@ -414,26 +429,7 @@ class LocalWiring:
                 anchors=decisions.anchors,
                 configure_owner_channel=owner.configure,
                 owner_channel=owner.channel,
-                findings=ProductFindings(
-                    RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
-                    Kept(
-                        ledger,
-                        objects,
-                        stores.work,
-                        SystemRandomness(),
-                        RunContent(runs, stores.work, stores.of(Command)),
-                        known_secrets(os.environ),
-                    ),
-                    None
-                    if findings_connector is None
-                    else Sending(
-                        RepositoryChannel(
-                            McpActionConnector(findings_connector), labels=findings_shape.labels
-                        ),
-                        findings_connector,
-                    ),
-                    shape=shape,
-                ),
+                findings=findings,
                 interfaces=broken_interfaces(ledger, stores.work, owner, clock),
                 alerts=alerts(
                     ledger,
@@ -444,6 +440,7 @@ class LocalWiring:
                     clock,
                     backup_expected_hours=backup_expected_hours,
                     corrections=decisions.corrections,
+                    findings=findings,
                 ),
                 measures=maturation.measures,
                 correct_result=maturation.correct,

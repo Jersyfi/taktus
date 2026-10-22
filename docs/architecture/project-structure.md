@@ -239,10 +239,16 @@ role it would tie the core to a model stack and the removal test would be lost.
   raises an incident (`composition/expected_runs.py`, ADR-0107,
   `tests/integration/test_expected_runs.py`), and judges every signal against its corridor,
   raising the daily report from 06:00 UTC (`composition/signals.py`, ADR-0109). Every ten
-  minutes it sends each tenant's product findings where the operator enabled it, and records a
-  change of that setting in the tenant's ledger either way (`composition/findings.py`,
-  ADR-0046, ADR-0112); `taktusctl findings` shows them, and `taktusctl findings report` sends a
-  report written by hand once it is checked, shown and confirmed. It reports
+  minutes it sends each tenant's product candidates at the level `automatic`, and records a
+  change of the setting in the tenant's ledger either way (`composition/findings.py`,
+  ADR-0046, ADR-0112, ADR-0118). `sending_of` chooses the way out from the settings: the
+  instance's own connector, or `IntakeClient` to another instance's intake. `intake_of` builds
+  the intake the `api` role serves where the operator opened it. Every lack is classified
+  against the list the release carries, `composition/shipped.json`, which `composition/
+  shipped.py` loads and `make generate` writes; a local lack is one more alert. `taktusctl
+  findings` shows them, `taktusctl findings review` asks a person about each candidate, and
+  `taktusctl findings report` sends a report written by hand once it is checked, shown and
+  confirmed. It reports
   to the owner what needs a person's action, a level that fell by rule and a raise Taktus
   proposes among it (`composition/alerts.py`, ADR-0106, ADR-0110). The run reaches the
   governance component's `Corrections` through `composition/decisions.py`, and `taktusctl

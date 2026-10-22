@@ -341,7 +341,11 @@ The maturity record derives *verified* from both halves and names which is missi
 that serves a vendor's MCP server without a manifest of its effects stays *experimental* whatever
 it passed, and its configuration names the manifest it serves the server under, so that a
 changed manifest is another configuration (ADR-0117). `taktusctl conformance list` prints every
-configured adapter with its maturity, until the catalogue of #339 and #348 does. The
+configured adapter with its maturity, until the catalogue of #339 and #348 does. What a
+release ships is a list of its own, `src/taktus/composition/shipped.json`: every connector's
+declared capabilities and operations, and every worker's `CAPABILITIES`, which each worker
+states in its `worker.py`. `make generate` writes it, and a lack is classified against it
+(ADR-0118). The
 blueprint's README carries the removal test as instructions a person follows by hand, and the
 record of the first run; each contract's `CONFORMANCE.md` carries the suite, run by hand against
 the same endpoint with its report kept as evidence. What both halves share — the report, the

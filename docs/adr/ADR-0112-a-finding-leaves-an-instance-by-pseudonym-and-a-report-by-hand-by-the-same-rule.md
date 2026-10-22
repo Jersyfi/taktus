@@ -1,6 +1,6 @@
 # ADR-0112 — A finding leaves an instance by pseudonym, and a report by hand by the same rule
 
-**Status:** accepted · extends ADR-0046 (a lack of the product becomes a finding) and ADR-0008 (a free text is reflected back before it is acted on) · issue #446, UC-6.12, DEC-0201
+**Status:** accepted · extends ADR-0046 (a lack of the product becomes a finding) and ADR-0008 (a free text is reflected back before it is acted on) · issue #446, UC-6.12, DEC-0201 · amended 2026-10-22 (ADR-0118): §1 records the level with the setting; §6 an instance outside the project submits, signed, to the intake of the project's own instance
 
 ## Context
 
@@ -105,7 +105,8 @@ later report adds to it.
 Every text goes through the connector the setting names, by the operations of the capability
 `repository` (CLAUDE.md §6). The connector acts as whatever identity its operator gave it. For
 an instance outside the project, that identity needs the right to open issues in the Taktus
-repository. Only the owner of the repository can grant it. That is a needs request (NEED-0031).
+repository. Only the owner of the repository can grant it. ADR-0118 replaces this way for such
+an instance: it submits, signed, to the intake of the project's own instance.
 
 ## Alternatives
 - **Pseudonymise only on an instance outside the project.** Rejected: the product has no notion of

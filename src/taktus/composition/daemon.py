@@ -35,7 +35,7 @@ from taktus.adapters.driven.clock import SystemClock, SystemIdentifiers, SystemR
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.adapters.driven.connectors.loopback import ADAPTER as LOOPBACK
 from taktus.adapters.driven.connectors.loopback import LoopbackConnector
-from taktus.adapters.driven.connectors.mcp import McpActionConnector, McpIntakeConnector
+from taktus.adapters.driven.connectors.mcp import McpIntakeConnector
 from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import MemoryObjectStore
 from taktus.adapters.driven.models.pool import StaticModelPool
@@ -97,10 +97,10 @@ from taktus.components.reporting.application.query import LevelQueries, ReportQu
 from taktus.components.reporting.application.service import (
     Alerts,
     BrokenInterfaces,
+    FindingsIntake,
     Kept,
     LiveChanges,
     ProductFindings,
-    Sending,
     SignalWatch,
 )
 from taktus.components.reporting.domain.model import OwnerChannel, PendingAct
@@ -134,7 +134,13 @@ from taktus.composition.execution import (
     unit_environments,
 )
 from taktus.composition.expected_runs import ExpectedRunsWatch, expected_runs_tick
-from taktus.composition.findings import RepositoryChannel, RunBlocks, RunContent, findings_tick
+from taktus.composition.findings import (
+    RunBlocks,
+    RunContent,
+    findings_tick,
+    intake_of,
+    sending_of,
+)
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
 from taktus.composition.levels import RepositoryLevelRecords
@@ -153,6 +159,7 @@ from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
+from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
 from taktus.composition.triggers import Triggers
 from taktus.ports.clock import Clock
@@ -210,8 +217,10 @@ class Wired:
     reactions: Reactions
     """The event reactions the automation role makes on every pass while it leads (ADR-0048)."""
     findings: ProductFindings
-    """The product findings (UC-6.12, ADR-0046): sent by the scheduler where the operator
-    enabled it with `TAKTUS_FINDINGS_CONNECTOR`, and only recorded otherwise."""
+    """The product findings (UC-6.12, ADR-0046, ADR-0118): the candidates sent by the scheduler
+    at the level `automatic`, the local lacks said to the owner, and only recorded otherwise."""
+    findings_intake: FindingsIntake | None
+    """The intake of other instances' findings, where the operator opened it (ADR-0118)."""
     owner: OwnerChannelWiring
     """The owner-facing channel: reports to the owner, their renderings and the answers
     given in the channel (ADR-0045)."""
@@ -619,6 +628,20 @@ async def wire(
                     clock=clock,
                 )
             )
+            findings = ProductFindings(
+                RunBlocks(BlockedTime(ledger, objects, persistence, runs)),
+                Kept(
+                    ledger,
+                    objects,
+                    persistence,
+                    SystemRandomness(),
+                    RunContent(runs, persistence, PostgresRepository(persistence, Command)),
+                    known_secrets(os.environ, also=[settings.database.reveal()]),
+                ),
+                sending_of(settings.findings, settings.findings_connector),
+                shape=shape,
+                shipped=load_shipped(),
+            )
             wired = Wired(
                 settings=settings,
                 persistence=persistence,
@@ -661,6 +684,7 @@ async def wire(
                     clock,
                     backup_expected_hours=settings.backup_expected_hours,
                     corrections=decisions.corrections,
+                    findings=findings,
                 ),
                 signals=signals.watch,
                 changes=LiveHub(
@@ -710,26 +734,17 @@ async def wire(
                     work=persistence,
                     database=persistence,
                 ),
-                findings=ProductFindings(
-                    RunBlocks(BlockedTime(ledger, objects, persistence, runs)),
-                    Kept(
-                        ledger,
-                        objects,
-                        persistence,
-                        SystemRandomness(),
-                        RunContent(runs, persistence, PostgresRepository(persistence, Command)),
-                        known_secrets(os.environ, also=[settings.database.reveal()]),
-                    ),
-                    None
-                    if settings.findings_connector is None
-                    else Sending(
-                        RepositoryChannel(
-                            McpActionConnector(settings.findings_connector),
-                            labels=settings.findings.labels,
-                        ),
-                        settings.findings_connector,
-                    ),
-                    shape=shape,
+                findings=findings,
+                findings_intake=intake_of(
+                    settings.findings,
+                    settings.findings_connector,
+                    ledger=ledger,
+                    objects=objects,
+                    work=persistence,
+                    reports=owner.queries,
+                    raising=owner.raising,
+                    clock=clock,
+                    form=shape,
                 ),
                 expected=ExpectedRunsWatch(
                     ExpectationsHandler(

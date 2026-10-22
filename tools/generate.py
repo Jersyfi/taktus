@@ -1,6 +1,6 @@
 """`make generate`: regenerate what is generated. Runs in the project environment.
 
-Two things are generated today, each never edited by hand:
+Three things are generated today, each never edited by hand:
 
 - `api/openapi.yaml`, the OpenAPI 3.1 document of Taktus' own REST interface, from the FastAPI
   application under `src/taktus/adapters/driving/rest` — built at the root; the path prefix an
@@ -13,6 +13,10 @@ Two things are generated today, each never edited by hand:
   draws to these glyphs; `tests/components/reporting/test_run_level.py` fails when the file
   differs from what this script writes. The web app itself reads the vocabulary and every
   level from the surface.
+- `src/taktus/composition/shipped.json`, the list of what the release ships: every connector's
+  capabilities and operations from its own declaration, and every worker's `CAPABILITIES`
+  (ADR-0118). Every lack is classified against it. `tests/composition/test_shipped.py` fails
+  when the file differs from what this script writes.
 
 The shared kernel's Python types under src/taktus/shared/ are a hand-written binding checked
 against the schemas by tests/contract, not generated (docs/architecture/project-structure.md
@@ -255,6 +259,7 @@ class _NoServices:
     roles: tuple[str, ...] = ()
     tenants: tuple[str, ...] = ("default",)
     leading = False
+    findings_intake = None
 
 
 def main() -> int:
@@ -268,6 +273,12 @@ def main() -> int:
     changed = not FIXTURES.is_file() or FIXTURES.read_text(encoding="utf-8") != fixtures
     FIXTURES.write_text(fixtures, encoding="utf-8")
     print(f"generate: {FIXTURES.relative_to(ROOT)} {'written' if changed else 'unchanged'}")
+    from taktus.composition import shipped
+
+    listed = shipped.text(shipped.build(ROOT))
+    changed = not shipped.LIST.is_file() or shipped.LIST.read_text(encoding="utf-8") != listed
+    shipped.LIST.write_text(listed, encoding="utf-8")
+    print(f"generate: {shipped.LIST.relative_to(ROOT)} {'written' if changed else 'unchanged'}")
     print("  shared kernel: a checked binding under src/taktus/shared/ (tests/contract)")
     return 0
 

@@ -21,6 +21,11 @@ rises again only by a person's approval, so nothing clears it on its own.
 figures it was proposed with. It stays in effect until the owner answers its report. The answer
 does not raise anything: a raise is a version a person registers with their approval (UC-7.1).
 
+**A local lack.** Every lack the rule over the release's list classifies as local is one alert
+(ADR-0118). It is in effect while a step still waits for it, and identified by the lack and the
+oldest occurrence still waiting. It clears when every step that waited for it could start. The
+same lack met again after that is a new alert.
+
 Nothing else decides: no model, no estimate, no reading of words (ADR-0023). Pure: facts and the
 closing times in, alerts and their words out.
 """
@@ -40,7 +45,7 @@ from taktus.components.reporting.domain.model.alert import (
     LevelLowered,
     RaiseProposed,
 )
-from taktus.components.reporting.domain.model.finding import short
+from taktus.components.reporting.domain.model.finding import Classified, Finding, short
 
 RUNS_SHOWN = 10
 """How many runs a report names one by one; the rest are counted."""
@@ -366,6 +371,75 @@ def _raise(one: RaiseProposed) -> Alert:
         summary=(
             f"Raise proposed: {unit}, {one.week_rate:.0%} over 7 days, {one.month_rate:.0%} "
             "over 28 days."
+        ),
+    )
+
+
+# --- a local lack ------------------------------------------------------------------------------
+
+ADAPTER_SETTING = {
+    "no_worker": "a worker in `TAKTUS_WORKERS`",
+    "no_connector": "a connector's label and address in `TAKTUS_CONNECTORS`",
+    "operation_unsupported": "a connector's label and address in `TAKTUS_CONNECTORS`",
+}
+"""Where an adapter of each lack is configured."""
+
+
+def local_lacks(found: Iterable[tuple[Finding, Classified]]) -> tuple[Alert, ...]:
+    """Every local lack as one alert, oldest first; a product candidate is none."""
+    alerts = [_local(finding, classified) for finding, classified in found if classified.local]
+    return tuple(sorted(alerts, key=lambda a: a.since))
+
+
+def _local(finding: Finding, classified: Classified) -> Alert:
+    lack = finding.lack
+    waiting = [o for o in finding.occurrences if not o.ended]
+    basis = waiting[0] if waiting else finding.occurrences[-1]
+    what = f"`{lack.lacking}`"
+    runs = [
+        f"Run `{o.run_id}`, step `{o.step_id}`, since {_at(o.since)}."
+        for o in (waiting or finding.occurrences)
+    ]
+    if len(runs) > RUNS_SHOWN:
+        runs = [*runs[:RUNS_SHOWN], f"And {len(runs) - RUNS_SHOWN} more."]
+    if classified.kind == "configuration":
+        adapters = ", ".join(f"`{name}`" for name in classified.adapters)
+        title = f"A step lacks {what}, which an adapter the release ships offers"
+        needed = (
+            f"An adapter for {what}: the release ships {adapters}, and this instance did not "
+            "configure it. It is a lack of this instance's configuration, not of the product, "
+            "and it is not sent to the product.",
+        )
+        steps = (
+            f"Configure {adapters} on this instance, as {ADAPTER_SETTING[lack.cause]}.",
+            "Resume each run below: its step starts once the adapter resolves.",
+            "The alert clears by itself when every step that waited for it could start.",
+        )
+    else:
+        title = f"A step lacks {what}, which lies in this project's own development"
+        needed = (
+            f"{what} from an adapter, a process or a bundle this project brought: the release "
+            "ships nothing that offers it, and it lies outside the product's vocabulary. It is "
+            "not sent to the product.",
+        )
+        steps = (
+            "Give the project's own adapter what the step needs, or change the process so that "
+            "it needs what is configured.",
+            "If the product should offer it, report it by hand: `taktusctl findings report`.",
+            "The alert clears by itself when every step that waited for it could start.",
+        )
+    state = "in effect" if waiting else "cleared"
+    return Alert(
+        id=_id("local_lack", f"{lack.key}|{basis.id}"),
+        kind="local_lack",
+        since=basis.since,
+        in_effect=bool(waiting),
+        title=title,
+        needed=needed,
+        steps=steps,
+        standing_still=tuple(runs),
+        summary=(
+            f"Local lack ({classified.kind}): {lack.lacking} since {_at(basis.since)}; {state}."
         ),
     )
 

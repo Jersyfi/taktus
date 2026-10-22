@@ -22,6 +22,7 @@ from taktus.components.identity.application.service import IdentityDirectory, Te
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.domain.model import ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
+from taktus.components.reporting.application.service import FindingsIntake
 from taktus.components.reporting.domain.model import Change, Reader, Scope, Snapshot
 from taktus.components.run.domain.model import Run
 from taktus.ports.configuration import Secret
@@ -111,6 +112,12 @@ class RestServices(Protocol):
     def administration_key(self) -> Secret | None:
         """The key that admits a request to the administration of tenants; None when the
         operator configured none (ADR-0104 §4)."""
+        ...
+
+    @property
+    def findings_intake(self) -> FindingsIntake | None:
+        """The intake of other instances' findings; None where the operator opened none
+        (ADR-0118)."""
         ...
 
     @property

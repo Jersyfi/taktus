@@ -15,10 +15,11 @@ There is no field for a person, and a value of these types is closed (principle 
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from taktus.shared.v1 import StepId, Value
 
@@ -107,3 +108,101 @@ class Reported(Value):
     seconds: float | None = Field(default=None, ge=0)
     source: str | None = Field(default=None, pattern=SOURCE_PATTERN)
     """The sender that reported it; None for a mark written before senders were named."""
+
+
+# --- what the release ships, and what a lack is (ADR-0118) -------------------------------------
+
+type LackKind = Literal["product", "configuration", "own"]
+"""A *product candidate*: nothing the release ships offers what was lacking. *Local:
+configuration*: an adapter the release ships offers it, and the instance did not configure it.
+*Local: own development*: it lies in the project's own vocabulary — an adapter, a process or a
+bundle the project brought."""
+
+type FindingsLevel = Literal["off", "review", "automatic"]
+"""How a product candidate leaves an instance: not at all, the default; once a person said yes
+to the text that would leave; or on its own, where the rule raised it."""
+
+LEVELS: tuple[str, ...] = ("off", "review", "automatic")
+
+ADAPTER_PATTERN = r"^[a-z][a-z0-9_-]*$"
+NAME_PATTERN = r"^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$"
+
+
+class ShippedAdapter(Value):
+    """One adapter the release ships: its name, the capabilities it offers and, for a
+    connector, the operations."""
+
+    name: str = Field(pattern=ADAPTER_PATTERN)
+    capabilities: tuple[str, ...] = ()
+    operations: tuple[str, ...] = ()
+
+
+class Shipped(Value):
+    """The workers and connectors a release ships, as the release carries them
+    (`composition/shipped.json`)."""
+
+    workers: tuple[ShippedAdapter, ...] = ()
+    connectors: tuple[ShippedAdapter, ...] = ()
+
+    @property
+    def namespaces(self) -> frozenset[str]:
+        """The first segment of every capability and operation shipped: the product's
+        vocabulary."""
+        return frozenset(
+            name.split(".", 1)[0]
+            for adapter in (*self.workers, *self.connectors)
+            for name in (*adapter.capabilities, *adapter.operations)
+        )
+
+
+class Classified(Value):
+    """What a lack is, by the rule over the release's list. `adapters` names the shipped adapters
+    that would serve it, for a lack of configuration."""
+
+    kind: LackKind
+    adapters: tuple[str, ...] = ()
+
+    @property
+    def local(self) -> bool:
+        return self.kind != "product"
+
+
+# --- what leaves for an intake (ADR-0118 §4) ---------------------------------------------------
+
+PSEUDONYM_RUN = r"^r-[0-9a-f]{16}$"
+PSEUDONYM_STEP = r"^s-[0-9a-f]{12}$"
+TITLE_MAX = 200
+BODY_MAX = 20000
+
+
+class Submission(Value):
+    """One finding's occurrence, or one report by hand, as a sender submits it to an intake:
+    closed values for a finding, the person's checked text for a report. The intake composes
+    the issue's text itself, so a sender cannot put words of its own into a finding."""
+
+    source: str = Field(pattern=SOURCE_PATTERN)
+    lack: Lack | None = None
+    occurrence: Occurrence | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=TITLE_MAX)
+    body: str | None = Field(default=None, min_length=1, max_length=BODY_MAX)
+
+    @model_validator(mode="after")
+    def _one_of_two(self) -> Submission:
+        finding = self.lack is not None and self.occurrence is not None
+        report = self.title is not None and self.body is not None
+        if finding == report or (finding and (self.title or self.body)):
+            raise ValueError("a submission is a finding's occurrence or a report, never both")
+        if report and (self.lack is not None or self.occurrence is not None):
+            raise ValueError("a report carries no lack")
+        if self.occurrence is not None:
+            if self.occurrence.source != self.source:
+                raise ValueError("an occurrence names the sender that submits it")
+            if not re.fullmatch(PSEUDONYM_RUN, self.occurrence.run_id) or not re.fullmatch(
+                PSEUDONYM_STEP, self.occurrence.step_id
+            ):
+                raise ValueError("an occurrence leaves by pseudonym")
+        return self
+
+    @property
+    def is_report(self) -> bool:
+        return self.title is not None

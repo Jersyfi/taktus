@@ -37,7 +37,7 @@ from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
-from taktus.components.reporting.application.service import LiveChanges
+from taktus.components.reporting.application.service import FindingsIntake, LiveChanges
 from taktus.components.run.domain.model import Run
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
@@ -125,6 +125,8 @@ class Services:
     acts: ProposalActs | None = None
     """The acts on a proposal; a test that reaches them sets them. What they do is held by
     `tests/composition/test_proposals.py`."""
+    findings_intake: FindingsIntake | None = None
+    """The intake of other instances' findings; None: not open (ADR-0118)."""
 
     @property
     def work(self) -> UnitOfWork:

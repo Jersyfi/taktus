@@ -11,6 +11,7 @@ import structlog
 
 from taktus.adapters.driven.configuration import EnvironmentConfiguration
 from taktus.composition import logging as daemon_logging
+from taktus.composition.findings import sending_of
 from taktus.composition.settings import (
     ALL_ROLES,
     ExecutionKind,
@@ -191,7 +192,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 81, "every setting is in the startup log"
+    assert len(effective) == 85, "every setting is in the startup log"
 
 
 def test_the_administration_key_is_read_from_a_file_and_masked(tmp_path: Path) -> None:
@@ -497,6 +498,36 @@ def test_findings_are_sent_only_where_the_operator_names_a_connector() -> None:
     assert enabled.findings_connector == "http://findings:9100/mcp"
     with pytest.raises(ConfigurationError, match="TAKTUS_FINDINGS_CONNECTOR"):
         settings(TAKTUS_FINDINGS_CONNECTOR="findings:9100")
+
+
+def test_a_candidate_leaves_only_at_the_level_the_operator_set_and_off_is_the_default() -> None:
+    """UC-6.12, ADR-0118: `off` by default; `review` or `automatic` needs a way out, through
+    the instance's own connector or to an intake, never both."""
+    assert settings().findings.level == "off"
+    assert sending_of(settings().findings, None) is None
+    connected = settings(TAKTUS_FINDINGS_CONNECTOR="http://findings:9100/mcp")
+    assert sending_of(connected.findings, connected.findings_connector) is None, "off sends none"
+    review = settings(
+        TAKTUS_FINDINGS_LEVEL="review", TAKTUS_FINDINGS_INTAKE="https://project.example/i"
+    )
+    sending = sending_of(review.findings, review.findings_connector)
+    assert sending is not None and sending.level == "review" and sending.signatures is not None
+    with pytest.raises(ConfigurationError, match="TAKTUS_FINDINGS_LEVEL"):
+        settings(TAKTUS_FINDINGS_LEVEL="sometimes")
+    with pytest.raises(ConfigurationError, match="TAKTUS_FINDINGS_LEVEL"):
+        sending_of(settings(TAKTUS_FINDINGS_LEVEL="automatic").findings, None)
+    with pytest.raises(ConfigurationError, match="TAKTUS_FINDINGS_INTAKE"):
+        settings(
+            TAKTUS_FINDINGS_INTAKE="https://project.example/i",
+            TAKTUS_FINDINGS_CONNECTOR="http://findings:9100/mcp",
+        )
+
+
+def test_an_instance_opens_its_intake_only_where_its_operator_names_the_tenant() -> None:
+    assert settings().findings.intake_tenant is None
+    opened = settings(TAKTUS_FINDINGS_INTAKE_TENANT="t_project", TAKTUS_FINDINGS_INTAKE_RATE="5")
+    assert opened.findings.intake_tenant == "t_project" and opened.findings.intake_rate == 5
+    assert settings().findings.intake_rate == 30
 
 
 def test_a_channel_is_public_only_where_the_operator_names_its_triage() -> None:

@@ -105,10 +105,18 @@ def findings(
     form: Path | None = None,
     answer: str | None = None,
     connector: str | None = None,
+    level: str = "review",
+    intake: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     inherited = {k: v for k, v in os.environ.items() if not k.startswith("TAKTUS_")}
     shape = {} if form is None else {"TAKTUS_FINDINGS_FORM": str(form)}
-    enabled = {} if connector is None else {"TAKTUS_FINDINGS_CONNECTOR": connector}
+    enabled = (
+        {}
+        if connector is None
+        else {"TAKTUS_FINDINGS_CONNECTOR": connector, "TAKTUS_FINDINGS_LEVEL": level}
+    )
+    if intake is not None:
+        enabled = {"TAKTUS_FINDINGS_INTAKE": intake, "TAKTUS_FINDINGS_LEVEL": level}
     return subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
         [taktusctl(), "findings", *args],
         capture_output=True,
@@ -197,3 +205,48 @@ def test_a_report_by_hand_is_checked_then_shown_and_sent_only_once_confirmed(
         connector=nowhere,
     )
     assert confirmed.returncode == 2, "confirmed, it is sent: here to an address nobody answers"
+
+
+def test_at_automatic_a_report_by_hand_is_still_shown_and_confirmed(tmp_path: Path) -> None:
+    """ADR-0118: `automatic` sends what the rule raised, never a report by hand unasked."""
+    state = tmp_path / "state"
+    asyncio.run(a_run_that_lacks_a_worker(state))
+    clean = tmp_path / "clean.md"
+    clean.write_text("The export step fails after a retry.\n", encoding="utf-8")
+    declined = findings(
+        state,
+        "report",
+        "--title",
+        "Export fails",
+        "--text",
+        str(clean),
+        answer="n\n",
+        intake="http://127.0.0.1:9/findings/intake",
+        level="automatic",
+    )
+    assert declined.returncode == 0, declined.stderr
+    assert "This is exactly what would be sent" in declined.stdout
+    assert "Send it?" in declined.stdout and "Nothing was sent." in declined.stdout
+
+
+def test_review_shows_each_candidate_and_remembers_local_for_us(tmp_path: Path) -> None:
+    """ADR-0118: at `review` each candidate is shown with the text that would leave; "local"
+    is remembered for that lack, and it is not offered again."""
+    state = tmp_path / "state"
+    asyncio.run(a_run_that_lacks_a_worker(state))
+    intake = "http://127.0.0.1:9/findings/intake"
+    shown = findings(state)
+    assert "A product candidate: it may leave" in shown.stdout
+    off = findings(state, "review")
+    assert off.returncode == 2 and "TAKTUS_FINDINGS_LEVEL" in off.stderr
+
+    not_now = findings(state, "review", answer="not\n", intake=intake)
+    assert not_now.returncode == 0, not_now.stderr
+    assert "This is exactly what would leave" in not_now.stdout
+    assert "Product finding: no worker offers code.review" in not_now.stdout
+    assert "offered again at the next review" in not_now.stdout
+    local = findings(state, "review", answer="local\n", intake=intake)
+    assert "Remembered as local for us" in local.stdout, local.stdout + local.stderr
+    again = findings(state, "review", intake=intake)
+    assert again.returncode == 0 and "nothing to review" in again.stdout
+    assert "Local for us: a person said so in review" in findings(state).stdout

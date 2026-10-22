@@ -66,6 +66,8 @@ FETCH_TIMEOUT = 60
 READ, GENERATE = "data.read", "data.generate"
 TRAIN, EVALUATE, PREDICT = "ml.train", "ml.evaluate", "ml.predict"
 TOOLS = [READ, GENERATE, TRAIN, EVALUATE, PREDICT]
+CAPABILITIES = TOOLS
+"""What this worker offers; the release's list of what it ships reads it (ADR-0118)."""
 OPERATIONS = ("train", "evaluate", "predict")
 
 # What a step is expected to cost, in compute seconds, before the estimate factor: a fixed part
@@ -416,7 +418,7 @@ class Worker:
         return {
             "contract": CONTRACT,
             "version": VERSION,
-            "capabilities": list(TOOLS),
+            "capabilities": list(CAPABILITIES),
             "consumption": {"kinds": kinds, "resource_classes": [self.resource_class]},
             "supports": {
                 "native_pause": False,
