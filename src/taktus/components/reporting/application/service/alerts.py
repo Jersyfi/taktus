@@ -15,12 +15,15 @@ answered that it is done, sends nothing more. A tenant without an owner-facing c
 nothing, and the view says that the report was not delivered and why.
 
 Given the product findings, a local lack is one more alert: a step lacks what the project
-itself must provide, and only its owner hears of it (ADR-0118).
+itself must provide, and only its owner hears of it (ADR-0118). The lacks are read from the
+blocked-time accounts at most once every `LACKS_EVERY`, as the findings are sent, and not at
+every look: reading the accounts costs a read of every run.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from taktus.components.reporting.application.query import ReportQueries
 from taktus.components.reporting.application.service.broken_interfaces import (
@@ -44,6 +47,9 @@ from taktus.components.reporting.domain.service import alerts as rule
 from taktus.components.reporting.ports import Signals
 from taktus.ports.clock import Clock
 from taktus.ports.persistence import Tenant
+
+LACKS_EVERY = timedelta(minutes=10)
+"""How old the local lacks a look reports may be."""
 
 
 @dataclass(frozen=True)
@@ -96,6 +102,7 @@ class Alerts:
     ) -> None:
         """Given `findings`, every local lack is an alert too (ADR-0118)."""
         self._findings = findings
+        self._lacks: dict[Tenant, tuple[datetime, tuple[Alert, ...]]] = {}
         self._signals = signals
         self._reports = reports
         self._channels = channels
@@ -118,8 +125,7 @@ class Alerts:
             *rule.lowered(signalled.lowered),
             *rule.raises(signalled.raises),
         ]
-        if self._findings is not None:
-            found += rule.local_lacks(await self._findings.classified(tenant))
+        found += await self._local_lacks(tenant)
         backup = rule.backup(signalled.backup, self._clock.now())
         if backup is not None:
             found.append(backup)
@@ -169,6 +175,16 @@ class Alerts:
             if report.message() is not None:
                 delivered += 1
         return Reported(raised=raised, delivered=delivered, refused=refused)
+
+    async def _local_lacks(self, tenant: Tenant) -> tuple[Alert, ...]:
+        if self._findings is None:
+            return ()
+        now = self._clock.now()
+        kept = self._lacks.get(tenant)
+        if kept is None or now - kept[0] >= LACKS_EVERY:
+            kept = (now, rule.local_lacks(await self._findings.classified(tenant)))
+            self._lacks[tenant] = kept
+        return kept[1]
 
     def _command(self, tenant: Tenant, alert: Alert) -> RaiseReport:
         return RaiseReport(

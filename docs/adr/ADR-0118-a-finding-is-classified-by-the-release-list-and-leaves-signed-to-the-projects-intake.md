@@ -176,7 +176,8 @@ Its operator reports it by hand. In review a person can call any candidate local
 call a local lack a candidate except by a report by hand.
 
 A local lack reaches a person only where the tenant configured an owner-facing channel
-(ADR-0106). Otherwise it is in `taktusctl alerts` and `taktusctl findings`, and nowhere else.
+(ADR-0106). The alerts read the lacks at most every ten minutes, because the read costs a read
+of every run; a lack is said up to ten minutes after it was met, and clears as late. Otherwise it is in `taktusctl alerts` and `taktusctl findings`, and nowhere else.
 
 The signature proves that a submission came from the holder of a key. It does not prove who
 that is. The owner's confirmation is what admits a sender, and the owner confirms by the
