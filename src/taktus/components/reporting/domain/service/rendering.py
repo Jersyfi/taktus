@@ -46,10 +46,12 @@ KIND_IN_THE_REPOSITORY: dict[ReportKind, str] = {
 
 
 def view_url(channel: OwnerChannel, report_id: str) -> str | None:
-    """Where the report's view is read, when the control plane's address is configured."""
+    """Where the report's view is read, when the control plane's address is configured: the
+    report's page in the web app, under the reader's sign-in (DEC-0218, ADR-0120). Its route
+    is the part after `#`, as `web/src/lib/links.ts` builds it."""
     if channel.view_base is None:
         return None
-    return f"{channel.view_base.rstrip('/')}/owner/reports/{report_id}"
+    return f"{channel.view_base.rstrip('/')}/app/#/reports/{quote(report_id, safe='')}"
 
 
 def repository_text(report: Report) -> str:

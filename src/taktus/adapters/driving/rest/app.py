@@ -11,13 +11,14 @@ of an intake event into a command by the identity the identity component places,
 a person creates in their Taktus account to link a channel account (ADR-0040), the decision
 requests addressed to a decider — listed, answered, the reading confirmed — and the decider's
 own response times (ADR-0042), the reports to the owner as their view and their repository
-text (ADR-0045), a read API for the runs and ledger entries the reader may see, and the live
-stream of changes of state as Server-Sent Events (ADR-0055), and the administration of the
-instance's tenants for the holder of its administration key (ADR-0104), and the intake of
-other instances' signed findings where the operator opened it (ADR-0118), and each process's
-level with its correction rates and this instance's own findings with their review (ADR-0122).
-No other write, no UI. An answer the owner writes in the thread of a report arrives through
-the webhook intake.
+text, and the answer to one given on its page in the web app (ADR-0045, ADR-0120), a read API
+for the runs and ledger entries the reader may see, and the live stream of changes of state as
+Server-Sent Events (ADR-0055), and the administration of the instance's tenants for the holder
+of its administration key (ADR-0104), and the intake of other instances' signed findings where
+the operator opened it (ADR-0118), and each process's level with its correction rates and this
+instance's own findings with their review (ADR-0122). No other write, no UI. An answer the owner
+writes in the thread of a report arrives through the webhook intake. A browser that opens an
+old link to a report without a key is sent to the report's page in the web app (ADR-0120).
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -33,10 +34,11 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
@@ -62,6 +64,7 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.identity.application.service import UnknownIdentity
 from taktus.components.reporting.application.query import view as report_view
+from taktus.components.reporting.application.service import AnswerOnPage
 from taktus.components.reporting.domain.model import (
     Change,
     Reader,
@@ -579,14 +582,24 @@ def _owner(services: RestServices) -> APIRouter:
     @router.get(
         "/owner/reports/{report_id}",
         summary="One report to the owner, with its history",
+        description="A browser that asks for a page and sends no account key is sent to the "
+        "report's page in the web app, where the reader signs in (ADR-0120). A client that "
+        "asks for JSON is answered with the view, or with a problem.",
         responses={
             200: {"description": "The report's view."},
+            303: {"description": "A browser without a key: the report's page in the web app."},
             404: {"description": "No such report.", **PROBLEM},
             **unauthenticated,
             **INVALID,
         },
     )
-    async def one(report_id: str, authorization: str | None = Header(default=None)) -> Any:
+    async def one(
+        report_id: str,
+        authorization: str | None = Header(default=None),
+        accept: str | None = Header(default=None),
+    ) -> Any:
+        if authorization is None and _wants_a_page(accept):
+            return RedirectResponse(url=_report_page(report_id), status_code=303)
         who = await _authenticated(services, authorization)
         if who is None:
             return problem(401, needs_key)
@@ -620,7 +633,103 @@ def _owner(services: RestServices) -> APIRouter:
             return problem(404, f"no report {report_id!r}")
         return Response(repository_text(found), media_type="text/markdown")
 
+    async def _answered(who: Resolution, report_id: str, command: AnswerOnPage) -> Any:
+        if not await services.owner_reports.may_read(who.tenant, who.identity):
+            return problem(403, not_a_reader)
+        answered = await services.answer_report.on_page(command)
+        if answered is None:
+            return problem(404, f"no report {report_id!r}")
+        if answered.outcome == "nothing_to_confirm":
+            return problem(409, f"no reading of your answer to {report_id} waits to be confirmed")
+        return JSONResponse(
+            {
+                "outcome": answered.outcome,
+                "message": answered.said,
+                "report": report_view(answered.report, who.identity),
+            }
+        )
+
+    @router.post(
+        "/owner/reports/{report_id}/answer",
+        summary="Answer a report on its page",
+        description="With `option`, one offered answer by its identifier; with `text`, the "
+        "answer in your words, read by the same rule as in the channel. Neither takes effect: "
+        "the reading comes back as the channel would say it, and only once you confirm it is "
+        "the answer filed (ADR-0008, ADR-0120). Nothing is said in the channel.",
+        responses={
+            200: {"description": "What became of the answer, the sentence said back, the view."},
+            404: {"description": "No such report.", **PROBLEM},
+            **unauthenticated,
+            **INVALID,
+        },
+    )
+    async def answer(
+        report_id: str, body: ReportAnswerBody, authorization: str | None = Header(default=None)
+    ) -> Any:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        if (body.option is None) == (body.text is None):
+            return problem(422, "give either `option` or `text`")
+        command = AnswerOnPage(
+            tenant=who.tenant,
+            report_id=report_id,
+            identity=who.identity,
+            option=body.option,
+            text=body.text,
+        )
+        return await _answered(who, report_id, command)
+
+    @router.post(
+        "/owner/reports/{report_id}/confirm",
+        summary="Confirm, or reject, how your answer to a report was read",
+        description="Confirmed, the answer is filed where it belongs — a decision in the "
+        "register, any other answer on the report. Rejected, nothing is filed and the report "
+        "is open again. Only the person whose answer was read confirms it.",
+        responses={
+            200: {"description": "What became of the reading, the sentence said back, the view."},
+            404: {"description": "No such report.", **PROBLEM},
+            409: {"description": "No reading of your answer waits.", **PROBLEM},
+            **unauthenticated,
+            **INVALID,
+        },
+    )
+    async def confirm(
+        report_id: str, body: ConfirmBody, authorization: str | None = Header(default=None)
+    ) -> Any:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, needs_key)
+        command = AnswerOnPage(
+            tenant=who.tenant,
+            report_id=report_id,
+            identity=who.identity,
+            confirmed=body.confirmed,
+        )
+        return await _answered(who, report_id, command)
+
     return router
+
+
+class ReportAnswerBody(BaseModel):
+    option: str | None = Field(
+        default=None, min_length=1, description="The identifier of one offered answer."
+    )
+    text: str | None = Field(
+        default=None, min_length=1, description="The answer in your words, as in the channel."
+    )
+
+
+def _wants_a_page(accept: str | None) -> bool:
+    """Whether the request comes from a browser opening a link: it accepts HTML. A client that
+    asks for JSON, or names no type, is answered as before."""
+    return accept is not None and "text/html" in accept.lower()
+
+
+def _report_page(report_id: str) -> str:
+    """The report's page in the web app, relative to `{prefix}/owner/reports/{id}`, so that it
+    is right under whatever prefix the instance is served (ADR-0063 §1)."""
+    return f"../../app/#/reports/{quote(report_id, safe='')}"
 
 
 def _refused(error: DecisionError) -> JSONResponse:

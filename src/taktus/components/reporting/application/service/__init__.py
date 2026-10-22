@@ -3,6 +3,7 @@ from taktus.components.reporting.application.service.answer_in_channel import (
     Answer,
     AnswerInChannel,
     AnswerInChannelHandler,
+    AnswerOnPage,
 )
 from taktus.components.reporting.application.service.broken_interfaces import (
     BrokenInterfaces,
@@ -103,6 +104,7 @@ __all__ = [
     "Answer",
     "AnswerInChannel",
     "AnswerInChannelHandler",
+    "AnswerOnPage",
     "BrokenInterfaces",
     "ByHand",
     "Changed",

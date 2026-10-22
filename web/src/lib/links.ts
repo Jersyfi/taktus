@@ -27,3 +27,9 @@ export function requestsLink(requestId?: string): string {
 export function changeLink(processId: string): string {
 	return `#/changes/${encodeURIComponent(processId)}`;
 }
+
+/** A report to the owner: where every link a channel carries to it leads (ADR-0120). The
+ * control plane builds the same route (`rendering.py`'s `view_url`). */
+export function reportLink(reportId: string): string {
+	return `#/reports/${encodeURIComponent(reportId)}`;
+}

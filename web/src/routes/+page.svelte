@@ -11,6 +11,7 @@
 	import { followLevel } from '../lib/live';
 	import { motion } from '../lib/motion.svelte';
 	import OverviewView from '../lib/OverviewView.svelte';
+	import OpenReports from '../lib/OpenReports.svelte';
 	import type { OverviewLevel } from '../lib/types';
 	// What governs the work (ADR-0122): a section of its own.
 	import { currentAdministrationKey, governanceLines, type Line } from '../lib/governance';
@@ -62,6 +63,11 @@
 	<p class="status">Reading the overview…</p>
 {/if}
 {#if key && governs.length}<GovernanceLines lines={governs} />{/if}
+
+<!-- The reports that wait for an answer, each leading to its page (DEC-0218, ADR-0120). -->
+{#if key}
+	<OpenReports {key} />
+{/if}
 
 <style>
 	.status {

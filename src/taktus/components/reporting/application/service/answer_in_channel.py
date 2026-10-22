@@ -80,11 +80,49 @@ class AnswerInChannel:
 
 
 @dataclass(frozen=True)
+class AnswerOnPage:
+    """An answer given on the report's page in the web app (ADR-0120): an offered answer
+    chosen by its identifier, the reader's own words, or the confirmation of a reading."""
+
+    tenant: Tenant
+    report_id: str
+    identity: str
+    """Who answered, as their account key proved it."""
+    option: str | None = None
+    """The identifier of an offered answer the reader chose."""
+    text: str | None = None
+    """The reader's own words, read by the same rule as in the channel."""
+    confirmed: bool | None = None
+    """True or False: the reader confirms or rejects the reading sent back to them."""
+
+
+ON_PAGE = "web"
+"""Where an answer given on the report's page was given (`Filed.where`)."""
+
+
+@dataclass(frozen=True)
+class _Place:
+    """Where an answer was given, and where the sentence said back goes: a thread of the
+    channel, or the report's page, which says nothing in the channel."""
+
+    tenant: Tenant
+    identity: str | None
+    where: str
+    channel: Capability | None = None
+    address: str | None = None
+    thread: str | None = None
+    event: str | None = None
+
+
+@dataclass(frozen=True)
 class Answer:
     report: Report
     outcome: str
-    """`not_filed`, `closed`, `asked_back`, `reflected`, `reread`, `refused` or `filed`."""
+    """`not_filed`, `closed`, `asked_back`, `reflected`, `reread`, `refused`, `filed`, or, on
+    the page only, `nothing_to_confirm`."""
     replied: bool
+    said: str = ""
+    """The sentence said back: in the thread, or on the report's page."""
 
 
 class AnswerInChannelHandler:
@@ -125,35 +163,88 @@ class AnswerInChannelHandler:
         report = next((r for r in reports if r.answers_in(command.address, command.thread)), None)
         if report is None:
             return None
+        place = _Place(
+            tenant=command.tenant,
+            identity=command.identity,
+            where=f"{command.channel} {command.address} {command.thread}",
+            channel=command.channel,
+            address=command.address,
+            thread=command.thread,
+            event=command.event,
+        )
+        confirmed: bool | None = None
+        reading = report.reading
+        if (
+            report.state is ReportState.REFLECTED
+            and reading is not None
+            and reading.by == command.identity
+        ):
+            confirmed = rules.confirmation(command.text, channel.phrasebook)
+        return await self._answer(place, report, channel, command.text, None, confirmed)
+
+    async def on_page(self, command: AnswerOnPage) -> Answer | None:
+        """The answer given on the report's page; None when the tenant has no such report.
+        A confirmation with no reading of this person's waiting changes nothing."""
+        async with self._work.transaction(command.tenant):
+            channel = await self._channels.get(command.tenant, command.tenant)
+            report = await self._reports.get(command.tenant, command.report_id)
+        if channel is None or report is None:
+            return None
+        place = _Place(tenant=command.tenant, identity=command.identity, where=ON_PAGE)
+        if command.confirmed is not None and channel.may_answer(command.identity):
+            reading = report.reading
+            if (
+                report.state is not ReportState.REFLECTED
+                or reading is None
+                or reading.by != command.identity
+            ):
+                return Answer(report=report, outcome="nothing_to_confirm", replied=False)
+        chosen = command.option
+        if chosen is not None and all(o.id != chosen for o in report.offered):
+            chosen = None
+        return await self._answer(
+            place, report, channel, command.text or "", chosen, command.confirmed
+        )
+
+    async def _answer(
+        self,
+        place: _Place,
+        report: Report,
+        channel: OwnerChannel,
+        text: str,
+        chosen: str | None,
+        confirmed: bool | None,
+    ) -> Answer:
+        """One answer, wherever it was given: `chosen` is an offered answer picked by its
+        identifier, `confirmed` the confirmation of the reading that waits for this person."""
         book = channel.phrasebook
         now = self._clock.now()
-        who = command.identity
-        where = f"{command.channel} {command.address} {command.thread}"
+        who = place.identity
         if who is None or not channel.may_answer(who):
-            return await self._close(command, report, "not_filed", book.not_filed, who)
+            return await self._close(place, report, "not_filed", book.not_filed)
         if report.state is ReportState.FILED:
-            return await self._close(command, report, "closed", book.closed, who)
+            return await self._close(place, report, "closed", book.closed)
         reading = report.reading
-        if report.state is ReportState.REFLECTED and reading is not None and reading.by == who:
-            confirmed = rules.confirmation(command.text, book)
-            if confirmed is not None:
-                return await self._confirm(command, report, channel, reading, confirmed, where)
+        if confirmed is not None and reading is not None:
+            return await self._confirm(place, report, channel, reading, confirmed)
         if report.kind is ReportKind.DECISION:
             try:
-                read = await self._decisions.answer(command.tenant, report.id, who, command.text)
+                read = await self._decisions.answer(place.tenant, report.id, who, chosen or text)
             except DecisionRefused as error:
                 said = book.closed if error.closed else book.not_filed
                 return await self._close(
-                    command, report, "closed" if error.closed else "not_filed", said, who
+                    place, report, "closed" if error.closed else "not_filed", said
                 )
             option, kept = read.option, read.kept
+        elif chosen is not None:
+            option, kept = chosen, False
         elif report.kind is ReportKind.SIGNALS:
             starts = [o for o in report.offered if o.id != DONE]
-            option, kept = rules.offer(command.text, starts), False
-            if option is None and rules.done(command.text, book):
+            option, kept = rules.offer(text, starts), False
+            if option is None and rules.done(text, book):
                 option = DONE
         else:
-            option, kept = (DONE, False) if rules.done(command.text, book) else (None, False)
+            option, kept = (DONE, False) if rules.done(text, book) else (None, False)
         if option is None:
             updated = report.model_copy(
                 update={
@@ -162,7 +253,7 @@ class AnswerInChannelHandler:
                     "history": (*report.history, Happened(at=now, event="asked_back", by=who)),
                 }
             )
-            return await self._settle(command, updated, "asked_back", asked_back(report, book))
+            return await self._settle(place, updated, "asked_back", asked_back(report, book))
         new = Reading(answer=option, by=who, at=now, kept=kept)
         updated = report.model_copy(
             update={
@@ -171,16 +262,15 @@ class AnswerInChannelHandler:
                 "history": (*report.history, Happened(at=now, event="reflected", by=who)),
             }
         )
-        return await self._settle(command, updated, "reflected", reflected(report, new, book))
+        return await self._settle(place, updated, "reflected", reflected(report, new, book))
 
     async def _confirm(
         self,
-        command: AnswerInChannel,
+        place: _Place,
         report: Report,
         channel: OwnerChannel,
         reading: Reading,
         confirmed: bool,
-        where: str,
     ) -> Answer:
         book = channel.phrasebook
         now = self._clock.now()
@@ -188,12 +278,12 @@ class AnswerInChannelHandler:
         if report.kind is ReportKind.DECISION:
             try:
                 entry = await self._decisions.confirm(
-                    command.tenant, report.id, reading.by, confirmed
+                    place.tenant, report.id, reading.by, confirmed
                 )
             except DecisionRefused as error:
                 said = book.closed if error.closed else book.not_filed
                 outcome = "closed" if error.closed else "not_filed"
-                return await self._close(command, report, outcome, said, reading.by)
+                return await self._close(place, report, outcome, said)
         if not confirmed:
             reopened = report.model_copy(
                 update={
@@ -205,7 +295,7 @@ class AnswerInChannelHandler:
                     ),
                 }
             )
-            return await self._settle(command, reopened, "reread", book.reread)
+            return await self._settle(place, reopened, "reread", book.reread)
         said = filed(reading.answer, book)
         process = (
             corridors.intervened(reading.answer) if report.kind is ReportKind.SIGNALS else None
@@ -215,12 +305,12 @@ class AnswerInChannelHandler:
                 if self._interventions is None:
                     raise InterventionRefused("no intervention can be started here")
                 entry = await self._interventions.start(
-                    command.tenant,
+                    place.tenant,
                     process,
                     by=reading.by,
                     report=report.id,
-                    channel=command.channel,
-                    address=command.address,
+                    channel=place.channel or channel.channel,
+                    address=place.address or channel.address,
                 )
             except InterventionRefused:
                 refused = report.model_copy(
@@ -234,11 +324,13 @@ class AnswerInChannelHandler:
                     }
                 )
                 return await self._settle(
-                    command, refused, "refused", book.act_refused or book.not_filed
+                    place, refused, "refused", book.act_refused or book.not_filed
                 )
             if book.intervened is not None:
                 said = book.intervened.format(process=process, run=entry)
-        answer = Filed(answer=reading.answer, by=reading.by, at=now, record=entry, where=where)
+        answer = Filed(
+            answer=reading.answer, by=reading.by, at=now, record=entry, where=place.where
+        )
         done = report.model_copy(
             update={
                 "state": ReportState.FILED,
@@ -247,39 +339,39 @@ class AnswerInChannelHandler:
                 "history": (*report.history, Happened(at=now, event="filed", by=reading.by)),
             }
         )
-        return await self._settle(command, done, "filed", said)
+        return await self._settle(place, done, "filed", said)
 
-    async def _close(
-        self, command: AnswerInChannel, report: Report, outcome: str, said: str, who: str | None
-    ) -> Answer:
+    async def _close(self, place: _Place, report: Report, outcome: str, said: str) -> Answer:
         """An answer that changes nothing: it is acknowledged, and the history says so."""
         event = "answer_not_filed" if outcome == "not_filed" else "answer_after_filing"
         noted = report.model_copy(
             update={
                 "history": (
                     *report.history,
-                    Happened(at=self._clock.now(), event=event, by=who),
+                    Happened(at=self._clock.now(), event=event, by=place.identity),
                 )
             }
         )
-        return await self._settle(command, noted, outcome, said)
+        return await self._settle(place, noted, outcome, said)
 
-    async def _settle(
-        self, command: AnswerInChannel, report: Report, outcome: str, said: str
-    ) -> Answer:
+    async def _settle(self, place: _Place, report: Report, outcome: str, said: str) -> Answer:
+        """The report kept, and the sentence said back in the thread where the answer was given.
+        On the page nothing is said in the channel: the page shows the sentence."""
         replied = False
-        if not self._secrets.carried_by(said):
+        if self._secrets.carried_by(said):
+            said = ""
+        if said and place.channel is not None and place.address is not None and place.event:
             sent = await self._deliveries.say(
-                command.tenant,
-                command.channel,
-                command.address,
+                place.tenant,
+                place.channel,
+                place.address,
                 said,
-                thread=command.thread,
-                key=key(report.id, command.event, "reply"),
+                thread=place.thread,
+                key=key(report.id, place.event, "reply"),
             )
             replied = isinstance(sent, Sent)
-        async with self._work.transaction(command.tenant):
-            await self._reports.put(command.tenant, report)
+        async with self._work.transaction(place.tenant):
+            await self._reports.put(place.tenant, report)
             kind = FILED if outcome == "filed" else ANSWERED
-            await record(self._ledger, report, kind, outcome, actor=command.identity)
-        return Answer(report=report, outcome=outcome, replied=replied)
+            await record(self._ledger, report, kind, outcome, actor=place.identity)
+        return Answer(report=report, outcome=outcome, replied=replied, said=said)

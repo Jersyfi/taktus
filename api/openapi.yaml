@@ -447,6 +447,9 @@ paths:
       tags:
       - owner
       summary: One report to the owner, with its history
+      description: A browser that asks for a page and sends no account key is sent to the report's page
+        in the web app, where the reader signs in (ADR-0120). A client that asks for JSON is answered
+        with the view, or with a problem.
       operationId: one_owner_reports__report_id__get
       parameters:
       - name: report_id
@@ -463,6 +466,14 @@ paths:
           - type: string
           - type: 'null'
           title: Authorization
+      - name: accept
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Accept
       responses:
         '200':
           description: The report's view.
@@ -470,6 +481,8 @@ paths:
             application/json:
               schema:
                 title: Response One Owner Reports  Report Id  Get
+        '303':
+          description: 'A browser without a key: the report''s page in the web app.'
         '404':
           description: No such report.
           content:
@@ -519,6 +532,117 @@ paths:
             text/markdown: {}
         '404':
           description: No such report.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /owner/reports/{report_id}/answer:
+    post:
+      tags:
+      - owner
+      summary: Answer a report on its page
+      description: 'With `option`, one offered answer by its identifier; with `text`, the answer in your
+        words, read by the same rule as in the channel. Neither takes effect: the reading comes back as
+        the channel would say it, and only once you confirm it is the answer filed (ADR-0008, ADR-0120).
+        Nothing is said in the channel.'
+      operationId: answer_owner_reports__report_id__answer_post
+      parameters:
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Report Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportAnswerBody'
+      responses:
+        '200':
+          description: What became of the answer, the sentence said back, the view.
+          content:
+            application/json:
+              schema:
+                title: Response Answer Owner Reports  Report Id  Answer Post
+        '404':
+          description: No such report.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /owner/reports/{report_id}/confirm:
+    post:
+      tags:
+      - owner
+      summary: Confirm, or reject, how your answer to a report was read
+      description: Confirmed, the answer is filed where it belongs — a decision in the register, any other
+        answer on the report. Rejected, nothing is filed and the report is open again. Only the person
+        whose answer was read confirms it.
+      operationId: confirm_owner_reports__report_id__confirm_post
+      parameters:
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Report Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmBody'
+      responses:
+        '200':
+          description: What became of the reading, the sentence said back, the view.
+          content:
+            application/json:
+              schema:
+                title: Response Confirm Owner Reports  Report Id  Confirm Post
+        '404':
+          description: No such report.
+          content:
+            application/problem+json: {}
+        '409':
+          description: No reading of your answer waits.
           content:
             application/problem+json: {}
         '401':
@@ -1774,6 +1898,24 @@ components:
           description: What the rehearsal is given; without it, the active version's last run's.
       type: object
       title: RehearseBody
+    ReportAnswerBody:
+      properties:
+        option:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Option
+          description: The identifier of one offered answer.
+        text:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Text
+          description: The answer in your words, as in the channel.
+      type: object
+      title: ReportAnswerBody
     ReviewAnswer:
       properties:
         answer:
