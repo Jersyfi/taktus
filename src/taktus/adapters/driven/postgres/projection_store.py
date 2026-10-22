@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import BigInteger, func, literal_column, select
 from sqlalchemy.dialects.postgresql import insert
 
 from taktus.adapters.driven.postgres import _schema as s
@@ -38,7 +38,10 @@ class PostgresProjectionStore:
         self, tenant: Tenant, name: str, value: Projected, *, replace: bool = False
     ) -> bool:
         connection = self._persistence.connection(tenant)
-        key = func.hashtext(f"taktus.projection:{tenant}:{name}")
+        owner = select(s.tenant.c.lock_key).where(s.tenant.c.id == tenant).scalar_subquery()
+        high = func.cast(owner, BigInteger) * literal_column("4294967296::bigint")
+        low = func.hashtext(name).op("&")(literal_column("x'FFFFFFFF'::bigint"))
+        key = high + low
         if replace:
             await connection.execute(select(func.pg_advisory_xact_lock(key)))
         elif not await connection.scalar(select(func.pg_try_advisory_xact_lock(key))):

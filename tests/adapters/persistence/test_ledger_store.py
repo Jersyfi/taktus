@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
 from fakes import FakeClock
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from adapters.persistence import samples
 from adapters.persistence.conftest import Backend
+from taktus.adapters.driven.postgres import PostgresLeadership, _locks
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.ports.ledger import Fact
 from taktus.ports.persistence import DuplicateSequence, SpoiltTransaction
@@ -263,3 +267,89 @@ async def test_the_entries_of_some_runs_and_of_some_kinds_since_a_moment_are_rea
     assert [e.seq for e in budgets] == [1, 3]
     assert [e.seq for e in some] == [3, 4]
     assert nobody == []
+
+
+# --- the advisory locks (issue #317, ADR-0123) ---------------------------------------------------
+
+
+async def _old_key(connection: AsyncConnection, tenant: str) -> int | None:
+    return await connection.scalar(text("SELECT hashtext(:k)"), {"k": f"taktus.ledger:{tenant}"})
+
+
+async def test_tenants_whose_old_hashed_keys_collided_do_not_wait_for_each_other(
+    postgres_backend: Backend,
+) -> None:
+    """`tnt_111599` and `tnt_85816` shared one key when it was `hashtext('taktus.ledger:<id>')`."""
+    a, b = "tnt_111599", "tnt_85816"
+    async with postgres_backend.work.engine.connect() as connection:  # type: ignore[attr-defined]
+        assert await _old_key(connection, a) == await _old_key(connection, b)
+    for tenant in (a, b):
+        await postgres_backend._new_tenant(tenant)
+    store = postgres_backend.ledger_store
+    holding, release = asyncio.Event(), asyncio.Event()
+
+    async def hold_a() -> None:
+        async with postgres_backend.work.transaction(a):
+            await store.last(a)
+            holding.set()
+            await release.wait()
+
+    holder = asyncio.create_task(hold_a())
+    try:
+        await asyncio.wait_for(holding.wait(), 10)
+
+        async def claim_b() -> object:
+            async with postgres_backend.work.transaction(b):
+                return await store.last(b)
+
+        # `a` holds its claim; `b` is granted at once, well inside the lock timeout.
+        assert await asyncio.wait_for(claim_b(), 3) is None
+    finally:
+        release.set()
+        await holder
+
+
+async def test_a_tenant_writes_while_a_leader_lives_and_its_old_key_is_held(
+    postgres_backend: Backend,
+) -> None:
+    """The leadership claim and the ledger claim share no key space. Another session holds the
+    one-key lock on the tenant's old ledger key and on the old leadership key of the role, and
+    a leader lives: the tenant's ledger is written all the same."""
+    tenant = await postgres_backend.tenant()
+    engine = postgres_backend.work.engine  # type: ignore[attr-defined]
+    lead = await PostgresLeadership(engine).try_lead("scheduler-317")
+    assert lead is not None and await lead.held()
+    try:
+        async with engine.connect() as holder:
+            await holder.execution_options(isolation_level="AUTOCOMMIT")
+            for key in (f"taktus.ledger:{tenant}", "taktus.lead:scheduler-317"):
+                await holder.execute(text("SELECT pg_advisory_lock(hashtext(:k))"), {"k": key})
+            store = postgres_backend.ledger_store
+
+            async def write() -> None:
+                async with postgres_backend.work.transaction(tenant):
+                    assert await store.last(tenant) is None
+                    await store.append(tenant, entry(1, None))
+
+            await asyncio.wait_for(write(), 3)
+    finally:
+        await lead.release()
+
+
+async def test_a_ledger_claim_is_in_its_own_namespace_apart_from_leadership(
+    postgres_backend: Backend,
+) -> None:
+    """A tenant's claim and a role's are in namespaces of their own."""
+    tenant = await postgres_backend.tenant()
+    engine = postgres_backend.work.engine  # type: ignore[attr-defined]
+    async with postgres_backend.work.transaction(tenant):
+        await postgres_backend.ledger_store.last(tenant)
+        async with engine.connect() as other:
+            result = await other.execute(
+                text(
+                    "SELECT DISTINCT classid::bigint FROM pg_locks "
+                    "WHERE locktype = 'advisory' AND objsubid = 2"
+                )
+            )
+            namespaces = set(result.scalars().all())
+    assert _locks.LEDGER in namespaces and _locks.LEADERSHIP not in namespaces

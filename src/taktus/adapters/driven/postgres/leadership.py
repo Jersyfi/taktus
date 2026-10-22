@@ -1,9 +1,9 @@
 """The leadership port over a session-level advisory lock (`try_lead` of revision 0001).
 
-A lead is a connection of its own that holds `pg_advisory_lock` for the role. It lives as long
-as the connection: an instance that dies loses its lock the moment the server notices the
-session is gone, and the next `try_lead` succeeds. `held()` proves the connection is still
-there by using it; a lost connection is a lost lead.
+A lead is a connection of its own that holds `pg_advisory_lock` for the role, in the namespace
+`_locks.LEADERSHIP`. It lives as long as the connection: an instance that dies loses its lock
+the moment the server notices the session is gone, and the next `try_lead` succeeds. `held()`
+proves the connection is still there by using it; a lost connection is a lost lead.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from taktus.adapters.driven.postgres import _locks
 from taktus.ports.leadership import Lead
 
 
@@ -32,9 +33,11 @@ class PostgresLead:
                     text(
                         "SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted "
                         "AND pid = pg_backend_pid() "
-                        "AND objid = (hashtext('taktus.lead:' || :role) & x'FFFFFFFF'::bigint)"
+                        "AND objsubid = 2 AND classid::bigint = :namespace "
+                        "AND objid::bigint = "
+                        "(hashtext('taktus.lead:' || :role) & x'FFFFFFFF'::bigint)"
                     ),
-                    {"role": self._role},
+                    {"role": self._role, "namespace": _locks.LEADERSHIP},
                 )
             ).first()
         except (OperationalError, DBAPIError):
@@ -47,8 +50,8 @@ class PostgresLead:
         self._released = True
         try:
             await self._connection.execute(
-                text("SELECT pg_advisory_unlock(hashtext('taktus.lead:' || :role))"),
-                {"role": self._role},
+                text("SELECT pg_advisory_unlock(:namespace, hashtext('taktus.lead:' || :role))"),
+                {"role": self._role, "namespace": _locks.LEADERSHIP},
             )
         except (OperationalError, DBAPIError):
             pass
