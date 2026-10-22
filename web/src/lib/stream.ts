@@ -1,9 +1,9 @@
 // The stream of changes, read as Server-Sent Events (ADR-0055).
 //
-// The browser's own `EventSource` cannot send a header, and the key is sent in no other place,
-// so the stream is read with `fetch` and a streamed body. The reader keeps the position of the
-// last event it received and reconnects with it as `Last-Event-ID`, after the wait the stream
-// names: it receives every change after it, or a fresh snapshot (ADR-0055 §6).
+// The stream is read with `fetch` and a streamed body, with the session cookie the browser sends
+// to the instance (ADR-0119). The reader keeps the position of the last event it received and
+// reconnects with it as `Last-Event-ID`, after the wait the stream names: it receives every
+// change after it, or a fresh snapshot (ADR-0055 §6).
 
 import type { Change, Snapshot } from './types';
 
@@ -69,7 +69,6 @@ export type Ended = { reason: 'refused'; status: number } | { reason: 'stopped' 
 
 export interface Follow {
 	url: URL;
-	key: string;
 	onEvent: (event: StreamEvent) => void;
 	/** Told whenever the connection opens (true) or is lost (false). */
 	onConnected?: (connected: boolean) => void;
@@ -91,7 +90,7 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
 	});
 }
 
-/** Follows the stream until the signal aborts or the surface refuses the key. */
+/** Follows the stream until the signal aborts or the surface refuses the reader. */
 export async function follow(options: Follow): Promise<Ended> {
 	const fetcher = options.fetcher ?? fetch;
 	const sleep = options.sleep ?? ((ms: number) => delay(ms, options.signal));
@@ -99,13 +98,10 @@ export async function follow(options: Follow): Promise<Ended> {
 	let retry = RETRY_DEFAULT;
 	let failures = 0;
 	while (!options.signal.aborted) {
-		const headers: Record<string, string> = {
-			Authorization: `Bearer ${options.key}`,
-			Accept: 'text/event-stream'
-		};
+		const headers: Record<string, string> = { Accept: 'text/event-stream' };
 		if (position !== undefined) headers['Last-Event-ID'] = position;
 		try {
-			const response = await fetcher(options.url, { headers, signal: options.signal });
+			const response = await fetcher(options.url, { headers, credentials: 'same-origin', signal: options.signal });
 			if (response.status === 401 || response.status === 403 || response.status === 404) {
 				return { reason: 'refused', status: response.status };
 			}

@@ -33,12 +33,15 @@ from taktus.components.governance.domain.model import (
     WatchConfiguration,
 )
 from taktus.components.identity.domain.model import (
+    BrowserSession,
     ChannelLink,
     Identity,
     LinkCode,
     LinkOrigin,
     code_id,
+    digest,
     link_id,
+    session_id,
 )
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import (
@@ -426,6 +429,18 @@ def link_code(tenant: str = "t") -> LinkCode:
         created_at=AT,
         expires_at=AT + timedelta(minutes=30),
         used_at=AT + timedelta(minutes=1),
+    )
+
+
+def browser_session(tenant: str = "t") -> BrowserSession:
+    return BrowserSession(
+        id=session_id("tks_" + "0" * 64),
+        tenant=tenant,
+        identity="idn_ada",
+        key_digest=digest("tka_" + "0" * 64),
+        created_at=AT,
+        expires_at=AT + timedelta(hours=12),
+        ended_at=AT + timedelta(hours=1),
     )
 
 

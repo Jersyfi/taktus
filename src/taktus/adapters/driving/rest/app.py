@@ -16,10 +16,12 @@ for the runs and ledger entries the reader may see, and the live stream of chang
 Server-Sent Events (ADR-0055), and the administration of the instance's tenants for the holder
 of its administration key (ADR-0104), and the intake of other instances' signed findings where
 the operator opened it (ADR-0118), and each process's level with its correction rates and this
-instance's own findings with their review (ADR-0122), and the reads of what keeps the operation
-running — incidents, alerts, the backup, signals (ADR-0121). No other write, no UI. An answer the
-owner writes in the thread of a report arrives through the webhook intake. A browser that opens an
-old link to a report without a key is sent to the report's page in the web app (ADR-0120).
+instance's own findings with their review (ADR-0122), the reads of what keeps the operation
+running — incidents, alerts, the backup, signals (ADR-0121), and the web app's sign-in, which
+exchanges an account key once for a session cookie accepted wherever the key is (ADR-0119). No
+other write, no UI. An answer the owner writes in the thread of a report arrives through the
+webhook intake. A browser that opens an old link to a report without a key is sent to the
+report's page in the web app (ADR-0120).
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -50,6 +52,7 @@ from taktus.adapters.driving.rest import (
     operation,
     proposals,
     review,
+    session,
     tenants,
 )
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
@@ -135,6 +138,7 @@ def build_app(
     if full:
         app.include_router(_intake(services), prefix=base)
         app.include_router(_identity(services), prefix=base)
+        app.include_router(session.router(services, base), prefix=base)
         app.include_router(_decisions(services), prefix=base)
         app.include_router(_owner(services), prefix=base)
         app.include_router(_reads(services), prefix=base)
@@ -149,6 +153,8 @@ def build_app(
         app.include_router(autonomy.router(services, _authenticated), prefix=base)
         if web is not None and (web / "index.html").is_file():
             levels.mount_web(app, base, web)
+        # The web app's session cookie is accepted wherever the account key is (ADR-0119).
+        app.add_middleware(session.SessionCookies)
     return app
 
 
@@ -362,12 +368,21 @@ def _identity(services: RestServices) -> APIRouter:
     return router
 
 
+def _from_the_cookie(authorization: str) -> bool:
+    """Whether the credential is the web app's session cookie, handed over by the middleware."""
+    return authorization.partition(" ")[0].strip().lower() == session.SCHEME
+
+
 async def _authenticated(services: RestServices, authorization: str | None) -> Resolution | None:
-    """The identity the account key in `Authorization: Bearer` proves, or None."""
-    scheme, _, key = (authorization or "").partition(" ")
-    if scheme.lower() != "bearer":
-        return None
-    return await services.identities.authenticate(key.strip())
+    """The identity the account key in `Authorization: Bearer` proves, or the web app's
+    session cookie, which `session.SessionCookies` hands over as the scheme `Session`
+    (ADR-0119); None otherwise."""
+    scheme, _, credential = (authorization or "").partition(" ")
+    if scheme.lower() == "bearer":
+        return await services.identities.authenticate(credential.strip())
+    if scheme.lower() == session.SCHEME:
+        return await services.identities.session(credential.strip())
+    return None
 
 
 class AnswerBody(BaseModel):
@@ -608,7 +623,8 @@ def _owner(services: RestServices) -> APIRouter:
         authorization: str | None = Header(default=None),
         accept: str | None = Header(default=None),
     ) -> Any:
-        if authorization is None and _wants_a_page(accept):
+        # A browser is sent to the page whether or not it holds the session cookie (ADR-0119).
+        if _wants_a_page(accept) and (authorization is None or _from_the_cookie(authorization)):
             return RedirectResponse(url=_report_page(report_id), status_code=303)
         who = await _authenticated(services, authorization)
         if who is None:

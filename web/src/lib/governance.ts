@@ -4,7 +4,7 @@
 // tenants for an administrator (`GET /administration/tenants`). The pages show what they are
 // handed; nothing here computes a figure.
 
-import { read, send, type Answer } from './api';
+import { read, readAs, send, type Answer } from './api';
 
 // --- the shapes the surface answers --------------------------------------------------------------
 
@@ -158,18 +158,16 @@ export function needsOf(reports: OwnerReport[]): OwnerReport[] {
 /** An answer in review, sent to be read back. It changes nothing on the instance. */
 export function readBack(
 	base: URL,
-	key: string,
 	lack: string,
 	answer: ReviewChoice,
 	fetcher: typeof fetch = fetch
 ): Promise<Answer<ReviewReading>> {
-	return send<ReviewReading>(base, `findings/${encodeURIComponent(lack)}/review`, key, { answer }, fetcher);
+	return send<ReviewReading>(base, `findings/${encodeURIComponent(lack)}/review`, { answer }, fetcher);
 }
 
 /** The reading confirmed or rejected: only a confirmation of what was read back acts. */
 export function confirmReading(
 	base: URL,
-	key: string,
 	reading: ReviewReading,
 	confirmed: boolean,
 	fetcher: typeof fetch = fetch
@@ -177,7 +175,6 @@ export function confirmReading(
 	return send<ReviewDone>(
 		base,
 		`findings/${encodeURIComponent(reading.lack)}/review/confirm`,
-		key,
 		{ answer: reading.answer, confirmation: reading.confirmation, confirmed },
 		fetcher
 	);
@@ -226,17 +223,16 @@ function plural(n: number, one: string, many: string): string {
 /** One line per kind the reader may see. A kind the surface refuses the reader is left out. */
 export async function governanceLines(
 	base: URL,
-	key: string,
 	administrationKey: string | null,
 	fetcher: typeof fetch = fetch
 ): Promise<Line[]> {
 	const [requests, reports, autonomy, findings, tenants] = await Promise.all([
-		read<{ requests: unknown[]; overdue: number }>(base, 'decisions', key, fetcher),
-		read<{ reports: OwnerReport[] }>(base, 'owner/reports', key, fetcher),
-		read<AutonomyAnswer>(base, 'autonomy', key, fetcher),
-		read<FindingsAnswer>(base, 'findings', key, fetcher),
+		read<{ requests: unknown[]; overdue: number }>(base, 'decisions', fetcher),
+		read<{ reports: OwnerReport[] }>(base, 'owner/reports', fetcher),
+		read<AutonomyAnswer>(base, 'autonomy', fetcher),
+		read<FindingsAnswer>(base, 'findings', fetcher),
 		administrationKey
-			? read<{ tenants: Tenant[] }>(base, 'administration/tenants', administrationKey, fetcher)
+			? readAs<{ tenants: Tenant[] }>(base, 'administration/tenants', administrationKey, fetcher)
 			: Promise.resolve(null)
 	]);
 	const lines: Line[] = [];

@@ -84,7 +84,12 @@ from taktus.components.governance.application.service import (
 )
 from taktus.components.governance.domain.model import Incident, WatchConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
-from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
+from taktus.components.identity.domain.model import (
+    BrowserSession,
+    ChannelLink,
+    Identity,
+    LinkCode,
+)
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.expectations import ExpectationsHandler
 from taktus.components.process.application.service.proposals import Proposals
@@ -376,10 +381,12 @@ async def wire(
             identities=PostgresRepository(persistence, Identity),
             links=PostgresRepository(persistence, ChannelLink),
             codes=PostgresRepository(persistence, LinkCode),
+            sessions=PostgresRepository(persistence, BrowserSession),
             work=persistence,
             ledger=ledger,
             clock=clock,
             randomness=SystemRandomness(),
+            session_lifetime=timedelta(hours=settings.session_hours),
         )
         provenance_store = PostgresProvenanceStore(persistence)
         queue = PostgresQueue(persistence, lease_seconds=settings.lease_seconds)

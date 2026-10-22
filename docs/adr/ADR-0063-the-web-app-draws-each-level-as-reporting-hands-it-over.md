@@ -2,7 +2,7 @@
 
 **Status:** accepted · builds the web app and the run level of UC-6.10 (issue #105, DEC-0055);
 answers the question ADR-0059 left to this change · amended 2026-10-12: every level opens with
-its summary (§6; DEC-0185); it answers the decision requests addressed to the reader (§4)
+its summary (§6; DEC-0185); it answers the decision requests addressed to the reader (§4) · amended by ADR-0119: the reader signs in once per browser, not per tab (§4)
 
 ## Context
 UC-6.10 requires four live representations — the overview, the process, the run and the origin
@@ -84,6 +84,10 @@ reads them from `GET /decisions`, sends an answer to `POST /decisions/{id}/answe
 confirmation to `POST /decisions/{id}/confirm` (ADR-0042), with the same key in the same header.
 Those are the only writes it makes. It decides nothing itself: it shows the reading the surface
 sends back, and nothing takes effect before the reader confirms it (ADR-0008).
+
+Amended by ADR-0119: the key is no longer kept for the tab. The web app exchanges it once for a
+session cookie the page cannot read, and forgets it. The cookie is sent with every request in
+every tab until it expires or the reader signs out.
 
 ### 5. The web app's checks are a gate
 `make gate-web` installs the web app's packages from its lock file, checks its types, runs its

@@ -4,29 +4,26 @@
 -->
 <script lang="ts">
 	import { read, surface } from '../../lib/api';
-	import KeyForm from '../../lib/KeyForm.svelte';
-	import { currentKey } from '../../lib/key';
+	import SignInForm from '../../lib/SignInForm.svelte';
 	import type { ResponseTimes } from '../../lib/types';
 	import YoursView from '../../lib/YoursView.svelte';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let times: ResponseTimes | null = $state(null);
 
 	$effect(() => {
-		if (!key) return;
-		void read<ResponseTimes>(surface(location.href), 'decisions/response-times', key).then((answer) => {
+		if (!signedIn) return;
+		void read<ResponseTimes>(surface(location.href), 'decisions/response-times').then((answer) => {
 			if (answer.ok) times = answer.body;
 			else if (answer.problem.status === 401) {
-				refused = true;
-				key = null;
+				signedIn = false;
 			}
 		});
 	});
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if times}
 	<YoursView {times} />
 {:else}

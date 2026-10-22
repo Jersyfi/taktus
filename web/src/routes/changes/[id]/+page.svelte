@@ -1,18 +1,16 @@
 <!--
 	A process changed in dialogue, and rolled back (UC-4.15, ADR-0091 §6). Reads the process level
-	for its versions and the process's proposals; sends only the writes ADR-0091 §6 names, with the
-	key in the header and nowhere else (ADR-0063 §4).
+	for its versions and the process's proposals; sends only the writes ADR-0091 §6 names, as the
+	signed-in reader (ADR-0119).
 -->
 <script lang="ts">
 	import { page } from '$app/state';
 	import { read, send, surface } from '../../../lib/api';
 	import ChangeView from '../../../lib/ChangeView.svelte';
-	import KeyForm from '../../../lib/KeyForm.svelte';
-	import { currentKey } from '../../../lib/key';
+	import SignInForm from '../../../lib/SignInForm.svelte';
 	import type { ProcessLevel, Proposal } from '../../../lib/types';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let absent = $state(false);
 	let level: ProcessLevel | null = $state(null);
 	let proposals: Proposal[] = $state([]);
@@ -24,15 +22,14 @@
 	const path = (rest: string) => `processes/${encodeURIComponent(processId)}${rest}`;
 
 	async function reload() {
-		if (!key) return;
+		if (!signedIn) return;
 		const [found, listed] = await Promise.all([
-			read<ProcessLevel>(base(), `levels/${path('')}`, key),
-			read<{ proposals: Proposal[] }>(base(), path('/proposals'), key)
+			read<ProcessLevel>(base(), `levels/${path('')}`),
+			read<{ proposals: Proposal[] }>(base(), path('/proposals'))
 		]);
 		if (!found.ok) {
 			if (found.problem.status === 401) {
-				refused = true;
-				key = null;
+				signedIn = false;
 			} else absent = true;
 			return;
 		}
@@ -41,25 +38,24 @@
 	}
 
 	$effect(() => {
-		if (key && processId) void reload();
+		if (signedIn && processId) void reload();
 	});
 
 	async function act(rest: string, body: unknown, done: (answer: Record<string, unknown>) => string) {
-		if (!key) return;
+		if (!signedIn) return;
 		busy = true;
-		const answer = await send<Record<string, unknown>>(base(), path(rest), key, body);
+		const answer = await send<Record<string, unknown>>(base(), path(rest), body);
 		busy = false;
 		if (answer.ok) message = done(answer.body);
 		else if (answer.problem.status === 401) {
-			refused = true;
-			key = null;
+			signedIn = false;
 		} else message = answer.problem.detail || answer.problem.title;
 		await reload();
 	}
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if absent}
 	<p>No process {processId} you may see.</p>
 {:else if level}

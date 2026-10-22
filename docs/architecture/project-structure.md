@@ -277,6 +277,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   `adapters/driving/rest/wiring.py`. `composition/operation.py` implements it over the
   governance component's incidents, which `composition/expected_runs.py` hands over, and the
   reporting component's alerts, backup and signals. The surface reads; nothing there decides.
+- **The web app's sign-in** is the `api` role's (`adapters/driving/rest/session.py`,
+  ADR-0119). `POST /session` exchanges the account key once for a session cookie, and
+  `DELETE /session` ends it. The middleware `SessionCookies` hands the cookie to every route as
+  the request's credential, the stream of changes included, and refuses a write with it from
+  another site. The identity component keeps the session (`BrowserSession`, table
+  `browser_session`) under a digest of its token. The composition root binds its repository and
+  its lifetime, `TAKTUS_SESSION_HOURS`, in every composition (`daemon.py`, `local.py`,
+  `replay.py`; `settings.py`).
 - **A decision that takes effect** on the HTTP surface (`adapters/driving/rest/app.py`) or in
   the owner's channel (`composition/owner_channel.py`) is handed to the run engine, which
   continues or halts the run it holds, and to `composition/moves.py` with its request. A

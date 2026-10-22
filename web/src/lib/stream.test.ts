@@ -29,8 +29,8 @@ describe('the event parser', () => {
 });
 
 describe('following the stream', () => {
-	it('sends the key in the header, resumes from the last position, and stops when refused', async () => {
-		const calls: { url: string; headers: Record<string, string> }[] = [];
+	it('sends the session cookie and no key, resumes from the last position, and stops when refused', async () => {
+		const calls: { url: string; headers: Record<string, string>; credentials?: RequestCredentials }[] = [];
 		const answers = [
 			new Response(
 				body(
@@ -43,14 +43,13 @@ describe('following the stream', () => {
 			new Response(null, { status: 401 })
 		];
 		const fetcher = (async (url: URL, init: RequestInit) => {
-			calls.push({ url: String(url), headers: init.headers as Record<string, string> });
+			calls.push({ url: String(url), headers: init.headers as Record<string, string>, credentials: init.credentials });
 			return answers.shift()!;
 		}) as unknown as typeof fetch;
 		const events: StreamEvent[] = [];
 		const waited: number[] = [];
 		const ended = await follow({
 			url: new URL('https://taktus.test/x/changes?run=r'),
-			key: 'tk_reader',
 			signal: new AbortController().signal,
 			onEvent: (e) => events.push(e),
 			fetcher,
@@ -58,10 +57,10 @@ describe('following the stream', () => {
 		});
 		expect(ended).toEqual({ reason: 'refused', status: 401 });
 		expect(events.map((e) => e.kind)).toEqual(['snapshot', 'change']);
-		expect(calls[0]!.headers['Authorization']).toBe('Bearer tk_reader');
+		expect(calls.every((c) => c.credentials === 'same-origin')).toBe(true);
+		expect(calls.every((c) => c.headers['Authorization'] === undefined)).toBe(true);
 		expect(calls[0]!.headers['Last-Event-ID']).toBeUndefined();
 		expect(calls[1]!.headers['Last-Event-ID']).toBe('h2');
-		expect(calls.every((c) => !c.url.includes('tk_reader'))).toBe(true);
 		expect(waited).toEqual([5]);
 	});
 });

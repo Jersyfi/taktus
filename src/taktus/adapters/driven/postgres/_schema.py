@@ -143,6 +143,20 @@ link_code = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+browser_session = Table(
+    "browser_session",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the digest of the token; the token is kept nowhere
+    Column("identity", Text, nullable=False),
+    Column("key_digest", Text, nullable=False),
+    _at("created_at"),
+    _at("expires_at"),
+    _at("ended_at", nullable=True),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""A sign-in of the web app (ADR-0119)."""
+
 # --- anchors and decisions (ADR-0042) -------------------------------------------------------------
 
 anchor_configuration = Table(

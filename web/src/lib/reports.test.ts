@@ -95,16 +95,17 @@ describe("a report's page", () => {
 		expect(html).not.toContain('Answer: erledigt');
 	});
 
-	it('is read with the key in the header, from the surface beside the app', async () => {
+	it('is read with the session cookie and no key, from the surface beside the app', async () => {
 		const calls: { url: string; init: RequestInit }[] = [];
 		const fetcher = (async (url: URL, init: RequestInit) => {
 			calls.push({ url: String(url), init });
 			return new Response(JSON.stringify(NEED), { status: 200 });
 		}) as unknown as typeof fetch;
-		const answer = await read<ReportView>(new URL('https://instance.test/p/'), 'owner/reports/need_0001', 'k', fetcher);
+		const answer = await read<ReportView>(new URL('https://instance.test/p/'), 'owner/reports/need_0001', fetcher);
 		expect(answer.ok).toBe(true);
 		expect(calls[0]!.url).toBe('https://instance.test/p/owner/reports/need_0001');
-		expect((calls[0]!.init.headers as Record<string, string>)['Authorization']).toBe('Bearer k');
+		expect((calls[0]!.init.headers as Record<string, string>)['Authorization']).toBeUndefined();
+		expect(calls[0]!.init.credentials).toBe('same-origin');
 	});
 
 	it('lives where the control plane links it', () => {
@@ -125,7 +126,7 @@ describe("the start page's reports", () => {
 	});
 
 	it('links each open report to its page, under a line that counts them', () => {
-		const html = render(OpenReports, { props: { key: 'k', reports: [DECISION, NEED, FILED, ALERT] } }).body;
+		const html = render(OpenReports, { props: { reports: [DECISION, NEED, FILED, ALERT] } }).body;
 		expect(html).toContain('3 reports wait for an answer.');
 		const links = [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
 		expect(links).toEqual(['#/reports/backup-missing', '#/reports/need_0001', '#/reports/dr_0001']);

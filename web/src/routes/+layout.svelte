@@ -1,16 +1,26 @@
 <!--
 	The frame of every level: the mark, the depth the reader stands at — overview, process, run,
 	origin — and the control that stops all motion. Paper and ink; a family's hue is added only on
-	the cells (M1.20, DEC-0185).
+	the cells (M1.20, DEC-0185). Signing out ends the reader's session on the instance (ADR-0119).
 -->
 <script lang="ts">
 	import { onMount, type Snippet } from 'svelte';
 	import { page } from '$app/state';
+	import { surface } from '../lib/api';
 	import { motion } from '../lib/motion.svelte';
+	import { forgetOldKey, signOut } from '../lib/session';
 
 	let { children }: { children: Snippet } = $props();
 
-	onMount(() => motion.listen());
+	onMount(() => {
+		forgetOldKey();
+		return motion.listen();
+	});
+
+	async function leave() {
+		await signOut(surface(location.href));
+		location.reload();
+	}
 
 	const DEPTHS = ['Overview', 'Process', 'Run', 'Origin'] as const;
 	const depth = $derived(
@@ -52,6 +62,7 @@
 		>
 			Stop motion{#if motion.reducedBySystem}&#32;(the system asks for it){/if}
 		</button>
+		<button class="calm" type="button" onclick={leave}>Sign out</button>
 	</header>
 	<main>
 		{@render children()}

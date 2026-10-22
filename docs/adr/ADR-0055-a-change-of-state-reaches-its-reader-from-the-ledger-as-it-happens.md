@@ -1,6 +1,6 @@
 # ADR-0055 — A change of state reaches its reader from the ledger, as it happens
 
-**Status:** accepted · makes UC-6.10's condition *live* buildable (issue #103, DEC-0055)
+**Status:** accepted · makes UC-6.10's condition *live* buildable (issue #103, DEC-0055) · amended by ADR-0119: the web app's session cookie is accepted beside the key (§1)
 
 ## Context
 UC-6.10 requires that a change of a run's state reaches every open representation of that run
@@ -46,6 +46,9 @@ The reader authenticates with an account key in the `Authorization` header, as e
 authenticated request on the surface does. The key is never accepted in the URL. The browser's
 built-in `EventSource` cannot send a header, so the web app reads the stream with `fetch` and a
 streamed response body.
+
+Amended by ADR-0119: the web app's session cookie is accepted in place of the key, as on every
+route that accepts the key. A stream whose session ends ends too.
 
 ### 2. The source is the ledger; a signal only wakes the reading
 What a reader receives is read from the ledger, and from nothing else. The stream holds no

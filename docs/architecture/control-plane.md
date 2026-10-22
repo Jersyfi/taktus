@@ -90,6 +90,14 @@ provisional operator identity of DEC-0013 in `0.2.0`:
   `tenant.created`; a rename is `tenant.renamed`. Every role reads the registry at every
   round, so the new tenant is served without a restart. The web app lists, creates and renames
   them at `#/tenants`, with the administration key the page asks for (ADR-0122).
+- **The web app is signed in by a session cookie, exchanged once for the account key**
+  (ADR-0119). `POST /session` takes the key in `Authorization: Bearer` and sets the cookie
+  `taktus_session`: `HttpOnly`, `Secure`, `SameSite=Strict`, scoped to the path prefix, valid
+  for `TAKTUS_SESSION_HOURS` (12 by default). The surface accepts it wherever it accepts the key,
+  the stream of changes included; the key keeps working for every other client. A session ends
+  at its time, on `DELETE /session`, and when the identity's key is replaced. A write with the
+  cookie from another site is refused with `403`. Only a digest of the token is kept, in
+  `browser_session`; a sign-in writes no ledger entry.
 - **The command line names an identity the component knows** (`--identity`); the component
   supplies its organisational path. **A scheduled run acts for the identity that registered
   the process's active version** (ADR-0035, amended).
@@ -421,7 +429,8 @@ steps, `components/decision/domain/model/recorded.py` for decision requests.
 **Whether a reader may see a run is one predicate** (ADR-0055 §5):
 `components/reporting/domain/service/visibility.py`. The stream asks it for each change, and the
 read API — `GET /runs`, `GET /runs/{id}`, `GET /runs/{id}/ledger` — for each run it would show.
-Both read the account key from `Authorization: Bearer` and answer `401` without one; the tenant
+Both read the account key from `Authorization: Bearer`, or the web app's session cookie in its
+place (ADR-0119), and answer `401` without either; the tenant
 is the reader's identity's. Every caller calls the predicate through its module, so that no
 path holds a copy. Until the role-based views of UC-6.4, the predicate is the tenant boundary.
 

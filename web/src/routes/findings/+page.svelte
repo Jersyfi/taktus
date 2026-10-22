@@ -13,11 +13,9 @@
 		type ReviewChoice,
 		type ReviewReading
 	} from '../../lib/governance';
-	import KeyForm from '../../lib/KeyForm.svelte';
-	import { currentKey } from '../../lib/key';
+	import SignInForm from '../../lib/SignInForm.svelte';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let answer: FindingsAnswer | null = $state(null);
 	let reading: ReviewReading | null = $state(null);
 	let message: string | null = $state(null);
@@ -26,26 +24,25 @@
 
 	function refuse(status: number): boolean {
 		if (status !== 401) return false;
-		refused = true;
-		key = null;
+		signedIn = false;
 		return true;
 	}
 
 	async function load() {
-		if (!key) return;
-		const found = await read<FindingsAnswer>(surface(location.href), 'findings', key);
+		if (!signedIn) return;
+		const found = await read<FindingsAnswer>(surface(location.href), 'findings');
 		if (found.ok) answer = found.body;
 		else if (!refuse(found.problem.status)) problem = found.problem.detail || found.problem.title;
 	}
 
 	$effect(() => {
-		if (key) void load();
+		if (signedIn) void load();
 	});
 
 	async function onAnswer(lack: string, choice: ReviewChoice) {
-		if (!key) return;
+		if (!signedIn) return;
 		busy = true;
-		const back = await readBack(surface(location.href), key, lack, choice);
+		const back = await readBack(surface(location.href), lack, choice);
 		busy = false;
 		if (back.ok) {
 			reading = back.body;
@@ -54,9 +51,9 @@
 	}
 
 	async function onConfirm(confirmed: boolean) {
-		if (!key || !reading) return;
+		if (!signedIn || !reading) return;
 		busy = true;
-		const done = await confirmReading(surface(location.href), key, reading, confirmed);
+		const done = await confirmReading(surface(location.href), reading, confirmed);
 		busy = false;
 		reading = null;
 		if (done.ok) message = done.body.message;
@@ -65,8 +62,8 @@
 	}
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if answer}
 	<FindingsView {answer} {reading} {message} {busy} {onAnswer} {onConfirm} />
 {:else if problem}

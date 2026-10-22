@@ -6,8 +6,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { surface } from '../lib/api';
-	import KeyForm from '../lib/KeyForm.svelte';
-	import { currentKey } from '../lib/key';
+	import SignInForm from '../lib/SignInForm.svelte';
 	import { followLevel } from '../lib/live';
 	import { motion } from '../lib/motion.svelte';
 	import OverviewView from '../lib/OverviewView.svelte';
@@ -19,29 +18,25 @@
 	import { currentAdministrationKey, governanceLines, type Line } from '../lib/governance';
 	import GovernanceLines from '../lib/GovernanceLines.svelte';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let connected = $state(false);
 	let level: OverviewLevel | null = $state(null);
 	let stop: AbortController | null = null;
 
 	$effect(() => {
-		if (!key) return;
+		if (!signedIn) return;
 		stop?.abort();
 		const controller = new AbortController();
 		stop = controller;
-		refused = false;
 		void followLevel<OverviewLevel>({
 			base: surface(location.href),
 			path: 'levels/overview',
 			scope: {},
-			key,
 			signal: controller.signal,
 			onLevel: (found) => (level = found),
 			onAbsent: () => (level = null),
 			onRefused: () => {
-				refused = true;
-				key = null;
+				signedIn = false;
 			},
 			onConnected: (open) => (connected = open)
 		});
@@ -51,25 +46,25 @@
 	// What governs the work (ADR-0122): read once on opening, one line per kind.
 	let governs: Line[] = $state([]);
 	$effect(() => {
-		if (!key) return;
-		void governanceLines(surface(location.href), key, currentAdministrationKey()).then((found) => (governs = found));
+		if (!signedIn) return;
+		void governanceLines(surface(location.href), currentAdministrationKey()).then((found) => (governs = found));
 	});
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if level}
 	<p class="status" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
-	<OperationSection {key} />
+	<OperationSection />
 	<OverviewView {level} motionAllowed={motion.allowed} />
 {:else}
 	<p class="status">Reading the overview…</p>
 {/if}
-{#if key && governs.length}<GovernanceLines lines={governs} />{/if}
+{#if signedIn && governs.length}<GovernanceLines lines={governs} />{/if}
 
 <!-- The reports that wait for an answer, each leading to its page (DEC-0218, ADR-0120). -->
-{#if key}
-	<OpenReports {key} />
+{#if signedIn}
+	<OpenReports />
 {/if}
 
 <style>

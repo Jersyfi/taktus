@@ -5,29 +5,26 @@
 -->
 <script lang="ts">
 	import { read, surface } from '../../lib/api';
-	import KeyForm from '../../lib/KeyForm.svelte';
-	import { currentKey } from '../../lib/key';
+	import SignInForm from '../../lib/SignInForm.svelte';
 	import type { DailyReport, SignalRecord } from '../../lib/operation';
 	import SignalsView from '../../lib/SignalsView.svelte';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let found: SignalRecord[] | null = $state(null);
 	let daily: DailyReport | null = $state(null);
 	let dailyNote: string | null = $state(null);
 	let problem: string | null = $state(null);
 
 	$effect(() => {
-		if (!key) return;
+		if (!signedIn) return;
 		const base = surface(location.href);
-		void read<{ signals: SignalRecord[] }>(base, 'signals', key).then((answer) => {
+		void read<{ signals: SignalRecord[] }>(base, 'signals').then((answer) => {
 			if (answer.ok) found = answer.body.signals;
 			else if (answer.problem.status === 401) {
-				refused = true;
-				key = null;
+				signedIn = false;
 			} else problem = answer.problem.detail || answer.problem.title;
 		});
-		void read<DailyReport>(base, 'signals/daily-report', key).then((answer) => {
+		void read<DailyReport>(base, 'signals/daily-report').then((answer) => {
 			if (answer.ok) daily = answer.body;
 			else if (answer.problem.status === 403)
 				dailyNote = 'The owner and the people the owner named read the daily report.';
@@ -35,8 +32,8 @@
 	});
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if found}
 	<SignalsView signals={found} {daily} {dailyNote} />
 {:else if problem}

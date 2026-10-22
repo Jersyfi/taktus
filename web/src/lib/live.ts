@@ -37,7 +37,6 @@ export interface FollowLevel<T> {
 	path: string;
 	/** The stream's scope, as its query: `{ run: <id> }`. */
 	scope: Record<string, string>;
-	key: string;
 	signal: AbortSignal;
 	onLevel: (level: T) => void;
 	onAbsent: () => void;
@@ -49,7 +48,7 @@ export interface FollowLevel<T> {
 
 /**
  * Follows a level live: the scope's stream, and the level read again on its snapshot and on
- * every change. A refused key ends both; a level the reader may not see is absent.
+ * every change. A refused reader ends both; a level the reader may not see is absent.
  */
 export async function followLevel<T>(options: FollowLevel<T>): Promise<void> {
 	const fetcher = options.fetcher ?? fetch;
@@ -65,7 +64,7 @@ export async function followLevel<T>(options: FollowLevel<T>): Promise<void> {
 		controller.abort();
 	};
 	const rereader = new Rereader(async () => {
-		const answer = await read<T>(options.base, options.path, options.key, fetcher);
+		const answer = await read<T>(options.base, options.path, fetcher);
 		if (controller.signal.aborted) return;
 		if (answer.ok) options.onLevel(answer.body);
 		else if (answer.problem.status === 401) refuse();
@@ -75,7 +74,6 @@ export async function followLevel<T>(options: FollowLevel<T>): Promise<void> {
 	for (const [name, value] of Object.entries(options.scope)) url.searchParams.set(name, value);
 	const ended = await follow({
 		url,
-		key: options.key,
 		signal: controller.signal,
 		fetcher,
 		...(options.sleep ? { sleep: options.sleep } : {}),

@@ -2,7 +2,8 @@
 //
 // The app is served at `{prefix}/app/`, and the prefix is the instance's, not the build's.
 // The surface is therefore the directory above the app's own, read from the page's address.
-// The account key travels in `Authorization: Bearer` and nowhere else (ADR-0055 §1).
+// The reader is proved by the session cookie the browser sends with every request to the
+// instance (ADR-0119). The page holds no key and sends none.
 
 import type { Problem } from './types';
 
@@ -16,16 +17,7 @@ export function surface(href: string): URL {
 
 export type Answer<T> = { ok: true; body: T } | { ok: false; problem: Problem };
 
-/** A JSON read with the reader's key. A refusal is the surface's problem, never thrown. */
-export async function read<T>(
-	base: URL,
-	path: string,
-	key: string,
-	fetcher: typeof fetch = fetch
-): Promise<Answer<T>> {
-	const response = await fetcher(new URL(path, base), {
-		headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' }
-	});
+async function answered<T>(response: Response): Promise<Answer<T>> {
 	if (response.ok) return { ok: true, body: (await response.json()) as T };
 	let problem: Problem = { status: response.status, title: response.statusText, detail: '' };
 	try {
@@ -36,26 +28,44 @@ export async function read<T>(
 	return { ok: false, problem };
 }
 
-/** A JSON write with the reader's key: an answer to a decision request, or its confirmation.
+/** A JSON read as the signed-in reader. A refusal is the surface's problem, never thrown. */
+export async function read<T>(base: URL, path: string, fetcher: typeof fetch = fetch): Promise<Answer<T>> {
+	const response = await fetcher(new URL(path, base), {
+		credentials: 'same-origin',
+		headers: { Accept: 'application/json' }
+	});
+	return answered<T>(response);
+}
+
+/** A JSON read with a key other than the reader's sign-in: the instance's administration key,
+ * which a page asks for and keeps for its tab (ADR-0104, ADR-0122). It travels in
+ * `Authorization: Bearer`, and the surface then reads no cookie (ADR-0119 §3). */
+export async function readAs<T>(
+	base: URL,
+	path: string,
+	key: string,
+	fetcher: typeof fetch = fetch
+): Promise<Answer<T>> {
+	const response = await fetcher(new URL(path, base), {
+		credentials: 'same-origin',
+		headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' }
+	});
+	return answered<T>(response);
+}
+
+/** A JSON write as the signed-in reader: an answer to a decision request, or its confirmation.
  * A refusal is the surface's problem, never thrown. */
 export async function send<T>(
 	base: URL,
 	path: string,
-	key: string,
 	body: unknown,
 	fetcher: typeof fetch = fetch
 ): Promise<Answer<T>> {
 	const response = await fetcher(new URL(path, base), {
 		method: 'POST',
-		headers: { Authorization: `Bearer ${key}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+		credentials: 'same-origin',
+		headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
 		body: JSON.stringify(body)
 	});
-	if (response.ok) return { ok: true, body: (await response.json()) as T };
-	let problem: Problem = { status: response.status, title: response.statusText, detail: '' };
-	try {
-		problem = { ...problem, ...((await response.json()) as Partial<Problem>) };
-	} catch {
-		// A body that is no problem document: the status says enough.
-	}
-	return { ok: false, problem };
+	return answered<T>(response);
 }

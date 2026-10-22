@@ -3,6 +3,9 @@ from taktus.components.identity.domain.model.identity import (
     CODE_PREFIX,
     CODE_VALIDITY,
     KEY_PREFIX,
+    SESSION_LIFETIME,
+    SESSION_PREFIX,
+    BrowserSession,
     ChannelLink,
     Identity,
     LinkCode,
@@ -10,6 +13,7 @@ from taktus.components.identity.domain.model.identity import (
     code_id,
     digest,
     link_id,
+    session_id,
 )
 
 __all__ = [
@@ -17,6 +21,9 @@ __all__ = [
     "CODE_PREFIX",
     "CODE_VALIDITY",
     "KEY_PREFIX",
+    "SESSION_LIFETIME",
+    "SESSION_PREFIX",
+    "BrowserSession",
     "ChannelLink",
     "Identity",
     "LinkCode",
@@ -24,4 +31,5 @@ __all__ = [
     "code_id",
     "digest",
     "link_id",
+    "session_id",
 ]

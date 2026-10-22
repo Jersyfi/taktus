@@ -65,7 +65,6 @@ describe('a level followed live', () => {
 			base: new URL('https://h.test/x/'),
 			path: 'levels/runs/run_example',
 			scope: { run: 'run_example' },
-			key: 'tk',
 			signal: new AbortController().signal,
 			onLevel: (l) => seen.push(l),
 			onAbsent: () => {},
@@ -91,7 +90,6 @@ describe('a level followed live', () => {
 			base: new URL('https://h.test/'),
 			path: 'levels/runs/r',
 			scope: { run: 'r' },
-			key: 'tk',
 			signal: controller.signal,
 			onLevel: () => {},
 			onAbsent: () => {

@@ -57,18 +57,18 @@ describe('a decision request', () => {
 		expect(html).not.toContain('Choose A');
 	});
 
-	it('sends the answer as given, with the key in the header and nowhere else', async () => {
+	it('sends the answer as given, with the session cookie and no key', async () => {
 		const calls: { url: string; init: RequestInit }[] = [];
 		const fetcher = (async (url: URL, init: RequestInit) => {
 			calls.push({ url: String(url), init });
 			return new Response(JSON.stringify({ message: 'read', request: OPEN }), { status: 200 });
 		}) as unknown as typeof fetch;
-		const answer = await send(new URL('https://instance.test/p/'), 'decisions/dr_1/answer', 'k', { text: 'later' }, fetcher);
+		const answer = await send(new URL('https://instance.test/p/'), 'decisions/dr_1/answer', { text: 'later' }, fetcher);
 		expect(answer.ok).toBe(true);
 		expect(calls[0]!.url).toBe('https://instance.test/p/decisions/dr_1/answer');
 		expect(calls[0]!.init.method).toBe('POST');
 		expect(calls[0]!.init.body).toBe('{"text":"later"}');
-		expect((calls[0]!.init.headers as Record<string, string>)['Authorization']).toBe('Bearer k');
-		expect(calls[0]!.url).not.toContain('k@');
+		expect(calls[0]!.init.credentials).toBe('same-origin');
+		expect((calls[0]!.init.headers as Record<string, string>)['Authorization']).toBeUndefined();
 	});
 });
