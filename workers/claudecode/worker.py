@@ -91,6 +91,10 @@ TOOL_CAPABILITY: dict[str, str] = {
     "WebFetch": "web.fetch",
 }
 CAPABILITIES = ["code.read", "code.edit", "code.test", "shell.sandboxed", "web.fetch"]
+KNOWN_TOOLS: dict[str, str] = {name.lower(): name for name in TOOL_CAPABILITY}
+"""A tool's name as the agent's stream spells it, whatever its case, to the name above: on
+2026-10-21 an agent called `bash`, and the assignment ended as if it had called a tool outside
+the frame (#394)."""
 STEP_KIND: dict[str, str] = {
     "Read": "read",
     "Grep": "read",
@@ -1011,7 +1015,7 @@ class _Run:
         """One call of the agent becomes the running step: `step.started`, then `tool.called`,
         refused where the frame does not allow it. Returns why the assignment ends now, or
         None."""
-        tool = call.tool
+        tool = KNOWN_TOOLS.get(call.tool.lower(), call.tool)
         arguments = call.arguments
         capability = self._capability_of(tool, arguments)
         self.index += 1

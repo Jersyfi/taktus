@@ -106,3 +106,17 @@ def test_the_worker_states_the_reach_it_offers() -> None:
     assert run._reach()["hosts"] == ["repo.example"]
     run.frame = {"allowed_tools": ["code.read", "web.fetch"], "allowed_hosts": ["repo.example"]}
     assert run._reach() == {"type": "reach.stated", "tools": ["code.read", "web.fetch"]}
+
+
+@pytest.mark.parametrize("spelled", ["bash", "BASH", "Bash"])
+def test_a_tool_is_known_whatever_the_case_the_agent_spells_it_in(spelled: str) -> None:
+    """#394: an agent called `bash`, and the assignment ended as if it had called a tool outside
+    the frame. The name is read without regard to case, and the frame is still what decides."""
+    worker = load()
+    assert worker.KNOWN_TOOLS[spelled.lower()] == "Bash"
+    run = object.__new__(worker._Run)
+    run.frame = {"allowed_tools": ["code.read", "code.edit", "code.test", "shell.sandboxed"]}
+    tool = worker.KNOWN_TOOLS.get(spelled.lower(), spelled)
+    assert run._capability_of(tool, {"command": "ls"}) == "shell.sandboxed"
+    assert run._capability_of(tool, {"command": "make test"}) == "code.test"
+    assert worker.KNOWN_TOOLS.get("websearch", "WebSearch") == "WebSearch", "an unknown tool stays"
