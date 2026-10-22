@@ -263,3 +263,45 @@ async def test_the_entries_of_some_runs_and_of_some_kinds_since_a_moment_are_rea
     assert [e.seq for e in budgets] == [1, 3]
     assert [e.seq for e in some] == [3, 4]
     assert nobody == []
+
+
+async def test_tenants_whose_hashed_keys_collided_do_not_wait_for_each_other(
+    postgres_backend: Backend,
+) -> None:
+    """`tnt_111599` and `tnt_85816` had one key when it was `hashtext('taktus.ledger:<id>')`
+    (issue #317). Each now claims its chain under its own `lock_key`."""
+    a, b = "tnt_111599", "tnt_85816"
+    for tenant in (a, b):
+        await postgres_backend._new_tenant(tenant)
+    store = postgres_backend.ledger_store
+    async with postgres_backend.work.transaction(a):
+        await store.last(a)
+        # `a` holds its claim; `b`'s `last` must be granted at once, not after the lock timeout.
+        async with postgres_backend.work.transaction(b):
+            assert await store.last(b) is None
+
+
+async def test_a_tenant_writes_while_a_leader_lives_and_its_old_key_is_held(
+    postgres_backend: Backend,
+) -> None:
+    """The leadership lock and the ledger lock share no key space, and a one-key lock on the
+    tenant's old key (the hash the ledger used) does not stop its ledger."""
+    from sqlalchemy import text
+
+    from taktus.adapters.driven.postgres import PostgresLeadership
+
+    tenant = await postgres_backend.tenant()
+    engine = postgres_backend.work.engine  # type: ignore[attr-defined]
+    lead = await PostgresLeadership(engine).try_lead("scheduler-317")
+    assert lead is not None and await lead.held()
+    async with engine.connect() as holder:
+        await holder.execution_options(isolation_level="AUTOCOMMIT")
+        await holder.execute(
+            text("SELECT pg_advisory_lock(hashtext(:k))"), {"k": f"taktus.ledger:{tenant}"}
+        )
+        await holder.execute(text("SELECT pg_advisory_lock(hashtext('taktus.lead:scheduler-317'))"))
+        store = postgres_backend.ledger_store
+        async with postgres_backend.work.transaction(tenant):
+            assert await store.last(tenant) is None
+            await store.append(tenant, entry(1, None))
+    await lead.release()
