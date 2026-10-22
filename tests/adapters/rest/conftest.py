@@ -33,17 +33,21 @@ from taktus.components.decision.application.service import (
 )
 from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import Corrections
+from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
+    Alerted,
     AnswerInChannelHandler,
+    BackupWatched,
     FindingsIntake,
     LiveChanges,
     ProductFindings,
 )
+from taktus.components.reporting.domain.model import BackupState, Corridor, Judged
 from taktus.components.run.domain.model import Run
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
@@ -103,6 +107,32 @@ def refused(reason: str, detail: str = "as scripted") -> IntakeResult:
 
 
 @dataclass
+class FakeOperation:
+    """What keeps the operation running, as each component would hand it over; a test sets the
+    records it reads, per tenant. What the components compute is held by their own tests."""
+
+    incidents_of: dict[str, list[Incident]] = field(default_factory=dict)
+    alerts_of: dict[str, list[Alerted]] = field(default_factory=dict)
+    backup_of: dict[str, BackupWatched] = field(default_factory=dict)
+    signals_of: dict[str, list[tuple[Corridor, Judged]]] = field(default_factory=dict)
+
+    async def incidents(self, tenant: str) -> Sequence[Incident]:
+        return self.incidents_of.get(tenant, [])
+
+    async def alerts(self, tenant: str) -> Sequence[Alerted]:
+        return self.alerts_of.get(tenant, [])
+
+    async def backup(self, tenant: str) -> BackupWatched:
+        return self.backup_of.get(
+            tenant,
+            BackupWatched(state=BackupState(watched_since=None), next_due=None, alert=None),
+        )
+
+    async def signals(self, tenant: str) -> Sequence[tuple[Corridor, Judged]]:
+        return self.signals_of.get(tenant, [])
+
+
+@dataclass
 class Services:
     persistence: MemoryPersistence
     runs: Queried[Run]
@@ -135,6 +165,8 @@ class Services:
     """The intake of other instances' findings; None: not open (ADR-0118)."""
     findings: ProductFindings | None = None
     """The instance's own product findings; None: the wiring records none (ADR-0122)."""
+    operation: FakeOperation = field(default_factory=FakeOperation)
+    """Incidents, alerts, the backup and the signals (ADR-0121)."""
 
     @property
     def work(self) -> UnitOfWork:

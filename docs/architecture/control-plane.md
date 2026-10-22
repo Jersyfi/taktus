@@ -425,6 +425,14 @@ Both read the account key from `Authorization: Bearer` and answer `401` without 
 is the reader's identity's. Every caller calls the predicate through its module, so that no
 path holds a copy. Until the role-based views of UC-6.4, the predicate is the tenant boundary.
 
+**What keeps the operation running is read on the surface** (ADR-0121). `GET /incidents`,
+`GET /alerts`, `GET /backup`, `GET /signals` and `GET /signals/daily-report` read each record
+from the component that owns it, through `composition/operation.py`. `GET /operation` gives the
+start page one entry per kind. An incident and a signal are shown where the predicate lets the
+reader see their process. An alert, the backup and the daily report are reports to the owner,
+read by the owner and the people the owner named. Every record names the run, the step or the
+process version it is about, and none names a person.
+
 ### 6.1 Provenance
 
 The ledger says *what happened*. The **provenance record** says *what a result is made of*

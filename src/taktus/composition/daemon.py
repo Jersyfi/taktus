@@ -152,6 +152,7 @@ from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities
 from taktus.composition.moves import MethodMoves
+from taktus.composition.operation import OperationRecords
 from taktus.composition.owner_channel import (
     OwnerChannelWiring,
     known_secrets,
@@ -273,6 +274,11 @@ class Wired:
     @property
     def answer_report(self) -> AnswerInChannelHandler:
         return self.owner.answering
+
+    @property
+    def operation(self) -> OperationRecords:
+        """Incidents, alerts, the backup and the signals, read for the HTTP surface (ADR-0121)."""
+        return OperationRecords(self.expected.incidents, self.alerts, self.signals)
 
     @property
     def answer_decision(self) -> AnswerRequestHandler:

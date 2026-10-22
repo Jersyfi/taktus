@@ -39,6 +39,7 @@ from datetime import datetime, timedelta
 from taktus.components.reporting.domain.model.alert import (
     ID_PREFIXES,
     Alert,
+    AlertRef,
     BackupState,
     CapacityCrossing,
     ClaimLost,
@@ -192,10 +193,21 @@ def _claims(losses: list[ClaimLost]) -> Alert:
             f"Claim lost: {len(losses)} time(s) on {len(runs)} run(s), first at "
             f"{_at(first.at)}, last at {_at(last.at)}."
         ),
+        about=tuple(AlertRef(run_id=run) for run in runs),
     )
 
 
 # --- the backup -----------------------------------------------------------------------------------
+
+
+def backup_due(state: BackupState) -> datetime | None:
+    """By when the next successful backup is due: the last success, or the tenant's creation
+    where none was recorded, plus the expected interval. None where a missing backup is not
+    watched, or where the tenant's creation is not known."""
+    reference = state.watched_since if state.last_ok is None else state.last_ok.at
+    if state.expected_hours is None or reference is None:
+        return None
+    return reference + timedelta(hours=state.expected_hours)
 
 
 def backup(state: BackupState, now: datetime) -> Alert | None:
@@ -336,6 +348,9 @@ def _lowered(one: LevelLowered) -> Alert:
         summary=(
             f"Level lowered: {unit} from {one.before} to {one.after} at {_at(one.at)} ({one.rule})."
         ),
+        about=(
+            AlertRef(process_version=one.process_version, run_id=one.run_id, step_id=one.step_id),
+        ),
     )
 
 
@@ -372,6 +387,7 @@ def _raise(one: RaiseProposed) -> Alert:
             f"Raise proposed: {unit}, {one.week_rate:.0%} over 7 days, {one.month_rate:.0%} "
             "over 28 days."
         ),
+        about=(AlertRef(process_version=one.process_version),),
     )
 
 
@@ -440,6 +456,9 @@ def _local(finding: Finding, classified: Classified) -> Alert:
         standing_still=tuple(runs),
         summary=(
             f"Local lack ({classified.kind}): {lack.lacking} since {_at(basis.since)}; {state}."
+        ),
+        about=tuple(
+            AlertRef(run_id=o.run_id, step_id=o.step_id) for o in (waiting or finding.occurrences)
         ),
     )
 

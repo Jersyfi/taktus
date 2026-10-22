@@ -16,8 +16,9 @@ for the runs and ledger entries the reader may see, and the live stream of chang
 Server-Sent Events (ADR-0055), and the administration of the instance's tenants for the holder
 of its administration key (ADR-0104), and the intake of other instances' signed findings where
 the operator opened it (ADR-0118), and each process's level with its correction rates and this
-instance's own findings with their review (ADR-0122). No other write, no UI. An answer the owner
-writes in the thread of a report arrives through the webhook intake. A browser that opens an
+instance's own findings with their review (ADR-0122), and the reads of what keeps the operation
+running — incidents, alerts, the backup, signals (ADR-0121). No other write, no UI. An answer the
+owner writes in the thread of a report arrives through the webhook intake. A browser that opens an
 old link to a report without a key is sent to the report's page in the web app (ADR-0120).
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
@@ -42,7 +43,15 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response, Streamin
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
-from taktus.adapters.driving.rest import autonomy, findings, levels, proposals, review, tenants
+from taktus.adapters.driving.rest import (
+    autonomy,
+    findings,
+    levels,
+    operation,
+    proposals,
+    review,
+    tenants,
+)
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
 from taktus.adapters.driving.rest.wiring import RestServices, StreamsFull
 from taktus.components.command.application.service import (
@@ -131,6 +140,7 @@ def build_app(
         app.include_router(_reads(services), prefix=base)
         app.include_router(_changes(services), prefix=base)
         app.include_router(levels.router(services, _authenticated), prefix=base)
+        app.include_router(operation.router(services, _authenticated), prefix=base)
         app.include_router(proposals.router(services, _authenticated), prefix=base)
         app.include_router(proposals.acts_router(services, _authenticated), prefix=base)
         app.include_router(tenants.router(services), prefix=base)

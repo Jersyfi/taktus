@@ -37,6 +37,11 @@ class ExpectedRunsWatch:
         self._watch = watch
         self._clock = clock
 
+    @property
+    def incidents(self) -> ExpectedRuns:
+        """The incidents the watch raised, as a reader reads them."""
+        return self._watch
+
     async def look(self, tenant: Tenant) -> Watch:
         """One look at one tenant."""
         configuration = await self._watch.configuration(tenant)

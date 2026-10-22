@@ -33,6 +33,9 @@ origin.
   in the channel; the reading comes back, and nothing is filed before the reader confirms it.
   The overview lists the open reports and alerts below it, newest first, each leading to its
   page (DEC-0218, ADR-0120).
+- **What keeps the operation running** — the incidents, the alerts, the backup and the signals
+  with the newest daily report, each a page of its own, and a line for each on the start page
+  saying how many are open or red (ADR-0121). Each page is read once on opening.
 
 ## How it is built
 
@@ -78,6 +81,12 @@ origin.
 | `src/lib/reports.ts`, `ReportPage.svelte`, `#/reports/<id>` | a report to the owner: its view as `GET /owner/reports/{id}` sends it, the answers it offers, an answer sent to `POST …/answer` and the reading confirmed at `…/confirm` (ADR-0120) |
 | `src/lib/OpenReports.svelte` | the overview's list of the reports that wait for an answer, newest first, read from `GET /owner/reports` |
 | `src/lib/YoursView.svelte`, `#/me` | the reader's own page: how long runs waited on their own decisions, each with its time, their median, and beside it their role and department only aggregated — `GET /decisions/response-times`, computed for its reader alone (ADR-0015) |
+| `src/lib/operation.ts`, `OperationPage.svelte` | what keeps the operation running (ADR-0121): the shapes `GET /operation`, `/incidents`, `/alerts`, `/backup`, `/signals` and `/signals/daily-report` answer, where each page lives, the sentence each opens with, and their common frame |
+| `src/lib/IncidentsView.svelte`, `#/incidents` | the incidents, open ones first: what was expected, what happened since, the process version and every run each names (ADR-0107) |
+| `src/lib/AlertsView.svelte`, `#/alerts` | the alerts in effect first, what became of each report, and the runs, steps and process versions each is about (ADR-0106) |
+| `src/lib/BackupView.svelte`, `#/backup` | the backup's last success, its newest failure and by when the next success is due (ADR-0106) |
+| `src/lib/SignalsView.svelte`, `#/signals` | every signal judged against its corridor, red first, each with the run that measured it and its case, and the newest daily report (ADR-0109) |
+| `src/lib/OperationSection.svelte`, `OperationLines.svelte` | the start page's section: its own sentence of what needs a look, then one line per kind leading to its page |
 
 ## Working on it
 

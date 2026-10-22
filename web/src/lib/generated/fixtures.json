@@ -2025,5 +2025,346 @@
         }
       ]
     }
+  },
+  "operation": {
+    "summary": {
+      "tenant": "default",
+      "incidents": {
+        "readable": true,
+        "open": 1,
+        "total": 2
+      },
+      "signals": {
+        "readable": true,
+        "red": 1,
+        "yellow": 1,
+        "unmeasured": 1,
+        "total": 3
+      },
+      "alerts": {
+        "readable": true,
+        "in_effect": 2,
+        "total": 2
+      },
+      "backup": {
+        "readable": true,
+        "standing": "failing",
+        "next_due": "2026-10-22T04:00:00+00:00"
+      },
+      "daily_report": {
+        "readable": true,
+        "id": "signals-2026-10-22",
+        "title": "Daily report: 2 signals deviate, 1 not measured"
+      }
+    },
+    "summary_withheld": {
+      "tenant": "default",
+      "incidents": {
+        "readable": true,
+        "open": 1,
+        "total": 2
+      },
+      "signals": {
+        "readable": true,
+        "red": 1,
+        "yellow": 1,
+        "unmeasured": 1,
+        "total": 3
+      },
+      "alerts": {
+        "readable": false
+      },
+      "backup": {
+        "readable": false
+      },
+      "daily_report": {
+        "readable": false
+      }
+    },
+    "incidents": {
+      "incidents": [
+        {
+          "id": "inc_missing",
+          "kind": "run.missing",
+          "state": "open",
+          "process_id": "watch",
+          "process_version": "watch@1",
+          "rule": "expected.slot",
+          "raised_at": "2026-10-22T08:00:00+00:00",
+          "expected_at": "2026-10-22T07:00:00+00:00",
+          "closed_at": null,
+          "run_id": null,
+          "last_run": {
+            "at": "2026-10-22T06:00:00+00:00",
+            "run_id": "run_watch_3",
+            "kind": "run.started"
+          },
+          "facts": {
+            "schedule": "0 * * * *",
+            "grace_seconds": 900.0
+          },
+          "timeline": [
+            {
+              "at": "2026-10-22T08:00:00+00:00",
+              "what": "missed",
+              "expected_at": "2026-10-22T07:00:00+00:00",
+              "deadline": "2026-10-22T07:15:00+00:00",
+              "run_id": null
+            }
+          ],
+          "step_id": null
+        },
+        {
+          "id": "inc_overdue",
+          "kind": "run.overdue",
+          "state": "closed",
+          "process_id": "example",
+          "process_version": "example@1",
+          "rule": "expected.bound",
+          "raised_at": "2026-10-21T04:00:00+00:00",
+          "expected_at": "2026-10-21T03:00:00+00:00",
+          "closed_at": "2026-10-21T13:00:00+00:00",
+          "run_id": "run_example",
+          "last_run": null,
+          "facts": {
+            "bound_seconds": 3600.0
+          },
+          "timeline": [
+            {
+              "at": "2026-10-21T13:00:00+00:00",
+              "what": "closed",
+              "expected_at": null,
+              "deadline": null,
+              "run_id": null
+            }
+          ],
+          "step_id": null
+        }
+      ]
+    },
+    "alerts": {
+      "alerts": [
+        {
+          "id": "claim-lost-7902699be42c8a8e",
+          "kind": "claim_lost",
+          "since": "2026-10-22T05:00:00+00:00",
+          "in_effect": true,
+          "closed": false,
+          "delivered": false,
+          "reason": "no_channel",
+          "state": "not delivered: this tenant configured no owner-facing channel (`taktusctl owner-channel set`)",
+          "title": "A runner lost its claim on a run",
+          "summary": "Claim lost: 1 time(s) on 1 run(s), first at 2026-10-22T05:00:00+00:00, last at 2026-10-22T05:00:00+00:00.",
+          "needed": [
+            "A look at the runners: 1 claim(s) on 1 run(s) were lost since 2026-10-22T05:00:00+00:00. A runner loses its claim when it cannot reach the database, or is paused, for longer than the lease (`TAKTUS_LEASE_SECONDS`)."
+          ],
+          "steps": [
+            "First loss: run run_example, at 2026-10-22T05:00:00+00:00. Last loss: run run_example, at 2026-10-22T05:00:00+00:00.",
+            "Read the runners' log and the database's log around those times: a lost connection, a pause, a lock that was waited for.",
+            "Repair the cause, then answer this report that it is done. A claim lost after that is a new report."
+          ],
+          "standing_still": [
+            "Nothing, as far as the claim goes: another runner took each run over at its last step boundary. Runs: run_example."
+          ],
+          "about": [
+            {
+              "run_id": "run_example"
+            }
+          ],
+          "report": false
+        },
+        {
+          "id": "backup-d2754eedeafa20eb",
+          "kind": "backup",
+          "since": "2026-10-22T02:00:00+00:00",
+          "in_effect": true,
+          "closed": false,
+          "delivered": false,
+          "reason": "no_channel",
+          "state": "not delivered: this tenant configured no owner-facing channel (`taktusctl owner-channel set`)",
+          "title": "The instance's backup failed",
+          "summary": "Backup: failing; last success taktus-20261020T020000Z.",
+          "needed": [
+            "A working backup: the newest run, taktus-20261021T020000Z at 2026-10-22T02:00:00+00:00, failed at the step `store`: the backup store could not be written or listed. 1 run(s) failed since the last success.",
+            "A backup: none succeeded in the last 26 hours (`TAKTUS_BACKUP_EXPECTED_HOURS`).",
+            "The last successful backup is taktus-20261020T020000Z, at 2026-10-21T02:00:00+00:00."
+          ],
+          "steps": [
+            "Read the log of the backup program's last run: it names the step and the tool that failed.",
+            "Repair what the step names: `configuration` the backup's settings, `database` the database or the backup's login, `encryption` the recipient, `objects` the state volume, `store` the backup store or its credential, `retention` the deletions in the store.",
+            "Run the backup once by hand. The alert clears by itself when a successful run is recorded."
+          ],
+          "standing_still": [
+            "Nothing of the work. A restore can reach back only to the last successful backup, and the work since would be lost with the database."
+          ],
+          "about": [],
+          "report": false
+        }
+      ]
+    },
+    "backup": {
+      "standing": "failing",
+      "watched": true,
+      "expected_hours": 26,
+      "next_due": "2026-10-22T04:00:00+00:00",
+      "last_ok": {
+        "name": "taktus-20261020T020000Z",
+        "at": "2026-10-21T02:00:00+00:00"
+      },
+      "failed_count": 1,
+      "newest_failed": {
+        "name": "taktus-20261021T020000Z",
+        "at": "2026-10-22T02:00:00+00:00",
+        "reason": "store"
+      },
+      "alert": {
+        "id": "backup-d2754eedeafa20eb",
+        "title": "The instance's backup failed",
+        "summary": "Backup: failing; last success taktus-20261020T020000Z.",
+        "needed": [
+          "A working backup: the newest run, taktus-20261021T020000Z at 2026-10-22T02:00:00+00:00, failed at the step `store`: the backup store could not be written or listed. 1 run(s) failed since the last success.",
+          "A backup: none succeeded in the last 26 hours (`TAKTUS_BACKUP_EXPECTED_HOURS`).",
+          "The last successful backup is taktus-20261020T020000Z, at 2026-10-21T02:00:00+00:00."
+        ],
+        "steps": [
+          "Read the log of the backup program's last run: it names the step and the tool that failed.",
+          "Repair what the step names: `configuration` the backup's settings, `database` the database or the backup's login, `encryption` the recipient, `objects` the state volume, `store` the backup store or its credential, `retention` the deletions in the store.",
+          "Run the backup once by hand. The alert clears by itself when a successful run is recorded."
+        ]
+      }
+    },
+    "signals": {
+      "signals": [
+        {
+          "signal": "orders.late",
+          "corridor": "orders.late@1",
+          "version": 1,
+          "process": "orders",
+          "step": "count",
+          "select": null,
+          "about": {
+            "kind": "operation",
+            "name": null
+          },
+          "bounds": "fixed",
+          "direction": "above",
+          "yellow": 5.0,
+          "red": 10.0,
+          "window_seconds": 604800.0,
+          "minimum": 5,
+          "fresh_seconds": 93600.0,
+          "role": "sales",
+          "case": "https://tracker.example/cases/orders.late",
+          "interventions": [],
+          "changed_at": "2026-10-12T09:00:00+00:00",
+          "level": "red",
+          "reason": null,
+          "value": 12.0,
+          "median": null,
+          "yellow_at": 5.0,
+          "red_at": 10.0,
+          "run_id": "run_orders_9",
+          "step_id": "count",
+          "process_version": "orders@2",
+          "at": "2026-10-22T08:00:00+00:00"
+        },
+        {
+          "signal": "tickets.open",
+          "corridor": "tickets.open@1",
+          "version": 1,
+          "process": "tickets",
+          "step": "count",
+          "select": null,
+          "about": {
+            "kind": "department",
+            "name": "support"
+          },
+          "bounds": "fixed",
+          "direction": "above",
+          "yellow": 5.0,
+          "red": 10.0,
+          "window_seconds": 604800.0,
+          "minimum": 5,
+          "fresh_seconds": 93600.0,
+          "role": "sales",
+          "case": "https://tracker.example/cases/tickets.open",
+          "interventions": [],
+          "changed_at": "2026-10-12T09:00:00+00:00",
+          "level": "yellow",
+          "reason": null,
+          "value": 7.0,
+          "median": null,
+          "yellow_at": 5.0,
+          "red_at": 10.0,
+          "run_id": "run_tickets_4",
+          "step_id": "count",
+          "process_version": "tickets@1",
+          "at": "2026-10-22T08:00:00+00:00"
+        },
+        {
+          "signal": "stock.low",
+          "corridor": "stock.low@1",
+          "version": 1,
+          "process": "stock",
+          "step": "measure",
+          "select": null,
+          "about": {
+            "kind": "operation",
+            "name": null
+          },
+          "bounds": "fixed",
+          "direction": "below",
+          "yellow": 20.0,
+          "red": 10.0,
+          "window_seconds": 604800.0,
+          "minimum": 5,
+          "fresh_seconds": 93600.0,
+          "role": "sales",
+          "case": "https://tracker.example/cases/stock.low",
+          "interventions": [],
+          "changed_at": "2026-10-12T09:00:00+00:00",
+          "level": "unmeasured",
+          "reason": "no_measurement",
+          "value": null,
+          "median": null,
+          "yellow_at": null,
+          "red_at": null,
+          "run_id": null,
+          "step_id": null,
+          "process_version": null,
+          "at": null
+        }
+      ]
+    },
+    "daily_report": {
+      "id": "signals-2026-10-22",
+      "tenant": "default",
+      "kind": "signals",
+      "title": "Daily report: 2 signals deviate, 1 not measured",
+      "needed": [
+        "orders.late is red: 12 above 10, run run_orders_9, step count.",
+        "tickets.open is yellow: 7 above 5, run run_tickets_4, step count.",
+        "stock.low is not measured: no_measurement."
+      ],
+      "steps": [
+        "Open the case each line names: that is where a deviation is worked."
+      ],
+      "standing_still": [
+        "1 red signals have open incidents; whatever they steer waits for a person."
+      ],
+      "due": "2026-10-22",
+      "offered": [
+        {
+          "id": "done",
+          "label": "Done",
+          "recommended": false
+        }
+      ],
+      "links": [],
+      "raised_at": "2026-10-22T06:00:00Z",
+      "state": "open",
+      "deliveries": [],
+      "history": []
+    }
   }
 }

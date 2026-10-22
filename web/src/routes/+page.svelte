@@ -12,6 +12,8 @@
 	import { motion } from '../lib/motion.svelte';
 	import OverviewView from '../lib/OverviewView.svelte';
 	import OpenReports from '../lib/OpenReports.svelte';
+	// What keeps the operation running (ADR-0121): a section of its own.
+	import OperationSection from '../lib/OperationSection.svelte';
 	import type { OverviewLevel } from '../lib/types';
 	// What governs the work (ADR-0122): a section of its own.
 	import { currentAdministrationKey, governanceLines, type Line } from '../lib/governance';
@@ -58,6 +60,7 @@
 	<KeyForm {refused} onKey={(k) => (key = k)} />
 {:else if level}
 	<p class="status" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
+	<OperationSection {key} />
 	<OverviewView {level} motionAllowed={motion.allowed} />
 {:else}
 	<p class="status">Reading the overview…</p>
