@@ -7,14 +7,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { read, send, surface } from '../../../lib/api';
-	import KeyForm from '../../../lib/KeyForm.svelte';
-	import { currentKey } from '../../../lib/key';
+	import SignInForm from '../../../lib/SignInForm.svelte';
 	import { requestsLink } from '../../../lib/links';
 	import RequestView from '../../../lib/RequestView.svelte';
 	import type { AddressedList, AddressedRequest } from '../../../lib/types';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let list: AddressedList | null = $state(null);
 	let chosen: AddressedRequest | null = $state(null);
 	let absent = $state(false);
@@ -26,17 +24,16 @@
 
 	function refuse(status: number): boolean {
 		if (status !== 401) return false;
-		refused = true;
-		key = null;
+		signedIn = false;
 		return true;
 	}
 
 	$effect(() => {
-		if (!key) return;
+		if (!signedIn) return;
 		const base = surface(location.href);
 		message = null;
 		problem = null;
-		void read<AddressedList>(base, 'decisions', key).then((answer) => {
+		void read<AddressedList>(base, 'decisions').then((answer) => {
 			if (answer.ok) list = answer.body;
 			else refuse(answer.problem.status);
 		});
@@ -45,17 +42,17 @@
 			return;
 		}
 		absent = false;
-		void read<AddressedRequest>(base, `decisions/${encodeURIComponent(requestId)}`, key).then((answer) => {
+		void read<AddressedRequest>(base, `decisions/${encodeURIComponent(requestId)}`).then((answer) => {
 			if (answer.ok) chosen = answer.body;
 			else if (!refuse(answer.problem.status)) absent = true;
 		});
 	});
 
 	async function answer(given: { option: string } | { text: string }) {
-		if (!key || !chosen) return;
+		if (!signedIn || !chosen) return;
 		busy = true;
 		const path = `decisions/${encodeURIComponent(chosen.id)}/answer`;
-		const answered = await send<{ message: string; request: AddressedRequest }>(surface(location.href), path, key, given);
+		const answered = await send<{ message: string; request: AddressedRequest }>(surface(location.href), path, given);
 		busy = false;
 		if (answered.ok) {
 			message = answered.body.message;
@@ -65,10 +62,10 @@
 	}
 
 	async function confirm(confirmed: boolean) {
-		if (!key || !chosen) return;
+		if (!signedIn || !chosen) return;
 		busy = true;
 		const path = `decisions/${encodeURIComponent(chosen.id)}/confirm`;
-		const done = await send<{ applied: boolean; request: AddressedRequest }>(surface(location.href), path, key, { confirmed });
+		const done = await send<{ applied: boolean; request: AddressedRequest }>(surface(location.href), path, { confirmed });
 		busy = false;
 		if (done.ok) {
 			chosen = done.body.request;
@@ -78,8 +75,8 @@
 	}
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else}
 	<div class="requests">
 		<nav aria-label="Decision requests addressed to you">

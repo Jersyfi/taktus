@@ -120,16 +120,17 @@ describe('the findings', () => {
 			},
 			calls
 		);
-		const back = await readBack(BASE, 'k', 'abc', 'local', fetcher);
+		const back = await readBack(BASE, 'abc', 'local', fetcher);
 		expect(back.ok && back.body.confirmation).toBe(reading.confirmation);
 		expect(calls.map((c) => c.url)).toEqual(['https://instance.test/p/findings/abc/review']);
 		expect(calls[0]!.init?.body).toBe('{"answer":"local"}');
 
-		const done = await confirmReading(BASE, 'k', reading, true, fetcher);
+		const done = await confirmReading(BASE, reading, true, fetcher);
 		expect(done.ok && done.body.message).toBe('Remembered.');
 		expect(calls[1]!.url).toBe('https://instance.test/p/findings/abc/review/confirm');
 		expect(JSON.parse(String(calls[1]!.init?.body))).toEqual({ answer: 'local', confirmation: reading.confirmation, confirmed: true });
-		expect((calls[1]!.init?.headers as Record<string, string>)['Authorization']).toBe('Bearer k');
+		expect((calls[1]!.init?.headers as Record<string, string>)['Authorization']).toBeUndefined();
+		expect(calls[1]!.init?.credentials).toBe('same-origin');
 	});
 });
 
@@ -184,7 +185,7 @@ describe('the start page', () => {
 	};
 
 	it('has one line per kind, each saying how many wait and leading to its page', async () => {
-		const lines = await governanceLines(BASE, 'k', 'adm', surface(answers));
+		const lines = await governanceLines(BASE, 'adm', surface(answers));
 		expect(lines.map((l) => [l.kind, l.href])).toEqual([
 			['requests', '#/requests'],
 			['needs', NEEDS],
@@ -206,7 +207,7 @@ describe('the start page', () => {
 
 	it('leaves out a kind the surface refuses the reader', async () => {
 		const refused = { status: 403, body: { status: 403, title: 'Forbidden', detail: 'only the owner' } };
-		const lines = await governanceLines(BASE, 'k', null, surface({ ...answers, 'owner/reports': refused, findings: refused }));
+		const lines = await governanceLines(BASE, null, surface({ ...answers, 'owner/reports': refused, findings: refused }));
 		expect(lines.map((l) => l.kind)).toEqual(['requests', 'autonomy', 'tenants']);
 		expect(lines.at(-1)!.text).toBe('Tenants: for the holder of the administration key.');
 	});

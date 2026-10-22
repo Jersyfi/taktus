@@ -4,7 +4,7 @@
 	the tab's session only, and sent in `Authorization: Bearer` and nowhere else.
 -->
 <script lang="ts">
-	import { read, surface } from '../../lib/api';
+	import { readAs, surface } from '../../lib/api';
 	import {
 		currentAdministrationKey,
 		keepAdministrationKey,
@@ -30,7 +30,7 @@
 
 	async function load() {
 		if (!key) return;
-		const found = await read<{ tenants: Tenant[] }>(surface(location.href), 'administration/tenants', key);
+		const found = await readAs<{ tenants: Tenant[] }>(surface(location.href), 'administration/tenants', key);
 		if (found.ok) tenants = found.body.tenants;
 		else refuse(found.problem.status, found.problem.detail || found.problem.title);
 	}

@@ -4,29 +4,26 @@
 <script lang="ts">
 	import { read, surface } from '../../lib/api';
 	import IncidentsView from '../../lib/IncidentsView.svelte';
-	import KeyForm from '../../lib/KeyForm.svelte';
-	import { currentKey } from '../../lib/key';
+	import SignInForm from '../../lib/SignInForm.svelte';
 	import type { IncidentRecord } from '../../lib/operation';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let found: IncidentRecord[] | null = $state(null);
 	let problem: string | null = $state(null);
 
 	$effect(() => {
-		if (!key) return;
-		void read<{ incidents: IncidentRecord[] }>(surface(location.href), 'incidents', key).then((answer) => {
+		if (!signedIn) return;
+		void read<{ incidents: IncidentRecord[] }>(surface(location.href), 'incidents').then((answer) => {
 			if (answer.ok) found = answer.body.incidents;
 			else if (answer.problem.status === 401) {
-				refused = true;
-				key = null;
+				signedIn = false;
 			} else problem = answer.problem.detail || answer.problem.title;
 		});
 	});
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if found}
 	<IncidentsView incidents={found} />
 {:else if problem}

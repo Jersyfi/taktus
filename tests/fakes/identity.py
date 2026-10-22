@@ -18,7 +18,7 @@ from taktus.adapters.driven.memory import (
 )
 from taktus.adapters.driven.memory.tenant_store import BEGINNING
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
-from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
+from taktus.components.identity.domain.model import BrowserSession, ChannelLink, Identity, LinkCode
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.ports.clock import Clock
 from taktus.ports.connector import ChannelReplies, IntakeReplyTo
@@ -149,6 +149,7 @@ def directory(
             identities=MemoryRepository(persistence, Identity),
             links=links,
             codes=MemoryRepository(persistence, LinkCode),
+            sessions=MemoryRepository(persistence, BrowserSession),
             work=persistence,
             ledger=ledger,
             clock=clock,

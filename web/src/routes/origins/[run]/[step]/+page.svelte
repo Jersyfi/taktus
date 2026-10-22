@@ -5,14 +5,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { read, surface } from '../../../../lib/api';
-	import KeyForm from '../../../../lib/KeyForm.svelte';
-	import { currentKey } from '../../../../lib/key';
+	import SignInForm from '../../../../lib/SignInForm.svelte';
 	import { motion } from '../../../../lib/motion.svelte';
 	import OriginView from '../../../../lib/OriginView.svelte';
 	import type { OriginLevel } from '../../../../lib/types';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let absent = $state(false);
 	let level: OriginLevel | null = $state(null);
 
@@ -20,22 +18,21 @@
 	const stepId = $derived(page.params.step ?? '');
 
 	$effect(() => {
-		if (!key || !runId || !stepId) return;
+		if (!signedIn || !runId || !stepId) return;
 		const path = `levels/origins/${encodeURIComponent(runId)}/${encodeURIComponent(stepId)}`;
 		level = null;
 		absent = false;
-		void read<OriginLevel>(surface(location.href), path, key).then((answer) => {
+		void read<OriginLevel>(surface(location.href), path).then((answer) => {
 			if (answer.ok) level = answer.body;
 			else if (answer.problem.status === 401) {
-				refused = true;
-				key = null;
+				signedIn = false;
 			} else absent = true;
 		});
 	});
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if absent}
 	<p>No result of {runId}/{stepId} you may see.</p>
 {:else if level}

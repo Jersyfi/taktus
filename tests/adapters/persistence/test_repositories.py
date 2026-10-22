@@ -18,7 +18,12 @@ from taktus.components.governance.domain.model import (
     ResidencyRule,
     WatchConfiguration,
 )
-from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
+from taktus.components.identity.domain.model import (
+    BrowserSession,
+    ChannelLink,
+    Identity,
+    LinkCode,
+)
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report
 from taktus.components.run.domain.model import Run, RunState, StepState
@@ -38,6 +43,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (Identity, samples.identity),
     (ChannelLink, samples.channel_link),
     (LinkCode, samples.link_code),
+    (BrowserSession, samples.browser_session),
     (AnchorConfiguration, samples.anchor_configuration),
     (Request, samples.decision_request),
     (RegisterEntry, samples.register_entry),

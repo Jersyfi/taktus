@@ -1,7 +1,7 @@
 <!--
 	The start page's list of the reports that wait for an answer — decision requests, needs,
 	dates, failures and alerts, daily signals — newest first, each leading to its page (DEC-0218,
-	ADR-0120). It reads `GET /owner/reports` with the reader's key. A reader who does not read the
+	ADR-0120). It reads `GET /owner/reports` as the signed-in reader (ADR-0119). A reader who does not read the
 	reports sees nothing of it: the section is the owner's and the people the owner named.
 -->
 <script lang="ts">
@@ -9,14 +9,14 @@
 	import { reportLink } from './links';
 	import { KIND, openLine, openReports, type ReportList, type ReportView } from './reports';
 
-	let { key, reports: given = null }: { key: string; reports?: ReportView[] | null } = $props();
+	let { reports: given = null }: { reports?: ReportView[] | null } = $props();
 	let fetched: ReportView[] | null = $state(null);
 	const shown = $derived(given ?? fetched);
 	const open = $derived(shown === null ? null : openReports(shown));
 
 	$effect(() => {
 		if (given !== null) return;
-		void read<ReportList>(surface(location.href), 'owner/reports', key).then((answer) => {
+		void read<ReportList>(surface(location.href), 'owner/reports').then((answer) => {
 			fetched = answer.ok ? answer.body.reports : null;
 		});
 	});

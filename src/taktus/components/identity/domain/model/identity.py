@@ -14,6 +14,11 @@ A **link code** is what a person creates in their Taktus account to link an acco
 channel: single-use, valid for `CODE_VALIDITY`, kept only as a digest. Writing it in the channel
 from the account proves that the person holds the account; creating it proves that they hold
 the identity. Neither a matching name nor a matching address ever links anything.
+
+A **browser session** is what the web app is signed in with (ADR-0119). The instance hands it
+out once, in exchange for the account key, as a cookie the page's scripts cannot read. Only the
+digest of its token is kept. It ends when its time is up, when the person signs out, and when
+the identity's key is replaced.
 """
 
 from __future__ import annotations
@@ -32,6 +37,9 @@ CODE_PREFIX = "tkl-"
 CODE = re.compile(r"\btkl-[0-9a-f]{24}\b")
 """A link code as it appears in what a sender wrote: the prefix and 96 bits as hex."""
 KEY_PREFIX = "tka_"
+SESSION_PREFIX = "tks_"
+SESSION_LIFETIME = timedelta(hours=12)
+"""How long a browser session lasts unless the operator sets another time (ADR-0119)."""
 
 
 def digest(secret: str) -> str:
@@ -46,6 +54,11 @@ def link_id(channel: Capability, account: str) -> str:
 
 def code_id(code: str) -> str:
     return "lkc_" + digest(code)[:40]
+
+
+def session_id(token: str) -> str:
+    """The identifier a browser session is kept under: a digest of its token, never the token."""
+    return "ses_" + digest(token)[:40]
 
 
 class Identity(Value):
@@ -113,3 +126,29 @@ class LinkCode(Value):
 
     def redeemable(self, channel: Capability, now: datetime) -> bool:
         return self.used_at is None and self.channel == channel and now < self.expires_at
+
+
+class BrowserSession(Value):
+    """A sign-in of the web app, held by the browser as a cookie (ADR-0119)."""
+
+    id: str = Field(min_length=1)
+    """`session_id(token)`: the token itself is kept nowhere."""
+    tenant: str = Field(min_length=1)
+    identity: str = Field(min_length=1)
+    key_digest: str = Field(min_length=1)
+    """The digest of the account key the session was exchanged for. A new key for the identity
+    ends every session exchanged for the one before."""
+    created_at: datetime
+    expires_at: datetime
+    ended_at: datetime | None = None
+    """When the person signed out; None while the session was not ended."""
+
+    def holds(self, identity: Identity, now: datetime) -> bool:
+        """Whether the session still proves `identity`: not ended, not expired, and exchanged
+        for the key the identity holds now."""
+        return (
+            self.ended_at is None
+            and now < self.expires_at
+            and identity.id == self.identity
+            and identity.key_digest == self.key_digest
+        )

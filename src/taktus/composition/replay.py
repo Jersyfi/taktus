@@ -51,7 +51,12 @@ from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
-from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
+from taktus.components.identity.domain.model import (
+    BrowserSession,
+    ChannelLink,
+    Identity,
+    LinkCode,
+)
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersion,
@@ -186,6 +191,7 @@ async def replay(bundle: Mapping[str, Any] | Path, directory: Path, store: Store
         identities=store.of(Identity),
         links=store.of(ChannelLink),
         codes=store.of(LinkCode),
+        sessions=store.of(BrowserSession),
         work=store.work,
         ledger=ledger,
         clock=clock,

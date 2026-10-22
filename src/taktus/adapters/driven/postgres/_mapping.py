@@ -972,6 +972,48 @@ class LinkCodeMapper:
         )
 
 
+class BrowserSessionMapper:
+    """A sign-in of the web app, kept by the digest of its token (ADR-0119)."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.browser_session, tenant, id)
+        return None if row is None else self._from(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.browser_session,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "identity": document["identity"],
+                "key_digest": document["key_digest"],
+                "created_at": _at(document["created_at"]),
+                "expires_at": _at(document["expires_at"]),
+                "ended_at": _at(document.get("ended_at")),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.browser_session, tenant, s.browser_session.c.id)
+        return [self._from(row) for row in rows]
+
+    @staticmethod
+    def _from(row: Row[Any]) -> Document:
+        return _present(
+            {
+                "tenant": row.tenant,
+                "id": row.id,
+                "identity": row.identity,
+                "key_digest": row.key_digest,
+                "created_at": _iso(row.created_at),
+                "expires_at": _iso(row.expires_at),
+                "ended_at": _iso(row.ended_at),
+            }
+        )
+
+
 # --- anchors and decisions ------------------------------------------------------------------------
 
 
@@ -1353,6 +1395,7 @@ MAPPERS: dict[str, Mapper] = {
     "identity": IdentityMapper(),
     "channel_link": ChannelLinkMapper(),
     "link_code": LinkCodeMapper(),
+    "browser_session": BrowserSessionMapper(),
     "anchor_configuration": AnchorConfigurationMapper(),
     "request": DecisionRequestMapper(),
     "register_entry": RegisterEntryMapper(),

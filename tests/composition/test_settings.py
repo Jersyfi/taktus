@@ -83,6 +83,7 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
                 "TAKTUS_RUNNER_CONCURRENCY": "2",
                 "TAKTUS_LIVE_STREAMS": "7",
                 "TAKTUS_OFFER_WINDOW_SECONDS": "600",
+                "TAKTUS_SESSION_HOURS": "8",
                 "TAKTUS_LOG_LEVEL": "DEBUG",
             }
         ),
@@ -112,6 +113,7 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
     assert loaded.poll_seconds == 0.2 and loaded.runner_concurrency == 2
     assert loaded.live_streams == 7
     assert loaded.offer_window_seconds == 600
+    assert loaded.session_hours == 8
     assert loaded.log_level == "debug"
 
 
@@ -151,6 +153,8 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
         ("TAKTUS_LIVE_STREAMS", "0", "at least 1"),
         ("TAKTUS_OBJECT_CACHE_MB", "-1", "at least 0"),
         ("TAKTUS_OFFER_WINDOW_SECONDS", "0", "at least 1"),
+        ("TAKTUS_SESSION_HOURS", "0", "between 1 and 720"),
+        ("TAKTUS_SESSION_HOURS", "721", "between 1 and 720"),
         ("TAKTUS_LOG_LEVEL", "loud", "not one of"),
     ],
 )
@@ -192,7 +196,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 85, "every setting is in the startup log"
+    assert len(effective) == 86, "every setting is in the startup log"
 
 
 def test_the_administration_key_is_read_from_a_file_and_masked(tmp_path: Path) -> None:

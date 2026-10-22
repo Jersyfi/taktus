@@ -5,29 +5,26 @@
 <script lang="ts">
 	import { read, surface } from '../../lib/api';
 	import { needsOf, type OwnerReport } from '../../lib/governance';
-	import KeyForm from '../../lib/KeyForm.svelte';
-	import { currentKey } from '../../lib/key';
+	import SignInForm from '../../lib/SignInForm.svelte';
 	import NeedsView from '../../lib/NeedsView.svelte';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let needs: OwnerReport[] | null = $state(null);
 	let problem: string | null = $state(null);
 
 	$effect(() => {
-		if (!key) return;
-		void read<{ reports: OwnerReport[] }>(surface(location.href), 'owner/reports', key).then((found) => {
+		if (!signedIn) return;
+		void read<{ reports: OwnerReport[] }>(surface(location.href), 'owner/reports').then((found) => {
 			if (found.ok) needs = needsOf(found.body.reports);
 			else if (found.problem.status === 401) {
-				refused = true;
-				key = null;
+				signedIn = false;
 			} else problem = found.problem.detail || found.problem.title;
 		});
 	});
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if needs}
 	<NeedsView {needs} />
 {:else if problem}

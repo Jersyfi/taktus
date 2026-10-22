@@ -1073,6 +1073,8 @@ class Settings:
     offer_window_seconds: int
     """How long one offer to link an account answers every event of its person in its
     conversation (ADR-0040 §5); a later event may be offered again."""
+    session_hours: int
+    """How long a sign-in to the web app lasts, in hours from the sign-in (ADR-0119)."""
     log_level: str
 
     def effective(self) -> list[tuple[str, str]]:
@@ -1132,6 +1134,7 @@ class Settings:
             ("TAKTUS_RUNNER_CONCURRENCY", str(self.runner_concurrency)),
             ("TAKTUS_LIVE_STREAMS", str(self.live_streams)),
             ("TAKTUS_OFFER_WINDOW_SECONDS", str(self.offer_window_seconds)),
+            ("TAKTUS_SESSION_HOURS", str(self.session_hours)),
             ("TAKTUS_LOG_LEVEL", self.log_level),
         ]
 
@@ -1189,6 +1192,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         runner_concurrency=reader.integer("runner.concurrency", 4, low=1),
         live_streams=reader.integer("live.streams", 500, low=1),
         offer_window_seconds=reader.integer("offer.window.seconds", 86400, low=1),
+        session_hours=reader.integer("session.hours", 12, low=1, high=720),
         log_level=reader.choice("log.level", "info", ("debug", "info", "warning", "error")),
     )
 

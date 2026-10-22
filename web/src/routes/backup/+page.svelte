@@ -5,29 +5,26 @@
 <script lang="ts">
 	import { read, surface } from '../../lib/api';
 	import BackupView from '../../lib/BackupView.svelte';
-	import KeyForm from '../../lib/KeyForm.svelte';
-	import { currentKey } from '../../lib/key';
+	import SignInForm from '../../lib/SignInForm.svelte';
 	import type { BackupRecord } from '../../lib/operation';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let found: BackupRecord | null = $state(null);
 	let problem: string | null = $state(null);
 
 	$effect(() => {
-		if (!key) return;
-		void read<BackupRecord>(surface(location.href), 'backup', key).then((answer) => {
+		if (!signedIn) return;
+		void read<BackupRecord>(surface(location.href), 'backup').then((answer) => {
 			if (answer.ok) found = answer.body;
 			else if (answer.problem.status === 401) {
-				refused = true;
-				key = null;
+				signedIn = false;
 			} else problem = answer.problem.detail || answer.problem.title;
 		});
 	});
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if found}
 	<BackupView backup={found} />
 {:else if problem}

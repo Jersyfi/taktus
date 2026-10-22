@@ -73,7 +73,12 @@ from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.governance.application.service import ExpectedRuns
 from taktus.components.governance.domain.model import Incident, WatchConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
-from taktus.components.identity.domain.model import ChannelLink, Identity, LinkCode
+from taktus.components.identity.domain.model import (
+    BrowserSession,
+    ChannelLink,
+    Identity,
+    LinkCode,
+)
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.deactivate import DeactivateProcessHandler
@@ -221,6 +226,7 @@ class LocalWiring:
                 identities=stores.of(Identity),
                 links=stores.of(ChannelLink),
                 codes=stores.of(LinkCode),
+                sessions=stores.of(BrowserSession),
                 work=stores.work,
                 ledger=ledger,
                 clock=clock,

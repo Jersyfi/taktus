@@ -51,13 +51,16 @@ origin.
   motion from the first moment. It chooses no token of its own (ADR-0059). It adds one colour per
   family on top of the form, paper and ink otherwise; every distinction is carried without it
   (M1.20, DEC-0185).
-- The reader gives an account key once per browser tab. It is kept in the tab's session storage
-  and sent in `Authorization: Bearer`, never in an address.
+- The reader signs in with an account key once per browser (ADR-0119). The app sends it in
+  `Authorization: Bearer` to `POST {prefix}/session`, once, and forgets it. The instance answers
+  with a session cookie the page cannot read, which the browser sends with every request, in
+  every tab, until it expires or the reader signs out. The key is never stored and never put in
+  an address.
 
 | Path | What it is |
 |---|---|
 | `src/lib/types.ts` | the shapes the surface answers: a run level, a snapshot, a change |
-| `src/lib/api.ts` | the surface's address, and a read with the key |
+| `src/lib/api.ts` | the surface's address, and a read or a write as the signed-in reader |
 | `src/lib/stream.ts` | the stream of changes, read with `fetch`, resumed from its last position |
 | `src/lib/live.ts` | a level followed live, read again on every change |
 | `src/lib/cells.ts`, `Glyph.svelte` | a glyph's tokens turned into a cell — membrane, nucleus, rings, cytoplasm, badge — each token kept on it as an attribute; a family's hue on top (M1.20) |
@@ -68,7 +71,7 @@ origin.
 | `src/lib/ProcessView.svelte` | the process level, its autonomy statement, its runs and versions, and its text equivalent |
 | `src/lib/links.ts` | where each level lives in the web app |
 | `src/lib/motion.svelte.ts` | whether motion is allowed |
-| `src/lib/key.ts`, `KeyForm.svelte` | the reader's key, for the tab's session |
+| `src/lib/session.ts`, `SignInForm.svelte` | signing in with the key, once, and signing out |
 | `src/lib/generated/fixtures.json` | written by `make generate`, never by hand: what the tests draw |
 | `src/routes/` | the pages: the overview at `#/`, `#/runs/<id>`, `#/processes/<id>` with an optional `/<version>`, `#/origins/<run>/<step>`, and `#/requests` with an optional `/<id>`: the decision requests addressed to the reader, answered and confirmed there (ADR-0063 §4), and `#/changes/<process>`, where a process is changed in dialogue and rolled back (ADR-0091 §6) |
 | `src/lib/RequestView.svelte` | one decision request: what happened, the options with the recommended one, what is blocked, by when; an answer by option or in the reader's words, and the reading confirmed before anything takes effect |

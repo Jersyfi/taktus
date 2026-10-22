@@ -185,6 +185,67 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /session:
+    post:
+      tags:
+      - identity
+      summary: 'Sign in to the web app: exchange your account key for a session cookie'
+      description: 'The account key in `Authorization: Bearer` proves the identity, once. The answer sets
+        the cookie `taktus_session`: `HttpOnly`, `Secure`, `SameSite=Strict`, scoped to the instance''s
+        path prefix, and valid for `TAKTUS_SESSION_HOURS` (12 by default). From then on the cookie is
+        accepted wherever the account key is. The token is never in the body. The session ends at its
+        time, on `DELETE /session`, and when the identity''s key is replaced (ADR-0119).'
+      operationId: sign_in_session_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '201':
+          description: 'Signed in: who, and until when. The cookie is set.'
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    delete:
+      tags:
+      - identity
+      summary: Sign out of the web app
+      description: The session the cookie names ends now, and the answer clears the cookie. Signing out
+        without a session clears the cookie too.
+      operationId: sign_out_session_delete
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '204':
+          description: Signed out.
+        '403':
+          description: The request did not come from the instance's pages.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /decisions:
     get:
       tags:

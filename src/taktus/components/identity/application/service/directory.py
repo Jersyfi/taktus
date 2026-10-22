@@ -9,6 +9,9 @@
 - **Linking an account.** A person proves their identity with its account key and creates a
   link code for one channel; writing the code in that channel from the account links it. A
   second link for an account that has one is refused.
+- **Signing in to the web app.** A person exchanges their account key once for a browser
+  session (ADR-0119). The session proves the identity until its time is up, until the person
+  signs out, or until the identity's key is replaced, whichever comes first.
 - **Administering.** An administrator adds an identity, issues a new key for one, lists every
   link of a tenant and revokes one. The next event from a revoked account is from an unknown
   sender.
@@ -16,7 +19,8 @@
 Every identity added and every link made or revoked is a ledger entry in the same transaction:
 `identity.created`, `identity.linked` (outcome `confirmed` or `source`), `identity.unlinked`
 (outcome `revoked`). An entry carries identifiers and a digest, never the account or a name
-(ADR-0006); the actor is the identity that acted, where one did.
+(ADR-0006); the actor is the identity that acted, where one did. A sign-in and a sign-out are
+no entry: when a person uses the web app is nobody's measure (principle 14, ADR-0119 §6).
 
 An account belongs to at most one identity across every tenant the instance serves: a link is
 looked for in each of them, and refused where one is active in any. Which tenants it serves is
@@ -30,7 +34,7 @@ import hashlib
 import hmac
 import json
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from taktus.components.identity.domain.model import (
@@ -38,6 +42,9 @@ from taktus.components.identity.domain.model import (
     CODE_PREFIX,
     CODE_VALIDITY,
     KEY_PREFIX,
+    SESSION_LIFETIME,
+    SESSION_PREFIX,
+    BrowserSession,
     ChannelLink,
     Identity,
     LinkCode,
@@ -45,6 +52,7 @@ from taktus.components.identity.domain.model import (
     code_id,
     digest,
     link_id,
+    session_id,
 )
 from taktus.ports.clock import Clock, Randomness
 from taktus.ports.identity import (
@@ -134,16 +142,20 @@ class IdentityDirectory(IdentityResolver):
         identities: Repository[Identity],
         links: Repository[ChannelLink],
         codes: Repository[LinkCode],
+        sessions: Repository[BrowserSession],
         work: UnitOfWork,
         ledger: Ledger,
         clock: Clock,
         randomness: Randomness,
         source: IdentitySource | None = None,
+        session_lifetime: timedelta = SESSION_LIFETIME,
     ) -> None:
         self._tenants = tenants
         self._identities = identities
         self._links = links
         self._codes = codes
+        self._sessions = sessions
+        self._session_lifetime = session_lifetime
         self._work = work
         self._ledger = ledger
         self._clock = clock
@@ -251,6 +263,73 @@ class IdentityDirectory(IdentityResolver):
             await self._codes.put(who.tenant, record)
         return code, record
 
+    # --- a person, signed in to the web app (ADR-0119) --------------------------------------
+
+    @property
+    def session_lifetime(self) -> timedelta:
+        """How long a browser session lasts from its sign-in."""
+        return self._session_lifetime
+
+    async def sign_in(self, key: str) -> tuple[str, BrowserSession] | None:
+        """A browser session for the identity the account key proves, or None. The token is
+        returned to be set as the cookie once; only its digest is kept."""
+        who = await self.authenticate(key)
+        if who is None:
+            return None
+        token = SESSION_PREFIX + self._randomness.token(32)
+        now = self._clock.now()
+        session = BrowserSession(
+            id=session_id(token),
+            tenant=who.tenant,
+            identity=who.identity,
+            key_digest=digest(key),
+            created_at=now,
+            expires_at=now + self._session_lifetime,
+        )
+        async with self._work.transaction(who.tenant):
+            await self._sessions.put(who.tenant, session)
+        return token, session
+
+    async def session(self, token: str) -> Resolution | None:
+        """The identity the browser session proves, or None: a token nobody handed out, a
+        session that ended or expired, or one exchanged for a key the identity holds no
+        longer."""
+        found = await self._session_of(token)
+        if found is None:
+            return None
+        session, identity = found
+        return _resolution(identity) if session.holds(identity, self._clock.now()) else None
+
+    async def sign_out(self, token: str) -> bool:
+        """The browser session ends now. False when the token names no session that still
+        held."""
+        found = await self._session_of(token)
+        if found is None:
+            return False
+        session, identity = found
+        now = self._clock.now()
+        if not session.holds(identity, now):
+            return False
+        async with self._work.transaction(session.tenant):
+            await self._sessions.put(session.tenant, session.model_copy(update={"ended_at": now}))
+        return True
+
+    async def _session_of(self, token: str) -> tuple[BrowserSession, Identity] | None:
+        if not token.startswith(SESSION_PREFIX):
+            return None
+        wanted = session_id(token)
+        for tenant in await self._tenants.served():
+            async with self._work.transaction(tenant):
+                session = await self._sessions.get(tenant, wanted)
+                identity = (
+                    None
+                    if session is None
+                    else await self._identities.get(tenant, session.identity)
+                )
+            if session is not None:
+                return None if identity is None else (session, identity)
+        return None
+
     # --- an administrator --------------------------------------------------------------------
 
     async def add(
@@ -314,7 +393,8 @@ class IdentityDirectory(IdentityResolver):
         return changed
 
     async def issue_key(self, tenant: Tenant, identity: str, *, by: str | None = None) -> str:
-        """A new account key for an identity; the old one stops working."""
+        """A new account key for an identity; the old one stops working, and so does every
+        browser session exchanged for it (ADR-0119)."""
         await self._served(tenant)
         key = self._new_key()
         async with self._work.transaction(tenant):

@@ -15,7 +15,7 @@
 - `/app/` — the web app, the static build of `web/`, served where it was built into the image.
 
 The account key is read from `Authorization: Bearer` and nowhere else, as on the rest of the
-surface.
+surface; the web app's session cookie is accepted in its place (ADR-0119).
 """
 
 from __future__ import annotations

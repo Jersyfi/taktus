@@ -7,15 +7,13 @@
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { surface } from '../../../lib/api';
-	import KeyForm from '../../../lib/KeyForm.svelte';
-	import { currentKey } from '../../../lib/key';
+	import SignInForm from '../../../lib/SignInForm.svelte';
 	import { followLevel } from '../../../lib/live';
 	import { motion } from '../../../lib/motion.svelte';
 	import RunView from '../../../lib/RunView.svelte';
 	import type { RunLevel } from '../../../lib/types';
 
-	let key = $state(currentKey());
-	let refused = $state(false);
+	let signedIn = $state(true);
 	let absent = $state(false);
 	let connected = $state(false);
 	let level: RunLevel | null = $state(null);
@@ -24,16 +22,14 @@
 	const runId = $derived(page.params.id ?? '');
 
 	$effect(() => {
-		if (!key || !runId) return;
+		if (!signedIn || !runId) return;
 		stop?.abort();
 		const controller = new AbortController();
 		stop = controller;
-		refused = false;
 		void followLevel<RunLevel>({
 			base: surface(location.href),
 			path: `levels/runs/${encodeURIComponent(runId)}`,
 			scope: { run: runId },
-			key,
 			signal: controller.signal,
 			onLevel: (found) => {
 				level = found;
@@ -44,8 +40,7 @@
 				level = null;
 			},
 			onRefused: () => {
-				refused = true;
-				key = null;
+				signedIn = false;
 			},
 			onConnected: (open) => (connected = open)
 		});
@@ -53,8 +48,8 @@
 	onDestroy(() => stop?.abort());
 </script>
 
-{#if !key}
-	<KeyForm {refused} onKey={(k) => (key = k)} />
+{#if !signedIn}
+	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if absent}
 	<p>No run {runId} you may see.</p>
 {:else if level}
