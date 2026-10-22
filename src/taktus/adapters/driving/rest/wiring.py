@@ -23,7 +23,11 @@ from taktus.components.identity.application.service import IdentityDirectory, Te
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.domain.model import ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
-from taktus.components.reporting.application.service import FindingsIntake, ProductFindings
+from taktus.components.reporting.application.service import (
+    AnswerInChannelHandler,
+    FindingsIntake,
+    ProductFindings,
+)
 from taktus.components.reporting.domain.model import Change, Reader, Scope, Snapshot
 from taktus.components.run.domain.model import Run
 from taktus.ports.configuration import Secret
@@ -164,6 +168,11 @@ class RestServices(Protocol):
     @property
     def owner_reports(self) -> ReportQueries:
         """The reports to the owner, read by the owner and whom they named (ADR-0045)."""
+        ...
+
+    @property
+    def answer_report(self) -> AnswerInChannelHandler:
+        """A report answered on its page, by the same rules as in the channel (ADR-0120)."""
         ...
 
     @property

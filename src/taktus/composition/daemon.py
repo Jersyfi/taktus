@@ -97,6 +97,7 @@ from taktus.components.process.domain.model import Process, ProcessVersion, Prop
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerts,
+    AnswerInChannelHandler,
     BrokenInterfaces,
     FindingsIntake,
     Kept,
@@ -268,6 +269,10 @@ class Wired:
     @property
     def owner_reports(self) -> ReportQueries:
         return self.owner.queries
+
+    @property
+    def answer_report(self) -> AnswerInChannelHandler:
+        return self.owner.answering
 
     @property
     def answer_decision(self) -> AnswerRequestHandler:

@@ -142,6 +142,8 @@ describe('the needs', () => {
 		for (const part of [need!.title, ...need!.needed, ...need!.steps, ...need!.standing_still, need!.due]) expect(html).toContain(part);
 		expect(html).toContain('data-state="open"');
 		expect(html).toContain('href="#/requests"');
+		expect(html).toContain(`href="#/reports/${encodeURIComponent(need!.id)}"`);
+		expect(html).toContain('Answer it on its page');
 	});
 
 	it('takes the needs out of the reports, and only them', () => {

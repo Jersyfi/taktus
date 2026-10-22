@@ -115,3 +115,53 @@ async def test_an_answer_in_a_report_s_thread_is_taken_and_kept_as_no_event(
     assert response.json() == {"answer": "not_filed", "replied": True}
     async with given.persistence.transaction(TENANT):
         assert await given.events.list(TENANT) == []
+
+
+# --- the old link, and the answer given on the report's page (ADR-0120) -------------------------
+
+
+async def test_a_browser_without_a_key_is_sent_to_the_report_s_page(client: Client) -> None:
+    http, given, base = client
+    await configured(given)
+    browser = {"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
+    sent = await http.get(f"{base}/owner/reports/need_0001", headers=browser)
+    assert sent.status_code == 303
+    assert sent.headers["location"] == "../../app/#/reports/need_0001"
+    page = httpx.URL(f"{base}/owner/reports/need_0001").join(sent.headers["location"])
+    assert page.path == f"{httpx.URL(base).path.rstrip('/')}/app/"
+    assert page.fragment == "/reports/need_0001"
+
+
+async def test_a_client_asking_for_json_keeps_today_s_answer(client: Client) -> None:
+    http, given, base = client
+    keys = await configured(given)
+    as_json = {"Accept": "application/json"}
+    is_problem(await http.get(f"{base}/owner/reports/need_0001", headers=as_json), 401)
+    is_problem(await http.get(f"{base}/owner/reports/need_0001"), 401)
+    with_key = {**keys[OWNER], "Accept": "text/html"}
+    seen = await http.get(f"{base}/owner/reports/need_0001", headers=with_key)
+    assert seen.status_code == 200 and seen.json()["id"] == "need_0001"
+
+
+async def test_a_report_is_answered_on_its_page_and_filed_once_confirmed(client: Client) -> None:
+    http, given, base = client
+    keys = await configured(given)
+    said = len(given.deliveries.said)
+    path = f"{base}/owner/reports/need_0001"
+    for route in ("answer", "confirm"):
+        is_problem(await http.post(f"{path}/{route}", json={"confirmed": True}), 401)
+    body = {"option": "done"}
+    outsider = keys["idn_outsider"]
+    is_problem(await http.post(f"{path}/answer", json=body, headers=outsider), 403)
+    elsewhere = f"{base}/owner/reports/nothing/answer"
+    is_problem(await http.post(elsewhere, json=body, headers=keys[OWNER]), 404)
+    is_problem(await http.post(f"{path}/answer", json={}, headers=keys[OWNER]), 422)
+    confirmed = {"confirmed": True}
+    is_problem(await http.post(f"{path}/confirm", json=confirmed, headers=keys[OWNER]), 409)
+    read = (await http.post(f"{path}/answer", json=body, headers=keys[OWNER])).json()
+    assert read["outcome"] == "reflected" and read["message"]
+    assert read["report"]["state"] == "reflected" and read["report"]["reading"]["by_you"]
+    done = await http.post(f"{path}/confirm", json=confirmed, headers=keys[OWNER])
+    assert done.json()["outcome"] == "filed"
+    assert done.json()["report"]["filed"]["by_you"] is True
+    assert len(given.deliveries.said) == said, "nothing is said in the channel"

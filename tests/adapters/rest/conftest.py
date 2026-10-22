@@ -39,6 +39,7 @@ from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
+    AnswerInChannelHandler,
     FindingsIntake,
     LiveChanges,
     ProductFindings,
@@ -166,6 +167,10 @@ class Services:
     @property
     def owner_reports(self) -> ReportQueries:
         return self.owner.queries
+
+    @property
+    def answer_report(self) -> AnswerInChannelHandler:
+        return self.owner.answering
 
     @property
     def levels(self) -> LevelQueries:

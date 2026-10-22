@@ -28,6 +28,11 @@ origin.
   instance's findings with their classification and their review, read back before it acts; and
   the tenants, for the holder of the administration key. The start page has one line per kind,
   saying how many are open or waiting, each leading to its page.
+- **A report to the owner** — the page every link a channel carries to a report opens: what is
+  needed, the steps, what stands still, by when, and how to answer. The reader answers there as
+  in the channel; the reading comes back, and nothing is filed before the reader confirms it.
+  The overview lists the open reports and alerts below it, newest first, each leading to its
+  page (DEC-0218, ADR-0120).
 
 ## How it is built
 
@@ -66,10 +71,12 @@ origin.
 | `src/lib/RequestView.svelte` | one decision request: what happened, the options with the recommended one, what is blocked, by when; an answer by option or in the reader's words, and the reading confirmed before anything takes effect |
 | `src/lib/ChangeView.svelte` | a process changed in dialogue: the request in words, each open proposal as its difference in words, its rehearsal, commissioning and discarding, and a rollback for every earlier version |
 | `src/lib/governance.ts`, `GovernanceLines.svelte` | the shapes of what governs the work, its reads and answers, the start page's line per kind, and the administration key for the tab's session (ADR-0122) |
-| `src/lib/NeedsView.svelte`, `#/needs` | the needs among `GET /owner/reports`: what is needed, the steps, what stands still, by when, the state and the answer filed |
+| `src/lib/NeedsView.svelte`, `#/needs` | the needs among `GET /owner/reports`: what is needed, the steps, what stands still, by when, the state and the answer filed; each need leads to its report's page, where it is answered (ADR-0120) |
 | `src/lib/AutonomyView.svelte`, `#/autonomy` | `GET /autonomy`: each process's level in force, the stated one and why, the incident that lowered it, and each unit's rates over 7 and 28 days against the tenant's limit |
 | `src/lib/FindingsView.svelte`, `#/findings` | `GET /findings`: each lack with its classification and the text it would leave in; at the level `review`, send, not now or local for us, read back and confirmed |
 | `src/lib/TenantsView.svelte`, `#/tenants` | the tenants under the administration key: listed, created and renamed, each said back first |
+| `src/lib/reports.ts`, `ReportPage.svelte`, `#/reports/<id>` | a report to the owner: its view as `GET /owner/reports/{id}` sends it, the answers it offers, an answer sent to `POST …/answer` and the reading confirmed at `…/confirm` (ADR-0120) |
+| `src/lib/OpenReports.svelte` | the overview's list of the reports that wait for an answer, newest first, read from `GET /owner/reports` |
 | `src/lib/YoursView.svelte`, `#/me` | the reader's own page: how long runs waited on their own decisions, each with its time, their median, and beside it their role and department only aggregated — `GET /decisions/response-times`, computed for its reader alone (ADR-0015) |
 
 ## Working on it

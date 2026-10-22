@@ -60,6 +60,8 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/owner/reports",
         "/owner/reports/{report_id}",
         "/owner/reports/{report_id}/text",
+        "/owner/reports/{report_id}/answer",
+        "/owner/reports/{report_id}/confirm",
         "/runs",
         "/runs/{run_id}",
         "/runs/{run_id}/ledger",
