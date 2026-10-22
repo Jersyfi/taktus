@@ -83,4 +83,4 @@ project's own instance. That instance opens or adds to the issue with the projec
 (ADR-0118). Nothing is needed from the owner for the sending instance.
 **Superseded by:** DEC-0217
 **Confirmed by:** nothing to confirm: no app was created.
-**Recorded in:** the pull request that closes [#555](https://github.com/Jersyfi/taktus/issues/555)
+**Recorded in:** [#558](https://github.com/Jersyfi/taktus/pull/558)

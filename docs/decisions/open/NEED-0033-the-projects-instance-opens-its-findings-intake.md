@@ -1,7 +1,7 @@
 # NEED-0033 — The project's instance opens its findings intake
 
 **Kind:** action
-**Raised in:** the pull request that closes [#555](https://github.com/Jersyfi/taktus/issues/555)
+**Raised in:** [#558](https://github.com/Jersyfi/taktus/pull/558)
 **Issue:** [#557](https://github.com/Jersyfi/taktus/issues/557)
 **Needed by:** 2026-10-31
 **Foreseeable since:** DEC-0217, which decided that findings reach the project through the intake of its own instance
