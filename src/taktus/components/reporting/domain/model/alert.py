@@ -143,6 +143,15 @@ class Signalled(Value):
     """Oldest first."""
 
 
+class AlertRef(Value):
+    """What an alert is about, so that a reader can open it: a run, a step of it, or a process
+    version. An alert about the whole instance — capacity, the backup — names none."""
+
+    run_id: str | None = Field(default=None, pattern=RUN_PATTERN, max_length=128)
+    step_id: str | None = Field(default=None, pattern=STEP_PATTERN, max_length=128)
+    process_version: str | None = Field(default=None, pattern=VERSION_PATTERN, max_length=256)
+
+
 class Alert(Value):
     """One condition that needs a person's action, with its report's words."""
 
@@ -159,3 +168,5 @@ class Alert(Value):
     standing_still: tuple[str, ...] = Field(min_length=1)
     summary: str = Field(min_length=1)
     """One line for the operator's view."""
+    about: tuple[AlertRef, ...] = ()
+    """The runs, steps and process versions it is about, as far as its facts name them."""

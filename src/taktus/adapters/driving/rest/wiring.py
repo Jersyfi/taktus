@@ -19,16 +19,26 @@ from taktus.components.decision.application.service import (
     ConfirmRequestHandler,
 )
 from taktus.components.governance.application.service import Corrections
+from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.domain.model import ProcessVersion, Proposal
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
+    Alerted,
     AnswerInChannelHandler,
+    BackupWatched,
     FindingsIntake,
     ProductFindings,
 )
-from taktus.components.reporting.domain.model import Change, Reader, Scope, Snapshot
+from taktus.components.reporting.domain.model import (
+    Change,
+    Corridor,
+    Judged,
+    Reader,
+    Scope,
+    Snapshot,
+)
 from taktus.components.run.domain.model import Run
 from taktus.ports.configuration import Secret
 from taktus.ports.ledger import Ledger
@@ -93,6 +103,29 @@ class ProposalActs(Protocol):
         as_version: str | None = None,
         approved_by: str | None = None,
     ) -> ProcessVersion: ...
+
+
+class OperationReads(Protocol):
+    """What keeps the operation running, each read from the component that owns it (ADR-0121):
+    the incidents (ADR-0107), the alerts and the backup's state (ADR-0106), and the signals
+    judged against their corridors (ADR-0109)."""
+
+    async def incidents(self, tenant: Tenant) -> Sequence[Incident]:
+        """Every incident, open and closed, newest first."""
+        ...
+
+    async def alerts(self, tenant: Tenant) -> Sequence[Alerted]:
+        """Every alert, in effect, cleared and closed, each with what became of its report."""
+        ...
+
+    async def backup(self, tenant: Tenant) -> BackupWatched:
+        """The backup's last outcome, by when the next is due, and its alert if one is in
+        effect."""
+        ...
+
+    async def signals(self, tenant: Tenant) -> Sequence[tuple[Corridor, Judged]]:
+        """Every signal in force, judged now against its corridor."""
+        ...
 
 
 class RestServices(Protocol):
@@ -198,6 +231,12 @@ class RestServices(Protocol):
         at, or halts there, as the decision says. Nothing happens while another request of
         the run waits. A proposal to move a step, or to roll a move back, that the request
         answers is applied (ADR-0114)."""
+        ...
+
+    @property
+    def operation(self) -> OperationReads:
+        """Incidents, alerts, the backup and the signals, for the pages that show what keeps
+        the operation running (ADR-0121)."""
         ...
 
     @property

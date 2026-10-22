@@ -8,8 +8,9 @@ Three things are generated today, each never edited by hand:
   `tests/adapters/rest/test_openapi.py` fails when the file differs from what this script writes.
 - `web/src/lib/generated/fixtures.json`, what the web app's tests draw: the visual vocabulary
   and a run level drawn by `reporting` from example facts that use every method kind, every
-  exactness class and every motion, the process level of the same steps, an overview, and the
-  origin of a result (ADR-0063, ADR-0064, ADR-0067, ADR-0068). The web app's tests hold what it
+  exactness class and every motion, the process level of the same steps, an overview, the
+  origin of a result, and what the routes of what keeps the operation running answer (ADR-0063,
+  ADR-0064, ADR-0067, ADR-0068, ADR-0121). The web app's tests hold what it
   draws to these glyphs; `tests/components/reporting/test_run_level.py` fails when the file
   differs from what this script writes. The web app itself reads the vocabulary and every
   level from the surface.
@@ -251,6 +252,7 @@ def web_fixtures() -> str:
         "process_level": process_level(process).document(),
         "origin": origin.document(),
         "governance": governance_fixtures(at, process_level(process).process),
+        "operation": operation_fixtures(),
     }
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
@@ -371,6 +373,189 @@ def governance_fixtures(at: Any, process: Any) -> dict[str, Any]:
                 ),
             ]
         },
+    }
+
+
+def operation_fixtures() -> dict[str, object]:
+    """What the surface answers on the routes of what keeps the operation running (ADR-0121),
+    written by the same functions the routes answer with, from example records: an open
+    missing-run incident and a closed overdue one, a lost claim, a failing backup, a red and a
+    yellow signal and one not measured, and the daily report that lists them."""
+    from datetime import UTC, datetime, timedelta
+
+    from taktus.adapters.driving.rest.operation import (
+        alert_view,
+        backup_view,
+        incident_view,
+        signal_view,
+        summary,
+    )
+    from taktus.components.governance.domain.model import (
+        Happening,
+        Incident,
+        IncidentKind,
+        IncidentState,
+        RunSeen,
+    )
+    from taktus.components.reporting.application.query import view as report_view
+    from taktus.components.reporting.application.service import Alerted, BackupWatched
+    from taktus.components.reporting.domain.model import (
+        BackupRun,
+        BackupState,
+        ClaimLost,
+        Corridor,
+        Judged,
+        Level,
+        Offered,
+        Report,
+        ReportKind,
+    )
+    from taktus.components.reporting.domain.service import alerts as rule
+
+    now = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
+    hour = timedelta(hours=1)
+    incidents = [
+        Incident(
+            id="inc_missing",
+            tenant="default",
+            kind=IncidentKind.MISSING,
+            process_id="watch",
+            process_version="watch@1",
+            expected_at=now - 2 * hour,
+            last_run=RunSeen(at=now - 3 * hour, run_id="run_watch_3", kind="run.started"),
+            rule="expected.slot",
+            facts={"schedule": "0 * * * *", "grace_seconds": 900.0},
+            raised_at=now - hour,
+            timeline=(
+                Happening(
+                    at=now - hour,
+                    what="missed",
+                    expected_at=now - 2 * hour,
+                    deadline=now - 2 * hour + timedelta(minutes=15),
+                ),
+            ),
+        ),
+        Incident(
+            id="inc_overdue",
+            tenant="default",
+            kind=IncidentKind.OVERDUE,
+            process_id="example",
+            process_version="example@1",
+            expected_at=now - 30 * hour,
+            run_id="run_example",
+            rule="expected.bound",
+            facts={"bound_seconds": 3600.0},
+            raised_at=now - 29 * hour,
+            state=IncidentState.CLOSED,
+            closed_at=now - 20 * hour,
+            timeline=(Happening(at=now - 20 * hour, what="closed"),),
+        ),
+    ]
+    lost = rule.claims_lost([ClaimLost(seq=7, at=now - 4 * hour, run_id="run_example")], {})
+    alerted = [
+        Alerted(alert=a, report=None, closed=False, delivered=False, reason="no_channel")
+        for a in lost
+    ]
+    state = BackupState(
+        watched_since=now - 240 * hour,
+        expected_hours=26,
+        last_ok=BackupRun(name="taktus-20261020T020000Z", at=now - 31 * hour),
+        failed=(BackupRun(name="taktus-20261021T020000Z", at=now - 7 * hour, reason="store"),),
+        failed_count=1,
+    )
+    backup = rule.backup(state, now)
+    if backup is not None:
+        alerted.append(
+            Alerted(alert=backup, report=None, closed=False, delivered=False, reason="no_channel")
+        )
+    watched = BackupWatched(state=state, next_due=rule.backup_due(state), alert=backup)
+
+    def corridor(signal: str, process: str, step: str, **more: object) -> Corridor:
+        return Corridor.model_validate(
+            {
+                "id": f"{signal}@1",
+                "tenant": "default",
+                "signal": signal,
+                "version": 1,
+                "process": process,
+                "step": step,
+                "bounds": "fixed",
+                "yellow": 5,
+                "red": 10,
+                "role": "sales",
+                "case": f"https://tracker.example/cases/{signal}",
+                "changed_at": now - 240 * hour,
+                **more,
+            }
+        )
+
+    def judged(c: Corridor, level: Level, **more: object) -> Judged:
+        return Judged.model_validate({"signal": c.signal, "corridor": c.id, "level": level, **more})
+
+    late = corridor("orders.late", "orders", "count")
+    open_ = corridor(
+        "tickets.open", "tickets", "count", about={"kind": "department", "name": "support"}
+    )
+    stock = corridor("stock.low", "stock", "measure", direction="below", yellow=20, red=10)
+    measured = {
+        "yellow_at": 5.0,
+        "red_at": 10.0,
+        "step_id": "count",
+        "at": now - hour,
+    }
+    signals = [
+        (
+            late,
+            judged(
+                late,
+                Level.RED,
+                value=12.0,
+                run_id="run_orders_9",
+                process_version="orders@2",
+                **measured,
+            ),
+        ),
+        (
+            open_,
+            judged(
+                open_,
+                Level.YELLOW,
+                value=7.0,
+                run_id="run_tickets_4",
+                process_version="tickets@1",
+                **measured,
+            ),
+        ),
+        (stock, judged(stock, Level.UNMEASURED, reason="no_measurement")),
+    ]
+    daily = Report(
+        id="signals-2026-10-22",
+        tenant="default",
+        kind=ReportKind.SIGNALS,
+        title="Daily report: 2 signals deviate, 1 not measured",
+        needed=(
+            "orders.late is red: 12 above 10, run run_orders_9, step count.",
+            "tickets.open is yellow: 7 above 5, run run_tickets_4, step count.",
+            "stock.low is not measured: no_measurement.",
+        ),
+        steps=("Open the case each line names: that is where a deviation is worked.",),
+        standing_still=(
+            "1 red signals have open incidents; whatever they steer waits for a person.",
+        ),
+        due=now.date(),
+        offered=(Offered(id="done", label="Done"),),
+        raised_at=now - 3 * hour,
+    )
+    return {
+        "summary": summary(
+            "default", incidents, [j for _, j in signals], (alerted, watched, daily)
+        ),
+        "summary_withheld": summary("default", incidents, [j for _, j in signals], None),
+        "incidents": {"incidents": [incident_view(i) for i in incidents]},
+        "alerts": {"alerts": [alert_view(a) for a in alerted]},
+        "backup": backup_view(watched),
+        "signals": {"signals": [signal_view(c, j) for c, j in signals]},
+        "daily_report": report_view(daily, "idn_owner"),
     }
 
 

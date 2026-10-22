@@ -42,7 +42,13 @@ from taktus.components.reporting.application.service.raise_report import (
     RaiseReport,
     RaiseReportHandler,
 )
-from taktus.components.reporting.domain.model import ID_PREFIXES, Alert, Report, ReportKind
+from taktus.components.reporting.domain.model import (
+    ID_PREFIXES,
+    Alert,
+    BackupState,
+    Report,
+    ReportKind,
+)
 from taktus.components.reporting.domain.service import alerts as rule
 from taktus.components.reporting.ports import Signals
 from taktus.ports.clock import Clock
@@ -88,6 +94,17 @@ class Alerted:
 
     def text(self) -> str:
         return rule.shown(self.alert, self.state)
+
+
+@dataclass(frozen=True)
+class BackupWatched:
+    """The tenant's backups as a reader looks at them: what was recorded, by when the next
+    success is due, and the alert in effect, if any (ADR-0106)."""
+
+    state: BackupState
+    next_due: datetime | None
+    """None where a missing backup is not watched."""
+    alert: Alert | None
 
 
 class Alerts:
@@ -149,6 +166,15 @@ class Alerts:
                 )
             )
         return tuple(result)
+
+    async def backup(self, tenant: Tenant) -> BackupWatched:
+        """The tenant's backups now, by the same rule the alert is made by."""
+        state = (await self._signals.signalled(tenant)).backup
+        return BackupWatched(
+            state=state,
+            next_due=rule.backup_due(state),
+            alert=rule.backup(state, self._clock.now()),
+        )
 
     async def report(self, tenant: Tenant) -> Reported:
         """Raise the report of every alert in effect that has none; try again a message that was

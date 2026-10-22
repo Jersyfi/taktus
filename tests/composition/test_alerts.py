@@ -301,3 +301,26 @@ async def test_a_raise_taktus_proposes_reaches_the_owner_with_its_figures() -> N
     assert "proposes raising the process p" in message
     assert "0% of 1 proposal(s) over 7 days" in message and "0% of 2 over 28 days" in message
     assert "never applies a raise" in message
+
+
+async def test_the_backup_is_read_with_by_when_the_next_success_is_due() -> None:
+    """The backup page reads the same facts the alert is made from (ADR-0106, ADR-0121): the
+    last success, the failed runs since, and the last success plus the expected interval."""
+    world = World()
+    ok = await world.alerts.backup(TENANT)
+    assert ok.alert is None and ok.state.last_ok is not None
+    assert ok.next_due == ok.state.last_ok.at + timedelta(hours=26)
+    world.later(hours=1)
+    world.backed_up(ok=False, reason="store")
+    failing = await world.alerts.backup(TENANT)
+    assert failing.state.failed_count == 1 and failing.next_due == ok.next_due
+    assert failing.alert is not None and failing.alert.kind == "backup"
+    assert not (await World(expected_hours=None).alerts.backup(TENANT)).next_due
+
+
+async def test_a_lost_claim_s_alert_names_the_run_it_is_about() -> None:
+    """A reader opens the run an alert is about from the alert itself (ADR-0121)."""
+    world = World()
+    await world.record(CLAIM_LOST, outcome="lost", run_id="run_7")
+    [found] = [a for a in await world.alerts.noticed(TENANT) if a.alert.kind == "claim_lost"]
+    assert [r.run_id for r in found.alert.about] == ["run_7"]

@@ -1,4 +1,4 @@
-from taktus.components.reporting.application.service.alerts import Alerted, Alerts
+from taktus.components.reporting.application.service.alerts import Alerted, Alerts, BackupWatched
 from taktus.components.reporting.application.service.answer_in_channel import (
     Answer,
     AnswerInChannel,
@@ -105,6 +105,7 @@ __all__ = [
     "AnswerInChannel",
     "AnswerInChannelHandler",
     "AnswerOnPage",
+    "BackupWatched",
     "BrokenInterfaces",
     "ByHand",
     "Changed",

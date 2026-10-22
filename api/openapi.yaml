@@ -1078,6 +1078,218 @@ paths:
           content:
             application/json:
               schema: {}
+  /operation:
+    get:
+      tags:
+      - operation
+      summary: What keeps the operation running, one line per kind
+      description: 'For the start page: how many incidents are open, how many signals are red, yellow
+        or not measured, and — for the owner and the people the owner named — how many alerts are in effect,
+        how the backup stands and the newest daily report. A kind the reader may not read says so, with
+        `readable: false` and no figure (ADR-0121).'
+      operationId: operation_operation_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: One entry per kind.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /incidents:
+    get:
+      tags:
+      - operation
+      summary: The incidents, newest first
+      description: 'Every incident of your tenant whose process you may see, open and closed, newest first:
+        what was expected, what happened since, the rule that fired and the facts it read, and the run,
+        the process version and the step it is about (ADR-0107, ADR-0109 §4, ADR-0110). An incident names
+        no person.'
+      operationId: list_incidents_incidents_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The incidents.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /alerts:
+    get:
+      tags:
+      - operation
+      summary: What needs a person's action, with what became of each report
+      description: Every alert of your tenant — a capacity crossing, a lost claim, a failed or missing
+        backup, a level lowered or a raise proposed by rule, a local lack — in effect, cleared or closed,
+        each with whether its report reached the owner's channel and the runs, steps and process versions
+        it is about (ADR-0106). Read by the owner and the people the owner named.
+      operationId: list_alerts_alerts_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The alerts.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
+          content:
+            application/problem+json: {}
+  /backup:
+    get:
+      tags:
+      - operation
+      summary: The backup's last outcome and by when the next is due
+      description: The last successful backup the backup program recorded, the failed runs since, by when
+        the next success is due under `TAKTUS_BACKUP_EXPECTED_HOURS`, and the alert in effect if there
+        is one (ADR-0106 §3, §5). Read by the owner and the people the owner named.
+      operationId: backup_backup_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The backup's standing.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
+          content:
+            application/problem+json: {}
+  /signals:
+    get:
+      tags:
+      - operation
+      summary: The signals, judged against their corridors
+      description: 'Every signal in force whose process you may see, judged now: normal, yellow, red,
+        or not measured with the reason, beside its corridor — the thresholds, the role a red value reaches,
+        where a deviation is worked — and the run and the step that measured the newest value (ADR-0109).
+        A corridor names the operation, a role or a department, never a person.'
+      operationId: list_signals_signals_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The signals.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /signals/daily-report:
+    get:
+      tags:
+      - operation
+      summary: The newest daily report of what deviates
+      description: 'The newest report of kind `signals` as its view: every signal that is red or yellow
+        or not measured, each line with its run and its case (ADR-0109 §5). Read by the owner and the
+        people the owner named.'
+      operationId: daily_report_signals_daily_report_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The report's view.
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: No daily report was raised yet.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+        '403':
+          description: You are not the owner, nor someone the owner named.
+          content:
+            application/problem+json: {}
   /processes/{process_id}/proposals:
     post:
       tags:

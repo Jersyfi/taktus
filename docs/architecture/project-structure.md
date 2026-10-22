@@ -272,6 +272,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   entries after its own position, filtered when they are sent by the reader's key as it is then.
   A reader that reconnects to another process resumes from its position. Proven with two `api`
   processes, with the notification and without it (`tests/integration/test_live_changes.py`).
+- **What keeps the operation running** is read on the HTTP surface
+  (`adapters/driving/rest/operation.py`, ADR-0121) through the port `OperationReads` of
+  `adapters/driving/rest/wiring.py`. `composition/operation.py` implements it over the
+  governance component's incidents, which `composition/expected_runs.py` hands over, and the
+  reporting component's alerts, backup and signals. The surface reads; nothing there decides.
 - **A decision that takes effect** on the HTTP surface (`adapters/driving/rest/app.py`) or in
   the owner's channel (`composition/owner_channel.py`) is handed to the run engine, which
   continues or halts the run it holds, and to `composition/moves.py` with its request. A
