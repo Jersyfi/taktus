@@ -126,7 +126,8 @@ said until an entry with outcome `ok` clears it; a later crossing to *act* is a 
 scheduler looks once a minute while it leads. A tenant without a channel hears nothing: its
 finding stays in the log and the ledger, the daemon's startup log names the tenant, and
 `taktusctl alerts` shows it. The same report tells the owner of a runner that lost its claim and
-of a failed or missing backup (ADR-0106).
+of a failed or missing backup (ADR-0106). The message links the report's page in the web app,
+where the start page lists every open report too (ADR-0120).
 
 ## 4. Admission against the platform
 
