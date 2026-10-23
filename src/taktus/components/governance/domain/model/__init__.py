@@ -31,6 +31,12 @@ from taktus.components.governance.domain.model.incident import (
     WatchConfiguration,
     shipped_watch,
 )
+from taktus.components.governance.domain.model.messages import (
+    CaseAnswer,
+    MessageRules,
+    case_key,
+    shipped_rules,
+)
 from taktus.components.governance.domain.model.residency import ResidencyRule, shipped_rule
 from taktus.components.governance.domain.model.sources import (
     SourceDeclaration,
@@ -41,6 +47,7 @@ __all__ = [
     "AnchorConfiguration",
     "CapacityReport",
     "CapacityThresholds",
+    "CaseAnswer",
     "CorrectionLimits",
     "Decided",
     "Egress",
@@ -51,6 +58,7 @@ __all__ = [
     "IncidentKind",
     "IncidentState",
     "Lowered",
+    "MessageRules",
     "Outcome",
     "Proposed",
     "Rate",
@@ -63,9 +71,11 @@ __all__ = [
     "StorageStore",
     "Unit",
     "WatchConfiguration",
+    "case_key",
     "shipped_declaration",
     "shipped_default",
     "shipped_limits",
     "shipped_rule",
+    "shipped_rules",
     "shipped_watch",
 ]

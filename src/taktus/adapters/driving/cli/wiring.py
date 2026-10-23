@@ -22,6 +22,7 @@ from taktus.components.governance.application.service import (
     Corrections,
     ExpectedRuns,
     ReportCapacityHandler,
+    TenantMessages,
     TenantResidency,
     TenantSources,
 )
@@ -175,6 +176,9 @@ class Services:
     sources: TenantSources | None = None
     """The tenant's declaration of its sources, shown and changed (`taktusctl sources`,
     ADR-0130)."""
+    messages: TenantMessages | None = None
+    """The tenant's rules for outward messages and the cases a person answered in
+    (`taktusctl messages`, `taktusctl case`, ADR-0142)."""
     deadlines: DeadlineKeeper | None = None
     """The tenant's open deadlines and its working time (`taktusctl deadline`, ADR-0133)."""
     stops: Stops | None = None

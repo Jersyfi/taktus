@@ -19,6 +19,10 @@ from taktus.components.governance.application.service.expected_runs import (
     UnknownIncident,
     Watch,
 )
+from taktus.components.governance.application.service.messages import (
+    ConfigureMessages,
+    TenantMessages,
+)
 from taktus.components.governance.application.service.repetition import (
     Repetitions,
     RepetitionSeen,
@@ -49,6 +53,7 @@ __all__ = [
     "ConfigureAnchors",
     "ConfigureAnchorsHandler",
     "ConfigureCorrections",
+    "ConfigureMessages",
     "ConfigureResidency",
     "ConfigureWatch",
     "Corrections",
@@ -64,6 +69,7 @@ __all__ = [
     "ReportCapacity",
     "ReportCapacityHandler",
     "SignalIncidents",
+    "TenantMessages",
     "TenantResidency",
     "TenantSources",
     "UnknownIncident",

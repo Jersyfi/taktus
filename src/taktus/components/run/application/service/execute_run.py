@@ -152,6 +152,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import dataclasses
 import hashlib
 import json
 import re
@@ -184,6 +185,7 @@ from taktus.components.run.domain.model import (
     Ended,
     ExtractRule,
     LlmWork,
+    Message,
     MlWork,
     NoConnector,
     NoWorker,
@@ -227,6 +229,7 @@ from taktus.components.run.domain.service import (
     blocked,
     frame,
     interfaces,
+    messages,
     open_work,
     prediction,
     provenance,
@@ -253,6 +256,8 @@ from taktus.components.run.ports import (
     Decisions,
     Levels,
     Maturities,
+    MessageRules,
+    Messages,
     ModelPool,
     NotRaised,
     OpenWork,
@@ -273,6 +278,7 @@ from taktus.ports.connector import (
     CaseScope,
     ConnectorError,
     ContractBroken,
+    Effect,
     EffectReport,
     Operation,
     ResolvedConnector,
@@ -559,6 +565,9 @@ class Trace:
     """The step answered from a recording instead of acting outward (ADR-0030)."""
     route: ProvenanceRoute | None = None
     """For a step on a model: the route it took through its purpose's chain (ADR-0116 §7)."""
+    message: Digest | None = None
+    """For a message step that sent: the digest of its record, which `message.sent` names
+    beside the egress entry (ADR-0142 §10)."""
 
 
 @dataclass(frozen=True)
@@ -654,6 +663,7 @@ class RunEngine:
         traces: Traces | None = None,
         masking: Masking | None = None,
         stops: Stops | None = None,
+        messages: Messages | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -696,6 +706,9 @@ class RunEngine:
         self._stops = stops
         """The tenant's stops of adapters (ADR-0138). None: no adapter is stopped, and a stop
         reaches a run only by its own identifier."""
+        self._messages = messages
+        """The tenant's rules for outward messages and the cases a person answered in
+        (ADR-0142). None: the shipped rules, and no case was answered."""
         """What masks every secret value the instance holds in a line. None: a trace is kept
         only where the composition root hands one, so a store without it keeps no line."""
         self._repeating: set[str] = set()
@@ -1875,6 +1888,28 @@ class RunEngine:
             found = frame.findings(work, control, values, analytic)
             if found:
                 raise UnsupportedWork(step_id, "; ".join(found))
+        # What an outward message is held to, as far as the process tells it (ADR-0142).
+        worked = {step_id: referenced_values(work) for step_id, (work, _, _) in parsed.items()}
+        methods = {step.id: step.method for step in run.steps}
+        calling = frozenset(
+            s for s, (work, _, _) in parsed.items() if isinstance(work, ConnectorRule)
+        )
+        for step_id, (_, control, _) in parsed.items():
+            if control.message is None:
+                continue
+            checker = control.message.check
+            checked = parsed.get(checker)
+            found = messages.findings(
+                control.message,
+                ancestors=ancestors[step_id],
+                drafts=messages.drafting(step_id, worked, methods),
+                checked_reads=frozenset()
+                if checked is None
+                else frozenset(r for v in checked[2] for r in references(v)),
+                connector_steps=calling,
+            )
+            if found:
+                raise UnsupportedWork(step_id, "; ".join(found))
         aside = run.on_escalation()
         for step in run.steps:
             if step.id not in aside and ancestors[step.id] & aside:
@@ -2165,6 +2200,16 @@ class RunEngine:
             # A replay asks the step's boundary as any run does (ADR-0108); a rehearsal from
             # the tenant's recordings asks none of it (NTC-0079).
             asks = not run.rehearsal or self._replaying(run)
+            # An outward message's frame, before anyone is asked about it: a message the checks
+            # or the independent check refuse is sent to nobody, and asks nobody (ADR-0142). A
+            # rehearsal sends nothing and asks none of it.
+            gate = (
+                await self._message_gate(run, step, work, control)
+                if isinstance(work, ConnectorRule) and not run.rehearsal
+                else None
+            )
+            if gate is not None and gate.refused is not None:
+                return await self._message_refused(run, step_run, *gate.refused, span)
             if asks and step_run.state in (StepState.PLANNED, StepState.REJECTED):
                 # The step boundary, first: an anchor holds at every level (ADR-0042), and so
                 # does what the process itself asks (ADR-0088).
@@ -2174,6 +2219,10 @@ class RunEngine:
                     # Personal data outside a specific case: the frame's own anchor, at every
                     # level and whatever the tenant configured (ADR-0130).
                     anchors = (*anchors, framed)
+                if not decided and gate is not None:
+                    # A promise, a message that cannot be classified and mass sending: the
+                    # frame's own anchors, at every level (ADR-0142 §5, §6).
+                    anchors = (*anchors, *gate.anchors)
                 asked = None if decided else control.ask
                 if anchors or asked is not None:
                     return await self._anchor(run, step, step_run, held, anchors, asked)
@@ -2185,6 +2234,17 @@ class RunEngine:
                 )
                 if awaited is not None:
                     return await self._await(run, step, step_run, held, awaited)
+            if gate is not None and gate.message is not None:
+                # Approved: a person who answered in the case stops it, and the delay and the
+                # quiet hours hold it (ADR-0142 §8, §9).
+                if await self._case_answered(run, gate):
+                    return await self._message_answered(run, step_run, gate)
+                if step_run.state is StepState.PLANNED or _holding(step_run):
+                    held_until = self._held_until(step_run, gate.rules)
+                    if held_until is not None:
+                        return await self._hold_message(run, step_run, *held_until)
+                if _holding(step_run):
+                    run, step_run = await self._close_block(run, step_run)
             if isinstance(work, WorkerWork):
                 return await self._worker_step(run, step, step_run, work, span, held)
             return await self._local_step(run, step, step_run, work, span, held)
@@ -2421,6 +2481,208 @@ class RunEngine:
                 frame=token,
             )
         return control.scope
+
+    # --- an outward message (ADR-0142) ----------------------------------------------------------
+
+    async def _message_rules(self, run: Run) -> MessageRules:
+        if self._messages is None:
+            return messages.SHIPPED
+        return await self._messages.rules(run.tenant)
+
+    def _drafts(self, run: Run, step_id: StepId) -> frozenset[StepId]:
+        """The `llm` steps whose answers the step's work reads (ADR-0142 §1)."""
+        values = {
+            step.id: referenced_values(parse_work(step, run.work.get(step.id), run.inputs))
+            for step in run.steps
+        }
+        return messages.drafting(step_id, values, {step.id: step.method for step in run.steps})
+
+    async def _value(self, run: Run, value: Any) -> Any:
+        """The value with its references resolved; None where one cannot be."""
+        try:
+            (resolved,), _ = await self._resolved(run, [value])
+        except RuleFailed:
+            return None
+        return resolved
+
+    async def _message_gate(
+        self, run: Run, step: Step, work: ConnectorRule, control: Control
+    ) -> _Gate | None:
+        """What the frame of ADR-0142 holds an outward connector step to, read from the results
+        before it and the tenant's rules; None for a step it does not hold."""
+        pool = self._connector_pool(run)
+        resolved = None if pool is None else await pool.resolve(work.capability)
+        operation = None if resolved is None else resolved.declaration.operation(work.operation)
+        if operation is None or not operation.outward:
+            return None
+        rules_ = await self._message_rules(run)
+        recipients = messages.count(await self._value(run, control.recipients))
+        anchors: list[Anchor] = []
+        if messages.over_limit(recipients, rules_.recipient_limit):
+            anchors.append(
+                messages.mass_anchor(operation.capability, recipients, rules_.recipient_limit)
+            )
+        drafts = self._drafts(run, step.id)
+        declared = control.message
+        if declared is None and not (operation.effect is Effect.DELIVERY and drafts):
+            if not anchors:
+                return None
+            return _Gate(rules=rules_, anchors=tuple(anchors))
+        if declared is None:
+            return _Gate(
+                rules=rules_,
+                refused=(
+                    messages.UNDECLARED,
+                    f"{operation.name} delivers what {', '.join(sorted(drafts))} drafted, and "
+                    "the step declares no message frame: a message a model wrote is checked, "
+                    "labelled and held by rule before it is sent (ADR-0142 §1)",
+                ),
+            )
+        checks: dict[str, bool] = {}
+        failing: list[str] = []
+        for name, condition in declared.checks.items():
+            why = rules.violated(condition, await self._value(run, condition.value))
+            checks[name] = why is None
+            if why is not None:
+                failing.append(f"{name}: {why}")
+        verdict = messages.verdict(await self._value(run, {"$from": declared.check}))
+        promises = (
+            None
+            if declared.classification is None
+            else messages.promised(await self._value(run, {"$from": declared.classification}))
+        )
+        case = declared.case or (None if control.scope is None else control.scope.subject)
+        gate = _Gate(
+            rules=rules_,
+            message=declared,
+            drafted=bool(drafts),
+            case=case,
+            record=messages.record(
+                case=case,
+                checks=checks,
+                check=declared.check,
+                verdict=verdict,
+                classification=declared.classification,
+                promises=promises,
+                recipients=recipients,
+                label=rules_.label if drafts else None,
+                drafted=bool(drafts),
+            ),
+        )
+        if failing:
+            return gate.refusing(
+                messages.CHECKS,
+                "the send decision is the rule over the step's named checks, and "
+                + "; ".join(failing)
+                + ": nothing was sent (ADR-0142 §3)",
+            )
+        if verdict != messages.SEND:
+            return gate.refusing(
+                messages.REJECTED,
+                f"the independent check {declared.check} answered "
+                + ("reject" if verdict == messages.REJECT else "neither send nor reject")
+                + ": nothing was sent (ADR-0142 §4)",
+            )
+        if drafts and rules_.label is None:
+            return gate.refusing(
+                messages.UNLABELLED,
+                "a model drafted the message, and the tenant configured no label to send it "
+                "with (taktusctl messages set --label): nothing was sent (ADR-0142 §7)",
+            )
+        if promises is None or promises:
+            anchors.append(messages.promise_anchor(operation.capability, promises))
+        return gate.anchored(tuple(anchors))
+
+    async def _message_refused(
+        self, run: Run, step_run: StepRun, token: str, reason: str, span: Span
+    ) -> tuple[Run, StepRun]:
+        """The message is sent to nobody: the step fails without its act and without a retry,
+        and the run escalates to a person (ADR-0142)."""
+        span.record_failure("message held")
+        if _holding(step_run):
+            run, step_run = await self._close_block(run, step_run)
+        failed = step_run.to(
+            StepState.FAILED, reason=reason, retryable=False, finished_at=self._clock.now()
+        )
+        run = await self._commit(
+            run.with_step_run(failed),
+            "step.finished",
+            step=failed,
+            outcome="failed",
+            after=({"kind": messages.HELD, "step": failed, "outcome": token},),
+        )
+        return run, failed
+
+    async def _case_answered(self, run: Run, gate: _Gate) -> bool:
+        if self._messages is None or gate.case is None:
+            return False
+        return await self._messages.answered(run.tenant, anchoring.process_of(run), gate.case)
+
+    async def _message_answered(
+        self, run: Run, step_run: StepRun, gate: _Gate
+    ) -> tuple[Run, StepRun]:
+        """A person answered in the case: the message is not sent, and the step ends without
+        its act (ADR-0142 §9)."""
+        if _holding(step_run):
+            run, step_run = await self._close_block(run, step_run)
+        run, settled = await self._settle(
+            run,
+            step_run,
+            {
+                "sent": False,
+                "because": "a person answered in the case, and the process sends nothing more "
+                "in it (ADR-0142 §9)",
+            },
+            "held",
+        )
+        run = await self._commit(run, messages.HELD, step=settled, outcome=messages.ANSWERED)
+        return run, settled
+
+    def _held_until(
+        self, step_run: StepRun, rules_: MessageRules
+    ) -> tuple[datetime, str, datetime] | None:
+        """When an approved message may be sent, what holds it, and since when it was
+        approved, while that is still to come; None once it may be sent now. The hold counts
+        from its block's start, so a restart or an early wake loses nothing; a wake inside the
+        quiet hours holds it again until they end (ADR-0142 §8)."""
+        now = self._clock.now()
+        if _holding(step_run) and step_run.block is not None:
+            moment = step_run.block.next_check_at or now
+            held_by = messages.DELAY
+            if moment <= now:
+                ends = messages.quiet_until(now, rules_.quiet)
+                if ends is None:
+                    return None
+                moment, held_by = ends, messages.QUIET_HOURS
+            return moment, held_by, step_run.block.since
+        moment, held_by = messages.send_at(now, rules_.delay_seconds, rules_.quiet)
+        return None if moment <= now else (moment, held_by, now)
+
+    async def _hold_message(
+        self, run: Run, step_run: StepRun, until: datetime, held_by: str, approved: datetime
+    ) -> tuple[Run, StepRun]:
+        """The approved message waits at its boundary until `until`: its block, from the
+        moment it was approved, is booked to `wait.external`, and the run parks for its runner
+        to defer the job (ADR-0103)."""
+        run, step_run = await self._open_block(
+            run, step_run, "wait.external", block.HOLDING_MESSAGE, since=approved
+        )
+        if step_run.block is not None:
+            step_run = step_run.model_copy(
+                update={"block": step_run.block.model_copy(update={"next_check_at": until})}
+            )
+        self._parked.add(run.id)
+        step_run = step_run.to(
+            StepState.STOPPED,
+            reason=f"an approved message, held until {until.isoformat()} by the tenant's "
+            f"{'quiet hours' if held_by == messages.QUIET_HOURS else 'sending delay'} "
+            "(ADR-0142 §8)",
+            finished_at=self._clock.now(),
+        )
+        run = await self._commit(
+            run.with_step_run(step_run), messages.DELAYED, step=step_run, outcome=held_by
+        )
+        return run, step_run
 
     async def _outward(self, run: Run, work: Work) -> bool | None:
         """Whether a connector call's operation is declared outward; None when it cannot be
@@ -3096,9 +3358,16 @@ class RunEngine:
                 outcome="failed",
                 interface=failure.interface,
                 after=(
-                    ()
-                    if failure.frame is None
-                    else ({"kind": frame.REFUSED, "step": step_run, "outcome": failure.frame},)
+                    *(
+                        ()
+                        if failure.frame is None
+                        else ({"kind": frame.REFUSED, "step": step_run, "outcome": failure.frame},)
+                    ),
+                    *(
+                        ()
+                        if failure.held is None
+                        else ({"kind": messages.HELD, "step": step_run, "outcome": failure.held},)
+                    ),
                 ),
             )
             return run, step_run
@@ -3715,7 +3984,9 @@ class RunEngine:
         scope = await self._frame(run, step_run.step_id, resolved, operation)
         if run.rehearsal and operation.outward and not self._replaying(run):
             return await self._rehearsed(run, resolved, operation, read)
+        sent: Digest | None = None
         if operation.outward and not run.rehearsal:
+            input, sent = await self._labelled(run, step_run.step_id, work, operation, input)
             await self._book_call(run, step_run, operation.name, input)
         result = await self._call(
             run, step_run, resolved, operation, input, work.credentials, span, scope=scope
@@ -3746,8 +4017,59 @@ class RunEngine:
             adapter_version=resolved.version,
             egress=egress,
             rehearsed=rehearsed,
+            message=sent if egress is not None else None,
         )
         return document, trace, result.consumption, resolved.adapter
+
+    async def _labelled(
+        self,
+        run: Run,
+        step_id: StepId,
+        work: ConnectorRule,
+        operation: Operation,
+        input: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], Digest | None]:
+        """A message step's input as it is sent — with the tenant's label added to its text
+        where a model drafted it — and the digest of its record; a step that sends no message
+        unchanged. The label is asked again at the call, so a label withdrawn while the message
+        was held refuses it here, before the connector port is called (ADR-0142 §7)."""
+        step = run.step(step_id)
+        control = control_of(step, run.work.get(step_id), run.inputs)
+        gate = await self._message_gate(run, step, work, control)
+        if gate is not None and gate.refused is not None:
+            token, why = gate.refused
+            raise _StepFailed(
+                reason=f"{operation.name} was not called: {why}",
+                retryable=False,
+                consumption=None,
+                adapter=None,
+                outcome="message held",
+                held=token,
+            )
+        if gate is None or gate.message is None:
+            return dict(input), None
+        sent = dict(input)
+        if gate.drafted:
+            label = gate.rules.label
+            labelled = None if label is None else messages.labelled(input, gate.message.text, label)
+            if labelled is None:
+                why = (
+                    "the tenant configured no label"
+                    if label is None
+                    else f"its input has no text in {gate.message.text!r} to add the label to"
+                )
+                raise _StepFailed(
+                    reason=f"{operation.name} was not called: a model drafted the message, and "
+                    f"{why}. Nothing was sent (ADR-0142 §7)",
+                    retryable=False,
+                    consumption=None,
+                    adapter=None,
+                    outcome="message unlabelled",
+                    held=messages.UNLABELLED,
+                )
+            sent = labelled
+        record = {**gate.record, "label": gate.rules.label if gate.drafted else None}
+        return sent, await self._objects.put(_canonical(record))
 
     # --- rehearsal (ADR-0030) ------------------------------------------------------------------
 
@@ -5118,6 +5440,12 @@ class RunEngine:
                             outcome="replayed" if trace.egress.replayed else "acted",
                             digest=trace.egress.content_digest,
                         )
+                        if trace.message is not None:
+                            # The message's record — case, checks, label — beside its egress
+                            # entry, by digest (ADR-0142 §10).
+                            await self._record(
+                                run, messages.SENT, step=step, outcome="sent", digest=trace.message
+                            )
                 for extra in after:
                     await self._record(run, **extra)
         return run
@@ -5263,6 +5591,34 @@ class _Parked(Exception):
     """What the wait's checks used so far, its earlier parks included."""
 
 
+@dataclass(frozen=True)
+class _Gate:
+    """What the frame of an outward message holds a connector step to (ADR-0142)."""
+
+    rules: MessageRules
+    message: Message | None = None
+    """The step's message frame; None for an outward step held to the recipient limit alone."""
+    drafted: bool = False
+    """A model drafted what the step sends."""
+    case: str | None = None
+    refused: tuple[str, str] | None = None
+    """Why nothing is sent, as the token `message.held` records and a reason."""
+    anchors: tuple[Anchor, ...] = ()
+    record: dict[str, Any] = field(default_factory=dict)
+    """What `message.sent` names by digest."""
+
+    def refusing(self, token: str, reason: str) -> _Gate:
+        return dataclasses.replace(self, refused=(token, reason))
+
+    def anchored(self, anchors: tuple[Anchor, ...]) -> _Gate:
+        return dataclasses.replace(self, anchors=anchors)
+
+
+def _holding(step_run: StepRun) -> bool:
+    """Whether the step is an approved message held at its boundary (ADR-0142 §8)."""
+    return step_run.block is not None and step_run.block.cause == block.HOLDING_MESSAGE
+
+
 def _parked_wait(step_run: StepRun) -> bool:
     """Whether the step run is a wait step parked at its boundary (ADR-0103)."""
     return step_run.block is not None and step_run.block.next_check_at is not None
@@ -5297,6 +5653,8 @@ class _StepFailed(Exception):
     frame: str | None = None
     """The call was refused by the step's frame, or by its connector as out of the case's
     scope: the token `frame.refused` records (ADR-0130)."""
+    held: str | None = None
+    """The message was not sent at the call: the token `message.held` records (ADR-0142)."""
 
 
 def _no_model(routed: routing.Route) -> str:
