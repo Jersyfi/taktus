@@ -15,7 +15,7 @@ Checks, in order:
 2. every `openapi.yaml` is OpenAPI 3.1 and every `$ref` in it resolves;
 3. every example under `examples/<target>/valid/` validates against its target;
 4. every example under `examples/<target>/invalid/` fails by schema, and every conformance check
-   — W-01..W-18 of the worker contract, C-01..C-10 of the connector contract, M-01..M-04 of the
+   — W-01..W-21 of the worker contract, C-01..C-10 of the connector contract, M-01..M-04 of the
    model contract — has at least one fixture named after it;
 5. every target has at least two valid examples.
 
@@ -23,8 +23,10 @@ The target of an examples directory is its name in kebab-case: for the shared ke
 file (`exactness-class` -> `ExactnessClass.json`), for a contract the definition
 (`assignment-state` -> `Worker.json#/$defs/AssignmentState`).
 
-Five targets are different. A `transcript` fixture is a whole stream, and what makes it invalid is
+Six targets are different. A `transcript` fixture is a whole stream, and what makes it invalid is
 a stream rule — the order or completeness of its events — which no schema can express. A
+`relay-probe` fixture is what a host relayed over the outbound binding and every answer posted;
+what makes it invalid is an answer missing, repeated or without a status. A
 `capacity-probe` fixture is a worker that holds as many assignments as it declares and the answer
 it gives to one more; what makes it invalid is the answer, judged against the places held. An
 `unknown-id-probe` fixture is the answer to the state of an id the worker never received, and a
@@ -60,14 +62,21 @@ ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS = ROOT / "contracts"
 NAMESPACE = "https://taktus.eu/contracts/"  # ADR-0019: the $id of a schema is its path under here
 CHECKS = (
-    [f"W-{n:02d}" for n in range(1, 19)]
+    [f"W-{n:02d}" for n in range(1, 22)]
     + [f"C-{n:02d}" for n in range(1, 11)]
     + [f"M-{n:02d}" for n in range(1, 5)]
 )
-CHECK_RANGES = ("W-01..W-18", "C-01..C-10", "M-01..M-04")
+CHECK_RANGES = ("W-01..W-21", "C-01..C-10", "M-01..M-04")
 MIN_VALID_EXAMPLES = 2
 RULE_TARGETS = frozenset(
-    {"transcript", "capacity-probe", "unknown-id-probe", "repeated-id-probe", "exchange"}
+    {
+        "transcript",
+        "capacity-probe",
+        "unknown-id-probe",
+        "repeated-id-probe",
+        "relay-probe",
+        "exchange",
+    }
 )
 """Targets whose must-fail fixtures break a rule no schema can express — the order of a stream,
 an answer against the places held or the id held, a count against a bill — and must therefore be
@@ -203,7 +212,7 @@ def check_openapi(registry: SchemaRegistry, report: Report) -> None:
             continue
         for route, item in document["paths"].items():
             for method, operation in item.items():
-                if method in {"parameters", "summary", "description"}:
+                if method in {"parameters", "summary", "description", "servers"}:
                     continue
                 if not operation.get("responses"):
                     broken.append(f"{method.upper()} {route} has no responses")

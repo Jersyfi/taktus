@@ -1,0 +1,10 @@
+{
+  "request_id": "rly_0b5d2e94",
+  "method": "POST",
+  "path": "/v1/assignments",
+  "headers": {
+    "Accept": "application/json",
+    "Content-Type": "application/json"
+  },
+  "body": "{\"assignment_id\":\"asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE\",\"task\":{\"goal\":\"Run the four steps of the default work.\",\"acceptance\":[\"the stream ends with assignment.finished\"]},\"context\":{\"workspace\":{\"kind\":\"none\"}},\"frame\":{\"autonomy_level\":2,\"allowed_tools\":[\"shell.script\"],\"allowed_hosts\":[],\"max_steps\":10},\"limits\":{\"compute\":{\"seconds\":60,\"resource_class\":\"cpu.small\"}},\"callback\":{\"events\":\"sse\"}}"
+}

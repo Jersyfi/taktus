@@ -35,6 +35,7 @@ not the bottleneck here; adapter variety is.
 | **Accept credentials at runtime, never store them** | secret safety |
 | **Least privilege** — only the tools the process allows; a worker that offers its work only those may state so, once, as `reach.stated` (ADR-0098), and the core reads the event and acts on nothing in it | permission model |
 | **Declare capabilities** — what this worker can do, and optionally its own version | processes reference capabilities, never product names; the version is recorded in the provenance of every result (ADR-0021) |
+| **Optionally: take a message at a boundary, hand an assignment over, connect outbound only** — steering, a `handover.state` document another place continues from, and the outbound binding, which carries the same requests from the control plane to a worker that opens no port; a tool call may say whether it acts outward, and a model's answer may be reported (ADR-0139) | a person corrects or takes over running work; a worker runs inside a customer's network; a worker's repeated calls can be counted |
 
 Full specification: [`contracts/worker/v1/README.md`](../../contracts/worker/v1/README.md).
 The core's side of it is the worker port (`src/taktus/ports/worker.py`): the contract's shapes
@@ -298,7 +299,7 @@ Without it, "interchangeable" is an assertion.
 
 The suite lives in `src/taktus/conformance/` and imports nothing from the control plane; it talks
 to a worker over HTTP and SSE, and to a connector over MCP, as a foreign control plane would. It
-runs W-01 to W-11 and W-13 to W-18 against a live worker and C-01 to C-09 against a live connector, and reports
+runs W-01 to W-11 and W-13 to W-20 against a live worker — W-21 too over the outbound binding — and C-01 to C-09 against a live connector, and reports
 W-12 and C-10, the removal test, as *pending*: a suite that talks to one adapter cannot remove
 it from processes. Its report states which half of *verified* it proves.
 
@@ -373,7 +374,7 @@ way the instance runs it, and recorded as not passed (NTC-0092).
 
 Before the suite runs against an adapter, `make gate-contracts` checks the contract itself: every
 schema is valid and carries the `$id` its path prescribes, every example validates, and every check
-W-01..W-18 and C-01..C-10 has a fixture (`tools/validate_contracts.py`).
+W-01..W-21 and C-01..C-10 has a fixture (`tools/validate_contracts.py`).
 
 Every schema is identified by `https://taktus.eu/contracts/<family>/v1/<Concept>.json` — its path
 under `contracts/` behind the project's domain. A released v1 schema is immutable; changes become

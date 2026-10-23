@@ -1,0 +1,18 @@
+{
+  "relayed": [
+    {
+      "request_id": "rly_00000003",
+      "method": "GET",
+      "path": "/v1/assignments/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/events",
+      "headers": {
+        "Accept": "text/event-stream"
+      }
+    }
+  ],
+  "answers": [
+    {
+      "request_id": "rly_00000003",
+      "status": 404
+    }
+  ]
+}

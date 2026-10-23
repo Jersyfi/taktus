@@ -97,6 +97,9 @@ class RunningWorker:
     credential_name: str = CREDENTIAL
     task: dict[str, object] | None = None  # None: TASK
     hosts: tuple[str, ...] = (HOST,)
+    listen: str | None = None
+    """Where the suite serves the outbound binding the worker connects to; None: the worker
+    listens at `endpoint`."""
 
     def options(self) -> SuiteOptions:
         return SuiteOptions(
@@ -108,6 +111,7 @@ class RunningWorker:
             worker_log=self.log,
             timeout=90.0,
             idle_timeout=30.0,
+            listen=self.listen,
         )
 
     async def run_suite(self) -> Report:
@@ -168,10 +172,16 @@ def start_worker(tmp_path: Path) -> Iterator[StartWorker]:
     started: list[subprocess.Popen[bytes]] = []
 
     def start(
-        *, profile: str = "quick", fault: str | None = None, estimate_factor: float = 0.5
+        *,
+        profile: str = "quick",
+        fault: str | None = None,
+        estimate_factor: float = 0.5,
+        outbound: bool = False,
     ) -> RunningWorker:
         """`estimate_factor` below 1 makes the worker underestimate, so that the suite's tight
-        run can make it cross a limit its estimate fits (W-14); above 1 it never can."""
+        run can make it cross a limit its estimate fits (W-14); above 1 it never can.
+        `outbound` starts the worker connected to the suite's host of the outbound binding:
+        it is still given a port, and must open none."""
         port = free_port()
         log = tmp_path / f"worker-{profile}-{fault or 'honest'}-{estimate_factor}.log"
         value = "conf-" + secrets.token_hex(12)
@@ -194,12 +204,18 @@ def start_worker(tmp_path: Path) -> Iterator[StartWorker]:
         ]
         if fault:
             args += ["--fault", fault]
+        listen = f"127.0.0.1:{free_port()}" if outbound else None
+        if listen is not None:
+            args += ["--connect", f"http://{listen}/relay"]
         with log.open("wb") as handle:
             process = subprocess.Popen(  # noqa: S603 — our own script, fixed arguments
                 args, stdout=handle, stderr=subprocess.STDOUT, env=env
             )
         started.append(process)
         endpoint = f"http://127.0.0.1:{port}"
+        if listen is not None:
+            # The suite serves the binding; the worker keeps asking it until it is there.
+            return RunningWorker(endpoint, log, value, process, listen=listen)
         deadline = time.monotonic() + READY_SECONDS
         while time.monotonic() < deadline:
             if process.poll() is not None:

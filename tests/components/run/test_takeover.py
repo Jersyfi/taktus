@@ -107,6 +107,30 @@ async def test_a_running_step_stops_at_its_boundary_and_its_state_reaches_the_pe
     assert served.content_digest == state.digest and served.refs.actor is None
 
 
+async def test_a_worker_that_hands_over_gives_the_person_its_handover_document() -> None:
+    """A worker that declares handover is asked for one instead of a stop. It stops at its
+    boundary as well, and its handover document is among what the person receives
+    (ADR-0139 §4)."""
+    worker = slow_worker()
+    worker.handover = True
+    world = World(worker=worker)
+    run, takeover = await taken_over(world)
+
+    held = run.step_run("w")
+    assert held.state is StepState.WAITING_HUMAN and held.checkpoint is not None
+    assert world.worker.stops == [], "asked for a handover, not a stop"
+    assert [r.reason for _, r in world.worker.handovers] == ["a person takes the step over"]
+    handed = [a for a in held.artifacts if a.kind == "handover.state"]
+    assert len(handed) == 1
+    document = json.loads(await world.objects.get(handed[0].digest) or b"null")
+    assert document["checkpoint_ref"] == held.checkpoint.ref
+    assert [s["step_id"] for s in document["steps"]] == ["one"]
+    state = held.artifact(f"{takeover}.state")
+    assert state is not None
+    listed = json.loads(await world.objects.get(state.digest) or b"null")["artifacts"]
+    assert [a["kind"] for a in listed] == ["log", "handover.state"]
+
+
 async def test_a_step_says_where_each_take_over_it_was_served_for_stands() -> None:
     world = World(worker=slow_worker())
     run, takeover = await taken_over(world)
