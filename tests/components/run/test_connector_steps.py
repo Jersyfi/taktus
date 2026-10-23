@@ -496,6 +496,55 @@ async def test_a_parked_wait_on_the_clock_waits_only_what_remains() -> None:
     assert run.state is RunState.FINISHED and h.clock.slept == []
 
 
+# --- a record not there yet is a state not reached yet (issue #580) -------------------------
+
+
+def _reads(h: ConnectorHarness) -> int:
+    return sum(1 for operation, _, _ in h.connector.calls if operation == READ)
+
+
+async def test_a_wait_reads_not_found_as_not_reached_and_checks_again() -> None:
+    h = ConnectorHarness(pipeline_wait(5, 60))
+    h.connector.fail_each[READ] = [failure("not_found"), failure("not_found")]
+    h.connector.read_sequence = [{"state": "success"}]
+    run = await h.start()
+    assert run.state is RunState.FINISHED
+    assert _reads(h) == 3 and h.clock.slept == [5, 5]
+
+
+async def test_a_wait_that_only_ever_hears_not_found_fails_at_its_timeout() -> None:
+    h = ConnectorHarness(pipeline_wait(10, 25))
+    h.connector.fail_each[READ] = [failure("not_found")] * 10
+    run = await h.start()
+    assert run.state is RunState.ESCALATED
+    reason = run.step_run("ci").reason or ""
+    assert "waited 30s" in reason and "last observed not_found" in reason
+    assert run.step_run("ci").retryable is True and _reads(h) == 4
+
+
+@pytest.mark.parametrize("cause", ["forbidden", "invalid"])
+async def test_a_wait_refused_for_another_reason_fails_at_once(cause: str) -> None:
+    h = ConnectorHarness(pipeline_wait(5, 60))
+    h.connector.fail_each[READ] = [failure(cause)]
+    run = await h.start()
+    assert run.state is RunState.ESCALATED
+    assert _reads(h) == 1 and h.clock.slept == []
+    assert cause in (run.step_run("ci").reason or "")
+
+
+async def test_a_parked_wait_keeps_reading_not_found_as_not_reached_across_parks() -> None:
+    h = ConnectorHarness(pipeline_wait(30, 600), options=PARKING)
+    h.connector.fail_each[READ] = [failure("not_found"), failure("not_found")]
+    h.connector.read_sequence = [{"state": "success"}]
+    run = await h.start()
+    assert run.cause is Cause.PARKED
+    run = await h.resume(run)
+    assert run.cause is Cause.PARKED
+    run = await h.resume(run)
+    assert run.state is RunState.FINISHED and h.clock.slept == []
+    assert _reads(h) == 3
+
+
 # --- a reading that did not show what was expected is read again on resume (issue #31) --------
 
 
