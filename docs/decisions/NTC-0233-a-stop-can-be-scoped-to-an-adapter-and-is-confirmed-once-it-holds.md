@@ -3,7 +3,7 @@
 **Mode entry:** M2.7
 **Kind:** restoration
 **Decided:** 2026-10-23
-**Raised in:** this pull request, for #436
+**Raised in:** [#617](https://github.com/Jersyfi/taktus/pull/617)
 **How it follows:** the owner accepted the second tenant's catalogue as the requirement Taktus proves itself on in DEC-0199 (Option A, "fully supported by `1.0.0`"). The catalogue asks for "a stop per agent and global, with confirmation" (`docs/usecases/AF-03-software-operations.md`, B-11.04 and §7 row 6), and maps it to UC-7.2. UC-7.2 stopped globally, per tenant, process or run, and said nothing of a confirmation. The amendment states the two missing parts as UC-7.2's requirement, with the verification conditions of #436.
 
 ## 1. What was decided
