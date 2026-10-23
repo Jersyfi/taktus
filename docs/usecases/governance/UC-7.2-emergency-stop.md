@@ -21,7 +21,13 @@ who has seen enough. Taktus stops.
 
 A stop takes effect at the next step boundary of every affected run — never in the middle of a
 step, so that at most one step of work is lost (ADR-0005) — and is recorded in the ledger with its
-cause. Its scope is global, a tenant, a process, or a run.
+cause. Its scope is global, a tenant, a process, a run, or an adapter. A stop scoped to an adapter
+stops every step that adapter serves, in every run, and nothing else: runs on other adapters go
+on. An adapter is the agent a business sees acting — a worker, a connector or a model.
+
+A stop is confirmed once it holds: when every affected run has reached its boundary. The
+confirmation goes to whoever requested the stop, and names the runs it stopped. A stop that found
+no run to stop is confirmed as well, and says so.
 
 There are two triggers:
 
@@ -40,6 +46,10 @@ Resuming is a person's act; the run continues at the boundary it stopped at.
 - A stop requested in the middle of a step lands on the worker's boundary; a stop requested
   between steps takes effect at the next boundary; a resume repeats nothing that had completed.
 - A stop by a person is available at every autonomy level, in every scope, and asks for no reason.
+- A stop of one worker adapter halts every run it serves at its boundary, and runs on other
+  adapters go on.
+- The person who requested a stop receives a confirmation once it holds, naming the runs it
+  stopped.
 - Each criterion of ADR-0023 §2, on its own, triggers what the default rule says.
 - A criterion may be added and a threshold changed; a configuration that empties the set — under
   which nothing leads to `escalate` — is refused.
@@ -62,8 +72,11 @@ tenant configuration from `0.2.0`; UC-4.10 and UC-4.11 for the facts the rule re
 method selection applied to governance itself — the decision is a rule, the narrative may be a
 model (ADR-0004); a set that is reducible and never empty, as for anchors (ADR-0008). A stop by a
 person arrives in `0.2.0` across scopes, the automatic trigger in `0.5.0`, which is this use case's
-version. Written first in `UC-4-result-defects.md` on 2026-09-17, moved into this format in the
-migration's second step; the requirement is unchanged. Definition `UC-7.2`, escalation and
+version. The adapter scope and the confirmation come from the catalogue of the second tenant —
+"a stop per agent and global, with confirmation" (UC-03 B-11.04 and §7 row 6) — which the owner
+accepted as a requirement in DEC-0199; added on 2026-10-23 (NTC-0233). Written first in
+`UC-4-result-defects.md` on 2026-09-17, moved into this format in the migration's second step,
+which left the requirement unchanged. Definition `UC-7.2`, escalation and
 intervention: its emergency stop "at any time, globally and per process" is here; its escalation
 "on uncertainty, failures or exceeding the frame" is UC-4.5, with UC-4.6, which escalates instead
 of healing where it is unsure.
@@ -71,4 +84,5 @@ of healing where it is unsure.
 ## 5. What is proven so far
 
 The first condition, for a single run stopped by a person, by the named tests.
-Stopping by scope, the criteria as tenant configuration, and the automatic trigger are not built.
+Stopping by scope — the adapter scope among them —, the confirmation, the criteria as tenant
+configuration, and the automatic trigger are not built.
