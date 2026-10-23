@@ -16,6 +16,7 @@ from taktus.components.governance.application.service import (
     ReportCapacityHandler,
 )
 from taktus.components.governance.domain.model import CapacityThresholds, Status
+from taktus.components.governance.domain.service.capacity import KINDS
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.ports.ledger import Fact
 from taktus.ports.platform import Headroom, PlatformObservation, Reading, Unobserved
@@ -146,3 +147,10 @@ async def test_the_memory_finding_counts_the_jobs_that_still_fit() -> None:
     )
     (memory,) = [f for f in report.findings if f.resource == "memory"]
     assert "room for 3 job(s) at the unit's limit of 2.0 GiB" in memory.text
+
+
+async def test_every_kind_a_finding_is_recorded_under_is_one_the_alert_sweep_reads() -> None:
+    """The sweep reads the crossings by kind (ADR-0105 section 10): a place the report looked at
+    that the list does not name would never reach the owner."""
+    report = await World().handler().execute(ReportCapacity(tenants=("a",), record=False))
+    assert {f.kind for f in report.findings} == set(KINDS)

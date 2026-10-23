@@ -3,7 +3,9 @@ a decision, the rule after a breach, the levels a version was lowered to, the fi
 tenant's limits.
 
 **After a decision.** The run has recorded `proposal.decided`. The rule reads the tenant's
-decisions and changes of level from the ledger (`domain/service/corrections.py`). When the
+decisions and changes of level from a projection of the ledger
+(`domain/service/correction_state.py`, ADR-0105 §10), so that it costs what it returns and not
+what the tenant's decisions hold. When the
 unit's rate over the tenant's window is above its limit, the unit falls one level: an incident
 of kind `corrections.rate` is raised with the rule and its figures, and `autonomy.lowered` names
 the new level, in one transaction. Otherwise, when the tenant's conditions for a raise hold,
@@ -24,7 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from taktus.components.governance.domain.model.corrections import (
     CorrectionLimits,
@@ -40,6 +42,7 @@ from taktus.components.governance.domain.model.incident import (
     IncidentKind,
     incident_id,
 )
+from taktus.components.governance.domain.service import correction_state as state
 from taktus.components.governance.domain.service import corrections as rule
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
@@ -149,9 +152,27 @@ class Corrections:
     # --- reads -----------------------------------------------------------------------------------
 
     async def entries(self, tenant: Tenant) -> Sequence[LedgerEntry]:
-        """Every entry the rule reads, and nothing else of the chain."""
+        """Every entry the rule reads, and nothing else of the chain. Only a read the projection
+        cannot answer, and the full computation a test compares it with, read these."""
         async with self._work.transaction(tenant):
             return await self._ledger.of_kinds(tenant, rule.KINDS)
+
+    async def counted(
+        self, tenant: Tenant, now: datetime, window: timedelta = rule.MONTH
+    ) -> state.Corrected:
+        """What the rule reads at `now`, over windows up to `window`: the projection brought up
+        to date with the entries after its last read. Where it cannot answer (`now` lies before
+        its newest entry, or the window begins before the days it keeps) the state is folded
+        from the entries of the four kinds up to `now`, none dropped."""
+        async with self._work.transaction(tenant):
+            held = await self._ledger.project(tenant, state.CORRECTIONS)
+            if held.reads(now, window):
+                return held
+            fresh = state.UNBOUNDED.empty()
+            for entry in await self._ledger.of_kinds(tenant, rule.KINDS):
+                if entry.ts <= now:
+                    fresh = state.UNBOUNDED.fold(fresh, entry)
+            return fresh
 
     async def lowered(self, tenant: Tenant, process_version: str) -> Lowered:
         async with self._work.transaction(tenant):
@@ -161,7 +182,8 @@ class Corrections:
     async def figures(self, tenant: Tenant) -> list[Figures]:
         """Every unit's correction rate over 7 and 28 days, now. Per process and action class,
         never per person."""
-        return rule.every_figure(await self.entries(tenant), self._clock.now())
+        now = self._clock.now()
+        return state.every_figure(await self.counted(tenant, now), now)
 
     async def lowerings(self, tenant: Tenant) -> list[Incident]:
         """Every incident that lowered or tried to lower a level, oldest first."""
@@ -173,22 +195,7 @@ class Corrections:
     async def proposed(self, tenant: Tenant) -> list[Proposed]:
         """Every raise Taktus proposed on the corrections, oldest first, each with the figures
         the rule read when it proposed it: reproducible from the ledger."""
-        entries = await self.entries(tenant)
-        found: list[Proposed] = []
-        for entry in entries:
-            if entry.kind != rule.PROPOSED or entry.outcome != rule.PROPOSED_BY_CORRECTIONS:
-                continue
-            unit = rule.unit_of(entry)
-            if unit is None or entry.rehearsal or entry.refs.process_version is None:
-                continue
-            found.append(
-                Proposed(
-                    seq=entry.seq,
-                    process_version=entry.refs.process_version,
-                    figures=rule.figures(entries, unit, entry.ts),
-                )
-            )
-        return found
+        return state.proposed(await self.counted(tenant, self._clock.now()))
 
     # --- the rule --------------------------------------------------------------------------------
 
@@ -196,10 +203,10 @@ class Corrections:
         unit = Unit(process_id=rule.process_of(decision.process_version), action=decision.action)
         limits = await self.limits(tenant)
         now = self._clock.now()
-        entries = await self.entries(tenant)
-        due = rule.lowering_due(entries, unit, now, limits)
+        counted = await self.counted(tenant, now, max(rule.MONTH, limits.lower_window))
+        due = state.lowering_due(counted, unit, now, limits)
         if due is not None:
-            current = self._current(entries, decision.process_version, unit, decision.level)
+            current = await self._current(tenant, decision.process_version, unit, decision.level)
             lowered = await self._lower(
                 tenant,
                 IncidentKind.CORRECTIONS,
@@ -212,7 +219,7 @@ class Corrections:
                 facts=_rate_facts(due, limits),
             )
             return Verdict(lowered=lowered)
-        ready = rule.raise_due(entries, unit, now, limits)
+        ready = state.raise_due(counted, unit, now, limits)
         if ready is None:
             return Verdict()
         async with self._work.transaction(tenant):
@@ -233,8 +240,7 @@ class Corrections:
     async def breached(self, tenant: Tenant, breach: BreachSeen) -> Incident | None:
         """The process falls one level; None when this breach was found before."""
         unit = Unit(process_id=rule.process_of(breach.process_version))
-        entries = await self.entries(tenant)
-        current = self._current(entries, breach.process_version, unit, breach.level)
+        current = await self._current(tenant, breach.process_version, unit, breach.level)
         return await self._lower(
             tenant,
             IncidentKind.BREACH,
@@ -247,12 +253,11 @@ class Corrections:
             facts={"anchors": ", ".join(breach.anchors), "run": breach.run_id},
         )
 
-    @staticmethod
-    def _current(
-        entries: Sequence[LedgerEntry], version: str, unit: Unit, held: AutonomyLevel
+    async def _current(
+        self, tenant: Tenant, version: str, unit: Unit, held: AutonomyLevel
     ) -> AutonomyLevel:
         """The unit's level now: what the run held it at, or lower where it fell since."""
-        already = rule.lowered(entries, version).of(unit.action)
+        already = (await self.lowered(tenant, version)).of(unit.action)
         return held if already is None else min(held, already)
 
     async def _lower(
