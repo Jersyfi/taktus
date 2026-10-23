@@ -68,6 +68,11 @@ class MemoryQueue:
         each; a claim skips them."""
         persistence.load(KIND, JobRow)
 
+    @property
+    def max_attempts(self) -> int:
+        """How many attempts a job is given before it is claimed no more (#591)."""
+        return self._max_attempts
+
     async def enqueue(self, tenant: Tenant, job: Job) -> None:
         transaction = self._persistence.current(tenant)
         if (KIND, job.id) in transaction.puts or job.id in self._persistence.table(KIND, tenant):

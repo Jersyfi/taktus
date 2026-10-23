@@ -228,8 +228,10 @@ role it would tie the core to a model stack and the removal test would be lost.
   next (ADR-0038, `tests/integration/test_handover.py`). A run is recovered only when its
   runner died. A step whose worker cannot be reached ends failed with that cause, and the run
   escalates. An exception out of the engine releases the job, and the next claim recovers the
-  run, so a cause that raises again is recovered again until the queue's attempts run out
-  (#589). Every job's outcome goes to the log through `roles.said`. A run that did not finish
+  run, so a cause that raises again is recovered again (#589). At the job's last attempt, a
+  step that raises fails with what it raised, and the run escalates naming the step and the
+  exception; the runner reads the queue's limit of attempts from the queue it is wired with
+  (#591). Every job's outcome goes to the log through `roles.said`. A run that did not finish
   is logged with the step it ended at, its cause and its reason. An exception is logged with
   the step it was raised in.
 - **`scheduler`** leads through the leadership port — a session-level advisory lock — and ticks

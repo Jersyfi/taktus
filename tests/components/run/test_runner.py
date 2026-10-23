@@ -210,6 +210,7 @@ class World:
                 tenants=tenants or FixedTenants((TENANT,)),
                 claimant=name,
                 concurrency=concurrency,
+                max_attempts=self.queue.max_attempts,
                 poll_seconds=poll,
                 heartbeat_seconds=heartbeat,
                 wait_first_seconds=wait_first,
@@ -743,6 +744,38 @@ async def test_a_run_that_ends_wakes_the_runner_and_four_places_drain_more_than_
     assert len(runs) / took > 4, f"{len(runs)} runs in {took:.2f}s with a poll of a second"
 
 
+# --- a step that raises at every attempt (issue #591) --------------------------------------------
+
+
+async def test_a_step_that_raises_at_every_attempt_escalates_its_run_at_the_last() -> None:
+    """The step's worker raises something no handling of a worker error knows, at every
+    attempt. Each attempt before the last releases the job, and the next claim recovers the run
+    once. At the last, the step fails with what it raised, the run escalates naming the step and
+    the exception, and the job is completed: the run is with a person, not `running` (#591)."""
+
+    class Broken(FakeWorker):
+        async def estimate(self, request: Any) -> Any:
+            raise RuntimeError("an adapter bug")
+
+    world = World(worker=Broken(), max_attempts=3)
+    run = await world.submit(work("do"))
+    runner = world.runner("r1")
+    await until(lambda: len(runner.outcomes) == 3)
+    await asyncio.sleep(0.1)  # time for a fourth claim, which must not come
+    await world.stop(runner)
+    assert [o.disposition for o in runner.outcomes] == ["released", "released", "completed"]
+    escalated = await world.stored(run.id)
+    assert escalated.state is RunState.ESCALATED and escalated.cause is Cause.FAILURE
+    reason = escalated.reason or ""
+    assert "step do" in reason and "RuntimeError: an adapter bug" in reason, reason
+    assert escalated.step_run("do").state is StepState.FAILED
+    assert runner.outcomes[-1].step == "do"
+    kinds = await world.kinds(run.id)
+    assert kinds.count("run.recovered") == 2, "recovered once at each attempt after the first"
+    assert kinds[-1] in ("run.escalated", "run.ended"), kinds
+    assert await world.claimable() == []
+
+
 # --- a worker that answers nothing (issue #589) ---------------------------------------------------
 
 
@@ -791,7 +824,7 @@ async def test_a_step_the_engine_raises_in_is_named_in_the_runner_s_outcome() ->
         async def estimate(self, request: Any) -> Any:
             raise RuntimeError("an adapter bug")
 
-    world = World(worker=Broken(), max_attempts=1)
+    world = World(worker=Broken(), max_attempts=2)  # the last attempt fails the step (#591)
     run = await world.submit(work("do"))
     runner = world.runner("r1")
     await until(lambda: len(runner.outcomes) >= 1)

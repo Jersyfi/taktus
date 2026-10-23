@@ -38,6 +38,11 @@ class PostgresQueue:
         self._lease = timedelta(seconds=lease_seconds)
         self._max_attempts = max_attempts
 
+    @property
+    def max_attempts(self) -> int:
+        """How many attempts a job is given before it is claimed no more (#591)."""
+        return self._max_attempts
+
     async def enqueue(self, tenant: Tenant, job: Job) -> None:
         connection = self._persistence.connection(tenant)
         try:

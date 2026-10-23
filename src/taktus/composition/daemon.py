@@ -813,6 +813,7 @@ async def wire(
                         tenants=tenants,
                         claimant=settings.instance,
                         concurrency=settings.runner_concurrency,
+                        max_attempts=queue.max_attempts,
                         poll_seconds=settings.poll_seconds,
                         heartbeat_seconds=max(settings.lease_seconds / 3, 1.0),
                         # A waiting run is not tried again sooner than one poll (ADR-0037).
