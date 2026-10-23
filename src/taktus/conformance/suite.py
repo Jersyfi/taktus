@@ -833,6 +833,49 @@ def _stop_target(main: Run) -> str | None:
     return None
 
 
+STOP_ATTEMPTS = 4
+"""How often the suite runs the work to stop it, at most: once, and again each time the stop
+came too late (#551)."""
+
+
+def _stop_came_too_late(run: Run, main: Run) -> bool:
+    """The stop was requested and answered, but could not be what the checks need: the
+    assignment had finished by the time it arrived, or it ended at a boundary before any artifact
+    the main run produced was announced. Both depend on how fast the suite's request reaches the
+    worker, not on the worker: a machine under load delays the request by more than the work
+    lasts. A stop that was never requested, was refused, or met a stream without a boundary is
+    the worker's to answer for and is not repeated."""
+    stop = run.stop
+    if not run.stop_requested or stop is None or stop.status != 202 or stop.json is None:
+        return False
+    if stop.json.get("status") == "finished":
+        return True
+    wanted = any(e.get("type") == "artifact.produced" for e in main.events)
+    announced = any(e.get("type") == "artifact.produced" for e in run.events)
+    return wanted and not announced and any(e.get("type") == "step.boundary" for e in run.events)
+
+
+async def _stopped_run(
+    client: WorkerClient,
+    options: SuiteOptions,
+    main: Run,
+    declared: list[str],
+    limits: Json,
+) -> Run:
+    """The work again, stopped at the start of the step that produced the first artifact, so that
+    the resume has something not to repeat. A stop that comes too late is no evidence either way
+    (W-06 and W-11 would both end inconclusive on the speed of the machine), so the work is run
+    again, up to `STOP_ATTEMPTS` times in all; the last run is the one the checks judge."""
+    run = await _run(client, options, "stopped", declared, limits, stop_on_step=_stop_target(main))
+    for _ in range(STOP_ATTEMPTS - 1):
+        if not _stop_came_too_late(run, main):
+            break
+        run = await _run(
+            client, options, "stopped", declared, limits, stop_on_step=_stop_target(main)
+        )
+    return run
+
+
 async def _w06(
     client: WorkerClient,
     options: SuiteOptions,
@@ -846,7 +889,7 @@ async def _w06(
     if not any(e.get("type") == "step.started" for e in main.events):
         findings.inconclusive["W-06"] = "the main run started no step, so there was nothing to stop"
         return None
-    run = await _run(client, options, "stopped", declared, limits, stop_on_step=_stop_target(main))
+    run = await _stopped_run(client, options, main, declared, limits)
     runs.append(run)
     await _judge(client, run, estimate, findings)
     if not run.stop_requested:
