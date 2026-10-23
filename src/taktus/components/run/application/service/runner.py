@@ -32,10 +32,12 @@ What happens when a run ends decides the job:
 - halted because a `wait` step parked — the job is *deferred* to the wait's next check, which
   the step's block names. A wait for time or for an outside system holds no place meanwhile,
   as a wait for a person does not either (ADR-0103);
-- the engine raised — the job is *released* and counted as an attempt; after the queue's limit
-  of attempts the job stays for a person. The next claim recovers the run, so a cause that
-  raises again is recovered again: a step whose adapter fails ends the step instead, with its
-  cause, and never raises (#589);
+- the engine raised — the job is *released* and counted as an attempt. The next claim recovers
+  the run, once, so a cause that raises again is recovered again: a step whose adapter fails
+  ends the step instead, with its cause, and never raises (#589). At the job's last attempt
+  (`max_attempts`) a step that raises fails with what it raised, and the run escalates for it:
+  the job is completed and the run is with a person, not `running` for nobody (#591). An
+  exception outside every step still releases the job, which then stays for a person;
 - the claim was lost — the job is another runner's and stays untouched; the loss is recorded as
   `run.claim_lost` in the run's chain, so that a person hears of it (ADR-0106).
 
@@ -83,6 +85,9 @@ class RunnerOptions:
     """How often a held lease is renewed; a third of the lease is a safe value."""
     actor: str = "taktusd"
     """Who the ledger names as the actor of `run.resumed` and `run.recovered`."""
+    max_attempts: int = 5
+    """The queue's limit of attempts, which the composition reads from the queue it wires.
+    At a job's last attempt, a step that raises fails and the run escalates (#591)."""
     wait_first_seconds: float = 1.0
     """How long a run whose worker was at capacity waits before it is tried again the first
     time; every further answer of the same wait doubles it (ADR-0037)."""
@@ -258,6 +263,9 @@ class Runner:
                             claimant=self.options.claimant,
                             attempt=executing.job.attempts,
                         ),
+                        # The queue counts claims less deferrals towards its limit.
+                        last_attempt=executing.job.attempts - executing.job.deferrals
+                        >= self.options.max_attempts,
                     )
                 )
             except ClaimLost as lost:

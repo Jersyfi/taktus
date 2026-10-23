@@ -396,6 +396,10 @@ class ResumeRun:
     """The runner's claim on the run's job. Every write of the run is fenced by it: once
     another runner has claimed the job, the write is refused with `ClaimLost` (#107). None for
     an operator's resume, which no claim stands behind."""
+    last_attempt: bool = False
+    """The claim is the last its job is given: the queue claims the job no more after it. A
+    step that raises then fails with what it raised, and the run escalates for it, instead of
+    the exception leaving the engine and the run staying `running` for nobody (#591)."""
 
 
 @dataclass(frozen=True)
@@ -635,6 +639,8 @@ class RunEngine:
         """The claim the run executing in this task is written under (#107). Held per task,
         not per run: a runner that lost a claim and claimed the same job again executes the
         run twice for a moment, and only the later claim may write."""
+        self._last_attempt: ContextVar[bool] = ContextVar("last_attempt", default=False)
+        """Whether the run executing in this task is at its job's last attempt (#591)."""
 
     # --- entry points --------------------------------------------------------------------------
 
@@ -655,19 +661,25 @@ class RunEngine:
             return await self._create(command, enqueue=True)
 
     async def resume(self, command: ResumeRun) -> Run:
-        if command.claim is None:
-            return await self._resume(command)
-        if self._queue is None:
-            raise RunError("a resume under a claim needs the queue that fences it; none is wired")
-        token = self._claim.set(command.claim)
+        last = self._last_attempt.set(command.last_attempt)
         try:
-            return await self._resume(command)
-        except ClaimLost:
-            # The runner that took the job over executes the run; nothing here may.
-            self._stop_requested.discard(command.run_id)
-            raise
+            if command.claim is None:
+                return await self._resume(command)
+            if self._queue is None:
+                raise RunError(
+                    "a resume under a claim needs the queue that fences it; none is wired"
+                )
+            token = self._claim.set(command.claim)
+            try:
+                return await self._resume(command)
+            except ClaimLost:
+                # The runner that took the job over executes the run; nothing here may.
+                self._stop_requested.discard(command.run_id)
+                raise
+            finally:
+                self._claim.reset(token)
         finally:
-            self._claim.reset(token)
+            self._last_attempt.reset(last)
 
     async def _resume(self, command: ResumeRun) -> Run:
         async with self._telemetry.span("run", {"run.id": command.run_id}) as span:
@@ -1364,7 +1376,7 @@ class RunEngine:
         completed_now = 0
         while (step_run := run.runnable()) is not None:
             step = run.step(step_run.step_id)
-            run, step_run = await self._execute_step(run, step, step_run)
+            run, step_run = await self._step_or_failed(run, step, step_run)
             if step_run.state is StepState.WAITING_HUMAN:
                 # The step waits for a person; the steps that do not depend on it run on.
                 if run.id in self._stop_requested:
@@ -1460,7 +1472,7 @@ class RunEngine:
             done = {s.step_id for s in run.step_runs if s.done}
             if any(dependency not in done for dependency in step.dependencies):
                 continue
-            run, _ = await self._execute_step(run, step, step_run)
+            run, _ = await self._step_or_failed(run, step, step_run)
         self._at_capacity.discard(run.id)
         self._limit_halts.discard(run.id)
         self._immature.discard(run.id)
@@ -1495,6 +1507,57 @@ class RunEngine:
             isinstance(result, Mapping) and result.get("skipped") is True
             for result in results.values()
         )
+
+    async def _step_or_failed(self, run: Run, step: Step, step_run: StepRun) -> tuple[Run, StepRun]:
+        """The step executed; at the job's last attempt, a step that raises ends failed with
+        what it raised. Before the last attempt the exception leaves the engine, the runner
+        releases the job, and the next claim recovers the run (#591)."""
+        try:
+            return await self._execute_step(run, step, step_run)
+        except ClaimLost:
+            raise
+        except Exception as error:
+            if not self._last_attempt.get():
+                raise
+            failed = await self._raised(run, step.id, error)
+            if failed is None:
+                raise
+            return failed
+
+    async def _raised(
+        self, run: Run, step_id: StepId, error: Exception
+    ) -> tuple[Run, StepRun] | None:
+        """The step that raised `error`, failed with it, as the store holds the run now: the
+        step may have committed its start before it raised. None when the store no longer
+        holds the run or the step has already ended otherwise."""
+        async with self._work.transaction(run.tenant):
+            stored = await self._runs.get(run.tenant, run.id)
+        if stored is None:
+            return None
+        step_run = stored.step_run(step_id)
+        if step_run.done and step_run.state is not StepState.FAILED:
+            return None
+        for flags in (
+            self._at_capacity,
+            self._parked,
+            self._limit_halts,
+            self._moving,
+            self._immature,
+            self._administering,
+        ):
+            flags.discard(run.id)
+        step_run = step_run.to(
+            StepState.FAILED,
+            reason=(
+                f"step {step_id} raised {type(error).__name__}: {error}, at the last attempt "
+                "its job is given"
+            ),
+            finished_at=self._clock.now(),
+        )
+        run = await self._commit(
+            stored.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
+        )
+        return run, step_run
 
     async def _execute_step(self, run: Run, step: Step, step_run: StepRun) -> tuple[Run, StepRun]:
         try:
