@@ -68,4 +68,4 @@ Built by #329. By the named tests:
 Also checked by `web/src/lib/change.test.ts`, which the gate does not run: the page offers the
 rehearsal of a proposal that has none, shows a rehearsal step by step with its summary, says
 where a stopped one stopped, and offers commissioning only once the rehearsal's run has finished.
-The chat offers the act through its phrasebook (ADR-0069).
+The chat already offers the act in its phrasebook.
