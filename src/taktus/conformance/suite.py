@@ -457,11 +457,13 @@ async def _run(
     hosts: Sequence[str] | None = None,
     checkpoint_ref: str | None = None,
     stop_on_step: str | bool | None = False,
+    stop_on_artifact: bool = False,
     after: Json | None = None,
     before: Json | None = None,
 ) -> Run:
     """Post an assignment and read its stream to the end. `stop_on_step` names the step at
-    whose start a stop is requested; None means the first step; False means never."""
+    whose start a stop is requested; None means the first step; False means never.
+    `stop_on_artifact` requests it instead when the first artifact is announced."""
     assignment = _assignment(
         options,
         allowed,
@@ -479,9 +481,12 @@ async def _run(
     async def on_event(event: Json) -> None:
         if stop_on_step is False or run.stop_requested:
             return
-        if event.get("type") != "step.started":
+        if stop_on_artifact:
+            if event.get("type") != "artifact.produced":
+                return
+        elif event.get("type") != "step.started":
             return
-        if stop_on_step is not None and event.get("step_id") != stop_on_step:
+        elif stop_on_step is not None and event.get("step_id") != stop_on_step:
             return
         run.stop_requested = True
         run.stop = await client.post(
@@ -862,16 +867,35 @@ async def _stopped_run(
     declared: list[str],
     limits: Json,
 ) -> Run:
-    """The work again, stopped at the start of the step that produced the first artifact, so that
-    the resume has something not to repeat. A stop that comes too late is no evidence either way
-    (W-06 and W-11 would both end inconclusive on the speed of the machine), so the work is run
-    again, up to `STOP_ATTEMPTS` times in all; the last run is the one the checks judge."""
-    run = await _run(client, options, "stopped", declared, limits, stop_on_step=_stop_target(main))
+    """The work again, stopped so that the resume has something not to repeat. Where the main run
+    produced an artifact before its last step, the stop is requested when the stopped run
+    announces its first artifact, not at a step or a time chosen beforehand: which step ends up
+    holding a change depends on timing, and an artifact announced is the one thing the stop can
+    then not precede. Otherwise it is requested at the first step. A stop that comes too late is
+    no evidence either way (W-06 and W-11 would both end inconclusive on the speed of the
+    machine), so the work is run again, up to `STOP_ATTEMPTS` times in all; the last run is the
+    one the checks judge."""
+    on_artifact = _stop_target(main) is not None
+    run = await _run(
+        client,
+        options,
+        "stopped",
+        declared,
+        limits,
+        stop_on_step=None,
+        stop_on_artifact=on_artifact,
+    )
     for _ in range(STOP_ATTEMPTS - 1):
         if not _stop_came_too_late(run, main):
             break
         run = await _run(
-            client, options, "stopped", declared, limits, stop_on_step=_stop_target(main)
+            client,
+            options,
+            "stopped",
+            declared,
+            limits,
+            stop_on_step=None,
+            stop_on_artifact=on_artifact,
         )
     return run
 
