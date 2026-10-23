@@ -24,3 +24,9 @@ Anchors hold, limits are never breached, least privilege throughout (`docs/archi
   executed, from level 3 only a verified adapter serves; no level switches off the stop, the
   reports or the escalation; a raise needs a person's approval and the quality history, and
   nothing stores a version without asking for both.
+- `test_stages.py`: a tenant's introduction in stages (UC-9.6, ADR-0137) — ordered stages
+  declared, never naming a person and never looser than their blueprint; a process of a stage
+  not open refused above level 2, naming the stage; a stage opened only by a person, once the
+  one before it holds and its processes have takeover instructions; Taktus proposes and never
+  opens; a stage that stops holding reported, and its processes fallen by rule; every figure of
+  the view read from the ledger; UC-03's six stages declared and shown.

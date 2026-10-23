@@ -14,6 +14,11 @@ What exists today:
   `application/service/report_capacity.py`). The refusal of a job that does not fit is the
   run's admission control (`run/domain/service/capacity.py`) until admission moves here.
 
+- a tenant's introduction in stages (ADR-0137): the plan, the rule over the ledger that says
+  whether a stage holds and how high a process may run (`domain/service/stages.py`), and the
+  use case that declares, opens and looks at the stages (`application/service/stages.py`),
+  with the ports the composition root answers (`ports/stages.py`).
+
 Autonomy levels 1 to 3 are enforced at the step boundary (ADR-0039). The rule that says which
 level holds for a step and what it asks of a person is the run's
 (`run/domain/service/autonomy.py`), and the rule that says when a level may rise is the

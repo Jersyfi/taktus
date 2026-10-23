@@ -22,6 +22,7 @@ from taktus.components.governance.application.service import (
     Corrections,
     ExpectedRuns,
     ReportCapacityHandler,
+    Stages,
     TenantResidency,
     TenantSources,
 )
@@ -183,6 +184,9 @@ class Services:
     traces: StepTraces | None = None
     """How long the tenant keeps the trace inside a step, shown and set (`taktusctl trace`,
     ADR-0135)."""
+    stages: Stages | None = None
+    """The tenant's introduction in stages: declared, shown and opened by a person
+    (`taktusctl stage`, ADR-0137)."""
 
 
 @dataclass(frozen=True)

@@ -141,6 +141,7 @@ from taktus.composition.settings import (
 )
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import signal_wiring
+from taktus.composition.stages import stage_wiring
 from taktus.ports.backups import BackupLog
 from taktus.ports.configuration import Configuration, ConfigurationError
 from taktus.ports.persistence import (
@@ -334,6 +335,18 @@ class LocalWiring:
                 known_secrets(os.environ),
             )
             decisions.requests.report_to(owner.decision_raised)
+            # A tenant's introduction in stages: the ceiling registration asks, and the
+            # reports to its responsible role (ADR-0137).
+            staged = stage_wiring(
+                stores.of,
+                stores.work,
+                ledger,
+                clock,
+                identities=identities,
+                corrections=decisions.corrections,
+                channel=owner.channel,
+                raising=owner.raising,
+            )
             commission = CommissionPlanHandler(
                 stores.of(Command), stores.of(Plan), stores.work, clock, ids
             )
@@ -419,6 +432,7 @@ class LocalWiring:
                 clock=clock,
                 lowered=decisions.lowered,
                 sources=decisions.sources,
+                stages=staged.ceilings,
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
@@ -523,6 +537,7 @@ class LocalWiring:
                     ledger=ledger,
                     clock=clock,
                 ),
+                stages=staged.stages,
             )
             telemetry.shutdown()
 

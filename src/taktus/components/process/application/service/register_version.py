@@ -13,6 +13,12 @@ actor (ADR-0039, `domain.service.autonomy`). The replaced version is measured as
 a level the governance component lowered by rule counts as its level, so that a level that
 fell rises again only this way (ADR-0110). This is the one code path that stores a version.
 
+Registering is where a stage of the tenant's introduction caps a level: a version above the
+ceiling of its process — level 2 while no open stage names it, otherwise the level the open
+stages grant — is refused with `RaiseRefused`, recorded as `autonomy.refused` with outcome
+`stage_not_open`, naming the stage and what it lacks to open (ADR-0137 §2). The ceiling lifts
+nothing: a version up to it still needs the approval and the history above.
+
 Registering is where a cap on open work changes, and only a person changes it: a version whose
 caps differ from the version it replaces is stored only with a person's approval
 (`approved_by`), recorded as `open_work.changed`. Without one the attempt is recorded as
@@ -72,7 +78,12 @@ from taktus.components.process.domain.model.exactness import (
 )
 from taktus.components.process.domain.service import autonomy, evaluation, exactness, frame
 from taktus.components.process.domain.service.quality import QUALITY
-from taktus.components.process.ports import FreeSources, LoweredLevels, LoweredVersions
+from taktus.components.process.ports import (
+    FreeSources,
+    LoweredLevels,
+    LoweredVersions,
+    StageCeilings,
+)
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
@@ -85,6 +96,8 @@ CAP_CHANGED = "open_work.changed"
 """A version changed a cap on open work with a person's approval (ADR-0132 §3)."""
 CAP_REFUSED = "open_work.refused"
 """A version that changes a cap on open work was refused for want of a person's approval."""
+STAGE_NOT_OPEN = "stage_not_open"
+"""The outcome of `autonomy.refused` for a version above what the tenant's stages allow."""
 
 DURATION = re.compile(r"^(\d+)\s*(s|m|h|d)$")
 UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -122,7 +135,11 @@ class RegisterProcessVersionHandler:
         clock: Clock | None = None,
         lowered: LoweredVersions | None = None,
         sources: FreeSources | None = None,
+        stages: StageCeilings | None = None,
     ) -> None:
+        self._stages = stages
+        """How high a process may run under the tenant's stages (ADR-0137). None: no stage
+        caps a level."""
         self._sources = sources
         """Which sources the tenant declares free of personal fields (ADR-0130). None: the run
         alone asks, at every call of an analytic step."""
@@ -153,6 +170,18 @@ class RegisterProcessVersionHandler:
         undeclared = await self._undeclared(tenant, version)
         if undeclared:
             raise InvalidProcess(tuple(undeclared))
+        above = await self._above_ceiling(tenant, version)
+        if above is not None:
+            async with self._work.transaction(tenant):
+                await self._record(
+                    tenant,
+                    version,
+                    "autonomy.refused",
+                    STAGE_NOT_OPEN,
+                    command,
+                    actor=command.approved_by or command.by,
+                )
+            raise RaiseRefused(version.ref, (above,))
         refused: autonomy.RaiseVerdict | None = None
         capped: str | None = None
         lowerings = await self._lowerings(tenant, version)
@@ -235,6 +264,27 @@ class RegisterProcessVersionHandler:
             f"{version.ref} changes the cap on open work of {', '.join(changed)}; only a person "
             "changes a cap, and the version is registered only with that person's approval "
             "(ADR-0132)"
+        )
+
+    async def _above_ceiling(self, tenant: Tenant, version: ProcessVersion) -> str | None:
+        """Why the version runs above what the tenant's stages allow; None where it does not
+        (ADR-0137 §2)."""
+        if self._stages is None:
+            return None
+        ceiling = await self._stages.ceiling(tenant, version.process_id)
+        if ceiling is None or version.autonomy.level <= ceiling.level:
+            return None
+        if ceiling.stage is None:
+            return (
+                f"{version.ref} runs at level {version.autonomy.level}, and the open stages of "
+                f"{tenant} allow {version.process_id} at most level {ceiling.level} (ADR-0137)"
+            )
+        lacks = "; ".join(ceiling.missing) or "nothing but its opening"
+        return (
+            f"{version.ref} runs at level {version.autonomy.level}, and {version.process_id} "
+            f"belongs to the stage {ceiling.stage!r}, which is not open: until it opens the "
+            f"process runs at most at level {ceiling.level}. The stage lacks: {lacks} "
+            "(ADR-0137)"
         )
 
     async def _undeclared(self, tenant: Tenant, version: ProcessVersion) -> list[str]:

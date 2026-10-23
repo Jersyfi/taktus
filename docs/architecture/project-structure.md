@@ -17,7 +17,7 @@ boundaries, `import-linter` contracts and `tests/architecture` are not optional 
 | `command` | channel normalisation, command, plan, commissioning |
 | `process` | process, version, step, method, exactness class, bundle |
 | `run` | run, step run, checkpoint, artifact, blocked-time account |
-| `governance` | autonomy levels, policies, anchors, budgets, limits, admission control; today: a tenant's anchors and which of them name a step's act (ADR-0042), whether a result has left the system (ADR-0022) |
+| `governance` | autonomy levels, policies, anchors, budgets, limits, admission control; today: a tenant's anchors and which of them name a step's act (ADR-0042), whether a result has left the system (ADR-0022), a tenant's introduction in stages and the ceiling each keeps (ADR-0137) |
 | `decision` | decision requests, the decision register, rules derived from it; today: requests raised, answered, their reading confirmed, the register, the decider's list and response times (ADR-0042) |
 | `catalog` | models, agents, skills, connectors, blueprints, maturity |
 | `accounting` | consumption capture, Takt, forecasts, marginal value |
@@ -276,7 +276,12 @@ role it would tie the core to a model stack and the removal test would be lost.
   its step's trace through `ports/traces.py`, masked by the composition root's `KnownSecrets`;
   the reporting component's `StepTraces` reads the trace beside the run level, shares it by role
   and keeps the tenant's retention, which `taktusctl trace retention` sets, and the scheduler
-  erases what it ended in `composition/traces.py` (ADR-0135).
+  erases what it ended in `composition/traces.py` (ADR-0135). The governance component's
+  `Stages` keeps a tenant's introduction in stages; `composition/stages.py` answers its ports —
+  the level a process runs at now, its takeover instructions, the identities and the
+  owner-facing channel — and registration's `StageCeilings`, and the scheduler looks at every
+  tenant's stages once an hour. `taktusctl stage` declares, shows and opens them, and the
+  table `stage_plan` keeps each plan (ADR-0137).
   While it leads it also looks at every process's evaluation cases
   once a minute (`composition/evaluations.py`, ADR-0134): `Evaluations` starts a drift
   evaluation at every slot of a version's evaluation schedule, moves every evaluation on — its

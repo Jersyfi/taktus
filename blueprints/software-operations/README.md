@@ -13,7 +13,11 @@ Development at the tenant runs on [`dev-orchestration`](../dev-orchestration/REA
 
 ## State
 
-A description. No process is a bundle yet. The business installs its instance with the
+A description. No process is a bundle yet. [`stages.yaml`](stages.yaml) proposes UC-03's six
+stages, each with the processes it adds, the level each may reach once the stage is open, and
+the condition under which it holds (ADR-0137, NTC-0232). A tenant declares its plan from them
+with `taktusctl stage declare --blueprint blueprints/software-operations/stages.yaml
+--responsible <role>`, and may make every condition stricter, never looser. The business installs its instance with the
 administration guide (`docs/guides/administration/first-install.md`), which registers each
 bundle of this blueprint once there is one. Stage 0 is #400 (`0.4.0`); stage 1 is #437, stage 2
 #401, stage 3 #438, stage 4 #439, stage 5 #440.

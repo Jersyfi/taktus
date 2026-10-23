@@ -83,6 +83,7 @@ from taktus.components.governance.application.service import (
     ExpectedRuns,
     ReportCapacity,
     ReportCapacityHandler,
+    Stages,
 )
 from taktus.components.governance.domain.model import Incident, WatchConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
@@ -184,6 +185,7 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
+from taktus.composition.stages import stage_wiring, stages_tick
 from taktus.composition.stops import StopsConfirmed
 from taktus.composition.takeover_in_channel import TakeoverInChannel
 from taktus.composition.traces import traces_tick
@@ -243,6 +245,9 @@ class Wired:
     stops: StopsConfirmed
     """The stops of adapters the scheduler confirms on every tick while it leads, once each
     holds (ADR-0138)."""
+    stages: Stages
+    """A tenant's introduction in stages, looked at by the scheduler once an hour while it
+    leads (ADR-0137)."""
     expected: ExpectedRunsWatch
     """The watch over expected runs the scheduler makes once a minute while it leads: a run
     that did not happen raises an incident (ADR-0107)."""
@@ -560,6 +565,18 @@ async def wire(
                 levels=levels,
             )
             decisions.requests.report_to(owner.decision_raised)
+            # A tenant's introduction in stages: the ceiling registration asks, the look the
+            # scheduler makes, and the reports to its responsible role (ADR-0137).
+            staged = stage_wiring(
+                stored,
+                persistence,
+                ledger,
+                clock,
+                identities=identities,
+                corrections=decisions.corrections,
+                channel=owner.channel,
+                raising=owner.raising,
+            )
             commission = CommissionPlanHandler(
                 PostgresRepository(persistence, Command),
                 PostgresRepository(persistence, Plan),
@@ -673,6 +690,7 @@ async def wire(
                 clock=clock,
                 lowered=decisions.lowered,
                 sources=decisions.sources,
+                stages=staged.ceilings,
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),
@@ -902,6 +920,7 @@ async def wire(
                     clock,
                 ),
                 stops=StopsConfirmed(tenants, stops),
+                stages=staged.stages,
                 deadlines=Deadlines(
                     tenants=tenants,
                     keeper=decisions.deadlines,
@@ -1102,6 +1121,9 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         evaluate = evaluations_tick(wired.evaluations, wired.tenants, wired.clock)
         # And it erases every line of a trace whose tenant's retention ended (ADR-0135).
         erase_traces = traces_tick(wired.traces, wired.tenants, wired.clock)
+        # And it looks at every tenant's stages: one that holds or stopped holding, and the
+        # next one proposed for a person to open (ADR-0137).
+        look_at_stages = stages_tick(wired.stages, wired.tenants, wired.clock)
 
         async def scheduled() -> None:
             await wired.triggers.tick()
@@ -1117,6 +1139,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await judge_signals()
             await evaluate()
             await erase_traces()
+            await look_at_stages()
 
         tasks.append(
             asyncio.create_task(

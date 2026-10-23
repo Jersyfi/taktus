@@ -21,6 +21,10 @@ The fourth source is a drift (ADR-0134 §5): a process that sends outward scored
 evaluation cases, with no change, below its last score by more than the tenant's tolerance. Its
 facts name both scores, the tolerance and the models that answered.
 
+The fifth source is a stage that stopped holding (ADR-0137 §4): one incident per process it
+adds that fell. Its facts name the stage, the levels before and after, and the figures the rule
+read.
+
 A **watch configuration** is one tenant's grace period and its threshold for a watcher that never
 finds anything, its limits on repetition, and its tolerance and allowance for evaluation cases.
 A tenant that configured nothing holds the shipped default (NTC-0212, NTC-0226, NTC-0228).
@@ -57,6 +61,9 @@ class IncidentKind(StrEnum):
     DRIFT = "evaluation.drift"
     """A process that sends outward scored on its evaluation cases, with no change, below its
     last score by more than the tenant's tolerance (ADR-0134 §5)."""
+    STAGE = "stage.fell"
+    """A stage of the tenant's introduction stopped holding, and a process it adds fell to the
+    level the stage's absence allows (ADR-0137 §4)."""
 
 
 class IncidentState(StrEnum):
@@ -103,7 +110,8 @@ class Incident(Value):
     """For an overdue run: the run that has not ended."""
     rule: str = Field(min_length=1)
     """The rule that fired: `expected.slot`, `expected.gap`, `expected.bound` or
-    `corridor.red`; for a level, `anchor.breach` or `corrections.rate` (ADR-0110)."""
+    `corridor.red`; for a level, `anchor.breach`, `corrections.rate` (ADR-0110) or `stage.fell`
+    (ADR-0137)."""
     facts: Mapping[str, str | float | None] = Field(default_factory=dict)
     """What the rule read, and the thresholds it compared with (ADR-0023 §1)."""
     raised_at: datetime

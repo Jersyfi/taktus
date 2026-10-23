@@ -1,0 +1,13 @@
+{
+  "seq": 52,
+  "ts": "2026-10-23T10:15:00Z",
+  "kind": "stage.opened",
+  "prev_hash": "sha256:2b7e4c9a1f6d3e8b5c0a7f2d9e4b1c6a3f8d5e0b7c2a9f4d1e6b3c8a5f0d7e2b",
+  "hash": "sha256:9c4a1e6b3d8f5a0c7e2b9d4f1a6c3e8b5d0f7a2c9e4b1d6f3a8c5e0b7d2f9a4c",
+  "refs": {
+    "tenant": "acme",
+    "stage_id": "operation-without-handwork",
+    "actor": "idn_7f3a2c"
+  },
+  "outcome": "opened"
+}

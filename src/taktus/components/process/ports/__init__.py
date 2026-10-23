@@ -2,5 +2,6 @@
 
 from taktus.components.process.ports.levels import LoweredLevels, LoweredVersions
 from taktus.components.process.ports.sources import FreeSources
+from taktus.components.process.ports.stages import StageCeiling, StageCeilings
 
-__all__ = ["FreeSources", "LoweredLevels", "LoweredVersions"]
+__all__ = ["FreeSources", "LoweredLevels", "LoweredVersions", "StageCeiling", "StageCeilings"]

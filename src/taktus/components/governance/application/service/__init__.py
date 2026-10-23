@@ -40,6 +40,11 @@ from taktus.components.governance.application.service.sources import (
     DeclareSources,
     TenantSources,
 )
+from taktus.components.governance.application.service.stages import (
+    Looked,
+    Stages,
+    StagesRefused,
+)
 
 __all__ = [
     "AnchorsInForce",
@@ -58,12 +63,15 @@ __all__ = [
     "DriftSeen",
     "Drifts",
     "ExpectedRuns",
+    "Looked",
     "RaiseRed",
     "RepetitionSeen",
     "Repetitions",
     "ReportCapacity",
     "ReportCapacityHandler",
     "SignalIncidents",
+    "Stages",
+    "StagesRefused",
     "TenantResidency",
     "TenantSources",
     "UnknownIncident",
