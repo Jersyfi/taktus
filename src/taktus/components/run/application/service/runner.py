@@ -40,7 +40,9 @@ What happens when a run ends decides the job:
   `run.claim_lost` in the run's chain, so that a person hears of it (ADR-0106).
 
 Every outcome is handed to `on_outcome`, which the daemon writes to its log: a run that did not
-finish names the step it ended at and why (#589).
+finish names the step it ended at and why (#589). The runner itself keeps only the latest
+`outcomes_kept` of them, so that a runner that runs for weeks holds no more for it than a runner
+that ran an hour; `finished` counts all of them (#592).
 
 The same holds for a run that had already ended when its job was claimed: a runner that died
 after the run's last state was committed and before it completed the job leaves exactly that.
@@ -56,6 +58,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
@@ -88,6 +91,9 @@ class RunnerOptions:
     on_outcome: Callable[[Outcome], None] | None = None
     """Told of every job this runner finished with, for the log (#589). What it raises is
     swallowed: telling must never take the runner down."""
+    outcomes_kept: int = 1000
+    """How many of the latest outcomes the runner keeps for `outcomes`; older ones are dropped,
+    and the log has had them through `on_outcome` (#592)."""
 
 
 @dataclass
@@ -132,15 +138,24 @@ class Runner:
     options: RunnerOptions
     _executing: dict[str, _Executing] = field(default_factory=dict, init=False)
     _stopping: bool = field(default=False, init=False)
-    _outcomes: list[Outcome] = field(default_factory=list, init=False)
+    _outcomes: deque[Outcome] = field(init=False)
+    _finished: int = field(default=0, init=False)
     _woken: asyncio.Event = field(default_factory=asyncio.Event, init=False)
     _turn: int = field(default=0, init=False)
     """Which served tenant the next claim round starts with."""
 
+    def __post_init__(self) -> None:
+        self._outcomes = deque(maxlen=max(self.options.outcomes_kept, 0))
+
     @property
     def outcomes(self) -> Sequence[Outcome]:
-        """Every job this runner finished with, in order."""
+        """The latest jobs this runner finished with, in order, at most `outcomes_kept`."""
         return tuple(self._outcomes)
+
+    @property
+    def finished(self) -> int:
+        """How many jobs this runner finished with since it began, kept or dropped."""
+        return self._finished
 
     @property
     def executing(self) -> int:
@@ -287,6 +302,7 @@ class Runner:
                 # A later claim of the same job by this runner is another entry; it stays.
                 del self._executing[executing.job.id]
             self._outcomes.append(outcome)
+            self._finished += 1
             if self.options.on_outcome is not None:
                 with contextlib.suppress(Exception):
                     self.options.on_outcome(outcome)

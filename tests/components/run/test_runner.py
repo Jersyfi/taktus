@@ -200,6 +200,7 @@ class World:
         tenants: ServedTenants | None = None,
         poll: float = 0.02,
         on_outcome: Callable[[Outcome], None] | None = None,
+        outcomes_kept: int = 1000,
     ) -> Runner:
         runner = Runner(
             engine=engine or self.engine,
@@ -215,6 +216,7 @@ class World:
                 wait_first_seconds=wait_first,
                 wait_cap_seconds=wait_cap,
                 on_outcome=on_outcome,
+                outcomes_kept=outcomes_kept,
             ),
         )
         self.tasks.append(asyncio.create_task(runner.run()))
@@ -798,3 +800,20 @@ async def test_a_step_the_engine_raises_in_is_named_in_the_runner_s_outcome() ->
     await world.stop(runner)
     error = runner.outcomes[0].error or ""
     assert "an adapter bug" in error and f"in step do of run {run.id}" in error, error
+
+
+# --- the outcomes a runner keeps (issue #592) -----------------------------------------------------
+
+
+async def test_a_runner_keeps_only_its_latest_outcomes_and_counts_them_all() -> None:
+    """A runner that ran more jobs than it keeps holds only the latest; the log heard of every
+    one, and `finished` counts them all (#592)."""
+    world = World()
+    runs = [await world.submit(rule("r", 1)) for _ in range(7)]
+    told: list[Outcome] = []
+    runner = world.runner("r1", on_outcome=told.append, outcomes_kept=3)
+    await until(lambda: runner.finished == len(runs))
+    await world.stop(runner)
+    assert len(runner.outcomes) == 3
+    assert len(told) == len(runs)
+    assert list(runner.outcomes) == told[-3:], "the latest are kept, in order"
