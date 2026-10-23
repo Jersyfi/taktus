@@ -224,14 +224,19 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - run: make install
       - name: images
         run: make images
+      # A pull request runs the tests of the components it touches and of every component that
+      # depends on them (#394, ADR-0096 §3); a push to `main` runs everything.
       - name: test
         env:
           TAKTUS_REQUIRE_DATABASE: "1"
-        run: make test
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+        run: make test BASE="$BASE"
 
   # The self-development bundles — P-01, P-02, P-03 and S-07 — replayed from recordings of real
   # runs against a database (ADR-0108, ADR-0096 §1, #393): every step must reach the state it
