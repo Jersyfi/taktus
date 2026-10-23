@@ -53,7 +53,16 @@ test: env ## Unit and domain tests — everything under tests/ that is not a gat
 	@targets="$(TEST_TARGETS)"; \
 	if [ -z "$$targets" ]; then echo "test: the change selects no test"; exit 0; fi; \
 	echo "test: $$targets"; \
-	$(UV) run tools/gate.py test $$targets $(PARALLEL) -m 'not timing' $(foreach g,$(GATES),--ignore=tests/$(g)) && \
+	$(UV) run tools/gate.py test $$targets $(PARALLEL) -m 'not timing' $(foreach g,$(GATES),--ignore=tests/$(g))
+
+# The tests that assert a bound on wall-clock time, in one process and alone (ADR-0096 §7, #528):
+# CI's lane `timing` is a job of its own, and `make verify` runs it last, holding the machine.
+# With BASE, only those of the tests the change selects.
+.PHONY: timing
+timing: env ## The tests marked `timing` (a bound on wall-clock time), alone in one process; with BASE only those the change selects
+	@targets="$(TEST_TARGETS)"; \
+	if [ -z "$$targets" ]; then echo "timing: the change selects no test"; exit 0; fi; \
+	echo "timing: $$targets"; \
 	$(UV) run tools/gate.py timing $$targets -m timing $(foreach g,$(GATES),--ignore=tests/$(g))
 
 # The self-development bundles, replayed from their recordings against a database (ADR-0108):
@@ -223,4 +232,4 @@ reserve: need-uv need-git ## Reserve a record number on the remote before writin
 	@$(UV) run tools/reserve.py $(if $(ID),--id $(ID),--kind $(KIND))
 
 .PHONY: gates
-gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web test rehearse ## Everything CI runs
+gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web test timing rehearse ## Everything CI runs

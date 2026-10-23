@@ -81,7 +81,25 @@ the same commit.
 | 3 | the self-development rehearsal on `main` (needs a real recording, #75), selection by component, the nightly ring, the gate self-test | `0.4.0` |
 | 4 | a migration lane (#330), a contract-compatibility lane before the contracts freeze, scale budgets and a fleet upgrade for operators | `0.5.0` to `2.0.0` |
 
+### 7. A test of wall-clock time runs alone (issue #528)
+A test that asserts a bound on time measures the machine as well as the code. The marker
+`timing` names these tests (three files under `tests/integration/`: the ledger and the run
+listing at 500 000 entries, and a launched process). They form the lane `timing`, selected by the
+same paths as `test`, which leaves them out (`-m 'not timing'`).
+
+- **In CI** the lane is a job of its own on its own runner, so nothing else runs beside it. A push
+  to `main` runs it with every other lane (ring 3).
+- **In `make verify`** it is the last lane, and runs under `tools/machine_lock.py` exclusive. Every
+  other lane runs under the same lock shared. Several sessions that verify on one machine then
+  meet in the timing lane one at a time, and never while another session is inside a lane.
+- **The bound does not change.** Issue #321 requires what the reader of the ledger route waits
+  for: the time of the request, through the HTTP interface, not the database's own execution
+  time. Measuring the database alone would admit a route that spends its time elsewhere. The
+  median of five stays, because it removes one slow read.
+
 ## Alternatives
+- **Measure the database's execution time** (`EXPLAIN ANALYZE`). Rejected: it would measure less
+  than the requirement states. Section 7 keeps the request.
 - **A merge queue.** Rejected for now: a personal repository has none. The guard and the automaton
   give the same safety without one.
 - **Keep `strict`.** Rejected: 44 % of the CI minutes, and the replay found no merge it saved.
@@ -107,5 +125,9 @@ the same commit.
 - The self-development rehearsal answers outward calls from recordings. It proves that the
   bundles and the engine still run. It does not prove that a provider or GitHub still answers as
   recorded; the monthly live tests and a release candidate's run on the instance do.
+- The lock covers what `tools/verify.sh` runs. A command a person starts by hand, `make check`,
+  or any program that is not a Taktus lane still runs beside the timing lane on a laptop, and can
+  still push a read over its bound. The lock waits for at most 45 minutes, then runs without it
+  and says so. In CI the runner is the whole machine.
 - No figure in this ADR is a promise about wall time. The targets of DEC-0194 are measured
   after each phase and reported with the before and after, as definition of done 11 asks.

@@ -44,7 +44,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 ALWAYS = ("static", "decisions")
-SELECTABLE = ("contracts", "web", "conformance", "test", "rehearse")
+SELECTABLE = ("contracts", "web", "conformance", "test", "rehearse", "timing")
 LANES = ALWAYS + SELECTABLE
 
 # A path matching one of these selects every lane.
@@ -98,6 +98,18 @@ CLAIMS: dict[str, tuple[str, ...]] = {
         r"tests/integration/test_rehearsal_recordings\.py",
         r"tools/record_rehearsal\.py",
     ),
+    # The tests that assert a bound on wall-clock time (ADR-0096 §7, #528). They run alone: a job
+    # of their own in CI, the last lane of `make verify`, which holds the machine for it. They
+    # are the tests of the `test` lane that carry the marker, so the same paths select it.
+    "timing": (
+        r"src/.*",
+        r"tests/(?!conformance/).*",
+        r"migrations/.*",
+        r"blueprints/.*",
+        r"deploy/.*",
+        r"workers/.*",
+        r"tools/machine_lock\.py",
+    ),
 }
 
 # What each lane runs, as CI's job runs it.
@@ -117,6 +129,7 @@ COMMANDS: dict[str, tuple[str, ...]] = {
     "conformance": ("gate-conformance",),
     "test": ("test",),
     "rehearse": ("rehearse",),
+    "timing": ("timing",),
 }
 
 

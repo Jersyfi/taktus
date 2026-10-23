@@ -78,4 +78,4 @@ testpaths = ["tests"]
 addopts = "-rs"
 # A test that asserts a bound on wall-clock time runs alone, after the suite that spreads over
 # the cores: other processes on the same cores would move its measurement (ADR-0096).
-markers = ["timing: asserts a bound on wall-clock time; `make test` runs it in one process"]
+markers = ["timing: asserts a bound on wall-clock time; `make test` leaves it out; `make timing` and CI's lane `timing` run it alone, in one process"]
