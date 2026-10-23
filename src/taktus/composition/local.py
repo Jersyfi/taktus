@@ -319,6 +319,7 @@ class LocalWiring:
                     traces=stores.traces,
                     masking=known_secrets(os.environ),
                     stops=stops,
+                    messages=decisions.messages,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -518,6 +519,7 @@ class LocalWiring:
                 corrections=decisions.corrections,
                 residency=decisions.residency,
                 sources=decisions.sources,
+                messages=decisions.messages.tenant,
                 deadlines=decisions.deadlines,
                 stops=stops,
                 traces=None

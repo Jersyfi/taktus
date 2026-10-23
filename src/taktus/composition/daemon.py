@@ -527,6 +527,7 @@ async def wire(
                     traces=trace_store,
                     masking=secrets,
                     stops=stops,
+                    messages=decisions.messages,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

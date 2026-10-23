@@ -12,6 +12,7 @@ from taktus.components.run.ports.connectors import ConnectorPool
 from taktus.components.run.ports.deadlines import DeclaredDeadlines
 from taktus.components.run.ports.levels import Breach, Levels, LoweredLevels, ProposalDecided
 from taktus.components.run.ports.maturity import Maturities, Standing
+from taktus.components.run.ports.messages import MessageRules, Messages, QuietHours
 from taktus.components.run.ports.models import ModelPool
 from taktus.components.run.ports.open_work import Cap, CountReading, OpenWork
 from taktus.components.run.ports.repetition import (
@@ -37,10 +38,13 @@ __all__ = [
     "Levels",
     "LoweredLevels",
     "Maturities",
+    "MessageRules",
+    "Messages",
     "ModelPool",
     "NotRaised",
     "OpenWork",
     "ProposalDecided",
+    "QuietHours",
     "Repeated",
     "Repetition",
     "RepetitionLimits",

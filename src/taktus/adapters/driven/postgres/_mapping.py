@@ -1616,6 +1616,57 @@ class SourceDeclarationMapper:
         return [dict(row.declaration) for row in rows]
 
 
+class MessageRulesMapper:
+    """One row per tenant that configured its message rules; the rules stay a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.message_rules, tenant, id)
+        return None if row is None else dict(row.rules)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.message_rules,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "configured_at": _at(document["configured_at"]),
+                "rules": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.message_rules, tenant, s.message_rules.c.id)
+        return [dict(row.rules) for row in rows]
+
+
+class CaseAnswerMapper:
+    """One row per case of a process a person answered in; the answer stays a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.case_answer, tenant, id)
+        return None if row is None else dict(row.answer)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.case_answer,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "process": document["process"],
+                "answered_at": _at(document["answered_at"]),
+                "answer": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.case_answer, tenant, s.case_answer.c.id)
+        return [dict(row.answer) for row in rows]
+
+
 # Keyed by the aggregate's class name in snake case: `Run` → "run", `ProcessVersion` →
 # "process_version". The persistence looks a mapper up by the class the composition root binds.
 MAPPERS: dict[str, Mapper] = {
@@ -1651,4 +1702,6 @@ MAPPERS: dict[str, Mapper] = {
     "correction_limits": CorrectionLimitsMapper(),
     "residency_rule": ResidencyRuleMapper(),
     "source_declaration": SourceDeclarationMapper(),
+    "message_rules": MessageRulesMapper(),
+    "case_answer": CaseAnswerMapper(),
 }
