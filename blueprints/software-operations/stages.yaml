@@ -16,6 +16,7 @@
 # "Held" is four weeks of the stage open, counted back from the moment the rule looks.
 # The last stage's condition is the same four weeks: the business runs dark while it holds.
 
+kind: Stages
 blueprint: software-operations
 stages:
   - id: control-loop

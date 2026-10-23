@@ -16,6 +16,7 @@ import re
 from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field, model_validator
 
@@ -130,6 +131,8 @@ class BlueprintStages(Value):
     """The stages a blueprint proposes, in its `stages.yaml`: the floor of every plan that names
     it (ADR-0137 §6)."""
 
+    kind: Literal["Stages"] = "Stages"
+    """What the file is: no process bundle, so that a check of a blueprint's bundles skips it."""
     blueprint: str = Field(min_length=1)
     stages: tuple[Stage, ...] = Field(min_length=1)
 
