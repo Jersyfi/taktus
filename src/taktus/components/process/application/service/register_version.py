@@ -572,6 +572,8 @@ def _action(raw: Any, where: str) -> dict[str, Any] | None:
     if not isinstance(target, str):
         raise InvalidProcess((f"`{where}.{kind}` names a role, never a person",))
     return {"kind": kind, "role": target}
+
+
 def _evaluation(raw: Any) -> EvaluationSpec | None:
     """`evaluation`: the cases, the scorers and the schedule (ADR-0134 §1)."""
     if raw is None:

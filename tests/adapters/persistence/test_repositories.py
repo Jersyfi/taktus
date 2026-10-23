@@ -65,13 +65,10 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (CorrectionLimits, samples.correction_limits),
     (ResidencyRule, samples.residency_rule),
     (SourceDeclaration, samples.source_declaration),
-<<<<<<< HEAD
     (Deadline, samples.deadline),
     (WorkingTime, samples.working_time),
-=======
     (Evaluation, samples.evaluation),
     (CorrectedCase, samples.corrected_case),
->>>>>>> 0f4f848a (feat(process): a change is held to its evaluation cases, and drift is measured on them (#431))
 ]
 
 

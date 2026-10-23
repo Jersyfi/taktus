@@ -117,7 +117,6 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
             "check_every": "30m",
         }
     }
-<<<<<<< HEAD
     document["deadlines"] = {
         "answer": {
             "from": "run",
@@ -134,7 +133,7 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
             "until": {"step": "verify-answer"},
             "at_limit": {"start": {"process": "six-times-seven", "inputs": {"a": 1}}},
         },
-=======
+    }
     document["evaluation"] = {
         "cases": [
             {
@@ -163,7 +162,6 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
             },
         ],
         "schedule": "weekly",
->>>>>>> 0f4f848a (feat(process): a change is held to its evaluation cases, and drift is measured on them (#431))
     }
     parsed = parse_bundle(document)
     assert parsed.evaluation is not None and len(parsed.evaluation.scorers) == 2
@@ -714,7 +712,6 @@ def correction_limits(tenant: str = "t") -> CorrectionLimits:
     )
 
 
-<<<<<<< HEAD
 def deadline_rule() -> DeadlineRule:
     return DeadlineRule(
         name="answer",
@@ -754,7 +751,9 @@ def working_time(tenant: str = "t") -> WorkingTime:
         ends=time(16, 0),
         holidays=(date(2026, 12, 25),),
         configured_at=AT,
-=======
+    )
+
+
 def evaluation(tenant: str = "t") -> Evaluation:
     """An evaluation of a proposal beside the active version, scored and overridden (ADR-0134)."""
     version = process_version(tenant=tenant)
@@ -848,5 +847,4 @@ def corrected_case(tenant: str = "t") -> CorrectedCase:
         left_out=("mailbox",),
         proposed_at=AT,
         decided_at=AT + timedelta(hours=1),
->>>>>>> 0f4f848a (feat(process): a change is held to its evaluation cases, and drift is measured on them (#431))
     )
