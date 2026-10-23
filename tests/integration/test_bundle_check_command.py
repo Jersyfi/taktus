@@ -61,7 +61,9 @@ def test_every_bundle_of_the_repository_passes_with_nothing_of_an_instance(
     bundles = [*sorted(ROOT.glob("blueprints/*/processes/*.yaml")), EXAMPLE]
     for path in bundles:
         assert f"ok         {path}" in result.stdout
-    assert "2 file(s) skipped as no process" in result.stdout, "the two blueprint.yaml"
+    assert "3 file(s) skipped as no process" in result.stdout, (
+        "the two blueprint.yaml and software-operations' stages.yaml (ADR-0137)"
+    )
     assert "Not checked without an instance" in result.stdout
     assert sorted(p.name for p in tmp_path.iterdir()) == ["home"], "it left nothing behind"
     assert not any((tmp_path / "home").iterdir())
