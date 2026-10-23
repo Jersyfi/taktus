@@ -90,6 +90,8 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/processes/{process_id}/proposals/{proposal_id}/discard",
         "/processes/{process_id}/proposals/{proposal_id}/rehearse",
         "/processes/{process_id}/proposals/{proposal_id}/commission",
+        "/gallery",
+        "/gallery/{blueprint_id}/{process_id}/proposals",
         "/processes/{process_id}/rollback",
         "/processes/{process_id}/evaluations",
         "/processes/{process_id}/evaluations/{evaluation_id}",

@@ -355,6 +355,16 @@ role it would tie the core to a model stack and the removal test would be lost.
   into `OwnerAnswers` beside the change in dialogue). Where a served take-over stands is read
   from the step run alone (`StepRun.takeovers`) and handed to the run level by
   `composition/levels.py`.
+- **A first process from the gallery** (ADR-0136) is read and proposed by
+  `composition/gallery.py`: `Gallery` reads the directory `TAKTUS_GALLERY_DIRECTORY` names
+  (`composition/settings.py`) on every request, offers a bundle that `parse_bundle` accepts at
+  level 1 or 2, writes the person's choices into its schedule triggers and hands it to the
+  process component's `Proposals`, which makes a proposal against no version where the process
+  has none. The HTTP surface serves it (`adapters/driving/rest/gallery.py`) through the port
+  `GalleryActs` of `adapters/driving/rest/wiring.py`; the daemon's `Wired` gives the one it
+  built. `ProposalActs` rehearses such a proposal on its trigger's inputs and commissions it as
+  the first version. `taktusctl first start` and `first rehearsal`
+  (`adapters/driving/cli/first_command.py`) are what `make start`'s script calls.
 - **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays; it raises a run's money or its quota (DEC-0208).
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread

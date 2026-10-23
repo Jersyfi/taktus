@@ -14,7 +14,9 @@ import` turns an open model price list into a new price table version, a file, a
 it could not map (#327). `identity`
 adds identities, sets their roles, and lists and revokes the links of channel accounts
 (ADR-0040). `tenant` creates, renames and lists the instance's tenants; Taktus generates each
-identifier (ADR-0104). `anchors` configures and shows a tenant's anchors (ADR-0042). `findings`
+identifier (ADR-0104). `first start` creates a new instance's first tenant and its administrator,
+once, and `first rehearsal` says when its first rehearsal finished (ADR-0136). `anchors`
+configures and shows a tenant's anchors (ADR-0042). `findings`
 shows what the instance met that the product lacks, ready to send by hand, and `findings report`
 sends a report a person wrote, once it is checked, shown and confirmed (UC-6.12, ADR-0112).
 `owner-channel` configures and shows where what is needed from the owner reaches them
@@ -69,6 +71,7 @@ from taktus.adapters.driving.cli import (
     deadline_command,
     exactness_command,
     findings_command,
+    first_command,
     guides_command,
     identity_command,
     incident_command,
@@ -121,6 +124,7 @@ app.command("interfaces")(interfaces_command.interfaces)
 app.command("alerts")(alerts_command.alerts)
 app.add_typer(identity_command.identity, name="identity")
 app.add_typer(tenant_command.tenant, name="tenant")
+app.add_typer(first_command.first, name="first")
 app.add_typer(anchors_command.anchors, name="anchors")
 app.add_typer(incident_command.incident, name="incident")
 app.add_typer(signal_command.signal, name="signal")

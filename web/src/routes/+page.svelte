@@ -7,6 +7,7 @@
 	import { onDestroy } from 'svelte';
 	import { surface } from '../lib/api';
 	import SignInForm from '../lib/SignInForm.svelte';
+	import { galleryLink } from '../lib/links';
 	import { followLevel } from '../lib/live';
 	import { motion } from '../lib/motion.svelte';
 	import OverviewView from '../lib/OverviewView.svelte';
@@ -56,6 +57,13 @@
 {:else if level}
 	<p class="status" aria-live="polite">{connected ? 'Live.' : 'Reconnecting…'}</p>
 	<OperationSection />
+	{#if level.areas.every((area) => area.processes.length === 0)}
+		<!-- A tenant with no process yet starts from the gallery (UC-10.4, ADR-0136 §5). -->
+		<p class="first" data-first-process>
+			Nothing runs here yet. <a href={galleryLink()}>Choose a first process from the gallery</a>, rehearse it, and
+			see what it does before it does anything for real.
+		</p>
+	{/if}
 	<OverviewView {level} motionAllowed={motion.allowed} />
 {:else}
 	<p class="status">Reading the overview…</p>
@@ -68,6 +76,11 @@
 {/if}
 
 <style>
+	.first {
+		font-family: var(--serif);
+		font-size: 1.15rem;
+		max-width: 44rem;
+	}
 	.status {
 		color: var(--muted);
 		font-size: 0.9rem;
