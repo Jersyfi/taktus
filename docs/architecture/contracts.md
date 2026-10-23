@@ -179,7 +179,7 @@ host — answers `capabilities` once, and the answer is kept. The estimate befor
 step starts no unit: it is what the estimator the worker declares in its capabilities yields
 (`contracts/worker/v1` §5), and a launched worker that declares none has its steps refused for
 want of an estimate. No unit starts before admission control has said yes (ADR-0005, ADR-0115).
-A unit the adapter killed — memory, wall clock — is a failed step with that cause, never a hang.
+A unit the adapter killed — memory, wall clock — is a failed step with that cause, never a hang. The same holds for an artifact fetch the kill cut off: the launched worker asks the unit's exit before it reports a failed fetch, so the step names the kill and not the refused connection, and keeps the artifacts fetched before it (#587). A fetch that fails while the unit lives names the connection error.
 
 **The launch convention** is the one thing a unit must know when an adapter starts it: it reads
 `TAKTUS_UNIT_PORT` for the port to serve the contract on and `TAKTUS_UNIT_STATE_DIR` for the
