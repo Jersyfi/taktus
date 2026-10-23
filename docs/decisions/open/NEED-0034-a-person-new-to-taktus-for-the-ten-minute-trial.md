@@ -1,7 +1,7 @@
 # NEED-0034 — A person new to Taktus for the ten-minute trial
 
 **Kind:** action
-**Raised in:** [#617](https://github.com/Jersyfi/taktus/pull/617)
+**Raised in:** [#623](https://github.com/Jersyfi/taktus/pull/623)
 **Issue:** [#619](https://github.com/Jersyfi/taktus/issues/619)
 **Needed by:** 2026-11-13
 **Foreseeable since:** UC-10.4 and ADR-0136, which measure the path from the install to a first rehearsed process with a person who has not used Taktus
