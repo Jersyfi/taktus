@@ -225,8 +225,10 @@ from taktus.components.run.domain.service import (
     blocked,
     frame,
     interfaces,
+    open_work,
     prediction,
     provenance,
+    repetition,
     routing,
     rules,
     waiting,
@@ -243,13 +245,17 @@ from taktus.components.run.domain.service.rehearsal import REHEARSED
 from taktus.components.run.ports import (
     Anchors,
     Breach,
+    Cap,
     ConnectorPool,
     Decisions,
     Levels,
     Maturities,
     ModelPool,
     NotRaised,
+    OpenWork,
     ProposalDecided,
+    Repeated,
+    Repetition,
     Replay,
     Residency,
     Sources,
@@ -339,6 +345,10 @@ from taktus.shared.v1 import (
     add_tokens_by_model,
 )
 from taktus.shared.v1.consumption import MODEL_NAME_PATTERN
+
+RECOUNTS = 5
+"""How often a run counts its process's open work again when other runs of it pass at the same
+moment, before it waits a check instead (ADR-0132 §2)."""
 
 CLAIM_LOST = "run.claim_lost"
 """The ledger kind a runner's lost claim is recorded under (ADR-0106 §2)."""
@@ -633,6 +643,8 @@ class RunEngine:
         levels: Levels | None = None,
         residency: Residency | None = None,
         sources: Sources | None = None,
+        open_work: OpenWork | None = None,
+        repetition: Repetition | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -659,6 +671,15 @@ class RunEngine:
         """What the tenant declares about the data behind a capability (ADR-0130). None: no
         source is declared free of personal fields, and only a connector's own declaration says
         that a capability serves personal data."""
+        self._open_work = open_work
+        """The caps a process version declares on its open work (ADR-0132). None: no run waits
+        at a cap."""
+        self._repetition = repetition
+        """The tenant's limits on repetition, and where a stop raises its incident (ADR-0132
+        §5). None: no call is counted and no step is stopped for repeating."""
+        self._repeating: set[str] = set()
+        """Runs whose current step the rule on repetition stopped: they halt with cause
+        `repeated`."""
         self._cooling: dict[str, datetime] = {}
         """Every model cooling down, by adapter, with when its cool-down ends: for every run and
         tenant this engine executes (ADR-0116 §5)."""
@@ -1814,6 +1835,7 @@ class RunEngine:
             self._moving.discard(run.id)
             self._immature.discard(run.id)
             self._administering.discard(run.id)
+            self._repeating.discard(run.id)
 
     def _in_a_new_unit(self, run: Run, step_run: StepRun) -> bool:
         """Whether a step its worker stopped on its own continues in a new unit: at most
@@ -1836,6 +1858,10 @@ class RunEngine:
                 )
                 run = run.with_step_run(held_up)
             return await self._end(run, RunState.HALTED, Cause.LIMIT, refused, span)
+        capped = await self._capped(run, span)
+        if isinstance(capped, tuple):
+            return await self._end(capped[0], RunState.HALTED, Cause.PARKED, capped[1], span)
+        run = capped
         completed_now = 0
         while (step_run := run.runnable()) is not None:
             step = run.step(step_run.step_id)
@@ -1862,12 +1888,15 @@ class RunEngine:
             if step_run.state is StepState.REJECTED:
                 if run.id in self._administering:
                     cause = Cause.ADMINISTRATION
+                elif run.id in self._repeating:
+                    cause = Cause.REPEATED
                 elif run.id in self._immature:
                     cause = Cause.MATURITY
                 else:
                     cause = Cause.NO_ESTIMATE if step_run.estimate is None else Cause.LIMIT
                 self._immature.discard(run.id)
                 self._administering.discard(run.id)
+                self._repeating.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             if run.id in self._moving:
                 # The step went back to its boundary to move to the next model of its
@@ -1952,6 +1981,7 @@ class RunEngine:
         self._limit_halts.discard(run.id)
         self._immature.discard(run.id)
         self._administering.discard(run.id)
+        self._repeating.discard(run.id)
         return run
 
     async def _end(
@@ -2023,6 +2053,7 @@ class RunEngine:
             self._moving,
             self._immature,
             self._administering,
+            self._repeating,
         ):
             flags.discard(run.id)
         step_run = step_run.to(
@@ -2439,6 +2470,247 @@ class RunEngine:
         )
         return run, step_run
 
+    # --- a cap on open work (ADR-0132) ----------------------------------------------------------
+
+    async def _capped(self, run: Run, span: Span) -> Run | tuple[Run, str]:
+        """Before a run starts anything: the run as it may go on, or, where a cap of its
+        process is reached, the run waiting at its first step with the reason (ADR-0132 §2).
+
+        The run counts per kind the outcomes open outside, read through the cap's connector,
+        and the process's runs in flight. A kind at its cap, or one whose count cannot be read,
+        holds the run: its first step is blocked, booked to `wait.external` with cause
+        `at_open_work_cap`, the facts are recorded as `open_work.capped`, and the run halts
+        with cause `parked` until the cap's next check. A run that passes is recorded as
+        `open_work.admitted` and is in flight until it ends. Recording it takes the tenant's
+        ledger lock, and the runs in flight are read again under it: a run of the same process
+        that passed meanwhile is counted, and the count is made again."""
+        if self._open_work is None or run.rehearsal:
+            return run
+        if any(s.state is not StepState.PLANNED for s in run.step_runs):
+            return run  # it started: it passed its caps before
+        held_up = run.runnable()
+        if held_up is None:
+            return run
+        caps = await self._open_work.caps(run.tenant, run.process_version)
+        if not caps:
+            return run
+        process = open_work.process_of(run.process_version)
+        flying = await self._in_flight(run, process)
+        if run.id in flying:
+            return run  # it passed before the instance stopped
+        readings = {cap.kind: await self._count(run, held_up.step_id, cap) for cap in caps}
+        for _ in range(RECOUNTS):
+            counts = [
+                open_work.Counted(
+                    kind=cap.kind,
+                    cap=cap.cap,
+                    read=readings[cap.kind][0],
+                    unread=readings[cap.kind][1],
+                    in_flight=len(flying - {run.id}),
+                )
+                for cap in caps
+            ]
+            facts = open_work.document(
+                counts, run_id=run.id, process_version=run.process_version, at=self._clock.now()
+            )
+            digest = await self._objects.put(_canonical(facts))
+            reached = [c for c in counts if c.reached]
+            if reached:
+                return await self._wait_at_cap(run, held_up, caps, reached, digest)
+            try:
+                async with self._work.transaction(run.tenant):
+                    await self._fence(run)
+                    await self._record(run, open_work.ADMITTED, outcome="admitted", digest=digest)
+                    now_flying = (await self._ledger.project(run.tenant, open_work.IN_FLIGHT)).of(
+                        process
+                    ) - {run.id}
+                    if now_flying != flying - {run.id}:
+                        raise _Recount(now_flying)
+            except _Recount as recount:
+                flying = recount.flying
+                continue
+            span.set_attribute("open_work", "admitted")
+            if held_up.block is not None and held_up.block.cause == block.AT_OPEN_WORK_CAP:
+                run, _ = await self._close_block(
+                    run, held_up, open_work={c.kind: c.open for c in counts}
+                )
+            return run
+        # Other runs of the process kept passing while this one counted: it waits a check.
+        counts = [
+            open_work.Counted(kind=c.kind, cap=c.cap, in_flight=len(flying), unread="recounting")
+            for c in caps
+        ]
+        facts = open_work.document(
+            counts, run_id=run.id, process_version=run.process_version, at=self._clock.now()
+        )
+        digest = await self._objects.put(_canonical(facts))
+        return await self._wait_at_cap(run, held_up, caps, counts, digest)
+
+    async def _in_flight(self, run: Run, process: str) -> frozenset[str]:
+        async with self._work.transaction(run.tenant):
+            return (await self._ledger.project(run.tenant, open_work.IN_FLIGHT)).of(process)
+
+    async def _count(self, run: Run, step_id: StepId, cap: Cap) -> tuple[int | None, str | None]:
+        """What the cap's reading answers as open outside, or why it could not be read. A
+        reading is a read: an operation declared outward is never called for a count."""
+        reading = cap.reading
+        if reading is None:
+            return None, None
+        pool = self._connector_pool(run)
+        resolved = None if pool is None else await pool.resolve(reading.capability)
+        if resolved is None:
+            return None, f"no connector serves {reading.capability}"
+        operation = resolved.declaration.operation(reading.operation)
+        if operation is None:
+            return None, f"{resolved.adapter} does not offer {reading.operation}"
+        if operation.outward:
+            return None, f"{reading.operation} is not a read"
+        context = CallContext(
+            tenant=run.tenant,
+            identity=run.identity,
+            run_id=run.id,
+            step_id=step_id,
+            attempt=1,
+            idempotency_key=idempotency_key(run.id, step_id, 1),
+            credentials=reading.credentials,
+            autonomy_level=run.autonomy_level,
+        )
+        try:
+            result = await resolved.connector.call(operation.name, context, dict(reading.input))
+            return open_work.counted_from(result.output, reading.select), None
+        except (CallFailed, ConnectorError, ValueError) as error:
+            return None, f"{reading.operation}: {error}"[:300]
+
+    async def _wait_at_cap(
+        self,
+        run: Run,
+        held_up: StepRun,
+        caps: Sequence[Cap],
+        reached: Sequence[open_work.Counted],
+        digest: Digest,
+    ) -> tuple[Run, str]:
+        """The run waits at its first step until the cap's next check; the facts are booked."""
+        every = min(c.check_every_seconds for c in caps if c.kind in {r.kind for r in reached})
+        now = self._clock.now()
+        check_at = now + timedelta(seconds=every)
+        run, held_up = await self._open_block(
+            run, held_up, "wait.external", block.AT_OPEN_WORK_CAP, since=now
+        )
+        if held_up.block is not None:
+            held_up = held_up.model_copy(
+                update={"block": held_up.block.model_copy(update={"next_check_at": check_at})}
+            )
+        run = await self._commit(
+            run.with_step_run(held_up),
+            open_work.CAPPED,
+            step=held_up,
+            outcome="capped",
+            digest=digest,
+        )
+        reason = (
+            "the process's open work is at its cap — "
+            + "; ".join(r.describe() for r in reached)
+            + f". It counts again at {check_at.isoformat()} (ADR-0132)"
+        )
+        return run, reason
+
+    # --- a stop to repetition (ADR-0132 §5) ----------------------------------------------------
+
+    async def _book_call(
+        self, run: Run, step_run: StepRun, operation: str, arguments: Mapping[str, Any]
+    ) -> None:
+        """An outward call is made now: its identity — the operation and the digest of its
+        arguments — goes into the ledger first, so that a call that fails counts too."""
+        if self._repetition is None:
+            return
+        digest = await self._objects.put(_canonical(repetition.identity(operation, arguments)))
+        async with self._work.transaction(run.tenant):
+            await self._fence(run)
+            await self._record(
+                run, repetition.CONNECTOR_CALLED, step=step_run, outcome="called", digest=digest
+            )
+
+    async def _book_answer(self, run: Run, step_run: StepRun) -> None:
+        """A language model answered the step."""
+        if self._repetition is None:
+            return
+        async with self._work.transaction(run.tenant):
+            await self._fence(run)
+            await self._record(run, repetition.MODEL_CALLED, step=step_run, outcome="answered")
+
+    async def _repeated(self, run: Run, step_run: StepRun, work: Work) -> repetition.Stop | None:
+        """At the step's boundary: whether the call it is about to make would cross the
+        tenant's limit on repetition in this run. A rule over the run's ledger (ADR-0023)."""
+        if self._repetition is None or run.rehearsal:
+            return None
+        if isinstance(work, ConnectorRule):
+            if await self._outward(run, work) is not True:
+                return None
+            try:
+                (arguments,), _ = await self._resolved(run, [work.input])
+            except RuleFailed:
+                return None  # the call fails at its own resolution, and is not made
+            digest = _digest(_canonical(repetition.identity(work.operation, arguments)))
+            limits = await self._repetition.limits(run.tenant)
+            entries = await self._entries(run)
+            made = repetition.calls(entries, digest)
+            return repetition.stop("calls", work.operation, made, limits.calls)
+        if isinstance(work, LlmWork):
+            limits = await self._repetition.limits(run.tenant)
+            entries = await self._entries(run)
+            answered = repetition.answers(entries, step_run.step_id)
+            return repetition.stop(
+                "model_calls", f"purpose {work.purpose}", answered, limits.model_calls
+            )
+        return None
+
+    async def _entries(self, run: Run) -> Sequence[LedgerEntry]:
+        async with self._work.transaction(run.tenant):
+            return await self._ledger.entries(run.tenant, run.id)
+
+    async def _stop_repeating(
+        self, run: Run, step_run: StepRun, stopped: repetition.Stop, span: Span
+    ) -> tuple[Run, StepRun]:
+        """The rule fired: the step is stopped at its boundary before the call, the facts are
+        recorded as `repetition.stopped`, and the stop raises an incident. The run halts with
+        cause `repeated`. A resume stops it again until the tenant's limit allows the call."""
+        span.record_failure("repeated")
+        self._repeating.add(run.id)
+        reason = stopped.reason(step_run.step_id)
+        document = stopped.document(
+            run_id=run.id, step_id=step_run.step_id, process_version=run.process_version
+        )
+        digest = await self._objects.put(_canonical(document))
+        step_run = step_run.to(StepState.REJECTED, reason=reason)
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.rejected",
+            step=step_run,
+            outcome=repetition.REJECTED,
+            after=(
+                {
+                    "kind": repetition.STOPPED,
+                    "step": step_run,
+                    "outcome": stopped.rule,
+                    "digest": digest,
+                },
+            ),
+        )
+        if self._repetition is not None:
+            await self._repetition.stopped(
+                run.tenant,
+                Repeated(
+                    process_version=run.process_version,
+                    run_id=run.id,
+                    step_id=step_run.step_id,
+                    rule="calls" if stopped.rule == "calls" else "model_calls",
+                    action=stopped.action,
+                    count=stopped.count,
+                    limit=stopped.limit,
+                ),
+            )
+        return run, step_run
+
     # --- blocked-time accounts ------------------------------------------------------------------
 
     async def _open_block(
@@ -2677,6 +2949,9 @@ class RunEngine:
         unverified = await self._unverified(run, step, demand.adapter, held)
         if unverified is not None and demand.adapter is not None:
             return await self._refuse_unverified(run, step_run, demand.adapter, unverified, span)
+        stopped = await self._repeated(run, step_run, work)
+        if stopped is not None:
+            return await self._stop_repeating(run, step_run, stopped, span)
         run, step_run, admitted = await self._admit(
             run, step, step_run, demand, span, retryable=None, attempt=attempt
         )
@@ -3255,6 +3530,7 @@ class RunEngine:
                 completion = await resolved.model.complete(prompt)
                 call.set_attribute("model.name", completion.model)
                 call.set_attribute("model.finish", completion.finish)
+            await self._book_answer(run, step_run)
         except ModelAtLimit as error:
             delay = error.retry_after_seconds
             raise _AtLimit(
@@ -3378,6 +3654,8 @@ class RunEngine:
         scope = await self._frame(run, step_run.step_id, resolved, operation)
         if run.rehearsal and operation.outward and not self._replaying(run):
             return await self._rehearsed(run, resolved, operation, read)
+        if operation.outward and not run.rehearsal:
+            await self._book_call(run, step_run, operation.name, input)
         result = await self._call(
             run, step_run, resolved, operation, input, work.credentials, span, scope=scope
         )
@@ -4843,6 +5121,14 @@ class RunEngine:
                 rehearsal=True if run.rehearsal else None,  # ADR-0030
             ),
         )
+
+
+class _Recount(Exception):
+    """Another run of the process passed its caps while this one counted (ADR-0132 §2)."""
+
+    def __init__(self, flying: frozenset[str]) -> None:
+        super().__init__("recount")
+        self.flying = flying
 
 
 @dataclass(frozen=True)

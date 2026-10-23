@@ -100,7 +100,15 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
     ]
     document["slo"] = {"freshness": "24h", "latency": "90s"}
     document["expect"] = {"schedule": "0 7 * * 1-5", "bound": "2h"}
+    document["open_work"] = {
+        "pull_requests": {
+            "cap": 2,
+            "reading": {"operation": "repository.pullrequests.list", "select": "pull_requests"},
+            "check_every": "30m",
+        }
+    }
     parsed = parse_bundle(document)
+    assert parsed.open_work["pull_requests"].check_every == timedelta(minutes=30)
     assert parsed.triggers == (
         Trigger(schedule="0 6 * * 1-5"),
         Trigger(event="issue.labelled", filter={"label": ("ready", "now")}),

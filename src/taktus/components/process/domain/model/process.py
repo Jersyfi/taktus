@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any
@@ -223,6 +224,42 @@ class Expect(Value):
         return self
 
 
+OPEN_WORK_KIND = r"^[a-z][a-z0-9_]*$"
+"""A kind of open outcome is a token: `pull_requests`, `tasks`, `drafts`."""
+CHECK_EVERY = timedelta(minutes=15)
+"""How often a run waiting at a cap counts again, where the cap names no interval (NTC-0226)."""
+
+
+class OpenWorkCount(Value):
+    """How the outcomes of one kind that are open outside are read: one read operation of a
+    connector, with a literal input, and where in its output they are — a list, counted by its
+    length, or a number (ADR-0132 §2)."""
+
+    operation: str = Field(pattern=r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}$")
+    input: Mapping[str, Any] = Field(default_factory=dict)
+    credentials: tuple[Mapping[str, Any], ...] = ()
+    """The credentials the read names, by name only, as a connector step names them."""
+    select: str | None = Field(default=None, min_length=1)
+    """A dotted path into the output; None counts the output itself."""
+
+
+class OpenWorkCap(Value):
+    """How many outcomes of one kind may wait at once (ADR-0132 §1). While as many are open, a
+    run of the process starts nothing and waits."""
+
+    cap: int = Field(ge=1)
+    reading: OpenWorkCount | None = None
+    """How the open outcomes are read outside; None counts only the process's runs in flight."""
+    check_every: timedelta = CHECK_EVERY
+    """How often a waiting run counts again."""
+
+    @model_validator(mode="after")
+    def _checks_now_and_then(self) -> OpenWorkCap:
+        if self.check_every < timedelta(seconds=1):
+            raise ValueError("`check_every` is at least a second")
+        return self
+
+
 class ProcessVersion(Value):
     """One version of a process: the graph, its triggers and service level, and who changed
     what and why. Every invariant of the graph is checked here; an instance is valid or does
@@ -245,12 +282,21 @@ class ProcessVersion(Value):
     inputs: Mapping[str, InputDeclaration] = Field(default_factory=dict)
     """What a run of this version is given when it starts, by name: what `$input` references
     in the work resolve to. A run that lacks a required one is refused before anything runs."""
+    open_work: Mapping[str, OpenWorkCap] = Field(default_factory=dict)
+    """The cap on each kind of the process's open outcomes, by kind (ADR-0132). Only a person
+    changes it: a version that changes it is registered only with a person's approval."""
     author: str | None = None
     reason: str | None = None
 
     @model_validator(mode="after")
     def _valid_graph(self) -> ProcessVersion:
         findings = validate_graph(self.steps)
+        findings.extend(
+            f"`open_work` names the kind {kind!r}; a kind is a lowercase token such as "
+            "pull_requests"
+            for kind in self.open_work
+            if re.fullmatch(OPEN_WORK_KIND, kind) is None
+        )
         ids = {step.id for step in self.steps}
         findings.extend(
             f"work is given for {step_id!r}, which is not a step of this process"

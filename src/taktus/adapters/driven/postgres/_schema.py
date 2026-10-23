@@ -94,6 +94,7 @@ process_version = Table(
     Column("expect", JSONB),  # when a run is expected (ADR-0107)
     Column("work", JSONB, nullable=False),
     Column("limits", JSONB),
+    Column("open_work", JSONB),  # the caps on open work, by kind (ADR-0132)
     Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),

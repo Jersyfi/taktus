@@ -4,9 +4,10 @@ tenant's watch configuration (ADR-0107, UC-4.16).
 `list` prints the open incidents, newest first, as JSON; `--all` adds the closed ones. `blind`
 prints every process whose ends are mostly `empty`, as its newest `watch.empty_share` says. `close`
 closes one: a run that happened later closes nothing by itself, a person does, and the ledger
-records who as `incident.closed`. `configure` sets the tenant's grace period and its threshold
-for a watcher that never finds anything, and prints the configuration in force; without an
-option it only prints it.
+records who as `incident.closed`. `configure` sets the tenant's grace period, its threshold
+for a watcher that never finds anything and its limits on repetition (ADR-0132 §5), and prints
+the configuration in force; without an option it only prints it. `list` shows a step stopped
+for repeating itself as an incident of kind `step.repeated`.
 
 The command line authenticates by holding the instance's state, as `anchors` does; `--identity`
 names who acts, for the ledger.
@@ -154,6 +155,20 @@ def configure(
         int | None,
         typer.Option("--empty-minimum", help="The fewest ends in the window for it to count."),
     ] = None,
+    repeated_calls: Annotated[
+        int | None,
+        typer.Option(
+            "--repeated-calls",
+            help="How often a run may make the same outward call; the next one is stopped.",
+        ),
+    ] = None,
+    repeated_model_calls: Annotated[
+        int | None,
+        typer.Option(
+            "--repeated-model-calls",
+            help="How often a step's model may answer in a run; the next call is stopped.",
+        ),
+    ] = None,
     tenant: Tenant = DEFAULT_TENANT,
     by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
@@ -165,8 +180,17 @@ def configure(
         empty_share=empty_share,
         empty_window=_duration(empty_window),
         empty_minimum=empty_minimum,
+        repeated_calls=repeated_calls,
+        repeated_model_calls=repeated_model_calls,
     )
-    changes = (grace, empty_share, empty_window, empty_minimum)
+    changes = (
+        grace,
+        empty_share,
+        empty_window,
+        empty_minimum,
+        repeated_calls,
+        repeated_model_calls,
+    )
 
     async def act(watch: ExpectedRuns) -> dict[str, Any]:
         if all(change is None for change in changes):

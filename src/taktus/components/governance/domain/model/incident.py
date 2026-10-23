@@ -13,8 +13,13 @@ The second source is a level that falls by rule (ADR-0110): a process that breac
 or a unit whose correction rate rose above the tenant's limit. Its facts name the levels before
 and after, and what the rule read.
 
+The third source is a step stopped for repeating itself (ADR-0132 §5): the same outward call
+with the same arguments, or its model asked again without a new tool result, more often than
+the tenant's limit allows within one run. Its facts name the action, the count and the limit.
+
 A **watch configuration** is one tenant's grace period and its threshold for a watcher that never
-finds anything. A tenant that configured nothing holds the shipped default (NTC-0212).
+finds anything, and its limits on repetition. A tenant that configured nothing holds the shipped
+default (NTC-0212, NTC-0226).
 """
 
 from __future__ import annotations
@@ -42,6 +47,9 @@ class IncidentKind(StrEnum):
     the process falls one level (ADR-0110)."""
     CORRECTIONS = "corrections.rate"
     """A unit's correction rate rose above the tenant's limit; it falls one level (ADR-0110)."""
+    REPEATED = "step.repeated"
+    """A step would have repeated the same outward call, or its model's answer, beyond the
+    tenant's limit within one run; the rule stopped it at its boundary (ADR-0132 §5)."""
 
 
 class IncidentState(StrEnum):
@@ -143,6 +151,8 @@ GRACE = timedelta(minutes=15)
 EMPTY_SHARE = 0.9
 EMPTY_WINDOW = timedelta(days=30)
 EMPTY_MINIMUM = 10
+REPEATED_CALLS = 3
+REPEATED_MODEL_CALLS = 3
 
 
 class WatchConfiguration(Value):
@@ -158,6 +168,12 @@ class WatchConfiguration(Value):
     """The window the share is counted over."""
     empty_minimum: int = Field(default=EMPTY_MINIMUM, ge=1)
     """The fewest ends within the window for the share to count."""
+    repeated_calls: int = Field(default=REPEATED_CALLS, ge=1)
+    """How often a run may make the same outward call with the same arguments; the next one is
+    stopped at its step's boundary (ADR-0132 §5, NTC-0226)."""
+    repeated_model_calls: int = Field(default=REPEATED_MODEL_CALLS, ge=1)
+    """How often a step's model may answer within one run without a tool result between; the
+    next call is stopped at the step's boundary."""
     configured_at: datetime | None = None
     """When it was configured; None for the shipped default, which nobody configured."""
 

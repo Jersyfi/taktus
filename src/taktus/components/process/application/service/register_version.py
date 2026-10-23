@@ -13,6 +13,11 @@ actor (ADR-0039, `domain.service.autonomy`). The replaced version is measured as
 a level the governance component lowered by rule counts as its level, so that a level that
 fell rises again only this way (ADR-0110). This is the one code path that stores a version.
 
+Registering is where a cap on open work changes, and only a person changes it: a version whose
+caps differ from the version it replaces is stored only with a person's approval
+(`approved_by`), recorded as `open_work.changed`. Without one the attempt is recorded as
+`open_work.refused` and the version is refused (ADR-0132 §3).
+
 Registering is also where a version that would hand the instance its own platform is refused:
 a step naming a credential declared to administer the platform the instance runs on, or one
 declared about nothing, once the instance names its platform (ADR-0025, ADR-0052, DEC-0133).
@@ -48,6 +53,7 @@ from taktus.components.process.domain.model import (
     Expect,
     InputDeclaration,
     InvalidProcess,
+    OpenWorkCap,
     Process,
     ProcessVersion,
     RaiseRefused,
@@ -69,6 +75,11 @@ from taktus.shared.v1 import Autonomy, LedgerRefs, Step
 
 type Document = Mapping[str, Any]
 
+CAP_CHANGED = "open_work.changed"
+"""A version changed a cap on open work with a person's approval (ADR-0132 §3)."""
+CAP_REFUSED = "open_work.refused"
+"""A version that changes a cap on open work was refused for want of a person's approval."""
+
 DURATION = re.compile(r"^(\d+)\s*(s|m|h|d)$")
 UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
@@ -81,9 +92,10 @@ class RegisterProcessVersion:
     """The identity that registers the version and so makes it active; its schedule triggers
     act for that identity."""
     approved_by: str | None = None
-    """The person who approves a raise of an autonomy level this version makes. A version that
-    raises no level needs no approval. Who holds the right to approve is a right per role
-    (UC-7.3); until it exists, any identity the tenant knows may."""
+    """The person who approves a raise of an autonomy level this version makes, or a change of
+    its caps on open work (ADR-0132). A version that does neither needs no approval. Who holds
+    the right to approve is a right per role (UC-7.3); until it exists, any identity the tenant
+    knows may."""
 
 
 class RegisterProcessVersionHandler:
@@ -136,6 +148,7 @@ class RegisterProcessVersionHandler:
         if undeclared:
             raise InvalidProcess(tuple(undeclared))
         refused: autonomy.RaiseVerdict | None = None
+        capped: str | None = None
         lowerings = await self._lowerings(tenant, version)
         async with self._work.transaction(tenant):
             stored = await self._versions.get(tenant, version.ref)
@@ -168,6 +181,8 @@ class RegisterProcessVersionHandler:
                     outcome = verdict.refusal or "refused"
                     await self._record(tenant, version, "autonomy.refused", outcome, command)
             if refused is None:
+                capped = await self._caps_changed(tenant, version, replaced, command)
+            if refused is None and capped is None:
                 if not same:
                     await self._versions.put(tenant, version)
                 if self._processes is not None:
@@ -183,7 +198,38 @@ class RegisterProcessVersionHandler:
                     )
         if refused is not None:
             raise RaiseRefused(version.ref, refused.findings)
+        if capped is not None:
+            raise InvalidProcess((capped,))
         return stored if same and stored is not None else version
+
+    async def _caps_changed(
+        self,
+        tenant: Tenant,
+        version: ProcessVersion,
+        replaced: list[ProcessVersion],
+        command: RegisterProcessVersion,
+    ) -> str | None:
+        """Only a person changes a cap on open work (ADR-0132 §3). A version whose caps differ
+        from the version it replaces is stored only with a person's approval, recorded as
+        `open_work.changed` with the person as actor. Without one the attempt is recorded as
+        `open_work.refused`, with whoever registered as actor, and the finding is returned:
+        the version is not stored."""
+        changed = [
+            old.ref
+            for old in replaced
+            if old.ref != version.ref and dict(old.open_work) != dict(version.open_work)
+        ]
+        if not changed:
+            return None
+        if command.approved_by is not None:
+            await self._record(tenant, version, CAP_CHANGED, "changed", command)
+            return None
+        await self._record(tenant, version, CAP_REFUSED, "no_approval", command, actor=command.by)
+        return (
+            f"{version.ref} changes the cap on open work of {', '.join(changed)}; only a person "
+            "changes a cap, and the version is registered only with that person's approval "
+            "(ADR-0132)"
+        )
 
     async def _undeclared(self, tenant: Tenant, version: ProcessVersion) -> list[str]:
         """Every analytic step whose source the tenant does not declare free of personal
@@ -339,6 +385,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             work=work,
             limits=bundle.get("limits"),
             inputs=_inputs(bundle.get("inputs")),
+            open_work=_open_work(bundle.get("open_work")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )
@@ -394,6 +441,27 @@ def _inputs(raw: Any) -> dict[str, InputDeclaration]:
         except ValidationError as error:
             raise InvalidProcess(tuple(_describe(f"input {name!r}", error))) from error
     return declared
+
+
+def _open_work(raw: Any) -> dict[str, OpenWorkCap]:
+    """`open_work`: per kind of open outcome, its `cap`, how it is counted, and how often a
+    waiting run counts again (ADR-0132 §1)."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`open_work` is not a mapping of kind to cap",))
+    caps: dict[str, OpenWorkCap] = {}
+    for kind, declared in raw.items():
+        if not isinstance(declared, Mapping):
+            raise InvalidProcess((f"`open_work.{kind}` is not a mapping",))
+        fields = dict(declared)
+        if "check_every" in fields:
+            fields["check_every"] = _duration(fields["check_every"])
+        try:
+            caps[str(kind)] = OpenWorkCap.model_validate(fields)
+        except ValidationError as error:
+            raise InvalidProcess(tuple(_describe(f"open_work.{kind}", error))) from error
+    return caps
 
 
 def _slo(raw: Any) -> Slo | None:

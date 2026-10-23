@@ -11,6 +11,10 @@ Governance also counts the decisions on what the run proposed and lowers a level
 run tells it through its port `Levels` (`run/ports/levels.py`), and registration asks it which
 levels a version was lowered to (`process/ports/levels.py`); both are answered here from the
 use case `Corrections`.
+
+Two more ports of the run are answered here (ADR-0132): the caps a process version declares on
+its open work, read from the process component, and the tenant's limits on repetition with the
+incident a stop raises, from the governance component.
 """
 
 from __future__ import annotations
@@ -35,6 +39,8 @@ from taktus.components.governance.application.service import (
     ConfigureAnchorsHandler,
     Corrections,
     DecisionMade,
+    Repetitions,
+    RepetitionSeen,
     TenantResidency,
     TenantSources,
 )
@@ -44,15 +50,21 @@ from taktus.components.governance.domain.model import (
     Incident,
     ResidencyRule,
     SourceDeclaration,
+    WatchConfiguration,
 )
 from taktus.components.identity.application.service import IdentityDirectory
+from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.process.ports import LoweredLevels as VersionLowered
 from taktus.components.run.ports import (
     Breach,
+    Cap,
+    CountReading,
     Draft,
     LoweredLevels,
     NotRaised,
     ProposalDecided,
+    Repeated,
+    RepetitionLimits,
     Verdict,
 )
 from taktus.ports.clock import Clock
@@ -200,6 +212,60 @@ class LoweredOfTheVersion:
         return VersionLowered(level=found.level, actions=found.actions)
 
 
+class CapsOfTheVersion:
+    """The run's port `OpenWork`: the caps a version declares, read from the process
+    component (ADR-0132 §1)."""
+
+    def __init__(self, versions: Repository[ProcessVersion], work: UnitOfWork) -> None:
+        self._versions = versions
+        self._work = work
+
+    async def caps(self, tenant: Tenant, process_version: str) -> tuple[Cap, ...]:
+        async with self._work.transaction(tenant):
+            version = await self._versions.get(tenant, process_version)
+        if version is None:
+            return ()
+        return tuple(
+            Cap(
+                kind=kind,
+                cap=declared.cap,
+                reading=None
+                if declared.reading is None
+                else CountReading.model_validate(declared.reading.model_dump(mode="json")),
+                check_every_seconds=declared.check_every.total_seconds(),
+            )
+            for kind, declared in version.open_work.items()
+        )
+
+
+class RepetitionOfTheRun:
+    """The run's port `Repetition`, answered from the governance component (ADR-0132 §5)."""
+
+    def __init__(self, repetitions: Repetitions) -> None:
+        self._repetitions = repetitions
+
+    async def limits(self, tenant: Tenant) -> RepetitionLimits:
+        configured = await self._repetitions.limits(tenant)
+        return RepetitionLimits(
+            calls=configured.repeated_calls, model_calls=configured.repeated_model_calls
+        )
+
+    async def stopped(self, tenant: Tenant, repeated: Repeated) -> str | None:
+        incident = await self._repetitions.stopped(
+            tenant,
+            RepetitionSeen(
+                process_version=repeated.process_version,
+                run_id=repeated.run_id,
+                step_id=repeated.step_id,
+                rule=repeated.rule,
+                action=repeated.action,
+                count=repeated.count,
+                limit=repeated.limit,
+            ),
+        )
+        return None if incident is None else incident.id
+
+
 @dataclass(frozen=True)
 class DecisionWiring:
     """Everything an entry point needs of anchors and decisions, built once."""
@@ -223,6 +289,10 @@ class DecisionWiring:
     sources: TenantSources
     """A tenant's declaration of its sources, and the run's and registration's port over it
     (ADR-0130)."""
+    open_work: CapsOfTheVersion
+    """The run's port for a version's caps on open work (ADR-0132)."""
+    repetition: RepetitionOfTheRun
+    """The run's port for the tenant's limits on repetition and the incident of a stop."""
 
 
 def decision_wiring(
@@ -251,4 +321,8 @@ def decision_wiring(
         lowered=LoweredOfTheVersion(corrections),
         residency=TenantResidency(of(ResidencyRule), ledger, work, clock),
         sources=TenantSources(of(SourceDeclaration), ledger, work, clock),
+        open_work=CapsOfTheVersion(of(ProcessVersion), work),
+        repetition=RepetitionOfTheRun(
+            Repetitions(of(Incident), of(WatchConfiguration), ledger, work, clock)
+        ),
     )

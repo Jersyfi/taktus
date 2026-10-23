@@ -82,6 +82,10 @@ class Cause(StrEnum):
     ADMINISTRATION = "administration"
     """A step named a credential that administers the platform this instance runs on, or one
     declared about nothing, and was not run (ADR-0025, ADR-0052)."""
+    REPEATED = "repeated"
+    """A step would have repeated the same outward call with the same arguments, or called its
+    model once more, beyond the tenant's limit within the run: the rule stopped it at its
+    boundary and raised an incident (ADR-0132 §5)."""
     DECLINED = "declined"
     """The person an anchor names declined the act of a step: it was not performed, and the
     run halts at the step's boundary. A resume raises the request again (ADR-0042)."""
