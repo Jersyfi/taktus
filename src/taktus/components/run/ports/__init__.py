@@ -9,6 +9,7 @@ from taktus.components.run.ports.anchors import (
     Verdict,
 )
 from taktus.components.run.ports.connectors import ConnectorPool
+from taktus.components.run.ports.deadlines import DeclaredDeadlines
 from taktus.components.run.ports.levels import Breach, Levels, LoweredLevels, ProposalDecided
 from taktus.components.run.ports.maturity import Maturities, Standing
 from taktus.components.run.ports.models import ModelPool
@@ -30,6 +31,7 @@ __all__ = [
     "ConnectorPool",
     "CountReading",
     "Decisions",
+    "DeclaredDeadlines",
     "Draft",
     "DraftOption",
     "Levels",

@@ -95,6 +95,7 @@ process_version = Table(
     Column("work", JSONB, nullable=False),
     Column("limits", JSONB),
     Column("open_work", JSONB),  # the caps on open work, by kind (ADR-0132)
+    Column("deadlines", JSONB),  # the deadlines of each run, by name (ADR-0133)
     Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),
@@ -302,6 +303,32 @@ watch_configuration = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+deadline = Table(
+    "deadline",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("run_id", Text, nullable=False),
+    Column("state", Text, nullable=False),  # open, met (ADR-0133)
+    _at("due_at"),
+    Column("deadline", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("deadline_state_due", "tenant", "state", "due_at"),
+)
+"""One row per deadline started for a run (ADR-0133). A row is never deleted: its state moves
+on."""
+
+working_time = Table(
+    "working_time",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    _at("configured_at"),
+    Column("working_time", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that set its working time (ADR-0133 §4)."""
+
 corridor = Table(
     "corridor",
     metadata,
@@ -477,6 +504,7 @@ run = Table(
     Column("inputs", JSONB, nullable=False),
     Column("rehearsal", Boolean, nullable=False),  # ADR-0030
     Column("actions", JSONB, nullable=False, server_default=text("'{}'::jsonb")),  # ADR-0039
+    Column("deadlines", JSONB),  # the copy of its version's deadlines (ADR-0133)
     Column("state", Text, nullable=False),
     Column("cause", Text),
     Column("reason", Text),

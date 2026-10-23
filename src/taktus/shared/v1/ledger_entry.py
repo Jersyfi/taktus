@@ -41,6 +41,8 @@ class LedgerRefs(Value):
     own level held it (ADR-0110)."""
     report_id: str | None = Field(default=None, min_length=1)
     """The report to the owner the entry is about (ADR-0045)."""
+    deadline_id: str | None = Field(default=None, min_length=1)
+    """The deadline the entry is about (ADR-0133)."""
     artifact_ids: tuple[str, ...] | None = None
     actor: str | None = Field(default=None, min_length=1)
     trace_id: str | None = Field(default=None, pattern=TRACE_ID_PATTERN)

@@ -14,7 +14,9 @@ use case `Corrections`.
 
 Two more ports of the run are answered here (ADR-0132): the caps a process version declares on
 its open work, read from the process component, and the tenant's limits on repetition with the
-incident a stop raises, from the governance component.
+incident a stop raises, from the governance component. So is the run's port for the deadlines a
+version declares (ADR-0133), read from the process component, and the keeper of the deadlines
+built over it.
 """
 
 from __future__ import annotations
@@ -55,6 +57,15 @@ from taktus.components.governance.domain.model import (
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.domain.model import ProcessVersion
 from taktus.components.process.ports import LoweredLevels as VersionLowered
+from taktus.components.run.application.service.deadlines import DeadlineKeeper
+from taktus.components.run.domain.model import (
+    ActionKind,
+    Deadline,
+    DeadlineAction,
+    DeadlineRule,
+    Start,
+    WorkingTime,
+)
 from taktus.components.run.ports import (
     Breach,
     Cap,
@@ -238,6 +249,48 @@ class CapsOfTheVersion:
         )
 
 
+class DeadlinesOfTheVersion:
+    """The run's port `DeclaredDeadlines`: the deadlines a version declares, read from the
+    process component (ADR-0133 §1)."""
+
+    def __init__(self, versions: Repository[ProcessVersion], work: UnitOfWork) -> None:
+        self._versions = versions
+        self._work = work
+
+    async def deadlines(self, tenant: Tenant, process_version: str) -> tuple[DeadlineRule, ...]:
+        async with self._work.transaction(tenant):
+            version = await self._versions.get(tenant, process_version)
+        if version is None:
+            return ()
+        return tuple(
+            DeadlineRule(
+                name=name,
+                start=Start(declared.start),
+                after=declared.after,
+                date_input=declared.date_input,
+                limit=declared.limit,
+                lead=declared.lead,
+                working=declared.working,
+                until=declared.until,
+                at_lead=None
+                if declared.at_lead is None
+                else DeadlineAction(
+                    kind=ActionKind(declared.at_lead.kind),
+                    role=declared.at_lead.role,
+                    process=declared.at_lead.process,
+                    inputs=declared.at_lead.inputs,
+                ),
+                at_limit=DeadlineAction(
+                    kind=ActionKind(declared.at_limit.kind),
+                    role=declared.at_limit.role,
+                    process=declared.at_limit.process,
+                    inputs=declared.at_limit.inputs,
+                ),
+            )
+            for name, declared in version.deadlines.items()
+        )
+
+
 class RepetitionOfTheRun:
     """The run's port `Repetition`, answered from the governance component (ADR-0132 §5)."""
 
@@ -293,6 +346,9 @@ class DecisionWiring:
     """The run's port for a version's caps on open work (ADR-0132)."""
     repetition: RepetitionOfTheRun
     """The run's port for the tenant's limits on repetition and the incident of a stop."""
+    deadlines: DeadlineKeeper
+    """Where a run's deadlines are started, met and acted on, and the tenant's working time
+    (ADR-0133)."""
 
 
 def decision_wiring(
@@ -324,5 +380,13 @@ def decision_wiring(
         open_work=CapsOfTheVersion(of(ProcessVersion), work),
         repetition=RepetitionOfTheRun(
             Repetitions(of(Incident), of(WatchConfiguration), ledger, work, clock)
+        ),
+        deadlines=DeadlineKeeper(
+            of(Deadline),
+            of(WorkingTime),
+            ledger,
+            work,
+            clock,
+            DeadlinesOfTheVersion(of(ProcessVersion), work),
         ),
     )

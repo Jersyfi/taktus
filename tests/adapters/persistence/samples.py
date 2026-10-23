@@ -4,7 +4,7 @@ one exists, so that the shape the tests store is the shape the product stores.""
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -57,12 +57,19 @@ from taktus.components.process.domain.model import (
 )
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report, Subject
 from taktus.components.run.domain.model import (
+    ActionKind,
     Anchoring,
     Checkpoint,
+    Deadline,
+    DeadlineAction,
+    DeadlineRule,
     OpenBlock,
     Run,
     RunState,
+    Start,
     StepState,
+    WorkingTime,
+    deadline_id,
 )
 from taktus.ports.worker import ComputeLimit, Limits
 from taktus.shared.v1 import (
@@ -107,8 +114,28 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
             "check_every": "30m",
         }
     }
+    document["deadlines"] = {
+        "answer": {
+            "from": "run",
+            "limit": "1d",
+            "lead": "4h",
+            "counts": "working",
+            "until": {"step": "settle"},
+            "at_lead": {"remind": "operations"},
+            "at_limit": {"escalate": "operations-lead"},
+        },
+        "follow_up": {
+            "from": {"after": "compute"},
+            "limit": "2h",
+            "until": {"step": "verify-answer"},
+            "at_limit": {"start": {"process": "six-times-seven", "inputs": {"a": 1}}},
+        },
+    }
     parsed = parse_bundle(document)
     assert parsed.open_work["pull_requests"].check_every == timedelta(minutes=30)
+    assert parsed.deadlines["answer"].working and parsed.deadlines["answer"].lead == timedelta(
+        hours=4
+    )
     assert parsed.triggers == (
         Trigger(schedule="0 6 * * 1-5"),
         Trigger(event="issue.labelled", filter={"label": ("ready", "now")}),
@@ -241,6 +268,7 @@ def run(id: str = "run_1", tenant: str = "t") -> Run:
         budget=Limits(compute=ComputeLimit(seconds=2, resource_class="cpu.small")),
         steps=version.ordered(),
         work=version.work,
+        deadlines=(deadline_rule(),),
         state=RunState.RUNNING,
         created_at=AT,
         updated_at=AT + timedelta(seconds=5),
@@ -647,5 +675,47 @@ def correction_limits(tenant: str = "t") -> CorrectionLimits:
         lower_rate=0.3,
         lower_window=timedelta(days=14),
         lower_minimum=3,
+        configured_at=AT,
+    )
+
+
+def deadline_rule() -> DeadlineRule:
+    return DeadlineRule(
+        name="answer",
+        start=Start.RUN,
+        limit=timedelta(days=1),
+        lead=timedelta(hours=4),
+        working=True,
+        until="settle",
+        at_lead=DeadlineAction(kind=ActionKind.REMIND, role="operations"),
+        at_limit=DeadlineAction(kind=ActionKind.ESCALATE, role="operations-lead"),
+    )
+
+
+def deadline(tenant: str = "t") -> Deadline:
+    """A deadline whose lead action was taken and whose limit has not come (ADR-0133)."""
+    return Deadline(
+        id=deadline_id("run_1", "answer"),
+        tenant=tenant,
+        run_id="run_1",
+        process_version="six-times-seven@1",
+        rule=deadline_rule(),
+        started_at=AT,
+        due_at=AT + timedelta(days=1),
+        lead_at=AT + timedelta(hours=20),
+        created_at=AT,
+        lead_taken_at=AT + timedelta(hours=20, seconds=3),
+    )
+
+
+def working_time(tenant: str = "t") -> WorkingTime:
+    return WorkingTime(
+        id=tenant,
+        tenant=tenant,
+        zone="Europe/Berlin",
+        days=(0, 1, 2, 3),
+        begins=time(8, 30),
+        ends=time(16, 0),
+        holidays=(date(2026, 12, 25),),
         configured_at=AT,
     )

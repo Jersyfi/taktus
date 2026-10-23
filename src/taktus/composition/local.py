@@ -295,6 +295,7 @@ class LocalWiring:
                     sources=decisions.sources,
                     open_work=decisions.open_work,
                     repetition=decisions.repetition,
+                    deadlines=decisions.deadlines,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -481,6 +482,7 @@ class LocalWiring:
                 corrections=decisions.corrections,
                 residency=decisions.residency,
                 sources=decisions.sources,
+                deadlines=decisions.deadlines,
             )
             telemetry.shutdown()
 

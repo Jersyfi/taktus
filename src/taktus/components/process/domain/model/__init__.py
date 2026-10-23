@@ -8,6 +8,8 @@ from taktus.components.process.domain.model.event import (
     holds,
 )
 from taktus.components.process.domain.model.process import (
+    DeadlineAction,
+    DeadlineDeclaration,
     Each,
     Edge,
     Expect,
@@ -30,6 +32,8 @@ from taktus.components.process.domain.model.trigger_state import Firing, Trigger
 __all__ = [
     "KINDS",
     "Condition",
+    "DeadlineAction",
+    "DeadlineDeclaration",
     "Difference",
     "Each",
     "Edge",

@@ -185,6 +185,7 @@ class ProcessVersionMapper:
                 "work": document.get("work", {}),
                 "limits": document.get("limits"),
                 "open_work": document.get("open_work") or None,
+                "deadlines": document.get("deadlines") or None,
                 "inputs": document.get("inputs", {}),
                 "author": document.get("author"),
                 "reason": document.get("reason"),
@@ -230,6 +231,7 @@ class ProcessVersionMapper:
                 "work": row.work,
                 "limits": row.limits,
                 "open_work": row.open_work,
+                "deadlines": row.deadlines,
                 "inputs": row.inputs,
                 "author": row.author,
                 "reason": row.reason,
@@ -460,6 +462,7 @@ class RunMapper:
                 "inputs": document.get("inputs", {}),
                 "rehearsal": document.get("rehearsal", False),
                 "actions": document.get("actions", {}),
+                "deadlines": document.get("deadlines") or None,
                 "state": document["state"],
                 "cause": document.get("cause"),
                 "reason": document.get("reason"),
@@ -663,6 +666,7 @@ class RunMapper:
                 "inputs": row.inputs,
                 "rehearsal": row.rehearsal,
                 "actions": row.actions,
+                "deadlines": row.deadlines,
                 "state": row.state,
                 "cause": row.cause,
                 "reason": row.reason,
@@ -1337,6 +1341,59 @@ class WatchConfigurationMapper:
         return [dict(row.configuration) for row in rows]
 
 
+class DeadlineMapper:
+    """One row per deadline (ADR-0133): the deadline as a document, and beside it the columns the
+    scheduler reads the open ones by. A row is never deleted: its state moves on."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.deadline, tenant, id)
+        return None if row is None else dict(row.deadline)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.deadline,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "run_id": document["run_id"],
+                "state": document.get("state", "open"),
+                "due_at": _at(document["due_at"]),
+                "deadline": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.deadline, tenant, s.deadline.c.due_at, s.deadline.c.id)
+        return [dict(row.deadline) for row in rows]
+
+
+class WorkingTimeMapper:
+    """One row per tenant that set its working time; the working time stays a document."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.working_time, tenant, id)
+        return None if row is None else dict(row.working_time)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.working_time,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "configured_at": _at(document["configured_at"]),
+                "working_time": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.working_time, tenant, s.working_time.c.id)
+        return [dict(row.working_time) for row in rows]
+
+
 class CorridorMapper:
     """One row per version of a corridor (ADR-0109 §3). A version is inserted once and never
     changed: the application role may not update a row, and a second insert under the same
@@ -1464,6 +1521,8 @@ MAPPERS: dict[str, Mapper] = {
     "incident": IncidentMapper(),
     "watch_configuration": WatchConfigurationMapper(),
     "corridor": CorridorMapper(),
+    "deadline": DeadlineMapper(),
+    "working_time": WorkingTimeMapper(),
     "correction_limits": CorrectionLimitsMapper(),
     "residency_rule": ResidencyRuleMapper(),
     "source_declaration": SourceDeclarationMapper(),

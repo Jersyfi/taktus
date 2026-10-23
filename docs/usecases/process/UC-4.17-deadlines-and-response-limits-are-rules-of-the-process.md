@@ -3,9 +3,9 @@ id: UC-4.17
 title: Deadlines and response limits are rules of the process
 component: process
 serves: [P8, P10, P12]
-state: specified
+state: building
 version: 0.5.0
-tests: []
+tests: [tests/components/process/test_deadlines_declared.py::test_a_deadline_without_an_action_does_not_register, tests/components/process/test_deadlines_declared.py::test_an_action_is_a_reminder_an_escalation_or_a_start_never_a_person, tests/integration/test_deadlines.py::test_a_deadline_started_before_a_restart_escalates_once_at_its_limit, tests/composition/test_deadlines.py::test_a_deadline_survives_a_restart_and_its_action_is_taken_once_on_time, tests/composition/test_deadlines.py::test_two_schedulers_that_both_believe_they_lead_take_the_action_once, tests/composition/test_deadlines.py::test_an_answer_one_minute_before_the_limit_prevents_the_escalation, tests/composition/test_deadlines.py::test_the_lead_reminds_and_the_limit_escalates_each_to_a_role_once, tests/composition/test_deadlines.py::test_a_deadline_in_working_time_counts_only_the_tenants_working_hours, tests/components/run/test_deadline_rules.py::test_working_time_counts_only_the_tenants_hours, tests/composition/test_deadlines.py::test_every_open_deadline_is_listed_by_when_it_falls_due, tests/composition/test_deadlines.py::test_a_deadline_from_a_date_starts_the_renewal_once_at_its_lead, tests/composition/test_deadlines.py::test_a_run_carries_its_versions_deadlines_and_a_rehearsal_starts_none]
 adrs: {ADR-0015: 3a42705e5561, ADR-0035: 070012ed0fb2}
 supersedes: null
 ---

@@ -48,6 +48,7 @@ from taktus.components.run.application.service import (
     ReviewMovesHandler,
     RunEngine,
 )
+from taktus.components.run.application.service.deadlines import DeadlineKeeper
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
@@ -172,6 +173,8 @@ class Services:
     sources: TenantSources | None = None
     """The tenant's declaration of its sources, shown and changed (`taktusctl sources`,
     ADR-0130)."""
+    deadlines: DeadlineKeeper | None = None
+    """The tenant's open deadlines and its working time (`taktusctl deadline`, ADR-0133)."""
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,7 @@ from typing import Any, Literal
 from pydantic import Field, model_validator
 
 from taktus.components.run.domain.model.block import OpenBlock
+from taktus.components.run.domain.model.deadline import DeadlineRule
 from taktus.components.run.domain.model.errors import IllegalTransition, UnsupportedWork
 from taktus.components.run.domain.model.work import escalation_steps
 from taktus.ports.connector import idempotency_key
@@ -390,6 +391,9 @@ class Run(Value):
     inputs: Mapping[str, Any] = Field(default_factory=dict)
     """What the run was given when it started — an issue number, a repository — and what
     `$input` references in the work resolve to."""
+    deadlines: tuple[DeadlineRule, ...] = ()
+    """The deadlines its process version declares, copied when the run was created (ADR-0133).
+    A run created before its version declared one has none."""
     rehearsal: bool = False
     """A rehearsal (ADR-0030): no outward connector operation acts; each answers with the
     recorded response of an earlier real call, and every ledger entry of the run says so."""
