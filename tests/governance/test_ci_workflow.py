@@ -48,7 +48,7 @@ def test_the_required_check_needs_every_other_job_and_always_reports() -> None:
 
 def test_every_selectable_lane_runs_only_when_the_change_selects_it() -> None:
     jobs = load(CI)["jobs"]
-    for lane in ("contracts", "web", "conformance", "test", "rehearse"):
+    for lane in ("contracts", "web", "conformance", "test", "rehearse", "selftest", "timing"):
         assert jobs[lane]["needs"] == "select", lane
         assert jobs[lane]["if"] == f"needs.select.outputs.{lane} == 'true'", lane
     for always in ("static", "decisions"):

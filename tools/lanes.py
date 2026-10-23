@@ -44,7 +44,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 ALWAYS = ("static", "decisions")
-SELECTABLE = ("contracts", "web", "conformance", "test", "rehearse", "timing")
+SELECTABLE = ("contracts", "web", "conformance", "test", "rehearse", "selftest", "timing")
 LANES = ALWAYS + SELECTABLE
 
 # A path matching one of these selects every lane.
@@ -98,6 +98,14 @@ CLAIMS: dict[str, tuple[str, ...]] = {
         r"tests/integration/test_rehearsal_recordings\.py",
         r"tools/record_rehearsal\.py",
     ),
+    # Every documentation, register and architecture gate fed a deliberate violation (#395,
+    # ADR-0096 §6): selected by a change to a gate's code, so that a change that makes a gate
+    # blind is red before it merges, and run in full on every push to `main`.
+    "selftest": (
+        r"tools/(check_[a-z_]+|checkdocs|gate|gate_selftest|reserve)\.py",
+        r"tests/architecture/.*",
+        r"\.importlinter",
+    ),
     # The tests that assert a bound on wall-clock time (ADR-0096 §7, #528). They run alone: a job
     # of their own in CI, the last lane of `make verify`, which holds the machine for it. They
     # are the tests of the `test` lane that carry the marker, so the same paths select it.
@@ -129,6 +137,7 @@ COMMANDS: dict[str, tuple[str, ...]] = {
     "conformance": ("gate-conformance",),
     "test": ("test",),
     "rehearse": ("rehearse",),
+    "selftest": ("gate-selftest",),
     "timing": ("timing",),
 }
 
