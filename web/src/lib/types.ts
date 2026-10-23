@@ -48,8 +48,35 @@ export interface StepElement {
 	finished_at?: string;
 	/** The decision requests the step raised, with their status (ADR-0068). */
 	decisions?: { id: string; status: string; drawn: Drawn; text: string }[];
+	/** The latest take-over the step was served for (ADR-0128). Names no person. */
+	takeover?: StepTakeover;
 	drawn: Drawn;
 	text: string;
+}
+
+/** Where a take-over that was served stands, as the run level hands it over (ADR-0128). */
+export interface StepTakeover {
+	id: string;
+	standing: 'held' | 'handed_back' | 'lapsed';
+	/** While it is held: when the lease ends. */
+	until?: string;
+}
+
+/** The state a step was taken over in: `GET /runs/{id}/takeovers/{tko}` (ADR-0128 §3). */
+export interface TakeoverState {
+	kind: 'takeover.state';
+	takeover: string;
+	run_id: string;
+	step_id: string;
+	process_version: string;
+	held_until: string;
+	goal: string | null;
+	acceptance: string[];
+	inputs: unknown;
+	/** Credentials by parameter only, never by value. */
+	credentials: string[];
+	checkpoint: string | null;
+	artifacts: { id: string; kind: string; digest: string; media_type?: string; title?: string | null }[];
 }
 
 export interface RunElement {

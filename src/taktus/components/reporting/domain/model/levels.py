@@ -22,6 +22,7 @@ that are open. Nothing here can hold a person's name.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import Field
 
@@ -52,6 +53,20 @@ class Wait(Value):
     """The decision requests the step raised that are not applied yet (ADR-0042)."""
 
 
+class TakeoverFacts(Value):
+    """The latest take-over a step was served for (ADR-0128): its identifier, where it stands,
+    and until when it is held. Names no person: who took it over is the ledger's, for the
+    audit, and no level shows it (principle 14)."""
+
+    id: str = Field(min_length=1)
+    """The take-over identifier: the state is read and the result handed back under it."""
+    standing: Literal["held", "handed_back", "lapsed"]
+    """`held` while a person holds the step; `handed_back` once the result is the step's;
+    `lapsed` when the lease passed without a hand-back and the step went back to its worker."""
+    until: datetime | None = None
+    """While it is held: when the lease ends."""
+
+
 class DecisionFacts(Value):
     """A decision request a step raised: its identifier and its status. Never who decides."""
 
@@ -76,6 +91,8 @@ class StepFacts(Value):
     decisions: tuple[DecisionFacts, ...] = ()
     """The decision requests the step raised, with their status as the decision component
     records it (ADR-0042, ADR-0068)."""
+    takeover: TakeoverFacts | None = None
+    """The latest take-over the step was served for; None for a step never taken over."""
 
 
 class RunFacts(Value):

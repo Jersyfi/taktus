@@ -65,5 +65,26 @@
   "act_refused": "That cannot be done now; the process's page says why.",
   "signals": "Signals",
   "intervene": "start {process}",
-  "intervened": "{process} started as run {run}."
+  "intervened": "{process} started as run {run}.",
+  "takeover_words": [
+    "take over"
+  ],
+  "hand_back_words": [
+    "hand back"
+  ],
+  "takeover_show_words": [
+    "show takeover"
+  ],
+  "takeover_read": "I read this as: take over step {step} of run {run}. Its worker stops at its next boundary, and the run waits for you until you hand the result back or the take-over's time runs out.",
+  "takeover_asked": "Asked as {takeover}: step {step} of run {run} stops at its worker's next boundary. Then \"show takeover {takeover}\" shows what it reached, and \"hand back {takeover}: <your result>\" hands the result back.",
+  "takeover_waiting": "{takeover} is asked; the worker of step {step} has not reached its next boundary yet.",
+  "takeover_state": "{takeover}: step {step} of run {run} is yours until {until}.\nGoal: {goal}\nAcceptance criteria: {acceptance}\nInputs: {inputs}\nCheckpoint: {checkpoint}\nProduced so far: {produced}",
+  "takeover_refused": "{takeover} was refused: step {step} ended before its worker stopped, and it was not taken over.",
+  "takeover_lapsed": "{takeover} lapsed: its time ran out without a hand-back, and step {step} went back to its worker at its checkpoint. Nothing was handed back.",
+  "takeover_handed": "{takeover} was handed back: the result of step {step} counts as a person's.",
+  "hand_back_read": "I read this as: hand back {takeover} with your result {form}. It becomes the result of step {step} of run {run}, produced by you, and the run continues.",
+  "as_json": "as JSON",
+  "as_text": "as text, exactly as you wrote it",
+  "handed_back": "Handed back: step {step} of run {run} is done, as yours, and the run continues.",
+  "takeover_not_done": "That cannot be taken over or handed back now; the run's page says why."
 }

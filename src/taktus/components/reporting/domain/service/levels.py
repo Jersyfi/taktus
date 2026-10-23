@@ -47,6 +47,7 @@ from taktus.components.reporting.domain.model.levels import (
     RunFacts,
     RunningStep,
     StepFacts,
+    TakeoverFacts,
     VersionRef,
     Wait,
 )
@@ -128,6 +129,8 @@ class StepElement(Value):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     decisions: tuple[DecisionElement, ...] = ()
+    takeover: TakeoverFacts | None = None
+    """The latest take-over the step was served for (ADR-0128)."""
     drawn: Drawn
     text: str = Field(min_length=1)
     """The text equivalent: method, family, class and state, what it waits on, what it used."""
@@ -196,6 +199,19 @@ def _wait_text(wait: Wait) -> str:
     return "; ".join(parts) + "."
 
 
+TAKEOVER_TEXT = {
+    "held": "Taken over under {id} by a person, who holds it until {until}.",
+    "handed_back": "Taken over under {id}; its result was handed back by a person.",
+    "lapsed": "Taken over under {id}; the take-over lapsed, and the step went back to its worker.",
+}
+"""What a step's latest take-over says in words, by where it stands (ADR-0128)."""
+
+
+def _takeover_text(takeover: TakeoverFacts) -> str:
+    until = "" if takeover.until is None else takeover.until.isoformat()
+    return TAKEOVER_TEXT[takeover.standing].format(id=takeover.id, until=until)
+
+
 def _drawn(element: Element) -> Drawn:
     return Drawn(moving=glyph(element, motion=True), still=glyph(element, motion=False))
 
@@ -210,6 +226,8 @@ def _step(facts: StepFacts) -> StepElement:
     if facts.wait is not None:
         text.append(_wait_text(facts.wait))
     text.extend(d.text[0].upper() + d.text[1:] for d in decisions)
+    if facts.takeover is not None:
+        text.append(_takeover_text(facts.takeover))
     if used:
         text.append(f"Used {_figures_text(used)}.")
     return StepElement(
@@ -224,6 +242,7 @@ def _step(facts: StepFacts) -> StepElement:
         started_at=facts.started_at,
         finished_at=facts.finished_at,
         decisions=decisions,
+        takeover=facts.takeover,
         drawn=drawn,
         text=" ".join(text),
     )

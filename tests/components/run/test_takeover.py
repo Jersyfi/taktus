@@ -29,6 +29,7 @@ from taktus.components.run.domain.model import (
     RunState,
     StepState,
     TakeoverRefused,
+    TakeoverStanding,
     UnknownTakeover,
 )
 from taktus.components.run.domain.model.block import TAKEN_OVER
@@ -106,6 +107,20 @@ async def test_a_running_step_stops_at_its_boundary_and_its_state_reaches_the_pe
     assert served.content_digest == state.digest and served.refs.actor is None
 
 
+async def test_a_step_says_where_each_take_over_it_was_served_for_stands() -> None:
+    world = World(worker=slow_worker())
+    run, takeover = await taken_over(world)
+    (held,) = run.step_run("w").takeovers()
+    assert held.id == takeover and held.standing is TakeoverStanding.HELD
+    assert held.until is not None, "while it is held: until when"
+    handed = await world.engine.hand_back(
+        HandBack(run_id=run.id, takeover=takeover, result=1, actor=PERSON, tenant=TENANT)
+    )
+    (back,) = handed.step_run("w").takeovers()
+    assert back.standing is TakeoverStanding.HANDED_BACK and back.until is None
+    assert run.step_run("r").takeovers() == (), "a step never taken over has none"
+
+
 async def test_nobody_works_a_step_a_person_holds() -> None:
     world = World(worker=slow_worker(), lease_seconds=1)
     run, _ = await taken_over(world)
@@ -181,6 +196,8 @@ async def test_a_lapsed_lease_gives_the_step_back_to_its_worker_at_the_checkpoin
     assert second.context.checkpoint_ref == checkpoint.ref, "continued, not started again"
     kinds = [e.kind for e in await entries(world, run.id)]
     assert "step.takeover_lapsed" in kinds
+    (lapsed,) = finished.step_run("w").takeovers()
+    assert lapsed.id == takeover and lapsed.standing is TakeoverStanding.LAPSED
     with pytest.raises(UnknownTakeover):
         await world.engine.hand_back(
             HandBack(run_id=run.id, takeover=takeover, result=1, actor=PERSON, tenant=TENANT)

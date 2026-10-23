@@ -169,6 +169,7 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
+from taktus.composition.takeover_in_channel import TakeoverInChannel
 from taktus.composition.triggers import Triggers
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
@@ -651,6 +652,19 @@ async def wire(
                     work=persistence,
                     acts=proposal_acts,
                     proposals=proposals,
+                    deliveries=owner.deliveries,
+                    secrets=owner.secrets,
+                    clock=clock,
+                )
+            )
+            # A running step taken over and handed back there too (ADR-0128 §7).
+            owner.answers.take_over_with(
+                TakeoverInChannel(
+                    channels=PostgresRepository(persistence, OwnerChannel),
+                    pending=PostgresRepository(persistence, PendingAct),
+                    runs=runs,
+                    work=persistence,
+                    takeovers=engine,
                     deliveries=owner.deliveries,
                     secrets=owner.secrets,
                     clock=clock,

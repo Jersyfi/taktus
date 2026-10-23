@@ -30,6 +30,7 @@ from taktus.components.reporting.domain.model import (
     RunFacts,
     RunningStep,
     StepFacts,
+    TakeoverFacts,
     VersionRef,
     Wait,
 )
@@ -240,6 +241,7 @@ def facts_of(run: Run, statuses: Mapping[str, DecisionStatus] | None = None) -> 
                 attempt=1 if ran is None else ran.attempt,
                 consumption=None if ran is None else ran.consumption,
                 wait=None if ran is None else _wait(ran),
+                takeover=None if ran is None else _takeover(ran),
                 started_at=None if ran is None else ran.started_at,
                 finished_at=None if ran is None else ran.finished_at,
                 decisions=()
@@ -261,6 +263,18 @@ def facts_of(run: Run, statuses: Mapping[str, DecisionStatus] | None = None) -> 
         steps=tuple(steps),
         created_at=run.created_at,
         updated_at=run.updated_at,
+    )
+
+
+def _takeover(ran: StepRun) -> TakeoverFacts | None:
+    """The latest take-over the step was served for, as the run component reads it from the
+    step run (ADR-0128)."""
+    served = ran.takeovers()
+    if not served:
+        return None
+    latest = served[-1]
+    return TakeoverFacts.model_validate(
+        {"id": latest.id, "standing": str(latest.standing), "until": latest.until}
     )
 
 
