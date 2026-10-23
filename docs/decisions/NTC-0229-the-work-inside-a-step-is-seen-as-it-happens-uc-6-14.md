@@ -3,7 +3,7 @@
 **Mode entry:** M2.7
 **Kind:** restoration
 **Decided:** 2026-10-23
-**Raised in:** this pull request
+**Raised in:** [#613](https://github.com/Jersyfi/taktus/pull/613)
 **How it follows:** the owner accepted W8 of DEC-0195 on 2026-10-13: the trace inside a step, live and shareable by role, in `0.5.0`, with the transcript an artifact with a retention period and the ledger content-free. Issue #409 states its verification conditions. No use case required it, and UC-6.10's boundary ended its representation where Taktus hands work to a worker. UC-6.14 states W8 as a requirement, with the conditions of #409 and what follows from them.
 
 ## 1. What was decided
