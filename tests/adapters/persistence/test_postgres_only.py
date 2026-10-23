@@ -317,3 +317,36 @@ async def test_a_transaction_left_idle_is_ended_with_its_reason(postgres_url: st
 def test_a_negative_timeout_is_refused() -> None:
     with pytest.raises(ValueError, match="negative"):
         PostgresPersistence("postgresql://localhost/x", lock_timeout_seconds=-1)
+
+
+async def test_a_commit_writes_the_step_that_changed_not_the_whole_run(postgres: Backend) -> None:
+    tenant = await postgres.tenant()
+    runs = postgres.repository(Run)
+    async with postgres.work.transaction(tenant):
+        await runs.put(tenant, samples.run("run_w", tenant=tenant))
+    written: list[tuple[str, int]] = []
+
+    def count(connection: Any, cursor: Any, statement: str, *_: Any) -> None:
+        if not statement.lstrip().upper().startswith("SELECT"):
+            written.append((statement, cursor.rowcount))
+
+    def child_rows() -> int:
+        return sum(
+            n
+            for statement, n in written
+            if any(t in statement for t in ("step_run", "checkpoint", "artifact"))
+        )
+
+    engine = postgres.work.engine.sync_engine  # type: ignore[attr-defined]
+    async with postgres.work.transaction(tenant):
+        stored = await runs.get(tenant, "run_w")
+        assert stored is not None
+        event.listen(engine, "after_cursor_execute", count)
+        try:
+            await runs.put(tenant, stored)
+            assert child_rows() == 0, written
+        finally:
+            event.remove(engine, "after_cursor_execute", count)
+    async with postgres.work.transaction(tenant):
+        again = await runs.get(tenant, "run_w")
+    assert again == stored

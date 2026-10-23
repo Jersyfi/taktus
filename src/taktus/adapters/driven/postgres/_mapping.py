@@ -8,8 +8,9 @@ shared repository suite round-trips the real aggregates through here, so a chang
 document's shape is a red test, not a silent loss.
 
 `put` replaces: the parent row is upserted, the children are deleted and written again, all
-inside the caller's transaction. Timestamps travel as ISO 8601 text in a document and as
-`timestamptz` in a row; `_at` and `_iso` convert at the boundary.
+inside the caller's transaction. A run's step rows are the exception: only the steps that changed
+are written (#325). Timestamps travel as ISO 8601 text in a document and as `timestamptz` in a
+row; `_at` and `_iso` convert at the boundary.
 """
 
 from __future__ import annotations
@@ -94,6 +95,63 @@ async def _insert_all(
 ) -> None:
     if rows:
         await connection.execute(insert(table), list(rows))
+
+
+def _by_step(rows: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(row["step_id"], []).append(row)
+    return grouped
+
+
+async def _sync(
+    connection: AsyncConnection,
+    table: Table,
+    tenant: Tenant,
+    run_id: str,
+    wanted: dict[str, list[dict[str, Any]]],
+) -> None:
+    """Brings a run's rows of one child table to `wanted`, grouped by step, writing only the
+    steps whose rows differ: a commit that changed one step writes that step's rows, not the
+    run's (#325)."""
+    stored: dict[str, list[dict[str, Any]]] = {}
+    for row in await connection.execute(
+        select(table).where(table.c.tenant == tenant, table.c.run_id == run_id)
+    ):
+        stored.setdefault(row.step_id, []).append(dict(row._mapping))
+    gone = [step_id for step_id in stored if step_id not in wanted]
+    if gone:
+        await connection.execute(
+            delete(table).where(
+                table.c.tenant == tenant, table.c.run_id == run_id, table.c.step_id.in_(gone)
+            )
+        )
+    changed: list[dict[str, Any]] = []
+    for step_id, rows in wanted.items():
+        have = stored.get(step_id, [])
+        if _canon(have, table) == _canon(rows, table):
+            continue
+        if have and "id" in table.c:
+            # an artifact list that shrank or moved: the step's rows are written again
+            await connection.execute(
+                delete(table).where(
+                    table.c.tenant == tenant,
+                    table.c.run_id == run_id,
+                    table.c.step_id == step_id,
+                )
+            )
+        changed.extend(rows)
+    if "id" in table.c:
+        await _insert_all(connection, table, changed)
+    else:
+        for fresh in changed:
+            await _upsert(connection, table, ("tenant", "run_id", "step_id"), fresh)
+
+
+def _canon(rows: Sequence[dict[str, Any]], table: Table) -> list[tuple[Any, ...]]:
+    """The rows in a form two reads of the same state agree on: columns of the table, in order."""
+    names = [c.name for c in table.columns]
+    return sorted(tuple(row.get(name) for name in names) for row in rows)
 
 
 async def _one(
@@ -465,14 +523,9 @@ class RunMapper:
                 "updated_at": _at(document["updated_at"]),
             },
         )
-        await connection.execute(
-            delete(s.step_run).where(s.step_run.c.tenant == tenant, s.step_run.c.run_id == run_id)
-        )
         key = {"tenant": tenant, "run_id": run_id}
         step_runs = document.get("step_runs", [])
-        await _insert_all(
-            connection,
-            s.step_run,
+        step_rows = _by_step(
             [
                 {
                     **key,
@@ -501,9 +554,7 @@ class RunMapper:
                 for sr in step_runs
             ],
         )
-        await _insert_all(
-            connection,
-            s.checkpoint,
+        checkpoint_rows = _by_step(
             [
                 {
                     **key,
@@ -517,9 +568,7 @@ class RunMapper:
                 if sr.get("checkpoint") is not None
             ],
         )
-        await _insert_all(
-            connection,
-            s.artifact,
+        artifact_rows = _by_step(
             [
                 {
                     **key,
@@ -538,6 +587,9 @@ class RunMapper:
                 for position, artifact in enumerate(sr.get("artifacts", []))
             ],
         )
+        await _sync(connection, s.step_run, tenant, run_id, step_rows)
+        await _sync(connection, s.checkpoint, tenant, run_id, checkpoint_rows)
+        await _sync(connection, s.artifact, tenant, run_id, artifact_rows)
 
     async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
         rows = await _all(connection, s.run, tenant, s.run.c.created_at, s.run.c.id)
