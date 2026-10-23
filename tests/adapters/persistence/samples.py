@@ -31,6 +31,8 @@ from taktus.components.governance.domain.model import (
     ResidencyRule,
     RunSeen,
     SourceDeclaration,
+    Stage,
+    StagePlan,
     WatchConfiguration,
 )
 from taktus.components.identity.domain.model import (
@@ -740,6 +742,39 @@ def deadline(tenant: str = "t") -> Deadline:
         lead_at=AT + timedelta(hours=20),
         created_at=AT,
         lead_taken_at=AT + timedelta(hours=20, seconds=3),
+    )
+
+
+def stage_plan(tenant: str = "t") -> StagePlan:
+    """Two stages, the second bounded on every figure (ADR-0137)."""
+    return StagePlan.model_validate(
+        {
+            "id": tenant,
+            "tenant": tenant,
+            "responsible": "operations",
+            "blueprint": "software-operations",
+            "stages": [
+                Stage.model_validate(
+                    {"id": "control-loop", "name": "The control loop", "processes": {"b-9-01": 2}}
+                ),
+                Stage.model_validate(
+                    {
+                        "id": "operation-without-handwork",
+                        "name": "Operation without handwork",
+                        "processes": {"b-1-01": 3, "b-2-01": 2},
+                        "condition": {
+                            "weeks": 4,
+                            "runs": 20,
+                            "missed": 0,
+                            "incidents": 1,
+                            "correction_rate": 0.1,
+                            "undecided": 0,
+                        },
+                    }
+                ),
+            ],
+            "configured_at": AT,
+        }
     )
 
 

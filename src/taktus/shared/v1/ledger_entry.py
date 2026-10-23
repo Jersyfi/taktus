@@ -43,6 +43,8 @@ class LedgerRefs(Value):
     """The report to the owner the entry is about (ADR-0045)."""
     deadline_id: str | None = Field(default=None, min_length=1)
     """The deadline the entry is about (ADR-0133)."""
+    stage_id: str | None = Field(default=None, min_length=1)
+    """The stage of a tenant's introduction the entry is about (ADR-0137)."""
     artifact_ids: tuple[str, ...] | None = None
     actor: str | None = Field(default=None, min_length=1)
     trace_id: str | None = Field(default=None, pattern=TRACE_ID_PATTERN)

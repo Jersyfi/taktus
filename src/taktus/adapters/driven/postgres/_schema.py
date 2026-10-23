@@ -330,6 +330,17 @@ watch_configuration = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 
+stage_plan = Table(
+    "stage_plan",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    _at("configured_at"),
+    Column("plan", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that declared its stages (ADR-0137). A stage's state is the ledger's."""
+
 deadline = Table(
     "deadline",
     metadata,

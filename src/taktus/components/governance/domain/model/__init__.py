@@ -36,11 +36,24 @@ from taktus.components.governance.domain.model.sources import (
     SourceDeclaration,
     shipped_declaration,
 )
+from taktus.components.governance.domain.model.stages import (
+    BlueprintStages,
+    Ceiling,
+    Condition,
+    Stage,
+    StageFigures,
+    StagePlan,
+    StageState,
+    StageView,
+)
 
 __all__ = [
     "AnchorConfiguration",
+    "BlueprintStages",
     "CapacityReport",
     "CapacityThresholds",
+    "Ceiling",
+    "Condition",
     "CorrectionLimits",
     "Decided",
     "Egress",
@@ -59,6 +72,11 @@ __all__ = [
     "RunActivity",
     "RunSeen",
     "SourceDeclaration",
+    "Stage",
+    "StageFigures",
+    "StagePlan",
+    "StageState",
+    "StageView",
     "Status",
     "StorageStore",
     "Unit",

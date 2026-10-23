@@ -41,7 +41,8 @@ serve data free of personal fields and which serve personal data (ADR-0130). `de
 a tenant's open deadlines, ordered by when they fall due, and shows and sets its working time
 (ADR-0133). `trace retention` shows and sets how long the tenant keeps the trace inside a step
 (ADR-0135). `stop` stops every step an adapter serves and prints the confirmation once it
-holds (ADR-0138). The others need
+holds (ADR-0138). `stage` declares a tenant's introduction in stages, shows each with its
+figures and what is missing, and opens one as a person (ADR-0137). The others need
 services, which the composition root provides as the typer context object (see `wiring`); the
 console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
 exposes the application for it.
@@ -83,6 +84,7 @@ from taktus.adapters.driving.cli import (
     run_command,
     signal_command,
     sources_command,
+    stage_command,
     stop_command,
     submit_command,
     tenant_command,
@@ -132,6 +134,7 @@ app.add_typer(sources_command.sources, name="sources")
 app.add_typer(deadline_command.deadline, name="deadline")
 app.add_typer(stop_command.stop, name="stop")
 app.add_typer(trace_command.trace, name="trace")
+app.add_typer(stage_command.stage, name="stage")
 app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 app.add_typer(guides_command.guides, name="guides")
 app.add_typer(maturation_command.maturation, name="maturation")

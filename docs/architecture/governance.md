@@ -77,6 +77,17 @@ web app shows it at `#/autonomy`, and its start page says how many processes run
 stated level and how many raises wait. The rates are counted per process and action class, from
 entries that carry no actor, so no figure can name a person.
 
+**How a tenant is introduced in stages** (ADR-0137, UC-9.6). A tenant may declare a stage
+plan: stages in the order they open, each naming the processes it adds, the level each may
+reach, and a holding condition over the ledger. A process a stage not yet open names runs at
+most at level 2; registration refuses a version above that, naming the stage and what it lacks.
+Only a person opens a stage, once the stage before it holds by its rule and every process it
+adds has takeover instructions (UC-6.3). The elected scheduler looks once an hour: a stage that
+holds is `stage.held`, the next one is proposed to the plan's responsible role, and a stage
+that stops holding falls — its processes drop to the level its absence leaves them, each fall
+an incident and `autonomy.lowered`, as above. A stage lifts a ceiling and nothing else: no
+stage overrides an anchor. `taktusctl stage show` computes every figure from the ledger.
+
 ---
 
 ## 2. Anchors

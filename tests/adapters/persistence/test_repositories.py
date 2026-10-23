@@ -17,6 +17,7 @@ from taktus.components.governance.domain.model import (
     Incident,
     ResidencyRule,
     SourceDeclaration,
+    StagePlan,
     WatchConfiguration,
 )
 from taktus.components.identity.domain.model import (
@@ -73,6 +74,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (ResidencyRule, samples.residency_rule),
     (SourceDeclaration, samples.source_declaration),
     (Deadline, samples.deadline),
+    (StagePlan, samples.stage_plan),
     (WorkingTime, samples.working_time),
     (AdapterStop, samples.adapter_stop),
     (Evaluation, samples.evaluation),

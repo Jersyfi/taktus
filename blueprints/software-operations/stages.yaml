@@ -1,0 +1,162 @@
+# The stages blueprint `software-operations` proposes for introducing Taktus into a running
+# software business: UC-03 §5, docs/usecases/AF-03-software-operations.md (ADR-0137, NTC-0232).
+#
+# A tenant declares its plan from these stages (`taktusctl stage declare --blueprint
+# blueprints/software-operations/stages.yaml --responsible <role>`), and may make every
+# condition stricter, never looser. Which processes a stage adds stays the tenant's (UC-9.6 §3).
+#
+# Each stage names the processes it adds, with the level each may reach once the stage is open:
+# its target level of UC-03 §4. Every process starts at level 1 or 2 and rises only through
+# UC-7.1, with a person's approval and its history. A stage not yet open keeps its processes at
+# level 2 or below. The steering of the agents (UC-03 §4.11, B-11) is Taktus itself, not a
+# process of the business, and belongs to no stage.
+#
+# A stage's condition is when it holds, a rule over the ledger. UC-03 §5 states it as when the
+# next stage opens; the condition of stage N is therefore UC-03's "Opens when" of stage N + 1.
+# "Held" is four weeks of the stage open, counted back from the moment the rule looks.
+# The last stage's condition is the same four weeks: the business runs dark while it holds.
+
+blueprint: software-operations
+stages:
+  - id: control-loop
+    name: The control loop
+    # Stage 0: the daily report, and the first routines for pull requests, errors and triage,
+    # at level 1 to 2. People read every day and intervene.
+    processes:
+      b-9-01: 1   # B-9.01
+      b-7-01: 2   # B-7.01
+      b-7-04: 2   # B-7.04
+      b-1-05: 2   # B-1.05
+    # Stage 1 opens when this held four weeks: the report ran every day, and every proposal
+    # was decided by a person.
+    condition: { weeks: 4, missed: 0, undecided: 0 }
+
+  - id: operation-without-handwork
+    name: Operation without handwork
+    # Stage 1: watchers for cost, errors, model credit, payment reconciliation, back office and
+    # deadlines (UC-03 §4.1, §4.2, B-6.01, §4.5, B-10.01). People handle only deviations.
+    processes:
+      b-1-01: 3   # B-1.01
+      b-1-02: 3   # B-1.02
+      b-1-03: 3   # B-1.03
+      b-1-04: 4   # B-1.04
+      b-1-05: 4   # B-1.05
+      b-1-06: 3   # B-1.06
+      b-1-07: 2   # B-1.07
+      b-1-08: 3   # B-1.08
+      b-1-09: 3   # B-1.09
+      b-1-10: 2   # B-1.10
+      b-1-11: 4   # B-1.11
+      b-1-12: 4   # B-1.12
+      b-1-13: 3   # B-1.13
+      b-2-01: 2   # B-2.01
+      b-2-02: 3   # B-2.02
+      b-2-03: 3   # B-2.03
+      b-2-04: 3   # B-2.04
+      b-2-05: 2   # B-2.05
+      b-2-06: 2   # B-2.06
+      b-6-01: 3   # B-6.01
+      b-5-01: 3   # B-5.01
+      b-5-02: 3   # B-5.02
+      b-5-03: 2   # B-5.03
+      b-5-04: 1   # B-5.04
+      b-5-05: 3   # B-5.05
+      b-5-06: 3   # B-5.06
+      b-10-01: 3   # B-10.01
+    # Stage 2 opens when this held, with no expected run missed without an incident. Every
+    # missed run raises an incident (UC-4.16), so the figure that binds is the four weeks.
+    condition: { weeks: 4 }
+
+  - id: customer-contact
+    name: Customer contact on its own
+    # Stage 2: support sends for approved classes itself, with a label, an independent check
+    # and evaluations as a gate (UC-03 §4.3, §4.4). People approve classes and handle
+    # escalations.
+    processes:
+      b-3-01: 4   # B-3.01
+      b-3-02: 3   # B-3.02
+      b-3-03: 3   # B-3.03
+      b-3-04: 3   # B-3.04
+      b-3-05: 2   # B-3.05
+      b-3-06: 4   # B-3.06
+      b-3-07: 3   # B-3.07
+      b-3-08: 2   # B-3.08
+      b-3-09: 3   # B-3.09
+      b-3-10: 2   # B-3.10
+      b-3-11: 2   # B-3.11
+      b-3-12: 3   # B-3.12
+      b-4-01: 4   # B-4.01
+      b-4-02: 4   # B-4.02
+      b-4-03: 1   # B-4.03
+      b-4-04: 2   # B-4.04
+      b-4-05: 3   # B-4.05
+      b-4-06: 4   # B-4.06
+      b-4-07: 2   # B-4.07
+    # Stage 3 opens when this held, with the correction rate of each approved class below its
+    # limit: the shipped limit at which a level falls (NTC-0215), which a tenant may tighten.
+    condition: { weeks: 4, correction_rate: 0.25 }
+
+  - id: release-without-people
+    name: Release without people
+    # Stage 3: rollout by corridor, deployment with smoke test and rollback (UC-03 §4.8).
+    # People release the store submission and the release merge.
+    processes:
+      b-8-01: 3   # B-8.01
+      b-8-02: 4   # B-8.02
+      b-8-03: 2   # B-8.03
+      b-8-04: 3   # B-8.04
+      b-8-05: 3   # B-8.05
+      b-8-06: 3   # B-8.06
+      b-8-07: 3   # B-8.07
+      b-8-08: 2   # B-8.08
+    # Stage 4 opens when this held, with no rollback missed: no incident about its processes.
+    condition: { weeks: 4, incidents: 0 }
+
+  - id: development-end-to-end
+    name: Development end to end
+    # Stage 4: from the customer's signal to the merged fix; a merge by an independent reviewing
+    # step under a written policy (UC-03 §4.7). People keep the policy and the roadmap.
+    processes:
+      b-7-01: 3   # B-7.01
+      b-7-02: 3   # B-7.02
+      b-7-03: 4   # B-7.03
+      b-7-04: 4   # B-7.04
+      b-7-05: 4   # B-7.05
+      b-7-06: 4   # B-7.06
+      b-7-07: 3   # B-7.07
+      b-7-08: 3   # B-7.08
+      b-7-09: 3   # B-7.09
+      b-7-10: 3   # B-7.10
+      b-7-11: 3   # B-7.11
+      b-7-12: 3   # B-7.12
+    # Stage 5 opens when this held.
+    condition: { weeks: 4 }
+
+  - id: runs-dark
+    name: The business runs dark
+    # Stage 5: every remaining process at its target level (UC-03 §4.6, §4.9, §4.10). People
+    # keep goals, guardrails, budgets, liability and signature.
+    processes:
+      b-6-02: 4   # B-6.02
+      b-6-03: 1   # B-6.03
+      b-6-04: 3   # B-6.04
+      b-6-05: 2   # B-6.05
+      b-6-06: 3   # B-6.06
+      b-6-07: 2   # B-6.07
+      b-9-01: 1   # B-9.01
+      b-9-02: 3   # B-9.02
+      b-9-03: 3   # B-9.03
+      b-9-04: 3   # B-9.04
+      b-9-05: 3   # B-9.05
+      b-9-06: 2   # B-9.06
+      b-9-07: 2   # B-9.07
+      b-9-08: 2   # B-9.08
+      b-9-09: 2   # B-9.09
+      b-9-10: 3   # B-9.10
+      b-10-02: 2   # B-10.02
+      b-10-03: 3   # B-10.03
+      b-10-04: 4   # B-10.04
+      b-10-05: 2   # B-10.05
+      b-10-06: 2   # B-10.06
+      b-10-07: 2   # B-10.07
+    condition: { weeks: 4 }

@@ -1407,6 +1407,31 @@ class WatchConfigurationMapper:
         return [dict(row.configuration) for row in rows]
 
 
+class StagePlanMapper:
+    """One row per tenant that declared its stages; the plan stays a document (ADR-0137)."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.stage_plan, tenant, id)
+        return None if row is None else dict(row.plan)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.stage_plan,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "configured_at": _at(document["configured_at"]),
+                "plan": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.stage_plan, tenant, s.stage_plan.c.id)
+        return [dict(row.plan) for row in rows]
+
+
 class DeadlineMapper:
     """One row per deadline (ADR-0133): the deadline as a document, and beside it the columns the
     scheduler reads the open ones by. A row is never deleted: its state moves on."""
@@ -1619,6 +1644,7 @@ MAPPERS: dict[str, Mapper] = {
     "incident": IncidentMapper(),
     "watch_configuration": WatchConfigurationMapper(),
     "corridor": CorridorMapper(),
+    "stage_plan": StagePlanMapper(),
     "deadline": DeadlineMapper(),
     "adapter_stop": AdapterStopMapper(),
     "working_time": WorkingTimeMapper(),
