@@ -15,12 +15,18 @@
 - **Administering.** An administrator adds an identity, issues a new key for one, lists every
   link of a tenant and revokes one. The next event from a revoked account is from an unknown
   sender.
+- **A person's own agent** (ADR-0131). The person, or an administrator, issues an agent key: it
+  proves the identity on the MCP surface and nowhere else. An administrator grants a role the
+  rights an agent needs to act there, and withdraws them; an identity holds the rights of its
+  roles, read at every call.
 
 Every identity added and every link made or revoked is a ledger entry in the same transaction:
 `identity.created`, `identity.linked` (outcome `confirmed` or `source`), `identity.unlinked`
-(outcome `revoked`). An entry carries identifiers and a digest, never the account or a name
-(ADR-0006); the actor is the identity that acted, where one did. A sign-in and a sign-out are
-no entry: when a person uses the web app is nobody's measure (principle 14, ADR-0119 §6).
+(outcome `revoked`); so is every agent key issued, `identity.agent_key_issued`, and every right
+granted or withdrawn, `identity.right_granted` and `identity.right_withdrawn`. An
+entry carries identifiers and a digest, never the account or a name (ADR-0006); the actor is
+the identity that acted, where one did. A sign-in and a sign-out are no entry: when a person
+uses the web app is nobody's measure (principle 14, ADR-0119 §6).
 
 An account belongs to at most one identity across every tenant the instance serves: a link is
 looked for in each of them, and refused where one is active in any. Which tenants it serves is
@@ -38,6 +44,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from taktus.components.identity.domain.model import (
+    AGENT_KEY_PREFIX,
     CODE,
     CODE_PREFIX,
     CODE_VALIDITY,
@@ -49,6 +56,8 @@ from taktus.components.identity.domain.model import (
     Identity,
     LinkCode,
     LinkOrigin,
+    Right,
+    RoleRights,
     code_id,
     digest,
     link_id,
@@ -71,6 +80,9 @@ LINKED = "identity.linked"
 UNLINKED = "identity.unlinked"
 KEY_ISSUED = "identity.key_issued"
 ROLES_SET = "identity.roles_set"
+AGENT_KEY_ISSUED = "identity.agent_key_issued"
+RIGHT_GRANTED = "identity.right_granted"
+RIGHT_WITHDRAWN = "identity.right_withdrawn"
 
 
 class IdentityError(Exception):
@@ -143,6 +155,7 @@ class IdentityDirectory(IdentityResolver):
         links: Repository[ChannelLink],
         codes: Repository[LinkCode],
         sessions: Repository[BrowserSession],
+        rights: Repository[RoleRights],
         work: UnitOfWork,
         ledger: Ledger,
         clock: Clock,
@@ -155,6 +168,7 @@ class IdentityDirectory(IdentityResolver):
         self._links = links
         self._codes = codes
         self._sessions = sessions
+        self._rights = rights
         self._session_lifetime = session_lifetime
         self._work = work
         self._ledger = ledger
@@ -329,6 +343,96 @@ class IdentityDirectory(IdentityResolver):
             if session is not None:
                 return None if identity is None else (session, identity)
         return None
+
+    # --- a person's own agent (ADR-0131) ------------------------------------------------------
+
+    async def authenticate_agent(self, key: str) -> Resolution | None:
+        """The identity whose agent key this is, or None. An account key is not an agent key:
+        the MCP surface accepts only the one, the HTTP surface only the other (ADR-0131 §2)."""
+        if not key.startswith(AGENT_KEY_PREFIX):
+            return None
+        wanted = digest(key)
+        for tenant in await self._tenants.served():
+            async with self._work.transaction(tenant):
+                identities = await self._identities.list(tenant)
+            for identity in identities:
+                if identity.agent_key_digest is not None and hmac.compare_digest(
+                    identity.agent_key_digest, wanted
+                ):
+                    return _resolution(identity)
+        return None
+
+    async def issue_agent_key(self, tenant: Tenant, identity: str, *, by: str | None = None) -> str:
+        """A new agent key for an identity, returned to be shown once; the one before stops
+        working (ADR-0131 §2)."""
+        await self._served(tenant)
+        key = AGENT_KEY_PREFIX + self._randomness.token(32)
+        async with self._work.transaction(tenant):
+            existing = await self._identities.get(tenant, identity)
+            if existing is None:
+                raise UnknownIdentity(tenant, identity)
+            await self._identities.put(
+                tenant, existing.model_copy(update={"agent_key_digest": digest(key)})
+            )
+            await self._record(
+                tenant,
+                AGENT_KEY_ISSUED,
+                "issued",
+                actor=by or identity,
+                document={"identity": identity},
+            )
+        return key
+
+    async def rights(self, who: Resolution) -> frozenset[Right]:
+        """The rights the identity holds through its roles, as they are now (ADR-0131 §3)."""
+        held: set[Right] = set()
+        async with self._work.transaction(who.tenant):
+            for role in who.roles:
+                found = await self._rights.get(who.tenant, role)
+                if found is not None:
+                    held.update(found.rights)
+        return frozenset(held)
+
+    async def granted(self, tenant: Tenant) -> list[RoleRights]:
+        """Every role of the tenant that holds a right, by role."""
+        await self._served(tenant)
+        async with self._work.transaction(tenant):
+            listed = await self._rights.list(tenant)
+        return sorted((r for r in listed if r.rights), key=lambda r: r.id)
+
+    async def grant(
+        self, tenant: Tenant, role: str, right: Right, *, by: str | None = None
+    ) -> RoleRights:
+        """The role holds the right from now on; granting one it holds changes nothing."""
+        return await self._set_right(tenant, role, right, held=True, by=by)
+
+    async def withdraw(
+        self, tenant: Tenant, role: str, right: Right, *, by: str | None = None
+    ) -> RoleRights:
+        """The role holds the right no longer; withdrawing one it does not hold changes
+        nothing."""
+        return await self._set_right(tenant, role, right, held=False, by=by)
+
+    async def _set_right(
+        self, tenant: Tenant, role: str, right: Right, *, held: bool, by: str | None
+    ) -> RoleRights:
+        await self._served(tenant)
+        async with self._work.transaction(tenant):
+            existing = await self._rights.get(tenant, role) or RoleRights(id=role, tenant=tenant)
+            if (right in existing.rights) == held:
+                return existing
+            kept = [r for r in existing.rights if r is not right]
+            rights = sorted([*kept, right] if held else kept, key=lambda r: r.value)
+            changed = RoleRights(id=role, tenant=tenant, rights=tuple(rights))
+            await self._rights.put(tenant, changed)
+            await self._record(
+                tenant,
+                RIGHT_GRANTED if held else RIGHT_WITHDRAWN,
+                "granted" if held else "withdrawn",
+                actor=by,
+                document={"role": role, "right": right.value},
+            )
+        return changed
 
     # --- an administrator --------------------------------------------------------------------
 

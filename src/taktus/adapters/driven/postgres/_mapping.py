@@ -866,6 +866,7 @@ class IdentityMapper:
                 "org_path": list(document["org_path"]),
                 "roles": list(document.get("roles", [])),
                 "key_digest": document.get("key_digest"),
+                "agent_key_digest": document.get("agent_key_digest"),
                 "created_at": _at(document["created_at"]),
             },
         )
@@ -883,6 +884,7 @@ class IdentityMapper:
                 "org_path": row.org_path,
                 "roles": row.roles or None,
                 "key_digest": row.key_digest,
+                "agent_key_digest": row.agent_key_digest,
                 "created_at": _iso(row.created_at),
             }
         )
@@ -1012,6 +1014,34 @@ class BrowserSessionMapper:
                 "ended_at": _iso(row.ended_at),
             }
         )
+
+
+class RoleRightsMapper:
+    """The rights one role of a tenant holds, keyed by the role (ADR-0131 §3)."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.role_rights, tenant, id)
+        return None if row is None else self._from(row)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.role_rights,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "rights": list(document.get("rights", [])),
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(connection, s.role_rights, tenant, s.role_rights.c.id)
+        return [self._from(row) for row in rows]
+
+    @staticmethod
+    def _from(row: Row[Any]) -> Document:
+        return {"tenant": row.tenant, "id": row.id, "rights": list(row.rights)}
 
 
 # --- anchors and decisions ------------------------------------------------------------------------
@@ -1421,6 +1451,7 @@ MAPPERS: dict[str, Mapper] = {
     "channel_link": ChannelLinkMapper(),
     "link_code": LinkCodeMapper(),
     "browser_session": BrowserSessionMapper(),
+    "role_rights": RoleRightsMapper(),
     "anchor_configuration": AnchorConfigurationMapper(),
     "request": DecisionRequestMapper(),
     "register_entry": RegisterEntryMapper(),

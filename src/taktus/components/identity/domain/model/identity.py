@@ -19,6 +19,11 @@ A **browser session** is what the web app is signed in with (ADR-0119). The inst
 out once, in exchange for the account key, as a cookie the page's scripts cannot read. Only the
 digest of its token is kept. It ends when its time is up, when the person signs out, and when
 the identity's key is replaced.
+
+An **agent key** is what a person's own agent proves the person with on the MCP surface
+(ADR-0131). It opens that surface and nothing else, and only its digest is kept. What the agent
+may do there beyond reading are the **rights** the person's roles hold: a role's rights are one
+record per role, and a right is never granted to a named person (UC-7.3).
 """
 
 from __future__ import annotations
@@ -38,6 +43,8 @@ CODE = re.compile(r"\btkl-[0-9a-f]{24}\b")
 """A link code as it appears in what a sender wrote: the prefix and 96 bits as hex."""
 KEY_PREFIX = "tka_"
 SESSION_PREFIX = "tks_"
+AGENT_KEY_PREFIX = "tkg_"
+"""The prefix of an agent key, which only the MCP surface accepts (ADR-0131 §2)."""
 SESSION_LIFETIME = timedelta(hours=12)
 """How long a browser session lasts unless the operator sets another time (ADR-0119)."""
 
@@ -72,6 +79,9 @@ class Identity(Value):
     key_digest: str | None = None
     """The digest of the account key that proves this identity on the control plane's surface;
     None while no key was issued."""
+    agent_key_digest: str | None = None
+    """The digest of the agent key the person's own agent proves this identity with on the MCP
+    surface; None while none was issued (ADR-0131 §2)."""
     created_at: datetime
 
     @model_validator(mode="after")
@@ -152,3 +162,30 @@ class BrowserSession(Value):
             and identity.id == self.identity
             and identity.key_digest == self.key_digest
         )
+
+
+class Right(StrEnum):
+    """What a role may let an agent do on the MCP surface beyond reading (ADR-0131 §3)."""
+
+    START = "agent.start"
+    """Start a process's active version."""
+    ANSWER = "agent.answer"
+    """Answer a decision request addressed to the person, and confirm its reading."""
+    TAKE_OVER = "agent.take-over"
+    """Take over a running step, and hand its result back."""
+
+
+class RoleRights(Value):
+    """The rights one role of a tenant holds. The record is keyed by the role: there is no
+    record a right could be granted to a person in (UC-7.3)."""
+
+    id: str = Field(min_length=1)
+    """The role."""
+    tenant: str = Field(min_length=1)
+    rights: tuple[Right, ...] = ()
+
+    @model_validator(mode="after")
+    def _each_right_once(self) -> RoleRights:
+        if len(set(self.rights)) != len(self.rights):
+            raise ValueError(f"the rights of the role {self.id!r} are named each once")
+        return self

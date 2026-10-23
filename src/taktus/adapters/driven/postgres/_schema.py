@@ -111,6 +111,7 @@ identity_table = Table(
     Column("org_path", JSONB, nullable=False),
     Column("roles", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     Column("key_digest", Text),
+    Column("agent_key_digest", Text),  # the agent key of ADR-0131; the key is kept nowhere
     _at("created_at"),
     PrimaryKeyConstraint("tenant", "id"),
 )
@@ -156,6 +157,16 @@ browser_session = Table(
     PrimaryKeyConstraint("tenant", "id"),
 )
 """A sign-in of the web app (ADR-0119)."""
+
+role_rights = Table(
+    "role_rights",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),  # the role
+    Column("rights", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""The rights each role of a tenant holds on the MCP surface (ADR-0131 §3)."""
 
 # --- anchors and decisions (ADR-0042) -------------------------------------------------------------
 

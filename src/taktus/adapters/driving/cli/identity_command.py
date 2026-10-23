@@ -4,8 +4,10 @@
 account with it on the control plane's surface. `key` issues a new key, and the old one stops
 working. `links` lists every link of the tenant — active and revoked — and `revoke` revokes
 one: the next event from that account is from an unknown sender. `roles` sets the roles an
-identity holds: an anchor names the role that decides its act (ADR-0042). Every act is a ledger
-entry.
+identity holds: an anchor names the role that decides its act (ADR-0042). `agent-key` issues the
+key a person's own agent proves them with on the MCP surface, and nowhere else; `grant` and
+`withdraw` give a role a right there, and take it back, and `rights` lists them (ADR-0131).
+Every act is a ledger entry.
 
 The command line authenticates by holding the instance's state: whoever can run it against the
 database is its administrator. `--identity` names the administrator who acts, for the ledger.
@@ -30,6 +32,7 @@ from taktus.adapters.driving.cli.run_command import (
 )
 from taktus.adapters.driving.cli.wiring import NotOperable, Services, Wiring
 from taktus.components.identity.application.service import IdentityError, IdentityExists
+from taktus.components.identity.domain.model import Right
 
 identity = typer.Typer(help="Identities and the links of channel accounts.", no_args_is_help=True)
 
@@ -181,3 +184,80 @@ def revoke(
         return f"{revoked.id} revoked: {revoked.channel} {revoked.account} is nobody's now"
 
     typer.echo(_with(ctx, state_dir, act))
+
+
+@identity.command("agent-key")
+def agent_key(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="The identity whose agent gets a new key.")],
+    tenant: Tenant = DEFAULT_TENANT,
+    by: By = None,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Issue a new agent key for an identity's own agent; the one before stops working. It
+    opens the MCP surface only (ADR-0131)."""
+
+    async def act(services: Services) -> str:
+        return await services.identities.issue_agent_key(tenant, name, by=by)
+
+    issued = _with(ctx, state_dir, act)
+    typer.echo(f"agent key of {name}, shown once — hand it to the person: {issued}")
+
+
+RightName = Annotated[
+    Right,
+    typer.Option("--right", case_sensitive=True, help="The right, as ADR-0131 §3 names it."),
+]
+Role = Annotated[str, typer.Option("--role", help="The role the right is granted to.")]
+
+
+@identity.command("grant")
+def grant(
+    ctx: typer.Context,
+    role: Role,
+    right: RightName,
+    tenant: Tenant = DEFAULT_TENANT,
+    by: By = None,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Grant a role a right on the MCP surface: an agent of whoever holds the role may then act
+    so. A right is granted to a role, never to a person."""
+
+    async def act(services: Services) -> str:
+        held = await services.identities.grant(tenant, role, right, by=by)
+        return f"role {role} in {tenant} holds {', '.join(held.rights) or 'no right'}"
+
+    typer.echo(_with(ctx, state_dir, act))
+
+
+@identity.command("withdraw")
+def withdraw(
+    ctx: typer.Context,
+    role: Role,
+    right: RightName,
+    tenant: Tenant = DEFAULT_TENANT,
+    by: By = None,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """Withdraw a right from a role; it holds from the next call of an agent on."""
+
+    async def act(services: Services) -> str:
+        held = await services.identities.withdraw(tenant, role, right, by=by)
+        return f"role {role} in {tenant} holds {', '.join(held.rights) or 'no right'}"
+
+    typer.echo(_with(ctx, state_dir, act))
+
+
+@identity.command("rights")
+def rights(
+    ctx: typer.Context,
+    tenant: Tenant = DEFAULT_TENANT,
+    state_dir: StateDir = Path(DEFAULT_STATE_DIR),
+) -> None:
+    """List every role of the tenant that holds a right on the MCP surface."""
+
+    async def act(services: Services) -> list[str]:
+        return [f"{r.id}: {', '.join(r.rights)}" for r in await services.identities.granted(tenant)]
+
+    listed = _with(ctx, state_dir, act)
+    typer.echo("\n".join(listed) if listed else f"no role of {tenant} holds a right")

@@ -78,6 +78,7 @@ from taktus.components.identity.domain.model import (
     ChannelLink,
     Identity,
     LinkCode,
+    RoleRights,
 )
 from taktus.components.knowledge.application.service import PublishGuidesHandler
 from taktus.components.ledger.application.service import ChainedLedger
@@ -227,6 +228,7 @@ class LocalWiring:
                 links=stores.of(ChannelLink),
                 codes=stores.of(LinkCode),
                 sessions=stores.of(BrowserSession),
+                rights=stores.of(RoleRights),
                 work=stores.work,
                 ledger=ledger,
                 clock=clock,

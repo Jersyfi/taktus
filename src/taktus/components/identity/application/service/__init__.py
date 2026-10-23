@@ -1,7 +1,10 @@
 from taktus.components.identity.application.service.directory import (
+    AGENT_KEY_ISSUED,
     CREATED,
     KEY_ISSUED,
     LINKED,
+    RIGHT_GRANTED,
+    RIGHT_WITHDRAWN,
     UNLINKED,
     AlreadyLinked,
     IdentityDirectory,
@@ -22,9 +25,12 @@ from taktus.components.identity.application.service.tenants import (
 )
 
 __all__ = [
+    "AGENT_KEY_ISSUED",
     "CREATED",
     "KEY_ISSUED",
     "LINKED",
+    "RIGHT_GRANTED",
+    "RIGHT_WITHDRAWN",
     "TENANT_CREATED",
     "TENANT_RENAMED",
     "UNLINKED",

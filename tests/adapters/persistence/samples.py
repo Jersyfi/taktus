@@ -39,6 +39,8 @@ from taktus.components.identity.domain.model import (
     Identity,
     LinkCode,
     LinkOrigin,
+    Right,
+    RoleRights,
     code_id,
     digest,
     link_id,
@@ -337,6 +339,7 @@ def identity(tenant: str = "t") -> Identity:
         org_path=(tenant, "finance", "payables"),
         roles=("finance.lead", "owner"),
         key_digest="ab" * 32,
+        agent_key_digest="cd" * 32,
         created_at=AT,
     )
 
@@ -443,6 +446,10 @@ def browser_session(tenant: str = "t") -> BrowserSession:
         expires_at=AT + timedelta(hours=12),
         ended_at=AT + timedelta(hours=1),
     )
+
+
+def role_rights(tenant: str = "t") -> RoleRights:
+    return RoleRights(id="finance.lead", tenant=tenant, rights=(Right.ANSWER, Right.START))
 
 
 PHRASEBOOK = json.loads(

@@ -89,6 +89,7 @@ from taktus.components.identity.domain.model import (
     ChannelLink,
     Identity,
     LinkCode,
+    RoleRights,
 )
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.expectations import ExpectationsHandler
@@ -126,6 +127,7 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Run
 from taktus.composition import roles
+from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.change_in_channel import ChangeInChannel
@@ -251,6 +253,8 @@ class Wired:
     """A person's proposals for a changed process, never versions (ADR-0091)."""
     proposal_acts: ProposalActs
     """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
+    agent: AgentSurface
+    """What the MCP surface needs beyond the HTTP surface's services (ADR-0131)."""
     moves: MethodMoves | None = None
     """An accepted proposal to move a step applied, and a move rolled back (ADR-0114)."""
     runner: Runner | None = None
@@ -388,6 +392,7 @@ async def wire(
             links=PostgresRepository(persistence, ChannelLink),
             codes=PostgresRepository(persistence, LinkCode),
             sessions=PostgresRepository(persistence, BrowserSession),
+            rights=PostgresRepository(persistence, RoleRights),
             work=persistence,
             ledger=ledger,
             clock=clock,
@@ -741,6 +746,16 @@ async def wire(
                 levels=levels,
                 proposals=proposals,
                 proposal_acts=proposal_acts,
+                agent=AgentSurface(
+                    processes=PostgresRepository(persistence, Process),
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    commission=commission,
+                    engine=engine,
+                    ledger=ledger,
+                    work=persistence,
+                    clock=clock,
+                    ids=ids,
+                ),
                 moves=moves,
                 complete_intake=complete_intake,
                 reactions=Reactions(

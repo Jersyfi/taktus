@@ -118,7 +118,7 @@ you see the domain, not the framework.
 | Language | Python ≥ 3.13, `asyncio` throughout |
 | Database | PostgreSQL 16+ — state, queue, outbox, ledger, vector search (`pgvector`) |
 | API | FastAPI, OpenAPI 3.1 (`api/openapi.yaml`, generated and committed), RFC 9457 problem details, everything under a configurable path prefix; SSE later |
-| Agent and tool interface | MCP — Taktus is a client of every connector (`contracts/connector/v1`, the `mcp` package for the suite and the reference connector), and exposes itself as a server later |
+| Agent and tool interface | MCP — Taktus is a client of every connector (`contracts/connector/v1`, the `mcp` package for the suite and the reference connector), and a server for a person's own agent at `{prefix}/mcp`: the agent proves the person with an agent key that opens nothing else, reads what the person may see, and acts only where a role the person holds was granted the right (ADR-0131) |
 | Domain types | Pydantic v2 value objects; SQLAlchemy Core at the boundary, never in the domain — the adapter stores an aggregate's document and never imports its class |
 | Shared kernel | JSON Schema under `contracts/shared`, bound to Python by hand and checked by a test |
 | Process bundles | YAML, read by PyYAML in the command-line adapter only |

@@ -42,6 +42,7 @@ from taktus.components.reporting.domain.model import (
 from taktus.components.run.application.service import HandBack, TakeOver
 from taktus.components.run.domain.model import Run
 from taktus.ports.configuration import Secret
+from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Queried, Tenant, UnitOfWork
 
@@ -119,6 +120,38 @@ class Takeovers(Protocol):
 
     async def hand_back(self, command: HandBack) -> Run:
         """The person's result, written under the take-over's claim."""
+        ...
+
+
+class StartRefused(Exception):
+    """A process was not started from the MCP surface; the message says why, in one sentence
+    the person's agent can act on (ADR-0131 §5)."""
+
+
+class AgentActs(Protocol):
+    """What the MCP surface needs beyond the HTTP surface's services (ADR-0131): the processes a
+    reader may start, a process started as the person, and every call recorded. The composition
+    root's, because starting a process crosses the process, command and run components."""
+
+    async def processes(self, who: Resolution) -> Sequence[Mapping[str, Any]]:
+        """Every process with an active version that `who` may see, with the inputs it takes."""
+        ...
+
+    async def start(self, who: Resolution, process_id: str, inputs: Mapping[str, Any]) -> Run:
+        """The process's active version started with the inputs, acting as `who`, through the
+        one path every channel takes. `StartRefused` when it cannot be."""
+        ...
+
+    async def called(
+        self,
+        who: Resolution,
+        tool: str,
+        outcome: str,
+        arguments: Mapping[str, Any],
+        run_id: str | None = None,
+    ) -> None:
+        """One call of a tool recorded in the ledger, `agent.<tool>`, with `who` as actor and
+        the digest of the arguments, never the arguments (ADR-0131 §6)."""
         ...
 
 
@@ -253,6 +286,11 @@ class RestServices(Protocol):
     @property
     def takeovers(self) -> Takeovers:
         """A running step taken over and handed back (ADR-0128)."""
+        ...
+
+    @property
+    def agent(self) -> AgentActs:
+        """What the MCP surface needs beyond these services (ADR-0131)."""
         ...
 
     @property

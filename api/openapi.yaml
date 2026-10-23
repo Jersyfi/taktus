@@ -185,6 +185,40 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /identity/agent-key:
+    post:
+      tags:
+      - identity
+      summary: Create an agent key for your own agent
+      description: 'The account key in `Authorization: Bearer`, or the web app''s session, proves the
+        identity. The answer is a new agent key, shown once: your own agent proves you with it on the
+        MCP surface at `mcp`, and nowhere else. The key before it stops working. Your agent may read there;
+        it may act only where a role you hold was granted the right, and `rights` names the rights your
+        roles hold now (ADR-0131).'
+      operationId: create_agent_key_identity_agent_key_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '201':
+          description: The agent key, and the rights your roles hold.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /session:
     post:
       tags:

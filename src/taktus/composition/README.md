@@ -41,7 +41,10 @@ directory `TAKTUS_KNOWLEDGE_DIRECTORY` names (ADR-0066). Method maturation is bu
 uses the handlers, and S-06 reaches them through the loopback connector (ADR-0086). An
 accepted proposal to move a step is applied in `moves.py`, which crosses the run, decision and
 process components: every decision that takes effect on the HTTP surface or in the owner's
-channel is handed to it, and it registers the moved version or rolls a move back (ADR-0114).
+channel is handed to it, and it registers the moved version or rolls a move back (ADR-0114). A
+person's own agent starts a process over the MCP surface through `agent_surface.py`, which
+crosses the process, command and run components the same way and records every call of the
+surface in the ledger (ADR-0131).
 
 `local.py` wires `taktusctl` for a developer's machine: PostgreSQL when `TAKTUS_DATABASE_URL`
 (or `_FILE`) is configured, otherwise the in-memory stores with a file snapshot under a state

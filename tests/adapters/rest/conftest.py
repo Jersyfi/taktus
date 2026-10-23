@@ -8,20 +8,26 @@ from typing import Any
 
 import httpx
 import pytest
-from fakes import FakeClock, FakeIdentifiers
+from fakes import FakeClock, FakeIdentifiers, FakeWorker
 from fakes.identity import Directory, FakeReplies, directory
+from fakes.maturity import VERIFIED
 from fakes.owner_channel import RecordingDeliveries
 
+from taktus.adapters.driven.connectors.pool import StaticConnectorPool
 from taktus.adapters.driven.memory import (
     MemoryLedgerStore,
+    MemoryObjectStore,
     MemoryPersistence,
     MemoryProvenanceStore,
     MemoryRepository,
 )
+from taktus.adapters.driven.memory.queue import MemoryQueue
 from taktus.adapters.driven.telemetry import NoTelemetry
+from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.adapters.driving.rest.wiring import ProposalActs
 from taktus.components.command.application.service import (
+    CommissionPlanHandler,
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
 )
@@ -48,8 +54,9 @@ from taktus.components.reporting.application.service import (
     ProductFindings,
 )
 from taktus.components.reporting.domain.model import BackupState, Corridor, Judged
-from taktus.components.run.application.service import HandBack, TakeOver
+from taktus.components.run.application.service import HandBack, RunEngine, TakeOver
 from taktus.components.run.domain.model import Run, RunError, UnknownTakeover
+from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
@@ -66,7 +73,7 @@ from taktus.ports.connector import (
 from taktus.ports.ledger import Fact
 from taktus.ports.persistence import Queried, Repository, UnitOfWork
 from taktus.ports.worker import ComputeLimit, Limits
-from taktus.shared.v1 import Command, ExactnessClass, LedgerRefs, Method, Step
+from taktus.shared.v1 import Command, ExactnessClass, LedgerRefs, Method, Plan, Step
 
 TENANT = "default"
 OTHER = "other"
@@ -204,6 +211,46 @@ class Services:
     """Incidents, alerts, the backup and the signals (ADR-0121)."""
     takeovers: FakeTakeovers = field(default_factory=FakeTakeovers)
     """A running step taken over and handed back (ADR-0128)."""
+    queue: MemoryQueue | None = None
+    """The queue a process started from the MCP surface is submitted to (ADR-0131)."""
+    built_agent: AgentSurface | None = None
+
+    @property
+    def agent(self) -> AgentSurface:
+        """The MCP surface's acts, over this world's stores and a real run engine (ADR-0131)."""
+        if self.built_agent is None:
+            self.queue = MemoryQueue(self.persistence, self.clock, lease_seconds=60)
+            engine = RunEngine(
+                maturities=VERIFIED,
+                runs=self.runs,
+                work=self.persistence,
+                objects=MemoryObjectStore(),
+                ledger=self.ledger,
+                provenance=MemoryProvenanceStore(self.persistence),
+                workers=StaticWorkerPool([("worker.fake", FakeWorker())]),
+                clock=self.clock,
+                ids=self.ids,
+                telemetry=NoTelemetry(),
+                queue=self.queue,
+                connectors=StaticConnectorPool([]),
+            )
+            self.built_agent = AgentSurface(
+                processes=MemoryRepository(self.persistence, Process),
+                versions=MemoryRepository(self.persistence, ProcessVersion),
+                commission=CommissionPlanHandler(
+                    MemoryRepository(self.persistence, Command),
+                    MemoryRepository(self.persistence, Plan),
+                    self.persistence,
+                    self.clock,
+                    self.ids,
+                ),
+                engine=engine,
+                ledger=self.ledger,
+                work=self.persistence,
+                clock=self.clock,
+                ids=self.ids,
+            )
+        return self.built_agent
 
     @property
     def work(self) -> UnitOfWork:
