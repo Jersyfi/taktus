@@ -90,7 +90,7 @@ from taktus.components.process.application.service.proposals import Proposals
 from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
-from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
+from taktus.components.process.domain.model import Evaluation, Process, ProcessVersion, Proposal
 from taktus.components.reporting.application.service import Kept, ProductFindings, StepTraces
 from taktus.components.run.application.query import (
     BlockedTime,
@@ -118,7 +118,7 @@ from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.loopback import Loopback, Pools
-from taktus.composition.maturation import InstanceMaturation, maturation_wiring
+from taktus.composition.maturation import InstanceMaturation, RepositoryScores, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
 from taktus.composition.owner_channel import known_secrets, owner_channel_wiring
@@ -377,6 +377,12 @@ class LocalWiring:
                 clock=clock,
                 decisions=decisions.requests,
                 prices=prices,
+                scores=RepositoryScores(
+                    stores.of(ProcessVersion),
+                    stores.of(Evaluation),
+                    stores.of(WatchConfiguration),
+                    stores.work,
+                ),
             )
             loopback.bind(
                 Loopback(

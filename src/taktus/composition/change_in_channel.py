@@ -10,6 +10,12 @@ The owner-facing channel (ADR-0045) reads four acts, by the words of its phraseb
   <process>@<version>` — are read back first, and take effect only on the same person's `yes` in
   the same thread (ADR-0008). A `no` drops them. Until then nothing changes.
 
+A proposal held to the process's evaluation cases (ADR-0134 §4) is read back with its verdict:
+the cases, both scores and the tolerance. While its cases run, or where the verdict is a
+regression or a case without a score, the verdict is said instead of a reading, with the page:
+a commissioning against the verdict needs the person's reason, which the page takes (ADR-0134
+§9). A phrasebook without the verdict's sentences reads back as before.
+
 Only in the owner's conversation, and only for the owner or someone the owner named (UC-1.7);
 anyone else is told the act cannot be done. Whatever is refused — a proposal not yet rehearsed, a
 version taken — is answered with the same sentence, and the process's page in the web app says
@@ -22,9 +28,16 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
+from typing import Protocol
 
 from taktus.components.process.application.service.proposals import ProposalError, Proposals
-from taktus.components.process.domain.model import InvalidProcess
+from taktus.components.process.domain.model import InvalidProcess, Proposal
+from taktus.components.process.domain.model.evaluation import (
+    Evaluation,
+    EvaluationState,
+    Side,
+    Verdict,
+)
 from taktus.components.reporting.domain.model import OwnerChannel, PendingAct, Phrasebook
 from taktus.components.reporting.domain.service import reading as rules
 from taktus.components.reporting.ports import Deliveries, SecretValues, Sent
@@ -36,9 +49,15 @@ from taktus.shared.v1 import Capability
 CHANGED = "changed"
 ASKED = "read_back"
 REFUSED = "refused"
+HELD = "held"
+"""A commissioning its proposal's evaluation holds: the verdict was said, nothing read back."""
 CHANGE_KINDS = ("commission", "rollback")
 """The acts read back here; a take-over waits in the same thread under another handler's kinds
 (`composition/takeover_in_channel.py`)."""
+
+
+class EvaluationsRead(Protocol):
+    async def get(self, tenant: Tenant, process_id: str, evaluation_id: str) -> Evaluation: ...
 
 
 @dataclass(frozen=True)
@@ -59,7 +78,11 @@ class ChangeInChannel:
         deliveries: Deliveries,
         secrets: SecretValues,
         clock: Clock,
+        evaluations: EvaluationsRead | None = None,
     ) -> None:
+        """`evaluations` reads a proposal's evaluation on the process's cases; None: no
+        verdict is read back."""
+        self._evaluations = evaluations
         self._secrets = secrets
         self._channels = channels
         self._pending = pending
@@ -120,6 +143,10 @@ class ChangeInChannel:
                 return await self._say(found, said, thread, event, CHANGED)
             if asked.kind == "commission":
                 proposal = await self._proposals.find(tenant, asked.target)
+                verdict, readable = await self._verdict(tenant, proposal, book)
+                if not readable:
+                    said = verdict + _page(found, proposal.process_id, book)
+                    return await self._say(found, said, thread, event, HELD)
                 act = PendingAct(
                     id=_key(address, thread),
                     tenant=tenant,
@@ -136,6 +163,8 @@ class ChangeInChannel:
                     process=proposal.process_id,
                     version=proposal.version,
                 )
+                if verdict:
+                    read = f"{read} {verdict}"
             else:
                 act = PendingAct(
                     id=_key(address, thread),
@@ -184,6 +213,42 @@ class ChangeInChannel:
             return await self._say(found, book.act_refused, thread, event, REFUSED)
         return await self._say(found, said + _page(found, process, book), thread, event, CHANGED)
 
+    async def _verdict(
+        self, tenant: Tenant, proposal: Proposal, book: Phrasebook
+    ) -> tuple[str, bool]:
+        """The sentence that names the proposal's verdict on the process's cases, and whether
+        the commissioning may be read back: only a verdict that passed lets it be, or no
+        evaluation at all. Empty, and readable, where nothing is held or the phrasebook names
+        no verdict."""
+        if (
+            self._evaluations is None
+            or proposal.evaluation is None
+            or book.evaluation_passed is None
+        ):
+            return "", True
+        try:
+            evaluation = await self._evaluations.get(
+                tenant, proposal.process_id, proposal.evaluation
+            )
+        except ProposalError:
+            return "", True
+        cases = str(len(evaluation.cases))
+        if evaluation.state is not EvaluationState.SCORED:
+            return _filled(book.evaluation_running, cases=cases), False
+        active, proposed = evaluation.side(Side.ACTIVE), evaluation.side(Side.PROPOSED)
+        figures = {
+            "cases": cases,
+            "active": _figure(None if active is None else active.score),
+            "proposed": _figure(None if proposed is None else proposed.score),
+            "tolerance": _figure(evaluation.tolerance),
+        }
+        if evaluation.verdict is Verdict.PASSED:
+            return _filled(book.evaluation_passed, **figures), True
+        if evaluation.verdict is Verdict.REGRESSED:
+            return _filled(book.evaluation_regressed, **figures), False
+        unscored = sum(s.unscored for s in evaluation.sides)
+        return _filled(book.evaluation_incomplete, cases=cases, unscored=str(unscored)), False
+
     async def _say(
         self, found: OwnerChannel, said: str | None, thread: str | None, event: str, outcome: str
     ) -> Changing:
@@ -202,6 +267,11 @@ class ChangeInChannel:
 
 def _filled(template: str | None, **values: str) -> str:
     return (template or "").format(**values)
+
+
+def _figure(value: float | None) -> str:
+    """A score or a tolerance as it is said: two decimals, or a dash where there is none."""
+    return "—" if value is None else f"{value:.2f}"
 
 
 def _page(found: OwnerChannel, process: str, book: Phrasebook) -> str:
