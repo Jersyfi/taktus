@@ -417,6 +417,29 @@ source_declaration = Table(
 )
 """One row per tenant that declared its sources (ADR-0130)."""
 
+message_rules = Table(
+    "message_rules",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    _at("configured_at"),
+    Column("rules", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that configured its rules for outward messages (ADR-0142)."""
+
+case_answer = Table(
+    "case_answer",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("process", Text, nullable=False),
+    _at("answered_at"),
+    Column("answer", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per case of a process a person answered in (ADR-0142 §9)."""
+
 # --- the trace inside a step (ADR-0135) -----------------------------------------------------
 
 step_trace = Table(

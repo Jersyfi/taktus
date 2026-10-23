@@ -13,8 +13,10 @@ from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.decision.domain.model import RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
+    CaseAnswer,
     CorrectionLimits,
     Incident,
+    MessageRules,
     ResidencyRule,
     SourceDeclaration,
     WatchConfiguration,
@@ -72,6 +74,8 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (CorrectionLimits, samples.correction_limits),
     (ResidencyRule, samples.residency_rule),
     (SourceDeclaration, samples.source_declaration),
+    (MessageRules, samples.message_rules),
+    (CaseAnswer, samples.case_answer),
     (Deadline, samples.deadline),
     (WorkingTime, samples.working_time),
     (AdapterStop, samples.adapter_stop),

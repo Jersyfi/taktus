@@ -64,6 +64,17 @@ work may carry three keys of its own, read by `control_of` and never part of the
   source, through reads only, no host at all, and reads only what analytic steps produced. Its
   source is one the tenant declares free of personal fields. `analytic: true` is a step that
   reads no source of its own.
+
+**An outward message** (ADR-0142). Two more keys hold what a connector step sends:
+
+- `message: {text, checks, check, classification?, case?}` — the step sends a message under
+  the frame: `checks` are named conditions, in the shape of a `check` rule's, every one of which
+  must hold for the message to be sent; `check` is the independent check, a step of its own
+  that answers `send` or `reject`; `classification` the step whose answer says whether the
+  message promises a date, a feature or legal advice; `case` the case a person may answer in,
+  one of the run's inputs; `text` the field of the input the label is added to;
+- `recipients` — whom an outward step addresses, as a list, a text or a count: more than the
+  tenant's limit waits for a person, at every level.
 """
 
 from __future__ import annotations
@@ -651,7 +662,11 @@ ON_ESCALATION = "on_escalation"
 EMPTY_WHEN_SKIPPED = "empty_when_skipped"
 SCOPE = "scope"
 ANALYTIC = "analytic"
-CONTROL_KEYS = frozenset({WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED, SCOPE, ANALYTIC})
+MESSAGE = "message"
+RECIPIENTS = "recipients"
+CONTROL_KEYS = frozenset(
+    {WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED, SCOPE, ANALYTIC, MESSAGE, RECIPIENTS}
+)
 
 
 class Ask(Value):
@@ -680,9 +695,34 @@ class Analytic(Value):
         return {} if given is True else given
 
 
+class Message(Value):
+    """The frame of an outward message (ADR-0142): what the run holds a message step to before
+    it sends. The checks are named, and each is a condition over earlier results; the step
+    named by `check` checks the draft against the raw tool results on its own."""
+
+    text: str = Field(default="text", min_length=1)
+    """The field of the operation's input that is the message's text: the label is added to
+    it, as a paragraph of its own after the text."""
+    checks: dict[str, Condition] = Field(min_length=1)
+    check: StepId
+    classification: StepId | None = None
+    """The step whose answer classifies the message as a promise or not. None: the message
+    cannot be classified, and is held for a person."""
+    case: str | None = Field(default=None, min_length=1)
+    """The case a person may answer in, resolved from the run's inputs. None: the step's scope
+    subject, where it has one."""
+
+    @model_validator(mode="after")
+    def _named(self) -> Message:
+        for name in self.checks:
+            if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+                raise ValueError(f"a check is named by a lowercase token, not {name!r}")
+        return self
+
+
 class Control(Value):
     """When a step runs, whom it asks first and what it may see: the keys of a step's work that
-    are not what the step does (ADR-0088, ADR-0097, ADR-0130)."""
+    are not what the step does (ADR-0088, ADR-0097, ADR-0130, ADR-0142)."""
 
     when: tuple[Condition, ...] = ()
     ask: Ask | None = None
@@ -696,11 +736,17 @@ class Control(Value):
     """The case the step serves, with its subject resolved from the run's inputs (ADR-0130)."""
     analytic: Analytic | None = None
     """The step analyses, and its frame holds nothing outward (ADR-0130)."""
+    message: Message | None = None
+    """The step sends a message under the frame of ADR-0142."""
+    recipients: Any = None
+    """Whom an outward step addresses, with references; None: one recipient (ADR-0142 §6)."""
 
     @model_validator(mode="after")
     def _a_step_on_escalation_asks_nobody(self) -> Control:
         if self.scope is not None and self.analytic is not None:
             raise ValueError("a step serves a case or analyses, never both")
+        if self.analytic is not None and (self.message is not None or self.recipients is not None):
+            raise ValueError("an analytic step speaks to nobody outside: it sends no message")
         if self.on_escalation and self.ask is not None:
             raise ValueError("a step that runs on escalation asks nobody")
         if self.empty_when_skipped and not self.when:
@@ -716,6 +762,10 @@ class Control(Value):
         found: list[Any] = [condition.value for condition in self.when]
         if self.ask is not None:
             found.append(self.ask.values)
+        if self.message is not None:
+            found.extend(check.value for check in self.message.checks.values())
+        if self.recipients is not None:
+            found.append(self.recipients)
         return found
 
 
@@ -729,6 +779,8 @@ def control_of(
         return Control()
     if SCOPE in given and (why := not_from_intake(given[SCOPE])) is not None:
         raise UnsupportedWork(step.id, f"work.scope: {why}")
+    if MESSAGE in given and (why := case_not_from_intake(given[MESSAGE])) is not None:
+        raise UnsupportedWork(step.id, f"work.message.case: {why}")
     try:
         return Control.model_validate(resolve_inputs(given, inputs or {}))
     except ValidationError as error:
@@ -759,6 +811,21 @@ def not_from_intake(scope: Any) -> str | None:
         return (
             "the subject is one of the run's inputs, as its intake gave it — {$input: <name>} "
             "— never a step's result, the run's record or a default"
+        )
+    return None
+
+
+def case_not_from_intake(message: Any) -> str | None:
+    """Why a message's `case` does not name the case from the run's inputs, or None. The case
+    is what a person answers in, and a step's output never chooses it: one `$input`, with a
+    `$select` at most, as a scope's subject (ADR-0142 §2)."""
+    if not isinstance(message, Mapping) or "case" not in message:
+        return None
+    case = message["case"]
+    if not isinstance(case, Mapping) or INPUT not in case or not set(case) <= {INPUT, SELECT}:
+        return (
+            "the case is one of the run's inputs, as its intake gave it — {$input: <name>} — "
+            "never a step's result, the run's record or a default"
         )
     return None
 

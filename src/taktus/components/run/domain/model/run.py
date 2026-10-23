@@ -206,6 +206,11 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
         # wait (ADR-0088).
         (StepState.PLANNED, StepState.SUCCEEDED),
         (StepState.REJECTED, StepState.SUCCEEDED),
+        # A person answered in the case while an approved message was held: it is not sent,
+        # and the step ends without its act from its hold, and from a failure resumed
+        # (ADR-0142 §9).
+        (StepState.STOPPED, StepState.SUCCEEDED),
+        (StepState.FAILED, StepState.SUCCEEDED),
     }
 )
 

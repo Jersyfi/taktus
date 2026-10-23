@@ -148,6 +148,17 @@ the step carries it; `analytic` names the one source an analytic step reads, whi
 declares free of personal fields, and leaves it no outward operation and no host. Registration
 refuses a frame that cannot hold, and the run refuses it again at every call.
 
+A connector step that delivers what a model drafted sends an **outward message** (ADR-0142).
+Its work declares `message`: the named checks that make its send decision, the step that checks
+the draft on its own and answers `send` or `reject`, the step that classifies promises, and the
+case. Before it sends, the run holds it to that frame by rule: a check that fails or a check step
+that does not answer `send` sends nothing (`message.held`); a promise, an unclassified message
+and more recipients than the tenant's limit wait for a person at every level; an approved
+message waits for the tenant's delay and quiet hours at its boundary, the run parked
+(`message.delayed`); a person's answer in the case ends it without its act. The tenant's label
+is added to its text at the call, and `message.sent` names the message's record beside its
+egress entry.
+
 ### 4.2 Versioning
 
 Every change creates a new **process version** with author, reason, diff and evaluation result.
