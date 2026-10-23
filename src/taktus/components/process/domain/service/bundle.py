@@ -3,15 +3,23 @@ version: what a rollback does (UC-4.15, ADR-0091 §5). Pure.
 
 The bundle is the shape registration reads (`control-plane.md` §4, `examples/processes/README.md`):
 each step with its `work` beside it, the autonomy statement, the triggers, the inputs, the
-service level in seconds and the limits. Registered again, it gives the same version under the
-new name, with the author and the reason the rollback gives.
+service level and the expectation in seconds, the limits, the caps on open work (ADR-0132), the
+deadlines (ADR-0133) and the evaluation (ADR-0134). Every field a version declares is written
+back, so that a rollback restores the version as it was, its caps included (#611). Registered
+again, it gives the same version under the new name, with the author and the reason the
+rollback gives.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from taktus.components.process.domain.model.process import ProcessVersion
+from taktus.components.process.domain.model.process import (
+    DeadlineAction,
+    DeadlineDeclaration,
+    OpenWorkCap,
+    ProcessVersion,
+)
 
 
 def bundle_of(
@@ -59,9 +67,51 @@ def bundle_of(
             if value is not None:
                 expect[name] = value.total_seconds()
         bundle["expect"] = expect
+    if version.open_work:
+        bundle["open_work"] = {kind: _cap(cap) for kind, cap in version.open_work.items()}
+    if version.deadlines:
+        bundle["deadlines"] = {
+            name: _deadline(deadline) for name, deadline in version.deadlines.items()
+        }
     if version.evaluation is not None:
         bundle["evaluation"] = version.evaluation.document()
     return bundle
+
+
+def _cap(cap: OpenWorkCap) -> dict[str, Any]:
+    """A cap as `open_work.<kind>` declares it, its interval in seconds."""
+    document: dict[str, Any] = {"cap": cap.cap, "check_every": cap.check_every.total_seconds()}
+    if cap.reading is not None:
+        document["reading"] = cap.reading.document()
+    return document
+
+
+def _deadline(deadline: DeadlineDeclaration) -> dict[str, Any]:
+    """A deadline as `deadlines.<name>` declares it (ADR-0133 §1), its durations in seconds."""
+    starting: str | dict[str, str] = "run"
+    if deadline.after is not None:
+        starting = {"after": deadline.after}
+    elif deadline.date_input is not None:
+        starting = {"date": deadline.date_input}
+    document: dict[str, Any] = {
+        "from": starting,
+        "limit": deadline.limit.total_seconds(),
+        "counts": "working" if deadline.working else "calendar",
+        "until": {"step": deadline.until},
+        "at_limit": _action(deadline.at_limit),
+    }
+    if deadline.lead is not None:
+        document["lead"] = deadline.lead.total_seconds()
+    if deadline.at_lead is not None:
+        document["at_lead"] = _action(deadline.at_lead)
+    return document
+
+
+def _action(action: DeadlineAction) -> dict[str, Any]:
+    """`{remind: <role>}`, `{escalate: <role>}` or `{start: {process, inputs}}`."""
+    if action.kind == "start":
+        return {"start": {"process": action.process, "inputs": dict(action.inputs)}}
+    return {action.kind: action.role}
 
 
 def next_version(registered: list[str]) -> str:
