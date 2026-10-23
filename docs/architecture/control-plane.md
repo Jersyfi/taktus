@@ -233,7 +233,10 @@ job and recovers the run at its last boundary (`components/run/application/servi
 one of two runner processes mid-step). A runner that dies after its run ended and before it
 completed the job leaves a job whose run is over; the next runner completes it and executes
 nothing (NTC-0026). A runner that is alive but cannot renew for longer than the lease loses
-the job as well. The claim is therefore also a *fence*: a check that refuses a write from a
+the job as well. A lease runs from the start of the transaction that claimed or renewed it
+(`now()`, not the time of the statement), so a slow claim shortens its own lease by the time it
+waited, and a test of exclusivity uses a lease far longer than the test (#552). The claim is
+therefore also a *fence*: a check that refuses a write from a
 holder who has lost the claim. Every transaction that writes a run executed under a claim first
 asks the queue whether the claim is still the runner's (`Queue.fence`). The queue compares the
 claimant and the claim's attempt — a later claim of the same job, even by the same runner, is

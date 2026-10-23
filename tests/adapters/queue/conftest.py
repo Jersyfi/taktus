@@ -27,7 +27,9 @@ from taktus.ports.persistence import UnitOfWork
 from taktus.ports.queue import Queue
 
 IMPLEMENTATIONS = ("memory", "postgres")
-LEASE_SECONDS = 5
+LEASE_SECONDS = 3600
+"""Far longer than any test here can take, so that no claim expires by the clock under load
+(#552). A test that needs an expired lease makes it with `Backend.expire`, never by waiting."""
 
 
 @dataclass
