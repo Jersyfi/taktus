@@ -26,17 +26,22 @@ from typing import Any
 
 import httpx
 import pytest
+from fakes.guarded import NoWholeReads
 from sqlalchemy import text
 
 from taktus.adapters.driven.postgres import PostgresProjectionStore
 from taktus.adapters.driven.postgres import _schema as schema
 from taktus.components.accounting.application.service import TaktRateHandler, TaktRateOf
 from taktus.components.accounting.domain.service import TAKT
+from taktus.components.governance.domain.service import corrections as rule
+from taktus.components.governance.domain.service.correction_state import CORRECTIONS
 from taktus.components.ledger.application.service.chained_ledger import CHECKPOINT
 from taktus.components.process.domain.service.quality import QUALITY
+from taktus.components.reporting.domain.service import alerts as alert_rule
 from taktus.components.run.application.query import StepMeasures
 from taktus.components.run.domain.model import Run, RunState
 from taktus.components.run.domain.service.projections import CALIBRATION
+from taktus.composition.alerts import recorded
 from taktus.composition.daemon import Wired
 from taktus.composition.settings import weighting_table_in_force
 from taktus.ports.ledger import Fact
@@ -66,10 +71,36 @@ def placeholder(n: str) -> str:
     return f"'sha256:' || lpad(to_hex({n}), 64, '0')"
 
 
-async def seed(wired: Wired, tenant: str) -> float:
-    """500 000 entries, written by the database in one statement; the seconds it took."""
+DECISIONS = "ARRAY[NULL, 'mail.reply.send', 'mail.send', 'file.write']"
+"""The action class of a decision, by the number of the entry: a process's own level and three
+actions."""
+
+
+async def seed(wired: Wired, tenant: str, *, corrections: bool = False) -> float:
+    """500 000 entries, written by the database in one statement; the seconds it took. With
+    `corrections`, 2 000 of them are decisions on proposals of four units, nearly all released,
+    over the 347 days the seed covers; a few are a lowering, a raise or a proposal, a capacity
+    crossing or a lost claim. The ledger is append-only, so they are written as they are."""
     run = "((n - 1) / 6)"
     kind = f"({KINDS})[(n - 1) % 6 + 1]"
+    action = "NULL"
+    if corrections:
+        kind = f"""(CASE WHEN n % 250 = 0 THEN 'proposal.decided'
+            WHEN n % 100003 = 0 THEN 'autonomy.lowered' WHEN n % 150001 = 0 THEN 'autonomy.raised'
+            WHEN n % 190007 = 0 THEN 'autonomy.proposed' WHEN n % 41003 = 0 THEN 'capacity.memory'
+            WHEN n % 60013 = 0 THEN 'run.claim_lost' ELSE ({KINDS})[(n - 1) % 6 + 1] END)"""
+        outcome = f"""CASE WHEN {kind} = 'proposal.decided'
+            THEN CASE WHEN n % 53 = 0 THEN 'corrected' WHEN n % 71 = 0 THEN 'rejected'
+                      ELSE 'released' END
+            WHEN {kind} = 'autonomy.lowered' THEN 'level_2'
+            WHEN {kind} = 'autonomy.raised' THEN 'raised'
+            WHEN {kind} = 'autonomy.proposed' THEN 'corrections'
+            WHEN {kind} = 'capacity.memory' THEN CASE WHEN n % 2 = 0 THEN 'act' ELSE 'ok' END
+            WHEN {kind} = 'run.claim_lost' THEN 'lost'
+            WHEN {kind} = 'step.finished' THEN 'succeeded' END"""
+        action = f"CASE WHEN n % 250 = 0 THEN ({DECISIONS})[(n / 250) % 4 + 1] END"
+    else:
+        outcome = f"CASE WHEN {kind} = 'step.finished' THEN 'succeeded' END"
     on_step = f"{kind} IN ('step.admitted', 'step.finished')"
     statement = f"""
         INSERT INTO ledger_entry (tenant, seq, ts, kind, prev_hash, hash, refs, method, adapter,
@@ -80,7 +111,8 @@ async def seed(wired: Wired, tenant: str) -> float:
                jsonb_strip_nulls(jsonb_build_object(
                    'run_id', 'run_' || {run},
                    'step_id', CASE WHEN {kind} LIKE 'step.%' THEN 'step-' || {run} % 10 END,
-                   'process_version', 'seeded-' || {run} % 4 || '@1')),
+                   'process_version', 'seeded-' || {run} % 4 || '@1',
+                   'action', {action})),
                CASE WHEN {on_step} THEN 'worker' END,
                CASE WHEN {on_step} THEN 'worker.seeded-' || {run} % 5 END,
                CASE WHEN {kind} = 'step.admitted'
@@ -88,7 +120,7 @@ async def seed(wired: Wired, tenant: str) -> float:
                     WHEN {kind} = 'step.finished'
                     THEN jsonb_build_object('tokens_in', 80 + {run} % 37,
                                             'tokens_out', 30 + {run} % 29) END,
-               CASE WHEN {kind} = 'step.finished' THEN 'succeeded' END
+               {outcome}
         FROM generate_series(1, {ENTRIES}) AS n
     """  # noqa: S608 — every name and number is a constant of this file
     started = time.perf_counter()
@@ -333,3 +365,79 @@ async def test_the_remaining_whole_ledger_reads_cost_what_they_return(
             f"kind = 'step.finished' AND ts >= '{(now - timedelta(days=30)).isoformat()}'",
         )
         assert "ledger_entry_kind_ts" in plan_ts, plan_ts
+
+
+@pytest.mark.timing
+async def test_the_correction_figures_and_the_alert_sweep_cost_what_they_return(
+    instances: Callable[..., Instance], chosen: str
+) -> None:
+    """The figures of UC-7.5, the raises Taktus proposed on them and the sweep every minute that
+    reports to the owner (ADR-0105 §10, issue #550), each over 500 000 entries, of which 2 000
+    are decisions: the figures read a projection, the sweep the entries of the kinds it reports,
+    both through a ledger that would refuse a read of the whole of it."""
+    async with instances("ledger", TAKTUS_ROLES="api", TAKTUS_TENANTS=chosen) as one:
+        assert one.wired is not None
+        wired = one.wired
+        await seed(wired, chosen, corrections=True)
+        await checkpointed(wired, chosen)
+        corrections = wired.corrections
+        guard = NoWholeReads(wired.ledger)
+        corrections._ledger = guard  # type: ignore[assignment]
+        now = AT + timedelta(minutes=ENTRIES)
+        corrections._clock = At(now)  # type: ignore[assignment]
+        wired.alerts._signals._ledger = guard  # type: ignore[attr-defined]
+
+        started = time.perf_counter()
+        async with wired.work.transaction(chosen):
+            await wired.ledger.project(chosen, CORRECTIONS)
+        print(f"\nthe corrections projection built once: {time.perf_counter() - started:.2f} s")
+
+        async def timed_read(name: str, read: Callable[[], Awaitable[Any]]) -> Any:
+            """The median of five, as the other reads are measured (#528)."""
+            timed: list[float] = []
+            for _ in range(LEDGER_READS):
+                started = time.perf_counter()
+                found = await read()
+                timed.append(time.perf_counter() - started)
+            reading = statistics.median(timed)
+            print(
+                f"{name}: median {reading * 1000:.1f} ms of {LEDGER_READS}, "
+                f"best {min(timed) * 1000:.1f} ms, worst {max(timed) * 1000:.1f} ms"
+            )
+            assert reading < REMAINING_SECONDS, (name, timed)
+            return found
+
+        figures = await timed_read("the correction figures", lambda: corrections.figures(chosen))
+        proposed = await timed_read("the raises proposed", lambda: corrections.proposed(chosen))
+        noticed = await timed_read("the alert sweep", lambda: wired.alerts.noticed(chosen))
+
+        # Each equals what every entry gives.
+        async with wired.work.transaction(chosen):
+            stored = await wired.ledger.project(chosen, CORRECTIONS)
+            rebuilt = await wired.ledger.rebuilt(chosen, CORRECTIONS)
+            entries = await wired.ledger.entries(chosen)
+        assert stored == rebuilt, "the corrections projection equals its rebuild"
+        assert figures == rule.every_figure(entries, now)
+        assert len(figures) > 4 and sum(f.month.decided for f in figures) > 100
+        assert (await corrections.counted(chosen, now)).retain is not None, "the projection"
+        assert [(p.seq, p.figures) for p in proposed] == [
+            (e.seq, rule.figures(entries, u, e.ts))
+            for e in entries
+            if e.kind == rule.PROPOSED
+            and e.outcome == rule.PROPOSED_BY_CORRECTIONS
+            and (u := rule.unit_of(e)) is not None
+        ]
+        assert len(proposed) == ENTRIES // 190007
+        crossings, losses = recorded(entries)
+        assert crossings and losses
+        assert len([a for a in noticed if a.alert.kind == "capacity"]) == len(
+            alert_rule.capacity(crossings)
+        )
+        assert len([a for a in noticed if a.alert.kind == "claim_lost"]) == len(
+            alert_rule.claims_lost(losses, {})
+        )
+        assert guard.reads == 0
+        by_kind = await plan(
+            wired, chosen, "kind IN ('capacity.memory', 'run.claim_lost') AND seq > 0"
+        )
+        assert "ledger_entry_kind" in by_kind, by_kind

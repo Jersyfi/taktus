@@ -1,6 +1,6 @@
 # ADR-0105 — A read of the ledger costs what it returns
 
-**Status:** accepted · amends ADR-0006: a projection derived from the ledger is allowed · issue #321 · amended by #522 (§9: the four remaining readers)
+**Status:** accepted · amends ADR-0006: a projection derived from the ledger is allowed · issue #321 · amended by #522 (§9: the four remaining readers) and #550 (§10: the correction figures and the alert sweep)
 
 ## Context
 
@@ -71,6 +71,27 @@ On 2026-10-12, with 500 000 entries in one tenant, a run start took 23.6 s and t
      entry of a run that has not begun or has ended changes nothing; runs are ordered by their
      `run.created`.
 
+10. **The correction figures and the alert sweep name what they need** (#550).
+    - *The correction figures* of ADR-0110 are the projection `governance.corrections.v1`
+      (`components/governance/domain/service/correction_state.py`). It reads the kinds
+      `proposal.decided`, `autonomy.lowered`, `autonomy.raised` and `autonomy.proposed`. Per
+      unit it keeps the decisions of the last 35 days (sequence number, moment, outcome) and the
+      first decision made since the unit's last change of level. Per unit it keeps the moment of
+      the last lowering and of the last raise Taktus proposed, per process the moment of the last
+      raise. For each raise Taktus proposed it keeps the figures it was proposed with, computed
+      when its entry is folded. The figures, a proposal and the verdict after a decision read it.
+      The full computation it equals is `domain/service/corrections.py`, over every entry of the
+      four kinds.
+    - A read the projection cannot answer is made from the entries: a moment before the newest
+      entry it has read, a window that begins before the 35 days, or a unit whose last change of
+      level lies before them. The reader then folds the entries of the four kinds up to the moment
+      into a state that keeps every decision, and the same functions answer.
+    - *The alert sweep* reads the entries of the kinds it reports and no other: the capacity
+      crossings, under the four kinds in `capacity.KINDS`, and `run.claim_lost`. A crossing is
+      recorded when the state changes, not at every report, so the sweep returns what it
+      reports. The incidents and the backup's outcomes it also reads are not in the ledger. The
+      raises it reports are the projection's.
+
 ## Alternatives
 
 - **Maintain each projection when an entry is recorded.** Every write would pay for every
@@ -108,6 +129,15 @@ the ledger, one day of entries each at most. The quality projection keeps one nu
 process's last failed run, so a process that never fails grows it by a number a run. An entry
 recorded for a run after it ended, or a second `run.created` of a run that ended, is not
 recognised as such by the projection and is ignored by the full computation: a ledger that
-holds either is outside what the equality promises. Other readers of the whole ledger remain
-(the correction figures, the alert sweep); only the four named in #522 are covered. The chain's shape is unchanged (#341). Nothing of the ledger
+holds either is outside what the equality promises. The correction projection keeps one tuple for each decision of the last 35 days, so its stored
+value and a read grow with the decisions of those days, not with the history; a tenant with ten
+times the decisions pays ten times. Its equality with the rule holds for a ledger whose entries'
+moments do not decrease with their sequence numbers; an entry recorded with an earlier moment than
+one before it changes a count the rule makes over the moments, and the projection counts it by its
+own moment all the same, but the figures of a raise it stored before are not recomputed. A window
+the tenant sets longer than 35 days is read from the entries of the four kinds, which grow with
+all decisions. The sweep costs what the crossings and lost claims it reports hold, so a tenant
+whose instance loses a claim every minute pays for each one. The capacity kinds are a list: a place
+the capacity report looks at that the list does not name is not reported to the owner, and a test
+fails it. No other reader of the whole ledger remains that this decision knows of. The chain's shape is unchanged (#341). Nothing of the ledger
 is deleted or archived.

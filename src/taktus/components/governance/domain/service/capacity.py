@@ -36,6 +36,16 @@ from taktus.components.governance.domain.model.capacity import (
 )
 from taktus.ports.platform import PlatformObservation, Reading, Unobserved
 
+KINDS = (
+    "capacity.storage.state_directory",
+    "capacity.storage.database",
+    "capacity.memory",
+    "capacity.cpu",
+)
+"""Every kind a crossing is recorded under: one for each place the report looks at. The alert
+sweep reads these by kind (ADR-0105 §10); `tests/components/governance/test_report_capacity.py`
+fails a finding whose kind is not among them."""
+
 HORIZON_DAYS = 36_500
 """Beyond a hundred years a date is not a date a person plans by; the finding says so."""
 ACT_NOW = "a person must act now"

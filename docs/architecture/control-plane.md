@@ -391,6 +391,17 @@ the full computation it equals. With 500 000 entries the history took 9 ms, the 
 30 days (7 200 finished steps) 30 ms and the measures 2 ms
 (`tests/integration/test_ledger_at_scale.py`).
 
+The correction figures and the alert sweep name what they need too (ADR-0105 §10, #550). The
+figures of UC-7.5, the raises Taktus proposed and the verdict after a decision are the projection
+`governance.corrections.v1` (`components/governance/domain/service/correction_state.py`): per
+unit the decisions of the last 35 days and the first decision since its last change of level, and
+the figures each proposal was made with. `domain/service/corrections.py` is the full computation
+it equals. A moment before the projection's newest entry, or a window that begins before the 35
+days, is read from the entries of the four kinds. The alert sweep reads the capacity crossings
+and the lost claims by kind (`Ledger.of_kinds`). With 500 000 entries, 2 000 of them decisions,
+the figures took 3 ms, the raises 4 ms and the sweep 14 ms
+(`tests/integration/test_ledger_at_scale.py`).
+
 **A chain is verified from its last verified checkpoint.** The checkpoint is the sequence number
 and hash of the newest entry a verification found intact, stored as a projection. A verification
 walks the entries after it and moves it when it finds nothing. `GET /runs/{id}/ledger` answers

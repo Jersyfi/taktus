@@ -2,11 +2,12 @@
 reads, the scheduler's tick that reports them to the owner, and the startup lines that say who
 will hear of them.
 
-`RecordedSignals` reads a tenant's ledger once — its capacity crossings, which the governance
-component writes, and its lost claims, which the run writes — and the backup's outcomes, which
-the backup program writes into the database. It hands them to the reporting component in its
-own shape. With the governance component's `Corrections`, it also reads every incident about a
-level that fell by rule and every raise Taktus proposed on the corrections (ADR-0110). The
+`RecordedSignals` reads a tenant's capacity crossings, which the governance component writes,
+and its lost claims, which the run writes, by their kinds and nothing else of the ledger
+(ADR-0105 §10), and the backup's outcomes, which the backup program writes into the database. It
+hands them to the reporting component in its own shape. With the governance component's
+`Corrections`, it also reads every incident about a level that fell by rule and every raise
+Taktus proposed on the corrections (ADR-0110). The
 components never import each other; this is where they meet. `alerts` builds the
 use case over the owner-facing channel's own handlers, so that an alert reaches the owner
 through the same channel, checks and renderings as every other report (ADR-0045).
@@ -14,7 +15,7 @@ through the same channel, checks and renderings as every other report (ADR-0045)
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import datetime, timedelta
 
 import structlog
@@ -22,6 +23,7 @@ from pydantic import ValidationError
 
 from taktus.components.governance.application.service import Corrections
 from taktus.components.governance.domain.model import Incident, Proposed
+from taktus.components.governance.domain.service import capacity as capacity_rule
 from taktus.components.reporting.application.service import Alerts, ProductFindings, Reported
 from taktus.components.reporting.domain.model import (
     BackupRun,
@@ -40,13 +42,17 @@ from taktus.ports.clock import Clock
 from taktus.ports.identity import ServedTenants
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Tenant, TenantStore, UnitOfWork
+from taktus.shared.v1 import LedgerEntry
 
 INTERVAL_SECONDS = 60
 """How often the scheduler looks: the owner hears of a recorded fact within a minute, and each
-look reads the tenant's ledger once."""
+look reads the entries of the kinds it reports, not the tenant's ledger."""
 
 CAPACITY = "capacity."
 """Every kind the capacity report records a crossing under starts with this (platform.md §3)."""
+
+READ_KINDS = (*capacity_rule.KINDS, CLAIM_LOST)
+"""The kinds a look reads."""
 
 log = structlog.get_logger("taktusd")
 
@@ -103,6 +109,31 @@ def _proposed(one: Proposed) -> RaiseProposed:
     )
 
 
+def recorded(entries: Iterable[LedgerEntry]) -> tuple[list[CapacityCrossing], list[ClaimLost]]:
+    """The capacity crossings and the lost claims among entries of any kind, in their order."""
+    crossings: list[CapacityCrossing] = []
+    losses: list[ClaimLost] = []
+    for one in entries:
+        if one.rehearsal:
+            continue
+        try:
+            if one.kind.startswith(CAPACITY) and one.outcome in ("act", "ok"):
+                crossings.append(
+                    CapacityCrossing.model_validate(
+                        {"seq": one.seq, "at": one.ts, "kind": one.kind, "outcome": one.outcome}
+                    )
+                )
+            elif one.kind == CLAIM_LOST and one.refs.run_id is not None:
+                losses.append(
+                    ClaimLost.model_validate(
+                        {"seq": one.seq, "at": one.ts, "run_id": one.refs.run_id}
+                    )
+                )
+        except ValidationError:
+            continue
+    return crossings, losses
+
+
 class RecordedSignals:
     """A tenant's recorded facts, as the reporting component reads them. An entry whose fields
     do not hold to the reporting component's patterns is left out: nothing that is not an
@@ -127,29 +158,10 @@ class RecordedSignals:
 
     async def signalled(self, tenant: Tenant) -> Signalled:
         async with self._work.transaction(tenant):
-            entries = await self._ledger.entries(tenant)
+            entries = await self._ledger.of_kinds(tenant, READ_KINDS)
             history = await self._backups.history(tenant)
             entry = await self._tenants.get(tenant)
-        crossings: list[CapacityCrossing] = []
-        losses: list[ClaimLost] = []
-        for one in entries:
-            if one.rehearsal:
-                continue
-            try:
-                if one.kind.startswith(CAPACITY) and one.outcome in ("act", "ok"):
-                    crossings.append(
-                        CapacityCrossing.model_validate(
-                            {"seq": one.seq, "at": one.ts, "kind": one.kind, "outcome": one.outcome}
-                        )
-                    )
-                elif one.kind == CLAIM_LOST and one.refs.run_id is not None:
-                    losses.append(
-                        ClaimLost.model_validate(
-                            {"seq": one.seq, "at": one.ts, "run_id": one.refs.run_id}
-                        )
-                    )
-            except ValidationError:
-                continue
+        crossings, losses = recorded(entries)
         lowered: list[LevelLowered] = []
         raises: list[RaiseProposed] = []
         if self._corrections is not None:
