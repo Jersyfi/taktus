@@ -817,6 +817,7 @@ async def wire(
                         heartbeat_seconds=max(settings.lease_seconds / 3, 1.0),
                         # A waiting run is not tried again sooner than one poll (ADR-0037).
                         wait_first_seconds=settings.poll_seconds,
+                        on_outcome=roles.said,
                     ),
                 )
             try:

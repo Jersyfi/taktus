@@ -291,6 +291,7 @@ from taktus.ports.worker import (
     StepBoundary,
     StopRequest,
     Task,
+    UnaskedWorker,
     UnknownAssignment,
     Worker,
     WorkerAtCapacity,
@@ -1496,6 +1497,14 @@ class RunEngine:
         )
 
     async def _execute_step(self, run: Run, step: Step, step_run: StepRun) -> tuple[Run, StepRun]:
+        try:
+            return await self._step_in_span(run, step, step_run)
+        except Exception as error:
+            # Whoever hears of it — the runner, its log — learns the step it came from (#589).
+            error.add_note(f"in step {step.id} of run {run.id}")
+            raise
+
+    async def _step_in_span(self, run: Run, step: Step, step_run: StepRun) -> tuple[Run, StepRun]:
         async with self._telemetry.span(
             "step", {"run.id": run.id, "step.id": step.id, "step.method": step.method}
         ) as span:
@@ -3103,7 +3112,19 @@ class RunEngine:
         span: Span,
         held: autonomy.Held,
     ) -> tuple[Run, StepRun]:
-        resolved = await self._worker_pool(run).resolve(step.required_capabilities)
+        try:
+            resolved = await self._worker_pool(run).resolve(step.required_capabilities)
+        except UnaskedWorker as unasked:
+            # A worker that cannot be asked what it offers is a worker that cannot answer: the
+            # step fails with that cause, or waits for a platform without room for its unit,
+            # as at the estimate below. Raised, the run stayed `running` and every claim of
+            # its job recovered it again (#589).
+            if isinstance(unasked.cause, WorkerAtCapacity):
+                resuming = step_run.checkpoint if step_run.state is StepState.STOPPED else None
+                return await self._full(
+                    run, step_run, work, unasked.adapter, resuming, span, unasked.cause
+                )
+            return await self._unavailable(run, step_run, unasked.adapter, span, unasked)
         if resolved is None:
             # No configured worker offers the capabilities: a failed step, the run escalates
             # at the boundary, and a resume after the configuration changed retries it.
