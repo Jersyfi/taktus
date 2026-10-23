@@ -1,0 +1,8 @@
+{
+  "request_id": "rly_7f3a9c21",
+  "method": "GET",
+  "path": "/v1/capabilities",
+  "headers": {
+    "X-Forwarded-For": "10.0.0.1"
+  }
+}

@@ -78,6 +78,7 @@ async def test_the_coding_worker_passes_in_both_authentication_modes(
     assert report.failed == [], report.render()
     assert report.inconclusive == [], report.render()
     assert statuses.pop("W-12") is Status.PENDING
+    assert statuses.pop("W-21") is Status.PENDING, "reached at an endpoint"
     assert set(statuses.values()) == {Status.PASSED}
     runs = {r.purpose: r for r in report.runs}
     assert runs["stopped"].outcome == "stopped" and runs["resumed"].outcome == "succeeded"
@@ -95,9 +96,15 @@ async def test_the_coding_worker_passes_in_both_authentication_modes(
     assert events[-1]["outcome"] == "succeeded"
 
 
+# The extensions this worker does not offer (ADR-0139): W-19 and W-20 hold it to refusing
+# them, and the reference worker's faults prove both checks; W-21 is the outbound binding,
+# which this worker does not offer either.
+NOT_OFFERED = {"W-19", "W-20", "W-21"}
+
+
 def test_every_runtime_check_has_a_fault() -> None:
     broken = {check for _, check in FAULTS}
-    assert broken == set(CHECKS) - {"W-12"}
+    assert broken == set(CHECKS) - {"W-12", *NOT_OFFERED}
 
 
 @pytest.mark.parametrize(("fault", "check"), FAULTS, ids=[f for f, _ in FAULTS])

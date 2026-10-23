@@ -1,4 +1,4 @@
-"""The suite: W-01 to W-18 against a live worker.
+"""The suite: W-01 to W-21 against a live worker.
 
 The endpoint is the only required input. The suite reads the worker's capabilities, asks for an
 estimate, and then posts up to seven assignments one after the other, each for a purpose:
@@ -44,8 +44,19 @@ value only this run knows, which must come back as the artifact the task names, 
 first step, with the work after it; `before-command-failing` exits with 1, which must fail the
 assignment before any step of the work starts.
 
+Then the work once more, sent a message while its first step runs (`steered`), and the message
+again under the same id: a worker that declares steering accepts both and receives the message
+once, at a boundary; one that does not refuses it (W-19). Then the work handed over while its
+first step runs (`handed-over`): a worker that declares handover ends it at a boundary with a
+`handover.state` document, from which the work is continued (`continued`); one that does not
+refuses the request, and the work runs on (W-20).
+
 W-08 scans everything the suite saw for the value of the credential it referenced by name. W-12
 is reported as pending: the removal test needs processes, and the suite has none.
+
+With `listen` the suite serves the outbound binding itself (`relay.py`) instead of calling an
+endpoint: it waits for the worker to connect, runs every check above over the binding, and
+judges the binding itself as W-21. Against an endpoint, W-21 is reported as pending.
 
 What the worker does inside a step is its own business. The suite sends a generic task unless
 the caller supplies one; a worker that needs a real task to do anything is given one with
@@ -59,11 +70,13 @@ fix. Base fields, unknown types and transport faults belong to W-03.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
+import json
 import re
 import secrets
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -74,6 +87,7 @@ from taktus.conformance import rules
 from taktus.conformance.client import Response, Stream, WorkerClient
 from taktus.conformance.contracts import first_error
 from taktus.conformance.findings import Findings
+from taktus.conformance.relay import RelayHost
 from taktus.conformance.report import CheckResult, Report, RunSummary
 from taktus.conformance.rules import CATALOGUE, CHECKS
 
@@ -98,7 +112,10 @@ EVENT_OWNER = {
     "step.boundary": "W-05",
     "tool.called": "W-09",
     "artifact.produced": "W-11",
+    "message.received": "W-19",
 }
+CONNECT_SECONDS = 60.0
+"""How long the suite with `listen` waits for the worker to connect."""
 
 
 @dataclass
@@ -114,6 +131,10 @@ class SuiteOptions:
     timeout: float = 300.0  # one assignment, start to finish
     idle_timeout: float = 60.0  # between two events
     max_held: int = MAX_HELD  # the most assignments W-15 holds at once to fill a worker
+    listen: str | None = None
+    """`host:port` where the suite serves the outbound binding for a worker that connects to
+    it; `endpoint` is then only the label of the report (README §8)."""
+    connect_timeout: float = CONNECT_SECONDS
 
 
 @dataclass
@@ -129,6 +150,12 @@ class Run:
     stop: Response | None = None
     artifacts: Response | None = None
     artifact_bytes: dict[str, bytes] = field(default_factory=dict)
+    messages: list[Json] = field(default_factory=list)
+    """The steering messages the worker accepted, each with the `last_seq` its answer named."""
+    message_answers: list[Response] = field(default_factory=list)
+    handover: Response | None = None
+    handover_requested: bool = False
+    """A handover was requested while the assignment ran and the worker answered `stopping`."""
 
     @property
     def id(self) -> str:
@@ -160,7 +187,9 @@ class Run:
         for label, response in (
             ("the assignment state", self.final),
             ("the response to POST /stop", self.stop),
+            ("the response to POST /handover", self.handover),
             ("the artifact list", self.artifacts),
+            *(("the response to POST /messages", r) for r in self.message_answers),
         ):
             if response is not None:
                 out.append((label, response.text))
@@ -172,13 +201,30 @@ class Run:
 
 
 async def run_suite(options: SuiteOptions) -> Report:
-    report = Report(endpoint=options.endpoint, contract=CATALOGUE.contract)
+    host = RelayHost(options.listen) if options.listen else None
+    if host is not None:
+        await host.start()
+    try:
+        return await _suite(options, host)
+    finally:
+        if host is not None:
+            await host.close()
+
+
+async def _suite(options: SuiteOptions, host: RelayHost | None) -> Report:
+    endpoint = options.endpoint if host is None else f"{host.base} (outbound binding)"
+    report = Report(endpoint=endpoint, contract=CATALOGUE.contract)
     findings = Findings(CHECKS)
     runs: list[Run] = []
     async with WorkerClient(
-        options.endpoint, timeout=options.timeout, idle_timeout=options.idle_timeout
+        options.endpoint if host is None else "http://worker.relay",
+        timeout=options.timeout,
+        idle_timeout=options.idle_timeout,
+        transport=None if host is None else host.transport(),
     ) as client:
         try:
+            if host is not None:
+                await _connected(host, options, report)
             await _health(client, report)
             capabilities = await _w01(client, findings)
             declared = _declared_tools(capabilities)
@@ -200,17 +246,25 @@ async def run_suite(options: SuiteOptions) -> Report:
             await _w17(client, options, main, declared, fitting, findings, runs)
             await _w18(client, options, declared, fitting, estimate, findings, runs)
             await _w18_before(client, options, declared, fitting, estimate, findings, runs)
+            await _w19(
+                client, options, capabilities, main, declared, fitting, estimate, findings, runs
+            )
+            await _w20(
+                client, options, capabilities, main, declared, fitting, estimate, findings, runs
+            )
         except httpx.HTTPError as error:
-            report.notes.append(f"the worker at {options.endpoint} stopped answering: {error!r}")
+            report.notes.append(f"the worker at {endpoint} stopped answering: {error!r}")
             if not findings.evidence["W-01"]:
-                findings.fail("W-01", f"the worker at {options.endpoint} did not answer: {error!r}")
+                findings.fail("W-01", f"the worker at {endpoint} did not answer: {error!r}")
             for check in CHECKS:
-                if check != "W-12" and not findings.evidence[check]:
+                if check not in ("W-12", "W-21") and not findings.evidence[check]:
                     findings.inconclusive.setdefault(
                         check, "not reached: the worker stopped answering (see the notes)"
                     )
     _w08(options, runs, findings)
     _w09(runs, findings)
+    if host is not None:
+        _w21(host, findings)
     for check in CHECKS:
         if check == "W-12":
             report.add(
@@ -218,6 +272,15 @@ async def run_suite(options: SuiteOptions) -> Report:
                     "W-12",
                     "not run: the removal test needs processes that use the adapter, and no "
                     "process exists yet; this half of maturity stays pending",
+                )
+            )
+        elif check == "W-21" and host is None:
+            report.add(
+                CheckResult.pending(
+                    "W-21",
+                    "not run: the suite called the worker at an endpoint, so the outbound "
+                    "binding was not in use; run the suite with --listen and the worker "
+                    "connected to it to check the binding",
                 )
             )
         else:
@@ -368,11 +431,13 @@ def _assignment(
     checkpoint_ref: str | None = None,
     after: Json | None = None,
     before: Json | None = None,
+    handover: Json | None = None,
 ) -> Json:
     """`hosts` None means the hosts the caller named; a list is exactly that list, which is how
     the narrowed run withdraws one. The list is always sent: the affirmative form is the
     contract's, and an empty list is the explicit "nothing". `after` is the task's command
-    after the work (W-18), added to whichever task is sent; `before` the command before it."""
+    after the work (W-18), added to whichever task is sent; `before` the command before it.
+    `handover` is a handover document the assignment continues from (W-20)."""
     task: Json = dict(options.task or DEFAULT_TASK)
     if before is not None:
         task["before"] = before
@@ -381,6 +446,8 @@ def _assignment(
     context: Json = {"workspace": {"kind": "none"}}
     if checkpoint_ref is not None:
         context["checkpoint_ref"] = checkpoint_ref
+    if handover is not None:
+        context["handover"] = handover
     frame: Json = {
         "autonomy_level": 2,
         "allowed_tools": list(allowed),
@@ -460,10 +527,14 @@ async def _run(
     stop_on_artifact: bool = False,
     after: Json | None = None,
     before: Json | None = None,
+    handover: Json | None = None,
+    also: Callable[[Run, Json], Awaitable[None]] | None = None,
 ) -> Run:
     """Post an assignment and read its stream to the end. `stop_on_step` names the step at
     whose start a stop is requested; None means the first step; False means never.
-    `stop_on_artifact` requests it instead when the first artifact is announced."""
+    `stop_on_artifact` requests it instead when the first artifact is announced. `also` runs
+    for every event while the stream is open, after the stop: how a message is sent or a
+    handover requested mid-run."""
     assignment = _assignment(
         options,
         allowed,
@@ -472,6 +543,7 @@ async def _run(
         checkpoint_ref=checkpoint_ref,
         after=after,
         before=before,
+        handover=handover,
     )
     accepted = await client.post("/v1/assignments", assignment)
     run = Run(purpose, assignment, accepted, Stream(status=0))
@@ -479,6 +551,11 @@ async def _run(
         return run
 
     async def on_event(event: Json) -> None:
+        await stop(event)
+        if also is not None:
+            await also(run, event)
+
+    async def stop(event: Json) -> None:
         if stop_on_step is False or run.stop_requested:
             return
         if stop_on_artifact:
@@ -544,7 +621,12 @@ async def _judge(client: WorkerClient, run: Run, estimate: Json | None, findings
             findings.fail(_owner(event), f"{where}: event seq {seq} is invalid: {why}")
 
     for violation in rules.stream_violations(
-        run.assignment, estimate, run.events, stopped=run.stop_acknowledged
+        run.assignment,
+        estimate,
+        run.events,
+        stopped=run.stop_acknowledged,
+        messages=run.messages,
+        handover_requested=run.handover_requested,
     ):
         findings.add(violation, where)
 
@@ -585,6 +667,8 @@ async def _judge(client: WorkerClient, run: Run, estimate: Json | None, findings
 def _owner(event: Json) -> str:
     kind = str(event.get("type"))
     if kind == "assignment.finished":
+        if event.get("handover") is not None:
+            return "W-20"
         if event.get("limit") is not None:
             return "W-14"
         return {"stopped": "W-06", "rejected": "W-10"}.get(str(event.get("outcome")), "W-03")
@@ -1632,6 +1716,317 @@ async def _w18_before(
             f"the command before the work ran first and its output came back as "
             f"{BEFORE_ARTIFACT!r}; a command before the work that exited with 1 failed the "
             "assignment before the work started",
+        )
+
+
+# --- W-19 steering, W-20 handover, W-21 the outbound binding ------------------------------------
+
+
+async def _connected(host: RelayHost, options: SuiteOptions, report: Report) -> None:
+    """Wait for the worker to connect to the binding; a worker that never does is one that
+    does not answer."""
+    try:
+        await asyncio.wait_for(host.connected.wait(), options.connect_timeout)
+    except TimeoutError as error:
+        raise httpx.ConnectError(
+            f"no worker connected to {host.base} within {options.connect_timeout:.0f}s"
+        ) from error
+    report.notes.append(
+        f"the worker connected to {host.base}; every check ran over the outbound binding"
+    )
+
+
+async def _w19(
+    client: WorkerClient,
+    options: SuiteOptions,
+    capabilities: Json,
+    main: Run,
+    declared: list[str],
+    limits: Json,
+    estimate: Json | None,
+    findings: Findings,
+    runs: list[Run],
+) -> None:
+    """A message while the first step runs, and the same message again. A worker that
+    declares steering accepts both and receives the message once, at a boundary; one that does
+    not refuses it and runs on."""
+    declares = bool((capabilities.get("supports") or {}).get("steering"))
+    message: Json = {
+        "message_id": "msg_conf_" + secrets.token_hex(6),
+        "text": "Conformance W-19: a message to the running assignment. It asks for nothing.",
+    }
+
+    async def send(run: Run, event: Json) -> None:
+        if run.message_answers or event.get("type") != "step.started":
+            return
+        path = f"/v1/assignments/{run.id}/messages"
+        first = await client.post(path, message)
+        run.message_answers.append(first)
+        state = first.json or {}
+        if first.status == 202 and isinstance(state.get("last_seq"), int):
+            run.messages.append(
+                {"message_id": message["message_id"], "accepted_at_seq": state["last_seq"]}
+            )
+            run.message_answers.append(await client.post(path, message))
+
+    run = await _run(client, options, "steered", declared, limits, also=send)
+    runs.append(run)
+    await _judge(client, run, estimate, findings)
+    if run.accepted.status != 201:
+        return
+    where = f"steered run {run.id}"
+    if not run.message_answers:
+        findings.inconclusive["W-19"] = (
+            "the steered run started no step, so no message could be sent while it ran"
+        )
+        return
+    first = run.message_answers[0]
+    if not declares:
+        if first.status < 400:
+            findings.fail(
+                "W-19",
+                f"{where}: the worker declares no steering, but answered a message with "
+                f"{first.status} instead of refusing it",
+            )
+        elif run.outcome != main.outcome:
+            findings.fail(
+                "W-19",
+                f"{where}: after a refused message the run ended {run.outcome!r}, the same work "
+                f"without one {main.outcome!r}: the refusal changed the assignment",
+            )
+        elif not findings.violations["W-19"]:
+            findings.ok(
+                "W-19",
+                f"{where}: declares no steering; a message to the running assignment was "
+                f"refused with {first.status}, nothing was received, and the run ended "
+                f"{run.outcome!r} as without it",
+            )
+        return
+    state = first.json
+    if first.status != 202 or state is None:
+        findings.fail(
+            "W-19",
+            f"{where}: a message to the running assignment answered {first.status} with "
+            f"{first.text[:120]!r}, expected 202",
+        )
+        return
+    if (why := first_error("AssignmentState", state)) is not None:
+        findings.fail("W-19", f"{where}: the answer to the message is invalid: {why}")
+        return
+    if state.get("status") == "finished":
+        findings.inconclusive["W-19"] = (
+            "the assignment had already finished when the message arrived; the worker ran too "
+            "fast for a message to land mid-run"
+        )
+        return
+    again = run.message_answers[1] if len(run.message_answers) > 1 else None
+    if again is None or again.status != 202:
+        findings.fail(
+            "W-19",
+            f"{where}: the same message posted again answered "
+            f"{again.status if again else '-'}, expected 202",
+        )
+        return
+    if findings.violations["W-19"]:
+        return
+    if not any(e.get("type") == "step.boundary" for e in run.events):
+        findings.inconclusive["W-19"] = (
+            "the steered run carried no step.boundary at all (see W-05), so there was no "
+            "boundary the message could be received at"
+        )
+        return
+    received = [e for e in run.events if e.get("type") == "message.received"]
+    if not received:
+        findings.inconclusive["W-19"] = (
+            f"the steered run ended {run.outcome!r} before a boundary at which the message "
+            "could be received"
+        )
+        return
+    findings.ok(
+        "W-19",
+        f"{where}: a message accepted at seq {state.get('last_seq')} and posted again was "
+        f"received once, at seq {received[0].get('seq')}, at the boundary of step "
+        f"{received[0].get('step_id')!r}",
+    )
+
+
+async def _w20(
+    client: WorkerClient,
+    options: SuiteOptions,
+    capabilities: Json,
+    main: Run,
+    declared: list[str],
+    limits: Json,
+    estimate: Json | None,
+    findings: Findings,
+    runs: list[Run],
+) -> None:
+    """A handover requested while the first step runs. A worker that declares handover ends
+    the assignment at a boundary with a `handover.state` document, from which a new
+    assignment continues the work; one that does not refuses it and runs on."""
+    declares = bool((capabilities.get("supports") or {}).get("handover"))
+
+    async def hand_over(run: Run, event: Json) -> None:
+        if run.handover is not None or event.get("type") != "step.started":
+            return
+        run.handover = await client.post(
+            f"/v1/assignments/{run.id}/handover",
+            {"reason": "conformance W-20", "ceiling_seconds": max(1, int(options.timeout))},
+        )
+        state = run.handover.json or {}
+        run.handover_requested = (
+            declares and run.handover.status == 202 and state.get("status") == "stopping"
+        )
+
+    run = await _run(client, options, "handed-over", declared, limits, also=hand_over)
+    runs.append(run)
+    await _judge(client, run, estimate, findings)
+    if run.accepted.status != 201:
+        return
+    where = f"handed-over run {run.id}"
+    answer = run.handover
+    if answer is None:
+        findings.inconclusive["W-20"] = (
+            "the handed-over run started no step, so no handover could be requested while it ran"
+        )
+        return
+    if not declares:
+        if answer.status < 400:
+            findings.fail(
+                "W-20",
+                f"{where}: the worker declares no handover, but answered the request with "
+                f"{answer.status} instead of refusing it",
+            )
+        elif run.outcome != main.outcome:
+            findings.fail(
+                "W-20",
+                f"{where}: after a refused handover the run ended {run.outcome!r}, the same "
+                f"work without one {main.outcome!r}: the refusal changed the assignment",
+            )
+        elif not findings.violations["W-20"]:
+            findings.ok(
+                "W-20",
+                f"{where}: declares no handover; the request was refused with {answer.status}, "
+                f"and the run ended {run.outcome!r} as without it",
+            )
+        return
+    state = answer.json
+    if answer.status != 202 or state is None:
+        findings.fail(
+            "W-20",
+            f"{where}: POST /handover answered {answer.status} with {answer.text[:120]!r}, "
+            "expected 202",
+        )
+        return
+    if (why := first_error("AssignmentState", state)) is not None:
+        findings.fail("W-20", f"{where}: the answer to POST /handover is invalid: {why}")
+        return
+    if state.get("status") == "finished":
+        findings.inconclusive["W-20"] = (
+            "the assignment had already finished when the handover was requested; the worker "
+            "ran too fast for a handover to land mid-run"
+        )
+        return
+    if findings.violations["W-20"] or not run.events:
+        return
+    if not any(e.get("type") == "step.boundary" for e in run.events):
+        findings.inconclusive["W-20"] = (
+            "the handed-over run carried no step.boundary at all (see W-05), so there was no "
+            "boundary the handover could take effect at"
+        )
+        return
+    document = _handover_document(run, where, findings)
+    if document is None:
+        return
+    continued = await _run(client, options, "continued", declared, limits, handover=document)
+    runs.append(continued)
+    await _judge(client, continued, estimate, findings)
+    if continued.outcome != "succeeded":
+        finished = continued.events[-1] if continued.events else {}
+        findings.fail(
+            "W-20",
+            f"continued from the handover of {run.id}, the assignment ended with outcome "
+            f"{continued.outcome!r}"
+            + (f": {finished.get('reason')}" if finished.get("reason") else ""),
+        )
+        return
+    if not findings.violations["W-20"]:
+        findings.ok(
+            "W-20",
+            f"{where}: handed over at a boundary with checkpoint "
+            f"{document['checkpoint_ref']!r}; the document validates and lists "
+            f"{len(document['steps'])} step(s) done and {len(document['artifacts'])} "
+            f"artifact(s); continued from it as {continued.id}, the work succeeded without "
+            "repeating either",
+        )
+
+
+def _handover_document(run: Run, where: str, findings: Findings) -> Json | None:
+    """The handover document of a handed-over run, read from its artifact and checked against
+    the run: the shape `Handover`, the assignment, the checkpoint, and every other artifact the
+    run produced. None, with the failure recorded, when any of it does not hold."""
+    last = run.events[-1]
+    named = str(last.get("handover"))
+    content = run.artifact_bytes.get(named)
+    if content is None:
+        findings.fail("W-20", f"{where}: the bytes of the handover artifact {named!r} were not had")
+        return None
+    try:
+        document = json.loads(content)
+    except ValueError:
+        findings.fail("W-20", f"{where}: the handover artifact {named!r} is not JSON")
+        return None
+    if not isinstance(document, dict):
+        findings.fail("W-20", f"{where}: the handover artifact {named!r} is not a JSON object")
+        return None
+    if (why := first_error("Handover", document)) is not None:
+        findings.fail("W-20", f"{where}: the handover document is invalid: {why}")
+        return None
+    if document.get("assignment_id") != run.id:
+        findings.fail(
+            "W-20",
+            f"{where}: the handover document names {document.get('assignment_id')!r}, not the "
+            "assignment it was handed over from",
+        )
+        return None
+    if document.get("checkpoint_ref") != last.get("checkpoint_ref"):
+        findings.fail(
+            "W-20",
+            f"{where}: the handover document names checkpoint {document.get('checkpoint_ref')!r}, "
+            f"the assignment ended at {last.get('checkpoint_ref')!r}",
+        )
+        return None
+    listed = {(a.get("id"), a.get("digest")) for a in document.get("artifacts", [])}
+    missing = [
+        e.get("artifact_id")
+        for e in run.events
+        if e.get("type") == "artifact.produced"
+        and e.get("kind") != "handover.state"
+        and (e.get("artifact_id"), e.get("digest")) not in listed
+    ]
+    if missing:
+        findings.fail(
+            "W-20",
+            f"{where}: the handover document does not list artifact(s) {missing} the "
+            "assignment produced before it",
+        )
+        return None
+    return document
+
+
+def _w21(host: RelayHost, findings: Findings) -> None:
+    """The binding itself: every request relayed was answered exactly once, with a status."""
+    probe = host.probe()
+    if not probe["relayed"]:
+        findings.inconclusive["W-21"] = "no request was relayed: no worker connected"
+        return
+    for violation in rules.relay_violations(probe):
+        findings.add(violation, f"over the outbound binding at {host.base}")
+    if not findings.violations["W-21"]:
+        findings.ok(
+            "W-21",
+            f"{len(probe['relayed'])} request(s) relayed over the outbound binding, each "
+            "answered exactly once with a status",
         )
 
 

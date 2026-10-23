@@ -23,6 +23,7 @@ async def test_reference_worker_passes(start_worker: StartWorker, profile: str) 
     assert report.failed == [], report.render()
     assert report.inconclusive == [], report.render()
     assert statuses.pop("W-12") is Status.PENDING
+    assert statuses.pop("W-21") is Status.PENDING, "reached at an endpoint, not over the binding"
     assert set(statuses.values()) == {Status.PASSED}
     assert report.exit_code == 0
     assert {r.purpose for r in report.runs} == {
@@ -39,6 +40,9 @@ async def test_reference_worker_passes(start_worker: StartWorker, profile: str) 
         "after-command-failing",
         "before-command",
         "before-command-failing",
+        "steered",
+        "handed-over",
+        "continued",
     }
     held = [r for r in report.runs if r.purpose == "held"]
     assert len(held) == 4, "the reference worker declares four places by default"
@@ -53,6 +57,13 @@ async def test_reference_worker_passes(start_worker: StartWorker, profile: str) 
     w18 = next(c for c in report.checks if c.id == "W-18")
     assert "byte for byte" in w18.observed and "exited with 1" in w18.observed
     assert any("command before the work ran first" in line for line in w18.details), w18.details
+    w19 = next(c for c in report.checks if c.id == "W-19")
+    assert "posted again was received once" in w19.observed and "at the boundary" in w19.observed
+    w20 = next(c for c in report.checks if c.id == "W-20")
+    assert "the document validates" in w20.observed and "without repeating" in w20.observed
+    runs = {r.purpose: r for r in report.runs}
+    assert runs["handed-over"].outcome == "stopped"
+    assert runs["continued"].outcome == "succeeded"
 
 
 async def test_report_is_machine_readable_and_claims_no_verification(
@@ -65,7 +76,7 @@ async def test_report_is_machine_readable_and_claims_no_verification(
     assert document["maturity"]["verified"] is False
     assert document["maturity"]["removal_test"] == "pending"
     assert document["maturity"]["conformance_suite"] == "passed"
-    assert [c["id"] for c in document["checks"]] == [f"W-{n:02d}" for n in range(1, 19)]
+    assert [c["id"] for c in document["checks"]] == [f"W-{n:02d}" for n in range(1, 22)]
     for check in document["checks"]:
         assert check["requirement"] and check["section"].startswith("contracts/worker/v1/README.md")
     assert worker.credential_value not in report.to_json()

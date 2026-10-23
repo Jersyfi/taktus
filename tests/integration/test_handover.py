@@ -59,7 +59,9 @@ from taktus.ports.worker import (
     Estimate,
     EstimateRequest,
     Event,
+    HandoverRequest,
     Limits,
+    SteeringMessage,
     StopRequest,
 )
 from taktus.shared.v1 import (
@@ -196,6 +198,14 @@ class Recorder:
     async def stop(self, assignment_id: AssignmentId, request: StopRequest) -> AssignmentState:
         self.log.stops.append((self.name, assignment_id))
         return await self.inner.stop(assignment_id, request)
+
+    async def steer(self, assignment_id: AssignmentId, message: SteeringMessage) -> AssignmentState:
+        return await self.inner.steer(assignment_id, message)
+
+    async def hand_over(
+        self, assignment_id: AssignmentId, request: HandoverRequest
+    ) -> AssignmentState:
+        return await self.inner.hand_over(assignment_id, request)
 
     async def artifacts(self, assignment_id: AssignmentId) -> ArtifactList:
         return await self.inner.artifacts(assignment_id)

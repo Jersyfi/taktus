@@ -42,8 +42,12 @@ from taktus.ports.worker import (
     Estimate,
     EstimateRequest,
     Event,
+    HandoverRefused,
+    HandoverRequest,
     Outcome,
     ResolvedWorker,
+    SteeringMessage,
+    SteeringRefused,
     StopRequest,
     Supports,
     Task,
@@ -406,6 +410,12 @@ class ReplayWorker:
 
     async def stop(self, assignment_id: str, request: StopRequest) -> AssignmentState:
         return await self.state(assignment_id)
+
+    async def steer(self, assignment_id: str, message: SteeringMessage) -> AssignmentState:
+        raise SteeringRefused(f"{PREFIX}: a recording answers as it was recorded, unsteered")
+
+    async def hand_over(self, assignment_id: str, request: HandoverRequest) -> AssignmentState:
+        raise HandoverRefused(f"{PREFIX}: a recording hands nothing over")
 
     async def artifacts(self, assignment_id: str) -> ArtifactList:
         _, answer = self._held(assignment_id)

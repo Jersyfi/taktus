@@ -15,9 +15,10 @@ The directory name is the definition in kebab-case: `assignment-state` is `Assig
 
 ## Transcripts
 
-Ten of the eighteen checks concern a whole stream, not one object. Their fixtures use the
-`Transcript` shape — the assignment, the estimate the worker gave for it, and every event in order —
-and fail one of the stream rules in `src/taktus/conformance/rules.py`, which
+Twelve of the twenty-one checks concern a whole stream, not one object. Their fixtures use the
+`Transcript` shape — the assignment, the estimate the worker gave for it, every event in order,
+the steering messages posted and whether a handover was requested — and fail one of the stream
+rules in `src/taktus/conformance/rules.py`, which
 `tests/conformance/test_worker_v1_fixtures.py` applies to every file here:
 
 | Check | Rule on the transcript |
@@ -32,12 +33,15 @@ and fail one of the stream rules in `src/taktus/conformance/rules.py`, which
 | W-13 | a `tool.called` whose `host` is outside `allowed_hosts` has `refused: true`; where `reach.stated` names hosts, every `host` is one of them |
 | W-14 | no step starts once the reported running total of a limited quantity has reached its limit; `limit` in `assignment.finished` comes with `stopped`, names a kind the limits set, and the checkpoint is the last boundary's |
 | W-18 | a succeeded assignment whose task names a command after the work carries the artifact it names, and no step starts after it; one whose task names a command before the work carries the artifact it names, produced by its first step |
+| W-19 | every message in `messages` is received once, after the `seq` the worker's answer named, at a boundary and never inside a step; no `message.received` names a message not in `messages` |
+| W-20 | with `handover_requested`, the assignment ends `stopped` at its last boundary with exactly one `handover.state` artifact after it, named by `assignment.finished`; an assignment whose `context.handover` carries a document starts no step and produces no artifact the document lists |
 
 `transcript/valid/` holds both proof cases of the README — a shell script with no AI at all and a
 training run that holds a GPU and is stopped at an epoch boundary — plus a rejection, a resume,
 a coding run halted at the boundary where its input tokens reached their limit, a coding run
 whose task names a command after the work, a coding run whose task names a command before the
-work, and a coding run that states its reach before it begins.
+work, a coding run that states its reach before it begins, a script run steered at a boundary,
+the same run handed over at its second boundary, and its continuation from the handover.
 
 ## Capacity probes
 
@@ -59,6 +63,13 @@ the two id rules in `src/taktus/conformance/rules.py`, which
 |---|---|---|
 | `unknown-id-probe/` | `UnknownIdProbe`: an id never posted, and the answer to its state | W-16: `404` with a problem body |
 | `repeated-id-probe/` | `RepeatedIdProbe`: the state of an assignment held, the answer to its id posted again, and the state after | W-17: `409` with a problem body, and the state after still the first assignment's — the same `accepted_at`, a `last_seq` no lower, and a finished state unchanged |
+
+## Relay probes
+
+W-21 concerns the outbound binding (README §8). Its fixtures use the `RelayProbe` shape: the
+requests a host relayed to a connected worker, and every answer the worker posted with its
+`Relay-Status`. They fail the binding rule in `src/taktus/conformance/rules.py` when a request
+is answered twice or never, or an answer carries no status.
 
 ## Placeholders
 

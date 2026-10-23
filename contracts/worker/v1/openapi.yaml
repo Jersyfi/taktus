@@ -179,6 +179,152 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /v1/assignments/{id}/messages:
+    parameters:
+      - $ref: "#/components/parameters/AssignmentId"
+    post:
+      operationId: steerAssignment
+      summary: Send a message, received at the next step boundary
+      description: |
+        Only a worker that declares `supports.steering` accepts it. The worker emits
+        `message.received` once, at the next step boundary; the steps after it have the message
+        as an input. A message posted again under the same `message_id` is answered 202 and
+        received once. A message is an input: it never widens the frame or raises a limit. A
+        worker that does not declare steering answers with a problem and changes nothing
+        (check W-19, ADR-0139).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "./Worker.json#/$defs/SteeringMessage"
+      responses:
+        "202":
+          description: Accepted; `last_seq` is the stream's position when it was.
+          content:
+            application/json:
+              schema:
+                $ref: "./Worker.json#/$defs/AssignmentState"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The assignment has finished; the message is not received.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /v1/assignments/{id}/handover:
+    parameters:
+      - $ref: "#/components/parameters/AssignmentId"
+    post:
+      operationId: handOverAssignment
+      summary: Hand the assignment over at the next step boundary
+      description: |
+        Only a worker that declares `supports.handover` accepts it. The running step may finish,
+        up to a ceiling, as for a stop. After the step's boundary the worker produces one
+        artifact of kind `handover.state` whose bytes are a `Handover` document, and ends with
+        `assignment.finished`, outcome `stopped`, that boundary's checkpoint and `handover`
+        naming the artifact. A new assignment that carries the document in `context.handover`
+        continues the work anywhere. A worker that does not declare handover answers with a
+        problem, and the assignment runs on (check W-20, ADR-0139).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "./Worker.json#/$defs/HandoverRequest"
+      responses:
+        "202":
+          description: The handover is requested. Status is `stopping`, or `finished` if it already was.
+          content:
+            application/json:
+              schema:
+                $ref: "./Worker.json#/$defs/AssignmentState"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /next:
+    servers:
+      - url: http://localhost:9100/relay
+        description: |
+          The outbound binding: a host — the control plane, or the conformance suite with
+          `--listen` — serves this path at the base it gives the worker. The worker opens no
+          port (README §8, ADR-0139).
+    post:
+      operationId: nextRelayedRequest
+      summary: The next request for a worker that connects outbound
+      description: |
+        Answers when a request for the worker arrives, or with 204 after the host's wait of at
+        most 30 seconds. The worker handles the request as if it had arrived at its endpoint
+        and answers it at `/answers/{request_id}`, exactly once (check W-21). It asks again
+        while it answers, so that a long event stream does not hold other requests back.
+      responses:
+        "200":
+          description: One request of this contract.
+          content:
+            application/json:
+              schema:
+                $ref: "./Worker.json#/$defs/RelayRequest"
+        "204":
+          description: No request arrived within the wait. Ask again.
+
+  /answers/{request_id}:
+    servers:
+      - url: http://localhost:9100/relay
+        description: The outbound binding, as for `/next`.
+    parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: "^rly_[A-Za-z0-9_-]{4,}$"
+    post:
+      operationId: answerRelayedRequest
+      summary: The answer to one relayed request
+      description: |
+        The body is the answer's body, sent in chunks while it lasts: for the event stream, the
+        stream itself. The host reads it as it arrives.
+      parameters:
+        - name: Relay-Status
+          in: header
+          required: true
+          description: The answer's status code.
+          schema:
+            type: string
+            pattern: "^[1-5][0-9]{2}$"
+      requestBody:
+        required: false
+        content:
+          "*/*":
+            schema:
+              type: string
+              format: binary
+      responses:
+        "204":
+          description: Received.
+        "400":
+          description: The answer carries no status code.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: The host never relayed a request of this id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The request was answered already.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
   /v1/assignments/{id}/artifacts:
     parameters:
       - $ref: "#/components/parameters/AssignmentId"

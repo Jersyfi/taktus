@@ -316,6 +316,7 @@ from taktus.ports.worker import (
     Context,
     Event,
     Frame,
+    HandoverRequest,
     Limits,
     NoEstimator,
     Outcome,
@@ -1544,13 +1545,22 @@ class RunEngine:
         )
 
     async def _stop_for_takeover(self, worker: Worker, assignment_id: str) -> None:
-        await worker.stop(
-            assignment_id,
-            StopRequest(
-                reason="a person takes the step over",
-                ceiling_seconds=self._options.step_ceiling_seconds,
-            ),
-        )
+        """Stop the step at its worker's next boundary. A worker that declares handover is
+        asked for one instead: it stops there as well and leaves a `handover.state` artifact,
+        which joins the step's artifacts and so the take-over's state. The person then
+        receives what the worker knew, not only its checkpoint reference (ADR-0139 §4). A
+        worker that cannot be asked, or refuses, is stopped as before."""
+        reason = "a person takes the step over"
+        ceiling = self._options.step_ceiling_seconds
+        try:
+            if (await worker.capabilities()).supports.handover:
+                await worker.hand_over(
+                    assignment_id, HandoverRequest(reason=reason, ceiling_seconds=ceiling)
+                )
+                return
+        except WorkerError:
+            pass
+        await worker.stop(assignment_id, StopRequest(reason=reason, ceiling_seconds=ceiling))
 
     async def _taken_over(
         self, run: Run, step_run: StepRun, asked: TakeoverAsked, span: Span

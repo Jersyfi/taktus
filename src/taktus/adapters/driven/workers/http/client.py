@@ -40,6 +40,10 @@ from taktus.ports.worker import (
     Estimate,
     EstimateRequest,
     Event,
+    HandoverRefused,
+    HandoverRequest,
+    SteeringMessage,
+    SteeringRefused,
     StopRequest,
     UnknownAssignment,
     WorkerAtCapacity,
@@ -102,6 +106,26 @@ class HttpWorker:
     async def stop(self, assignment_id: AssignmentId, request: StopRequest) -> AssignmentState:
         return await self._post(
             f"/v1/assignments/{assignment_id}/stop", request, AssignmentState, expected=202
+        )
+
+    async def steer(self, assignment_id: AssignmentId, message: SteeringMessage) -> AssignmentState:
+        return await self._post(
+            f"/v1/assignments/{assignment_id}/messages",
+            message,
+            AssignmentState,
+            expected=202,
+            refused=SteeringRefused,
+        )
+
+    async def hand_over(
+        self, assignment_id: AssignmentId, request: HandoverRequest
+    ) -> AssignmentState:
+        return await self._post(
+            f"/v1/assignments/{assignment_id}/handover",
+            request,
+            AssignmentState,
+            expected=202,
+            refused=HandoverRefused,
         )
 
     async def artifacts(self, assignment_id: AssignmentId) -> ArtifactList:
@@ -209,14 +233,29 @@ class HttpWorker:
         return self._read(response, path, shape, expected=200)
 
     async def _post[T: Value](
-        self, path: str, body: Value, shape: type[T], *, expected: int, handover: bool = False
+        self,
+        path: str,
+        body: Value,
+        shape: type[T],
+        *,
+        expected: int,
+        handover: bool = False,
+        refused: type[WorkerError] | None = None,
     ) -> T:
         """`handover`: a 503 is the contract's answer of a worker at its declared capacity, and a
-        409 its answer to an assignment id it holds already."""
+        409 its answer to an assignment id it holds already. `refused`: what an answer of 400
+        or above is. A worker that does not offer the request refuses it so, and a worker that
+        never knew the endpoint answers 404: either way it took nothing (W-19, W-20)."""
         try:
             response = await self._http.post(path, json=body.document())
         except httpx.HTTPError as error:
             raise WorkerError(f"{self.endpoint}: POST {path} failed: {error!r}") from error
+        if refused is not None and response.status_code >= 400:
+            detail = _problem(response)
+            raise refused(
+                f"{self.endpoint}: {path} answered {response.status_code}"
+                + (f": {detail}" if detail else "")
+            )
         if handover and response.status_code == 503:
             detail = _problem(response)
             raise WorkerAtCapacity(
