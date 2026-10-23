@@ -51,7 +51,11 @@ as optional, for the web and database targets that need them. CI reaches the sam
 `need-<tool>` on every target it runs, so it does not call `make doctor` (its secret scan runs
 through an action that brings its own `gitleaks`).
 
-Ten targets are for operating and not gates. `make up` brings the control plane up in two
+Twelve targets are for operating and not gates. `make start` is the one command of a first
+install on one machine (`deploy/docker/start.py`, ADR-0136 §6): what `make up` does, then the
+first tenant and its administrator with the account key printed once, then a clock until the
+first rehearsal has finished; `make verify-first-process` runs `deploy/docker/first-process.sh`,
+that path from nothing without a person, failing above ten minutes. `make up` brings the control plane up in two
 containers (`deploy/docker/compose.yml`: writes the secret files once, builds the image,
 applies the migrations, waits for readiness), `make up-dev` does the same with the reference
 worker layered in from its own image (`compose.reference-worker.yml`, development only),
@@ -67,7 +71,7 @@ kind cluster `kubectl` points at, its database migrated and the control plane re
 conformance suite in one process and the scale tests. `make db-up` and `make db-down`
 start and stop the development database (`deploy/docker/compose.dev.yml`; `db-down` keeps
 the volume), and `make migrate` runs the Alembic migrations against
-`TAKTUS_DATABASE_URL_FILE` or `TAKTUS_DATABASE_URL`. All ten need `docker` except
+`TAKTUS_DATABASE_URL_FILE` or `TAKTUS_DATABASE_URL`. All twelve need `docker` except
 `migrate`; `verify-kind` needs `kind`, `kubectl` and `helm` too.
 
 `make images` builds, ahead of the tests, the images the container tests need — the reference

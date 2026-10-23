@@ -8,7 +8,8 @@
 - **Commission.** A proposal whose rehearsal finished is handed to registration, acting for the
   person who commissions it. Every check registration applies holds. The ledger records
   `process.commissioned`. A proposal made against a version that is no longer active is not
-  commissioned.
+  commissioned. A proposal made against no version is a process's first version (ADR-0136 §4),
+  and is stale once the process has an active version.
 - **Evaluate.** A proposal that changes a step, of a process with evaluation cases, is run on
   them beside the active version when it is rehearsed, and commissioned only once that
   evaluation passed, or against its verdict with a person's reason (ADR-0134 §4).
@@ -261,11 +262,13 @@ class ProposalActs:
                 f"the rehearsal {proposal.rehearsal_run} has not finished ({state}); "
                 "the proposal is commissioned once it has",
             )
-        if process is None or process.active_version != proposal.base_version:
+        active = None if process is None else process.active_version
+        if active != proposal.base_version:
+            against = proposal.base_version or "no version"
             raise ProposalError(
                 "stale",
-                f"the proposal was made against {proposal.base_version}, and the active "
-                f"version is {None if process is None else process.active_version}: ask again",
+                f"the proposal was made against {against}, and the active version is "
+                f"{active}: ask again",
             )
         if self._evaluations is not None:
             await self._evaluations.hold(tenant, proposal, by, override)
@@ -308,7 +311,11 @@ class ProposalActs:
         return version
 
     async def _last_inputs(self, tenant: Tenant, proposal: Proposal) -> dict[str, Any]:
-        """The inputs of the active version's last run that was not a rehearsal; none if none."""
+        """The inputs of the active version's last run that was not a rehearsal; none if none.
+        A proposal made against no version has no run before it: it takes what its schedule
+        trigger gives, and every other declared input's example (ADR-0136 §4)."""
+        if proposal.base_ref is None:
+            return first_inputs(parse_bundle(proposal.bundle))
         async with self._work.transaction(tenant):
             runs = [
                 r
@@ -382,6 +389,16 @@ class InstanceChanges:
         except ProposalError as error:
             raise ValueError(str(error)) from error
         return {"proposal": proposal.id, "difference": proposal.difference.document()}
+
+
+def first_inputs(version: ProcessVersion) -> dict[str, Any]:
+    """What a first version's rehearsal is given without a person's inputs: each declared
+    input's value from the first schedule trigger that gives it, or else its example."""
+    given: dict[str, Any] = {name: spec.example for name, spec in version.inputs.items()}
+    for trigger in reversed(version.triggers):
+        if trigger.schedule is not None and trigger.inputs:
+            given.update({k: v for k, v in trigger.inputs.items() if k in version.inputs})
+    return given
 
 
 FENCE = re.compile(r"^```[a-z]*\s*\n(.*)\n```\s*$", re.DOTALL)

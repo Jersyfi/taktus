@@ -34,3 +34,5 @@ deploy/docker/secrets/*
 !deploy/docker/secrets/README.md
 # the operator's own settings for compose (deploy/docker/README.md) — never committed
 deploy/docker/taktus.env
+# what `make start` measured (deploy/docker/start.py) — the operator's, never committed
+deploy/docker/first-process.json

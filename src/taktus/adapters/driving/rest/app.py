@@ -20,7 +20,8 @@ instance's own findings with their review (ADR-0122), the reads of what keeps th
 running — incidents, alerts, the backup, signals (ADR-0121), and the web app's sign-in, which
 exchanges an account key once for a session cookie accepted wherever the key is (ADR-0119), and
 a running step taken over by a person and its result handed back (ADR-0128), and the agent key a
-person creates for their own agent. The same role serves MCP at `/mcp` for that agent, which
+person creates for their own agent, and the gallery a person chooses a first process from
+(ADR-0136). The same role serves MCP at `/mcp` for that agent, which
 reads and acts as the person within the rights of their roles (ADR-0131). No other write, no
 UI. An answer the owner writes in the thread of a report arrives through the
 webhook intake. A browser that opens an old link to a report without a key is sent to the
@@ -54,6 +55,7 @@ from taktus.adapters.driving.rest import (
     autonomy,
     evaluations,
     findings,
+    gallery,
     levels,
     operation,
     proposals,
@@ -155,6 +157,7 @@ def build_app(
         app.include_router(operation.router(services, _authenticated), prefix=base)
         app.include_router(proposals.router(services, _authenticated), prefix=base)
         app.include_router(proposals.acts_router(services, _authenticated), prefix=base)
+        app.include_router(gallery.router(services, _authenticated), prefix=base)
         app.include_router(evaluations.router(services, _authenticated), prefix=base)
         app.include_router(tenants.router(services), prefix=base)
         app.include_router(findings.router(services), prefix=base)

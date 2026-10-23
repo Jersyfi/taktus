@@ -863,6 +863,14 @@ def load_knowledge_directory(configuration: Configuration) -> Path | None:
     return Path(value).expanduser() if value else None
 
 
+def load_gallery_directory(configuration: Configuration) -> Path | None:
+    """`TAKTUS_GALLERY_DIRECTORY`: the directory of the gallery a person chooses a first process
+    from, one directory per gallery blueprint (UC-10.4, ADR-0136 §1). None: the gallery is
+    empty, and nothing else changes. The image names the gallery it carries."""
+    value = _Reader(configuration).text("gallery.directory", "").strip()
+    return Path(value).expanduser() if value else None
+
+
 @dataclass(frozen=True)
 class FindingsShape:
     """The shape of the issue a product finding opens (UC-6.12, ADR-0046): its operator's
@@ -1026,6 +1034,8 @@ class Settings:
     knowledge_directory: Path | None
     """The directory the instance serves `knowledge.pages` over, where the organisation keeps
     no wiki (UC-13.6); None when it serves none."""
+    gallery_directory: Path | None
+    """The directory of the gallery (UC-10.4, ADR-0136 §1); None when the gallery is empty."""
     findings_connector: str | None
     """The MCP URL of the connector through which product findings go to the repository its
     operator chose (UC-6.12, ADR-0046). None: the operator did not enable it, and findings are
@@ -1107,6 +1117,7 @@ class Settings:
             ("TAKTUS_CONNECTORS", ",".join(f"{c}={u}" for c, u in self.connectors.items())),
             ("TAKTUS_TRIAGE", ",".join(f"{c}={p}" for c, p in self.triage.items())),
             ("TAKTUS_KNOWLEDGE_DIRECTORY", str(self.knowledge_directory or "")),
+            ("TAKTUS_GALLERY_DIRECTORY", str(self.gallery_directory or "")),
             ("TAKTUS_FINDINGS_CONNECTOR", self.findings_connector or ""),
             *self.findings.effective(),
             ("TAKTUS_BACKUP_EXPECTED_HOURS", str(self.backup_expected_hours or "")),
@@ -1176,6 +1187,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         triage=reader.triage(),
         administration=load_administration(configuration),
         knowledge_directory=load_knowledge_directory(configuration),
+        gallery_directory=load_gallery_directory(configuration),
         findings_connector=load_findings_connector(configuration),
         findings=load_findings(configuration),
         backup_expected_hours=load_backup_expected_hours(configuration),

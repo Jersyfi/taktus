@@ -304,3 +304,19 @@ async def test_without_a_named_change_process_no_request_in_words_is_taken() -> 
     with pytest.raises(ProposalError, match="TAKTUS_CHANGE_PROCESS") as unavailable:
         await world.acts.ask(TENANT, "daily", "add a step", WHO)
     assert unavailable.value.kind == "unavailable"
+
+
+async def test_a_first_version_is_rehearsed_on_its_examples_and_is_stale_once_one_is_live() -> None:
+    """ADR-0136 §4: a proposal made against no version rehearses on what its bundle gives, and
+    is not commissioned once the process has an active version."""
+    world = World()
+    await world.identity.directory.add(TENANT, WHO, (TENANT, "ops"))
+    proposal = await world.propose(version="1")
+    assert proposal.base_version is None
+    _, run = await world.acts.rehearse(TENANT, "daily", proposal.id, WHO)
+    assert run.inputs == {"target": "a"}, "the declared example stands in for a last run"
+    await world.run_through(run.id)
+    await world.register.execute(RegisterProcessVersion(bundle("7"), tenant=TENANT, by=WHO))
+    with pytest.raises(ProposalError) as stale:
+        await world.acts.commission(TENANT, "daily", proposal.id, WHO)
+    assert stale.value.kind == "stale" and "no version" in str(stale.value)
