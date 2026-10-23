@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from taktus.components.process.domain.model.evaluation import (
+    Evaluation,
     ScoringRule,
     Side,
     SideResult,
@@ -78,3 +79,69 @@ def test_drift_is_a_fall_beyond_the_tolerance_against_the_last_score(
     score: float | None, previous: float | None, verdict: Verdict
 ) -> None:
     assert scoring.drift(side(Side.ACTIVE, score), previous, 0.05) is verdict
+
+
+def compared() -> Evaluation:
+    def result(case: str, which: Side, *scores: float | None) -> dict[str, object]:
+        given = [
+            {
+                "scorer": f"draft#{i}",
+                "step": "draft",
+                "method": "rule",
+                "exactness": "exact",
+                "score": s,
+                "how": "rule",
+            }
+            for i, s in enumerate(scores)
+        ]
+        return {
+            "case": case,
+            "side": which.value,
+            "run_id": f"run_{case}_{which.value}",
+            "score": scoring.mean(scores),
+            "scores": given,
+            "models": {"draft": "model-a-2026-10"},
+            "tokens_in": 30,
+            "tokens_out": 10,
+        }
+
+    return Evaluation.model_validate(
+        {
+            "id": "evl_1",
+            "tenant": "t",
+            "process_id": "replies",
+            "purpose": "change",
+            "version": "replies@1",
+            "candidate": "replies@proposal-prp_1",
+            "acting_for": "someone",
+            "cases": [
+                {"id": "late", "targets": {"draft": "Sorry."}},
+                {"id": "lost", "targets": {"draft": "Found."}},
+            ],
+            "results": [
+                result("late", Side.ACTIVE, 1.0),
+                result("late", Side.PROPOSED, 0.5),
+                result("lost", Side.ACTIVE, 0.8),
+                result("lost", Side.PROPOSED, None),
+            ],
+            "state": "scored",
+            "started_at": "2026-10-23T09:00:00+00:00",
+        }
+    )
+
+
+def test_the_comparison_puts_each_case_s_sides_beside_each_other() -> None:
+    late, lost = scoring.comparison(compared())
+    assert (late["case"], late["active"]["score"], late["proposed"]["score"]) == ("late", 1.0, 0.5)
+    assert late["change"] == -0.5
+    assert late["active"]["tokens"] == 40 and late["proposed"]["models"] == {
+        "draft": "model-a-2026-10"
+    }
+    assert lost["proposed"]["score"] is None and lost["change"] is None
+
+
+def test_a_step_s_score_is_the_mean_of_its_scores_on_one_side() -> None:
+    evaluation = compared()
+    assert scoring.step_score(evaluation, "draft") == 0.9
+    assert scoring.step_score(evaluation, "draft", Side.PROPOSED) is None, "a case has no score"
+    assert scoring.step_score(evaluation, "other") is None

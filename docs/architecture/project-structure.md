@@ -289,8 +289,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   draft. A drift of a process that sends outward reaches the governance component's `Drifts`
   as an incident. `ProposalActs` (`composition/proposals.py`) starts a proposal's evaluation
   beside its rehearsal and holds commissioning to its verdict; the HTTP surface reads the
-  evaluations and confirms the cases (`adapters/driving/rest/evaluations.py`), and `taktusctl
-  incident configure` sets the tenant's tolerance. The models
+  evaluations and confirms the cases (`adapters/driving/rest/evaluations.py`), a proposal's view
+  carries its evaluation case by case (`adapters/driving/rest/proposals.py`), and `taktusctl
+  incident configure` sets the tenant's tolerance. `ChangeInChannel`
+  (`composition/change_in_channel.py`) reads a commissioning back with that verdict, in the
+  sentences of the shipped phrasebooks (`composition/phrasebooks/`). Maturation reads a step's
+  score on the cases through the run's port `ports/scores.py`, which `RepositoryScores`
+  (`composition/maturation.py`) answers for the daemon and for `taktusctl` (`composition/local.py`);
+  `taktusctl maturation moves` shows both scores (ADR-0141). The models
   configured in `TAKTUS_MODELS` reach the run as one pool in chain order
   (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the
   model contract's suite with its own endpoint (`composition/conformance.py`); deadlines and

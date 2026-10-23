@@ -4,18 +4,24 @@
 	difference, step by step, with each changed step's method, reason and class before and after —
 	in words, because a proposal is not a level and `reporting` hands no glyph for it. A proposal
 	is rehearsed, then commissioned or discarded; the rehearsal's result is shown with it, read from
-	the rehearsal's run, and commissioning is offered once that run has finished. The versions are listed, each earlier one with a
+	the rehearsal's run, and commissioning is offered once that run has finished. A proposal held
+	to the process's evaluation cases shows the comparison the surface hands: the verdict, each
+	side's score, and every case with the active version and the proposal beside each other
+	(ADR-0134 §9). Commissioning is offered once the verdict passed; against a regression or a
+	case without a score only with the person's reason, and a proposal commissioned that way shows
+	the reason — never who gave it (principle 14). The versions are listed, each earlier one with a
 	rollback. The page sends what the person chose and shows what the surface answers; it decides
 	nothing, and computes nothing.
 -->
 <script lang="ts">
 	import { processLink, runLink } from './links';
-	import type { ProcessLevel, Proposal, RunLevel, StepChange } from './types';
+	import type { Evaluated, EvaluatedSide, ProcessLevel, Proposal, RunLevel, StepChange } from './types';
 
 	let {
 		level,
 		proposals,
 		rehearsals = {},
+		evaluations = {},
 		busy = false,
 		message = null,
 		onAsk,
@@ -28,11 +34,14 @@
 		proposals: Proposal[];
 		/** The run level of each proposal's rehearsal, by proposal; absent where it cannot be read. */
 		rehearsals?: Record<string, RunLevel>;
+		/** Each proposal's evaluation on the process's cases, by proposal; absent where it cannot be read. */
+		evaluations?: Record<string, Evaluated>;
 		busy?: boolean;
 		message?: string | null;
 		onAsk: (request: string) => void;
 		onRehearse: (proposal: string) => void;
-		onCommission: (proposal: string) => void;
+		/** `override` is the person's reason for commissioning against the verdict (ADR-0134 §4). */
+		onCommission: (proposal: string, override?: string) => void;
 		onDiscard: (proposal: string) => void;
 		onRollback: (version: string) => void;
 	} = $props();
@@ -40,7 +49,14 @@
 	const process = $derived(level.process);
 	const active = $derived(process.versions.find((v) => v.active)?.version);
 	const open = $derived(proposals.filter((p) => p.state === 'proposed' || p.state === 'rehearsed'));
+	const overridden = $derived(
+		proposals.flatMap((p) => {
+			const evaluated = evaluations[p.id];
+			return p.state === 'commissioned' && evaluated?.override ? [{ proposal: p, evaluated }] : [];
+		})
+	);
 	let request = $state('');
+	let reasons: Record<string, string> = $state({});
 
 	function ask(event: SubmitEvent) {
 		event.preventDefault();
@@ -50,6 +66,33 @@
 
 	/** The rehearsal ended well: only then is commissioning offered (ADR-0091 §4). */
 	const finished = (proposal: Proposal) => rehearsals[proposal.id]?.run.state === 'finished';
+
+	/** What a proposal's evaluation allows: no evaluation, one under way, a verdict that passed,
+	 * or one a person may commission against only with a reason. The verdict is the surface's. */
+	function gate(proposal: Proposal): 'none' | 'unread' | 'running' | 'passed' | 'against' {
+		if (!proposal.evaluation) return 'none';
+		const evaluated = evaluations[proposal.id];
+		if (!evaluated) return 'unread';
+		if (evaluated.state !== 'scored') return 'running';
+		return evaluated.verdict === 'passed' ? 'passed' : 'against';
+	}
+
+	const score = (value: number | null | undefined) => (value == null ? '—' : value.toFixed(2));
+	const signed = (value: number | null) =>
+		value == null ? '—' : `${value > 0 ? '+' : value < 0 ? '−' : '±'}${Math.abs(value).toFixed(2)}`;
+	const sideOf = (evaluated: Evaluated, side: 'active' | 'proposed') => evaluated.sides.find((s) => s.side === side);
+	const width = (side: EvaluatedSide | null | undefined) => `${Math.round((side?.score ?? 0) * 100)}%`;
+	const verdicts: Record<string, string> = {
+		passed: 'passed',
+		regressed: 'regressed',
+		incomplete: 'incomplete — a case has no score'
+	};
+
+	function commissionAgainst(event: SubmitEvent, proposal: Proposal) {
+		event.preventDefault();
+		const reason = (reasons[proposal.id] ?? '').trim();
+		if (reason) onCommission(proposal.id, reason);
+	}
 
 	function how(step: StepChange['after']): string {
 		if (!step) return '';
@@ -130,19 +173,112 @@
 					{/if}
 				</section>
 			{/if}
+			{#if proposal.evaluation}
+				{@const evaluated = evaluations[proposal.id]}
+				<section class="evaluation" data-evaluation={proposal.evaluation} aria-label="Evaluation on the cases">
+					{#if !evaluated}
+						<p class="muted">The evaluation on the process's cases cannot be read yet.</p>
+					{:else}
+						{@const was = sideOf(evaluated, 'active')}
+						{@const now = sideOf(evaluated, 'proposed')}
+						<header class="verdict-row">
+							<strong>Held to {evaluated.cases.length} evaluation {evaluated.cases.length === 1 ? 'case' : 'cases'}</strong>
+							{#if evaluated.state === 'scored'}
+								<span class="verdict" data-verdict={evaluated.verdict}>{verdicts[evaluated.verdict ?? ''] ?? evaluated.verdict}</span>
+							{:else}
+								<span class="verdict" data-verdict="running">being {evaluated.state === 'judging' ? 'judged' : 'run'}</span>
+							{/if}
+						</header>
+						<div class="sides">
+							<div class="side" data-side="active">
+								<span class="label">active · {was?.version ?? '—'}</span>
+								<span class="figure">{score(was?.score)}</span>
+							</div>
+							<div class="side" data-side="proposed">
+								<span class="label">proposal · version {proposal.version}</span>
+								<span class="figure">{score(now?.score)}</span>
+							</div>
+							<p class="muted">
+								A score may fall by {score(evaluated.tolerance)} before it is a regression. Scored by
+								{evaluated.scorers.map((s) => `${s.step}: ${s.method}${s.rule ? ` (${s.rule})` : ''}, ${s.exactness}`).join('; ')}.
+							</p>
+						</div>
+						<table class="cases">
+							<thead>
+								<tr><th scope="col">case</th><th scope="col">active</th><th scope="col">proposal</th><th scope="col">change</th></tr>
+							</thead>
+							<tbody>
+								{#each evaluated.cases as row (row.case)}
+									<tr data-case={row.case}>
+										<th scope="row">{row.case}</th>
+										{#each [row.active, row.proposed] as side, i (i)}
+											<td data-side={i === 0 ? 'active' : 'proposed'}>
+												{#if side?.left_out}
+													<span class="muted">left out: {side.left_out}</span>
+												{:else if side}
+													<span class="bar" style:--w={width(side)}></span>
+													<span class="figure-sm">{score(side.score)}</span>
+													{#if side.run_id}<a class="muted" href={runLink(side.run_id)}>{side.run_id}</a>{/if}
+												{:else}
+													<span class="muted">not run yet</span>
+												{/if}
+											</td>
+										{/each}
+										<td class="change-cell" data-change={row.change == null ? 'none' : row.change < 0 ? 'down' : row.change > 0 ? 'up' : 'same'}>
+											{signed(row.change)}
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					{/if}
+				</section>
+			{/if}
 			<div class="row">
 				<button type="button" disabled={busy} onclick={() => onRehearse(proposal.id)}>
 					{proposal.state === 'rehearsed' ? 'Rehearse again' : 'Rehearse'}
 				</button>
-				{#if proposal.state === 'rehearsed' && finished(proposal)}
+				{#if proposal.state === 'rehearsed' && finished(proposal) && (gate(proposal) === 'none' || gate(proposal) === 'passed')}
 					<button type="button" class="primary" disabled={busy} onclick={() => onCommission(proposal.id)}>
 						Commission version {proposal.version}
 					</button>
 				{/if}
 				<button type="button" disabled={busy} onclick={() => onDiscard(proposal.id)}>Discard</button>
 			</div>
+			{#if proposal.state === 'rehearsed' && finished(proposal) && gate(proposal) === 'against'}
+				<form class="against" onsubmit={(event) => commissionAgainst(event, proposal)}>
+					<label>
+						The verdict stands against this version. To commission it all the same, give your reason; it
+						is recorded with the evaluation.
+						<textarea rows="2" bind:value={reasons[proposal.id]}></textarea>
+					</label>
+					<button type="submit" disabled={busy || !(reasons[proposal.id] ?? '').trim()}>
+						Commission version {proposal.version} against the verdict
+					</button>
+				</form>
+			{:else if gate(proposal) === 'running'}
+				<p class="muted">Commissioning waits until every case is scored.</p>
+			{/if}
 		</article>
 	{/each}
+
+	{#if overridden.length > 0}
+		<section class="overridden" aria-label="Commissioned against the verdict">
+			<h2>Commissioned against the verdict</h2>
+			<ul>
+				{#each overridden as { proposal, evaluated } (proposal.id)}
+					<li data-overridden={proposal.id}>
+						<span class="v">{proposal.version}</span>
+						<span class="verdict" data-verdict={evaluated.verdict}>{evaluated.verdict}</span>
+						<span>
+							{score(sideOf(evaluated, 'active')?.score)} → {score(sideOf(evaluated, 'proposed')?.score)}
+						</span>
+						<p class="reason">“{evaluated.override?.reason}”</p>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 
 	<section class="versions" aria-label="Versions">
 		<h2>Versions — and how to go back</h2>
@@ -285,6 +421,134 @@
 	}
 	.v {
 		font-family: var(--mono);
+	}
+	.evaluation {
+		border: 1px solid var(--line);
+		border-radius: 14px;
+		padding: 0.8rem 1rem;
+		margin: 0.75rem 0;
+		background: var(--paper);
+	}
+	.verdict-row {
+		display: flex;
+		gap: 0.75rem;
+		align-items: baseline;
+		flex-wrap: wrap;
+	}
+	.verdict {
+		font-family: var(--mono);
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		border-radius: 999px;
+		padding: 0.1rem 0.6rem;
+		border: 1px solid currentColor;
+		color: var(--waiting);
+	}
+	.verdict[data-verdict='passed'] {
+		color: var(--reproducible);
+	}
+	.verdict[data-verdict='regressed'],
+	.verdict[data-verdict='incomplete'] {
+		color: var(--alert);
+	}
+	.sides {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+		gap: 0.5rem 1.5rem;
+		margin: 0.6rem 0;
+	}
+	.sides p {
+		grid-column: 1 / -1;
+		margin: 0;
+	}
+	.side {
+		display: grid;
+	}
+	.label {
+		font-size: 0.75rem;
+		color: var(--ink-3);
+	}
+	.figure {
+		font-family: var(--serif);
+		font-size: 2rem;
+		line-height: 1.1;
+	}
+	.side[data-side='proposed'] .figure {
+		color: var(--reproducible);
+	}
+	.cases {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.85rem;
+		display: block;
+		overflow-x: auto;
+	}
+	.cases th,
+	.cases td {
+		text-align: left;
+		padding: 0.35rem 0.5rem;
+		border-top: 1px solid var(--line);
+		vertical-align: middle;
+		white-space: nowrap;
+	}
+	.cases thead th {
+		font-weight: normal;
+		color: var(--ink-3);
+		border-top: none;
+	}
+	.bar {
+		display: inline-block;
+		width: 4rem;
+		height: 0.45rem;
+		border-radius: 999px;
+		margin-right: 0.4rem;
+		background: linear-gradient(to right, var(--ink-2) var(--w), var(--paper-2) var(--w));
+	}
+	td[data-side='proposed'] .bar {
+		background: linear-gradient(to right, var(--reproducible) var(--w), var(--paper-2) var(--w));
+	}
+	.figure-sm {
+		font-family: var(--mono);
+		margin-right: 0.4rem;
+	}
+	.change-cell {
+		font-family: var(--mono);
+	}
+	.change-cell[data-change='down'] {
+		color: var(--alert);
+	}
+	.change-cell[data-change='up'] {
+		color: var(--reproducible);
+	}
+	.against {
+		display: grid;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+		max-width: 46rem;
+	}
+	.against label {
+		display: grid;
+		gap: 0.3rem;
+		font-size: 0.9rem;
+	}
+	.overridden ul {
+		list-style: none;
+		padding: 0;
+		max-width: 46rem;
+	}
+	.overridden li {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		align-items: baseline;
+		padding: 0.5rem 0;
+		border-bottom: 1px solid var(--line);
+	}
+	.reason {
+		flex-basis: 100%;
+		margin: 0;
+		font-family: var(--serif);
 	}
 	.message {
 		background: var(--paper-2);

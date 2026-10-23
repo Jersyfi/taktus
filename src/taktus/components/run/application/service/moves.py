@@ -8,13 +8,17 @@ move of the tenant and measures it by a rule (`domain.service.maturation.review`
 
 - the first 100 cases of the step on the new version, in the order they started: their cost per
   case at the price table, and the share that fell back to the language model;
-- the cases of the step on the version it replaced: their cost per case at the same table.
+- the cases of the step on the version it replaced: their cost per case at the same table;
+- where the process's evaluation cases score the step, its score in each version (ADR-0141).
 
-Until 100 cases ran, the move is `measuring`, and nothing is recorded. Then the verdict is
-recorded once, as `method.measured`, with the measures by digest: `cheaper`, `not_cheaper`, or
-`unpriced` where a cost cannot be priced. A move that is `not_cheaper` is proposed for rolling
-back, as a decision request to whoever owns the process. Nothing is rolled back here: a person
-decides, and the composition root applies the decision (`composition/moves.py`).
+Until 100 cases ran, the move is `measuring`, and nothing is recorded; so it is while the
+replaced version was scored on the cases and the moved version, whose cases run on a schedule,
+was not yet. Then the verdict is recorded once, as `method.measured`, with the measures by
+digest: `worse` where the score fell by more than the tenant's tolerance, else `cheaper`,
+`not_cheaper`, or `unpriced` where a cost cannot be priced. A move that is `worse` or
+`not_cheaper` is proposed for rolling back, as a decision request to whoever owns the
+process. Nothing is rolled back here: a person decides, and the composition root applies the
+decision (`composition/moves.py`).
 """
 
 from __future__ import annotations
@@ -24,8 +28,14 @@ from datetime import timedelta
 
 from taktus.components.run.application.query.measures import StepCases, StepMeasures
 from taktus.components.run.domain.service import maturation
-from taktus.components.run.domain.service.maturation import Move, MoveReview
-from taktus.components.run.ports import Decisions, Draft, DraftOption, NotRaised
+from taktus.components.run.domain.service.maturation import Move, MoveReview, StepScore
+from taktus.components.run.ports import (
+    Decisions,
+    Draft,
+    DraftOption,
+    EvaluationScores,
+    NotRaised,
+)
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.model import PriceTable
@@ -61,7 +71,11 @@ class ReviewMovesHandler:
         decisions: Decisions | None,
         prices: PriceTable | None,
         decision_days: int = 3,
+        scores: EvaluationScores | None = None,
     ) -> None:
+        """`scores` reads a step's score on its process's evaluation cases (ADR-0141); None:
+        a move is measured by its cost alone."""
+        self._scores = scores
         self._cases = cases
         self._objects = objects
         self._ledger = ledger
@@ -92,6 +106,11 @@ class ReviewMovesHandler:
             return ()
         steps = {(s.process_version, s.step_id): s for s in await self._cases.steps(tenant)}
         currency = None if self._prices is None else self._prices.currency
+        scored: dict[tuple[str, str], StepScore] = {}
+        tolerance = 0.0
+        if self._scores is not None:
+            scored = {(s.process_version, s.step_id): s for s in await self._scores.scores(tenant)}
+            tolerance = await self._scores.tolerance(tenant)
         found: list[MoveReview] = []
         for move in moves:
             recorded = measured.get(move.process_version)
@@ -100,11 +119,21 @@ class ReviewMovesHandler:
                 continue
             now = steps.get((move.process_version, move.step_id))
             before = steps.get((move.replaced, move.step_id))
-            review = maturation.review(move, _cases(now), _cases(before), currency)
+            review = maturation.review(
+                move,
+                _cases(now),
+                _cases(before),
+                currency,
+                (
+                    scored.get((move.process_version, move.step_id)),
+                    scored.get((move.replaced, move.step_id)),
+                ),
+                tolerance,
+            )
             if review.verdict == "measuring":
                 found.append(review)
                 continue
-            if review.verdict == "not_cheaper" and now is not None:
+            if review.verdict in ("worse", "not_cheaper") and now is not None:
                 review = await self._propose_rollback(tenant, review, now)
             await self._record(tenant, review)
             found.append(review)

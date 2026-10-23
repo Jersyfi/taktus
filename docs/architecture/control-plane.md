@@ -423,7 +423,10 @@ evaluation passed, or against a regression with a person's reason, recorded as
 `evaluation.overridden`. On the schedule the active version runs on the same cases with no
 change; a score below the last one by more than the tenant's tolerance is a drift, and an
 incident of kind `evaluation.drift` where the process sends outward. A corrected draft is
-proposed as a case, and enters the set once a person confirmed its target.
+proposed as a case, and enters the set once a person confirmed its target. The web app's change
+page shows the comparison case by case with the verdict, and the owner's conversation reads a
+commissioning back with it. Maturation reads a step's score on the cases as evidence: a move
+that scores lower than the version it replaced is proposed for rolling back (ADR-0141).
 
 **The trace inside a step** (ADR-0135, UC-6.14). The run keeps every event a worker reports as
 a line of its step's trace, in a transaction of its own as it arrives, every secret value the
