@@ -27,8 +27,9 @@ elected scheduler ticks once a minute (ADR-0035).
 ### 1. A stop of an adapter is a record of the tenant
 
 A person requests a stop of one adapter. The request names no reason (UC-7.2). The adapter must
-be a worker the instance has configured; any other name is refused, because no step would halt
-at it (see where this promise ends). The request writes, in one transaction:
+be a worker, a connector or a model the instance has configured (the connector and the model
+since the amendment below). Any other name is refused, because no step would halt at it. The
+request writes, in one transaction:
 
 - the stop: the adapter, who requested it, when, and its state `holding`;
 - `stop.requested`, with the person as actor and the adapter.
@@ -118,14 +119,51 @@ recorded states and times. Nothing here is estimated (ADR-0023).
 - The scheduler's tick in `composition/stops.py`.
 - The ledger kinds `stop.requested`, `stop.confirmed` and `stop.lifted`.
 - `taktusctl stop adapter`, `show`, `list` and `lift`.
+- With the amendment: the engine's check before each connector call and each question to a
+  model, and `Pools.identifiers`, which names every adapter a stop may name.
+
+## Amendment — a stop of a connector or a model halts at the call (2026-10-23)
+
+Issue #621. A step is handed to a worker at one place. A connector is called, and a model is
+asked, from inside a step, possibly several times. The stop is applied at each of those calls.
+Everything else in this record stays as it is: the stop's record, its confirmation, its lifting.
+
+- **At the step's boundary.** Before a step that calls a connector or asks a model is admitted,
+  the engine resolves the adapter it would reach. For a model that is the member of the
+  purpose's chain the route reaches (ADR-0116 §4). When that adapter is stopped, the step stops
+  at the boundary it was admitted from, names the adapter, and its run halts with cause `stop`.
+  Nothing is called, not even a model's count of the prompt.
+- **Before every call.** The engine reads the held stops again right before each connector call
+  and each question to a model. The call is not made when the adapter is stopped. The step
+  stops, and its run halts with cause `stop`. A wait that checks an outside state through a
+  connector thus stops between two checks. It keeps its block and what its checks used, as a
+  parked wait does (ADR-0103), so that a resume counts its time from when it began.
+- **A moved step.** A step whose model failed moves to the next member of the chain at its
+  boundary (ADR-0116 §6). When that member is stopped, the step halts there. The stop does not
+  route the step around the stopped model: it halts every step that would call it, and nothing
+  else.
+- **A count for a cap.** A run counts its process's open work through a connector before it
+  starts (ADR-0132 §2). A stopped connector is not called for that count either. The count is
+  unread, and the run waits at the cap until its next check, as for any count that cannot be
+  read.
+
+A call already in progress when the stop is requested ends as it would. A connector call and a
+model's answer each are one call with no inner boundary: the step is never aborted, and the next
+call it would make is the one held back.
+
+The confirmation is computed as in §3. A step that stopped before calling a stopped connector or
+model is stopped on that adapter, so its run is named.
 
 ## Where this promise ends
 
-It covers worker adapters. A step is handed to a worker at one place, and that is where the
-stop is applied. A connector is called, and a model is asked, from inside a step, possibly
-several times. A stop of a connector or a model adapter is refused, so that no confirmation
-claims a stop that halts nothing. Halting at those calls is #621. The workers a stop
-may name are those the requesting instance has configured.
+It covers every adapter the requesting instance has configured: its workers, its connectors and
+its models. For a worker, the stop is applied at the handover and inside the step at the
+worker's next inner boundary. For a connector and a model, it is applied before each call. A
+call in progress is not cut short. A worker's own calls to a connector or a model of its own,
+outside the instance's pools, are not seen by the engine and are not held back by this stop.
+A rehearsal halts at a stopped connector as well, although its outward operations would answer
+from a recording and act on nothing (ADR-0030): the stop is decided by the adapter's name, never
+by what the call would do.
 
 A step inside a stopped worker is asked to stop at the runner's next renewal, twenty seconds by
 default. It ends at the worker's next inner boundary, or at the step's ceiling for a worker that
