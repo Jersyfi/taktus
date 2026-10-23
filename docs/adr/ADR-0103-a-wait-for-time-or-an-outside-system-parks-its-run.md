@@ -1,6 +1,6 @@
 # ADR-0103 — A wait for time or for an outside system parks its run
 
-**Status:** accepted · amends ADR-0043's waiting rules for `wait` steps · issue #320
+**Status:** accepted · amends ADR-0043's waiting rules for `wait` steps · issue #320 · amended 2026-10-23 (#580): a `not_found` answer of the read is a state not reached yet
 
 ## Context
 
@@ -17,6 +17,7 @@ A worker at capacity already frees its place in a way that fits: the run halts w
 3. **The runner defers the job to `next_check_at`.** The run holds no place and no lease meanwhile. The runner that claims the job then resumes the run at the step's boundary.
 4. **A resumed wait counts from when it began.** That is the block's `since`. A wait on the clock waits only what remains. A wait on an outside state checks again, and its timeout counts from the same moment. This holds for a parked wait and for one recovered after a restart.
 5. **The block is one stretch.** It ends when the wait does, met or timed out, so its whole duration is booked to `wait.external`, as ADR-0043 says. What the checks of an outside state consumed is summed across every park.
+6. **A `not_found` answer is a state not reached yet.** A record the wait is for may not exist when the first check runs, such as the pipeline of a branch just pushed. The connector's answer `not_found` is then the honest one, and the wait counts it as it counts a state other than the expected one: it checks again at its interval, until its timeout, inline or parked. The reason of a timeout names the last answer, `not_found` among them. Every other refusal of the connector (`forbidden`, `invalid`, `unauthenticated`, `conflict`, `unavailable`, `unexpected`, `unknown`) still fails the step at once, as for any connector call (ADR-0024).
 
 ## Alternatives
 
@@ -32,4 +33,4 @@ A worker at capacity already frees its place in a way that fits: the run halts w
 
 ## Where this promise ends
 
-A parked run continues when a runner claims its job. The job is due at `next_check_at`, but no runner, a runner busy with every place, or a database it cannot reach delays the check. The wait then lasts longer, and the block books the longer time. A timeout ends a wait at the first check after it, not at the moment it passes. A wait shorter than the poll interval still holds its place, as before. A run that is resumed by a person from the command line waits inline, as before.
+A parked run continues when a runner claims its job. The job is due at `next_check_at`, but no runner, a runner busy with every place, or a database it cannot reach delays the check. The wait then lasts longer, and the block books the longer time. A timeout ends a wait at the first check after it, not at the moment it passes. A wait on a record that never comes into being waits its whole timeout before it fails, and a record that was wrongly named looks the same as one not yet there until then. A wait shorter than the poll interval still holds its place, as before. A run that is resumed by a person from the command line waits inline, as before.

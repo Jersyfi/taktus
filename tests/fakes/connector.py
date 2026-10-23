@@ -41,6 +41,7 @@ class FakeConnector:
     read_sequence: list[dict[str, Any]] = field(default_factory=list)  # successive read answers
     calls: list[tuple[str, CallContext, dict[str, Any]]] = field(default_factory=list)
     fail_next: dict[str, Error] = field(default_factory=dict)
+    fail_each: dict[str, list[Error]] = field(default_factory=dict)  # successive refusals
     unreachable: str | None = None
     crash_after_acting: type[BaseException] | None = None
     """Raised after a write acted, before the answer: the instance dies with the effect
@@ -90,6 +91,8 @@ class FakeConnector:
             raise ConnectorError(self.unreachable)
         if (error := self.fail_next.pop(operation, None)) is not None:
             raise CallFailed(operation, error)
+        if queued := self.fail_each.get(operation):
+            raise CallFailed(operation, queued.pop(0))
         if operation == READ:
             if self.read_sequence:
                 answer = self.read_sequence.pop(0)

@@ -249,6 +249,9 @@ from taktus.ports.connector import (
     Result,
     idempotency_key,
 )
+from taktus.ports.connector import (
+    Cause as ConnectorCause,
+)
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.model import (
     Calculability,
@@ -2875,6 +2878,7 @@ class RunEngine:
                 adapter=resolved.adapter,
                 outcome="connector failed",
                 interface=interfaces.of_cause(error.cause),
+                not_found=error.cause is ConnectorCause.NOT_FOUND,
             ) from failed
         except ConnectorError as broken:
             # The connector did not answer, or answered outside the contract: whether the
@@ -3005,21 +3009,31 @@ class RunEngine:
         waited = self._waited_so_far(step_run, resumed)
         limit = self._options.park_waits_after_seconds
         while True:
-            result = await self._call(
-                run, step_run, resolved, operation, input, until.credentials, span
-            )
-            _accumulate(used, result.consumption)
             try:
-                observed = select(result.output, until.select)
-            except KeyError:
-                observed = None
-            if observed in until.expect:
+                result = await self._call(
+                    run, step_run, resolved, operation, input, until.credentials, span
+                )
+            except _StepFailed as refused:
+                # The record may not exist yet; any other refusal fails the step at once.
+                if not refused.not_found:
+                    raise
+                if refused.consumption is not None:
+                    _accumulate(used, refused.consumption)
+                observed = _NOT_FOUND
+            else:
+                _accumulate(used, result.consumption)
+                try:
+                    observed = select(result.output, until.select)
+                except KeyError:
+                    observed = None
+            if observed is not _NOT_FOUND and observed in until.expect:
                 span.set_attribute("wait.observed", str(observed))
                 return step_run, _consumption(used)
             if waited >= until.timeout_seconds:
                 raise _StepFailed(
                     reason=f"waited {waited:.0f}s for {until.operation} {until.select} to be one "
-                    f"of {list(until.expect)}; last observed {observed!r}",
+                    f"of {list(until.expect)}; last observed "
+                    f"{'not_found' if observed is _NOT_FOUND else repr(observed)}",
                     retryable=True,
                     consumption=_consumption(used),
                     adapter=resolved.adapter,
@@ -4185,6 +4199,10 @@ def _parked_wait(step_run: StepRun) -> bool:
     return step_run.block is not None and step_run.block.next_check_at is not None
 
 
+_NOT_FOUND: Any = object()
+"""What a wait observed when the read answered `not_found`."""
+
+
 @dataclass(frozen=True)
 class _StepFailed(Exception):
     """A local step that did not complete for a reason that is not a rule's: the connector
@@ -4201,6 +4219,9 @@ class _StepFailed(Exception):
     interface: str | None = None
     """For a call through a connector that failed in a way that speaks about its interface: the
     token `interface.failed` records (ADR-0047)."""
+    not_found: bool = False
+    """The connector answered `not_found`: a wait on an outside state reads that as a state
+    not reached yet (ADR-0103 §6)."""
     moves: bool = False
     """The call failed on one model of the purpose's chain, and another fits the step: it moves
     there at its boundary instead of escalating (ADR-0116 §6)."""
