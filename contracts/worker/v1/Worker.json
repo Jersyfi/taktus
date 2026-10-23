@@ -124,6 +124,14 @@
               "description": "Whether the worker can pause inside a step. Refines granularity; never required.",
               "type": "boolean"
             },
+            "steering": {
+              "description": "Whether the worker accepts a message to a running assignment at POST /v1/assignments/{id}/messages and receives it at its next step boundary (README §6, check W-19, ADR-0139). Absent means false: the worker refuses a message.",
+              "type": "boolean"
+            },
+            "handover": {
+              "description": "Whether the worker hands an assignment over at POST /v1/assignments/{id}/handover: it stops at the next step boundary and leaves a handover.state artifact another worker or a person can continue from (README §6, check W-20, ADR-0139). Absent means false: the worker refuses a handover.",
+              "type": "boolean"
+            },
             "step_boundary_signal": { "const": true },
             "streaming_events": { "const": true },
             "estimate": { "const": true }
@@ -224,7 +232,7 @@
 
     "Context": {
       "title": "Context",
-      "description": "What the worker starts from. checkpoint_ref is present when the assignment resumes an earlier one; the worker continues after that checkpoint and produces no artifact it produced before it.",
+      "description": "What the worker starts from. checkpoint_ref is present when the assignment resumes an earlier one; the worker continues after that checkpoint and produces no artifact it produced before it. handover is present when the assignment continues one that was handed over, possibly by another instance or another worker: the worker continues from the document, repeats no step it lists as done and produces no artifact it lists (W-20). Never both.",
       "type": "object",
       "properties": {
         "workspace": { "$ref": "#/$defs/Workspace" },
@@ -232,9 +240,11 @@
           "type": "array",
           "items": { "$ref": "../../shared/v1/Artifact.json" }
         },
-        "checkpoint_ref": { "$ref": "#/$defs/CheckpointRef" }
+        "checkpoint_ref": { "$ref": "#/$defs/CheckpointRef" },
+        "handover": { "$ref": "#/$defs/Handover" }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "not": { "required": ["checkpoint_ref", "handover"] }
     },
 
     "Frame": {
@@ -411,7 +421,7 @@
 
     "AssignmentState": {
       "title": "AssignmentState",
-      "description": "Response of POST /v1/assignments, GET /v1/assignments/{id} and POST /v1/assignments/{id}/stop. last_seq is the highest event sequence number emitted so far; 0 before the first event.",
+      "description": "Response of POST /v1/assignments, GET /v1/assignments/{id}, POST /v1/assignments/{id}/stop, POST /v1/assignments/{id}/messages and POST /v1/assignments/{id}/handover. last_seq is the highest event sequence number emitted so far; 0 before the first event.",
       "type": "object",
       "properties": {
         "assignment_id": { "$ref": "#/$defs/AssignmentId" },
@@ -439,6 +449,118 @@
         "reason": { "type": "string" },
         "ceiling_seconds": { "type": "integer", "minimum": 1 }
       },
+      "additionalProperties": false
+    },
+
+    "MessageId": {
+      "title": "MessageId",
+      "description": "Chosen by the control plane, prefixed msg_. A message posted again under the same id is received once.",
+      "type": "string",
+      "pattern": "^msg_[A-Za-z0-9_-]{4,}$"
+    },
+
+    "SteeringMessage": {
+      "title": "SteeringMessage",
+      "description": "Body of POST /v1/assignments/{id}/messages: a message to a running assignment. The worker receives it at its next step boundary, reports message.received once, and the steps after that boundary have it as an input of their work. It is an input like the task's inputs: it cannot widen the frame, raise a limit or move the deadline (README §6, W-19).",
+      "type": "object",
+      "properties": {
+        "message_id": { "$ref": "#/$defs/MessageId" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 8000 }
+      },
+      "required": ["message_id", "text"],
+      "additionalProperties": false
+    },
+
+    "HandoverRequest": {
+      "title": "HandoverRequest",
+      "description": "Body of POST /v1/assignments/{id}/handover. The handover takes effect at the next step boundary, as a stop does; ceiling_seconds bounds how long the running step may still take. The worker then produces the handover.state artifact and ends stopped, naming it (README §6, W-20).",
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "ceiling_seconds": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+
+    "HandoverStep": {
+      "title": "HandoverStep",
+      "description": "One step of the worker's own plan that was done when the assignment was handed over.",
+      "type": "object",
+      "properties": {
+        "step_id": { "$ref": "#/$defs/StepId" },
+        "kind": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
+        "summary": { "type": "string", "minLength": 1 }
+      },
+      "required": ["step_id", "kind", "summary"],
+      "additionalProperties": false
+    },
+
+    "Handover": {
+      "title": "Handover",
+      "description": "The content of a handover.state artifact: an assignment handed over at a step boundary, as a document that stands on its own. summary, steps and artifacts are for a person, who can continue the work from them; what the work changed in its workspace is among the artifacts. resume is the worker's own: a worker of the same kind continues from it without anything the first instance kept. A new assignment carries the document in context.handover; it repeats no step listed here and produces no artifact listed here (W-20).",
+      "type": "object",
+      "properties": {
+        "contract": { "const": "worker/v1" },
+        "assignment_id": { "$ref": "#/$defs/AssignmentId" },
+        "checkpoint_ref": { "$ref": "#/$defs/CheckpointRef" },
+        "task": { "$ref": "#/$defs/Task" },
+        "summary": {
+          "description": "For a person: what was done and what remains.",
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "description": "The steps done, in order.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/HandoverStep" }
+        },
+        "artifacts": {
+          "description": "Every artifact the assignment, and every assignment it continued, produced before the handover; the handover.state artifact itself is not among them.",
+          "type": "array",
+          "items": { "$ref": "../../shared/v1/Artifact.json" }
+        },
+        "messages": {
+          "description": "The steering messages received before the handover.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/MessageId" },
+          "uniqueItems": true
+        },
+        "resume": {
+          "description": "The worker's own, opaque to everyone else: what a worker of the same kind needs to continue. Never a credential.",
+          "type": "object"
+        }
+      },
+      "required": ["contract", "assignment_id", "checkpoint_ref", "task", "summary", "steps", "artifacts", "resume"],
+      "additionalProperties": false
+    },
+
+    "RelayRequest": {
+      "title": "RelayRequest",
+      "description": "The outbound binding (README §8, ADR-0139): what POST <base>/next answers a worker that connects to a host instead of listening. One request of this contract, which the worker handles as if it had arrived at its endpoint and answers at POST <base>/answers/{request_id}: the header Relay-Status carries the status code, Content-Type the type, and the body the answer's body, streamed while it lasts. Every request is answered exactly once (W-21).",
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "pattern": "^rly_[A-Za-z0-9_-]{4,}$"
+        },
+        "method": { "type": "string", "enum": ["GET", "POST"] },
+        "path": {
+          "description": "The path of the contract's endpoint, with its query, as a request at the worker's endpoint would carry it.",
+          "type": "string",
+          "pattern": "^/v1/"
+        },
+        "headers": {
+          "description": "Of the request's headers, those the contract gives a meaning.",
+          "type": "object",
+          "propertyNames": { "enum": ["Accept", "Content-Type", "Last-Event-ID"] },
+          "additionalProperties": { "type": "string" }
+        },
+        "body": {
+          "description": "The request's body as text; absent when it has none.",
+          "type": "string"
+        }
+      },
+      "required": ["request_id", "method", "path"],
       "additionalProperties": false
     },
 
@@ -488,6 +610,8 @@
             "consumption.reported",
             "step.boundary",
             "artifact.produced",
+            "message.received",
+            "model.called",
             "assignment.finished"
           ]
         }
@@ -558,7 +682,7 @@
 
     "ToolCalled": {
       "title": "ToolCalled",
-      "description": "The worker used, or refused to use, a tool. Arguments travel as a digest, never in clear. A tool outside the frame's allowed_tools is refused, and so is a host outside the frame's allowed_hosts; the refusal is this event with refused true.",
+      "description": "The worker used, or refused to use, a tool. Arguments travel as a digest, never in clear. A tool outside the frame's allowed_tools is refused, and so is a host outside the frame's allowed_hosts; the refusal is this event with refused true. effect says whether the call acts outside the workspace.",
       "type": "object",
       "allOf": [{ "$ref": "#/$defs/EventBase" }],
       "properties": {
@@ -571,7 +695,12 @@
           "$ref": "#/$defs/Host"
         },
         "refused": { "type": "boolean", "default": false },
-        "reason": { "description": "Why the call was refused.", "type": "string" }
+        "reason": { "description": "Why the call was refused.", "type": "string" },
+        "effect": {
+          "description": "What the call acts on, where the worker says so. local: nothing outside the assignment's workspace changes — a read, an edit of the workspace's files, a test run. outward: something outside it changes, such as a record written or a message delivered. Absent says nothing (ADR-0139 §5).",
+          "type": "string",
+          "enum": ["local", "outward"]
+        }
       },
       "required": ["tool", "arguments_digest"],
       "unevaluatedProperties": false
@@ -642,9 +771,36 @@
       "unevaluatedProperties": false
     },
 
+    "MessageReceived": {
+      "title": "MessageReceived",
+      "description": "A steering message was received, at a step boundary: after the step that was running reached its boundary, or before the first step, and never inside a step. step_id names the step whose boundary it was. Emitted once per message; the steps after it have the message as an input (W-19).",
+      "type": "object",
+      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "properties": {
+        "type": { "const": "message.received" },
+        "step_id": { "$ref": "#/$defs/StepId" },
+        "message_id": { "$ref": "#/$defs/MessageId" }
+      },
+      "required": ["message_id"],
+      "unevaluatedProperties": false
+    },
+
+    "ModelCalled": {
+      "title": "ModelCalled",
+      "description": "The worker received an answer of a language model inside a step. Reported once per answer, so that the tool calls between two answers can be seen (ADR-0139 §5, ADR-0132). Optional: a worker that uses no model emits none.",
+      "type": "object",
+      "allOf": [{ "$ref": "#/$defs/EventBase" }],
+      "properties": {
+        "type": { "const": "model.called" },
+        "step_id": { "$ref": "#/$defs/StepId" }
+      },
+      "required": ["step_id"],
+      "unevaluatedProperties": false
+    },
+
     "AssignmentFinished": {
       "title": "AssignmentFinished",
-      "description": "The last event of a stream. stopped carries the checkpoint to resume from; failed and rejected carry a reason. limit names the kind of the ceiling in limits that halted the assignment: only with stopped, and never for a stop requested through POST /stop.",
+      "description": "The last event of a stream. stopped carries the checkpoint to resume from; failed and rejected carry a reason. limit names the kind of the ceiling in limits that halted the assignment: only with stopped, and never for a stop requested through POST /stop. handover names the handover.state artifact of an assignment handed over: only with stopped.",
       "type": "object",
       "allOf": [
         { "$ref": "#/$defs/EventBase" },
@@ -659,6 +815,10 @@
         {
           "if": { "properties": { "outcome": { "enum": ["failed", "rejected"] } } },
           "then": { "required": ["reason"] }
+        },
+        {
+          "if": { "required": ["handover"] },
+          "then": { "properties": { "outcome": { "const": "stopped" } } }
         }
       ],
       "properties": {
@@ -670,7 +830,12 @@
           "$ref": "#/$defs/LimitKind"
         },
         "reason": { "type": "string", "minLength": 1 },
-        "summary": { "type": "string" }
+        "summary": { "type": "string" },
+        "handover": {
+          "description": "The artifact_id of the handover.state artifact, when the assignment was handed over (W-20). Only with stopped.",
+          "type": "string",
+          "minLength": 1
+        }
       },
       "required": ["outcome"],
       "unevaluatedProperties": false
@@ -689,13 +854,15 @@
         { "$ref": "#/$defs/ConsumptionReported" },
         { "$ref": "#/$defs/StepBoundary" },
         { "$ref": "#/$defs/ArtifactProduced" },
+        { "$ref": "#/$defs/MessageReceived" },
+        { "$ref": "#/$defs/ModelCalled" },
         { "$ref": "#/$defs/AssignmentFinished" }
       ]
     },
 
     "Transcript": {
       "title": "Transcript",
-      "description": "Not a wire object. The fixture shape for the conformance suite: one assignment, the estimate the worker gave for it, and every event of its stream in order. The suite checks the stream rules W-03 to W-07, W-10, W-11, W-13, W-14 and W-18 against this shape.",
+      "description": "Not a wire object. The fixture shape for the conformance suite: one assignment, the estimate the worker gave for it, every event of its stream in order, the steering messages the suite posted with the last seq the worker's answer to each named, and whether a handover was requested. The suite checks the stream rules W-03 to W-07, W-10, W-11, W-13, W-14, W-18, W-19 and W-20 against this shape.",
       "type": "object",
       "properties": {
         "assignment": { "$ref": "#/$defs/Assignment" },
@@ -704,7 +871,24 @@
           "type": "array",
           "items": { "$ref": "#/$defs/Event" },
           "minItems": 1
-        }
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "message_id": { "$ref": "#/$defs/MessageId" },
+              "accepted_at_seq": {
+                "description": "last_seq of the state the worker answered the message with.",
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": ["message_id", "accepted_at_seq"],
+            "additionalProperties": false
+          }
+        },
+        "handover_requested": { "type": "boolean" }
       },
       "required": ["assignment", "estimate", "events"],
       "additionalProperties": false
@@ -774,6 +958,33 @@
         "after": { "$ref": "#/$defs/AssignmentState" }
       },
       "required": ["held", "answer", "after"],
+      "additionalProperties": false
+    },
+
+    "RelayProbe": {
+      "title": "RelayProbe",
+      "description": "Not a wire object. The fixture shape for check W-21: the requests a host relayed to a worker connected over the outbound binding, and every answer the worker posted, in order, with the Relay-Status it carried (null where it carried none or one that is no status code). The suite checks the binding rule against this shape.",
+      "type": "object",
+      "properties": {
+        "relayed": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RelayRequest" },
+          "minItems": 1
+        },
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "request_id": { "type": "string", "minLength": 1 },
+              "status": { "type": ["integer", "null"] }
+            },
+            "required": ["request_id", "status"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["relayed", "answers"],
       "additionalProperties": false
     }
   }

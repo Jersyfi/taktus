@@ -1,0 +1,7 @@
+{
+  "message_id": "msg_01J8RS9A0B2C4D",
+  "text": "go on",
+  "allowed_tools": [
+    "shell.script"
+  ]
+}

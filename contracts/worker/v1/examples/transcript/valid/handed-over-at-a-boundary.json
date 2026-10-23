@@ -1,0 +1,150 @@
+{
+  "assignment": {
+    "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+    "task": {
+      "goal": "Run the four steps of the default work.",
+      "acceptance": [
+        "the stream ends with assignment.finished"
+      ]
+    },
+    "context": {
+      "workspace": {
+        "kind": "none"
+      }
+    },
+    "frame": {
+      "autonomy_level": 2,
+      "allowed_tools": [
+        "shell.script"
+      ],
+      "allowed_hosts": [],
+      "max_steps": 10
+    },
+    "limits": {
+      "compute": {
+        "seconds": 60,
+        "resource_class": "cpu.small"
+      }
+    },
+    "callback": {
+      "events": "sse"
+    }
+  },
+  "estimate": {
+    "confidence": "low",
+    "compute_seconds": 1.2,
+    "resource_class": "cpu.small",
+    "wall_seconds": 2,
+    "steps": 4
+  },
+  "events": [
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 1,
+      "ts": "2026-10-23T10:00:01Z",
+      "type": "step.started",
+      "step_id": "inspect",
+      "kind": "shell",
+      "summary": "inspect the host"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 2,
+      "ts": "2026-10-23T10:00:02Z",
+      "type": "tool.called",
+      "step_id": "inspect",
+      "tool": "shell.script",
+      "arguments_digest": "sha256:b10667e09306f5780c2b12cac9aabb5a21bf75f58885c3e0089cc4366280ba74",
+      "effect": "local"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 3,
+      "ts": "2026-10-23T10:00:03Z",
+      "type": "consumption.reported",
+      "step_id": "inspect",
+      "compute_seconds": 0.3,
+      "resource_class": "cpu.small"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 4,
+      "ts": "2026-10-23T10:00:04Z",
+      "type": "step.boundary",
+      "step_id": "inspect",
+      "checkpoint_ref": "ckpt/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/inspect"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 5,
+      "ts": "2026-10-23T10:00:05Z",
+      "type": "step.started",
+      "step_id": "prepare",
+      "kind": "shell",
+      "summary": "write the plan"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 6,
+      "ts": "2026-10-23T10:00:06Z",
+      "type": "tool.called",
+      "step_id": "prepare",
+      "tool": "shell.script",
+      "arguments_digest": "sha256:e74b51dfe36f9a4c83bfecdb7ad9f597fd228fff4c1b96c117602ab686148e1a",
+      "effect": "local"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 7,
+      "ts": "2026-10-23T10:00:07Z",
+      "type": "artifact.produced",
+      "step_id": "prepare",
+      "artifact_id": "plan",
+      "kind": "plan",
+      "digest": "sha256:ed87dd0c3489106c00695b74686b177186c1238c3fbd97c7be049edfc3a89769",
+      "media_type": "text/plain",
+      "size_bytes": 36,
+      "uri": "/v1/assignments/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/artifacts/plan"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 8,
+      "ts": "2026-10-23T10:00:08Z",
+      "type": "consumption.reported",
+      "step_id": "prepare",
+      "compute_seconds": 0.3,
+      "resource_class": "cpu.small"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 9,
+      "ts": "2026-10-23T10:00:09Z",
+      "type": "step.boundary",
+      "step_id": "prepare",
+      "checkpoint_ref": "ckpt/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/prepare"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 10,
+      "ts": "2026-10-23T10:00:10Z",
+      "type": "artifact.produced",
+      "step_id": "prepare",
+      "artifact_id": "handover",
+      "kind": "handover.state",
+      "digest": "sha256:3dbd21fe9fc4d0ef8d9b9ecd364b15c9d858c560be3f25520452c16ccdd0260b",
+      "media_type": "application/json",
+      "size_bytes": 21,
+      "uri": "/v1/assignments/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/artifacts/handover"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 11,
+      "ts": "2026-10-23T10:00:11Z",
+      "type": "assignment.finished",
+      "outcome": "stopped",
+      "checkpoint_ref": "ckpt/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/prepare",
+      "handover": "handover"
+    }
+  ],
+  "handover_requested": true
+}

@@ -19,6 +19,12 @@ does: it estimates that much in `usd` for an assignment, every inner step report
 and it halts at the first boundary where its running total has reached the money its limits
 carry (W-14).
 
+`steering` and `handover` make it declare the contract's two optional extensions (ADR-0139). A
+message is received at the next boundary as `message.received` and kept in `messages`; without
+`steering` it is refused. A handover stops at the next boundary, as a stop does, and leaves a
+`handover.state` artifact whose document an assignment continues from (`context.handover`);
+without `handover` it is refused.
+
 The stream can be read again from any `seq` (`after`): the script is replayed and every event
 up to it skipped, without calling `on_event` for it. An assignment id the worker holds already
 is refused as the contract's 409 (`AssignmentExists`); one it never received is unknown to
@@ -30,6 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -46,11 +53,17 @@ from taktus.ports.worker import (
     Confidence,
     ConsumptionDeclaration,
     ConsumptionReported,
+    Context,
     Estimate,
     EstimateRequest,
     Event,
+    HandoverRefused,
+    HandoverRequest,
+    MessageReceived,
     NoEstimator,
     Outcome,
+    SteeringMessage,
+    SteeringRefused,
     StepBoundary,
     StepProgress,
     StepStarted,
@@ -99,6 +112,8 @@ class FakeWorker:
     estimate_full_for: int = 0
     inner_seconds: float = 0.0
     estimate_usd: float | None = None
+    steering: bool = False
+    handover: bool = False
     peak: int = 0
     refused: int = 0
     on_assign: Callable[[Assignment], Awaitable[None]] | None = None
@@ -109,7 +124,12 @@ class FakeWorker:
     stops: list[tuple[str, StopRequest]] = field(default_factory=list)
     follows: list[tuple[str, int]] = field(default_factory=list)
     """Every read of a stream: the assignment and the `seq` it was read after."""
+    messages: list[tuple[str, SteeringMessage]] = field(default_factory=list)
+    """Every steering message accepted, with its assignment."""
+    handovers: list[tuple[str, HandoverRequest]] = field(default_factory=list)
     _stop_requested: set[str] = field(default_factory=set)
+    _handover_requested: set[str] = field(default_factory=set)
+    _pending: dict[str, list[SteeringMessage]] = field(default_factory=dict)
     _states: dict[str, AssignmentState] = field(default_factory=dict)
     _bytes: dict[str, bytes] = field(default_factory=dict)
     _held: set[str] = field(default_factory=set)
@@ -126,6 +146,8 @@ class FakeWorker:
             ),
             supports=Supports(
                 native_pause=False,
+                steering=self.steering or None,
+                handover=self.handover or None,
                 step_boundary_signal=True,
                 streaming_events=True,
                 estimate=True,
@@ -143,7 +165,7 @@ class FakeWorker:
             self.refused += 1
             raise WorkerAtCapacity("no room for the probe")
         self.estimates.append(request)
-        start = self._start_index(request.context.checkpoint_ref)
+        start = self._start(request.context)
         if self.estimate_usd is not None:
             return Estimate(
                 confidence=Confidence.LOW,
@@ -231,7 +253,7 @@ class FakeWorker:
                 await self.on_event(event)
             return event
 
-        start = self._start_index(assignment.context.checkpoint_ref)
+        start = self._start(assignment.context)
         money = 0.0
         ceiling = (assignment.limits.currency or {}).get("usd")
         for index in range(start, len(self.script)):
@@ -303,6 +325,41 @@ class FakeWorker:
                     **base(), type="step.boundary", step_id=inner.step_id, checkpoint_ref=checkpoint
                 )
             )
+            for message in self._pending.pop(assignment_id, []):
+                yield await emit(
+                    MessageReceived(
+                        **base(),
+                        type="message.received",
+                        step_id=inner.step_id,
+                        message_id=message.message_id,
+                    )
+                )
+            if assignment_id in self._handover_requested and index < len(self.script) - 1:
+                content = self._handover_document(assignment, index, checkpoint)
+                self._bytes[f"{assignment_id}.handover"] = content
+                yield await emit(
+                    ArtifactProduced(
+                        **base(),
+                        type="artifact.produced",
+                        step_id=inner.step_id,
+                        artifact_id=f"{assignment_id}.handover",
+                        kind="handover.state",
+                        digest="sha256:" + hashlib.sha256(content).hexdigest(),
+                        media_type="application/json",
+                        size_bytes=len(content),
+                    )
+                )
+                yield await emit(
+                    AssignmentFinished(
+                        **base(),
+                        type="assignment.finished",
+                        outcome=Outcome.STOPPED,
+                        checkpoint_ref=checkpoint,
+                        reason="handed over",
+                        handover=f"{assignment_id}.handover",
+                    )
+                )
+                return
             if (
                 self.estimate_usd is not None
                 and ceiling is not None
@@ -377,6 +434,56 @@ class FakeWorker:
             self._states[assignment_id] = state
         return state
 
+    async def steer(self, assignment_id: AssignmentId, message: SteeringMessage) -> AssignmentState:
+        if assignment_id not in self._states:
+            raise UnknownAssignment(f"{assignment_id} is unknown")
+        state = self._states[assignment_id]
+        if not self.steering:
+            raise SteeringRefused("this worker declares no steering")
+        if state.status == "finished":
+            raise SteeringRefused(f"{assignment_id} has finished")
+        if all(m.message_id != message.message_id for a, m in self.messages if a == assignment_id):
+            self.messages.append((assignment_id, message))
+            self._pending.setdefault(assignment_id, []).append(message)
+        return state
+
+    async def hand_over(
+        self, assignment_id: AssignmentId, request: HandoverRequest
+    ) -> AssignmentState:
+        if assignment_id not in self._states:
+            raise UnknownAssignment(f"{assignment_id} is unknown")
+        if not self.handover:
+            raise HandoverRefused("this worker declares no handover")
+        self.handovers.append((assignment_id, request))
+        self._handover_requested.add(assignment_id)
+        state = self._states[assignment_id]
+        if state.status != "finished":
+            state = state.model_copy(update={"status": "stopping"})
+            self._states[assignment_id] = state
+        return state
+
+    def _handover_document(self, assignment: Assignment, index: int, checkpoint: str) -> bytes:
+        done = self.script[: index + 1]
+        document = {
+            "contract": "worker/v1",
+            "assignment_id": assignment.assignment_id,
+            "checkpoint_ref": checkpoint,
+            "task": assignment.task.document(),
+            "summary": f"{len(done)} of {len(self.script)} inner step(s) done",
+            "steps": [{"step_id": s.step_id, "kind": "shell", "summary": s.step_id} for s in done],
+            "artifacts": [
+                {
+                    "id": artifact_id,
+                    "kind": "log",
+                    "digest": "sha256:" + hashlib.sha256(content).hexdigest(),
+                }
+                for s in done
+                for artifact_id, content in s.artifacts
+            ],
+            "resume": {"next": index + 1},
+        }
+        return json.dumps(document).encode()
+
     async def artifacts(self, assignment_id: AssignmentId) -> ArtifactList:
         return ArtifactList(assignment_id=assignment_id, artifacts=())
 
@@ -387,6 +494,12 @@ class FakeWorker:
         """Drop every assignment, as a worker that restarted does."""
         self._states.clear()
         self._held.clear()
+
+    def _start(self, context: Context) -> int:
+        """Where an assignment begins: after its checkpoint, or where its handover says."""
+        if context.handover is not None:
+            return int(context.handover.resume.get("next", 0))
+        return self._start_index(context.checkpoint_ref)
 
     def _start_index(self, checkpoint_ref: str | None) -> int:
         if checkpoint_ref is None:

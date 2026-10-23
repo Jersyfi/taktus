@@ -218,11 +218,21 @@ WORKER_DEFINITIONS = {
     "capabilities": worker.Capabilities,
     "estimate": worker.Estimate,
     "estimate-request": worker.EstimateRequest,
+    "handover": worker.Handover,
+    "handover-request": worker.HandoverRequest,
     "health": worker.Health,
+    "relay-request": worker.RelayRequest,
+    "steering-message": worker.SteeringMessage,
     "stop-request": worker.StopRequest,
 }
 # Example directories whose shape is a fixture of the conformance suite, not a wire object.
-FIXTURE_SHAPES = {"transcript", "capacity-probe", "unknown-id-probe", "repeated-id-probe"}
+FIXTURE_SHAPES = {
+    "transcript",
+    "capacity-probe",
+    "unknown-id-probe",
+    "repeated-id-probe",
+    "relay-probe",
+}
 
 
 @pytest.mark.parametrize(
@@ -269,9 +279,13 @@ def test_every_worker_object_definition_is_bound() -> None:
         for name, body in WORKER_SCHEMA["$defs"].items()
         if body.get("type") == "object" and "oneOf" not in body and not hasattr(worker, name)
     ]
-    assert unbound == ["Transcript", "CapacityProbe", "UnknownIdProbe", "RepeatedIdProbe"], (
-        "all four are fixture shapes, not wire objects"
-    )
+    assert unbound == [
+        "Transcript",
+        "CapacityProbe",
+        "UnknownIdProbe",
+        "RepeatedIdProbe",
+        "RelayProbe",
+    ], "all five are fixture shapes, not wire objects"
 
 
 # --- the model contract ---------------------------------------------------------------------

@@ -72,8 +72,14 @@ type EventType = Literal[
     "consumption.reported",
     "step.boundary",
     "artifact.produced",
+    "message.received",
+    "model.called",
     "assignment.finished",
 ]
+
+type MessageId = Annotated[str, StringConstraints(pattern=r"^msg_[A-Za-z0-9_-]{4,}$")]
+"""A steering message's identifier, chosen by the control plane: a message posted again under
+it is received once (W-19)."""
 
 
 class Confidence(StrEnum):
@@ -111,6 +117,12 @@ class ConsumptionDeclaration(Value):
 
 class Supports(Value):
     native_pause: bool
+    steering: bool | None = None
+    """The worker receives a message to a running assignment at its next boundary (W-19).
+    Absent means it does not (ADR-0139 §3)."""
+    handover: bool | None = None
+    """The worker hands an assignment over at its next boundary, as a document another worker
+    or a person continues from (W-20). Absent means it does not (ADR-0139 §4)."""
     step_boundary_signal: Literal[True]
     streaming_events: Literal[True]
     estimate: Literal[True]
@@ -173,10 +185,49 @@ class Workspace(Value):
     location: str | None = None
 
 
+class HandoverStep(Value):
+    """One step of the worker's own plan that was done when the assignment was handed over."""
+
+    step_id: WorkerStepId
+    kind: str = Field(pattern=r"^[a-z][a-z0-9_-]*$")
+    summary: str = Field(min_length=1)
+
+
+class Handover(Value):
+    """An assignment handed over at a boundary, as a document that stands on its own: what a
+    person needs to continue the work — the summary, the steps done, the artifacts so far —
+    and `resume`, the worker's own, from which a worker of the same kind continues anywhere
+    (ADR-0139 §4, W-20). It is the content of a `handover.state` artifact."""
+
+    contract: Literal["worker/v1"]
+    assignment_id: AssignmentId
+    checkpoint_ref: CheckpointRef
+    task: Task
+    summary: str = Field(min_length=1)
+    steps: tuple[HandoverStep, ...]
+    artifacts: tuple[Artifact, ...]
+    messages: tuple[MessageId, ...] | None = None
+    resume: dict[str, Any]
+
+    @model_validator(mode="after")
+    def _unique(self) -> Handover:
+        if self.messages is not None and len(set(self.messages)) != len(self.messages):
+            raise ValueError("messages lists a message twice")
+        return self
+
+
 class Context(Value):
     workspace: Workspace | None = None
     documents: tuple[Artifact, ...] | None = None
     checkpoint_ref: CheckpointRef | None = None
+    handover: Handover | None = None
+    """The document of a handover this assignment continues; never with `checkpoint_ref`."""
+
+    @model_validator(mode="after")
+    def _one_way_to_continue(self) -> Context:
+        if self.checkpoint_ref is not None and self.handover is not None:
+            raise ValueError("an assignment continues from a checkpoint or a handover, not both")
+        return self
 
 
 class Frame(Value):
@@ -372,6 +423,35 @@ class StopRequest(Value):
     ceiling_seconds: int | None = Field(default=None, ge=1)
 
 
+class HandoverRequest(Value):
+    """A handover takes effect at the next boundary, as a stop does (W-20)."""
+
+    reason: str | None = None
+    ceiling_seconds: int | None = Field(default=None, ge=1)
+
+
+class SteeringMessage(Value):
+    """A message to a running assignment: received at the worker's next boundary, an input of
+    the steps after it, never a change of the frame or the limits (ADR-0139 §3, W-19)."""
+
+    message_id: MessageId
+    text: str = Field(min_length=1, max_length=8000)
+
+
+type RelayedHeader = Literal["Accept", "Content-Type", "Last-Event-ID"]
+
+
+class RelayRequest(Value):
+    """One request of the contract as a host hands it to a worker connected over the outbound
+    binding; the worker answers it exactly once (contracts/worker/v1 §8, W-21)."""
+
+    request_id: str = Field(pattern=r"^rly_[A-Za-z0-9_-]{4,}$")
+    method: Literal["GET", "POST"]
+    path: str = Field(pattern=r"^/v1/")
+    headers: dict[RelayedHeader, str] | None = None
+    body: str | None = None
+
+
 class ArtifactList(Value):
     assignment_id: AssignmentId
     artifacts: tuple[Artifact, ...]
@@ -434,6 +514,10 @@ class ToolCalled(EventBase):
     host: Host | None = None
     refused: bool | None = None
     reason: str | None = None
+    effect: Literal["local", "outward"] | None = None
+    """What the call acts on, where the worker says so: `local` changes nothing outside the
+    assignment's workspace, `outward` changes something outside it (ADR-0139 §5). Absent says
+    nothing."""
 
 
 class DecisionMade(EventBase):
@@ -476,6 +560,21 @@ class ArtifactProduced(EventBase):
         )
 
 
+class MessageReceived(EventBase):
+    """A steering message received at a boundary, once; the steps after it have it (W-19)."""
+
+    type: Literal["message.received"]
+    step_id: WorkerStepId | None = None
+    message_id: MessageId
+
+
+class ModelCalled(EventBase):
+    """An answer of a language model the worker received inside a step (ADR-0139 §5)."""
+
+    type: Literal["model.called"]
+    step_id: WorkerStepId
+
+
 class AssignmentFinished(EventBase):
     type: Literal["assignment.finished"]
     outcome: Outcome
@@ -484,6 +583,8 @@ class AssignmentFinished(EventBase):
     """The ceiling whose running total halted the assignment; absent for a requested stop."""
     reason: str | None = Field(default=None, min_length=1)
     summary: str | None = None
+    handover: str | None = Field(default=None, min_length=1)
+    """The `handover.state` artifact of an assignment handed over (W-20)."""
 
     @model_validator(mode="after")
     def _outcome_brings_its_detail(self) -> AssignmentFinished:
@@ -491,6 +592,8 @@ class AssignmentFinished(EventBase):
             raise ValueError("a stopped assignment names the checkpoint to resume from")
         if self.limit is not None and self.outcome is not Outcome.STOPPED:
             raise ValueError("only a stopped assignment names the limit that halted it")
+        if self.handover is not None and self.outcome is not Outcome.STOPPED:
+            raise ValueError("only a stopped assignment names a handover")
         if self.outcome in (Outcome.FAILED, Outcome.REJECTED) and self.reason is None:
             raise ValueError(f"a {self.outcome} assignment gives a reason")
         return self
@@ -505,6 +608,8 @@ type Event = Annotated[
     | ConsumptionReported
     | StepBoundary
     | ArtifactProduced
+    | MessageReceived
+    | ModelCalled
     | AssignmentFinished,
     Field(discriminator="type"),
 ]
@@ -558,6 +663,15 @@ class AssignmentExists(WorkerError):
     (ADR-0038)."""
 
 
+class SteeringRefused(WorkerError):
+    """The worker took no message: it declares no steering, or the assignment had finished.
+    Nothing reached the work (W-19)."""
+
+
+class HandoverRefused(WorkerError):
+    """The worker hands nothing over: it declares no handover. The assignment runs on (W-20)."""
+
+
 class UnaskedWorker(WorkerError):
     """A configured worker could not be asked what it offers, so its pool could not tell
     whether it serves a step: its endpoint did not answer, or its execution unit did not start.
@@ -594,6 +708,19 @@ class Worker(Protocol):
 
     async def stop(self, assignment_id: AssignmentId, request: StopRequest) -> AssignmentState:
         """Request a stop at the next step boundary."""
+        ...
+
+    async def steer(self, assignment_id: AssignmentId, message: SteeringMessage) -> AssignmentState:
+        """Send a message, received at the next step boundary. A worker that does not declare
+        `supports.steering` refuses it: SteeringRefused (W-19)."""
+        ...
+
+    async def hand_over(
+        self, assignment_id: AssignmentId, request: HandoverRequest
+    ) -> AssignmentState:
+        """Request a handover at the next step boundary: a stop that leaves a `handover.state`
+        artifact. A worker that does not declare `supports.handover` refuses it:
+        HandoverRefused (W-20)."""
         ...
 
     async def artifacts(self, assignment_id: AssignmentId) -> ArtifactList: ...

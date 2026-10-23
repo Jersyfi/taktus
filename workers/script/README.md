@@ -104,6 +104,29 @@ this worker wrote continues after it and does not produce the artifacts recorded
 Credentials arrive as names. The worker logs whether each is present in its environment and
 nothing else. No value is ever written to an event, an artifact or the log.
 
+## Steering, handover and the outbound binding
+
+It offers the contract's three optional extensions (ADR-0139), and declares `steering` and
+`handover` in its capabilities.
+
+**Steering.** A message to a running assignment (`POST /v1/assignments/{id}/messages`) waits for
+the next boundary and is received there, as `message.received`, once per `message_id`. The
+commands of the steps after it find every message received so far in `TAKTUS_STEERING`, a JSON
+list of texts. A message changes neither the frame nor the limits (W-19).
+
+**Handover.** `POST /v1/assignments/{id}/handover` stops the assignment at the next boundary,
+as a stop does. After that boundary the worker produces the artifact `handover`, of kind
+`handover.state`: the steps done, what remains, every artifact so far, and in `resume` the plan
+and the step to continue at. An assignment whose `context.handover` carries the document
+continues there, on any instance of this worker, with no checkpoint in its state directory
+(W-20).
+
+**Outbound only.** `--connect BASE` makes the worker connect to a host of the binding instead of
+listening (README §8). It opens no port: it asks `BASE/next` for the next request, answers it
+with the same handler that answers at an endpoint, and posts the answer to
+`BASE/answers/{request_id}`, the event stream in chunks while it lasts. The conformance suite
+serves `BASE` itself with `--listen` (W-21).
+
 ## Fault injection
 
 `--fault NAME` makes the worker violate exactly one conformance check, so that the suite can be
@@ -130,7 +153,18 @@ that check and only on that check.
 | `W-11` | W-11 | produces the artifacts from before a checkpoint again after resuming |
 | `W-13` | W-13 | reaches a host outside `allowed_hosts` and reports it without `refused: true` |
 | `W-14` | W-14 | ignores the limits once running: keeps starting steps after the running total reached them |
+| `W-15` | W-15 | accepts an assignment beyond `max_concurrent_assignments` instead of answering `503` |
+| `W-16` | W-16 | answers the state of an id it never received with `200`, accepted, instead of `404` |
+| `W-17` | W-17 | accepts an assignment whose id it holds as a second one instead of answering `409` |
 | `W-18` | W-18 | ignores the task's commands before and after the work: they never run and nothing is published |
+| `W-19` | W-19 | receives a message at once, inside the running step, instead of at its boundary |
+| `W-19-undeclared` | W-19 | declares no steering, and accepts a message all the same |
+| `W-20` | W-20 | on a handover, stops at the boundary without the `handover.state` artifact |
+| `W-20-undeclared` | W-20 | declares no handover, and carries one out all the same |
+| `W-21` | W-21 | connected outbound, posts every answer to a relayed request twice |
+
+The `W-21` fault shows only over the binding, so its meta-test runs there
+(`tests/conformance/test_worker_v1_outbound.py`).
 
 W-12, the removal test, has no fault: it is not something a worker does at runtime.
 
