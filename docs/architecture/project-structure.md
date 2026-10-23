@@ -298,6 +298,14 @@ role it would tie the core to a model stack and the removal test would be lost.
   `browser_session`) under a digest of its token. The composition root binds its repository and
   its lifetime, `TAKTUS_SESSION_HOURS`, in every composition (`daemon.py`, `local.py`,
   `replay.py`; `settings.py`).
+- **The MCP surface** is the `api` role's too (`adapters/driving/rest/agent_surface.py`,
+  ADR-0131), mounted at `<prefix>/mcp`. Each request is authenticated by its agent key and
+  answered by a server built for that person and the rights of their roles; the MCP library is
+  imported there only. Starting a process crosses the process, command and run components, so
+  it is the port `AgentActs` of `adapters/driving/rest/wiring.py`, implemented in
+  `composition/agent_surface.py`, which also records every call. The identity component keeps
+  the agent key's digest on the identity and the rights per role (`RoleRights`, table
+  `role_rights`).
 - **A decision that takes effect** on the HTTP surface (`adapters/driving/rest/app.py`) or in
   the owner's channel (`composition/owner_channel.py`) is handed to the run engine, which
   continues or halts the run it holds, and to `composition/moves.py` with its request. A

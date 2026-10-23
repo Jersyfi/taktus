@@ -1,4 +1,5 @@
 from taktus.components.identity.domain.model.identity import (
+    AGENT_KEY_PREFIX,
     CODE,
     CODE_PREFIX,
     CODE_VALIDITY,
@@ -10,6 +11,8 @@ from taktus.components.identity.domain.model.identity import (
     Identity,
     LinkCode,
     LinkOrigin,
+    Right,
+    RoleRights,
     code_id,
     digest,
     link_id,
@@ -17,6 +20,7 @@ from taktus.components.identity.domain.model.identity import (
 )
 
 __all__ = [
+    "AGENT_KEY_PREFIX",
     "CODE",
     "CODE_PREFIX",
     "CODE_VALIDITY",
@@ -28,6 +32,8 @@ __all__ = [
     "Identity",
     "LinkCode",
     "LinkOrigin",
+    "Right",
+    "RoleRights",
     "code_id",
     "digest",
     "link_id",

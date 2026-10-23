@@ -47,6 +47,7 @@ def test_the_document_is_openapi_3_1_with_the_prefix_as_a_server_variable() -> N
         "/intake/{channel}",
         "/intake-events/{event_id}/complete",
         "/identity/link-codes",
+        "/identity/agent-key",
         "/session",
         "/decisions",
         "/decisions/response-times",

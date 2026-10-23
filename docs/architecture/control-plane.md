@@ -98,6 +98,14 @@ provisional operator identity of DEC-0013 in `0.2.0`:
   at its time, on `DELETE /session`, and when the identity's key is replaced. A write with the
   cookie from another site is refused with `403`. Only a digest of the token is kept, in
   `browser_session`; a sign-in writes no ledger entry.
+- **A person's own agent proves the person with an agent key, on the MCP surface only**
+  (ADR-0131). The `api` role serves MCP at `<prefix>/mcp`, stateless, over the streamable
+  HTTP transport. It accepts an agent key (`tkg_`) in `Authorization: Bearer` and nothing else;
+  the HTTP surface never accepts one. The person creates it with `POST /identity/agent-key`, or an
+  administrator with `taktusctl identity agent-key`. The agent reads what the person may see.
+  It acts only where a role the person holds was granted the right: `agent.start`,
+  `agent.answer` or `agent.take-over`, granted with `taktusctl identity grant`. Every call is a
+  ledger entry `agent.<tool>` with the person as actor.
 - **The command line names an identity the component knows** (`--identity`); the component
   supplies its organisational path. **A scheduled run acts for the identity that registered
   the process's active version** (ADR-0035, amended).

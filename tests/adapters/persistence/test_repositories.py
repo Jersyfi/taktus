@@ -24,6 +24,7 @@ from taktus.components.identity.domain.model import (
     ChannelLink,
     Identity,
     LinkCode,
+    RoleRights,
 )
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report
@@ -45,6 +46,7 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (ChannelLink, samples.channel_link),
     (LinkCode, samples.link_code),
     (BrowserSession, samples.browser_session),
+    (RoleRights, samples.role_rights),
     (AnchorConfiguration, samples.anchor_configuration),
     (Request, samples.decision_request),
     (RegisterEntry, samples.register_entry),

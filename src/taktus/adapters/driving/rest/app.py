@@ -19,7 +19,9 @@ the operator opened it (ADR-0118), and each process's level with its correction 
 instance's own findings with their review (ADR-0122), the reads of what keeps the operation
 running — incidents, alerts, the backup, signals (ADR-0121), and the web app's sign-in, which
 exchanges an account key once for a session cookie accepted wherever the key is (ADR-0119), and
-a running step taken over by a person and its result handed back (ADR-0128). No other write, no
+a running step taken over by a person and its result handed back (ADR-0128), and the agent key a
+person creates for their own agent. The same role serves MCP at `/mcp` for that agent, which
+reads and acts as the person within the rights of their roles (ADR-0131). No other write, no
 UI. An answer the owner writes in the thread of a report arrives through the
 webhook intake. A browser that opens an old link to a report without a key is sent to the
 report's page in the web app (ADR-0120).
@@ -45,8 +47,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
+from starlette.routing import Route
 
 from taktus.adapters.driving.rest import (
+    agent_surface,
     autonomy,
     findings,
     levels,
@@ -58,6 +62,7 @@ from taktus.adapters.driving.rest import (
     tenants,
 )
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
+from taktus.adapters.driving.rest.views import decision_view
 from taktus.adapters.driving.rest.wiring import RestServices, StreamsFull
 from taktus.components.command.application.service import (
     AlreadyCompleted,
@@ -154,6 +159,15 @@ def build_app(
         app.include_router(review.router(services, _authenticated), prefix=base)
         app.include_router(autonomy.router(services, _authenticated), prefix=base)
         app.include_router(takeover.router(services, _authenticated), prefix=base)
+        # A person's own agent, over MCP, with a key of its own (ADR-0131).
+        app.router.routes.append(
+            Route(
+                f"{base}/mcp",
+                agent_surface.AgentEndpoint(services),
+                methods=["GET", "POST", "DELETE"],
+                include_in_schema=False,
+            )
+        )
         if web is not None and (web / "index.html").is_file():
             levels.mount_web(app, base, web)
         # The web app's session cookie is accepted wherever the account key is (ADR-0119).
@@ -368,6 +382,39 @@ def _identity(services: RestServices) -> APIRouter:
             status_code=201,
         )
 
+    @router.post(
+        "/identity/agent-key",
+        summary="Create an agent key for your own agent",
+        description="The account key in `Authorization: Bearer`, or the web app's session, "
+        "proves the identity. The answer is a new agent key, shown once: your own agent proves "
+        "you with it on the MCP surface at `mcp`, and nowhere else. The key before it stops "
+        "working. Your agent may read there; it may act only where a role you hold was granted "
+        "the right, and `rights` names the rights your roles hold now (ADR-0131).",
+        status_code=201,
+        responses={
+            201: {"description": "The agent key, and the rights your roles hold."},
+            401: {"description": "No account key, or one that proves no identity.", **PROBLEM},
+            **INVALID,
+        },
+    )
+    async def create_agent_key(authorization: str | None = Header(default=None)) -> JSONResponse:
+        who = await _authenticated(services, authorization)
+        if who is None:
+            return problem(401, "an account key is needed: Authorization: Bearer <key>")
+        try:
+            key = await services.identities.issue_agent_key(who.tenant, who.identity)
+        except UnknownIdentity as error:
+            return problem(401, str(error))
+        rights = await services.identities.rights(who)
+        return JSONResponse(
+            {
+                "agent_key": key,
+                "identity": who.identity,
+                "rights": sorted(r.value for r in rights),
+            },
+            status_code=201,
+        )
+
     return router
 
 
@@ -404,25 +451,6 @@ class ConfirmBody(BaseModel):
     )
 
 
-def _view(addressed: Addressed, reader: str) -> dict[str, Any]:
-    """A request as a decider sees it. Who answered and when is shown to that person alone:
-    the time it took is theirs (ADR-0015)."""
-    request = addressed.request
-    yours = request.answered_by == reader
-    view: dict[str, Any] = {
-        "id": request.id,
-        "decider": request.decider,
-        "anchor": request.anchor,
-        "raised_at": request.raised_at.isoformat(),
-        "overdue": addressed.overdue,
-        "answered_by_you": yours,
-        "request": request.request.document(),
-    }
-    if yours and request.reflection is not None:
-        view["reflection"] = request.reflection
-    return view
-
-
 def _decisions(services: RestServices) -> APIRouter:
     router = APIRouter(tags=["decisions"])
     unauthenticated: dict[int | str, dict[str, Any]] = {
@@ -446,7 +474,7 @@ def _decisions(services: RestServices) -> APIRouter:
         return JSONResponse(
             {
                 "identity": who.identity,
-                "requests": [_view(a, who.identity) for a in waiting],
+                "requests": [decision_view(a, who.identity) for a in waiting],
                 "overdue": sum(1 for a in waiting if a.overdue),
             }
         )
@@ -490,7 +518,7 @@ def _decisions(services: RestServices) -> APIRouter:
             return problem(404, f"no decision request {request_id!r}")
         if found.request.decider not in who.roles:
             return problem(403, f"{request_id} is addressed to the role {found.request.decider}")
-        return JSONResponse(_view(found, who.identity))
+        return JSONResponse(decision_view(found, who.identity))
 
     @router.post(
         "/decisions/{request_id}/answer",
@@ -527,7 +555,9 @@ def _decisions(services: RestServices) -> APIRouter:
         except DecisionError as error:
             return _refused(error)
         found = Addressed(answered.request, overdue=False)
-        return JSONResponse({"message": answered.message, "request": _view(found, who.identity)})
+        return JSONResponse(
+            {"message": answered.message, "request": decision_view(found, who.identity)}
+        )
 
     @router.post(
         "/decisions/{request_id}/confirm",
@@ -569,7 +599,7 @@ def _decisions(services: RestServices) -> APIRouter:
             {
                 "applied": confirmed.entry is not None,
                 "entry": None if confirmed.entry is None else confirmed.entry.id,
-                "request": _view(Addressed(confirmed.request, overdue=False), who.identity),
+                "request": decision_view(Addressed(confirmed.request, overdue=False), who.identity),
             }
         )
 

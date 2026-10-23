@@ -56,6 +56,7 @@ from taktus.components.identity.domain.model import (
     ChannelLink,
     Identity,
     LinkCode,
+    RoleRights,
 )
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.process.application.service.register_version import (
@@ -192,6 +193,7 @@ async def replay(bundle: Mapping[str, Any] | Path, directory: Path, store: Store
         links=store.of(ChannelLink),
         codes=store.of(LinkCode),
         sessions=store.of(BrowserSession),
+        rights=store.of(RoleRights),
         work=store.work,
         ledger=ledger,
         clock=clock,
