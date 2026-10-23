@@ -48,6 +48,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -860,9 +861,24 @@ def complaints(output: str) -> str:
 OK_LINE = re.compile(r"^\s*ok\s")
 
 
+CLONING = threading.Lock()
+
+
+def clone(source: Path, target: Path) -> None:
+    """Clone the baseline, one clone at a time: a local clone copies the object files, and two
+    run together failed on a runner to copy one ("No such file or directory"). A clone that
+    fails all the same is made again through the transport, which packs instead of copying."""
+    with CLONING:
+        try:
+            git(source.parent, "clone", "-q", str(source), str(target))
+        except RuntimeError:
+            shutil.rmtree(target, ignore_errors=True)
+            git(source.parent, "clone", "-q", "--no-local", str(source), str(target))
+
+
 def run_case(case: Case, work: Path, index: int, base: str) -> Outcome:
     root = work / f"case-{index:02d}"
-    git(work, "clone", "-q", str(work / "tree"), str(root))
+    clone(work / "tree", root)
     try:
         case.plant(root)
     except PlantError as error:
