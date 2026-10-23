@@ -274,6 +274,11 @@ that. The rule that compares is exact.
 
 ## Where this promise ends
 
+Only a proposal is held to the cases (ADR-0091). A version registered by hand with
+`taktusctl`, and a rollback, which registers an earlier version again, are not evaluated before
+they take effect. The drift evaluation at the next slot of the schedule is the first to run
+them on the cases.
+
 An evaluation is a rehearsal. An outward operation answers from its last recording, so a change
 in what a system outside answers is not seen. An operation that was never called for real makes
 the case fail on both sides alike, which is no regression. A worker step runs for real, and so
