@@ -135,7 +135,8 @@ from taktus.components.run.application.service import (
     Runner,
     RunnerOptions,
 )
-from taktus.components.run.domain.model import Run
+from taktus.components.run.application.service.stops import Stops
+from taktus.components.run.domain.model import AdapterStop, Run
 from taktus.composition import roles
 from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
@@ -183,6 +184,7 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
+from taktus.composition.stops import StopsConfirmed
 from taktus.composition.takeover_in_channel import TakeoverInChannel
 from taktus.composition.traces import traces_tick
 from taktus.composition.triggers import Triggers
@@ -238,6 +240,9 @@ class Wired:
     deadlines: Deadlines
     """The deadlines whose actions the scheduler takes on every tick while it leads
     (ADR-0133)."""
+    stops: StopsConfirmed
+    """The stops of adapters the scheduler confirms on every tick while it leads, once each
+    holds (ADR-0138)."""
     expected: ExpectedRunsWatch
     """The watch over expected runs the scheduler makes once a minute while it leads: a run
     that did not happen raises an incident (ADR-0107)."""
@@ -458,6 +463,16 @@ async def wire(
             weights = settings.budget.weights()
             seeds = settings.budget.seeds()
             shape = settings.findings.form()
+            stops = Stops(
+                PostgresRepository(persistence, AdapterStop),
+                runs,
+                ledger,
+                objects,
+                persistence,
+                clock,
+                ids,
+                stoppable=frozenset(name for name, _ in opened),
+            )
 
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
@@ -506,6 +521,7 @@ async def wire(
                     deadlines=decisions.deadlines,
                     traces=trace_store,
                     masking=secrets,
+                    stops=stops,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -885,6 +901,7 @@ async def wire(
                     ),
                     clock,
                 ),
+                stops=StopsConfirmed(tenants, stops),
                 deadlines=Deadlines(
                     tenants=tenants,
                     keeper=decisions.deadlines,
@@ -1090,6 +1107,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await wired.triggers.tick()
             # And it takes every action due on a deadline, once (ADR-0133).
             await wired.deadlines.tick()
+            # And it confirms every stop of an adapter that holds now (ADR-0138).
+            await wired.stops.tick()
             await watch_expected()
             await tick()
             await send_findings()

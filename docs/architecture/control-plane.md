@@ -390,6 +390,16 @@ the tenant's limit within the run (`taktusctl incident configure --repeated-call
 names the action, the count and the limit, the run halts with cause `repeated`, and an incident
 of kind `step.repeated` is raised.
 
+**A stop can be scoped to an adapter, and is confirmed once it holds** (ADR-0138, UC-7.2). A
+person stops a configured worker with `taktusctl stop adapter NAME`, giving no reason; the stop
+is a record of the tenant, `stop.requested` by the person. No step is handed to a stopped
+worker: it stops at its boundary and its run halts with cause `stop`. A runner reads the
+tenant's stops at every renewal of its lease and asks a step inside a stopped worker to stop at
+the worker's next boundary. Runs on other adapters go on. Once no run is inside a step on the
+worker, the elected scheduler, or the waiting command, confirms the stop once, as
+`stop.confirmed` addressed to the requester, naming the runs it halted. A stop holds until a
+person lifts it; lifting resumes no run.
+
 **A process declares its deadlines, and Taktus keeps them** (ADR-0133, UC-4.17). A version may
 declare `deadlines`: from what moment each counts — the run's creation, a step's finish or a date
 among its inputs — its limit, an optional lead time, whether it counts in calendar time or the

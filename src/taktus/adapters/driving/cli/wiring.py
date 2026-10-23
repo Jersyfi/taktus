@@ -50,6 +50,7 @@ from taktus.components.run.application.service import (
     RunEngine,
 )
 from taktus.components.run.application.service.deadlines import DeadlineKeeper
+from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import Run
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.ledger import Ledger
@@ -176,6 +177,9 @@ class Services:
     ADR-0130)."""
     deadlines: DeadlineKeeper | None = None
     """The tenant's open deadlines and its working time (`taktusctl deadline`, ADR-0133)."""
+    stops: Stops | None = None
+    """The tenant's stops of adapters, requested, shown and lifted (`taktusctl stop`,
+    ADR-0138)."""
     traces: StepTraces | None = None
     """How long the tenant keeps the trace inside a step, shown and set (`taktusctl trace`,
     ADR-0135)."""

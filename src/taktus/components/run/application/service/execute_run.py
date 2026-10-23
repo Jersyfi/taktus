@@ -163,6 +163,7 @@ from typing import Any, Literal
 
 from taktus.components.run.application.query.recordings import RecordedResponses
 from taktus.components.run.application.service.deadlines import DeadlineKeeper
+from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import (
     INTERRUPTIBLE,
     PROCEED,
@@ -652,6 +653,7 @@ class RunEngine:
         deadlines: DeadlineKeeper | None = None,
         traces: Traces | None = None,
         masking: Masking | None = None,
+        stops: Stops | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -691,6 +693,9 @@ class RunEngine:
         """Where every event a worker reports is kept, masked, as a line of its step's trace
         (ADR-0135). None: no trace is kept."""
         self._masking = masking
+        self._stops = stops
+        """The tenant's stops of adapters (ADR-0138). None: no adapter is stopped, and a stop
+        reaches a run only by its own identifier."""
         """What masks every secret value the instance holds in a line. None: a trace is kept
         only where the composition root hands one, so a store without it keeps no line."""
         self._repeating: set[str] = set()
@@ -722,6 +727,9 @@ class RunEngine:
         self._inflight: dict[str, tuple[Worker, str]] = {}
         self._inflight_step: dict[str, StepId] = {}
         """The step each run in `_inflight` is inside."""
+        self._inflight_adapter: dict[str, tuple[Tenant, str]] = {}
+        """The tenant and the adapter of the step each run in `_inflight` is inside: a stop of
+        that adapter stops the step at its boundary (ADR-0138)."""
         self._taking_over: dict[str, TakeoverAsked] = {}
         """Runs whose runner read a take-over asked on their job, with the ask (ADR-0128)."""
         self._answered: set[str] = set()
@@ -1473,6 +1481,40 @@ class RunEngine:
         inflight = self._inflight.get(run_id)
         if inflight is not None and self._inflight_step.get(run_id) == asked.step_id:
             await self._stop_for_takeover(*inflight)
+
+    async def stops_held(self, run_id: str) -> bool:
+        """The runner holding the run reads the tenant's stops of adapters with every renewal
+        of its lease (ADR-0138 §2). A run inside a step on a stopped adapter is asked to stop at
+        its boundary; a running step is never aborted. Whether it was asked."""
+        inside = self._inflight_adapter.get(run_id)
+        if inside is None or run_id in self._stop_requested:
+            return False
+        tenant, adapter = inside
+        if adapter not in await self._held_stops(tenant):
+            return False
+        await self.request_stop(run_id)
+        return True
+
+    async def _held_stops(self, tenant: Tenant) -> frozenset[str]:
+        return frozenset() if self._stops is None else await self._stops.held(tenant)
+
+    async def _at_stopped_adapter(
+        self, run: Run, step_run: StepRun, adapter: str, span: Span
+    ) -> tuple[Run, StepRun]:
+        """The step is not handed to its stopped adapter: it stops at the boundary it was
+        admitted from, keeping the checkpoint it had, and the run halts with cause `stop`."""
+        span.record_failure("adapter stopped")
+        self._stop_requested.add(run.id)
+        step_run = step_run.to(
+            StepState.STOPPED,
+            adapter=adapter,
+            reason=f"the adapter {adapter} is stopped: the step was not handed to it",
+            finished_at=self._clock.now(),
+        )
+        run = await self._commit(
+            run.with_step_run(step_run), "step.finished", step=step_run, outcome="stopped"
+        )
+        return run, step_run
 
     def passed(self, run_id: str) -> bool:
         """Whether this process passed the run's claim to a take-over in its last execution: the
@@ -4095,6 +4137,10 @@ class RunEngine:
         unverified = await self._unverified(run, step, adapter, held)
         if unverified is not None:
             return await self._refuse_unverified(run, step_run, adapter, unverified, span)
+        if adapter in await self._held_stops(run.tenant):
+            # The adapter is stopped: nothing is handed to it, and the run halts at the step's
+            # boundary (ADR-0138 §2).
+            return await self._at_stopped_adapter(run, step_run, adapter, span)
         resuming = step_run.checkpoint if step_run.state is StepState.STOPPED else None
         left = remaining(self._line(run), self._spent(run))
         assignment = Assignment(
@@ -4355,7 +4401,11 @@ class RunEngine:
             run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
         self._inflight[run.id] = (worker, assignment_id)
         self._inflight_step[run.id] = step_run.step_id
-        if run.id in self._stop_requested:
+        adapter = str(call["adapter"])
+        self._inflight_adapter[run.id] = (run.tenant, adapter)
+        if run.id in self._stop_requested or adapter in await self._held_stops(run.tenant):
+            # A stop of the adapter requested since the check before the handover, or held
+            # while an assignment handed over earlier was adopted, lands at its boundary.
             await self.request_stop(run.id)
         asked = self._taking_over.get(run.id)
         if asked is not None and asked.step_id == step_run.step_id:
@@ -4371,6 +4421,7 @@ class RunEngine:
             # adopts it (ADR-0038).
             self._inflight.pop(run.id, None)
             self._inflight_step.pop(run.id, None)
+            self._inflight_adapter.pop(run.id, None)
         _measured(span, step_run)
         if (
             adopted

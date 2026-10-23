@@ -1435,6 +1435,36 @@ class DeadlineMapper:
         return [dict(row.deadline) for row in rows]
 
 
+class AdapterStopMapper:
+    """One row per stop of an adapter (ADR-0138): the stop as a document, and beside it the
+    columns the held ones are read by. A row is never deleted: its state moves on."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.adapter_stop, tenant, id)
+        return None if row is None else dict(row.stop)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.adapter_stop,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "adapter": document["adapter"],
+                "state": document.get("state", "holding"),
+                "requested_at": _at(document["requested_at"]),
+                "stop": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection, s.adapter_stop, tenant, s.adapter_stop.c.requested_at, s.adapter_stop.c.id
+        )
+        return [dict(row.stop) for row in rows]
+
+
 class WorkingTimeMapper:
     """One row per tenant that set its working time; the working time stays a document."""
 
@@ -1590,6 +1620,7 @@ MAPPERS: dict[str, Mapper] = {
     "watch_configuration": WatchConfigurationMapper(),
     "corridor": CorridorMapper(),
     "deadline": DeadlineMapper(),
+    "adapter_stop": AdapterStopMapper(),
     "working_time": WorkingTimeMapper(),
     "correction_limits": CorrectionLimitsMapper(),
     "residency_rule": ResidencyRuleMapper(),
