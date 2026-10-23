@@ -197,6 +197,19 @@ verify-compose: need-docker ## From nothing: up with the reference worker, the c
 verify-upgrade: need-docker ## The previous release with a run in every state, upgraded to this checkout; every run resumes at its boundary (TAKTUS_UPGRADE_FROM, _IMAGE, _WORKER_IMAGE; ADR-0124)
 	deploy/docker/upgrade.sh
 
+# The chart on a real cluster (#395, the nightly ring): this checkout's image, installed with its
+# database into the cluster kubectl points at, migrated, and ready. Needs docker, kind, kubectl
+# and helm; deletes nothing.
+.PHONY: verify-kind
+verify-kind: need-docker ## The chart in a kind cluster: this checkout's image, profile small, its database migrated, the control plane ready (deploy/k8s/kind.sh)
+	deploy/k8s/kind.sh
+
+# The backup and the restore by hand against a real database and the backup image (ADR-0087,
+# #395): the nightly ring runs it on its own; `make test` runs the same tests among the rest.
+.PHONY: verify-backup
+verify-backup: env need-docker ## The backup image against a real database, and the restore by hand into a fresh one (tests/deploy)
+	$(UV) run tools/gate.py backup tests/deploy
+
 .PHONY: migrate
 migrate: env ## Bring the database named by TAKTUS_DATABASE_URL to the current schema
 	$(UV) run alembic -c migrations/alembic.ini upgrade head

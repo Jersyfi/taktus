@@ -3,6 +3,8 @@ stubbed host answers: the files the workflows fetch with their token and hand to
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import sys
 from pathlib import Path
@@ -131,3 +133,53 @@ def test_what_follows_a_finished_run(
         "event": event,
     }
     assert ci_watch.decide(finished) == expected
+
+
+# --- the nightly ring (#395) ---
+
+
+def jobs(**results: str) -> dict[str, Any]:
+    listed = [{"name": name, "conclusion": result} for name, result in results.items()]
+    return {"total_count": len(listed), "jobs": [*listed, {"name": "report", "conclusion": None}]}
+
+
+def nightly(tmp_path: Path, now: Any, before: Any | None) -> tuple[str, str]:
+    (tmp_path / "now.json").write_text(json.dumps(now), encoding="utf-8")
+    args = ["nightly", "--jobs", str(tmp_path / "now.json"), "--url", "https://host/run/9"]
+    if before is not None:
+        (tmp_path / "before.json").write_text(json.dumps(before), encoding="utf-8")
+        args += ["--previous", str(tmp_path / "before.json")]
+    args += ["--out", str(tmp_path / "comment.md")]
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        assert ci_watch.main(args) == 0
+    return printed.getvalue().strip(), (tmp_path / "comment.md").read_text(encoding="utf-8")
+
+
+def test_a_green_ring_closes_its_issue(tmp_path: Path) -> None:
+    state, comment = nightly(tmp_path, jobs(kind="success", upgrade="skipped"), None)
+    assert state == "green"
+    assert "green again" in comment
+
+
+def test_a_red_job_is_named_and_one_red_twice_in_a_row_is_marked(tmp_path: Path) -> None:
+    now = jobs(kind="failure", upgrade="cancelled", scale="success")
+    before = jobs(kind="failure", upgrade="success", scale="failure")
+    state, comment = nightly(tmp_path, now, before)
+    assert state == "red"
+    assert "- `kind`: failure, red twice in a row" in comment
+    assert "- `upgrade`: cancelled\n" in comment
+    assert "scale" not in comment
+    assert "gate-weakened" in comment
+
+
+def test_the_first_red_says_nothing_of_a_notice(tmp_path: Path) -> None:
+    state, comment = nightly(tmp_path, jobs(kind="timed_out"), jobs(kind="success"))
+    assert state == "red"
+    assert "gate-weakened" not in comment
+
+
+def test_a_ring_the_host_did_not_describe_is_red(tmp_path: Path) -> None:
+    state, comment = nightly(tmp_path, {"message": "Not Found"}, None)
+    assert state == "red"
+    assert "could not say" in comment

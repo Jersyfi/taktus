@@ -505,6 +505,14 @@ the migrations' job. A unit requested its whole CPU limit on the node then; on a
 unit waited for CPU while most cores were idle. Since #244 a unit requests a share of its CPU
 and all of its memory (section 7), so memory decides how many fit.
 
+**Installed every night into a kind cluster** (#395): `deploy/k8s/kind.sh` (`make verify-kind`)
+builds this checkout's image, loads it into the cluster, creates both namespaces and the
+database's Secrets with a password generated there, installs the chart with the profile `small`
+and a database of 1 Gi, and fails unless the control plane's rollout finishes and its readiness
+answers 200 from inside the pod. The nightly ring runs it on `main`. It does not install the
+connectors, the ingress or the backup, and a kind cluster enforces no network policy, so those
+parts are proven by the render tests and on the instance, not there.
+
 **Backed up** since 2026-10-12 (#67, NEED-0025): the chart's job runs on the instance, its first
 backup is in the store and was restored from it on the workstation (`docs/runs/2026-10-11-the-first-restore.md`).
 The backup holds the database and not the state volume's artifacts; that is #322.

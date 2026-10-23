@@ -128,3 +128,46 @@ def test_the_replay_of_the_self_development_bundles_is_a_lane_without_a_secret()
     assert runs[-1]["env"] == {"TAKTUS_REQUIRE_DATABASE": "1"}
     assert "secrets." not in yaml.safe_dump(job), "a replay needs no credential"
     assert "environment" not in job
+
+
+NIGHTLY = WORKFLOWS / "nightly.yml"
+
+
+def test_the_nightly_ring_runs_on_main_and_never_in_a_fork() -> None:
+    """The nightly ring (ADR-0096 §1 ring 4, #395): by schedule or dispatch, on `main`; a pull
+    request that changes it runs its jobs to prove them. No job names a secret."""
+    document = load(NIGHTLY)
+    assert "schedule" in document["on"] and "workflow_dispatch" in document["on"]
+    for name, job in document["jobs"].items():
+        assert job["if"].startswith("github.repository == 'Jersyfi/taktus'") or job[
+            "if"
+        ].startswith("always() && github.repository == 'Jersyfi/taktus'"), name
+        assert "refs/heads/main" in job["if"], name
+    assert "secrets." not in NIGHTLY.read_text(encoding="utf-8"), "the ring needs no credential"
+
+
+def test_the_nightly_ring_runs_what_the_issue_names_and_not_the_live_tests() -> None:
+    jobs = load(NIGHTLY)["jobs"]
+    runs = {
+        name: " ".join(step.get("run", "") for step in job["steps"]) for name, job in jobs.items()
+    }
+    assert "make gate-conformance PARALLEL=" in runs["conformance"]
+    assert "make verify-kind" in runs["kind"]
+    assert "make verify-backup" in runs["backup"]
+    assert "make verify-upgrade" in runs["upgrade"]
+    assert "make timing" in runs["scale"]
+    assert all("live" not in text for text in runs.values()), "the live tests stay monthly"
+
+
+def test_a_red_night_opens_an_issue_of_high_priority_and_a_green_one_closes_it() -> None:
+    jobs = load(NIGHTLY)["jobs"]
+    report = jobs["report"]
+    assert set(report["needs"]) == set(jobs) - {"report"}
+    assert report["if"].startswith("always()")
+    assert "github.event_name != 'pull_request'" in report["if"]
+    assert report["permissions"]["issues"] == "write"
+    steps = {step.get("name"): step for step in report["steps"]}
+    assert "tools/ci_watch.py nightly" in steps["how the ring stands"]["run"]
+    red = steps["nightly is red"]["run"]
+    assert '--title "nightly is red"' in red and "--label priority:high" in red
+    assert "gh issue close" in steps["nightly is green"]["run"]

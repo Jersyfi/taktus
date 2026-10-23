@@ -1,6 +1,6 @@
 """Keep `main` green while pull requests merge without catching up (ADR-0096 §5, #391).
 
-Three subcommands, each deciding from files the workflow fetched from the host. The tool itself
+Four subcommands, each deciding from files the workflow fetched from the host. The tool itself
 never holds a token and never calls the host, so that what it decides is tested against a
 stubbed host's answers (`tests/tools/test_ci_watch.py`).
 
@@ -25,6 +25,15 @@ stubbed host's answers (`tests/tools/test_ci_watch.py`).
     - `main-green`: a run on `main` passed at its first attempt; "main is red" is closed.
     - `none`: nothing to do — a cancelled or skipped run, a repeat that failed off `main`.
     A flake on `main` closes "main is red" too; the workflow does that.
+
+`nightly --jobs FILE [--previous FILE] --url URL --out FILE`
+    What the nightly ring's run says (#395, ADR-0096 §1 ring 4). FILE is the host's answer for
+    the jobs of this run, `--previous` for those of the nightly run before it. Prints `red` when
+    a job failed, was cancelled or timed out, `green` otherwise, and writes to `--out` the
+    comment for the issue "nightly is red": the jobs that failed, each marked when it was red in
+    the run before too. A job red twice in a row is mended, or removed with a notice of kind
+    `gate-weakened` when the reason is its environment; the comment says so. A file that is not
+    the host's answer counts as red: a ring that cannot say how it stands is not green.
 """
 
 from __future__ import annotations
@@ -102,6 +111,52 @@ def decide(run: dict[str, Any]) -> str:
     return "none"
 
 
+REPORTER = "report"  # the nightly job that reports on the others, never one of them
+PASSED = ("success", "skipped")
+
+
+def jobs_of(answer: Any) -> dict[str, str]:
+    """Job name -> conclusion, from the host's answer for a run's jobs, without the reporter.
+    Raises ValueError when the answer is not the host's list of jobs."""
+    if not isinstance(answer, dict) or not isinstance(answer.get("jobs"), list):
+        raise ValueError("not a list of jobs")
+    found: dict[str, str] = {}
+    for job in answer["jobs"]:
+        if isinstance(job, dict) and job.get("name") != REPORTER:
+            found[str(job.get("name"))] = str(job.get("conclusion") or job.get("status"))
+    return found
+
+
+def nightly(now: dict[str, str], before: dict[str, str] | None, url: str) -> tuple[str, str]:
+    """Whether the nightly ring is `red` or `green`, and the comment for its issue."""
+    red = sorted(name for name, result in now.items() if result not in PASSED)
+    if not red:
+        return "green", f"The nightly ring is green again: [run]({url})."
+    again = [n for n in red if before is not None and before.get(n, "success") not in PASSED]
+    lines = [f"[The nightly run]({url}) is red:"]
+    lines += [
+        f"- `{name}`: {now[name]}" + (", red twice in a row" if name in again else "")
+        for name in red
+    ]
+    if again:
+        lines += [
+            "",
+            "A job red twice in a row is mended. Where the reason is its environment, it is "
+            "removed with a notice of kind `gate-weakened` instead (ADR-0096, #395). It is never "
+            "only rerun.",
+        ]
+    return "red", "\n".join(lines)
+
+
+def read_jobs(path: Path | None) -> dict[str, str] | None:
+    if path is None:
+        return None
+    try:
+        return jobs_of(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -113,7 +168,22 @@ def main(argv: list[str] | None = None) -> int:
     on_failed.add_argument("--log", type=Path, required=True)
     on_decide = sub.add_parser("decide")
     on_decide.add_argument("--run", type=Path, required=True)
+    on_nightly = sub.add_parser("nightly")
+    on_nightly.add_argument("--jobs", type=Path, required=True)
+    on_nightly.add_argument("--previous", type=Path)
+    on_nightly.add_argument("--url", required=True)
+    on_nightly.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
+
+    if args.command == "nightly":
+        now = read_jobs(args.jobs)
+        if now is None:
+            state, comment = "red", f"[The nightly run]({args.url}) could not say how it stands."
+        else:
+            state, comment = nightly(now, read_jobs(args.previous), args.url)
+        args.out.write_text(comment + "\n", encoding="utf-8")
+        print(state)
+        return 0
 
     if args.command == "guard":
         try:
