@@ -129,18 +129,22 @@ async def test_a_unit_that_exceeds_its_wall_clock_is_killed_and_the_step_fails_w
     reported through the same path (tests/adapters/execution/test_container.py)."""
     document = bundle(with_overreach=False)
     compute = next(s for s in document["steps"] if s["id"] == "compute")
-    compute["work"]["task"]["inputs"] = {"commands": [f"sleep 0.4; echo {n}" for n in range(30)]}
-    compute["work"]["max_steps"] = 40
+    # Three quick commands, then one that outlasts the limit by far. The kill lands while the
+    # unit sleeps, never while the control plane fetches an artifact from it: a fetch cut off by
+    # the kill fails with the unreachable unit and not with the kill's cause (#582).
+    compute["work"]["task"]["inputs"] = {"commands": ["echo 0", "echo 1", "echo 2", "sleep 120"]}
+    compute["work"]["max_steps"] = 10
     document["limits"] = {"compute": {"seconds": 120, "resource_class": "cpu.small"}}
-    local = wiring(TAKTUS_EXECUTION_WALL_SECONDS="3")
+    local = wiring(TAKTUS_EXECUTION_WALL_SECONDS="6")
     async with local.services(state_dir=tmp_path / "state", worker_endpoint="") as services:
         run = await start(services, document)
         assert run.state is RunState.ESCALATED and run.cause is Cause.FAILURE
         failed = run.step_run("compute")
         assert failed.state is StepState.FAILED
-        assert failed.reason is not None and "wall-clock limit of 3s" in failed.reason
+        assert failed.reason is not None and "wall-clock limit of 6s" in failed.reason
         assert failed.reason.startswith("the execution unit was killed")
-        assert 0 < len(failed.artifacts) < 30, "what was done before the kill is kept"
+        # The unit's start counts against the limit, so under load fewer than three may be done.
+        assert 0 < len(failed.artifacts) <= 3, "what was done before the kill is kept"
 
 
 async def test_each_configured_worker_launches_with_its_own_credential(tmp_path: Path) -> None:
