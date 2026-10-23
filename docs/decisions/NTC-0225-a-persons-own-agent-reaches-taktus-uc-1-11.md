@@ -3,7 +3,7 @@
 **Mode entry:** M2.7
 **Kind:** restoration
 **Decided:** 2026-10-23
-**Raised in:** the pull request that adds UC-1.11
+**Raised in:** [#603](https://github.com/Jersyfi/taktus/pull/603)
 **How it follows:** the owner accepted W5 of DEC-0195 on 2026-10-13: Taktus as an MCP server, with rights per role, in `0.5.0`. Issue #406 states its verification conditions. No use case required it: UC-1.1 makes any channel's input a command, and names no surface an agent is offered tools on. UC-1.11 states W5 as a requirement, with the conditions of #406 and what follows from them.
 
 ## 1. What was decided
