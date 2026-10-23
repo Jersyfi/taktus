@@ -22,23 +22,26 @@ import lanes  # noqa: E402 — a script under tools/, found through the line abo
         (["api/openapi.yaml"], ["static", "decisions", "contracts"]),
         (
             ["src/taktus/components/run/domain/service/budget.py"],
-            ["static", "decisions", "test", "rehearse"],
+            ["static", "decisions", "test", "rehearse", "timing"],
         ),
         (
             ["src/taktus/adapters/driven/connectors/mcp/actions.py"],
-            ["static", "decisions", "conformance", "test", "rehearse"],
+            ["static", "decisions", "conformance", "test", "rehearse", "timing"],
         ),
         (
             ["blueprints/dev-orchestration/processes/P-03-implementation.yaml"],
-            ["static", "decisions", "test", "rehearse"],
+            ["static", "decisions", "test", "rehearse", "timing"],
         ),
         (
             ["tests/rehearsal/recordings/p02-refinement/recording.json"],
-            ["static", "decisions", "test", "rehearse"],
+            ["static", "decisions", "test", "rehearse", "timing"],
         ),
         (["tools/record_rehearsal.py"], ["static", "decisions", "test", "rehearse"]),
-        (["tests/components/run/test_engine.py"], ["static", "decisions", "test"]),
-        (["workers/claudecode/worker.py"], ["static", "decisions", "conformance", "test"]),
+        (["tests/components/run/test_engine.py"], ["static", "decisions", "test", "timing"]),
+        (
+            ["workers/claudecode/worker.py"],
+            ["static", "decisions", "conformance", "test", "timing"],
+        ),
         (["tests/conformance/test_worker_v1_coding.py"], ["static", "decisions", "conformance"]),
         (["uv.lock"], list(lanes.LANES)),
         ([".github/workflows/ci.yml"], list(lanes.LANES)),

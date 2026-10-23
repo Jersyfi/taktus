@@ -43,6 +43,7 @@ jobs:
       conformance: ${{ steps.lanes.outputs.conformance }}
       test: ${{ steps.lanes.outputs.test }}
       rehearse: ${{ steps.lanes.outputs.rehearse }}
+      timing: ${{ steps.lanes.outputs.timing }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -238,6 +239,28 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: make test BASE="$BASE"
 
+  # The tests that assert a bound on wall-clock time (ADR-0096 §7, #528), alone: this job shares
+  # its runner with nothing, and `make test` leaves them out, so no other test runs beside them.
+  # A push to `main` selects it with every other lane (ring 3).
+  timing:
+    needs: select
+    if: needs.select.outputs.timing == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - name: images
+        run: make images
+      - name: timing
+        env:
+          TAKTUS_REQUIRE_DATABASE: "1"
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+        run: make timing BASE="$BASE"
+
   # The self-development bundles — P-01, P-02, P-03 and S-07 — replayed from recordings of real
   # runs against a database (ADR-0108, ADR-0096 §1, #393): every step must reach the state it
   # reached when recorded, so that a change that breaks a bundle, the engine's handling of it or
@@ -266,7 +289,7 @@ jobs:
   gates:
     name: ${{ (github.event_name == 'pull_request' && github.event.pull_request.draft) && 'gates (draft)' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/')) && 'gates (checked on push)' || 'gates' }}
     if: always()
-    needs: [select, contracts, decisions, web, static, conformance, test, rehearse]
+    needs: [select, contracts, decisions, web, static, conformance, test, timing, rehearse]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
