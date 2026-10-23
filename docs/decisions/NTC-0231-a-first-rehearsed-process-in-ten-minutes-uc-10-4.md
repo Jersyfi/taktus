@@ -3,7 +3,7 @@
 **Mode entry:** M2.7
 **Kind:** restoration
 **Decided:** 2026-10-23
-**Raised in:** [#614](https://github.com/Jersyfi/taktus/pull/614)
+**Raised in:** [#615](https://github.com/Jersyfi/taktus/pull/615)
 **How it follows:** the owner accepted W4 of DEC-0195 on 2026-10-13: a first process in ten minutes, measured, in `0.5.0`. The roadmap's `0.5.0` names it in its completion criterion: "a person new to Taktus reaches a first rehearsed process in ten minutes". Issue #405 states its verification conditions. No use case required it: UC-10.3 asks for a first automation by people who are not technical, but names no time, no rehearsal and no gallery, and belongs to `0.6.0`. UC-10.4 states W4 as a requirement, with the conditions of #405 and what follows from them.
 
 ## 1. What was decided
