@@ -6,7 +6,7 @@ import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
 import ChangeView from './ChangeView.svelte';
 import fixtures from './generated/fixtures.json';
-import type { ProcessLevel, Proposal } from './types';
+import type { ProcessLevel, Proposal, RunLevel } from './types';
 
 const LEVEL = fixtures.process_level as unknown as ProcessLevel;
 const nothing = () => {};
@@ -43,6 +43,55 @@ function proposal(state: Proposal['state']): Proposal {
 	};
 }
 
+function rehearsal(state: string, summary: string): Record<string, RunLevel> {
+	return {
+		prp_1: {
+			run: { id: 'run_9', process_version: 'daily@proposal-prp_1', state, rehearsal: true } as RunLevel['run'],
+			steps: [
+				{ id: 'draft', method: 'llm', state: 'succeeded' },
+				{ id: 'publish', method: 'rule', state: state === 'finished' ? 'rehearsed' : 'failed' }
+			] as RunLevel['steps'],
+			summary
+		}
+	};
+}
+
+describe('a proposal offers a rehearsal and shows what it did (UC-1.10)', () => {
+	it('offers the rehearsal of a proposal that has none, and says it acts on nothing outside', () => {
+		const html = render(ChangeView, { props: { level: LEVEL, proposals: [proposal('proposed')], ...handlers } }).body;
+		expect(html).toContain('>Rehearse<');
+		expect(html).toContain('acts on nothing outside');
+		expect(html).not.toContain('data-rehearsal=');
+	});
+
+	it('shows a finished rehearsal step by step, as a rehearsal, and then offers commissioning', () => {
+		const html = render(ChangeView, {
+			props: { level: LEVEL, proposals: [proposal('rehearsed')], rehearsals: rehearsal('finished', 'All steps are done.'), ...handlers }
+		}).body;
+		expect(html).toContain('data-rehearsal="run_9"');
+		expect(html).toContain('nothing left the system');
+		expect(html).toContain('All steps are done.');
+		expect(html).toMatch(/data-step-state="rehearsed"/);
+		expect(html).toContain('Commission version 9');
+	});
+
+	it('does not offer commissioning while the rehearsal has not finished, and says where it stopped', () => {
+		const stopped = render(ChangeView, {
+			props: {
+				level: LEVEL,
+				proposals: [proposal('rehearsed')],
+				rehearsals: rehearsal('escalated', 'Stopped at publish: no recorded response for pull_request.open.'),
+				...handlers
+			}
+		}).body;
+		expect(stopped).toContain('no recorded response for pull_request.open');
+		expect(stopped).not.toContain('Commission version 9');
+		const unread = render(ChangeView, { props: { level: LEVEL, proposals: [proposal('rehearsed')], ...handlers } }).body;
+		expect(unread).toContain('cannot be read yet');
+		expect(unread).not.toContain('Commission version 9');
+	});
+});
+
 describe('a change in dialogue', () => {
 	it('shows a proposal as its difference, step by step, in words', () => {
 		const html = render(ChangeView, { props: { level: LEVEL, proposals: [proposal('proposed')], ...handlers } }).body;
@@ -55,7 +104,9 @@ describe('a change in dialogue', () => {
 	});
 
 	it('offers commissioning only once the proposal is rehearsed, and links the rehearsal', () => {
-		const html = render(ChangeView, { props: { level: LEVEL, proposals: [proposal('rehearsed')], ...handlers } }).body;
+		const html = render(ChangeView, {
+			props: { level: LEVEL, proposals: [proposal('rehearsed')], rehearsals: rehearsal('finished', 'Done.'), ...handlers }
+		}).body;
 		expect(html).toContain('Commission version 9');
 		expect(html).toContain('#/runs/run_9');
 	});

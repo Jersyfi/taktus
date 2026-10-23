@@ -4,9 +4,9 @@ title: A proposed version is rehearsed from the plan dialogue
 component: command
 epic: E1
 serves: [P2, P7, P10]
-state: specified
+state: building
 version: 0.4.0
-tests: []
+tests: [tests/composition/test_proposals.py::test_a_rehearsal_runs_the_proposal_as_no_version_and_acts_on_nothing_outside, tests/composition/test_proposals.py::test_only_a_proposal_whose_rehearsal_finished_is_commissioned]
 adrs: {ADR-0030: 232318604b2d, ADR-0108: 5807c686953c, ADR-0091: 22e6c748bb90}
 supersedes: null
 ---
@@ -60,4 +60,12 @@ idea F9; market review, `docs/research/2026-10-12-market-review.md`, idea F). Wr
 
 ## 5. What is proven so far
 
-Not built yet. Before it, the web app offered the rehearsal of a proposal and linked its run (UC-4.15).
+Built by #329. By the named tests:
+
+- A proposal's rehearsal is a run marked as a rehearsal that counts as no version and acts on
+  nothing outside, and only a proposal whose rehearsal finished is commissioned.
+
+Also checked by `web/src/lib/change.test.ts`, which the gate does not run: the page offers the
+rehearsal of a proposal that has none, shows a rehearsal step by step with its summary, says
+where a stopped one stopped, and offers commissioning only once the rehearsal's run has finished.
+The chat offers the act through its phrasebook (ADR-0069).

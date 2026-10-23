@@ -8,12 +8,13 @@
 	import { read, send, surface } from '../../../lib/api';
 	import ChangeView from '../../../lib/ChangeView.svelte';
 	import SignInForm from '../../../lib/SignInForm.svelte';
-	import type { ProcessLevel, Proposal } from '../../../lib/types';
+	import type { ProcessLevel, Proposal, RunLevel } from '../../../lib/types';
 
 	let signedIn = $state(true);
 	let absent = $state(false);
 	let level: ProcessLevel | null = $state(null);
 	let proposals: Proposal[] = $state([]);
+	let rehearsals: Record<string, RunLevel> = $state({});
 	let message: string | null = $state(null);
 	let busy = $state(false);
 
@@ -35,10 +36,29 @@
 		}
 		level = found.body;
 		proposals = listed.ok ? listed.body.proposals : [];
+		const seen: Record<string, RunLevel> = {};
+		await Promise.all(
+			proposals
+				.filter((p) => p.rehearsal_run && (p.state === 'proposed' || p.state === 'rehearsed'))
+				.map(async (p) => {
+					const run = await read<RunLevel>(base(), `levels/runs/${encodeURIComponent(p.rehearsal_run!)}`);
+					if (run.ok) seen[p.id] = run.body;
+				})
+		);
+		rehearsals = seen;
 	}
 
 	$effect(() => {
 		if (signedIn && processId) void reload();
+	});
+
+	// A rehearsal under way is read again until it ends, so the result appears without a reload.
+	const ended = ['finished', 'failed', 'escalated', 'halted', 'cancelled', 'stopped'];
+	$effect(() => {
+		const under = Object.values(rehearsals).some((r) => !ended.includes(r.run.state));
+		if (!signedIn || !under) return;
+		const timer = setInterval(() => void reload(), 3000);
+		return () => clearInterval(timer);
 	});
 
 	async function act(rest: string, body: unknown, done: (answer: Record<string, unknown>) => string) {
@@ -62,6 +82,7 @@
 	<ChangeView
 		{level}
 		{proposals}
+		{rehearsals}
 		{busy}
 		{message}
 		onAsk={(request) =>

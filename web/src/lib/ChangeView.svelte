@@ -3,17 +3,19 @@
 	a change in their own words; S-07 turns it into a proposal. Each proposal is shown as its
 	difference, step by step, with each changed step's method, reason and class before and after —
 	in words, because a proposal is not a level and `reporting` hands no glyph for it. A proposal
-	is rehearsed, then commissioned or discarded. The versions are listed, each earlier one with a
+	is rehearsed, then commissioned or discarded; the rehearsal's result is shown with it, read from
+	the rehearsal's run, and commissioning is offered once that run has finished. The versions are listed, each earlier one with a
 	rollback. The page sends what the person chose and shows what the surface answers; it decides
 	nothing, and computes nothing.
 -->
 <script lang="ts">
 	import { processLink, runLink } from './links';
-	import type { ProcessLevel, Proposal, StepChange } from './types';
+	import type { ProcessLevel, Proposal, RunLevel, StepChange } from './types';
 
 	let {
 		level,
 		proposals,
+		rehearsals = {},
 		busy = false,
 		message = null,
 		onAsk,
@@ -24,6 +26,8 @@
 	}: {
 		level: ProcessLevel;
 		proposals: Proposal[];
+		/** The run level of each proposal's rehearsal, by proposal; absent where it cannot be read. */
+		rehearsals?: Record<string, RunLevel>;
 		busy?: boolean;
 		message?: string | null;
 		onAsk: (request: string) => void;
@@ -43,6 +47,9 @@
 		if (request.trim()) onAsk(request.trim());
 		request = '';
 	}
+
+	/** The rehearsal ended well: only then is commissioning offered (ADR-0091 §4). */
+	const finished = (proposal: Proposal) => rehearsals[proposal.id]?.run.state === 'finished';
 
 	function how(step: StepChange['after']): string {
 		if (!step) return '';
@@ -94,14 +101,40 @@
 				{#if proposal.difference.triggers_changed}<li data-change="triggers">its triggers change</li>{/if}
 				{#if proposal.difference.inputs_changed}<li data-change="inputs">its inputs change</li>{/if}
 			</ul>
+			{#if proposal.state === 'proposed'}
+				<p class="muted">
+					Not rehearsed yet. A rehearsal runs this version and acts on nothing outside; every outward
+					step answers from the recording of its last real call.
+				</p>
+			{/if}
 			{#if proposal.rehearsal_run}
-				<p class="muted">Rehearsal: <a href={runLink(proposal.rehearsal_run)}>{proposal.rehearsal_run}</a></p>
+				{@const seen = rehearsals[proposal.id]}
+				<section class="rehearsal" data-rehearsal={proposal.rehearsal_run} aria-label="Rehearsal">
+					<p>
+						<strong>A rehearsal</strong>, run
+						<a href={runLink(proposal.rehearsal_run)}>{proposal.rehearsal_run}</a>:
+						nothing left the system.
+					</p>
+					{#if seen}
+						<p data-run-state={seen.run.state}>{seen.summary}</p>
+						<ul>
+							{#each seen.steps as step (step.id)}
+								<li data-step-state={step.state}>
+									<span class="kind">{step.state}</span> <strong>{step.id}</strong>
+									<span class="muted">{step.method}</span>
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p class="muted">The rehearsal cannot be read yet.</p>
+					{/if}
+				</section>
 			{/if}
 			<div class="row">
 				<button type="button" disabled={busy} onclick={() => onRehearse(proposal.id)}>
 					{proposal.state === 'rehearsed' ? 'Rehearse again' : 'Rehearse'}
 				</button>
-				{#if proposal.state === 'rehearsed'}
+				{#if proposal.state === 'rehearsed' && finished(proposal)}
 					<button type="button" class="primary" disabled={busy} onclick={() => onCommission(proposal.id)}>
 						Commission version {proposal.version}
 					</button>
@@ -197,6 +230,16 @@
 		text-transform: uppercase;
 		margin-right: 0.4rem;
 		color: var(--ink-2);
+	}
+	.rehearsal {
+		border-left: 3px solid var(--line);
+		padding: 0.1rem 0.9rem;
+		margin: 0.75rem 0;
+	}
+	.rehearsal ul {
+		list-style: none;
+		padding: 0;
+		margin: 0 0 0.5rem;
 	}
 	.was {
 		color: var(--ink-3);
