@@ -47,7 +47,15 @@ from taktus.components.run.application.service import (
     RunnerOptions,
     StartRun,
 )
-from taktus.components.run.domain.model import Cause, Run, RunExists, RunState, StepState
+from taktus.components.run.application.service.stops import Stops
+from taktus.components.run.domain.model import (
+    AdapterStop,
+    Cause,
+    Run,
+    RunExists,
+    RunState,
+    StepState,
+)
 from taktus.components.run.domain.service import provenance
 from taktus.composition.roles import said
 from taktus.ports.identity import ServedTenants
@@ -146,6 +154,15 @@ class World:
         self.ledger = ChainedLedger(MemoryLedgerStore(self.persistence), self.clock)
         self.provenance = MemoryProvenanceStore(self.persistence)
         self.objects = MemoryObjectStore()
+        self.stops = Stops(
+            MemoryRepository(self.persistence, AdapterStop),
+            self.runs,
+            self.ledger,
+            self.objects,
+            self.persistence,
+            self.clock,
+            self.ids,
+        )
         self.engine = self.another_engine(self.objects)
         self.tasks: list[asyncio.Task[None]] = []
 
@@ -168,6 +185,7 @@ class World:
                 park_waits_after_seconds=self.park_after,
                 takeover_lease_seconds=self.takeover_seconds,
             ),
+            stops=self.stops,
         )
 
     async def submit(self, *definitions: tuple[Step, dict[str, Any]], tenant: str = TENANT) -> Run:
@@ -327,6 +345,42 @@ async def test_a_shutdown_stops_the_run_at_its_boundary_and_releases_it_to_the_n
     kinds = await world.kinds(run.id)
     assert "run.halted" in kinds and "run.resumed" in kinds
     assert kinds.count("step.started") == 3, "each step ran once; the halt cost no step"
+
+
+async def test_a_stop_of_an_adapter_reaches_the_runner_at_its_renewal_and_others_go_on() -> None:
+    stopped = FakeWorker(
+        script=tuple(InnerStep(f"s{n}", 0.1) for n in range(40)),
+        estimate_seconds=0.1,
+        inner_seconds=0.02,
+    )
+    other = FakeWorker(capabilities_offered=("browser.page",))
+    world = World(workers=[("worker.fake", stopped), ("worker.other", other)])
+    on_other = Step(
+        id="do",
+        method=Method.WORKER,
+        reason="r",
+        rejected=(),
+        exactness=ExactnessClass.TOLERANT,
+        fallback=Fallback(when="x", to=Method.HUMAN),
+        requires=("browser.page",),
+    )
+    halted = await world.submit(work("do"))
+    runner = world.runner("r1")
+    await until(lambda: bool(stopped.assignments))
+    stop = await world.stops.request(TENANT, "worker.fake", "idn_operator")
+    went_on = await world.submit((on_other, {"task": {"goal": "g", "acceptance": ["a"]}}))
+    await until(lambda: len(runner.outcomes) == 2)
+    await world.stop(runner)
+
+    run = await world.stored(halted.id)
+    assert run.state is RunState.HALTED and run.cause is Cause.STOP
+    assert run.step_run("do").state is StepState.STOPPED
+    assert stopped.stops, "the worker was asked to stop at its boundary, not aborted"
+    assert (await world.stored(went_on.id)).state is RunState.FINISHED
+    by_run = {o.run.id: o.disposition for o in runner.outcomes if o.run is not None}
+    assert by_run[halted.id] == "completed", "a person resumes it; no runner claims it again"
+    [confirmed] = await world.stops.confirm(TENANT)
+    assert confirmed.id == stop.id and confirmed.stopped == (halted.id,)
 
 
 async def test_a_runner_whose_claim_was_taken_writes_nothing_more_and_leaves_the_job() -> None:

@@ -98,7 +98,8 @@ from taktus.components.run.application.query import (
     RecordedResponses,
 )
 from taktus.components.run.application.service import EngineOptions, RunEngine
-from taktus.components.run.domain.model import Run
+from taktus.components.run.application.service.stops import Stops
+from taktus.components.run.domain.model import AdapterStop, Run
 from taktus.composition.alerts import alerts
 from taktus.composition.capacity import capacity_report, rules_of
 from taktus.composition.conformance import InstanceSuites, worker_suites
@@ -260,6 +261,16 @@ class LocalWiring:
                 ),
                 model_pool(models),
             )
+            stops = Stops(
+                stores.of(AdapterStop),
+                cast("Queried[Run]", runs),
+                ledger,
+                objects,
+                stores.work,
+                clock,
+                ids,
+                stoppable=frozenset(name for name, _ in opened),
+            )
 
             def engine_for(
                 workers: StaticWorkerPool, connectors: StaticConnectorPool, models: StaticModelPool
@@ -306,6 +317,7 @@ class LocalWiring:
                     deadlines=decisions.deadlines,
                     traces=stores.traces,
                     masking=known_secrets(os.environ),
+                    stops=stops,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -493,6 +505,7 @@ class LocalWiring:
                 residency=decisions.residency,
                 sources=decisions.sources,
                 deadlines=decisions.deadlines,
+                stops=stops,
                 traces=None
                 if stores.traces is None
                 else StepTraces(

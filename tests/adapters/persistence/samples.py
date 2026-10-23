@@ -61,6 +61,7 @@ from taktus.components.process.domain.model import (
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report, Subject
 from taktus.components.run.domain.model import (
     ActionKind,
+    AdapterStop,
     Anchoring,
     Checkpoint,
     Deadline,
@@ -71,6 +72,7 @@ from taktus.components.run.domain.model import (
     RunState,
     Start,
     StepState,
+    StopState,
     WorkingTime,
     deadline_id,
 )
@@ -847,4 +849,19 @@ def corrected_case(tenant: str = "t") -> CorrectedCase:
         left_out=("mailbox",),
         proposed_at=AT,
         decided_at=AT + timedelta(hours=1),
+    )
+
+
+def adapter_stop(tenant: str = "t") -> AdapterStop:
+    """A stop of an adapter that held and was confirmed, naming the run it halted (ADR-0138)."""
+    return AdapterStop(
+        id="stp_1",
+        tenant=tenant,
+        adapter="worker.coding",
+        requested_by="idn_operator",
+        requested_at=AT,
+        created_at=AT,
+        state=StopState.CONFIRMED,
+        confirmed_at=AT + timedelta(seconds=40),
+        stopped=("run_1",),
     )

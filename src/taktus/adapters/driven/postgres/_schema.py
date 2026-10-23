@@ -345,6 +345,21 @@ deadline = Table(
 """One row per deadline started for a run (ADR-0133). A row is never deleted: its state moves
 on."""
 
+adapter_stop = Table(
+    "adapter_stop",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("adapter", Text, nullable=False),
+    Column("state", Text, nullable=False),  # holding, confirmed, lifted (ADR-0138)
+    _at("requested_at"),
+    Column("stop", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("adapter_stop_state", "tenant", "state"),
+)
+"""One row per stop of an adapter a person requested (ADR-0138). A row is never deleted: its
+state moves on."""
+
 working_time = Table(
     "working_time",
     metadata,

@@ -47,6 +47,7 @@ from taktus.components.run.domain.model.run import (
     TakeoverOfStep,
     TakeoverStanding,
 )
+from taktus.components.run.domain.model.stop import HELD, AdapterStop, StopState
 from taktus.components.run.domain.model.work import (
     Ask,
     BacklogRule,
@@ -87,6 +88,7 @@ from taktus.components.run.domain.model.work import (
 __all__ = [
     "ACCOUNTS",
     "DECLINE",
+    "HELD",
     "INTERRUPTIBLE",
     "PROCEED",
     "RECORDED_KINDS",
@@ -100,6 +102,7 @@ __all__ = [
     "WORKING",
     "Account",
     "ActionKind",
+    "AdapterStop",
     "Anchoring",
     "Ask",
     "BacklogRule",
@@ -140,6 +143,7 @@ __all__ = [
     "Start",
     "StepRun",
     "StepState",
+    "StopState",
     "Takeover",
     "TakeoverOfStep",
     "TakeoverRefused",
