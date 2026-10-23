@@ -250,6 +250,31 @@ async def test_a_rollback_registers_an_earlier_version_again_and_deletes_nothing
     assert unknown.value.kind == "unknown"
 
 
+async def test_a_version_rolled_back_keeps_its_caps_on_open_work_and_needs_no_approval() -> None:
+    """#611: a rollback restores the version as it was, cap included, and never asks a person
+    to change a cap the restored version had (ADR-0132, ADR-0013 C)."""
+    world = World()
+    await world.identity.directory.add(TENANT, WHO, (TENANT, "ops"))
+    caps = {"tasks": {"cap": 2, "check_every": "30m"}}
+    await world.register.execute(
+        RegisterProcessVersion({**bundle("1"), "open_work": caps}, tenant=TENANT, by=WHO)
+    )
+    await world.register.execute(
+        RegisterProcessVersion(
+            {**bundle("2", extra=True), "open_work": caps}, tenant=TENANT, by=WHO
+        )
+    )
+    restored = await world.acts.rollback(TENANT, "daily", "1", WHO)
+    async with world.persistence.transaction(TENANT):
+        first = await world.versions.get(TENANT, "daily@1")
+        entries = await world.ledger.entries(TENANT)
+    assert first is not None
+    assert restored.version == "3" and await world.active() == "3"
+    assert dict(restored.open_work) == dict(first.open_work)
+    assert restored.open_work["tasks"].cap == 2
+    assert not [e.kind for e in entries if e.kind.startswith("open_work.")], "no approval asked"
+
+
 S07 = Path(__file__).resolve().parents[2] / "blueprints/self-operation/processes"
 
 

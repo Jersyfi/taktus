@@ -152,7 +152,10 @@ refuses a frame that cannot hold, and the run refuses it again at every call.
 
 Every change creates a new **process version** with author, reason, diff and evaluation result.
 A step moved to a trained model on an accepted proposal is such a version, and rolling it back
-registers the replaced version again as a new one (ADR-0114). The
+registers the replaced version again as a new one (ADR-0114). A rollback writes the earlier
+version back as a bundle with every field it declares — its caps on open work, its deadlines and
+its evaluation among them — so that the restored version is the earlier one under a new name,
+and a cap it had needs no person's approval to return (#611). The
 database holds the pointer to the active version; the versions themselves are **bundles**:
 definition, prompts, skills, connector *capabilities*, governance rules and value criteria in one
 package.
