@@ -13,7 +13,8 @@ writes. This module answers each from the other:
   handlers, and hands a confirmed decision to the run, which continues from its boundary;
 - `OwnerAnswers` is the intake's `ChannelAnswers`: a message written in the thread of a report
   goes to the reporting component and is no command, and so does a request for a live
-  representation in the owner's conversation (ADR-0069);
+  representation in the owner's conversation (ADR-0069), the take-over of a running step and
+  its hand-back (ADR-0128 §7), and a change in dialogue (ADR-0091 §6);
 - `KnownSecrets` holds the values the instance was configured with, so that no message carries
   one;
 - `ShippedPhrasebooks` reads the phrasebooks Taktus ships (`phrasebooks/`), by language.
@@ -296,10 +297,29 @@ class Changer(Protocol):
     ) -> Changed | None: ...
 
 
+class Taker(Protocol):
+    """A take-over in dialogue read in the owner's conversation
+    (`composition/takeover_in_channel`, ADR-0128 §7)."""
+
+    async def take(
+        self,
+        tenant: str,
+        channel: str,
+        address: str,
+        thread: str | None,
+        identity: str | None,
+        roles: tuple[str, ...],
+        text: str,
+        event: str,
+    ) -> Changed | None: ...
+
+
 class OwnerAnswers(ChannelAnswers):
     """A message in the thread of a report is an answer to it; a message in the owner's
     conversation that asks for a live representation is answered with its text equivalent and
-    a link (ADR-0069), where the wiring was given the levels to read."""
+    a link (ADR-0069), where the wiring was given the levels to read. A take-over of a running
+    step and its hand-back (ADR-0128 §7) and a change in dialogue (ADR-0091 §6) are read there
+    too, once the composition root has the run engine."""
 
     def __init__(
         self, answering: AnswerInChannelHandler, showing: ShowInChannelHandler | None = None
@@ -307,6 +327,12 @@ class OwnerAnswers(ChannelAnswers):
         self._answering = answering
         self._showing = showing
         self._changing: Changer | None = None
+        self._taking: Taker | None = None
+
+    def take_over_with(self, taking: Taker) -> None:
+        """A take-over in dialogue is read too, once the composition root has the run engine
+        (ADR-0128 §7), which is built after the channel."""
+        self._taking = taking
 
     def change_with(self, changing: Changer) -> None:
         """A change in dialogue is read too, once the composition root has its acts (ADR-0091
@@ -348,6 +374,19 @@ class OwnerAnswers(ChannelAnswers):
             )
             if shown is not None:
                 return Taken(outcome=shown.outcome, replied=shown.replied)
+        if self._taking is not None:
+            taken = await self._taking.take(
+                tenant,
+                intake.reply_to.channel,
+                intake.reply_to.address,
+                intake.reply_to.thread,
+                identity,
+                roles,
+                intake.intent.raw,
+                intake.event_id,
+            )
+            if taken is not None:
+                return Taken(outcome=taken.outcome, replied=taken.replied)
         if self._changing is None:
             return None
         changed = await self._changing.take(

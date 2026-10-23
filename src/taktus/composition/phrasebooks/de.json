@@ -65,5 +65,26 @@
   "act_refused": "Das geht gerade nicht; die Seite des Prozesses sagt, warum.",
   "signals": "Signale",
   "intervene": "starte {process}",
-  "intervened": "{process} läuft als Lauf {run}."
+  "intervened": "{process} läuft als Lauf {run}.",
+  "takeover_words": [
+    "übernimm"
+  ],
+  "hand_back_words": [
+    "gib zurück"
+  ],
+  "takeover_show_words": [
+    "zeige übernahme"
+  ],
+  "takeover_read": "Ich verstehe das so: Schritt {step} von Lauf {run} übernehmen. Sein Worker hält an seiner nächsten Grenze an, und der Lauf wartet auf dich, bis du das Ergebnis zurückgibst oder die Zeit der Übernahme abläuft.",
+  "takeover_asked": "Angefragt als {takeover}: Schritt {step} von Lauf {run} hält an der nächsten Grenze seines Workers an. Dann zeigt \"zeige übernahme {takeover}\", was er erreicht hat, und \"gib zurück {takeover}: <dein Ergebnis>\" gibt das Ergebnis zurück.",
+  "takeover_waiting": "{takeover} ist angefragt; der Worker von Schritt {step} hat seine nächste Grenze noch nicht erreicht.",
+  "takeover_state": "{takeover}: Schritt {step} von Lauf {run} gehört dir bis {until}.\nZiel: {goal}\nAbnahmekriterien: {acceptance}\nEingaben: {inputs}\nCheckpoint: {checkpoint}\nBisher erzeugt: {produced}",
+  "takeover_refused": "{takeover} wurde abgelehnt: Schritt {step} endete, bevor sein Worker anhielt, und wurde nicht übernommen.",
+  "takeover_lapsed": "{takeover} ist abgelaufen: Die Zeit verging ohne Rückgabe, und Schritt {step} ging an seinem Checkpoint an seinen Worker zurück. Nichts wurde zurückgegeben.",
+  "takeover_handed": "{takeover} wurde zurückgegeben: Das Ergebnis von Schritt {step} gilt als das einer Person.",
+  "hand_back_read": "Ich verstehe das so: {takeover} mit deinem Ergebnis {form} zurückgeben. Es wird das Ergebnis von Schritt {step} von Lauf {run}, von dir erzeugt, und der Lauf geht weiter.",
+  "as_json": "als JSON",
+  "as_text": "als Text, genau wie du ihn geschrieben hast",
+  "handed_back": "Zurückgegeben: Schritt {step} von Lauf {run} ist erledigt, als deiner, und der Lauf geht weiter.",
+  "takeover_not_done": "Das lässt sich gerade nicht übernehmen oder zurückgeben; die Seite des Laufs sagt, warum."
 }

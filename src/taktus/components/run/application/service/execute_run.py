@@ -217,7 +217,7 @@ from taktus.components.run.domain.model import (
     select,
 )
 from taktus.components.run.domain.model.block import Account, OpenBlock
-from taktus.components.run.domain.model.run import IN_FLIGHT
+from taktus.components.run.domain.model.run import IN_FLIGHT, TAKEOVER_RESULT, TAKEOVER_STATE
 from taktus.components.run.domain.model.work import PREDICT
 from taktus.components.run.domain.service import (
     anchoring,
@@ -348,10 +348,6 @@ TAKEOVER_REFUSED = "step.takeover_refused"
 """The step ended another way before it stopped, and was not taken over. Changes no state."""
 TAKEOVER_LAPSED = "step.takeover_lapsed"
 """The take-over's lease passed without a hand-back: the step is back at its checkpoint."""
-TAKEOVER_STATE = "takeover.state"
-"""The kind of the artifact that holds the state a step was taken over in (ADR-0128 §3)."""
-TAKEOVER_RESULT = "takeover.result"
-"""The kind of the artifact that holds the result a person handed back (ADR-0128 §5)."""
 HOLDER = "takeover:"
 """What the claimant of a take-over's claim starts with; the take-over identifier follows."""
 

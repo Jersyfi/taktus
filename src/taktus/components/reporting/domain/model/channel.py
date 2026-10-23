@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from string import Formatter
+from typing import Any
 
 from pydantic import Field, model_validator
 
@@ -33,6 +34,27 @@ PLACEHOLDERS: dict[str, frozenset[str]] = {
     "rolled_back": frozenset({"process", "version", "new"}),
     "intervene": frozenset({"process"}),
     "intervened": frozenset({"process", "run"}),
+    "takeover_read": frozenset({"run", "step"}),
+    "takeover_asked": frozenset({"takeover", "run", "step"}),
+    "takeover_waiting": frozenset({"takeover", "step"}),
+    "takeover_state": frozenset(
+        {
+            "takeover",
+            "run",
+            "step",
+            "until",
+            "goal",
+            "acceptance",
+            "inputs",
+            "checkpoint",
+            "produced",
+        }
+    ),
+    "takeover_refused": frozenset({"takeover", "step"}),
+    "takeover_lapsed": frozenset({"takeover", "step"}),
+    "takeover_handed": frozenset({"takeover", "step"}),
+    "hand_back_read": frozenset({"takeover", "run", "step", "form"}),
+    "handed_back": frozenset({"run", "step"}),
 }
 """The sentences that take values, and the values each must use — no more, no fewer."""
 
@@ -117,6 +139,36 @@ class Phrasebook(Value):
     answers to start it. None: the report offers none."""
     intervened: str | None = Field(default=None, min_length=1)
     """Said when a confirmed intervention started, with `{process}` and `{run}`."""
+    takeover_words: tuple[str, ...] | None = None
+    """The words before `<run> <step>` that ask to take over a running step (UC-4.19, ADR-0128
+    §7); read back first. None: the channel reads no take-over — a phrasebook configured before
+    there were any."""
+    hand_back_words: tuple[str, ...] | None = None
+    """The words before `<takeover>:` and the result, which hand the result back; read back
+    first."""
+    takeover_show_words: tuple[str, ...] | None = None
+    """The words before a take-over's identifier that ask where it stands, and for its state."""
+    takeover_read: str | None = Field(default=None, min_length=1)
+    takeover_asked: str | None = Field(default=None, min_length=1)
+    takeover_waiting: str | None = Field(default=None, min_length=1)
+    """Said of a take-over asked and not served yet: the worker has not reached its boundary."""
+    takeover_state: str | None = Field(default=None, min_length=1)
+    """The state a step was taken over in, in words, while it is held (ADR-0128 §3)."""
+    takeover_refused: str | None = Field(default=None, min_length=1)
+    """Said of a take-over whose step ended another way before it stopped."""
+    takeover_lapsed: str | None = Field(default=None, min_length=1)
+    """Said of a take-over whose lease passed without a hand-back: the step went back."""
+    takeover_handed: str | None = Field(default=None, min_length=1)
+    """Said of a take-over whose result was handed back."""
+    hand_back_read: str | None = Field(default=None, min_length=1)
+    as_json: str | None = Field(default=None, min_length=1)
+    """`{form}` of `hand_back_read` for a result that is read as JSON."""
+    as_text: str | None = Field(default=None, min_length=1)
+    """`{form}` of `hand_back_read` for a result that is read as the text written."""
+    handed_back: str | None = Field(default=None, min_length=1)
+    takeover_not_done: str | None = Field(default=None, min_length=1)
+    """Said when a take-over or a hand-back cannot be done, or concerns nothing the person may
+    see; the run's page in the web app says why."""
 
     @model_validator(mode="after")
     def _readable(self) -> Phrasebook:
@@ -140,6 +192,9 @@ class Phrasebook(Value):
             "rehearse_words": self.rehearse_words or (),
             "commission_words": self.commission_words or (),
             "rollback_words": self.rollback_words or (),
+            "takeover_words": self.takeover_words or (),
+            "hand_back_words": self.hand_back_words or (),
+            "takeover_show_words": self.takeover_show_words or (),
         }
         for name, listed in words.items():
             if any(w != w.strip().casefold() or not w for w in listed):
@@ -182,6 +237,28 @@ class Phrasebook(Value):
                 "a phrasebook that reads a change in dialogue names every one of its eleven "
                 "entries, from change_words to act_refused (ADR-0091 §6)"
             )
+        taking = (
+            self.takeover_words,
+            self.hand_back_words,
+            self.takeover_show_words,
+            self.takeover_read,
+            self.takeover_asked,
+            self.takeover_waiting,
+            self.takeover_state,
+            self.takeover_refused,
+            self.takeover_lapsed,
+            self.takeover_handed,
+            self.hand_back_read,
+            self.as_json,
+            self.as_text,
+            self.handed_back,
+            self.takeover_not_done,
+        )
+        if any(x is not None for x in taking) and any(not x for x in taking):
+            problems.append(
+                "a phrasebook that reads a take-over names every one of its fifteen entries, "
+                "from takeover_words to takeover_not_done (ADR-0128 §7)"
+            )
         acting = [
             set(words or ())
             for words in (
@@ -189,6 +266,9 @@ class Phrasebook(Value):
                 self.rehearse_words,
                 self.commission_words,
                 self.rollback_words,
+                self.takeover_words,
+                self.hand_back_words,
+                self.takeover_show_words,
             )
         ]
         if any(a & b for i, a in enumerate(acting) for b in acting[i + 1 :]):
@@ -243,19 +323,41 @@ class OwnerChannel(Value):
 
 
 class PendingAct(Value):
-    """A commissioning or a rollback asked for in the owner's conversation, read back and waiting
-    for its confirmation (ADR-0008, ADR-0091 §6). Stored under its conversation and thread, so
-    that the next `yes` there confirms it; never deleted, only moved to `done` or `dropped`."""
+    """An act asked for in the owner's conversation, read back and waiting for its confirmation
+    (ADR-0008): a commissioning or a rollback (ADR-0091 §6), or the take-over of a running step
+    and its hand-back (ADR-0128 §7). Stored under its conversation and thread, so that the next
+    `yes` there confirms it; never deleted, only moved to `done` or `dropped`. A take-over that
+    was asked is kept once more under its own identifier, so that its state is shown and its
+    result handed back from any thread of the conversation."""
 
     id: str = Field(min_length=1)
-    """`<address>:<thread>`: one act waits per thread."""
+    """`<address>:<thread>`: one act waits per thread. For a take-over asked: its identifier."""
     tenant: str = Field(min_length=1)
-    kind: str = Field(pattern=r"^(commission|rollback)$")
-    process: str = Field(min_length=1)
+    kind: str = Field(pattern=r"^(commission|rollback|take_over|hand_back)$")
+    process: str | None = Field(default=None, min_length=1)
+    """For a commissioning or a rollback: the process."""
     proposal: str | None = None
-    version: str = Field(min_length=1)
+    version: str | None = Field(default=None, min_length=1)
     """The version a commissioning makes active, or the one a rollback makes current again."""
+    run: str | None = Field(default=None, min_length=1)
+    """For a take-over and a hand-back: the run."""
+    step: str | None = Field(default=None, min_length=1)
+    """For a take-over and a hand-back: the step."""
+    takeover: str | None = Field(default=None, min_length=1)
+    """For a hand-back, and for a take-over once it was asked: the take-over identifier."""
+    result: Any = None
+    """For a hand-back: the result as it was read — a JSON value, or the text as written."""
     by: str = Field(min_length=1)
     """Who asked; only the same person confirms it."""
     state: str = Field(default="awaiting", pattern=r"^(awaiting|done|dropped)$")
     asked_at: datetime
+
+    @model_validator(mode="after")
+    def _named(self) -> PendingAct:
+        if self.kind in ("commission", "rollback") and (not self.process or not self.version):
+            raise ValueError(f"a {self.kind} names its process and its version")
+        if self.kind in ("take_over", "hand_back") and (not self.run or not self.step):
+            raise ValueError(f"a {self.kind} names its run and its step")
+        if self.kind == "hand_back" and not self.takeover:
+            raise ValueError("a hand-back names its take-over")
+        return self

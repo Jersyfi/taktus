@@ -9,7 +9,9 @@ standing alone. This module reads the rest, against the words of the owner's phr
   rejected when it is one of its `no_words`;
 - a request for the live representation of a run or a process is one of its `show_run_words`
   or `show_process_words` followed by one identifier (ADR-0069); a request for the overview is
-  one of its `show_overview_words` standing alone.
+  one of its `show_overview_words` standing alone;
+- a change in dialogue (ADR-0091 §6) and the take-over of a running step (ADR-0128 §7) begin
+  with their words and name what they act on; each is read back before it takes effect.
 
 The whole message, not a word in it: a message that negates the word, or says more than it, is
 not the word. Case and the punctuation around the word do not count. Anything else is not read,
@@ -139,4 +141,48 @@ def act(text: str, book: Phrasebook) -> Act | None:
         process, at, version = name.rpartition("@")
         if at and process and version:
             return Act(kind="rollback", target=process, version=version)
+    return None
+
+
+class TakeoverAct(Value):
+    """The take-over of a running step asked for in the owner's conversation, its hand-back, or
+    the question where a take-over stands (UC-4.19, ADR-0128 §7)."""
+
+    kind: Literal["take_over", "hand_back", "show"]
+    run: str | None = Field(default=None, pattern=r"^\S+$")
+    """For a take-over: the run."""
+    step: str | None = Field(default=None, pattern=r"^\S+$")
+    """For a take-over: the step."""
+    takeover: str | None = Field(default=None, pattern=r"^\S+$")
+    """For a hand-back and a question: the take-over identifier."""
+    result: str | None = Field(default=None, min_length=1)
+    """For a hand-back: the result in the person's own words, as written."""
+
+
+def takeover_act(text: str, book: Phrasebook) -> TakeoverAct | None:
+    """A message that asks for a take-over, read by a rule:
+
+    - one of `takeover_words`, the run's identifier and the step's;
+    - one of `hand_back_words`, the take-over's identifier, a colon, and the result;
+    - one of `takeover_show_words`, and the take-over's identifier.
+
+    The words are matched as the other words are; identifiers and the result are taken as
+    written. None for anything else, and for a phrasebook that reads no take-over."""
+    if book.takeover_words is None:
+        return None
+    message = text.strip()
+    folded = message.casefold()
+    for word in book.hand_back_words or ():
+        if folded.startswith(word + " "):
+            takeover, colon, result = message[len(word) :].strip().partition(":")
+            if colon and takeover.strip() and " " not in takeover.strip() and result.strip():
+                return TakeoverAct(
+                    kind="hand_back", takeover=takeover.strip(), result=result.strip()
+                )
+            return None
+    tokens = message.strip(_AROUND).split()
+    if len(tokens) >= 2 and " ".join(tokens[:-1]).casefold() in (book.takeover_show_words or ()):
+        return TakeoverAct(kind="show", takeover=tokens[-1])
+    if len(tokens) >= 3 and " ".join(tokens[:-2]).casefold() in book.takeover_words:
+        return TakeoverAct(kind="take_over", run=tokens[-2], step=tokens[-1])
     return None

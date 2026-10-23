@@ -36,6 +36,9 @@ from taktus.shared.v1 import Capability
 CHANGED = "changed"
 ASKED = "read_back"
 REFUSED = "refused"
+CHANGE_KINDS = ("commission", "rollback")
+"""The acts read back here; a take-over waits in the same thread under another handler's kinds
+(`composition/takeover_in_channel.py`)."""
 
 
 @dataclass(frozen=True)
@@ -88,7 +91,12 @@ class ChangeInChannel:
         book = found.phrasebook
         if book.change_words is None:
             return None
-        if waiting is not None and waiting.state == "awaiting" and waiting.by == identity:
+        if (
+            waiting is not None
+            and waiting.kind in CHANGE_KINDS
+            and waiting.state == "awaiting"
+            and waiting.by == identity
+        ):
             confirmed = rules.confirmation(text, book)
             if confirmed is not None:
                 return await self._confirmed(found, waiting, confirmed, thread, event)
@@ -138,7 +146,9 @@ class ChangeInChannel:
                     by=identity,
                     asked_at=self._clock.now(),
                 )
-                read = _filled(book.rollback_read, process=asked.target, version=act.version)
+                read = _filled(
+                    book.rollback_read, process=asked.target, version=asked.version or ""
+                )
         except (ProposalError, InvalidProcess):
             return await self._say(found, book.act_refused, thread, event, REFUSED)
         async with self._work.transaction(tenant):
@@ -156,6 +166,7 @@ class ChangeInChannel:
     ) -> Changing:
         book = found.phrasebook
         tenant = found.tenant
+        process, version = waiting.process or "", waiting.version or ""
         async with self._work.transaction(tenant):
             await self._pending.put(
                 tenant, waiting.model_copy(update={"state": "done" if confirmed else "dropped"})
@@ -164,25 +175,14 @@ class ChangeInChannel:
             return await self._say(found, book.reread, thread, event, REFUSED)
         try:
             if waiting.kind == "commission" and waiting.proposal is not None:
-                version = await self._acts.commission(
-                    tenant, waiting.process, waiting.proposal, waiting.by
-                )
-                said = _filled(book.commissioned, process=waiting.process, version=version.version)
+                made = await self._acts.commission(tenant, process, waiting.proposal, waiting.by)
+                said = _filled(book.commissioned, process=process, version=made.version)
             else:
-                version = await self._acts.rollback(
-                    tenant, waiting.process, waiting.version, waiting.by
-                )
-                said = _filled(
-                    book.rolled_back,
-                    process=waiting.process,
-                    version=waiting.version,
-                    new=version.version,
-                )
+                made = await self._acts.rollback(tenant, process, version, waiting.by)
+                said = _filled(book.rolled_back, process=process, version=version, new=made.version)
         except (ProposalError, InvalidProcess):
             return await self._say(found, book.act_refused, thread, event, REFUSED)
-        return await self._say(
-            found, said + _page(found, waiting.process, book), thread, event, CHANGED
-        )
+        return await self._say(found, said + _page(found, process, book), thread, event, CHANGED)
 
     async def _say(
         self, found: OwnerChannel, said: str | None, thread: str | None, event: str, outcome: str

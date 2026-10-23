@@ -4,10 +4,10 @@ title: A person takes over a running step and hands the result back
 component: run
 epic: E4
 serves: [P6, P10, P14]
-state: specified
+state: building
 version: 0.5.0
-tests: []
-adrs: {ADR-0013: 1da224cdeaf4, ADR-0021: dc801ddd1c47}
+tests: [tests/components/run/test_takeover.py::test_a_running_step_stops_at_its_boundary_and_its_state_reaches_the_person, tests/components/run/test_takeover.py::test_nobody_works_a_step_a_person_holds, tests/components/run/test_takeover.py::test_a_hand_back_is_a_human_step_with_provenance_and_the_run_continues, tests/components/run/test_takeover.py::test_a_lapsed_lease_gives_the_step_back_to_its_worker_at_the_checkpoint, tests/components/run/test_takeover.py::test_a_hand_back_after_a_runner_took_the_job_is_refused_by_the_fence, tests/components/run/test_takeover.py::test_a_step_that_ends_before_its_boundary_is_not_taken_over, tests/components/run/test_takeover.py::test_only_a_running_worker_step_of_a_run_a_runner_holds_is_taken_over, tests/components/run/test_takeover.py::test_a_step_says_where_each_take_over_it_was_served_for_stands, tests/adapters/queue/test_queue.py::test_a_takeover_is_asked_once_and_only_on_a_job_a_runner_holds, tests/adapters/queue/test_queue.py::test_a_passed_claim_is_held_by_the_takeover_whatever_the_lease, tests/adapters/rest/test_takeover.py::test_a_step_is_taken_over_its_state_read_and_its_result_handed_back, tests/integration/test_takeover.py::test_a_step_taken_over_through_one_instance_is_handed_back_and_finished_by_another, tests/components/reporting/test_run_level.py::test_a_step_taken_over_says_where_its_take_over_stands_and_names_no_person, tests/composition/test_takeover_in_channel.py::test_a_take_over_is_read_back_asked_on_yes_and_its_state_reaches_the_person, tests/composition/test_takeover_in_channel.py::test_a_hand_back_is_read_back_with_its_reading_and_handed_back_only_on_yes, tests/composition/test_takeover_in_channel.py::test_a_lapsed_take_over_is_said_as_such_and_a_hand_back_then_changes_nothing]
+adrs: {ADR-0013: 1da224cdeaf4, ADR-0021: dc801ddd1c47, ADR-0128: 5292b4b5fe7e}
 supersedes: null
 ---
 
@@ -46,4 +46,16 @@ a process by hand without Taktus is UC-6.3.
 
 Requirement B of ADR-0013; provenance per step (ADR-0021); the takeover instructions of UC-6.3;
 steering a run (UC-1.5). The owner accepted it as W3 of DEC-0195, and issue #404 carries it. The
-version is `0.5.0`, the milestone DEC-0195 places it in.
+version is `0.5.0`, the milestone DEC-0195 places it in. ADR-0128 decides how: the person holds
+the run's claim on its job for as long as they hold the step.
+
+## 5. What is proven so far
+
+A running worker step is taken over at its worker's next boundary, its state reaches the person
+as an artifact, no runner works it while the person holds it, and a second take-over of the run
+is refused. A hand-back is a `human` step whose provenance names the person's ledger entry; a
+lapsed take-over gives the step back to its worker at the checkpoint, and a hand-back after it is
+refused. Over two instances on PostgreSQL, one takes the step over and another finishes the run.
+The web app offers it on a running worker step (`web/src/lib/takeover.test.ts`), and the chat
+offers it, acting only on a confirmed reading — by the named tests. The MCP surface waits for
+#406, and the automated takeover test of `0.5.0` does not exercise this path yet.

@@ -251,10 +251,81 @@ def web_fixtures() -> str:
         "run_level": run_level(facts).document(),
         "process_level": process_level(process).document(),
         "origin": origin.document(),
+        "takeover": takeover_fixtures(at, step),
         "governance": governance_fixtures(at, process_level(process).process),
         "operation": operation_fixtures(),
     }
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+
+
+def takeover_fixtures(at: Any, step: Any) -> dict[str, Any]:
+    """What the take-over of a running step draws (ADR-0128): a run level with a step held and
+    one whose take-over lapsed, and the state as `GET /runs/{id}/takeovers/{tko}` answers it —
+    the engine's document of kind `takeover.state` (§3)."""
+    from datetime import timedelta
+
+    from taktus.components.reporting.domain.model import (
+        RunFacts,
+        TakeoverFacts,
+        Wait,
+    )
+    from taktus.components.reporting.domain.service.levels import run_level
+    from taktus.shared.v1 import ConsumptionQuantities
+
+    until = at + timedelta(hours=8)
+    taken = RunFacts(
+        id="run_taken",
+        tenant="default",
+        process_version="example@1",
+        state="waiting_human",
+        consumed=ConsumptionQuantities.model_validate({"tokens_in": 900}),
+        steps=(
+            step("load", "rule", "exact", "succeeded"),
+            step("build", "worker", "tolerant", "running", depends_on=["load"]),
+            step(
+                "fix",
+                "worker",
+                "tolerant",
+                "waiting_human",
+                depends_on=["load"],
+                wait=Wait(account="wait.human", cause="taken_over", since=at),
+                takeover=TakeoverFacts(id="tko_example", standing="held", until=until),
+            ),
+            step(
+                "lint",
+                "worker",
+                "tolerant",
+                "stopped",
+                depends_on=["load"],
+                takeover=TakeoverFacts(id="tko_lapsed", standing="lapsed"),
+            ),
+        ),
+        created_at=at,
+        updated_at=at,
+    )
+    state = {
+        "kind": "takeover.state",
+        "takeover": "tko_example",
+        "run_id": "run_taken",
+        "step_id": "fix",
+        "process_version": "example@1",
+        "held_until": until.isoformat(),
+        "goal": "Fix the failing test in the parser",
+        "acceptance": ["the suite passes", "no test is skipped"],
+        "inputs": {"repository": "example/repo", "branch": "main"},
+        "credentials": ["REPOSITORY_TOKEN"],
+        "checkpoint": "ckpt/run_taken/fix/2",
+        "artifacts": [
+            {
+                "id": "patch.diff",
+                "kind": "patch",
+                "digest": "sha256:" + "0" * 64,
+                "media_type": "text/x-diff",
+                "title": "The patch so far",
+            }
+        ],
+    }
+    return {"level": run_level(taken).document(), "state": state}
 
 
 def governance_fixtures(at: Any, process: Any) -> dict[str, Any]:

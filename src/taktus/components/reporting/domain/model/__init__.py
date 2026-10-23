@@ -55,6 +55,7 @@ from taktus.components.reporting.domain.model.levels import (
     RunFacts,
     RunningStep,
     StepFacts,
+    TakeoverFacts,
     VersionRef,
     Wait,
 )
@@ -167,6 +168,7 @@ __all__ = [
     "StepFacts",
     "Subject",
     "Submission",
+    "TakeoverFacts",
     "TaskDestination",
     "VersionRef",
     "Wait",

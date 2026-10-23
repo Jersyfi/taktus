@@ -9,9 +9,19 @@
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
 	import { originLink, processLink, requestsLink } from './links';
+	import type { Snippet } from 'svelte';
 	import type { Figure, RunLevel } from './types';
 
-	let { level, motionAllowed }: { level: RunLevel; motionAllowed: boolean } = $props();
+	let {
+		level,
+		motionAllowed,
+		acts
+	}: {
+		level: RunLevel;
+		motionAllowed: boolean;
+		/** What a reader can do on the run, drawn above its text equivalent: a take-over. */
+		acts?: Snippet;
+	} = $props();
 
 	const byId = $derived(new Map(level.steps.map((s) => [s.id, s])));
 	const decided = $derived(level.steps.filter((s) => s.decisions?.length));
@@ -27,6 +37,7 @@
 		if (step?.wait) {
 			found.push(`waits: ${step.wait.account}${step.wait.role ? ` (${step.wait.role})` : ''}`);
 		}
+		if (step?.takeover?.standing === 'held') found.push(`taken over: ${step.takeover.id}`);
 		if (step?.consumption?.length) found.push(figures(step.consumption));
 		return found;
 	}
@@ -67,6 +78,8 @@
 			{/each}
 		</ul>
 	{/if}
+
+	{@render acts?.()}
 
 	<section class="text" aria-label="The run as text">
 		<h2>As text</h2>

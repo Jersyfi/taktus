@@ -23,6 +23,13 @@ records as they are now and moving when the work moves (ADR-0063).
 The run level also draws the decision requests a step raised, and links each result to its
 origin.
 
+- **A running step taken over** (UC-4.19, ADR-0128) — on the run level, a running worker step
+  offers "take over", read back before it is asked. Once the runner served it, the page shows
+  the state the step reached — goal, acceptance criteria, inputs, the worker's checkpoint and
+  what it produced — and the lease's end, with how much of it has passed. The result is read
+  back, as JSON or as the text written, before it is handed back. A take-over that lapsed, or an
+  ask the runner refused because the step ended first, is said as such. No person is named.
+
 - **What governs the work** (ADR-0122, DEC-0218) — the needs among the reports to the owner;
   each process's level, why it is there, and its correction rates per process and action; the
   instance's findings with their classification and their review, read back before it acts; and
@@ -66,6 +73,7 @@ origin.
 | `src/lib/cells.ts`, `Glyph.svelte` | a glyph's tokens turned into a cell — membrane, nucleus, rings, cytoplasm, badge — each token kept on it as an attribute; a family's hue on top (M1.20) |
 | `src/lib/Graph.svelte` | steps as a graph, placed by their dependencies |
 | `src/lib/RunView.svelte` | the run level, and its text equivalent |
+| `src/lib/takeover.ts`, `TakeoverPanel.svelte` | a running step taken over: the steps that offer it, where an ask stands, the state, the lease, the result read back before it is handed back (ADR-0128); the reader's own ask is held while the page is open, and stored nowhere |
 | `src/lib/OverviewView.svelte` | the overview, and its text equivalent |
 | `src/lib/OriginView.svelte` | the origin of a result, and its text equivalent |
 | `src/lib/ProcessView.svelte` | the process level, its autonomy statement, its runs and versions, and its text equivalent |

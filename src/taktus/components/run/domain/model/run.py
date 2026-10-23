@@ -209,6 +209,33 @@ DONE: frozenset[StepState] = frozenset({StepState.SUCCEEDED})
 IN_FLIGHT: frozenset[StepState] = frozenset({StepState.ADMITTED, StepState.RUNNING})
 """States a step run is in while its instance is executing it."""
 
+TAKEOVER_STATE = "takeover.state"
+"""The kind of the artifact that holds the state a step was taken over in (ADR-0128 §3). Its
+identifier is `<takeover>.state`."""
+TAKEOVER_RESULT = "takeover.result"
+"""The kind of the artifact that holds the result a person handed back (ADR-0128 §5). Its
+identifier is `<takeover>.result`."""
+
+
+class TakeoverStanding(StrEnum):
+    """Where a take-over that was served stands, read from the step run alone (ADR-0128)."""
+
+    HELD = "held"
+    """A person holds the step: its block is the take-over's."""
+    HANDED_BACK = "handed_back"
+    """The person handed the result back: the step carries it."""
+    LAPSED = "lapsed"
+    """The lease passed without a hand-back, and the step went back to its worker."""
+
+
+class TakeoverOfStep(Value):
+    """One take-over a step was served for: its identifier, where it stands, and, while it is
+    held, until when. Names no person: the ledger entry of the ask names who asked."""
+
+    id: str = Field(min_length=1)
+    standing: TakeoverStanding
+    until: datetime | None = None
+
 
 class Checkpoint(Value):
     """A point the run can resume from: the step's boundary, what the step had produced by
@@ -310,6 +337,28 @@ class StepRun(Value):
             if artifact.id == artifact_id:
                 return artifact
         return None
+
+    def takeovers(self) -> tuple[TakeoverOfStep, ...]:
+        """Every take-over the step was served for, oldest first (ADR-0128). A served take-over
+        leaves its state as an artifact of the step; the step's block says whether it is held,
+        and a result artifact under the same identifier that it was handed back. One neither
+        held nor handed back lapsed. A take-over asked and not yet served, or refused, left no
+        state and is not here."""
+        held = None if self.block is None else self.block.takeover
+        found: list[TakeoverOfStep] = []
+        for artifact in self.artifacts:
+            if artifact.kind != TAKEOVER_STATE or not artifact.id.endswith(".state"):
+                continue
+            takeover = artifact.id.removesuffix(".state")
+            if held is not None and held.id == takeover:
+                found.append(
+                    TakeoverOfStep(id=takeover, standing=TakeoverStanding.HELD, until=held.until)
+                )
+            elif self.artifact(f"{takeover}.result") is not None:
+                found.append(TakeoverOfStep(id=takeover, standing=TakeoverStanding.HANDED_BACK))
+            else:
+                found.append(TakeoverOfStep(id=takeover, standing=TakeoverStanding.LAPSED))
+        return tuple(found)
 
 
 class Run(Value):

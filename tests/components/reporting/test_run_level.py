@@ -10,7 +10,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from taktus.components.reporting.application.query import LevelQueries
-from taktus.components.reporting.domain.model import Figure, Reader, RunFacts, StepFacts, Wait
+from taktus.components.reporting.domain.model import (
+    Figure,
+    Reader,
+    RunFacts,
+    StepFacts,
+    TakeoverFacts,
+    Wait,
+)
 from taktus.components.reporting.domain.model.vocabulary import Motion
 from taktus.components.reporting.domain.service.drawing import check
 from taktus.components.reporting.domain.service.levels import (
@@ -245,3 +252,36 @@ def test_the_run_level_opens_with_how_far_it_is_and_what_it_does_now() -> None:
     load = step("load", Method.RULE, "succeeded", ExactnessClass.EXACT)
     done = run_level(facts(load, state="finished"))
     assert done.summary == "Finished: all 1 step completed."
+
+
+def test_a_step_taken_over_says_where_its_take_over_stands_and_names_no_person() -> None:
+    """UC-4.19: the run level hands over the latest take-over a step was served for, held,
+    handed back or lapsed, and says it in words (ADR-0128)."""
+    until = datetime(2026, 10, 10, 17, 0, tzinfo=UTC)
+    level = run_level(
+        facts(
+            step(
+                "fix",
+                Method.WORKER,
+                "waiting_human",
+                ExactnessClass.TOLERANT,
+                wait=Wait(account="wait.human", cause="taken_over", since=AT),
+                takeover=TakeoverFacts(id="tko_1", standing="held", until=until),
+            ),
+            step(
+                "lint",
+                Method.WORKER,
+                "running",
+                ExactnessClass.TOLERANT,
+                takeover=TakeoverFacts(id="tko_0", standing="lapsed"),
+            ),
+            step("load", Method.RULE, "succeeded", ExactnessClass.EXACT),
+        )
+    )
+    fix, lint, load = level.steps
+    assert fix.takeover is not None and fix.takeover.until == until
+    held = f"Taken over under tko_1 by a person, who holds it until {until.isoformat()}."
+    assert held in fix.text
+    assert "the take-over lapsed, and the step went back to its worker" in lint.text
+    assert load.takeover is None and "Taken over" not in load.text
+    assert set(TakeoverFacts.model_fields) == {"id", "standing", "until"}, "no person"

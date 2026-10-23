@@ -1812,6 +1812,243 @@
     ],
     "summary": "The free result of draft comes from a language model step. On its path: 1 language model, 1 statistics, and 1 source read."
   },
+  "takeover": {
+    "level": {
+      "run": {
+        "id": "run_taken",
+        "process_version": "example@1",
+        "state": "waiting_human",
+        "rehearsal": false,
+        "consumed": [
+          {
+            "name": "tokens_in",
+            "value": 900
+          }
+        ],
+        "created_at": "2026-10-10T09:00:00Z",
+        "updated_at": "2026-10-10T09:00:00Z",
+        "drawn": {
+          "moving": {
+            "subject": "run",
+            "membrane": "tissue",
+            "nucleus": "none",
+            "rings": "none",
+            "fill": "partial",
+            "state_mark": "person",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "run run_taken: waiting for a person."
+          },
+          "still": {
+            "subject": "run",
+            "membrane": "tissue",
+            "nucleus": "none",
+            "rings": "none",
+            "fill": "partial",
+            "state_mark": "person",
+            "motion": "none",
+            "still_mark": "none",
+            "text": "run run_taken: waiting for a person."
+          }
+        },
+        "text": "run run_taken: waiting for a person. Process example@1. Consumed so far: tokens_in 900."
+      },
+      "steps": [
+        {
+          "id": "load",
+          "method": "rule",
+          "exactness": "exact",
+          "state": "succeeded",
+          "depends_on": [],
+          "attempt": 1,
+          "consumption": [],
+          "decisions": [],
+          "drawn": {
+            "moving": {
+              "subject": "step",
+              "membrane": "beaded",
+              "nucleus": "single",
+              "rings": "inner_membrane",
+              "fill": "full",
+              "state_mark": "check",
+              "motion": "none",
+              "still_mark": "none",
+              "text": "step load: rule, reproducible; exact; completed."
+            },
+            "still": {
+              "subject": "step",
+              "membrane": "beaded",
+              "nucleus": "single",
+              "rings": "inner_membrane",
+              "fill": "full",
+              "state_mark": "check",
+              "motion": "none",
+              "still_mark": "none",
+              "text": "step load: rule, reproducible; exact; completed."
+            }
+          },
+          "text": "step load: rule, reproducible; exact; completed."
+        },
+        {
+          "id": "build",
+          "method": "worker",
+          "exactness": "tolerant",
+          "state": "running",
+          "depends_on": [
+            "load"
+          ],
+          "attempt": 1,
+          "consumption": [],
+          "decisions": [],
+          "drawn": {
+            "moving": {
+              "subject": "step",
+              "membrane": "fluid",
+              "nucleus": "satellites",
+              "rings": "tolerance_band",
+              "fill": "partial",
+              "state_mark": "none",
+              "motion": "shimmer",
+              "still_mark": "none",
+              "text": "step build: worker, variable; tolerant; running."
+            },
+            "still": {
+              "subject": "step",
+              "membrane": "fluid",
+              "nucleus": "satellites",
+              "rings": "tolerance_band",
+              "fill": "partial",
+              "state_mark": "none",
+              "motion": "none",
+              "still_mark": "aura_dotted",
+              "text": "step build: worker, variable; tolerant; running."
+            }
+          },
+          "text": "step build: worker, variable; tolerant; running."
+        },
+        {
+          "id": "fix",
+          "method": "worker",
+          "exactness": "tolerant",
+          "state": "waiting_human",
+          "depends_on": [
+            "load"
+          ],
+          "attempt": 1,
+          "wait": {
+            "account": "wait.human",
+            "cause": "taken_over",
+            "since": "2026-10-10T09:00:00Z",
+            "requests": []
+          },
+          "consumption": [],
+          "decisions": [],
+          "takeover": {
+            "id": "tko_example",
+            "standing": "held",
+            "until": "2026-10-10T17:00:00Z"
+          },
+          "drawn": {
+            "moving": {
+              "subject": "step",
+              "membrane": "fluid",
+              "nucleus": "satellites",
+              "rings": "tolerance_band",
+              "fill": "partial",
+              "state_mark": "person",
+              "motion": "none",
+              "still_mark": "none",
+              "text": "step fix: worker, variable; tolerant; waiting for a person."
+            },
+            "still": {
+              "subject": "step",
+              "membrane": "fluid",
+              "nucleus": "satellites",
+              "rings": "tolerance_band",
+              "fill": "partial",
+              "state_mark": "person",
+              "motion": "none",
+              "still_mark": "none",
+              "text": "step fix: worker, variable; tolerant; waiting for a person."
+            }
+          },
+          "text": "step fix: worker, variable; tolerant; waiting for a person. waits on a person (wait.human, taken_over) since 2026-10-10T09:00:00+00:00. Taken over under tko_example by a person, who holds it until 2026-10-10T17:00:00+00:00."
+        },
+        {
+          "id": "lint",
+          "method": "worker",
+          "exactness": "tolerant",
+          "state": "stopped",
+          "depends_on": [
+            "load"
+          ],
+          "attempt": 1,
+          "consumption": [],
+          "decisions": [],
+          "takeover": {
+            "id": "tko_lapsed",
+            "standing": "lapsed"
+          },
+          "drawn": {
+            "moving": {
+              "subject": "step",
+              "membrane": "fluid",
+              "nucleus": "satellites",
+              "rings": "tolerance_band",
+              "fill": "partial",
+              "state_mark": "pause",
+              "motion": "none",
+              "still_mark": "none",
+              "text": "step lint: worker, variable; tolerant; stopped."
+            },
+            "still": {
+              "subject": "step",
+              "membrane": "fluid",
+              "nucleus": "satellites",
+              "rings": "tolerance_band",
+              "fill": "partial",
+              "state_mark": "pause",
+              "motion": "none",
+              "still_mark": "none",
+              "text": "step lint: worker, variable; tolerant; stopped."
+            }
+          },
+          "text": "step lint: worker, variable; tolerant; stopped. Taken over under tko_lapsed; the take-over lapsed, and the step went back to its worker."
+        }
+      ],
+      "summary": "1 of 4 steps completed. Now: build (worker), fix (worker). It waits for a person."
+    },
+    "state": {
+      "kind": "takeover.state",
+      "takeover": "tko_example",
+      "run_id": "run_taken",
+      "step_id": "fix",
+      "process_version": "example@1",
+      "held_until": "2026-10-10T17:00:00+00:00",
+      "goal": "Fix the failing test in the parser",
+      "acceptance": [
+        "the suite passes",
+        "no test is skipped"
+      ],
+      "inputs": {
+        "repository": "example/repo",
+        "branch": "main"
+      },
+      "credentials": [
+        "REPOSITORY_TOKEN"
+      ],
+      "checkpoint": "ckpt/run_taken/fix/2",
+      "artifacts": [
+        {
+          "id": "patch.diff",
+          "kind": "patch",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "media_type": "text/x-diff",
+          "title": "The patch so far"
+        }
+      ]
+    }
+  },
   "governance": {
     "autonomy": {
       "summary": "1 process; 1 of them runs below the stated level by rule.",
