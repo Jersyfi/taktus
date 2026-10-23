@@ -88,7 +88,8 @@ real time** below the 5 seconds of section 2. **Not a replay** of past runs as m
 is shown in its final state. **Not the role-based views themselves**: who may see which figure is
 UC-6.4, and this use case draws within it. **Not a business-intelligence tool**, and nobody is bound
 to it (UC-5.7). **Not the inside of a connected system**: a representation ends where Taktus hands
-work to a worker or a connector, and shows what came back.
+work to a worker or a connector, and shows what came back. For a worker, what came back includes
+the events it reports while it works, which UC-6.14 shows.
 
 ## 4. What it rests on
 
