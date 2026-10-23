@@ -22,6 +22,8 @@ cannot be estimated without a unit before admission, and the estimate is refused
 
 A unit that the execution adapter killed — memory, wall clock — is reported as a failed step
 with that cause, not as a broken stream: the stream's error is replaced by the job's exit.
+So is the error of an artifact fetch the kill cut off (#587): the step names the kill, and the
+artifacts fetched before it stay with the step.
 """
 
 from __future__ import annotations
@@ -151,11 +153,7 @@ class LaunchedWorker:
             async for event in running.worker.events(assignment_id, after=after):
                 yield event
         except WorkerError as error:
-            exit = await running.job.exit()
-            if exit is not None and exit.killed is not None:
-                raise WorkerError(f"the execution unit was killed: {exit.reason}") from error
-            if exit is not None:
-                raise WorkerError(f"the execution unit ended: {exit.reason}") from error
+            await _named_by_the_unit_exit(running, error)
             raise
         finally:
             await self._end(assignment_id)
@@ -167,10 +165,20 @@ class LaunchedWorker:
         return await self._of(assignment_id).worker.stop(assignment_id, request)
 
     async def artifacts(self, assignment_id: AssignmentId) -> ArtifactList:
-        return await self._of(assignment_id).worker.artifacts(assignment_id)
+        running = self._of(assignment_id)
+        try:
+            return await running.worker.artifacts(assignment_id)
+        except WorkerError as error:
+            await _named_by_the_unit_exit(running, error)
+            raise
 
     async def artifact_bytes(self, assignment_id: AssignmentId, artifact: Artifact) -> bytes:
-        return await self._of(assignment_id).worker.artifact_bytes(assignment_id, artifact)
+        running = self._of(assignment_id)
+        try:
+            return await running.worker.artifact_bytes(assignment_id, artifact)
+        except WorkerError as error:
+            await _named_by_the_unit_exit(running, error)
+            raise
 
     # --- jobs ---------------------------------------------------------------------------------
 
@@ -223,6 +231,19 @@ class _Probe:
     ) -> None:
         if self._running is not None:
             await _close(self._running)
+
+
+async def _named_by_the_unit_exit(running: _Running, error: WorkerError) -> None:
+    """Replace a failed call to the unit by the cause that ended the unit, when it has ended.
+
+    A call cut by the unit's own end (the wall-clock kill, memory) fails with a refused
+    connection, and a person reading the step would look for a network fault that did not
+    happen (#587). A call that fails while the unit lives is left as it is. Nothing is retried."""
+    exit = await running.job.exit()
+    if exit is not None and exit.killed is not None:
+        raise WorkerError(f"the execution unit was killed: {exit.reason}") from error
+    if exit is not None:
+        raise WorkerError(f"the execution unit ended: {exit.reason}") from error
 
 
 async def _close(running: _Running) -> None:

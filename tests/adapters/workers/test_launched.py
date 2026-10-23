@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
@@ -16,7 +17,8 @@ from typing import Any
 
 import pytest
 
-from taktus.adapters.driven.workers.launched import LaunchedWorker
+from taktus.adapters.driven.workers.http import HttpWorker
+from taktus.adapters.driven.workers.launched import LaunchedWorker, _Running
 from taktus.ports.execution import (
     ExecutionAtCapacity,
     ExecutionRefused,
@@ -250,3 +252,67 @@ async def test_a_platform_without_room_is_the_worker_at_capacity() -> None:
             await worker.estimate(assignment(()).estimate_request())
         with pytest.raises(WorkerAtCapacity, match="Insufficient memory"):
             await worker.assign(assignment(()))
+
+
+# --- a fetch cut by the unit's own end (#587) ---------------------------------------------------
+
+
+@dataclass
+class _EndedJob:
+    id: str
+    endpoint: str
+    ended: JobExit | None
+
+    async def exit(self) -> JobExit | None:
+        return self.ended
+
+
+def _unreachable() -> str:
+    """An endpoint nothing listens at: every fetch from it fails to connect."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return f"http://127.0.0.1:{sock.getsockname()[1]}"
+
+
+def _fetch_artifact() -> Any:
+    from taktus.shared.v1 import Artifact
+
+    return Artifact(
+        id="output-1",
+        kind="file",
+        digest="sha256:" + "0" * 64,
+        media_type="text/plain",
+        size_bytes=1,
+        created_at="2026-10-23T10:00:00Z",
+    )
+
+
+async def _fetch_from_unit_that(ended: JobExit | None) -> tuple[WorkerError, WorkerError]:
+    endpoint = _unreachable()
+    job = _EndedJob("asg_fetch01", endpoint, ended)
+    http = HttpWorker(endpoint)
+    async with LaunchedWorker(RecordingExecution(), UNIT) as worker:
+        worker._running["asg_fetch01"] = _Running(_NoContext(), job, http)  # type: ignore[arg-type]
+        with pytest.raises(WorkerError) as raised:
+            await worker.artifact_bytes("asg_fetch01", _fetch_artifact())
+        with pytest.raises(WorkerError) as listed:
+            await worker.artifacts("asg_fetch01")
+        return raised.value, listed.value
+
+
+class _NoContext:
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+
+async def test_a_fetch_cut_by_the_wall_clock_kill_names_the_kill() -> None:
+    killed = JobExit(killed="wall", reason="the wall-clock limit of 6s was exceeded")
+    for error in await _fetch_from_unit_that(killed):
+        assert str(error) == (
+            "the execution unit was killed: the wall-clock limit of 6s was exceeded"
+        )
+
+
+async def test_a_fetch_that_fails_while_the_unit_lives_names_the_connection_error() -> None:
+    for error in await _fetch_from_unit_that(None):
+        assert "ConnectError" in str(error) and "killed" not in str(error)

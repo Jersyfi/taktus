@@ -147,6 +147,36 @@ async def test_a_unit_that_exceeds_its_wall_clock_is_killed_and_the_step_fails_w
         assert 0 < len(failed.artifacts) <= 3, "what was done before the kill is kept"
 
 
+@pytest.mark.timing
+async def test_a_kill_that_lands_mid_fetch_names_the_wall_clock_and_keeps_what_was_fetched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#587: every artifact fetch takes 0.35 s, so a kill at the wall clock lands inside one.
+    The fetch fails to connect to the dead unit; the step names the kill and not that error."""
+    from taktus.adapters.driven.workers.http import HttpWorker
+
+    fetch = HttpWorker.artifact_bytes
+
+    async def slow(self: HttpWorker, assignment_id: str, artifact: object) -> bytes:
+        await asyncio.sleep(0.35)
+        return await fetch(self, assignment_id, artifact)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(HttpWorker, "artifact_bytes", slow)
+    document = bundle(with_overreach=False)
+    compute = next(s for s in document["steps"] if s["id"] == "compute")
+    compute["work"]["task"]["inputs"] = {"commands": [f"echo {n}" for n in range(30)]}
+    compute["work"]["max_steps"] = 40
+    document["limits"] = {"compute": {"seconds": 120, "resource_class": "cpu.small"}}
+    local = wiring(TAKTUS_EXECUTION_WALL_SECONDS="4")
+    async with local.services(state_dir=tmp_path / "state", worker_endpoint="") as services:
+        run = await start(services, document)
+        failed = run.step_run("compute")
+        assert failed.state is StepState.FAILED
+        assert failed.reason is not None and "wall-clock limit of 4s" in failed.reason
+        assert "ConnectError" not in failed.reason
+        assert 0 < len(failed.artifacts) < 30, "what was fetched before the kill is kept"
+
+
 async def test_each_configured_worker_launches_with_its_own_credential(tmp_path: Path) -> None:
     """Issue #209: two launched workers that reference the same credential name each receive
     the value configured for that worker; neither unit sees the other's value, nor the
