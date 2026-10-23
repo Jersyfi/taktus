@@ -69,3 +69,10 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/j
 ```
 
 A 404 says the intake is not open.
+
+## Outcome
+
+**Provided:** 2026-10-23
+**Confirmed by:** the command of section 7 printed `401` after the install of rc.29: the intake is open and refuses a forged submission.
+**How it was provided:** the owner approved the install of rc.29 in conversation on 2026-10-23; the session set `TAKTUS_FINDINGS_INTAKE_TENANT` to the project's tenant `default` and `TAKTUS_FINDINGS_LEVEL` to `automatic` in the instance's private values, with `TAKTUS_FINDINGS_CONNECTOR` and the rate unchanged, and installed it.
+**Recorded in:** this pull request
