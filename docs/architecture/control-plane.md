@@ -369,6 +369,24 @@ the daily report: every signal outside its corridor and every one not measured, 
 its run, its step and its case. A reply that names an offered intervention is read back, and its
 confirmation starts the process as a command for the person who confirmed it.
 
+**A process caps its open work** (ADR-0132, UC-8.12). A version may declare, per kind of open
+outcome — open pull requests, started tasks — how many may wait at once (`open_work`). Before a
+run starts anything, it counts the outcomes open outside, through one read of a connector, and
+the process's runs in flight, which the ledger holds as `open_work.admitted` until each run
+ends. At the cap the run waits at its first step: booked to `wait.external` with cause
+`at_open_work_cap`, the facts recorded as `open_work.capped`, halted with cause `parked` until
+the cap's next check. Only a person changes a cap: registration refuses a changed one without a
+person's approval and records `open_work.refused`.
+
+**A step that repeats itself is stopped by rule** (ADR-0132 §5). The run records every outward
+connector call before it is made, as `connector.called` with the digest of the operation and
+its arguments, and every model's answer to a step as `model.called`. At a step's boundary a
+rule over these entries stops the step when the call it is about to make would be one more than
+the tenant's limit within the run (`taktusctl incident configure --repeated-calls
+--repeated-model-calls`, three each by default). The step is rejected, `repetition.stopped`
+names the action, the count and the limit, the run halts with cause `repeated`, and an incident
+of kind `step.repeated` is raised.
+
 The model above handles failures. Result defects need a record that this version writes and a
 detection that `0.5.0` adds; the record is the provenance chain of §6.1.
 

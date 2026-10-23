@@ -18,6 +18,10 @@ from taktus.components.governance.application.service.expected_runs import (
     UnknownIncident,
     Watch,
 )
+from taktus.components.governance.application.service.repetition import (
+    Repetitions,
+    RepetitionSeen,
+)
 from taktus.components.governance.application.service.report_capacity import (
     DatabaseStore,
     ReportCapacity,
@@ -52,6 +56,8 @@ __all__ = [
     "DeclareSources",
     "ExpectedRuns",
     "RaiseRed",
+    "RepetitionSeen",
+    "Repetitions",
     "ReportCapacity",
     "ReportCapacityHandler",
     "SignalIncidents",

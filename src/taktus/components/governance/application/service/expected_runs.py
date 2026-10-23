@@ -84,6 +84,8 @@ class ConfigureWatch:
     empty_share: float | None = None
     empty_window: timedelta | None = None
     empty_minimum: int | None = None
+    repeated_calls: int | None = None
+    repeated_model_calls: int | None = None
 
 
 class UnknownIncident(LookupError):
@@ -125,6 +127,8 @@ class ExpectedRuns:
                 ("empty_share", command.empty_share),
                 ("empty_window", command.empty_window),
                 ("empty_minimum", command.empty_minimum),
+                ("repeated_calls", command.repeated_calls),
+                ("repeated_model_calls", command.repeated_model_calls),
             )
             if value is not None
         }

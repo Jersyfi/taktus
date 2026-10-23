@@ -475,6 +475,8 @@ async def wire(
                     levels=decisions.levels,
                     residency=decisions.residency,
                     sources=decisions.sources,
+                    open_work=decisions.open_work,
+                    repetition=decisions.repetition,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

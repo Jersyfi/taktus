@@ -260,7 +260,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   corrections` reads and configures it. It reaches the tenant's residency rule,
   `TenantResidency`, the same way, and `taktusctl residency` shows and sets it. The run and
   registration reach the tenant's declaration of its sources, `TenantSources`, the same way,
-  and `taktusctl sources` shows and changes it (ADR-0130). The models
+  and `taktusctl sources` shows and changes it (ADR-0130). The run reaches a version's caps on
+  open work in the process component through `CapsOfTheVersion`, and the tenant's limits on
+  repetition with the incident a stop raises through `RepetitionOfTheRun` over the governance
+  component's `Repetitions`, both in `composition/decisions.py`; `taktusctl incident configure`
+  sets the limits (ADR-0132). The models
   configured in `TAKTUS_MODELS` reach the run as one pool in chain order
   (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the
   model contract's suite with its own endpoint (`composition/conformance.py`); deadlines and
