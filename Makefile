@@ -41,10 +41,20 @@ install: need-uv ## Create or refresh the environment
 PARALLEL ?= -n auto --maxprocesses=8
 
 # The gate directories run under their own targets; `make gates` runs every test exactly once.
+# With BASE, only the tests the change selects run: the test files that import, directly or
+# through others, a module the change touches (`tools/lanes.py --tests`, #394, ADR-0096 §3).
+# Without it, every test runs. `make verify` passes BASE; CI's lane `test` passes it on a pull
+# request and not on a push to `main`.
+GATES := architecture conformance governance exactness rehearsal
+TEST_TARGETS = $(if $(BASE),$(shell python3 tools/lanes.py --base $(BASE) --tests $(foreach g,$(GATES),--exclude tests/$(g))),tests)
+
 .PHONY: test
-test: env ## Unit and domain tests — everything under tests/ that is not a gate; PARALLEL= runs them in one process
-	$(UV) run tools/gate.py test tests $(PARALLEL) -m 'not timing' $(foreach g,architecture conformance governance exactness rehearsal,--ignore=tests/$(g))
-	$(UV) run tools/gate.py timing tests -m timing $(foreach g,architecture conformance governance exactness rehearsal,--ignore=tests/$(g))
+test: env ## Unit and domain tests — everything under tests/ that is not a gate, or with BASE only what the change selects; PARALLEL= runs them in one process
+	@targets="$(TEST_TARGETS)"; \
+	if [ -z "$$targets" ]; then echo "test: the change selects no test"; exit 0; fi; \
+	echo "test: $$targets"; \
+	$(UV) run tools/gate.py test $$targets $(PARALLEL) -m 'not timing' $(foreach g,$(GATES),--ignore=tests/$(g)) && \
+	$(UV) run tools/gate.py timing $$targets -m timing $(foreach g,$(GATES),--ignore=tests/$(g))
 
 # The self-development bundles, replayed from their recordings against a database (ADR-0108):
 # CI's lane `rehearse`, which `tools/lanes.py` selects for a change to a bundle, a recording or
@@ -188,7 +198,9 @@ status: need-uv ## Print what is needed from the owner, from the register: the l
 .PHONY: check
 check: need-uv ## The fast local check before a commit: lint, types, architecture, documentation and register gates, and the unit tests (under 60 s)
 	$(MAKE) lint gate-arch gate-docs gate-decisions gate-adrs gate-status
-	$(UV) run pytest -q -p no:randomly tests/components tests/tools tests/contract
+	@targets="$$(python3 tools/lanes.py --base $(or $(BASE),origin/main) --tests --within tests/components --within tests/tools --within tests/contract)"; \
+	if [ -z "$$targets" ]; then echo "check: the change selects no unit test"; exit 0; fi; \
+	$(UV) run pytest -q -p no:randomly $$targets
 
 .PHONY: verify
 verify: need-uv need-git ## What CI would select for this change, against BASE (default origin/main); stamps the commit when all passes on a clean tree (ADR-0096 §4)

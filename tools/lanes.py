@@ -17,13 +17,25 @@ is not, so that no change can slip past every lane.
     tools/lanes.py --unclaimed                 the tracked paths no lane claims; exit 1 if any
     tools/lanes.py ... --commands              the make targets of the selected lanes, one a line
 
-Not the selection by component inside the Python core (#394): a change under `src/` selects
-the whole `test` lane, and the lane `rehearse` with it.
+    tools/lanes.py --tests --base REF          the test files the change selects in `test`
+
+Inside the Python core the tests are selected by the import graph (#394, ADR-0096 §3): the
+modules a change touches, every module that imports them directly or through others, and the
+test files among those. `make check`, `make verify` and CI's lane `test` read this one
+implementation. The graph is the one `import-linter` enforces — static imports of `taktus` —
+read here from the source with the standard library, so that the script needs no environment.
+Code reached by a string is selected by path, not by the graph: a string that names a module
+(an entry point, `-m taktus.x` for a subprocess) is an edge as well, and a change to anything
+that is not a Python module of the core or of the tests — a template, a recording, a tool, a
+bundle, a migration — selects every test, as does a file the graph cannot place (a deleted or
+renamed one). The lane `rehearse` is not selected by component: a change under `src/` selects it
+whole.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 import subprocess
 import sys
@@ -148,6 +160,106 @@ def holes(paths: list[str]) -> list[str]:
     return [path for path in unclaimed(paths) if not _matches(DOCUMENTATION, path)]
 
 
+# --- Selection of tests inside the lane `test` (#394) ---------------------------------------
+
+ALL_TESTS = "tests"
+_MODULE_IN_STRING = re.compile(r"\btaktus(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
+
+
+def _dotted(path: Path) -> str:
+    parts = list(path.with_suffix("").parts)
+    if parts[0] == "src":
+        parts = parts[1:]
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def _python_files() -> list[Path]:
+    files = [*(ROOT / "src" / "taktus").rglob("*.py"), *(ROOT / "tests").rglob("*.py")]
+    return sorted(f.relative_to(ROOT) for f in files if "__pycache__" not in f.parts)
+
+
+def import_graph() -> dict[str, set[str]]:
+    """Path -> the paths of the Python files it imports, from `src/taktus` and `tests`.
+
+    Importing `a.b.c` also runs `a/__init__.py` and `a/b/__init__.py`, so those are edges. A
+    test file depends on every `conftest.py` above it."""
+    files = _python_files()
+    modules = {_dotted(f): str(f) for f in files}
+    graph: dict[str, set[str]] = {str(f): set() for f in files}
+
+    def link(source: str, module: str) -> None:
+        parts = module.split(".")
+        for end in range(1, len(parts) + 1):
+            target = modules.get(".".join(parts[:end]))
+            if target and target != source:
+                graph[source].add(target)
+
+    for file in files:
+        source = str(file)
+        package = _dotted(file) if file.name == "__init__.py" else _dotted(file).rpartition(".")[0]
+        tree = ast.parse((ROOT / file).read_text(encoding="utf-8"), filename=source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    link(source, alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                base = node.module or ""
+                if node.level:
+                    anchor = package.split(".")[: len(package.split(".")) - (node.level - 1)]
+                    base = ".".join([*anchor, *([base] if base else [])])
+                link(source, base)
+                for alias in node.names:
+                    link(source, f"{base}.{alias.name}")
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                for named in _MODULE_IN_STRING.findall(node.value):
+                    while named and named not in modules:
+                        named = named.rpartition(".")[0]
+                    if named:
+                        link(source, named)
+        if file.parts[0] == "tests":
+            for parent in file.parents:
+                conftest = parent / "conftest.py"
+                if parent.parts and str(conftest) in graph and str(conftest) != source:
+                    graph[source].add(str(conftest))
+    return graph
+
+
+def select_tests(paths: list[str], graph: dict[str, set[str]] | None = None) -> list[str]:
+    """The test files the changed paths select, or `[ALL_TESTS]` for every test.
+
+    A path the graph does not hold selects everything; so does one of the paths that select
+    every lane. Otherwise: the changed files and every file that reaches them through imports,
+    restricted to the test files."""
+    if any(_matches(EVERYTHING, path) for path in paths):
+        return [ALL_TESTS]
+    graph = import_graph() if graph is None else graph
+    changed_nodes = set()
+    for path in paths:
+        if path in graph:
+            changed_nodes.add(path)
+        elif _matches(DOCUMENTATION, path):
+            continue
+        else:
+            return [ALL_TESTS]
+    dependents: dict[str, set[str]] = {node: set() for node in graph}
+    for node, targets in graph.items():
+        for target in targets:
+            dependents[target].add(node)
+    reached, queue = set(changed_nodes), list(changed_nodes)
+    while queue:
+        for dependent in dependents[queue.pop()]:
+            if dependent not in reached:
+                reached.add(dependent)
+                queue.append(dependent)
+    return sorted(
+        node
+        for node in reached
+        if node.startswith("tests/") and Path(node).name.startswith("test_")
+    )
+
+
 def _git(*args: str) -> str:
     # A fixed executable name and arguments assembled here, not from input: nothing untrusted.
     return subprocess.run(  # noqa: S603
@@ -163,6 +275,16 @@ def changed(base: str) -> list[str]:
     return sorted(set(tracked) | set(untracked))
 
 
+def _restrict(found: list[str], within: list[str], exclude: list[str]) -> list[str]:
+    """Narrow a selection to the directories a target runs. `tests` (all) becomes the
+    directories themselves; a file outside them drops out."""
+    roots = [Path(w) for w in within] or [Path(ALL_TESTS)]
+    if found == [ALL_TESTS]:
+        return [str(root) for root in roots]
+    kept = [f for f in found if any(Path(r) in (Path(f), *Path(f).parents) for r in roots)]
+    return [f for f in kept if not any(Path(x) in Path(f).parents for x in exclude)]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     which = parser.add_mutually_exclusive_group(required=True)
@@ -170,9 +292,22 @@ def main(argv: list[str] | None = None) -> int:
     which.add_argument("--all", action="store_true", help="every lane")
     which.add_argument("--unclaimed", action="store_true", help="tracked paths no lane claims")
     parser.add_argument("--github-output", type=Path, help="append `<lane>=true|false` here")
+    parser.add_argument("--tests", action="store_true", help="with --base: the test files")
+    parser.add_argument("--exclude", action="append", default=[], help="with --tests: a directory")
+    parser.add_argument("--within", action="append", default=[], help="with --tests: a directory")
     parser.add_argument("--commands", action="store_true", help="print the make targets")
     args = parser.parse_args(argv)
 
+    if args.tests and not args.base:
+        parser.error("--tests needs --base")
+    if args.tests:
+        # A base that cannot be read — a clone that never fetched it — selects everything.
+        try:
+            found = select_tests(changed(args.base))
+        except subprocess.CalledProcessError:
+            found = [ALL_TESTS]
+        print("\n".join(_restrict(found, args.within, args.exclude)))
+        return 0
     if args.unclaimed:
         found = holes(_git("ls-files").splitlines())
         print("\n".join(found))
