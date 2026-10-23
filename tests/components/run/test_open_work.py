@@ -167,6 +167,27 @@ async def test_a_count_that_cannot_be_read_holds_the_run() -> None:
     assert h.connector.acted == 0
 
 
+class Held:
+    """The tenant's stops of adapters, as the engine reads them (ADR-0138)."""
+
+    def __init__(self, *adapters: str) -> None:
+        self._adapters = frozenset(adapters)
+
+    async def held(self, tenant: str) -> frozenset[str]:
+        return self._adapters
+
+
+async def test_a_stopped_connector_is_not_called_for_a_count_and_the_run_waits() -> None:
+    """A stop of the cap's connector keeps the count from being read through it (ADR-0138,
+    amendment): the count is unread, and the run waits at the cap, as for any unread count."""
+    h = CappedHarness(pull_requests(5))
+    h.engine._stops = Held("connector.fake")  # type: ignore[assignment]
+    run = await h.start()
+    assert run.state is RunState.HALTED and run.cause is Cause.PARKED
+    assert "connector.fake is stopped" in (run.reason or "")
+    assert h.connector.calls == [], "nothing was called"
+
+
 async def test_a_rehearsal_is_neither_capped_nor_counted() -> None:
     h = CappedHarness(pull_requests(1))
     h.open_outside(3)

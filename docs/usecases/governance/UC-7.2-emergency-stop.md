@@ -6,8 +6,8 @@ epic: E7
 serves: [P10, P12]
 state: building
 version: 0.5.0
-tests: [tests/components/run/test_engine.py::test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing, tests/components/run/test_engine.py::test_a_stop_requested_between_steps_takes_effect_at_the_next_boundary]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: 0ea928e2016b, ADR-0008: e6a4e033abd4, ADR-0023: 949c6f4e13af}
+tests: [tests/components/run/test_engine.py::test_a_stop_mid_step_lands_on_the_worker_s_boundary_and_resume_duplicates_nothing, tests/components/run/test_engine.py::test_a_stop_requested_between_steps_takes_effect_at_the_next_boundary, tests/components/run/test_adapter_stop.py::test_a_stop_of_one_worker_halts_every_run_it_serves_and_the_others_go_on, tests/components/run/test_adapter_stop.py::test_a_held_stop_hands_no_step_to_its_adapter_until_it_is_lifted, tests/components/run/test_adapter_stop.py::test_a_stop_that_found_no_run_is_confirmed_and_says_so, tests/components/run/test_adapter_stop.py::test_a_stop_of_an_adapter_no_step_is_halted_at_is_refused, tests/components/run/test_runner.py::test_a_stop_of_an_adapter_reaches_the_runner_at_its_renewal_and_others_go_on, tests/components/run/test_adapter_stop_calls.py::test_a_stop_of_one_connector_halts_the_runs_that_would_call_it_and_others_go_on, tests/components/run/test_adapter_stop_calls.py::test_a_wait_on_a_stopped_connector_stops_between_two_checks_and_resumes_its_count, tests/components/run/test_adapter_stop_calls.py::test_a_stop_of_one_model_halts_every_run_that_would_ask_it_and_the_others_go_on, tests/components/run/test_adapter_stop_calls.py::test_a_step_whose_chain_moves_to_a_stopped_model_halts_there, tests/components/run/test_adapter_stop_calls.py::test_a_stop_may_name_every_configured_worker_connector_and_model, tests/components/run/test_open_work.py::test_a_stopped_connector_is_not_called_for_a_count_and_the_run_waits]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0005: 0ea928e2016b, ADR-0008: e6a4e033abd4, ADR-0023: 949c6f4e13af, ADR-0138: a950b2e0b871}
 supersedes: null
 ---
 
@@ -84,5 +84,16 @@ of healing where it is unsure.
 ## 5. What is proven so far
 
 The first condition, for a single run stopped by a person, by the named tests.
-Stopping by scope — the adapter scope among them —, the confirmation, the criteria as tenant
-configuration, and the automatic trigger are not built.
+
+The adapter scope and the confirmation, by the named tests in `test_adapter_stop.py`,
+`test_adapter_stop_calls.py`, `test_runner.py` and `test_open_work.py` (ADR-0138). A stop of one
+worker halts every run inside a step on it at the worker's boundary and hands it no new step; a
+stop of one connector or one model halts every run whose next call would go to it, before the
+call, including a wait between two checks and a step whose model chain moves to it; runs on
+other adapters go on. The stop is confirmed once it holds, addressed to whoever requested it and
+naming the runs it halted; a stop that found none is confirmed and says so. A stop by a person
+asks for no reason; it is offered on the command line only, not yet over the HTTP surface, the
+web app, chat or MCP.
+
+Stopping globally, by tenant and by process, the criteria as tenant configuration, and the
+automatic trigger are not built.

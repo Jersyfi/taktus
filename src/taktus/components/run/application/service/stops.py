@@ -2,9 +2,10 @@
 holds, show it, and lift it.
 
 A request writes the stop and `stop.requested` in one transaction, by the person as actor, and
-asks for no reason. While the stop is held, the run engine hands no step to the adapter, and
-every runner asks a step inside it to stop at its boundary (`RunEngine.stops_held`). Nothing
-here touches a run: the runs are their runners'.
+asks for no reason. While the stop is held, the run engine hands no step to the adapter, calls
+no stopped connector and asks no stopped model, and every runner asks a step inside a stopped
+worker to stop at its boundary (`RunEngine.stops_held`). Nothing here touches a run: the runs
+are their runners'.
 
 `confirm` is the elected scheduler's on every tick, and the requesting surface's while it waits.
 A stop holds once no run of the tenant is inside a step on the adapter. Its confirmation names
@@ -46,7 +47,8 @@ class UnknownStop(LookupError):
 
 
 class NotStoppable(ValueError):
-    """The adapter named is not one a stop halts steps at: not a configured worker."""
+    """The adapter named is not one a stop halts steps at: not a configured worker, connector
+    or model."""
 
 
 class _Settled(Exception):
@@ -81,8 +83,8 @@ class Stops:
         self._clock = clock
         self._ids = ids
         self._stoppable = stoppable
-        """The adapters a stop halts steps at: the configured workers (ADR-0138, where the
-        promise ends). None: any adapter named, as a test wires it."""
+        """The adapters a stop halts steps at: the configured workers, connectors and models
+        (ADR-0138, where the promise ends). None: any adapter named, as a test wires it."""
 
     async def request(self, tenant: Tenant, adapter: str, actor: str) -> AdapterStop:
         """Stop every step the adapter serves. A stop of the same adapter already held is
@@ -91,7 +93,7 @@ class Stops:
         if self._stoppable is not None and adapter not in self._stoppable:
             known = ", ".join(sorted(self._stoppable)) or "none"
             raise NotStoppable(
-                f"{adapter!r} is not a configured worker; a stop halts steps at these: {known}"
+                f"{adapter!r} is not a configured adapter; a stop halts steps at these: {known}"
             )
         now = self._clock.now()
         try:

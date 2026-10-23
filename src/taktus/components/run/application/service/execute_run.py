@@ -1498,17 +1498,44 @@ class RunEngine:
     async def _held_stops(self, tenant: Tenant) -> frozenset[str]:
         return frozenset() if self._stops is None else await self._stops.held(tenant)
 
+    async def _not_stopped(
+        self, run: Run, adapter: str, consumption: Consumption | None = None
+    ) -> None:
+        """Before every call to a connector and every question to a model: a held stop of the
+        adapter keeps the call from being made, and the step stops at its boundary (ADR-0138,
+        amendment)."""
+        if adapter in await self._held_stops(run.tenant):
+            raise _AdapterStopped(adapter, consumption)
+
     async def _at_stopped_adapter(
-        self, run: Run, step_run: StepRun, adapter: str, span: Span
+        self,
+        run: Run,
+        step_run: StepRun,
+        adapter: str,
+        span: Span,
+        *,
+        consumption: Consumption | None = None,
+        handed: bool = True,
     ) -> tuple[Run, StepRun]:
-        """The step is not handed to its stopped adapter: it stops at the boundary it was
-        admitted from, keeping the checkpoint it had, and the run halts with cause `stop`."""
+        """The step is not handed to its stopped adapter, or does not call it: it stops at the
+        boundary it was admitted from, keeping the checkpoint it had, and the run halts with
+        cause `stop`. A wait stopped between two checks keeps its block, as a parked wait does,
+        so that a resume counts its time from when it began and keeps what its checks used."""
         span.record_failure("adapter stopped")
         self._stop_requested.add(run.id)
+        if step_run.block is not None and step_run.state is StepState.RUNNING:
+            step_run = step_run.model_copy(
+                update={
+                    "block": step_run.block.model_copy(update={"next_check_at": self._clock.now()})
+                }
+            )
         step_run = step_run.to(
             StepState.STOPPED,
             adapter=adapter,
-            reason=f"the adapter {adapter} is stopped: the step was not handed to it",
+            consumption=consumption if consumption is not None else step_run.consumption,
+            reason=f"the adapter {adapter} is stopped: the step was not handed to it"
+            if handed
+            else f"the adapter {adapter} is stopped: the step stopped before calling it",
             finished_at=self._clock.now(),
         )
         run = await self._commit(
@@ -2626,6 +2653,10 @@ class RunEngine:
             return None, f"{resolved.adapter} does not offer {reading.operation}"
         if operation.outward:
             return None, f"{reading.operation} is not a read"
+        if resolved.adapter in await self._held_stops(run.tenant):
+            # A stopped connector is not called for a count either: the count is unread, and
+            # the run waits at the cap until its next check (ADR-0138, amendment).
+            return None, f"{resolved.adapter} is stopped"
         context = CallContext(
             tenant=run.tenant,
             identity=run.identity,
@@ -2994,6 +3025,11 @@ class RunEngine:
         )
         try:
             demand = await self._demand(run, step, work)
+        except _AdapterStopped as halted:
+            # The connector or the model the step would call is stopped: nothing is called,
+            # and the run halts at the step's boundary (ADR-0138, amendment).
+            run, step_run = await self._lack_ends(run, step_run)
+            return await self._at_stopped_adapter(run, step_run, halted.adapter, span, handed=False)
         except RuleFailed as failure:
             return await self._failed_before(run, step_run, span, str(failure), None, None)
         except _StepFailed as failure:
@@ -3063,6 +3099,12 @@ class RunEngine:
             return await self._at_limit(run, step_run, limited, span)
         except _Parked as parked:
             return await self._park(run, step_run, parked)
+        except _AdapterStopped as halted:
+            # Stopped since the step was admitted, or between two checks of a wait: the next
+            # call is not made (ADR-0138, amendment).
+            return await self._at_stopped_adapter(
+                run, step_run, halted.adapter, span, consumption=halted.consumption, handed=False
+            )
         except RuleFailed as failure:
             span.record_failure("rule failed")
             run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
@@ -3270,6 +3312,7 @@ class RunEngine:
         says which; a step whose adapter cannot estimate is refused by the caller."""
         if isinstance(work, WaitWork) and work.until is not None:
             resolved = await self._connector(run, step.id, work.until.capability)
+            await self._not_stopped(run, resolved.adapter)
             operation = resolved.declaration.operation(work.until.operation)
             if operation is None:
                 raise _StepFailed(
@@ -3286,6 +3329,7 @@ class RunEngine:
             return _Demand(_times(operation.demand.document(), calls), adapter=resolved.adapter)
         if isinstance(work, ConnectorRule):
             resolved = await self._connector(run, step.id, work.capability)
+            await self._not_stopped(run, resolved.adapter)
             operation = resolved.declaration.operation(work.operation)
             if operation is None:
                 raise _StepFailed(
@@ -3319,6 +3363,9 @@ class RunEngine:
                 adapter=None,
                 outcome="no model",
             )
+        # The model the route reached — the chain's first that fits, or the one a failure
+        # moved the step to (ADR-0116 §6) — is asked nothing, not even a count, once stopped.
+        await self._not_stopped(run, resolved.adapter)
         (values,), _ = await self._resolved(run, [work.values])
         rendered = rules.template(
             TemplateRule(rule="template", text=work.prompt, values=work.values), values
@@ -3586,6 +3633,7 @@ class RunEngine:
             "adapter": resolved.adapter,
             "model.purpose": work.purpose,
         }
+        await self._not_stopped(run, resolved.adapter)
         try:
             async with self._telemetry.span("model.complete", attributes) as call:
                 completion = await resolved.model.complete(prompt)
@@ -3712,6 +3760,8 @@ class RunEngine:
                 step_run.step_id, "only a reading carries an expectation; a write acts once"
             )
         span.set_attribute("adapter", resolved.adapter)
+        # Before the call is booked: a stopped connector is neither called nor counted.
+        await self._not_stopped(run, resolved.adapter)
         scope = await self._frame(run, step_run.step_id, resolved, operation)
         if run.rehearsal and operation.outward and not self._replaying(run):
             return await self._rehearsed(run, resolved, operation, read)
@@ -3801,6 +3851,7 @@ class RunEngine:
         *,
         scope: CaseScope | None = None,
     ) -> Result:
+        await self._not_stopped(run, resolved.adapter)
         context = CallContext(
             tenant=run.tenant,
             identity=run.identity,
@@ -3989,6 +4040,10 @@ class RunEngine:
                 result = await self._call(
                     run, step_run, resolved, operation, input, until.credentials, span, scope=scope
                 )
+            except _AdapterStopped as stopped:
+                # Stopped between two checks: the wait stops at its boundary with what its
+                # checks used (ADR-0138, amendment).
+                raise _AdapterStopped(stopped.adapter, _consumption(used)) from None
             except _StepFailed as refused:
                 # The record may not exist yet; any other refusal fails the step at once.
                 if not refused.not_found:
@@ -5251,6 +5306,16 @@ class _AtLimit(Exception):
     moves: bool = False
     """Another model of the purpose's chain fits the step: it moves there at its boundary
     instead of waiting (ADR-0116 §6)."""
+
+
+@dataclass(frozen=True)
+class _AdapterStopped(Exception):
+    """The connector or the model a local step would call next is stopped: the call is not
+    made, and the step stops at its boundary (ADR-0138, amendment)."""
+
+    adapter: str
+    consumption: Consumption | None = None
+    """What the step used before, for a wait stopped between two checks."""
 
 
 @dataclass(frozen=True)

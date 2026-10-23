@@ -269,7 +269,7 @@ class LocalWiring:
                 stores.work,
                 clock,
                 ids,
-                stoppable=frozenset(name for name, _ in opened),
+                stoppable=pools.identifiers(),
             )
 
             def engine_for(

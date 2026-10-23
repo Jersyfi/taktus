@@ -28,6 +28,17 @@ class Pools:
         self.connectors = connectors
         self.models = models
 
+    def identifiers(self) -> frozenset[str]:
+        """Every configured worker, connector and model: the adapters a stop may name
+        (ADR-0138)."""
+        return frozenset(
+            (
+                *self.workers.identifiers(),
+                *self.connectors.identifiers(),
+                *(adapter for adapter, _, _ in self.models.members()),
+            )
+        )
+
     def without(self, integration: str) -> Pools:
         return Pools(
             self.workers.without(integration),

@@ -265,7 +265,8 @@ role it would tie the core to a model stack and the removal test would be lost.
   repetition with the incident a stop raises through `RepetitionOfTheRun` over the governance
   component's `Repetitions`, both in `composition/decisions.py`; `taktusctl incident configure`
   sets the limits (ADR-0132). The run keeps the tenant's stops of adapters in its own `Stops`,
-  which the engine reads before every handover to a worker and the runner at every renewal; the
+  which the engine reads before every handover to a worker, every connector call and every
+  question to a model, and the runner at every renewal; the
   scheduler confirms them in `composition/stops.py`, and `taktusctl stop` requests, shows and
   lifts them (ADR-0138). The run reaches a version's deadlines in the process component
   through `DeadlinesOfTheVersion`, in the same module, and its `DeadlineKeeper` keeps them;
