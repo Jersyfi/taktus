@@ -478,9 +478,9 @@ the names they gave are in the owner's private note.
   (DEC-0023), and the three situations that would bring it back are named in that record.
 - **Autoscaling and load.** The scaling claims of ADR-0002 are proven for two daemons on one
   database, not for a cluster under load.
-- **A backup of anything but the database.** The artifact volume (`state`) and the execution
-  state claim are not backed up (section 11). Neither is the work of the hours since the last
-  backup: the schedule is daily by default.
+- **A backup of anything but the database and the object store.** The execution state claim is
+  not backed up (section 11). Neither is the work of the hours since the last backup: the
+  schedule is daily by default.
 
 ## 10. What is built, and what still waits
 

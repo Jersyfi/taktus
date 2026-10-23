@@ -1,0 +1,70 @@
+name: upgrade
+
+# The upgrade test of every release (ADR-0124): the previous release, with a run in every state,
+# upgraded to this tag; every run continues at its boundary. deploy/docker/upgrade.sh is the
+# test, and `make verify-upgrade` runs it locally.
+#
+# On a version tag it upgrades from the tag before it on the same line of history. By hand it
+# upgrades from the tag named. The previous release's images are pulled from the registry the
+# repository variable IMAGE_REGISTRY names, where the image workflow pushed them; without the
+# variable nothing runs, and the run says so. Nothing is pushed and nothing is deployed.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      from:
+        description: "The tag of the release to upgrade from, e.g. v0.2.0-rc.29"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upgrade-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: previous
+        env:
+          REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          FROM: ${{ inputs.from }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ -z "$REGISTRY" ]; then
+            echo "::notice::IMAGE_REGISTRY is not set: there is no previous release's image to upgrade from"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$FROM" ]; then
+            FROM="$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)"
+          fi
+          if [ -z "$FROM" ]; then
+            echo "::notice::no release before ${TAG}: nothing to upgrade from"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! printf '%s' "$FROM" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::${FROM} is not a version tag (vMAJOR.MINOR.PATCH)"
+            exit 1
+          fi
+          version="${FROM#v}"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "from=${FROM}" >> "$GITHUB_OUTPUT"
+          echo "image=${REGISTRY}/taktus:${version}" >> "$GITHUB_OUTPUT"
+          echo "worker=${REGISTRY}/taktus-worker-script:${version}" >> "$GITHUB_OUTPUT"
+          echo "upgrading from ${FROM}"
+      - if: steps.previous.outputs.enabled == 'true'
+        env:
+          TAKTUS_UPGRADE_FROM: ${{ steps.previous.outputs.from }}
+          TAKTUS_UPGRADE_IMAGE: ${{ steps.previous.outputs.image }}
+          TAKTUS_UPGRADE_WORKER_IMAGE: ${{ steps.previous.outputs.worker }}
+        run: deploy/docker/upgrade.sh

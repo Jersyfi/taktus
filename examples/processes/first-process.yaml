@@ -1,0 +1,66 @@
+# A first process for a new instance: it needs nothing outside Taktus.
+#
+# Two rule steps and a wait. A rule step produces a fixed value; a wait step pauses. None of
+# them needs a worker, a connector or a language model, so the process runs on an instance
+# straight after its install. It runs at autonomy level 2: no step starts before a person
+# confirmed it. Registering it and running it is the last step of the administration guide
+# (docs/guides/administration/first-install.md):
+#
+#     docker compose -f deploy/docker/compose.yml exec taktus \
+#         taktusctl submit --process examples/processes/first-process.yaml --identity idn_admin --tenant <tenant>
+#
+# The first `submit` registers the process and starts a run of it. Each later `submit` with the
+# same file starts another run of the same version.
+
+id: first-process
+version: "1"
+name: First process
+autonomy:
+  level: 2
+  reason: >
+    it exists to be watched: a person confirms each step and sees the run move in the web app
+  toward_next: >
+    nothing; it is an example, read rather than operated
+author: the repository
+reason: the first process a new instance registers and runs, with nothing outside Taktus
+
+limits:
+  compute: { seconds: 10, resource_class: cpu.small }
+
+steps:
+  - id: greet
+    method: rule
+    reason: the value is fixed; nothing here needs judgement
+    rejected:
+      - method: llm
+        why: a fixed value needs no language model
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: the greeting }
+    work:
+      rule: constant
+      value:
+        greeting: the instance runs a process
+
+  - id: settle
+    method: wait
+    reason: a short pause, so that the run is seen running between two steps
+    rejected: []
+    depends_on: [greet]
+    work:
+      seconds: 2
+
+  - id: confirm
+    method: rule
+    reason: the value is fixed; nothing here needs judgement
+    rejected:
+      - method: llm
+        why: a fixed value needs no language model
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: the confirmation }
+    depends_on: [settle]
+    work:
+      rule: constant
+      value:
+        done: true

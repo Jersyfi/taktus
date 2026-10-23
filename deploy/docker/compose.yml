@@ -44,6 +44,11 @@ services:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
     image: taktus:local
+    # The operator's own settings, TAKTUS_NAME=value per line, never a secret value; read when
+    # the file exists (ignored by git). A variable named under `environment` below wins over it.
+    env_file:
+      - path: ./taktus.env
+        required: false
     environment:
       TAKTUS_ROLES: ${TAKTUS_ROLES:-all}
       TAKTUS_DATABASE_URL_FILE: /run/secrets/database_url

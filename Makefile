@@ -177,6 +177,10 @@ down: need-docker ## Stop the containers, with or without the reference worker; 
 verify-compose: need-docker ## From nothing: up with the reference worker, the control plane image checked for worker code, a run end to end, the container killed and restarted, the run resumed
 	deploy/docker/verify.sh
 
+.PHONY: verify-upgrade
+verify-upgrade: need-docker ## The previous release with a run in every state, upgraded to this checkout; every run resumes at its boundary (TAKTUS_UPGRADE_FROM, _IMAGE, _WORKER_IMAGE; ADR-0124)
+	deploy/docker/upgrade.sh
+
 .PHONY: migrate
 migrate: env ## Bring the database named by TAKTUS_DATABASE_URL to the current schema
 	$(UV) run alembic -c migrations/alembic.ini upgrade head
