@@ -39,7 +39,7 @@ async def run_runner(runner: Runner, stop: asyncio.Event) -> None:
     log.info("runner stopping", executing=runner.executing)
     await runner.stop()
     await loop
-    log.info("runner stopped", outcomes=len(runner.outcomes))
+    log.info("runner stopped", outcomes=runner.finished)
 
 
 REASON_LENGTH = 300

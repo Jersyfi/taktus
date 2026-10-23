@@ -232,6 +232,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   (#589). Every job's outcome goes to the log through `roles.said`. A run that did not finish
   is logged with the step it ended at, its cause and its reason. An exception is logged with
   the step it was raised in.
+  The runner itself keeps only its latest outcomes, a thousand by default, and counts all of
+  them, so that a runner that runs for weeks holds no more for them than one that ran an hour
+  (#592).
 - **`scheduler`** leads through the leadership port — a session-level advisory lock — and ticks
   while it leads; a second instance keeps trying and takes over when the leader's lead is
   gone, including when the leader was killed. While it leads, every tick fires the schedule
