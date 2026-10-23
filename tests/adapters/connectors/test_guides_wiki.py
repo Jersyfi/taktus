@@ -28,7 +28,7 @@ from taktus.ports.connector import ActionConnector
 from .conftest import Service, Wiki
 from .test_guides_process import World, repository_files
 
-PAGES = 10  # eight pages and two contents pages
+PAGES = 12  # ten pages and two contents pages
 
 
 def world(service: Service, knowledge: list[tuple[str, ActionConnector]]) -> World:
@@ -61,7 +61,7 @@ async def test_the_guides_reach_the_wiki_and_stay_its_text(service: Service, wik
     books = {
         b: n for b, n in wiki.state()["pages"].items() if b in {"Administration", "Using Taktus"}
     }
-    assert books == {"Administration": 5, "Using Taktus": 5}
+    assert books == {"Administration": 7, "Using Taktus": 5}
     for page in wiki.pages():
         if page["name"] == "Contents":
             assert f"commit `{head}`" in page["markdown"]

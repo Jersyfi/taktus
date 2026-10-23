@@ -13,5 +13,7 @@ Development at the tenant runs on [`dev-orchestration`](../dev-orchestration/REA
 
 ## State
 
-A description. No process is a bundle yet. Stage 0 is #400 (`0.4.0`); stage 1 is #437, stage 2
+A description. No process is a bundle yet. The business installs its instance with the
+administration guide (`docs/guides/administration/first-install.md`), which registers each
+bundle of this blueprint once there is one. Stage 0 is #400 (`0.4.0`); stage 1 is #437, stage 2
 #401, stage 3 #438, stage 4 #439, stage 5 #440.

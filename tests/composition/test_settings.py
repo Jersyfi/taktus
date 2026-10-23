@@ -718,3 +718,21 @@ def test_a_model_is_never_declared_for_exact_results() -> None:
 
 def _revealed(secret: Secret | None) -> str | None:
     return None if secret is None else secret.reveal()
+
+
+def test_an_instance_with_no_setting_reaches_nothing_outside_itself() -> None:
+    """#445, DEC-0201: a business's instance needs no access by the project, and sends nothing
+    out until its operator configures it. With only its database named, every address an
+    instance could reach outside itself is unset, and its findings stay on it."""
+    loaded = settings()
+    assert loaded.connectors == {} and loaded.triage == {}
+    assert loaded.models == () and loaded.model.endpoint is None
+    assert loaded.telemetry.endpoint is None
+    assert loaded.findings_connector is None
+    assert loaded.findings.level == "off" and loaded.findings.intake is None
+    assert loaded.findings.intake_tenant is None, "no intake opened to other instances"
+    assert sending_of(loaded.findings, loaded.findings_connector) is None, "nothing is sent"
+    assert loaded.administration_key is None, "no administration on the HTTP surface"
+    assert loaded.http_host == "127.0.0.1", "reached from this machine only"
+    hosts = {w.execution.endpoint for w in loaded.workers if w.execution.endpoint}
+    assert all(h.startswith(("http://127.0.0.1", "http://localhost")) for h in hosts), hosts

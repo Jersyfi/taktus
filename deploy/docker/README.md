@@ -7,6 +7,9 @@
 | `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011). The web app is built in a stage of its own with Node, and only its static build is carried over; the runtime holds no Node (ADR-0063). `npm ci` gives up a request that stalls after 30 s and retries it, so that a stalled download is retried rather than stopping the build (#360). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names |
 | `secrets.sh` | writes the two secret files `compose.yml` reads, once, under `secrets/` (ignored by git) |
 | `verify.sh` | the end-to-end check: from nothing, the image checked for worker code, a run, the container killed, restarted, the run resumed |
+| `upgrade.sh` | the upgrade test (ADR-0124): the previous release from its tag's compose files and published images, a run in each of five states, upgraded to this checkout; every run continues at its boundary and no completed step runs again (`make verify-upgrade`, and the workflow `upgrade` on every release tag) |
+| `taktus.env` | not in the repository: the operator's own settings, `TAKTUS_NAME=value` per line, read by `compose.yml` when it exists; never a secret value (ignored by git) |
+| `.env` | not in the repository: what Docker Compose itself reads every time, the host port `TAKTUS_HTTP_PORT` above all, so that a port chosen once is kept by every later `make up` (ignored by git). `TAKTUS_HTTP_PORT` in `taktus.env` changes nothing: inside the container the port is always 8080 |
 | `compose.dev.yml` | the development database: PostgreSQL alone, bound to `127.0.0.1`, trusting local connections, for `uv run taktusctl run` and the tests |
 
 The reference worker's image is `workers/script/Dockerfile`; the coding worker's is
@@ -53,7 +56,10 @@ without asking (CLAUDE.md §9). The configuration is the `TAKTUS_*` variables of
 `.env.example`; `compose.yml` sets what a container needs (`0.0.0.0`, the secret file,
 migrations on start) and passes `TAKTUS_ROLES`, `TAKTUS_PATH_PREFIX`, `TAKTUS_WORKER`,
 `TAKTUS_HTTP_PORT`, `TAKTUS_SHUTDOWN_CEILING_SECONDS` and `TAKTUS_LOG_LEVEL` through from
-the environment of `make up`.
+the environment of `make up`. Every other setting goes into `deploy/docker/taktus.env`, which
+the operator writes and git ignores; a variable `compose.yml` names itself wins over it. The
+administration guide's pages *Installing from nothing* and *Upgrading*
+(`docs/guides/administration/`) take a stranger through all of it.
 
 **Readiness and health are different questions.** A container whose database is gone answers
 `503` on `/ready` and `200` on `/health`: it must not receive traffic, and it must not be

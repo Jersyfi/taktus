@@ -32,3 +32,5 @@ __pycache__/
 # deployment secrets written by `make up` — never committed
 deploy/docker/secrets/*
 !deploy/docker/secrets/README.md
+# the operator's own settings for compose (deploy/docker/README.md) — never committed
+deploy/docker/taktus.env

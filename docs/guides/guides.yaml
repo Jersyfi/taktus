@@ -21,6 +21,14 @@ guides:
     reader: the people who install, configure, operate and restore Taktus
     place: [Taktus, Administration]
     pages:
+      - id: first-install
+        title: Installing from nothing
+        parts:
+          - file: docs/guides/administration/first-install.md
+      - id: upgrading
+        title: Upgrading
+        parts:
+          - file: docs/guides/administration/upgrading.md
       - id: installing
         title: Installing
         parts:

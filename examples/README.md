@@ -5,6 +5,7 @@ that an example that stops working is a red gate, not a stale page.
 
 | Example | Shows | Exercised by |
 |---|---|---|
+| [`processes/first-process.yaml`](processes/first-process.yaml) | the first process a new instance registers and runs, as the administration guide's last step: two `rule` steps and a `wait`, each confirmed by a person, nothing outside Taktus | `tests/integration/test_first_process.py` |
 | [`processes/six-times-seven.yaml`](processes/six-times-seven.yaml) | the first control-plane slice end to end: a `rule` step, a `worker` step, a `wait` step, an `exact` step, and a step that admission control rejects before it starts | `tests/integration/test_first_slice.py`, `tests/exactness` |
 
 ## Running a process bundle

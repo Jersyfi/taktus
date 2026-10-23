@@ -50,16 +50,18 @@ as optional, for the web and database targets that need them. CI reaches the sam
 `need-<tool>` on every target it runs, so it does not call `make doctor` (its secret scan runs
 through an action that brings its own `gitleaks`).
 
-Seven targets are for operating and not gates. `make up` brings the control plane up in two
+Eight targets are for operating and not gates. `make up` brings the control plane up in two
 containers (`deploy/docker/compose.yml`: writes the secret files once, builds the image,
 applies the migrations, waits for readiness), `make up-dev` does the same with the reference
 worker layered in from its own image (`compose.reference-worker.yml`, development only),
 `make down` stops either and keeps every volume, and `make verify-compose` runs
 `deploy/docker/verify.sh` — from nothing, through a check that the control plane image holds
-no worker code, to a run that survives a killed container. `make db-up` and `make db-down`
+no worker code, to a run that survives a killed container. `make verify-upgrade` runs
+`deploy/docker/upgrade.sh`: the previous release, holding a run in each of five states, upgraded
+to this checkout, every run continued at its boundary (ADR-0124). `make db-up` and `make db-down`
 start and stop the development database (`deploy/docker/compose.dev.yml`; `db-down` keeps
 the volume), and `make migrate` runs the Alembic migrations against
-`TAKTUS_DATABASE_URL_FILE` or `TAKTUS_DATABASE_URL`. All seven need `docker` except
+`TAKTUS_DATABASE_URL_FILE` or `TAKTUS_DATABASE_URL`. All eight need `docker` except
 `migrate`.
 
 `make images` builds, ahead of the tests, the images the container tests need — the reference
