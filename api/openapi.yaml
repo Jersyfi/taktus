@@ -1159,6 +1159,174 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /levels/runs/{run_id}/steps/{step_id}/trace:
+    get:
+      tags:
+      - levels
+      summary: The trace inside a worker's step
+      description: 'Every event the step''s worker reported, in order, after the position `after`: its
+        type, what the worker contract carries for it with every secret value masked, and its sentence
+        (`text`). `open` says whether more may come: read again with the answer''s `after` while it is.
+        Shown to a reader who may see the run and holds the role `owner` or a role the trace is shared
+        with (`shared_with`); `link` is where the web app shows it. The ledger holds none of it (ADR-0135).'
+      operationId: trace_levels_runs__run_id__steps__step_id__trace_get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: step_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step Id
+      - name: after
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          description: The last position already read.
+          default: 0
+          title: After
+        description: The last position already read.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The trace.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No such run or worker step, or a trace you may not see: answered alike.'
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /levels/runs/{run_id}/steps/{step_id}/trace/shares:
+    post:
+      tags:
+      - levels
+      summary: Share the trace inside a step with a role
+      description: Every signed-in identity that holds the role and may see the run may then read the
+        trace, at the answer's `link`. A share names a role, never a person; it never widens what the
+        role may see of runs. The ledger records it as `trace.shared`, with the role as outcome and you
+        as actor (ADR-0135).
+      operationId: share_levels_runs__run_id__steps__step_id__trace_shares_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: step_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Share'
+      responses:
+        '200':
+          description: The trace, with the role among `shared_with`.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No such run or worker step, or a trace you may not see: answered alike.'
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /levels/runs/{run_id}/steps/{step_id}/trace/shares/{role}:
+    delete:
+      tags:
+      - levels
+      summary: Withdraw a share of the trace inside a step
+      description: The role no longer reads the trace by this share. The ledger records it as `trace.unshared`
+        (ADR-0135).
+      operationId: unshare_levels_runs__run_id__steps__step_id__trace_shares__role__delete
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: step_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step Id
+      - name: role
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Role
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The trace, without the role.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: 'No such run or worker step, or a trace you may not see: answered alike.'
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /vocabulary:
     get:
       tags:
@@ -2693,6 +2861,20 @@ components:
       required:
       - version
       title: RollbackBody
+    Share:
+      properties:
+        role:
+          type: string
+          pattern: ^[a-z][a-z0-9_]*$
+          title: Role
+          description: 'The role the trace is shared with: a lowercase token such as `reviewer`. Never
+            a person.'
+      additionalProperties: false
+      type: object
+      required:
+      - role
+      title: Share
+      description: A field the surface does not know — a person among them — is refused.
     Submitted:
       properties:
         key:

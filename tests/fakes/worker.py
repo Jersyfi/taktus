@@ -52,6 +52,7 @@ from taktus.ports.worker import (
     NoEstimator,
     Outcome,
     StepBoundary,
+    StepProgress,
     StepStarted,
     StopRequest,
     Supports,
@@ -69,6 +70,8 @@ class InnerStep:
     artifacts: tuple[tuple[str, bytes], ...] = ()
     usd: float = 0.0
     """The money the step reports, by a worker that consumes money (`estimate_usd`)."""
+    said: str | None = None
+    """What the worker says of the step as it works: a `step.progress` after it starts."""
 
 
 @dataclass
@@ -244,6 +247,12 @@ class FakeWorker:
                     summary=inner.step_id,
                 )
             )
+            if inner.said is not None:
+                yield await emit(
+                    StepProgress(
+                        **base(), type="step.progress", step_id=inner.step_id, message=inner.said
+                    )
+                )
             if self.fail_at == inner.step_id:
                 yield await emit(
                     AssignmentFinished(

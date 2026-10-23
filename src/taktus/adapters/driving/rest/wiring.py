@@ -35,6 +35,7 @@ from taktus.components.reporting.application.service import (
     BackupWatched,
     FindingsIntake,
     ProductFindings,
+    StepTraces,
 )
 from taktus.components.reporting.domain.model import (
     Change,
@@ -334,6 +335,11 @@ class RestServices(Protocol):
     @property
     def levels(self) -> LevelQueries:
         """The levels of the live representation, read for one reader (ADR-0063)."""
+        ...
+
+    @property
+    def traces(self) -> StepTraces:
+        """The trace inside a worker's step, read and shared by role (ADR-0135)."""
         ...
 
     @property

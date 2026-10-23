@@ -402,6 +402,48 @@ source_declaration = Table(
 )
 """One row per tenant that declared its sources (ADR-0130)."""
 
+# --- the trace inside a step (ADR-0135) -----------------------------------------------------
+
+step_trace = Table(
+    "step_trace",
+    metadata,
+    _tenant(),
+    Column("run_id", Text, nullable=False),
+    Column("step_id", Text, nullable=False),
+    Column("assignment_id", Text, nullable=False),
+    Column("seq", Integer, nullable=False),
+    Column("position", Integer, nullable=False),
+    _at("ts"),
+    Column("type", Text, nullable=False),
+    Column("detail", JSONB, nullable=False),
+    _at("recorded_at"),
+    PrimaryKeyConstraint("tenant", "run_id", "step_id", "assignment_id", "seq"),
+    Index("step_trace_position", "tenant", "run_id", "step_id", "position"),
+    Index("step_trace_recorded", "tenant", "recorded_at"),
+)
+"""One row per event a worker reported in a step, masked; deleted when its retention ends."""
+
+step_trace_share = Table(
+    "step_trace_share",
+    metadata,
+    _tenant(),
+    Column("run_id", Text, nullable=False),
+    Column("step_id", Text, nullable=False),
+    Column("role", Text, nullable=False),
+    PrimaryKeyConstraint("tenant", "run_id", "step_id", "role"),
+)
+"""One row per role a step's trace is shared with; never a person."""
+
+trace_retention = Table(
+    "trace_retention",
+    metadata,
+    _tenant(),
+    Column("days", Integer, nullable=False),
+    _at("configured_at"),
+    PrimaryKeyConstraint("tenant"),
+)
+"""One row per tenant that set how long its traces are kept."""
+
 trigger_state = Table(
     "trigger_state",
     metadata,

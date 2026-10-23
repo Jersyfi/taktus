@@ -109,6 +109,10 @@ class RepositoryOf(Protocol):
     def __call__[T: Stored](self, kind: type[T]) -> Repository[T]: ...
 
 
+MASK = "***"
+"""What stands in a text where a secret value stood."""
+
+
 class KnownSecrets(SecretValues):
     """The secret values this instance holds. Short values are not matched: a value of a few
     characters would match ordinary words, and none of Taktus's secrets is that short."""
@@ -120,6 +124,13 @@ class KnownSecrets(SecretValues):
 
     def carried_by(self, text: str) -> bool:
         return any(value in text for value in self._values)
+
+    def mask(self, text: str) -> str:
+        """The text with every secret value it carries replaced by `***`: what a step's trace
+        keeps of what a worker reported (ADR-0135 §2)."""
+        for value in sorted(self._values, key=len, reverse=True):
+            text = text.replace(value, MASK)
+        return text
 
 
 def known_secrets(environment: Mapping[str, str], also: Iterable[str] = ()) -> KnownSecrets:

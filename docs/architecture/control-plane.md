@@ -412,6 +412,14 @@ change; a score below the last one by more than the tenant's tolerance is a drif
 incident of kind `evaluation.drift` where the process sends outward. A corrected draft is
 proposed as a case, and enters the set once a person confirmed its target.
 
+**The trace inside a step** (ADR-0135, UC-6.14). The run keeps every event a worker reports as
+a line of its step's trace, in a transaction of its own as it arrives, every secret value the
+instance holds masked. The trace is kept outside the ledger, in `step_trace`, for the tenant's
+retention, and the scheduler erases what it ended once an hour. It is read beside the run level
+(`GET /levels/runs/{run}/steps/{step}/trace`), shown to the run's readers who hold the role
+`owner` or a role it is shared with, and shared by role; sharing, withdrawing, setting the
+retention and erasing are ledger entries that carry nothing a line says.
+
 The model above handles failures. Result defects need a record that this version writes and a
 detection that `0.5.0` adds; the record is the provenance chain of §6.1.
 

@@ -22,6 +22,7 @@ from taktus.adapters.driven.memory import (
     MemoryProjectionStore,
     MemoryProvenanceStore,
     MemoryRepository,
+    MemoryTraceStore,
 )
 from taktus.adapters.driven.postgres import (
     PostgresLedgerStore,
@@ -29,6 +30,7 @@ from taktus.adapters.driven.postgres import (
     PostgresProjectionStore,
     PostgresProvenanceStore,
     PostgresRepository,
+    PostgresTraceStore,
 )
 from taktus.adapters.driven.postgres.url import for_sqlalchemy
 from taktus.ports.persistence import (
@@ -40,6 +42,7 @@ from taktus.ports.persistence import (
     Stored,
     UnitOfWork,
 )
+from taktus.ports.traces import Traces
 
 IMPLEMENTATIONS = ("memory", "postgres")
 
@@ -56,6 +59,7 @@ class Backend:
     _new_tenant: Any
     tenants: list[str] = field(default_factory=list)
     projection_store: ProjectionStore | None = None
+    traces: Traces | None = None
 
     def repository[T: Stored](self, kind: type[T]) -> Repository[T]:
         repository: Repository[T] = self._repository(kind)
@@ -89,6 +93,7 @@ async def memory_backend() -> Backend:
         lambda kind: MemoryRepository(memory, kind),
         no_tenant_to_create,
         projection_store=MemoryProjectionStore(memory),
+        traces=MemoryTraceStore(memory),
     )
 
 
@@ -117,6 +122,7 @@ async def postgres_backend(postgres_url: str) -> AsyncIterator[Backend]:
             lambda kind: PostgresRepository(postgres, kind),
             create_tenant,
             projection_store=PostgresProjectionStore(postgres),
+            traces=PostgresTraceStore(postgres),
         )
     finally:
         await postgres.close()

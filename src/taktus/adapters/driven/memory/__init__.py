@@ -22,6 +22,7 @@ from taktus.adapters.driven.memory.provenance_store import MemoryProvenanceStore
 from taktus.adapters.driven.memory.queue import MemoryQueue
 from taktus.adapters.driven.memory.repository import MemoryRepository
 from taktus.adapters.driven.memory.tenant_store import MemoryTenantStore
+from taktus.adapters.driven.memory.trace_store import MemoryTraceStore
 
 __all__ = [
     "MemoryBackupLog",
@@ -35,4 +36,5 @@ __all__ = [
     "MemoryQueue",
     "MemoryRepository",
     "MemoryTenantStore",
+    "MemoryTraceStore",
 ]

@@ -69,3 +69,14 @@ export async function send<T>(
 	});
 	return answered<T>(response);
 }
+
+/** A delete as the signed-in reader: a share withdrawn. A refusal is the surface's problem,
+ * never thrown. */
+export async function remove<T>(base: URL, path: string, fetcher: typeof fetch = fetch): Promise<Answer<T>> {
+	const response = await fetcher(new URL(path, base), {
+		method: 'DELETE',
+		credentials: 'same-origin',
+		headers: { Accept: 'application/json' }
+	});
+	return answered<T>(response);
+}

@@ -84,6 +84,7 @@ from taktus.components.reporting.application.service.signals import (
     Looked,
     SignalWatch,
 )
+from taktus.components.reporting.application.service.traces import BadRole, StepTraces
 
 __all__ = [
     "DISABLED",
@@ -106,6 +107,7 @@ __all__ = [
     "AnswerInChannelHandler",
     "AnswerOnPage",
     "BackupWatched",
+    "BadRole",
     "BrokenInterfaces",
     "ByHand",
     "Changed",
@@ -147,6 +149,7 @@ __all__ = [
     "ShowInChannelHandler",
     "Shown",
     "SignalWatch",
+    "StepTraces",
     "Taking",
     "UnknownReport",
     "Withheld",

@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from sqlalchemy.exc import DBAPIError
 
@@ -40,6 +40,7 @@ from taktus.adapters.driven.memory import (
     MemoryProvenanceStore,
     MemoryRepository,
     MemoryTenantStore,
+    MemoryTraceStore,
 )
 from taktus.adapters.driven.models.pool import StaticModelPool
 from taktus.adapters.driven.platform import HostPlatform
@@ -52,6 +53,7 @@ from taktus.adapters.driven.postgres import (
     PostgresQueue,
     PostgresRepository,
     PostgresTenantStore,
+    PostgresTraceStore,
     SchemaOutOfDate,
     check_schema,
 )
@@ -70,6 +72,7 @@ from taktus.components.catalog.application.service import (
 )
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
+from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import ExpectedRuns
 from taktus.components.governance.domain.model import Incident, WatchConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
@@ -88,7 +91,7 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.domain.model import Process, ProcessVersion, Proposal
-from taktus.components.reporting.application.service import Kept, ProductFindings
+from taktus.components.reporting.application.service import Kept, ProductFindings, StepTraces
 from taktus.components.run.application.query import (
     BlockedTime,
     ProvenanceQuery,
@@ -112,6 +115,7 @@ from taktus.composition.execution import (
 from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
+from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
@@ -142,6 +146,7 @@ from taktus.ports.persistence import (
     LedgerStore,
     ProjectionStore,
     ProvenanceStore,
+    Queried,
     Repository,
     StateSize,
     Stored,
@@ -150,6 +155,7 @@ from taktus.ports.persistence import (
     UnreadableState,
 )
 from taktus.ports.queue import Queue
+from taktus.ports.traces import Traces
 from taktus.shared.v1 import Command, Plan
 
 
@@ -175,6 +181,8 @@ class Stores:
     size: StateSize | None = None
     """The database, which reports its own size; None when the state is files under the state
     directory, which the platform measures."""
+    traces: Traces | None = None
+    """The trace inside a worker's step (ADR-0135); None where nothing reads one."""
 
 
 class LocalWiring:
@@ -296,6 +304,8 @@ class LocalWiring:
                     open_work=decisions.open_work,
                     repetition=decisions.repetition,
                     deadlines=decisions.deadlines,
+                    traces=stores.traces,
+                    masking=known_secrets(os.environ),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -483,6 +493,23 @@ class LocalWiring:
                 residency=decisions.residency,
                 sources=decisions.sources,
                 deadlines=decisions.deadlines,
+                traces=None
+                if stores.traces is None
+                else StepTraces(
+                    records=RepositoryLevelRecords(
+                        stores.work,
+                        # Every repository the stores make answers the queries (ADR-0094).
+                        cast("Queried[Run]", runs),
+                        stores.of(Process),
+                        stores.of(ProcessVersion),
+                        stores.provenance_store,
+                        stores.of(Request),
+                    ),
+                    traces=stores.traces,
+                    work=stores.work,
+                    ledger=ledger,
+                    clock=clock,
+                ),
             )
             telemetry.shutdown()
 
@@ -544,6 +571,7 @@ class LocalWiring:
                     provenance_store=MemoryProvenanceStore(memory),
                     tenants=MemoryTenantStore(memory),
                     projection_store=MemoryProjectionStore(memory),
+                    traces=MemoryTraceStore(memory),
                     backups=MemoryBackupLog(memory),
                     storage=f"memory with a snapshot under {state_dir} — development only, "
                     "not durable; set TAKTUS_DATABASE_URL for a database",
@@ -588,6 +616,7 @@ class LocalWiring:
                 provenance_store=PostgresProvenanceStore(postgres),
                 tenants=PostgresTenantStore(postgres),
                 projection_store=PostgresProjectionStore(postgres),
+                traces=PostgresTraceStore(postgres),
                 backups=PostgresBackupLog(postgres),
                 storage=f"database {described(url)}; artifact bytes under {state_dir}/objects",
                 queue=PostgresQueue(postgres),
