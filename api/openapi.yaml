@@ -473,7 +473,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ConfirmBody'
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__app__ConfirmBody'
       responses:
         '200':
           description: Whether it was applied, and the register entry.
@@ -724,7 +724,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ConfirmBody'
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__app__ConfirmBody'
       responses:
         '200':
           description: What became of the reading, the sentence said back, the view.
@@ -1485,6 +1485,8 @@ paths:
       tags:
       - proposals
       summary: One proposal, with its difference
+      description: The proposal, and where it was rehearsed beside the active version on the process's
+        evaluation cases, that evaluation's state, verdict and scores under `evaluated` (ADR-0134).
       operationId: one_processes__process_id__proposals__proposal_id__get
       parameters:
       - name: process_id
@@ -1641,8 +1643,10 @@ paths:
       - proposals
       summary: Commission a proposal
       description: A proposal whose rehearsal finished is registered as the active version, acting for
-        you, through registration and every check it applies. The ledger records `process.commissioned`
-        with you as its actor (ADR-0091 §4).
+        you, through registration and every check it applies. A proposal that changes a step of a process
+        with evaluation cases is registered only once its evaluation passed, or with your reason against
+        its verdict (ADR-0134 §4). The ledger records `process.commissioned` with you as its actor (ADR-0091
+        §4).
       operationId: commission_processes__process_id__proposals__proposal_id__commission_post
       parameters:
       - name: process_id
@@ -1747,6 +1751,244 @@ paths:
             application/problem+json: {}
         '409':
           description: The act does not fit the proposal's or the process's state.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/evaluations:
+    get:
+      tags:
+      - evaluations
+      summary: The evaluations of a process on its cases
+      description: 'Every evaluation of the process: a proposal held to the active version, or the active
+        version run again with no change. Newest first (ADR-0134).'
+      operationId: evaluations_processes__process_id__evaluations_get
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The evaluations.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process, evaluation or case you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/evaluations/{evaluation_id}:
+    get:
+      tags:
+      - evaluations
+      summary: One evaluation, with its scores per case
+      description: The case runs, every scorer's score and how it was reached, the model that answered
+        each step, the scores of each side, the tolerance and the verdict (ADR-0134).
+      operationId: evaluation_processes__process_id__evaluations__evaluation_id__get
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: evaluation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Evaluation Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The evaluation.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process, evaluation or case you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/evaluation-cases:
+    get:
+      tags:
+      - evaluations
+      summary: The cases proposed from corrections
+      description: 'A case proposed from a person''s correction of a step''s result, newest first: proposed,
+        confirmed, rejected, or withheld because it would keep personal data the tenant does not allow
+        (ADR-0134 §7).'
+      operationId: cases_processes__process_id__evaluation_cases_get
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The cases.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process, evaluation or case you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/evaluation-cases/{case_id}/confirm:
+    post:
+      tags:
+      - evaluations
+      summary: Confirm a proposed case
+      description: The case enters the process's evaluation set, with the target it was proposed with
+        or the one you give. The ledger records `evaluation.case_confirmed` with you as its actor.
+      operationId: confirm_processes__process_id__evaluation_cases__case_id__confirm_post
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: case_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Case Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taktus__adapters__driving__rest__evaluations__ConfirmBody'
+      responses:
+        '200':
+          description: The case, confirmed.
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: The case is no longer proposed.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process, evaluation or case you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/evaluation-cases/{case_id}/reject:
+    post:
+      tags:
+      - evaluations
+      summary: Reject a proposed case
+      description: The case never enters the set. The ledger records `evaluation.case_rejected` with you
+        as its actor.
+      operationId: reject_processes__process_id__evaluation_cases__case_id__reject_post
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: case_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Case Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The case, rejected.
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: The case is no longer proposed.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such process, evaluation or case you may see.
           content:
             application/problem+json: {}
         '422':
@@ -2314,19 +2556,17 @@ components:
           title: Approve Raise
           description: 'True: you approve a raise of an autonomy level the version makes (ADR-0026).'
           default: false
+        override:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          title: Override
+          description: 'Your reason for commissioning against the verdict of the proposal''s evaluation
+            on the process''s cases: a regression, or a case without a score. Recorded with the reason
+            (ADR-0134 §4).'
       type: object
       title: CommissionBody
-    ConfirmBody:
-      properties:
-        confirmed:
-          type: boolean
-          title: Confirmed
-          description: 'True: the reading sent back is right, and it takes effect. False: it is not; nothing
-            takes effect and the request is open again.'
-      type: object
-      required:
-      - confirmed
-      title: ConfirmBody
     HandBackBody:
       properties:
         result:
@@ -2502,3 +2742,22 @@ components:
       - name
       title: TenantName
       description: A field the surface does not know — an identifier among them — is refused.
+    taktus__adapters__driving__rest__app__ConfirmBody:
+      properties:
+        confirmed:
+          type: boolean
+          title: Confirmed
+          description: 'True: the reading sent back is right, and it takes effect. False: it is not; nothing
+            takes effect and the request is open again.'
+      type: object
+      required:
+      - confirmed
+      title: ConfirmBody
+    taktus__adapters__driving__rest__evaluations__ConfirmBody:
+      properties:
+        target:
+          title: Target
+          description: The result the step should have produced, where it is not the corrected value the
+            case was proposed with.
+      type: object
+      title: ConfirmBody

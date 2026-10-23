@@ -149,7 +149,9 @@ async def test_commission_and_rollback_act_for_the_key_s_identity(client: Client
     assert back.json() == {"process": "invoices", "version": "3"}
     (commissioned, rolled) = acts.calls
     assert commissioned[1][2:4] == ("prp_1", "idn_ada")
-    assert commissioned[2] == {"approved_by": "idn_ada"}, "the raise approved by who asks"
+    assert commissioned[2] == {"approved_by": "idn_ada", "override": None}, (
+        "the raise approved by who asks"
+    )
     assert rolled[1][1:4] == ("invoices", "1", "idn_ada") and rolled[2]["approved_by"] is None
     missing = await http.post(f"{base}/processes/invoices/rollback", json={"version": "1"})
     assert missing.status_code == 401
@@ -181,3 +183,23 @@ async def test_a_change_in_words_is_answered_with_the_run_that_proposes_it(clien
     assert name == "ask" and args[1:] == ("invoices", "a person signs the draft", "idn_ada")
     empty = await http.post(f"{base}/processes/invoices/proposals", json={}, headers=bearer(key))
     assert empty.status_code == 422
+
+
+async def test_a_commissioning_against_the_evaluation_carries_the_reason(client: Client) -> None:
+    http, given, base = client
+    given.acts = acts = Acts()
+    key = await given.linked()
+    done = await http.post(
+        f"{base}/processes/invoices/proposals/prp_1/commission",
+        json={"override": "the shorter reply is what the customers asked for"},
+        headers=bearer(key),
+    )
+    assert done.status_code == 200, done.text
+    ((_, _, kwargs),) = acts.calls
+    assert kwargs["override"] == "the shorter reply is what the customers asked for"
+    for kind in ("regressed", "incomplete", "unevaluated"):
+        given.acts = Acts(ProposalError(kind, f"refused: {kind}"))
+        refused = await http.post(
+            f"{base}/processes/invoices/proposals/prp_1/commission", json={}, headers=bearer(key)
+        )
+        assert refused.status_code == 409 and refused.json()["kind"] == kind

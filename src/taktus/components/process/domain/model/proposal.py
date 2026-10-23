@@ -81,6 +81,9 @@ class Proposal(Value):
     created_at: datetime
     rehearsal_run: str | None = None
     """The rehearsal run, once the proposal is rehearsed (ADR-0091 §3)."""
+    evaluation: str | None = None
+    """The evaluation on the process's cases its rehearsal started, where it needs one
+    (ADR-0134 §4)."""
 
     @property
     def base_ref(self) -> str:

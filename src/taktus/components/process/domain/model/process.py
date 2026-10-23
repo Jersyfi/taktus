@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pydantic import Field, model_validator
 
 from taktus.components.process.domain.model.errors import InvalidProcess
+from taktus.components.process.domain.model.evaluation import EvaluationSpec
 from taktus.components.process.domain.model.event import (
     KINDS,
     Condition,
@@ -348,12 +349,16 @@ class ProcessVersion(Value):
     deadlines: Mapping[str, DeadlineDeclaration] = Field(default_factory=dict)
     """The deadlines of each run, by name (ADR-0133). Taktus keeps them; no worker and no
     outside timer does."""
+    evaluation: EvaluationSpec | None = None
+    """The process's evaluation cases, its scorers and the schedule they run on without a
+    change (ADR-0134 §1). None: a change is held to no cases, and nothing measures drift."""
     author: str | None = None
     reason: str | None = None
 
     @model_validator(mode="after")
     def _valid_graph(self) -> ProcessVersion:
         findings = validate_graph(self.steps)
+        findings.extend(self._evaluation_findings())
         findings.extend(
             f"`open_work` names the kind {kind!r}; a kind is a lowercase token such as "
             "pull_requests"
@@ -415,6 +420,37 @@ class ProcessVersion(Value):
         if findings:
             raise InvalidProcess(tuple(findings))
         return self
+
+    def _evaluation_findings(self) -> list[str]:
+        """Why the declared evaluation cannot hold against this version (ADR-0134 §1)."""
+        if self.evaluation is None:
+            return []
+        producing = {step.id for step in self.steps if step.exactness is not None}
+        found = [
+            f"`evaluation`: a scorer scores the step {scorer.step!r}, which is not a step of "
+            "this process that produces a result"
+            for scorer in self.evaluation.scorers
+            if scorer.step not in producing
+        ]
+        scored = self.evaluation.scored_steps
+        required = {name for name, given in self.inputs.items() if given.required}
+        for case in self.evaluation.cases:
+            where = f"`evaluation`: the case {case.id!r}"
+            found.extend(
+                f"{where} names a target for {step_id!r}, which no scorer scores"
+                for step_id in case.targets
+                if step_id not in scored
+            )
+            unknown = sorted(set(case.inputs) - set(self.inputs))
+            if unknown:
+                found.append(
+                    f"{where} gives {', '.join(unknown)}, which the process does not declare "
+                    "under `inputs`"
+                )
+            missing = sorted(required - set(case.inputs))
+            if missing:
+                found.append(f"{where} gives no value for the input(s) {', '.join(missing)}")
+        return found
 
     @property
     def expected_schedules(self) -> tuple[str, ...]:

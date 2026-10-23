@@ -96,6 +96,7 @@ process_version = Table(
     Column("limits", JSONB),
     Column("open_work", JSONB),  # the caps on open work, by kind (ADR-0132)
     Column("deadlines", JSONB),  # the deadlines of each run, by name (ADR-0133)
+    Column("evaluation", JSONB),  # the cases, the scorers and their schedule (ADR-0134)
     Column("inputs", JSONB, nullable=False),
     Column("author", Text),
     Column("reason", Text),
@@ -252,6 +253,32 @@ proposal = Table(
     Column("proposal", JSONB, nullable=False),
     PrimaryKeyConstraint("tenant", "id"),
     Index("proposal_process", "tenant", "process_id"),
+)
+
+evaluation = Table(
+    "evaluation",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("process_id", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    _at("started_at"),
+    Column("evaluation", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("evaluation_process", "tenant", "process_id"),
+)
+
+corrected_case = Table(
+    "corrected_case",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    Column("process_id", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    _at("proposed_at"),
+    Column("corrected_case", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+    Index("corrected_case_process", "tenant", "process_id"),
 )
 
 pending_act = Table(

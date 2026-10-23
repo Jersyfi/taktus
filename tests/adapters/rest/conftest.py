@@ -201,6 +201,9 @@ class Services:
     administration_key: Secret | None = None
     """The instance's administration key; None: the administration of tenants is off."""
     acts: ProposalActs | None = None
+    evaluated: Any = None
+    """A process's evaluations and its proposed cases (ADR-0134); a test that reaches them sets
+    them. What they do is held by `tests/composition/test_evaluations.py`."""
     """The acts on a proposal; a test that reaches them sets them. What they do is held by
     `tests/composition/test_proposals.py`."""
     findings_intake: FindingsIntake | None = None
@@ -313,6 +316,11 @@ class Services:
     def proposal_acts(self) -> ProposalActs:
         assert self.acts is not None, "this test sets the acts it reaches"
         return self.acts
+
+    @property
+    def evaluations(self) -> Any:
+        assert self.evaluated is not None, "this test sets the evaluations it reaches"
+        return self.evaluated
 
     @property
     def proposals(self) -> Proposals:

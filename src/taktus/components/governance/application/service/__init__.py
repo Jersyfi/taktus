@@ -11,6 +11,7 @@ from taktus.components.governance.application.service.corrections import (
     DecisionMade,
     Verdict,
 )
+from taktus.components.governance.application.service.drift import Drifts, DriftSeen
 from taktus.components.governance.application.service.expected_runs import (
     CloseIncident,
     ConfigureWatch,
@@ -54,6 +55,8 @@ __all__ = [
     "DatabaseStore",
     "DecisionMade",
     "DeclareSources",
+    "DriftSeen",
+    "Drifts",
     "ExpectedRuns",
     "RaiseRed",
     "RepetitionSeen",

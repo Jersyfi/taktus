@@ -3,9 +3,9 @@ id: UC-4.18
 title: A change is held to its evaluation cases, and drift is measured without a change
 component: process
 serves: [P8, P10, P12]
-state: specified
+state: building
 version: 0.5.0
-tests: []
+tests: [tests/composition/test_evaluations.py::test_a_change_runs_on_the_cases_beside_the_active_version_as_rehearsals, tests/composition/test_evaluations.py::test_a_scorer_has_a_method_of_its_own_and_a_rule_comes_first, tests/composition/test_evaluations.py::test_a_judge_scores_inside_a_run_and_falls_back_to_its_rule, tests/composition/test_evaluations.py::test_a_regression_is_not_commissioned_unless_a_person_overrides_it_with_a_reason, tests/composition/test_evaluations.py::test_drift_is_measured_on_the_schedule_and_raises_an_incident_where_it_speaks_out, tests/composition/test_evaluations.py::test_a_corrected_draft_is_proposed_as_a_case_and_enters_the_set_once_confirmed, tests/composition/test_evaluations.py::test_a_case_keeps_no_personal_input_the_tenant_does_not_allow]
 adrs: {ADR-0084: 059f9df3094c, ADR-0091: 22e6c748bb90}
 supersedes: null
 ---

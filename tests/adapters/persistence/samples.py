@@ -48,6 +48,9 @@ from taktus.components.identity.domain.model import (
 )
 from taktus.components.process.application.service.register_version import parse_bundle
 from taktus.components.process.domain.model import (
+    CorrectedCase,
+    Evaluation,
+    EvaluationCase,
     Expect,
     Process,
     ProcessVersion,
@@ -114,6 +117,7 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
             "check_every": "30m",
         }
     }
+<<<<<<< HEAD
     document["deadlines"] = {
         "answer": {
             "from": "run",
@@ -130,8 +134,39 @@ def process_version(version: str = "1", tenant: str = "t") -> ProcessVersion:
             "until": {"step": "verify-answer"},
             "at_limit": {"start": {"process": "six-times-seven", "inputs": {"a": 1}}},
         },
+=======
+    document["evaluation"] = {
+        "cases": [
+            {
+                "id": "forty-two",
+                "targets": {"prepare-commands": {"commands": ["expr 6 '*' 7"]}, "compute": "42"},
+            }
+        ],
+        "scorers": [
+            {
+                "step": "prepare-commands",
+                "method": "rule",
+                "reason": "the commands are fixed",
+                "exactness": "exact",
+                "rule": {"kind": "equals"},
+            },
+            {
+                "step": "compute",
+                "method": "llm",
+                "reason": "the worker's answer may be phrased in many ways",
+                "rejected": [{"method": "rule", "why": "a number may be written in words"}],
+                "exactness": "tolerant",
+                "fallback": {"when": "the judge gives no score", "to": "rule"},
+                "rule": {"kind": "contains"},
+                "purpose": "judging",
+                "criterion": "Does the answer give the same number?",
+            },
+        ],
+        "schedule": "weekly",
+>>>>>>> 0f4f848a (feat(process): a change is held to its evaluation cases, and drift is measured on them (#431))
     }
     parsed = parse_bundle(document)
+    assert parsed.evaluation is not None and len(parsed.evaluation.scorers) == 2
     assert parsed.open_work["pull_requests"].check_every == timedelta(minutes=30)
     assert parsed.deadlines["answer"].working and parsed.deadlines["answer"].lead == timedelta(
         hours=4
@@ -679,6 +714,7 @@ def correction_limits(tenant: str = "t") -> CorrectionLimits:
     )
 
 
+<<<<<<< HEAD
 def deadline_rule() -> DeadlineRule:
     return DeadlineRule(
         name="answer",
@@ -718,4 +754,99 @@ def working_time(tenant: str = "t") -> WorkingTime:
         ends=time(16, 0),
         holidays=(date(2026, 12, 25),),
         configured_at=AT,
+=======
+def evaluation(tenant: str = "t") -> Evaluation:
+    """An evaluation of a proposal beside the active version, scored and overridden (ADR-0134)."""
+    version = process_version(tenant=tenant)
+    assert version.evaluation is not None
+    return Evaluation.model_validate(
+        {
+            "id": "evl_1",
+            "tenant": tenant,
+            "process_id": version.process_id,
+            "purpose": "change",
+            "version": version.ref,
+            "proposal": "prp_1",
+            "candidate": f"{version.process_id}@proposal-prp_1",
+            "acting_for": "idn_ada",
+            "cases": [c.document() for c in version.evaluation.cases],
+            "scorers": [s.document() for s in version.evaluation.scorers],
+            "runs": [
+                {"case": "forty-two", "side": "active", "run_id": "run_a"},
+                {
+                    "case": "forty-two",
+                    "side": "proposed",
+                    "run_id": "run_b",
+                    "judges": {"compute.1": "run_c"},
+                },
+                {"case": "personal", "side": "active", "left_out": "it keeps a subject"},
+            ],
+            "state": "scored",
+            "results": [
+                {
+                    "case": "forty-two",
+                    "side": "proposed",
+                    "run_id": "run_b",
+                    "run_state": "finished",
+                    "score": 0.5,
+                    "scores": [
+                        {
+                            "scorer": "prepare-commands.0",
+                            "step": "prepare-commands",
+                            "method": "rule",
+                            "exactness": "exact",
+                            "score": 1.0,
+                            "how": "rule",
+                        },
+                        {
+                            "scorer": "compute.1",
+                            "step": "compute",
+                            "method": "llm",
+                            "exactness": "tolerant",
+                            "score": 0.0,
+                            "how": "judge",
+                        },
+                    ],
+                    "models": {"compute": "a-model-20261001"},
+                    "seconds": 3.5,
+                    "tokens_in": 120,
+                    "tokens_out": 8,
+                },
+                {"case": "personal", "side": "active", "left_out": "it keeps a subject"},
+            ],
+            "sides": [
+                {"side": "active", "version": version.ref, "score": 1.0, "cases": 1, "unscored": 0},
+                {
+                    "side": "proposed",
+                    "version": f"{version.process_id}@proposal-prp_1",
+                    "score": 0.5,
+                    "cases": 1,
+                    "unscored": 0,
+                },
+            ],
+            "verdict": "regressed",
+            "tolerance": 0.05,
+            "started_at": AT.isoformat(),
+            "scored_at": (AT + timedelta(minutes=3)).isoformat(),
+            "override": {
+                "reason": "the old answer was wrong",
+                "at": AT.isoformat(),
+            },
+        }
+    )
+
+
+def corrected_case(tenant: str = "t") -> CorrectedCase:
+    return CorrectedCase(
+        id="cor-1",
+        tenant=tenant,
+        process_id="six-times-seven",
+        case=EvaluationCase(id="cor-1", inputs={"message": "late"}, targets={"compute": "42"}),
+        state="confirmed",  # type: ignore[arg-type]
+        source_run="run_1",
+        source_step="compute",
+        left_out=("mailbox",),
+        proposed_at=AT,
+        decided_at=AT + timedelta(hours=1),
+>>>>>>> 0f4f848a (feat(process): a change is held to its evaluation cases, and drift is measured on them (#431))
     )

@@ -122,6 +122,9 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
     @routes.get(
         "/processes/{process_id}/proposals/{proposal_id}",
         summary="One proposal, with its difference",
+        description="The proposal, and where it was rehearsed beside the active version on the "
+        "process's evaluation cases, that evaluation's state, verdict and scores under "
+        "`evaluated` (ADR-0134).",
         responses={200: {"description": "The proposal."}, **common},
     )
     async def one(
@@ -134,7 +137,18 @@ def router(services: RestServices, authenticated: Authenticated) -> APIRouter:
             found = await services.proposals.get(who.tenant, process_id, proposal_id)
         except ProposalError as error:
             return _refused(error)
-        return JSONResponse(_view(found))
+        view = _view(found)
+        if found.evaluation is not None:
+            try:
+                evaluated = await services.evaluations.get(who.tenant, process_id, found.evaluation)
+            except ProposalError:
+                return JSONResponse(view)
+            view["evaluated"] = {
+                key: value
+                for key, value in evaluated.document().items()
+                if key in ("id", "state", "verdict", "tolerance", "sides", "override")
+            }
+        return JSONResponse(view)
 
     @routes.post(
         "/processes/{process_id}/proposals/{proposal_id}/discard",
@@ -168,14 +182,24 @@ class RehearseBody(BaseModel):
     )
 
 
-class CommissionBody(BaseModel):
+class ApproveBody(BaseModel):
     approve_raise: bool = Field(
         default=False,
         description="True: you approve a raise of an autonomy level the version makes (ADR-0026).",
     )
 
 
-class RollbackBody(CommissionBody):
+class CommissionBody(ApproveBody):
+    override: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Your reason for commissioning against the verdict of the proposal's "
+        "evaluation on the process's cases: a regression, or a case without a score. Recorded "
+        "with the reason (ADR-0134 §4).",
+    )
+
+
+class RollbackBody(ApproveBody):
     version: str = Field(min_length=1, description="The earlier version to make current again.")
     as_version: str | None = Field(
         default=None, min_length=1, description="The new version's name; the next free one if none."
@@ -231,8 +255,10 @@ def acts_router(services: RestServices, authenticated: Authenticated) -> APIRout
         "/processes/{process_id}/proposals/{proposal_id}/commission",
         summary="Commission a proposal",
         description="A proposal whose rehearsal finished is registered as the active version, "
-        "acting for you, through registration and every check it applies. The ledger records "
-        "`process.commissioned` with you as its actor (ADR-0091 §4).",
+        "acting for you, through registration and every check it applies. A proposal that "
+        "changes a step of a process with evaluation cases is registered only once its "
+        "evaluation passed, or with your reason against its verdict (ADR-0134 §4). The ledger "
+        "records `process.commissioned` with you as its actor (ADR-0091 §4).",
         responses={
             200: {"description": "The version registered."},
             400: {"description": "Registration refused it; every finding.", **PROBLEM},
@@ -255,6 +281,7 @@ def acts_router(services: RestServices, authenticated: Authenticated) -> APIRout
                 proposal_id,
                 who.identity,
                 approved_by=who.identity if body.approve_raise else None,
+                override=body.override,
             )
         except ProposalError as error:
             return _act_refused(error)

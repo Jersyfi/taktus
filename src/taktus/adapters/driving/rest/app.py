@@ -52,6 +52,7 @@ from starlette.routing import Route
 from taktus.adapters.driving.rest import (
     agent_surface,
     autonomy,
+    evaluations,
     findings,
     levels,
     operation,
@@ -154,6 +155,7 @@ def build_app(
         app.include_router(operation.router(services, _authenticated), prefix=base)
         app.include_router(proposals.router(services, _authenticated), prefix=base)
         app.include_router(proposals.acts_router(services, _authenticated), prefix=base)
+        app.include_router(evaluations.router(services, _authenticated), prefix=base)
         app.include_router(tenants.router(services), prefix=base)
         app.include_router(findings.router(services), prefix=base)
         app.include_router(review.router(services, _authenticated), prefix=base)
