@@ -1,0 +1,182 @@
+name: nightly
+
+# The nightly ring (ADR-0096 §1 ring 4, #395): what is heavy or needs an environment, run once a
+# night on `main` and read. Each job is one thing a commit's run does not do:
+# - the conformance suite in one process, so that every step takes the time it takes on its own
+#   rather than beside the other tests' processes;
+# - the chart installed into a real cluster (kind), its database migrated, the instance ready;
+# - the backup and the restore by hand, against a real database and the backup image;
+# - an upgrade from the newest release before `main` to `main`, every run resuming at its boundary;
+# - the scale tests: listing 2 000 runs, the ledger's reads at 500 000 entries.
+#
+# `report` reads the run: a red job opens the issue "nightly is red" with priority high, or adds
+# to it; a green run closes it. A job red twice in a row is marked there, and is mended, or
+# removed with a notice of kind `gate-weakened` when the reason is its environment.
+#
+# No job needs a credential. The ring runs on `main` by schedule or dispatch, never in a fork.
+# A pull request that changes this file or the cluster test runs the jobs, to prove them, and
+# reports nothing. The live tests are not here: they keep their monthly schedule and spend cap
+# (live.yml, DEC-0048).
+on:
+  schedule:
+    - cron: "17 2 * * *"   # every night, 02:17 UTC
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - .github/workflows/nightly.yml
+      - deploy/k8s/kind.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  conformance:
+    if: github.repository == 'Jersyfi/taktus' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - name: conformance, in one process
+        run: make gate-conformance PARALLEL=
+
+  kind:
+    if: github.repository == 'Jersyfi/taktus' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: kind
+      - name: helm
+        run: make helm && echo "$PWD/.tools/bin" >> "$GITHUB_PATH"
+      - name: the chart on a cluster
+        run: make verify-kind
+      - name: what the cluster holds
+        if: failure()
+        run: |
+          kubectl get all,jobs,pvc -A
+          kubectl -n taktus describe pods
+          for pod in $(kubectl -n taktus get pods -o name); do kubectl -n taktus logs "$pod" --all-containers --tail=100 || true; done
+
+  backup:
+    if: github.repository == 'Jersyfi/taktus' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - run: make images
+      - name: backup and restore
+        env:
+          TAKTUS_REQUIRE_DATABASE: "1"
+        run: make verify-backup
+
+  upgrade:
+    if: github.repository == 'Jersyfi/taktus' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The newest release before this commit; its images are in the registry the image workflow
+      # pushed them to. Without the variable or a release there is nothing to upgrade from, and
+      # the job fails rather than pass without having upgraded.
+      - id: previous
+        env:
+          REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+        run: |
+          if [ -z "$REGISTRY" ]; then
+            echo "::error::IMAGE_REGISTRY is not set: there is no previous release's image to upgrade from"
+            exit 1
+          fi
+          FROM="$(git describe --tags --abbrev=0 --match 'v*' HEAD^)"
+          version="${FROM#v}"
+          echo "from=${FROM}" >> "$GITHUB_OUTPUT"
+          echo "image=${REGISTRY}/taktus:${version}" >> "$GITHUB_OUTPUT"
+          echo "worker=${REGISTRY}/taktus-worker-script:${version}" >> "$GITHUB_OUTPUT"
+          echo "upgrading from ${FROM}"
+      - env:
+          TAKTUS_UPGRADE_FROM: ${{ steps.previous.outputs.from }}
+          TAKTUS_UPGRADE_IMAGE: ${{ steps.previous.outputs.image }}
+          TAKTUS_UPGRADE_WORKER_IMAGE: ${{ steps.previous.outputs.worker }}
+        run: make verify-upgrade
+
+  scale:
+    if: github.repository == 'Jersyfi/taktus' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - run: make images
+      - name: the scale tests
+        env:
+          TAKTUS_REQUIRE_DATABASE: "1"
+        run: make timing
+
+  # Reads the run and keeps the issue "nightly is red": opened with priority high, or added to,
+  # when a job is red; closed when every job is green. Not on a pull request: the ring of `main`
+  # is what the issue is about.
+  report:
+    needs: [conformance, kind, backup, upgrade, scale]
+    if: always() && github.repository == 'Jersyfi/taktus' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN: ${{ github.run_id }}
+      ATTEMPT: ${{ github.run_attempt }}
+      URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: how the ring stands
+        id: ring
+        run: |
+          gh api "repos/$REPO/actions/runs/$RUN/attempts/$ATTEMPT/jobs" > "$RUNNER_TEMP/jobs.json" || : > "$RUNNER_TEMP/jobs.json"
+          previous=$(gh api "repos/$REPO/actions/workflows/nightly.yml/runs?branch=main&status=completed&per_page=5" \
+            --jq "[.workflow_runs[] | select(.id != $RUN and .event != \"pull_request\")][0].id // empty" || true)
+          args=()
+          if [ -n "$previous" ]; then
+            gh api "repos/$REPO/actions/runs/$previous/jobs" > "$RUNNER_TEMP/previous.json" || :
+            args=(--previous "$RUNNER_TEMP/previous.json")
+          fi
+          state=$(python3 tools/ci_watch.py nightly --jobs "$RUNNER_TEMP/jobs.json" "${args[@]}" \
+            --url "$URL" --out "$RUNNER_TEMP/comment.md")
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/comment.md"
+      - name: nightly is red
+        if: steps.ring.outputs.state == 'red'
+        run: |
+          issue=$(gh issue list --repo "$REPO" --state open --search 'in:title "nightly is red"' \
+            --json number,title --jq '.[] | select(.title == "nightly is red") | .number' | head -n 1)
+          if [ -z "$issue" ]; then
+            gh issue create --repo "$REPO" --title "nightly is red" --label task --label priority:high \
+              --body-file "$RUNNER_TEMP/comment.md"
+          else
+            gh issue comment "$issue" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md"
+          fi
+      - name: nightly is green
+        if: steps.ring.outputs.state == 'green'
+        run: |
+          for issue in $(gh issue list --repo "$REPO" --state open --search 'in:title "nightly is red"' \
+              --json number,title --jq '.[] | select(.title == "nightly is red") | .number'); do
+            gh issue close "$issue" --repo "$REPO" --comment "$(cat "$RUNNER_TEMP/comment.md")"
+          done
