@@ -47,7 +47,14 @@ def git(repository: Path, *args: str) -> None:
 def test_this_repository_declares_both_guides_and_every_page_renders() -> None:
     manifest = yaml.safe_load((ROOT / "docs" / "guides" / "guides.yaml").read_text("utf-8"))
     guides = {g["id"]: [p["id"] for p in g["pages"]] for g in manifest["guides"]}
-    assert guides["administration"] == ["installing", "configuring", "operating", "restoring"]
+    assert guides["administration"] == [
+        "first-install",
+        "upgrading",
+        "installing",
+        "configuring",
+        "operating",
+        "restoring",
+    ]
     assert guides["use"]
     done = cli("check", "--repository", str(ROOT), "--manifest", MANIFEST)
     assert done.returncode == 0, done.stderr
