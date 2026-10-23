@@ -132,6 +132,7 @@ from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
 from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
+from taktus.composition.deadlines import Deadlines
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.execution import (
     connector_pool,
@@ -222,6 +223,9 @@ class Wired:
     """The capacity report the scheduler runs every `TAKTUS_CAPACITY_INTERVAL_SECONDS`."""
     triggers: Triggers
     """The time triggers the scheduler fires on every tick while it leads (ADR-0035)."""
+    deadlines: Deadlines
+    """The deadlines whose actions the scheduler takes on every tick while it leads
+    (ADR-0133)."""
     expected: ExpectedRunsWatch
     """The watch over expected runs the scheduler makes once a minute while it leads: a run
     that did not happen raises an incident (ADR-0107)."""
@@ -477,6 +481,7 @@ async def wire(
                     sources=decisions.sources,
                     open_work=decisions.open_work,
                     repetition=decisions.repetition,
+                    deadlines=decisions.deadlines,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -823,6 +828,18 @@ async def wire(
                     ),
                     clock,
                 ),
+                deadlines=Deadlines(
+                    tenants=tenants,
+                    keeper=decisions.deadlines,
+                    processes=PostgresRepository(persistence, Process),
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    commission=commission,
+                    engine=engine,
+                    identities=identities,
+                    work=persistence,
+                    clock=clock,
+                    ids=ids,
+                ),
                 triggers=Triggers(
                     tenants=tenants,
                     triggers=TriggersHandler(
@@ -1009,6 +1026,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
 
         async def scheduled() -> None:
             await wired.triggers.tick()
+            # And it takes every action due on a deadline, once (ADR-0133).
+            await wired.deadlines.tick()
             await watch_expected()
             await tick()
             await send_findings()

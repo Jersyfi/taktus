@@ -50,6 +50,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from taktus.components.process.domain.model import (
+    DeadlineDeclaration,
     Expect,
     InputDeclaration,
     InvalidProcess,
@@ -386,6 +387,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             limits=bundle.get("limits"),
             inputs=_inputs(bundle.get("inputs")),
             open_work=_open_work(bundle.get("open_work")),
+            deadlines=_deadlines(bundle.get("deadlines")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )
@@ -462,6 +464,108 @@ def _open_work(raw: Any) -> dict[str, OpenWorkCap]:
         except ValidationError as error:
             raise InvalidProcess(tuple(_describe(f"open_work.{kind}", error))) from error
     return caps
+
+
+def _deadlines(raw: Any) -> dict[str, DeadlineDeclaration]:
+    """`deadlines`: per name, the moment it starts `from`, its `limit`, an optional `lead`, how
+    it `counts`, the step it is met `until`, and the action `at_lead` and `at_limit`
+    (ADR-0133 §1). A deadline without an action at its limit does not register."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`deadlines` is not a mapping of name to deadline",))
+    declared: dict[str, DeadlineDeclaration] = {}
+    findings: list[str] = []
+    for name, given in raw.items():
+        where = f"deadlines.{name}"
+        if not isinstance(given, Mapping):
+            findings.append(f"`{where}` is not a mapping")
+            continue
+        fields = dict(given)
+        unknown = sorted(set(fields) - DEADLINE_FIELDS)
+        if unknown:
+            findings.append(f"`{where}` names {', '.join(unknown)}, which a deadline has not")
+            continue
+        if fields.get("at_limit") is None:
+            findings.append(
+                f"`{where}` names no `at_limit`; a deadline without an action does not register"
+            )
+            continue
+        try:
+            document: dict[str, Any] = {
+                **_starting(fields.get("from"), where),
+                "limit": _duration(fields.get("limit")),
+                "lead": _duration(fields.get("lead")),
+                "working": _counts(fields.get("counts", "calendar"), where),
+                "until": _until(fields.get("until"), where),
+                "at_lead": _action(fields.get("at_lead"), f"{where}.at_lead"),
+                "at_limit": _action(fields.get("at_limit"), f"{where}.at_limit"),
+            }
+            if document["limit"] is None:
+                raise InvalidProcess((f"`{where}` names no `limit`",))
+            declared[str(name)] = DeadlineDeclaration.model_validate(document)
+        except InvalidProcess as error:
+            findings.extend(error.findings)
+        except ValidationError as error:
+            findings.extend(_describe(where, error))
+    if findings:
+        raise InvalidProcess(tuple(findings))
+    return declared
+
+
+DEADLINE_FIELDS = frozenset({"from", "limit", "lead", "counts", "until", "at_lead", "at_limit"})
+ACTIONS = ("remind", "escalate", "start")
+
+
+def _starting(raw: Any, where: str) -> dict[str, Any]:
+    if raw == "run":
+        return {"start": "run"}
+    if isinstance(raw, Mapping) and len(raw) == 1:
+        ((key, value),) = raw.items()
+        if key == "after" and isinstance(value, str):
+            return {"start": "after", "after": value}
+        if key == "date" and isinstance(value, str):
+            return {"start": "date", "date_input": value}
+    raise InvalidProcess(
+        (f"`{where}.from` is `run`, `{{after: <step>}}` or `{{date: <input>}}`, not {raw!r}",)
+    )
+
+
+def _counts(raw: Any, where: str) -> bool:
+    if raw not in ("calendar", "working"):
+        raise InvalidProcess((f"`{where}.counts` is `calendar` or `working`, not {raw!r}",))
+    return bool(raw == "working")
+
+
+def _until(raw: Any, where: str) -> str:
+    if isinstance(raw, Mapping) and set(raw) == {"step"} and isinstance(raw["step"], str):
+        return str(raw["step"])
+    raise InvalidProcess((f"`{where}.until` names the step that meets it: `{{step: <step>}}`",))
+
+
+def _action(raw: Any, where: str) -> dict[str, Any] | None:
+    """`{remind: <role>}`, `{escalate: <role>}` or `{start: {process, inputs}}`."""
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping) or len(raw) != 1 or next(iter(raw)) not in ACTIONS:
+        raise InvalidProcess(
+            (
+                f"`{where}` is exactly one of `{{remind: <role>}}`, `{{escalate: <role>}}` or "
+                "`{start: {process: <process>}}`",
+            )
+        )
+    ((kind, target),) = raw.items()
+    if kind == "start":
+        if not isinstance(target, Mapping):
+            raise InvalidProcess((f"`{where}.start` names `process` and may give `inputs`",))
+        return {
+            "kind": kind,
+            "process": target.get("process"),
+            "inputs": target.get("inputs") or {},
+        }
+    if not isinstance(target, str):
+        raise InvalidProcess((f"`{where}.{kind}` names a role, never a person",))
+    return {"kind": kind, "role": target}
 
 
 def _slo(raw: Any) -> Slo | None:

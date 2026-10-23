@@ -7,7 +7,7 @@ import json
 import re
 from collections.abc import Mapping
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
@@ -260,6 +260,66 @@ class OpenWorkCap(Value):
         return self
 
 
+DEADLINE_NAME = r"^[a-z][a-z0-9_]*$"
+"""A deadline's name is a token: `first_answer`, `renewal`."""
+ROLE = r"^[a-z][a-z0-9_.-]*$"
+"""A role, as the organisation's structure names it."""
+
+
+class DeadlineAction(Value):
+    """What a deadline does at its lead time or its limit: exactly one of a reminder to a role,
+    an escalation to a role, or a start of a process (ADR-0133 §1). Never a person."""
+
+    kind: Literal["remind", "escalate", "start"]
+    role: str | None = Field(default=None, pattern=ROLE)
+    process: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]*$")
+    inputs: Mapping[str, Any] = Field(default_factory=dict)
+    """The literal inputs a started run is given."""
+
+    @model_validator(mode="after")
+    def _one_target(self) -> DeadlineAction:
+        if self.kind == "start":
+            if self.process is None or self.role is not None:
+                raise ValueError("a start names a process and no role")
+        elif self.role is None or self.process is not None or self.inputs:
+            raise ValueError(f"a {self.kind} names a role, and nothing else")
+        return self
+
+
+class DeadlineDeclaration(Value):
+    """One deadline of the process (ADR-0133 §1): the moment it starts from, its limit, an
+    optional lead time, how it counts, the step whose finish meets it, and its actions."""
+
+    start: Literal["run", "after", "date"]
+    after: StepId | None = None
+    """The step whose finish starts it, for `after`."""
+    date_input: str | None = Field(default=None, min_length=1)
+    """The input that names its moment, for `date`."""
+    limit: timedelta
+    lead: timedelta | None = None
+    working: bool = False
+    """True: the limit and the lead count in the tenant's working time."""
+    until: StepId
+    at_lead: DeadlineAction | None = None
+    at_limit: DeadlineAction
+
+    @model_validator(mode="after")
+    def _sound(self) -> DeadlineDeclaration:
+        if (self.start == "after") != (self.after is not None):
+            raise ValueError("`from: {after: <step>}` names the step it starts after")
+        if (self.start == "date") != (self.date_input is not None):
+            raise ValueError("`from: {date: <input>}` names the input that holds the date")
+        if self.limit < timedelta(0):
+            raise ValueError("`limit` is no shorter than nothing")
+        if self.lead is not None and self.lead <= timedelta(0):
+            raise ValueError("`lead` is longer than nothing")
+        if self.lead is not None and self.at_lead is None:
+            raise ValueError("a `lead` without `at_lead` does nothing; name its action")
+        if self.at_lead is not None and self.lead is None:
+            raise ValueError("`at_lead` names an action and no `lead` says when")
+        return self
+
+
 class ProcessVersion(Value):
     """One version of a process: the graph, its triggers and service level, and who changed
     what and why. Every invariant of the graph is checked here; an instance is valid or does
@@ -285,6 +345,9 @@ class ProcessVersion(Value):
     open_work: Mapping[str, OpenWorkCap] = Field(default_factory=dict)
     """The cap on each kind of the process's open outcomes, by kind (ADR-0132). Only a person
     changes it: a version that changes it is registered only with a person's approval."""
+    deadlines: Mapping[str, DeadlineDeclaration] = Field(default_factory=dict)
+    """The deadlines of each run, by name (ADR-0133). Taktus keeps them; no worker and no
+    outside timer does."""
     author: str | None = None
     reason: str | None = None
 
@@ -298,6 +361,26 @@ class ProcessVersion(Value):
             if re.fullmatch(OPEN_WORK_KIND, kind) is None
         )
         ids = {step.id for step in self.steps}
+        for name, deadline in self.deadlines.items():
+            if re.fullmatch(DEADLINE_NAME, name) is None:
+                findings.append(
+                    f"`deadlines` names {name!r}; a deadline's name is a lowercase token"
+                )
+            if deadline.after is not None and deadline.after not in ids:
+                findings.append(
+                    f"the deadline {name!r} starts after {deadline.after!r}, which is not a "
+                    "step of this process"
+                )
+            if deadline.until not in ids:
+                findings.append(
+                    f"the deadline {name!r} is met by {deadline.until!r}, which is not a step "
+                    "of this process"
+                )
+            if deadline.date_input is not None and deadline.date_input not in self.inputs:
+                findings.append(
+                    f"the deadline {name!r} starts at the input {deadline.date_input!r}, which "
+                    "the process does not declare under `inputs`"
+                )
         findings.extend(
             f"work is given for {step_id!r}, which is not a step of this process"
             for step_id in self.work

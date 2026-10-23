@@ -28,7 +28,7 @@ from taktus.components.identity.domain.model import (
 )
 from taktus.components.process.domain.model import Process, ProcessVersion, TriggerState
 from taktus.components.reporting.domain.model import Corridor, OwnerChannel, Report
-from taktus.components.run.domain.model import Run, RunState, StepState
+from taktus.components.run.domain.model import Deadline, Run, RunState, StepState, WorkingTime
 from taktus.ports.persistence import WrongTenant
 from taktus.shared.v1 import Command, Plan
 
@@ -59,6 +59,8 @@ AGGREGATES: list[tuple[type[Any], Any]] = [
     (CorrectionLimits, samples.correction_limits),
     (ResidencyRule, samples.residency_rule),
     (SourceDeclaration, samples.source_declaration),
+    (Deadline, samples.deadline),
+    (WorkingTime, samples.working_time),
 ]
 
 

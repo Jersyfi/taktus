@@ -264,7 +264,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   open work in the process component through `CapsOfTheVersion`, and the tenant's limits on
   repetition with the incident a stop raises through `RepetitionOfTheRun` over the governance
   component's `Repetitions`, both in `composition/decisions.py`; `taktusctl incident configure`
-  sets the limits (ADR-0132). The models
+  sets the limits (ADR-0132). The run reaches a version's deadlines in the process component
+  through `DeadlinesOfTheVersion`, in the same module, and its `DeadlineKeeper` keeps them;
+  the scheduler takes their actions in `composition/deadlines.py`, which starts a process
+  through the command component as a trigger does, and `taktusctl deadline` lists them and sets
+  the tenant's working time (ADR-0133). The models
   configured in `TAKTUS_MODELS` reach the run as one pool in chain order
   (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the
   model contract's suite with its own endpoint (`composition/conformance.py`); deadlines and

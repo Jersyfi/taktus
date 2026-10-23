@@ -162,6 +162,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from taktus.components.run.application.query.recordings import RecordedResponses
+from taktus.components.run.application.service.deadlines import DeadlineKeeper
 from taktus.components.run.domain.model import (
     INTERRUPTIBLE,
     PROCEED,
@@ -645,6 +646,7 @@ class RunEngine:
         sources: Sources | None = None,
         open_work: OpenWork | None = None,
         repetition: Repetition | None = None,
+        deadlines: DeadlineKeeper | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -677,6 +679,9 @@ class RunEngine:
         self._repetition = repetition
         """The tenant's limits on repetition, and where a stop raises its incident (ADR-0132
         §5). None: no call is counted and no step is stopped for repeating."""
+        self._deadlines = deadlines
+        """Where a run's deadlines are started and met, in the transaction of the entry that
+        starts or meets one (ADR-0133). None: a run carries no deadline."""
         self._repeating: set[str] = set()
         """Runs whose current step the rule on repetition stopped: they halt with cause
         `repeated`."""
@@ -831,6 +836,9 @@ class RunEngine:
             steps=command.plan.steps,
             work=command.work,
             inputs=dict(command.inputs),
+            deadlines=()
+            if self._deadlines is None
+            else await self._deadlines.declared(command.tenant, command.process_version),
             rehearsal=command.rehearsal,
             created_at=now,
             updated_at=now,
@@ -5084,6 +5092,25 @@ class RunEngine:
             # The trace this entry is recorded in: what joins the ledger and the telemetry.
             trace_id=self._telemetry.current_trace_id(),
         )
+        entry = await self._entry(run, kind, step, outcome, refs, digest, duration, bare)
+        if self._deadlines is not None:
+            # In the same transaction: an entry that starts or meets a deadline does so with it.
+            await self._deadlines.observe(
+                run, kind, None if step is None else step.step_id, outcome
+            )
+        return entry
+
+    async def _entry(
+        self,
+        run: Run,
+        kind: str,
+        step: StepRun | None,
+        outcome: str | None,
+        refs: LedgerRefs,
+        digest: Digest | None,
+        duration: float | None,
+        bare: bool,
+    ) -> LedgerEntry:
         consumption: Consumption | None = None
         if bare:
             return await self._ledger.record(

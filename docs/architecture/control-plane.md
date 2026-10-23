@@ -387,6 +387,17 @@ the tenant's limit within the run (`taktusctl incident configure --repeated-call
 names the action, the count and the limit, the run halts with cause `repeated`, and an incident
 of kind `step.repeated` is raised.
 
+**A process declares its deadlines, and Taktus keeps them** (ADR-0133, UC-4.17). A version may
+declare `deadlines`: from what moment each counts — the run's creation, a step's finish or a date
+among its inputs — its limit, an optional lead time, whether it counts in calendar time or the
+tenant's working time, the step whose finish meets it, and the action at the lead and at the
+limit: a reminder or an escalation to a role, or a start of a process. A run carries its
+version's deadlines. The engine starts and meets them in the transaction of the entry that says
+so (`deadline.started`, `deadline.met`), and the elected scheduler takes each due action once,
+in one transaction with its entry (`deadline.lead`, `deadline.reached`). No worker and no
+outside timer keeps a deadline. `taktusctl deadline list` lists the open ones, by when they fall
+due.
+
 The model above handles failures. Result defects need a record that this version writes and a
 detection that `0.5.0` adds; the record is the provenance chain of §6.1.
 

@@ -1,0 +1,14 @@
+{
+  "seq": 40,
+  "ts": "2026-10-23T09:00:12Z",
+  "kind": "deadline.reached",
+  "prev_hash": "sha256:7c2e9b4a1d6f3e8c5b0a7d2f9e4c1b6a3d8f5e0c7b2a9d4f1e6c3b8a5d0f7e2c",
+  "hash": "sha256:1a6d3f8c5e0b7a2d9f4c1e6b3a8d5f0c7e2b9a4d1f6c3e8b5a0d7f2c9e4b1a6d",
+  "refs": {
+    "tenant": "acme",
+    "process_version": "support-case@2",
+    "run_id": "run_8d2f4a6c",
+    "deadline_id": "dl_0b9e4c2a7f1d5e3a8c6b4d2f"
+  },
+  "outcome": "escalate"
+}
