@@ -16,7 +16,10 @@ second path.
 
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from taktus.components.reporting.domain.model.live import CountedRuns, ProcessRef, Reader, RunRef
+from taktus.components.reporting.domain.model.trace import OWNER
 
 
 def may_see(reader: Reader, run: RunRef) -> bool:
@@ -36,3 +39,13 @@ def may_see_process(reader: Reader, process: ProcessRef) -> bool:
     The runs of a process are asked of `may_see` one by one; a process a reader may see can
     still have runs the reader may not."""
     return process.tenant == reader.tenant
+
+
+def may_see_trace(reader: Reader, run: RunRef, shared_with: Collection[str]) -> bool:
+    """Whether a reader may see the trace inside a step of a run (ADR-0135 §4). Only where
+    `may_see` lets them see the run: a share never widens what a role sees of runs. Then the
+    reader holds the owner's role, or a role the trace is shared with. A trace is shared with a
+    role and never with a person, so no identity opens it by its name."""
+    if not may_see(reader, run):
+        return False
+    return OWNER in reader.roles or any(role in shared_with for role in reader.roles)

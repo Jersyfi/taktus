@@ -243,6 +243,7 @@ from taktus.components.run.domain.service.capacity import (
 )
 from taktus.components.run.domain.service.projections import CALIBRATION, step_key
 from taktus.components.run.domain.service.rehearsal import REHEARSED
+from taktus.components.run.domain.service.trace import line_of
 from taktus.components.run.ports import (
     Anchors,
     Breach,
@@ -302,6 +303,7 @@ from taktus.ports.persistence import (
 from taktus.ports.platform import Platform
 from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue, TakeoverAsked
 from taktus.ports.telemetry import Span, Telemetry
+from taktus.ports.traces import Masking, Traces
 from taktus.ports.worker import (
     ArtifactProduced,
     Assignment,
@@ -311,6 +313,7 @@ from taktus.ports.worker import (
     Callback,
     ConsumptionReported,
     Context,
+    Event,
     Frame,
     Limits,
     NoEstimator,
@@ -647,6 +650,8 @@ class RunEngine:
         open_work: OpenWork | None = None,
         repetition: Repetition | None = None,
         deadlines: DeadlineKeeper | None = None,
+        traces: Traces | None = None,
+        masking: Masking | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -682,6 +687,12 @@ class RunEngine:
         self._deadlines = deadlines
         """Where a run's deadlines are started and met, in the transaction of the entry that
         starts or meets one (ADR-0133). None: a run carries no deadline."""
+        self._traces = traces
+        """Where every event a worker reports is kept, masked, as a line of its step's trace
+        (ADR-0135). None: no trace is kept."""
+        self._masking = masking
+        """What masks every secret value the instance holds in a line. None: a trace is kept
+        only where the composition root hands one, so a store without it keeps no line."""
         self._repeating: set[str] = set()
         """Runs whose current step the rule on repetition stopped: they halt with cause
         `repeated`."""
@@ -4462,6 +4473,25 @@ class RunEngine:
             return work.capacity_ceiling_seconds
         return self._options.capacity_ceiling_seconds
 
+    async def _traced(self, run: Run, step_run: StepRun, event: Event) -> None:
+        """The event kept as a line of the step's trace, in a transaction of its own, as it
+        arrives (ADR-0135 §1). The trace is no part of the run's record: a line that cannot be
+        kept is lost, and the step goes on."""
+        if self._traces is None or self._masking is None:
+            return
+        line = line_of(
+            event,
+            run_id=run.id,
+            step_id=step_run.step_id,
+            recorded_at=self._clock.now(),
+            mask=self._masking.mask,
+        )
+        try:
+            async with self._work.transaction(run.tenant):
+                await self._traces.append(run.tenant, line)
+        except Exception:  # the trace never stops the work it watches
+            return
+
     async def _unavailable(
         self, run: Run, step_run: StepRun, adapter: str, span: Span, error: WorkerError
     ) -> tuple[Run, StepRun]:
@@ -4505,6 +4535,7 @@ class RunEngine:
             async for event in worker.events(assignment_id, after=after):
                 if event.seq <= last_seq:
                     continue  # its effect is held already
+                await self._traced(run, step_run, event)
                 if isinstance(event, ConsumptionReported):
                     _accumulate(used, event)
                 elif isinstance(event, ArtifactProduced):

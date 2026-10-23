@@ -268,7 +268,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   through `DeadlinesOfTheVersion`, in the same module, and its `DeadlineKeeper` keeps them;
   the scheduler takes their actions in `composition/deadlines.py`, which starts a process
   through the command component as a trigger does, and `taktusctl deadline` lists them and sets
-  the tenant's working time (ADR-0133).
+  the tenant's working time (ADR-0133). The run keeps every event a worker reports as a line of
+  its step's trace through `ports/traces.py`, masked by the composition root's `KnownSecrets`;
+  the reporting component's `StepTraces` reads the trace beside the run level, shares it by role
+  and keeps the tenant's retention, which `taktusctl trace retention` sets, and the scheduler
+  erases what it ended in `composition/traces.py` (ADR-0135).
   While it leads it also looks at every process's evaluation cases
   once a minute (`composition/evaluations.py`, ADR-0134): `Evaluations` starts a drift
   evaluation at every slot of a version's evaluation schedule, moves every evaluation on — its

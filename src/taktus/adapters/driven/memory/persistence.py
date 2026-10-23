@@ -42,6 +42,9 @@ PROVENANCE = "provenance"
 class Transaction:
     tenant: Tenant
     puts: dict[tuple[str, str], Any] = field(default_factory=dict)  # (kind, id) → item
+    removed: set[tuple[str, str]] = field(default_factory=set)
+    """The items this transaction deletes, by kind and id: only a store that erases what its
+    retention ended does (ADR-0135)."""
     appended: list[LedgerEntry] = field(default_factory=list)
     recorded: list[Provenance] = field(default_factory=list)
     spoilt: bool = False
@@ -111,6 +114,9 @@ class MemoryPersistence:
         touched: set[str] = set()
         for (kind, id), item in transaction.puts.items():
             self._tables.setdefault(kind, {}).setdefault(transaction.tenant, {})[id] = item
+            touched.add(kind)
+        for kind, id in transaction.removed:
+            self._tables.setdefault(kind, {}).setdefault(transaction.tenant, {}).pop(id, None)
             touched.add(kind)
         if transaction.appended:
             self._ledger.setdefault(transaction.tenant, []).extend(transaction.appended)

@@ -52,6 +52,7 @@ from taktus.adapters.driven.postgres import (
     PostgresQueue,
     PostgresRepository,
     PostgresTenantStore,
+    PostgresTraceStore,
     SchemaOutOfDate,
     check_schema,
     upgrade,
@@ -118,6 +119,7 @@ from taktus.components.reporting.application.service import (
     LiveChanges,
     ProductFindings,
     SignalWatch,
+    StepTraces,
 )
 from taktus.components.reporting.domain.model import OwnerChannel, PendingAct
 from taktus.components.run.application.query import (
@@ -182,6 +184,7 @@ from taktus.composition.settings import Role, Settings, load
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
 from taktus.composition.takeover_in_channel import TakeoverInChannel
+from taktus.composition.traces import traces_tick
 from taktus.composition.triggers import Triggers
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
@@ -270,6 +273,9 @@ class Wired:
     """A change held to the process's evaluation cases, and drift measured on them, which the
     scheduler advances (ADR-0134)."""
     agent: AgentSurface
+    traces: StepTraces
+    """The trace inside a worker's step, read and shared by role, and erased by the scheduler
+    when its retention ends (ADR-0135)."""
     """What the MCP surface needs beyond the HTTP surface's services (ADR-0131)."""
     moves: MethodMoves | None = None
     """An accepted proposal to move a step applied, and a move rolled back (ADR-0114)."""
@@ -416,6 +422,10 @@ async def wire(
             session_lifetime=timedelta(hours=settings.session_hours),
         )
         provenance_store = PostgresProvenanceStore(persistence)
+        trace_store = PostgresTraceStore(persistence)
+        # Every secret value the instance holds: masked in a step's trace, and never sent in a
+        # message (ADR-0135 §2).
+        secrets = known_secrets(os.environ, also=[settings.database.reveal()])
         queue = PostgresQueue(persistence, lease_seconds=settings.lease_seconds)
 
         def stored[T: Stored](kind: type[T]) -> Repository[T]:
@@ -494,6 +504,8 @@ async def wire(
                     open_work=decisions.open_work,
                     repetition=decisions.repetition,
                     deadlines=decisions.deadlines,
+                    traces=trace_store,
+                    masking=secrets,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -525,7 +537,7 @@ async def wire(
                 pools.connectors,
                 decisions.answer,
                 decisions.confirm,
-                known_secrets(os.environ, also=[settings.database.reveal()]),
+                secrets,
                 decided=decided,
                 # The owner's conversation answers a request for a representation with its
                 # text equivalent and a link, read as the web app reads it (ADR-0069).
@@ -788,6 +800,13 @@ async def wire(
                     LiveOptions(max_streams=settings.live_streams),
                 ),
                 levels=levels,
+                traces=StepTraces(
+                    records=levels.records,
+                    traces=trace_store,
+                    work=persistence,
+                    ledger=ledger,
+                    clock=clock,
+                ),
                 proposals=proposals,
                 proposal_acts=proposal_acts,
                 evaluations=evaluations,
@@ -1064,6 +1083,8 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it measures drift on every process's evaluation cases, moves every evaluation on,
         # and proposes a case for every corrected draft (ADR-0134).
         evaluate = evaluations_tick(wired.evaluations, wired.tenants, wired.clock)
+        # And it erases every line of a trace whose tenant's retention ended (ADR-0135).
+        erase_traces = traces_tick(wired.traces, wired.tenants, wired.clock)
 
         async def scheduled() -> None:
             await wired.triggers.tick()
@@ -1076,6 +1097,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await report_alerts()
             await judge_signals()
             await evaluate()
+            await erase_traces()
 
         tasks.append(
             asyncio.create_task(

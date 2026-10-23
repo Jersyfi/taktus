@@ -353,3 +353,30 @@ export interface ResponseTimes {
 	by_role?: ResponseAggregate[];
 	by_department?: ResponseAggregate[];
 }
+
+/** One event a worker reported inside a step, as its trace keeps it (ADR-0135). */
+export interface TraceLine {
+	position: number;
+	ts: string;
+	type: string;
+	/** The line as a sentence: its text equivalent. */
+	text: string;
+	detail?: Record<string, unknown>;
+}
+
+/** `GET /levels/runs/{run}/steps/{step}/trace`: the trace inside a worker's step, from a
+ * position on, with every secret value masked (ADR-0135, UC-6.14). */
+export interface TraceView {
+	run_id: string;
+	step_id: string;
+	state: string;
+	/** Whether more lines may come: the page asks again while it is. */
+	open: boolean;
+	lines?: TraceLine[];
+	/** The last position read: what the next read passes as `after`. */
+	after: number;
+	/** The roles the trace is shared with, beside the owner's. */
+	shared_with?: string[];
+	/** Where the web app shows the trace, relative to the surface. */
+	link: string;
+}

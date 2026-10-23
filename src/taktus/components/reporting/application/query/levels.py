@@ -27,6 +27,11 @@ class LevelQueries:
     def __init__(self, records: LevelRecords) -> None:
         self._records = records
 
+    @property
+    def records(self) -> LevelRecords:
+        """The records the levels are drawn from: what the trace of a step is read beside."""
+        return self._records
+
     async def run(self, reader: Reader, run_id: str) -> RunLevel | None:
         """The run level of one run; None when there is no such run or the reader may not
         see it — the two are answered alike."""

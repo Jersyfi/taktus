@@ -20,6 +20,7 @@ from taktus.adapters.driven.postgres.queue import PostgresQueue
 from taktus.adapters.driven.postgres.repository import PostgresRepository
 from taktus.adapters.driven.postgres.signal import PostgresLedgerSignal
 from taktus.adapters.driven.postgres.tenant_store import PostgresTenantStore
+from taktus.adapters.driven.postgres.trace_store import PostgresTraceStore
 
 __all__ = [
     "PostgresBackupLog",
@@ -33,6 +34,7 @@ __all__ = [
     "PostgresQueue",
     "PostgresRepository",
     "PostgresTenantStore",
+    "PostgresTraceStore",
     "SchemaOutOfDate",
     "check_schema",
     "upgrade",

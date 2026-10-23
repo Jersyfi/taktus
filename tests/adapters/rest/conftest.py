@@ -20,6 +20,7 @@ from taktus.adapters.driven.memory import (
     MemoryPersistence,
     MemoryProvenanceStore,
     MemoryRepository,
+    MemoryTraceStore,
 )
 from taktus.adapters.driven.memory.queue import MemoryQueue
 from taktus.adapters.driven.telemetry import NoTelemetry
@@ -52,6 +53,7 @@ from taktus.components.reporting.application.service import (
     FindingsIntake,
     LiveChanges,
     ProductFindings,
+    StepTraces,
 )
 from taktus.components.reporting.domain.model import BackupState, Corridor, Judged
 from taktus.components.run.application.service import HandBack, RunEngine, TakeOver
@@ -302,6 +304,17 @@ class Services:
                 MemoryProvenanceStore(self.persistence),
                 MemoryRepository(self.persistence, Request),
             )
+        )
+
+    @property
+    def traces(self) -> StepTraces:
+        """The trace inside a step, over this world's stores (ADR-0135)."""
+        return StepTraces(
+            records=self.levels.records,
+            traces=MemoryTraceStore(self.persistence),
+            work=self.persistence,
+            ledger=self.ledger,
+            clock=self.clock,
         )
 
     @property

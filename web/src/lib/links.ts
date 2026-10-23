@@ -33,3 +33,9 @@ export function changeLink(processId: string): string {
 export function reportLink(reportId: string): string {
 	return `#/reports/${encodeURIComponent(reportId)}`;
 }
+
+/** A run opened at the trace inside one of its steps: the route a share's link names
+ * (ADR-0135). The control plane builds the same route (`traces.py`'s `link`). */
+export function traceLink(runId: string, stepId: string): string {
+	return `#/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}`;
+}

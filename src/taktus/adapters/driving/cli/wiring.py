@@ -40,6 +40,7 @@ from taktus.components.reporting.application.service import (
     Corridors,
     ProductFindings,
     SignalWatch,
+    StepTraces,
 )
 from taktus.components.run.application.query import ProvenanceQuery, StepMeasures
 from taktus.components.run.application.service import (
@@ -175,6 +176,9 @@ class Services:
     ADR-0130)."""
     deadlines: DeadlineKeeper | None = None
     """The tenant's open deadlines and its working time (`taktusctl deadline`, ADR-0133)."""
+    traces: StepTraces | None = None
+    """How long the tenant keeps the trace inside a step, shown and set (`taktusctl trace`,
+    ADR-0135)."""
 
 
 @dataclass(frozen=True)
