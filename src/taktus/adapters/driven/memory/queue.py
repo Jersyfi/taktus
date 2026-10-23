@@ -9,6 +9,9 @@ adapter runs.
 
 The fence (`fence`, #107) holds the job for the open transaction, the way the row lock does in
 the database: until the transaction ends, a claim skips the job.
+
+A take-over (ADR-0128) is asked on the row, passed on as a claim held until a time, and released
+by the hand-back, as in the database (`migrations/versions/0064_takeover.py`).
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from pydantic import Field
 from taktus.adapters.driven.memory.persistence import MemoryPersistence
 from taktus.ports.clock import Clock
 from taktus.ports.persistence import PersistenceError, Tenant
-from taktus.ports.queue import Claim, Job
+from taktus.ports.queue import RUN_EXECUTE, Claim, Job, TakeoverAsked
 from taktus.shared.v1 import Value
 
 KIND = "job"
@@ -39,6 +42,11 @@ class JobRow(Value):
     """When a deferred job is claimable again; None means at once."""
     claimed_at: datetime | None = None
     claimed_by: str | None = None
+    held_until: datetime | None = None
+    """For a claim passed to a take-over: until when it is held, whatever the lease."""
+    takeover_by: str | None = None
+    """The take-over asked and not yet served: the claimant the claim passes to."""
+    takeover_step: str | None = None
 
     def job(self) -> Job:
         return Job(
@@ -100,13 +108,21 @@ class MemoryQueue:
                 or (row.available_at is not None and row.available_at > now)
             ):
                 continue
-            held = row.claimed_at is not None and (now - row.claimed_at).total_seconds() < (
-                self._lease
-            )
+            if row.held_until is not None:
+                held = row.held_until > now  # a take-over's claim: until its time (ADR-0128)
+            else:
+                held = row.claimed_at is not None and (now - row.claimed_at).total_seconds() < (
+                    self._lease
+                )
             if held:
                 continue
             updated = row.model_copy(
-                update={"claimed_at": now, "claimed_by": claimant, "attempts": row.attempts + 1}
+                update={
+                    "claimed_at": now,
+                    "claimed_by": claimant,
+                    "attempts": row.attempts + 1,
+                    "held_until": None,
+                }
             )
             table[row.id] = updated
             claimed.append(updated.job())
@@ -118,6 +134,8 @@ class MemoryQueue:
         row = table.get(job_id)
         if row is None or row.claimed_by != claimant or row.claimed_at is None:
             return False
+        if row.held_until is not None:
+            return bool(row.held_until > self._clock.now())  # a take-over's is not renewed
         if (self._clock.now() - row.claimed_at).total_seconds() >= self._lease:
             return False  # expired: someone else may hold it by now
         table[job_id] = row.model_copy(update={"claimed_at": self._clock.now()})
@@ -144,7 +162,9 @@ class MemoryQueue:
         table = self._persistence.table(KIND, tenant)
         row = table.get(job_id)
         if row is not None and row.claimed_by == claimant:
-            table[job_id] = row.model_copy(update={"claimed_at": None, "claimed_by": None})
+            table[job_id] = row.model_copy(
+                update={"claimed_at": None, "claimed_by": None, "held_until": None}
+            )
 
     async def defer(self, tenant: Tenant, job_id: str, claimant: str, seconds: float) -> None:
         self._persistence.current(tenant)
@@ -166,3 +186,54 @@ class MemoryQueue:
         row = table.get(job_id)
         if row is not None and row.claimed_by == claimant:
             del table[job_id]
+
+    async def ask_takeover(self, tenant: Tenant, run_id: str, step_id: str, holder: str) -> bool:
+        self._persistence.current(tenant)
+        table = self._persistence.table(KIND, tenant)
+        for row in table.values():
+            if row.kind != RUN_EXECUTE or row.payload.get("run_id") != run_id:
+                continue
+            if row.claimed_by is None or row.held_until is not None or row.takeover_by:
+                return False
+            table[row.id] = row.model_copy(update={"takeover_by": holder, "takeover_step": step_id})
+            return True
+        return False
+
+    async def takeover_asked(self, tenant: Tenant, job_id: str) -> TakeoverAsked | None:
+        self._persistence.current(tenant)
+        row = self._persistence.table(KIND, tenant).get(job_id)
+        if row is None or row.takeover_by is None or row.takeover_step is None:
+            return None
+        return TakeoverAsked(holder=row.takeover_by, step_id=row.takeover_step)
+
+    async def withdraw_takeover(self, tenant: Tenant, job_id: str, holder: str) -> None:
+        self._persistence.current(tenant)
+        table = self._persistence.table(KIND, tenant)
+        row = table.get(job_id)
+        if row is not None and row.takeover_by == holder:
+            table[job_id] = row.model_copy(update={"takeover_by": None, "takeover_step": None})
+
+    async def pass_claim(self, tenant: Tenant, claim: Claim, holder: str, seconds: float) -> bool:
+        self._persistence.current(tenant)
+        table = self._persistence.table(KIND, tenant)
+        row = table.get(claim.job_id)
+        if (
+            row is None
+            or row.claimed_by != claim.claimant
+            or row.attempts != claim.attempt
+            or row.takeover_by != holder
+        ):
+            return False
+        now = self._clock.now()
+        table[claim.job_id] = row.model_copy(
+            update={
+                "claimed_at": now,
+                "claimed_by": holder,
+                "attempts": row.attempts + 1,
+                "deferrals": row.deferrals + 2,  # the runner's claim and the holder's
+                "held_until": now + timedelta(seconds=seconds),
+                "takeover_by": None,
+                "takeover_step": None,
+            }
+        )
+        return True

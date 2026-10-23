@@ -634,6 +634,9 @@ job = Table(
     Column("attempts", Integer, nullable=False, server_default=text("0")),
     Column("deferrals", Integer, nullable=False, server_default=text("0")),  # ADR-0037
     _at("created_at"),
+    Column("takeover_by", Text),  # ADR-0128
+    Column("takeover_step", Text),
+    _at("held_until", nullable=True),
     PrimaryKeyConstraint("tenant", "id"),
     Index(
         "job_available",

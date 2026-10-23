@@ -142,7 +142,8 @@ class StepState(StrEnum):
     """The step waits for a person before anything of it starts: a confirmation at level 2, the
     act performed by the person at level 1 (ADR-0039), a decision on an anchored act at any
     level (ADR-0042) — or, after it ran, for a person to perform it because its model was
-    unsure (ADR-0076). Steps that do not depend on it run on."""
+    unsure (ADR-0076), or for the person who took it over to hand it back (ADR-0128). Steps
+    that do not depend on it run on, except beside a step taken over."""
 
 
 STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
@@ -187,6 +188,10 @@ STEP_TRANSITIONS: frozenset[tuple[StepState, StepState]] = frozenset(
         # The model of an `ml` step was unsure: the step goes to its fallback, a person, and its
         # answer stays in the step (ADR-0076).
         (StepState.RUNNING, StepState.WAITING_HUMAN),
+        # A person took the step over at its worker's boundary, and hands it back or lets the
+        # lease lapse, which gives it back to its worker at the checkpoint (ADR-0128).
+        (StepState.STOPPED, StepState.WAITING_HUMAN),
+        (StepState.WAITING_HUMAN, StepState.STOPPED),
         # The person an anchor names declined the act: the step is not run (ADR-0042).
         (StepState.WAITING_HUMAN, StepState.REJECTED),
         # A resume after a decline raises the anchor's request again (ADR-0042).

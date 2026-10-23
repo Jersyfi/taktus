@@ -281,6 +281,11 @@ class Wired:
         return self.owner.answering
 
     @property
+    def takeovers(self) -> RunEngine:
+        """A running step taken over and handed back, through the engine (ADR-0128)."""
+        return self.engine
+
+    @property
     def operation(self) -> OperationRecords:
         """Incidents, alerts, the backup and the signals, read for the HTTP surface (ADR-0121)."""
         return OperationRecords(self.expected.incidents, self.alerts, self.signals)

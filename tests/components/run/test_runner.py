@@ -129,8 +129,10 @@ class World:
         model: FakeModel | None = None,
         park_after: float | None = None,
         workers: list[tuple[str, Worker]] | None = None,
+        takeover_seconds: float = 8 * 3600.0,
     ) -> None:
         self.park_after = park_after
+        self.takeover_seconds = takeover_seconds
         self.worker = worker or FakeWorker()
         self.workers: list[tuple[str, Worker]] = workers or [("worker.fake", self.worker)]
         self.model = model or FakeModel(answer="yes")
@@ -162,7 +164,10 @@ class World:
             ids=self.ids,
             telemetry=NoTelemetry(),
             queue=self.queue,
-            options=EngineOptions(park_waits_after_seconds=self.park_after),
+            options=EngineOptions(
+                park_waits_after_seconds=self.park_after,
+                takeover_lease_seconds=self.takeover_seconds,
+            ),
         )
 
     async def submit(self, *definitions: tuple[Step, dict[str, Any]], tenant: str = TENANT) -> Run:

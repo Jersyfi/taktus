@@ -1,4 +1,4 @@
-from taktus.components.run.domain.model.block import ACCOUNTS, Account, OpenBlock
+from taktus.components.run.domain.model.block import ACCOUNTS, Account, OpenBlock, Takeover
 from taktus.components.run.domain.model.errors import (
     ClaimLost,
     IllegalTransition,
@@ -7,7 +7,9 @@ from taktus.components.run.domain.model.errors import (
     RuleFailed,
     RunError,
     RunExists,
+    TakeoverRefused,
     UnknownRun,
+    UnknownTakeover,
     UnsupportedWork,
 )
 from taktus.components.run.domain.model.recorded import RECORDED_KINDS, Led, led_to
@@ -115,8 +117,11 @@ __all__ = [
     "SpamRule",
     "StepRun",
     "StepState",
+    "Takeover",
+    "TakeoverRefused",
     "TemplateRule",
     "UnknownRun",
+    "UnknownTakeover",
     "UnsupportedWork",
     "VerifyArtifactRule",
     "WaitUntil",

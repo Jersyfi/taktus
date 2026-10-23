@@ -39,7 +39,11 @@ What happens when a run ends decides the job:
   the job is completed and the run is with a person, not `running` for nobody (#591). An
   exception outside every step still releases the job, which then stays for a person;
 - the claim was lost — the job is another runner's and stays untouched; the loss is recorded as
-  `run.claim_lost` in the run's chain, so that a person hears of it (ADR-0106).
+  `run.claim_lost` in the run's chain, so that a person hears of it (ADR-0106);
+- a person took the running step over — the claim passed to the take-over with the step's
+  state, and the job is the person's until they hand the result back or their lease ends
+  (ADR-0128). The runner leaves it alone. A take-over asked on the job is read with every
+  renewal of the lease, and handed to the engine, which stops the step at its boundary.
 
 Every outcome is handed to `on_outcome`, which the daemon writes to its log: a run that did not
 finish names the step it ended at and why (#589). The runner itself keeps only the latest
@@ -70,7 +74,7 @@ from taktus.components.run.domain.service import waiting
 from taktus.ports.clock import Clock
 from taktus.ports.identity import ServedTenants
 from taktus.ports.persistence import Tenant, UnitOfWork
-from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue
+from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue, TakeoverAsked
 
 
 @dataclass(frozen=True)
@@ -108,7 +112,7 @@ class Outcome:
     tenant: Tenant
     job: Job
     run: Run | None = None
-    disposition: str = "unknown"  # completed | released | deferred | lost
+    disposition: str = "unknown"  # completed | released | deferred | lost | taken_over
     error: str | None = None
 
     @property
@@ -283,6 +287,10 @@ class Runner:
                 outcome.disposition = "released"
                 return outcome
             outcome.run = run
+            if self.engine.passed(executing.run_id):
+                # The claim passed to a person who took the step over: the job is theirs.
+                outcome.disposition = "taken_over"
+                return outcome
             if executing.lost:
                 outcome.disposition = "lost"
                 await self._note_lost(executing, outcome)
@@ -321,17 +329,25 @@ class Runner:
         """Renew the lease while the run executes. A renewal that fails means the claim is no
         longer ours: the run is asked to stop at its boundary and the job is left alone, and
         so is the worker's assignment, which the runner holding the claim now adopts
-        (ADR-0038)."""
+        (ADR-0038). A renewal also reads a take-over asked on the job, which the engine
+        serves at the step's next boundary (ADR-0128); a claim the engine passed to a take-over
+        is not lost."""
         while True:
             await self.clock.sleep(self.options.heartbeat_seconds)
             renewed = await self._renew(executing)
             if renewed is None:
                 continue  # an unreachable store is a missed heartbeat, not a lost lease
-            if not renewed:
-                executing.lost = True
-                executing.stop_requested = True
-                self.engine.relinquish(executing.run_id)
+            if renewed:
+                asked = await self._asked(executing)
+                if asked is not None:
+                    await self.engine.takeover_asked(executing.run_id, asked)
+                continue
+            if self.engine.passed(executing.run_id):
                 return
+            executing.lost = True
+            executing.stop_requested = True
+            self.engine.relinquish(executing.run_id)
+            return
 
     async def _note_lost(self, executing: _Executing, outcome: Outcome) -> None:
         """Record the lost claim in the run's chain, for the person who must look at the
@@ -350,6 +366,15 @@ class Runner:
                     executing.tenant, executing.job.id, self.options.claimant
                 )
         except Exception:  # the next heartbeat asks again; the lease decides
+            return None
+
+    async def _asked(self, executing: _Executing) -> TakeoverAsked | None:
+        """The take-over asked on the job, if any; None also when the store did not answer,
+        and the next heartbeat reads again."""
+        try:
+            async with self.work.transaction(executing.tenant):
+                return await self.queue.takeover_asked(executing.tenant, executing.job.id)
+        except Exception:  # the next heartbeat asks again
             return None
 
     async def _release(self, executing: _Executing) -> None:
