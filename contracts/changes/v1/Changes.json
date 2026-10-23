@@ -123,6 +123,8 @@
         "step.performed",
         "step.rejected",
         "step.started",
+        "step.taken_over",
+        "step.takeover_lapsed",
         "step.waiting"
       ]
     },

@@ -52,3 +52,14 @@ class ClaimLost(RunError):
     """A write of a run executed under a runner's claim was refused: another runner has
     claimed the run's job since. Nothing of the write landed, and the runner does nothing
     more for the run (#107)."""
+
+
+class TakeoverRefused(RunError):
+    """A take-over or a hand-back that cannot be done in the state the run is in: the step is
+    not a running worker step, no runner holds the run, another take-over is asked or held, or
+    the lease of the take-over has lapsed and a runner took the step back (ADR-0128). Nothing
+    was written."""
+
+
+class UnknownTakeover(RunError):
+    """No step of the run is held under the take-over named (ADR-0128)."""

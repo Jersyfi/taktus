@@ -39,6 +39,7 @@ from taktus.components.reporting.domain.model import (
     Scope,
     Snapshot,
 )
+from taktus.components.run.application.service import HandBack, TakeOver
 from taktus.components.run.domain.model import Run
 from taktus.ports.configuration import Secret
 from taktus.ports.ledger import Ledger
@@ -103,6 +104,22 @@ class ProposalActs(Protocol):
         as_version: str | None = None,
         approved_by: str | None = None,
     ) -> ProcessVersion: ...
+
+
+class Takeovers(Protocol):
+    """A running step taken over and handed back (ADR-0128): the run engine's."""
+
+    async def take_over(self, command: TakeOver) -> str:
+        """Asks the take-over; its identifier."""
+        ...
+
+    async def takeover_state(self, tenant: Tenant, run_id: str, takeover: str) -> Any:
+        """The state the step was taken over in, once the take-over is served."""
+        ...
+
+    async def hand_back(self, command: HandBack) -> Run:
+        """The person's result, written under the take-over's claim."""
+        ...
 
 
 class OperationReads(Protocol):
@@ -231,6 +248,11 @@ class RestServices(Protocol):
         at, or halts there, as the decision says. Nothing happens while another request of
         the run waits. A proposal to move a step, or to roll a move back, that the request
         answers is applied (ADR-0114)."""
+        ...
+
+    @property
+    def takeovers(self) -> Takeovers:
+        """A running step taken over and handed back (ADR-0128)."""
         ...
 
     @property

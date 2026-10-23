@@ -36,6 +36,8 @@ NO_STATE = frozenset(
         "run.triggered",  # which trigger started the run
         "step.assigned",  # the assignment handed to the worker; the step was running already
         "step.reserved",  # what admission reserved; the step was admitted already
+        "step.takeover_asked",  # a person asked to take the step over; it runs on (ADR-0128)
+        "step.takeover_refused",  # the step ended before it stopped; nothing changed
     }
 )
 """Kinds of the engine that change no state: they are never sent as a change."""

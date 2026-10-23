@@ -2083,6 +2083,170 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /runs/{run_id}/steps/{step_id}/takeover:
+    post:
+      tags:
+      - takeover
+      summary: Take over a running step
+      description: Asks that you take over a running worker step. The runner that holds the run stops
+        the step at its worker's next boundary, and passes the run to you with the state the step reached.
+        Only the first ask of a run is taken. Read the state at the take-over's own address once it is
+        served; until then that address answers `404` (ADR-0128).
+      operationId: take_over_runs__run_id__steps__step_id__takeover_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: step_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Step Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '202':
+          description: 'Asked: the take-over''s identifier, and where to read it.'
+        '409':
+          description: Not a running worker step, no runner holds the run, or a take-over of it is asked
+            or held already.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such run or take-over that you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /runs/{run_id}/takeovers/{takeover_id}:
+    get:
+      tags:
+      - takeover
+      summary: The state a step was taken over in
+      description: The step's goal, acceptance criteria and inputs, the worker's checkpoint, what the
+        worker produced so far by identifier and digest, and until when you hold it. Answered `404` while
+        the take-over is asked and not yet served, and once it was handed back or its lease lapsed (ADR-0128
+        §3).
+      operationId: state_runs__run_id__takeovers__takeover_id__get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: takeover_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Takeover Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The take-over's state.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such run or take-over that you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /runs/{run_id}/takeovers/{takeover_id}/hand-back:
+    post:
+      tags:
+      - takeover
+      summary: Hand back the result of a step you took over
+      description: 'The result becomes the step''s, produced by a person: the step succeeds with method
+        `human`, its provenance names what it read and you as its origin, and the run continues on the
+        next runner (ADR-0128 §5).'
+      operationId: hand_back_runs__run_id__takeovers__takeover_id__hand_back_post
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: takeover_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Takeover Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HandBackBody'
+      responses:
+        '200':
+          description: The run, with the step handed back.
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: The take-over's lease lapsed and the step went back to its worker; nothing was
+            handed back.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such run or take-over that you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
 components:
   schemas:
     Answer:
@@ -2129,6 +2293,16 @@ components:
       required:
       - confirmed
       title: ConfirmBody
+    HandBackBody:
+      properties:
+        result:
+          title: Result
+          description: The step's result, as one JSON value. It is kept as the step's artifact `<takeover>.result`,
+            and the steps after it read it as they would the worker's.
+      type: object
+      required:
+      - result
+      title: HandBackBody
     LinkCodeRequest:
       properties:
         channel:

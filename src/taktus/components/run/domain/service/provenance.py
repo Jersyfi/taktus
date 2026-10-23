@@ -7,6 +7,10 @@ identifiers, tokens and digests, never content. `verify` walks a run's records a
 the chain is broken: a completed step without a record, a record that disagrees with its step
 run, an input that names a step run without a record or an artifact that record does not
 list, a record that disagrees with the ledger entry it belongs to.
+
+What produced a result is the step run's method, not always its step's: a worker step a person
+took over and handed back was produced by the person, and its record says `human` — with no
+exactness class, as for every `human` step (ADR-0018, ADR-0128 §5).
 """
 
 from __future__ import annotations
@@ -18,6 +22,8 @@ from datetime import datetime
 from taktus.components.run.domain.model.run import Run, StepRun
 from taktus.components.run.domain.service.rehearsal import REHEARSED
 from taktus.shared.v1 import (
+    NON_PRODUCING,
+    ExactnessClass,
     InputKind,
     LedgerEntry,
     Provenance,
@@ -73,8 +79,8 @@ def record(
         run_id=run.id,
         step_id=step_run.step_id,
         process_version=run.process_version,
-        method=step.method,
-        exactness=step.exactness,
+        method=step_run.method,
+        exactness=_exactness(run, step_run),
         model=step.model,
         adapter=step_run.adapter,
         adapter_version=adapter_version if step_run.adapter is not None else None,
@@ -85,6 +91,14 @@ def record(
         ledger_seq=entry.seq,
         recorded_at=at,
     )
+
+
+def _exactness(run: Run, step_run: StepRun) -> ExactnessClass | None:
+    """The class a record carries: its step's, unless what produced the result produces none of
+    its own — a person who handed a step back (ADR-0018)."""
+    if step_run.method in NON_PRODUCING:
+        return None
+    return run.step(step_run.step_id).exactness
 
 
 def size_bytes(provenance: Provenance) -> int:
@@ -159,8 +173,8 @@ def _against_step_run(run: Run, step_run: StepRun, provenance: Provenance) -> li
     where = step_run.step_id
     expected = {
         "process_version": (run.process_version, provenance.process_version),
-        "method": (step.method, provenance.method),
-        "exactness": (step.exactness, provenance.exactness),
+        "method": (step_run.method, provenance.method),
+        "exactness": (_exactness(run, step_run), provenance.exactness),
         "model": (step.model, provenance.model),
         "adapter": (step_run.adapter, provenance.adapter),
         "outputs": (tuple(a.id for a in step_run.artifacts), provenance.outputs),

@@ -256,6 +256,16 @@ unnamed in the ledger, and one step is never executed by two assignments at once
 loses its claim leaves the assignment to the runner that holds it now (ADR-0038, NTC-0073;
 `tests/integration/test_handover.py` stops a runner after the worker accepted, after the first
 inner boundary, and before its post arrives).
+**A person who takes a running step over** holds the same claim (ADR-0128). The take-over is
+asked on the run's job, by the first asker only, while a runner holds it. The runner reads the
+ask with its lease, stops the worker at its next boundary, writes the state the step reached as
+an artifact, and in the same transaction passes its claim to the take-over: a new claim of the
+job, held for eight hours instead of a lease and not counted as a failed attempt. No runner
+claims the job meanwhile. The person's hand-back is written under that claim and fenced like a
+runner's write: the step succeeds with method `human`, and the released job is claimed by the
+next runner, which continues the run. A runner that claims the job once the person's time has
+passed gives the step back to its worker at the checkpoint, and a hand-back after it is refused
+(`tests/components/run/test_takeover.py`, `tests/integration/test_takeover.py`).
 A shutdown on SIGTERM asks every running run to stop at its next boundary, waits up to the
 ceiling, releases the claims and exits; the next runner resumes at that boundary
 (`tests/integration/test_daemon_shutdown.py`). From the command line, `uv run taktusctl run

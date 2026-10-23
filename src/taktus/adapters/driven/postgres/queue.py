@@ -12,6 +12,10 @@ The fence (`fence`, #107) reads the job's row `FOR SHARE` where it still names t
 the claim's attempt. The lock lasts until the transaction ends, and `claim_jobs` skips locked
 rows: no other runner can claim the job between the check and the commit of the writes made
 under it. A claim that committed first changed the row, and the check finds nothing.
+
+A take-over (ADR-0128, `0064_takeover.py`) is asked by one update that succeeds only where no
+take-over is asked or held, and only on a job a runner holds. Passing the claim moves it to the
+take-over's claimant as a new attempt, held until a time `claim_jobs` honours.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from taktus.adapters.driven.postgres import _schema as s
 from taktus.adapters.driven.postgres.persistence import PostgresPersistence
 from taktus.ports.persistence import PersistenceError, Tenant
-from taktus.ports.queue import Claim, Job
+from taktus.ports.queue import RUN_EXECUTE, Claim, Job, TakeoverAsked
 
 
 class PostgresQueue:
@@ -85,6 +89,8 @@ class PostgresQueue:
                 s.job.c.id == job_id,
                 s.job.c.claimed_by == claimant,
                 s.job.c.claimed_at >= func.now() - self._lease,
+                # A take-over's claim is held until its time, and is not renewed.
+                s.job.c.held_until.is_(None),
             )
             .values(claimed_at=func.now())
         )
@@ -109,7 +115,7 @@ class PostgresQueue:
         await connection.execute(
             update(s.job)
             .where(s.job.c.tenant == tenant, s.job.c.id == job_id, s.job.c.claimed_by == claimant)
-            .values(claimed_at=None, claimed_by=None)
+            .values(claimed_at=None, claimed_by=None, held_until=None)
         )
 
     async def defer(self, tenant: Tenant, job_id: str, claimant: str, seconds: float) -> None:
@@ -132,6 +138,66 @@ class PostgresQueue:
                 s.job.c.tenant == tenant, s.job.c.id == job_id, s.job.c.claimed_by == claimant
             )
         )
+
+    async def ask_takeover(self, tenant: Tenant, run_id: str, step_id: str, holder: str) -> bool:
+        connection = self._persistence.connection(tenant)
+        result = await connection.execute(
+            update(s.job)
+            .where(
+                s.job.c.tenant == tenant,
+                s.job.c.kind == RUN_EXECUTE,
+                s.job.c.payload["run_id"].astext == run_id,
+                s.job.c.claimed_by.is_not(None),
+                s.job.c.held_until.is_(None),
+                s.job.c.takeover_by.is_(None),
+            )
+            .values(takeover_by=holder, takeover_step=step_id)
+        )
+        return bool(result.rowcount)
+
+    async def takeover_asked(self, tenant: Tenant, job_id: str) -> TakeoverAsked | None:
+        connection = self._persistence.connection(tenant)
+        row = (
+            await connection.execute(
+                select(s.job.c.takeover_by, s.job.c.takeover_step).where(
+                    s.job.c.tenant == tenant, s.job.c.id == job_id
+                )
+            )
+        ).first()
+        if row is None or row.takeover_by is None or row.takeover_step is None:
+            return None
+        return TakeoverAsked(holder=row.takeover_by, step_id=row.takeover_step)
+
+    async def withdraw_takeover(self, tenant: Tenant, job_id: str, holder: str) -> None:
+        connection = self._persistence.connection(tenant)
+        await connection.execute(
+            update(s.job)
+            .where(s.job.c.tenant == tenant, s.job.c.id == job_id, s.job.c.takeover_by == holder)
+            .values(takeover_by=None, takeover_step=None)
+        )
+
+    async def pass_claim(self, tenant: Tenant, claim: Claim, holder: str, seconds: float) -> bool:
+        connection = self._persistence.connection(tenant)
+        result = await connection.execute(
+            update(s.job)
+            .where(
+                s.job.c.tenant == tenant,
+                s.job.c.id == claim.job_id,
+                s.job.c.claimed_by == claim.claimant,
+                s.job.c.attempts == claim.attempt,
+                s.job.c.takeover_by == holder,
+            )
+            .values(
+                claimed_at=func.now(),
+                claimed_by=holder,
+                attempts=s.job.c.attempts + 1,
+                deferrals=s.job.c.deferrals + 2,  # the runner's claim and the holder's
+                held_until=func.now() + timedelta(seconds=seconds),
+                takeover_by=None,
+                takeover_step=None,
+            )
+        )
+        return bool(result.rowcount)
 
 
 def _job(row: Row[Any]) -> Job:

@@ -71,6 +71,9 @@ AWAITING_PERFORMANCE = "awaiting_performance"
 """The step waits for a person to perform its act (level 1, ADR-0039)."""
 FELL_BACK = "fell_back"
 """The step's model was unsure, and the step went to its fallback, a person (ADR-0076)."""
+TAKEN_OVER = "taken_over"
+"""A person took the running step over and works it in their own tool, holding the run's job
+until they hand the result back or their lease lapses (ADR-0128)."""
 AWAITING_DECISION = "awaiting_decision"
 """The step's act is anchored, and waits for its decision requests to be decided (ADR-0042)."""
 WAITING_ON_STATE = "waiting_on_state"
@@ -108,6 +111,23 @@ def limit_account(kinds: Iterable[str]) -> Account:
     return "limit.quota" if named == {"quota"} else "limit.budget"
 
 
+class Takeover(Value):
+    """A person holds a step they took over (ADR-0128): under which claim of the run's job, until
+    when, and the state they received. Names no person: the ledger entry of the ask names who
+    asked."""
+
+    id: str = Field(min_length=1)
+    """The take-over identifier the person received; the claimant of the job is derived from
+    it."""
+    job_id: str = Field(min_length=1)
+    attempt: int = Field(ge=1)
+    """The claim of the job the person holds: the epoch the fence of the hand-back compares."""
+    until: datetime
+    """When the lease ends. A runner may claim the job after it, and takes the step back."""
+    state: str = Field(min_length=1)
+    """The identifier of the step's artifact that holds the state the step was taken over in."""
+
+
 class OpenBlock(Value):
     """A block that has not ended: what the step run carries while it waits."""
 
@@ -129,3 +149,6 @@ class OpenBlock(Value):
     next_check_at: datetime | None = None
     """For a `wait` step that parked its run: when the wait is checked next; the runner defers
     the job to it (ADR-0103). None for every other block."""
+    takeover: Takeover | None = None
+    """For a step a person took over: the take-over they hold (ADR-0128). None for every other
+    block."""

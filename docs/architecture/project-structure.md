@@ -313,6 +313,12 @@ role it would tie the core to a model stack and the removal test would be lost.
   (`GET /autonomy`) and `adapters/driving/rest/review.py` (`GET /findings` and the review).
   `RestServices` hands them the governance component's `Corrections` and the reporting
   component's `ProductFindings`; the daemon's `Wired` gives the ones it built (ADR-0122).
+- **A running step taken over by a person** is asked and handed back on the HTTP surface
+  (`adapters/driving/rest/takeover.py`, ADR-0128) through the port `Takeovers` of
+  `adapters/driving/rest/wiring.py`; the daemon's `Wired` gives its engine. The ask is written
+  on the run's job through the queue port, which `adapters/driven/postgres/queue.py` and the
+  memory queue implement over three columns of `job` (migration `0064`). The runner reads the
+  ask with its lease and passes its claim to the take-over at the step's boundary.
 - **A halted run raised and resumed** is `taktusctl resume` (`adapters/driving/cli/resume_command.py`, #458): it reads no bundle, so the process's active version stays; it raises a run's money or its quota (DEC-0208).
 - **Memory once started.** Once wired, the daemon collects and freezes what its start left
   alive — the modules, the wiring — so that a full garbage collection, which stops every thread

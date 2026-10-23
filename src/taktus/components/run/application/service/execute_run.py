@@ -1,13 +1,15 @@
 """Use cases: start a run from a commissioned plan, submit one for a runner, resume a halted
-one, request a stop, answer a step that waits for a person.
+one, request a stop, answer a step that waits for a person, take a running step over and hand
+it back.
 
-One engine, six entry points. `start` creates the run and executes it in this process;
+One engine, eight entry points. `start` creates the run and executes it in this process;
 `submit` creates the run and puts a job on the queue, so that a runner — this process or
 another — executes it (`runner.py`); `resume` continues a halted or escalated run at its
 boundary, starts a submitted one, or recovers a run whose instance stopped without halting it;
 `request_stop` asks a running run to stop at its next boundary; `confirm` records a person's
-answer to steps that wait for one; `decide` continues a run whose anchored steps were decided.
-Execution is sequential: one step at a time, in the plan's order.
+answer to steps that wait for one; `decide` continues a run whose anchored steps were decided;
+`take_over` asks that a person take over a running worker step, and `hand_back` records the
+result the person hands back. Execution is sequential: one step at a time, in the plan's order.
 
 Before anything of a step starts, the tenant's anchors are asked which of them name the step's
 act (ADR-0042, `run/ports/anchors.py`). An anchor holds at every autonomy level: for each one
@@ -132,6 +134,18 @@ One the worker does not know is posted again under the same id, so that a cut-of
 post arrives late meets the worker's 409. A worker that cannot be asked fails the step; nothing
 new is handed over. A runner that loses its claim leaves the assignment running for the runner
 that holds the claim now.
+
+A person can take over a worker step while it runs (ADR-0128). `take_over` asks it on the run's
+job, for the first asker only, and records `step.takeover_asked`; the runner holding the job
+reads the ask with its lease (`takeover_asked`) and asks the worker to stop. At the step's
+boundary the state it reached becomes an artifact, the step and the run wait for the person,
+and in the same transaction the claim passes to the take-over (`step.taken_over`): the person
+holds the job until the take-over's lease ends. A step that ends otherwise is not taken over
+(`step.takeover_refused`). `hand_back` writes the person's result under the take-over's claim,
+fenced as a runner's write is: the step succeeds with method `human`, its provenance names
+what it read, and the job is released for the next runner. A runner that claims the job once
+the lease has passed gives the step back to its worker at the checkpoint
+(`step.takeover_lapsed`).
 """
 
 from __future__ import annotations
@@ -141,7 +155,7 @@ import contextlib
 import hashlib
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -181,8 +195,11 @@ from taktus.components.run.domain.model import (
     SpamRule,
     StepRun,
     StepState,
+    Takeover,
+    TakeoverRefused,
     TemplateRule,
     UnknownRun,
+    UnknownTakeover,
     UnsupportedWork,
     VerifyArtifactRule,
     WaitUntil,
@@ -200,6 +217,7 @@ from taktus.components.run.domain.model import (
     select,
 )
 from taktus.components.run.domain.model.block import Account, OpenBlock
+from taktus.components.run.domain.model.run import IN_FLIGHT
 from taktus.components.run.domain.model.work import PREDICT
 from taktus.components.run.domain.service import (
     anchoring,
@@ -272,7 +290,7 @@ from taktus.ports.persistence import (
     UnitOfWork,
 )
 from taktus.ports.platform import Platform
-from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue
+from taktus.ports.queue import RUN_EXECUTE, Claim, Job, Queue, TakeoverAsked
 from taktus.ports.telemetry import Span, Telemetry
 from taktus.ports.worker import (
     ArtifactProduced,
@@ -321,6 +339,21 @@ from taktus.shared.v1.consumption import MODEL_NAME_PATTERN
 
 CLAIM_LOST = "run.claim_lost"
 """The ledger kind a runner's lost claim is recorded under (ADR-0106 §2)."""
+
+TAKEOVER_ASKED = "step.takeover_asked"
+"""A person asked to take over a running step (ADR-0128 §1). Changes no state."""
+TAKEN_OVER = "step.taken_over"
+"""The step stopped at its worker's boundary and waits for the person who took it over."""
+TAKEOVER_REFUSED = "step.takeover_refused"
+"""The step ended another way before it stopped, and was not taken over. Changes no state."""
+TAKEOVER_LAPSED = "step.takeover_lapsed"
+"""The take-over's lease passed without a hand-back: the step is back at its checkpoint."""
+TAKEOVER_STATE = "takeover.state"
+"""The kind of the artifact that holds the state a step was taken over in (ADR-0128 §3)."""
+TAKEOVER_RESULT = "takeover.result"
+"""The kind of the artifact that holds the result a person handed back (ADR-0128 §5)."""
+HOLDER = "takeover:"
+"""What the claimant of a take-over's claim starts with; the take-over identifier follows."""
 
 CONTINUATIONS = 3
 """How often one step continues in a new unit after its worker stopped at its wall clock."""
@@ -426,6 +459,31 @@ class ConfirmSteps:
     cause `declined`. Resuming it proposes them again (ADR-0110)."""
 
 
+@dataclass(frozen=True)
+class TakeOver:
+    """A person asks to take over a step of a run while it runs (ADR-0128 §1). Who may is any
+    identity of the tenant that may see the run, until rights per role exist (UC-7.3)."""
+
+    run_id: str
+    step_id: StepId
+    actor: str
+    """The person who asks; named as the actor of `step.takeover_asked`, for the audit."""
+    tenant: Tenant
+
+
+@dataclass(frozen=True)
+class HandBack:
+    """The person who took a step over hands its result back (ADR-0128 §5)."""
+
+    run_id: str
+    takeover: str
+    """The take-over identifier the person received when they asked."""
+    result: Any
+    """The step's result, as one JSON value."""
+    actor: str
+    tenant: Tenant
+
+
 PROPOSAL_DECIDED = "proposal.decided"
 """A person's decision on a step proposed at level 1 or 2 (ADR-0110)."""
 RUN_LOWERED = "run.lowered"
@@ -463,8 +521,10 @@ def _ended(run: Run) -> bool:
     if run.state in (RunState.FINISHED, RunState.ESCALATED):
         return True
     if run.state is RunState.WAITING_HUMAN:
-        # What waits for a person stays with the person, unless a person has answered.
-        return run.runnable() is None
+        # What waits for a person stays with the person, unless a person has answered. A run
+        # none of whose steps waits any more — the last one was answered or handed back — is
+        # continued, so that it finishes (ADR-0128 §5).
+        return run.runnable() is None and bool(run.waiting())
     return run.state is RunState.HALTED and run.cause not in (
         Cause.STOP,
         Cause.CAPACITY,
@@ -522,6 +582,9 @@ class EngineOptions:
     model_cool_down_seconds: float = 60.0
     """How long a model is passed over after it failed, or answered at its rate limit without
     naming a delay (`TAKTUS_MODEL_COOL_DOWN_SECONDS`, ADR-0116 §5)."""
+    takeover_lease_seconds: float = 8 * 3600.0
+    """How long a person holds a step they took over before the step goes back to its worker
+    (ADR-0128 §4)."""
     park_waits_after_seconds: float | None = None
     """A `wait` step that would wait longer than this parks its run: the run halts with cause
     `parked`, and its runner defers the job to the wait's next check, holding no place
@@ -616,6 +679,16 @@ class RunEngine:
         self._options = options or EngineOptions()
         self._stop_requested: set[str] = set()
         self._inflight: dict[str, tuple[Worker, str]] = {}
+        self._inflight_step: dict[str, StepId] = {}
+        """The step each run in `_inflight` is inside."""
+        self._taking_over: dict[str, TakeoverAsked] = {}
+        """Runs whose runner read a take-over asked on their job, with the ask (ADR-0128)."""
+        self._answered: set[str] = set()
+        """The take-overs served or refused in this process: an ask read again late is not
+        served twice."""
+        self._passed: set[str] = set()
+        """Runs whose claim this process passed to a take-over: the runner's lease ends, and
+        no claim is lost."""
         self._observed: dict[str, list[budgeting.Observation]] = {}
         self._limit_halts: set[str] = set()
         self._continued: dict[tuple[str, str], int] = {}
@@ -682,12 +755,17 @@ class RunEngine:
             self._last_attempt.reset(last)
 
     async def _resume(self, command: ResumeRun) -> Run:
+        self._taking_over.pop(command.run_id, None)
+        self._passed.discard(command.run_id)
         async with self._telemetry.span("run", {"run.id": command.run_id}) as span:
             async with self._work.transaction(command.tenant):
                 run = await self._runs.get(command.tenant, command.run_id)
             if run is None:
                 raise UnknownRun(command.run_id)
             span.set_attribute("process.version", run.process_version)
+            if command.on_claim:
+                # A claim of a job a take-over held: its lease passed (ADR-0128 §6).
+                run = await self._lapsed(run)
             if command.on_claim and _ended(run):
                 return run
             if command.budget is not None and command.budget != run.budget:
@@ -1280,7 +1358,10 @@ class RunEngine:
     def relinquish(self, run_id: str) -> None:
         """The runner's claim on the run is lost. The run stops at its next boundary, where the
         fence refuses whatever it would still write. The worker's assignment is not stopped:
-        the runner that holds the claim now adopts it (ADR-0038)."""
+        the runner that holds the claim now adopts it (ADR-0038). A claim this process passed to
+        a take-over is not lost: nothing is asked of the run (ADR-0128)."""
+        if run_id in self._passed:
+            return
         self._stop_requested.add(run_id)
 
     async def record_claim_lost(self, tenant: Tenant, run_id: str) -> None:
@@ -1292,6 +1373,374 @@ class RunEngine:
             run = await self._runs.get(tenant, run_id)
             if run is not None:
                 await self._record(run, CLAIM_LOST, outcome="lost")
+
+    # --- take-over (ADR-0128) ---------------------------------------------------------------------
+
+    async def take_over(self, command: TakeOver) -> str:
+        """A person asks to take over a step while it runs (ADR-0128 §1). The ask is written on
+        the run's job, for the first asker only; the runner that holds the job serves it at the
+        step's next boundary. Returns the take-over identifier the person hands the result back
+        under. Refused, writing nothing, unless the step is a running `worker` step of a run a
+        runner holds and no take-over of the run is asked or held."""
+        if self._queue is None:
+            raise TakeoverRefused(
+                "no queue is wired: a step is taken over from the runner that holds its run"
+            )
+        async with self._work.transaction(command.tenant):
+            run = await self._runs.get(command.tenant, command.run_id)
+            if run is None:
+                raise UnknownRun(command.run_id)
+            try:
+                step_run = run.step_run(command.step_id)
+            except KeyError:
+                raise UnknownRun(f"run {run.id!r} has no step {command.step_id!r}") from None
+            method = run.step(command.step_id).method
+            if method is not Method.WORKER:
+                raise TakeoverRefused(
+                    f"step {command.step_id!r} is a {method} step: only a worker step is taken "
+                    "over while it runs"
+                )
+            if run.state is not RunState.RUNNING or step_run.state not in IN_FLIGHT:
+                raise TakeoverRefused(
+                    f"step {command.step_id!r} is {step_run.state} in a run that is {run.state}: "
+                    "a step is taken over while it runs"
+                )
+            takeover_id = self._ids.new("tko")
+            asked = await self._queue.ask_takeover(
+                run.tenant, run.id, step_run.step_id, HOLDER + takeover_id
+            )
+            if not asked:
+                raise TakeoverRefused(
+                    f"run {run.id!r} is not held by a runner, or a take-over of it is asked or "
+                    "held already"
+                )
+            await self._record(
+                run, TAKEOVER_ASKED, step=step_run, outcome="asked", actor=command.actor, bare=True
+            )
+        return takeover_id
+
+    async def takeover_asked(self, run_id: str, asked: TakeoverAsked) -> None:
+        """The runner holding the run read a take-over asked on its job (ADR-0128 §2). The
+        step asked for is stopped at its worker's next boundary, where the take-over is served
+        or, if the step ended another way first, refused."""
+        if asked.holder in self._answered or run_id in self._taking_over:
+            return
+        self._taking_over[run_id] = asked
+        inflight = self._inflight.get(run_id)
+        if inflight is not None and self._inflight_step.get(run_id) == asked.step_id:
+            await self._stop_for_takeover(*inflight)
+
+    def passed(self, run_id: str) -> bool:
+        """Whether this process passed the run's claim to a take-over in its last execution: the
+        job is the person's now, and the runner leaves it alone (ADR-0128 §4)."""
+        return run_id in self._passed
+
+    async def takeover_state(self, tenant: Tenant, run_id: str, takeover: str) -> Any:
+        """The state a step was taken over in, as the person receives it (ADR-0128 §3). Refused
+        with `UnknownTakeover` while the take-over is asked and not yet served, and once it was
+        handed back or its lease lapsed."""
+        async with self._work.transaction(tenant):
+            run = await self._runs.get(tenant, run_id)
+        if run is None:
+            raise UnknownRun(run_id)
+        for step_run in run.step_runs:
+            held = None if step_run.block is None else step_run.block.takeover
+            if held is None or held.id != takeover:
+                continue
+            artifact = step_run.artifact(held.state)
+            content = None if artifact is None else await self._objects.get(artifact.digest)
+            if content is None:
+                raise UnknownTakeover(f"the state of {takeover!r} is not available here")
+            return json.loads(content)
+        raise UnknownTakeover(
+            f"no step of run {run_id!r} is held under {takeover!r}: it is asked and not yet "
+            "served, was handed back, or its lease lapsed"
+        )
+
+    async def _stop_for_takeover(self, worker: Worker, assignment_id: str) -> None:
+        await worker.stop(
+            assignment_id,
+            StopRequest(
+                reason="a person takes the step over",
+                ceiling_seconds=self._options.step_ceiling_seconds,
+            ),
+        )
+
+    async def _taken_over(
+        self, run: Run, step_run: StepRun, asked: TakeoverAsked, span: Span
+    ) -> Run:
+        """The step stopped at its worker's boundary: its state becomes an artifact, the step
+        and the run wait for the person, and the claim passes to the take-over — one
+        transaction under the runner's claim (ADR-0128 §2 to §4)."""
+        claim = self._claim.get()
+        queue = self._queue
+        if claim is None or queue is None:
+            await self._takeover_refused(run, asked, step_run)
+            return await self._end(
+                run, RunState.HALTED, Cause.STOP, "stopped for a take-over", span
+            )
+        if step_run.block is not None:
+            run, step_run = await self._close_block(run, step_run)
+        now = self._clock.now()
+        seconds = self._options.takeover_lease_seconds
+        until = now + timedelta(seconds=seconds)
+        takeover_id = asked.holder.removeprefix(HOLDER)
+        step = run.step(step_run.step_id)
+        work = parse_work(step, run.work.get(step.id), run.inputs)
+        inputs: Any = None
+        if isinstance(work, WorkerWork):
+            (inputs,), _ = await self._resolved(run, [work.task.inputs])
+        state = {
+            "kind": TAKEOVER_STATE,
+            "takeover": takeover_id,
+            "run_id": run.id,
+            "step_id": step.id,
+            "process_version": run.process_version,
+            "held_until": until.isoformat(),
+            "goal": work.task.goal if isinstance(work, WorkerWork) else None,
+            "acceptance": list(work.task.acceptance) if isinstance(work, WorkerWork) else [],
+            "inputs": inputs,
+            "credentials": _credential_names(work),
+            "checkpoint": None if step_run.checkpoint is None else step_run.checkpoint.ref,
+            "artifacts": [
+                {
+                    "id": a.id,
+                    "kind": a.kind,
+                    "digest": a.digest,
+                    "media_type": a.media_type,
+                    "title": a.title,
+                }
+                for a in step_run.artifacts
+            ],
+        }
+        content = _canonical(state)
+        digest = await self._objects.put(content)
+        artifact = Artifact(
+            id=f"{takeover_id}.state",
+            kind=TAKEOVER_STATE,
+            digest=digest,
+            media_type="application/json",
+            size_bytes=len(content),
+            title=f"The state of step {step.id} when a person took it over",
+            created_at=now,
+        )
+        opened = OpenBlock(
+            account="wait.human",
+            cause=block.TAKEN_OVER,
+            since=now,
+            takeover=Takeover(
+                id=takeover_id,
+                job_id=claim.job_id,
+                attempt=claim.attempt + 1,
+                until=until,
+                state=artifact.id,
+            ),
+        )
+        held = step_run.to(
+            StepState.WAITING_HUMAN,
+            artifacts=(*step_run.artifacts, artifact),
+            block=opened,
+            reason=f"taken over by a person until {until:%Y-%m-%d %H:%M} UTC, under {takeover_id}",
+        )
+        run = run.with_step_run(held).to(
+            RunState.WAITING_HUMAN,
+            Cause.PERSON,
+            f"waiting for a person: {step.id} — taken over",
+        )
+
+        async def passing() -> None:
+            if not await queue.pass_claim(run.tenant, claim, asked.holder, seconds):
+                raise ClaimLost(
+                    f"run {run.id!r}: the claim on job {claim.job_id!r} could not pass to the "
+                    "take-over; the write is refused"
+                )
+
+        run = await self._commit(
+            run,
+            TAKEN_OVER,
+            step=held,
+            outcome="taken_over",
+            digest=digest,
+            after=({"kind": "run.waiting_human", "outcome": str(Cause.PERSON)},),
+            inside=passing,
+        )
+        self._taking_over.pop(run.id, None)
+        self._answered.add(asked.holder)
+        self._passed.add(run.id)
+        self._stop_requested.discard(run.id)
+        span.set_attribute("run.state", run.state)
+        span.set_attribute("run.cause", Cause.PERSON)
+        return run
+
+    async def _takeover_refused(
+        self, run: Run, asked: TakeoverAsked, step_run: StepRun | None
+    ) -> None:
+        """The step asked for ended another way before it stopped, or was not running when the
+        runner read the ask: the ask is withdrawn, and the run goes on (ADR-0128 §2)."""
+        self._taking_over.pop(run.id, None)
+        self._answered.add(asked.holder)
+        if step_run is not None and step_run.step_id == asked.step_id:
+            outcome = str(step_run.state)
+        else:
+            outcome = "not_running"
+        named = next((s for s in run.step_runs if s.step_id == asked.step_id), None)
+        claim = self._claim.get()
+        async with self._work.transaction(run.tenant):
+            await self._fence(run)
+            if claim is not None and self._queue is not None:
+                await self._queue.withdraw_takeover(run.tenant, claim.job_id, asked.holder)
+            await self._record(run, TAKEOVER_REFUSED, step=named, outcome=outcome, bare=True)
+
+    async def _lapsed(self, run: Run) -> Run:
+        """A runner claimed a job a take-over held: the lease passed without a hand-back. The
+        step goes back to its worker's checkpoint and continues there (ADR-0128 §6)."""
+        for held in run.step_runs:
+            if held.block is None or held.block.takeover is None:
+                continue
+            takeover = held.block.takeover
+            now = self._clock.now()
+            record = blocked.record(
+                held.block,
+                run_id=run.id,
+                step_id=held.step_id,
+                process_version=run.process_version,
+                until=now,
+            )
+            digest = await self._objects.put(_canonical(record))
+            back = held.to(
+                StepState.STOPPED,
+                block=None,
+                reason=f"the take-over {takeover.id} lapsed at {takeover.until:%Y-%m-%d %H:%M} "
+                "UTC without a hand-back: the step continues in its worker from its checkpoint",
+                finished_at=now,
+            )
+            run = await self._commit(
+                run.with_step_run(back),
+                TAKEOVER_LAPSED,
+                step=back,
+                outcome="lapsed",
+                before=(
+                    {
+                        "kind": blocked.RECORD_KIND,
+                        "step": back,
+                        "outcome": block.TAKEN_OVER,
+                        "digest": digest,
+                    },
+                ),
+            )
+        return run
+
+    async def hand_back(self, command: HandBack) -> Run:
+        """The person hands back the result of a step they took over (ADR-0128 §5). Written
+        under the take-over's claim, fenced as a runner's write is, in one transaction: the
+        result as the step's artifact, the step succeeded with method `human`, its provenance,
+        the end of its block, and the job released for the next runner. Refused, writing
+        nothing, when no step is held under the take-over, or its lease lapsed and a runner
+        took the step back."""
+        queue = self._queue
+        if queue is None:
+            raise TakeoverRefused("no queue is wired: a step is handed back through the run's job")
+        async with self._telemetry.span("run", {"run.id": command.run_id}) as span:
+            async with self._work.transaction(command.tenant):
+                run = await self._runs.get(command.tenant, command.run_id)
+            if run is None:
+                raise UnknownRun(command.run_id)
+            span.set_attribute("process.version", run.process_version)
+            held = next(
+                (
+                    s
+                    for s in run.step_runs
+                    if s.block is not None
+                    and s.block.takeover is not None
+                    and s.block.takeover.id == command.takeover
+                ),
+                None,
+            )
+            if held is None or held.block is None or held.block.takeover is None:
+                raise UnknownTakeover(
+                    f"no step of run {run.id!r} is held under {command.takeover!r}: it was "
+                    "handed back, or its lease lapsed and the step went back to its worker"
+                )
+            opened = held.block
+            takeover = held.block.takeover
+            step = run.step(held.step_id)
+            work = parse_work(step, run.work.get(step.id), run.inputs)
+            read: tuple[ProvenanceInput, ...] = ()
+            if isinstance(work, WorkerWork):
+                _, read = await self._resolved(run, [work.task.inputs])
+            now = self._clock.now()
+            content = _canonical(command.result)
+            result = Artifact(
+                id=f"{takeover.id}.result",
+                kind=TAKEOVER_RESULT,
+                digest=await self._objects.put(content),
+                media_type="application/json",
+                size_bytes=len(content),
+                title=f"The result of step {step.id}, handed back by the person who took it over",
+                created_at=now,
+            )
+            record = blocked.record(
+                opened,
+                run_id=run.id,
+                step_id=held.step_id,
+                process_version=run.process_version,
+                until=now,
+            )
+            record_digest = await self._objects.put(_canonical(record))
+            artifacts = (*held.artifacts, result)
+            done = held.to(
+                StepState.SUCCEEDED,
+                method=Method.HUMAN,
+                adapter=None,
+                artifacts=artifacts,
+                block=None,
+                waiting_since=None,
+                waits=0,
+                confirmed_by=command.actor,
+                reason=f"handed back by {command.actor} after a take-over",
+                finished_at=now,
+                checkpoint=Checkpoint(
+                    ref=held.checkpoint.ref
+                    if held.checkpoint is not None
+                    else f"ckpt/{run.id}/{held.step_id}",
+                    step_id=held.step_id,
+                    taken_at=now,
+                    artifact_ids=tuple(a.id for a in artifacts),
+                ),
+            )
+            claim = Claim(
+                job_id=takeover.job_id, claimant=HOLDER + takeover.id, attempt=takeover.attempt
+            )
+
+            async def releasing() -> None:
+                await queue.release(run.tenant, claim.job_id, claim.claimant)
+
+            token = self._claim.set(claim)
+            try:
+                return await self._commit(
+                    run.with_step_run(done),
+                    "step.finished",
+                    step=done,
+                    outcome="succeeded",
+                    actor=command.actor,
+                    trace=Trace(inputs=read),
+                    before=(
+                        {
+                            "kind": blocked.RECORD_KIND,
+                            "step": done,
+                            "outcome": block.TAKEN_OVER,
+                            "digest": record_digest,
+                        },
+                    ),
+                    inside=releasing,
+                )
+            except ClaimLost as lost:
+                raise TakeoverRefused(
+                    f"the lease of {takeover.id} lapsed and a runner took step {step.id!r} back "
+                    "to its worker; nothing was handed back"
+                ) from lost
+            finally:
+                self._claim.reset(token)
 
     # --- the loop ------------------------------------------------------------------------------
 
@@ -1346,6 +1795,7 @@ class RunEngine:
             return await self._steps(run, stop_after, span)
         finally:
             self._observed.pop(run.id, None)
+            self._taking_over.pop(run.id, None)
             self._limit_halts.discard(run.id)
             self._at_capacity.discard(run.id)
             self._moving.discard(run.id)
@@ -1377,6 +1827,18 @@ class RunEngine:
         while (step_run := run.runnable()) is not None:
             step = run.step(step_run.step_id)
             run, step_run = await self._step_or_failed(run, step, step_run)
+            asked = self._taking_over.get(run.id)
+            if asked is not None:
+                if (
+                    asked.step_id == step_run.step_id
+                    and step_run.state is StepState.STOPPED
+                    and run.id not in self._at_capacity
+                    and run.id not in self._parked
+                    and run.id not in self._limit_halts
+                ):
+                    # Stopped at its worker's boundary for the person who takes it over.
+                    return await self._taken_over(run, step_run, asked, span)
+                await self._takeover_refused(run, asked, step_run)
             if step_run.state is StepState.WAITING_HUMAN:
                 # The step waits for a person; the steps that do not depend on it run on.
                 if run.id in self._stop_requested:
@@ -1483,6 +1945,10 @@ class RunEngine:
         self, run: Run, state: RunState, cause: Cause | None, reason: str | None, span: Span
     ) -> Run:
         self._stop_requested.discard(run.id)
+        asked = self._taking_over.get(run.id)
+        if asked is not None:
+            # The run ends this pass before the step asked for reached a boundary.
+            await self._takeover_refused(run, asked, None)
         span.set_attribute("run.state", state)
         if cause is not None:
             span.set_attribute("run.cause", cause)
@@ -3492,8 +3958,12 @@ class RunEngine:
             step_run = step_run.to(StepState.RUNNING, assignment_id=assignment_id, started_at=now)
             run = await self._commit(run.with_step_run(step_run), "step.started", step=step_run)
         self._inflight[run.id] = (worker, assignment_id)
+        self._inflight_step[run.id] = step_run.step_id
         if run.id in self._stop_requested:
             await self.request_stop(run.id)
+        asked = self._taking_over.get(run.id)
+        if asked is not None and asked.step_id == step_run.step_id:
+            await self._stop_for_takeover(worker, assignment_id)
         try:
             async with self._telemetry.span("worker.follow", call) as following:
                 run, step_run = await self._follow(
@@ -3504,12 +3974,14 @@ class RunEngine:
             # On ClaimLost the assignment is left running: the runner that holds the claim now
             # adopts it (ADR-0038).
             self._inflight.pop(run.id, None)
+            self._inflight_step.pop(run.id, None)
         _measured(span, step_run)
         if (
             adopted
             and step_run.state is StepState.STOPPED
             and run.id not in self._limit_halts
             and run.id not in self._stop_requested
+            and run.id not in self._taking_over
         ):
             # Stopped at a request this runner did not make: the runner that handed it over
             # asked before it gave the run up. The run is not stopped; the step continues from
@@ -4087,6 +4559,9 @@ class RunEngine:
         ended: str | None = None,
         action: str | None = None,
         proposal: tuple[str, str | None, str] | None = None,
+        before: Sequence[Mapping[str, Any]] = (),
+        after: Sequence[Mapping[str, Any]] = (),
+        inside: Callable[[], Awaitable[None]] | None = None,
     ) -> Run:
         """One transaction: the run as it now is, and — when `kind` is given — the ledger entry
         that says what changed. Either both land or neither does. A step that finished with a
@@ -4097,7 +4572,9 @@ class RunEngine:
         step's entry (ADR-0047); `ended` records how the run ended, `ok`, `empty` or `error`, as
         `run.ended` with its duration from its creation (ADR-0107); `proposal` records the
         decision on a proposal — outcome, action class, document digest — as `proposal.decided`,
-        naming no person (ADR-0110)."""
+        naming no person (ADR-0110). `before` and `after` are further entries, each the
+        arguments of `_record`, recorded before and after the entry of `kind`; `inside` is a
+        write of the queue's that lands in the same transaction (ADR-0128)."""
         run = run.model_copy(update={"updated_at": self._clock.now()})
         async with self._work.transaction(run.tenant):
             await self._fence(run)
@@ -4106,6 +4583,10 @@ class RunEngine:
             await self._runs.put(run.tenant, run)
             if enqueue is not None and self._queue is not None:
                 await self._queue.enqueue(run.tenant, enqueue)
+            if inside is not None:
+                await inside()
+            for extra in before:
+                await self._record(run, **extra)
             if kind is not None:
                 entry = await self._record(
                     run,
@@ -4169,6 +4650,8 @@ class RunEngine:
                             outcome="replayed" if trace.egress.replayed else "acted",
                             digest=trace.egress.content_digest,
                         )
+                for extra in after:
+                    await self._record(run, **extra)
         return run
 
     async def _fence(self, run: Run) -> None:

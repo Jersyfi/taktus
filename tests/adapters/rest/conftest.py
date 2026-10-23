@@ -48,7 +48,8 @@ from taktus.components.reporting.application.service import (
     ProductFindings,
 )
 from taktus.components.reporting.domain.model import BackupState, Corridor, Judged
-from taktus.components.run.domain.model import Run
+from taktus.components.run.application.service import HandBack, TakeOver
+from taktus.components.run.domain.model import Run, RunError, UnknownTakeover
 from taktus.composition.decisions import DecisionWiring, decision_wiring
 from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, state_of
@@ -133,6 +134,40 @@ class FakeOperation:
 
 
 @dataclass
+class FakeTakeovers:
+    """The engine's take-over as the HTTP surface sees it: what it was asked, and what it
+    answers. What the engine does is held by `tests/components/run/test_takeover.py`."""
+
+    asked: list[TakeOver] = field(default_factory=list)
+    handed: list[HandBack] = field(default_factory=list)
+    refusal: RunError | None = None
+    states: dict[str, Any] = field(default_factory=dict)
+    runs: Repository[Run] | None = None
+    work: UnitOfWork | None = None
+
+    async def take_over(self, command: TakeOver) -> str:
+        if self.refusal is not None:
+            raise self.refusal
+        self.asked.append(command)
+        return f"tko_{len(self.asked)}"
+
+    async def takeover_state(self, tenant: str, run_id: str, takeover: str) -> Any:
+        if takeover not in self.states:
+            raise UnknownTakeover(f"no step of run {run_id!r} is held under {takeover!r}")
+        return self.states[takeover]
+
+    async def hand_back(self, command: HandBack) -> Run:
+        if self.refusal is not None:
+            raise self.refusal
+        self.handed.append(command)
+        assert self.runs is not None and self.work is not None
+        async with self.work.transaction(command.tenant):
+            run = await self.runs.get(command.tenant, command.run_id)
+        assert run is not None
+        return run
+
+
+@dataclass
 class Services:
     persistence: MemoryPersistence
     runs: Queried[Run]
@@ -167,6 +202,8 @@ class Services:
     """The instance's own product findings; None: the wiring records none (ADR-0122)."""
     operation: FakeOperation = field(default_factory=FakeOperation)
     """Incidents, alerts, the backup and the signals (ADR-0121)."""
+    takeovers: FakeTakeovers = field(default_factory=FakeTakeovers)
+    """A running step taken over and handed back (ADR-0128)."""
 
     @property
     def work(self) -> UnitOfWork:
@@ -288,6 +325,7 @@ def services(connector: ScriptedConnector | None = None) -> Services:
     )
     decisions.requests.report_to(owner.decision_raised)
     return Services(
+        takeovers=FakeTakeovers(runs=runs, work=persistence),
         persistence=persistence,
         runs=runs,
         ledger=identity.ledger,

@@ -213,3 +213,78 @@ async def test_no_claim_takes_a_job_while_a_write_under_its_claim_is_open(
         )
         assert taken == [], "the job is held until a's write ends"
     assert await claim(backend, tenant, "b") == ["job_1"], "and claimable once it has"
+
+
+# --- a take-over (ADR-0128) ----------------------------------------------------------------------
+
+
+async def ask(backend: Backend, tenant: str, holder: str, run: str = "run_1") -> bool:
+    async with backend.work.transaction(tenant):
+        return await backend.queue.ask_takeover(tenant, run, "s", holder)
+
+
+async def pass_on(
+    backend: Backend, tenant: str, claim: Claim, holder: str, seconds: float = 3600
+) -> bool:
+    async with backend.work.transaction(tenant):
+        return await backend.queue.pass_claim(tenant, claim, holder, seconds)
+
+
+async def test_a_takeover_is_asked_once_and_only_on_a_job_a_runner_holds(
+    backend: Backend,
+) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    assert not await ask(backend, tenant, "takeover:x"), "no runner holds it yet"
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    assert not await ask(backend, tenant, "takeover:x", run="run_2"), "no job of that run"
+    assert await ask(backend, tenant, "takeover:x")
+    assert not await ask(backend, tenant, "takeover:y"), "the first asker only"
+    async with backend.work.transaction(tenant):
+        asked = await backend.queue.takeover_asked(tenant, "job_1")
+        await backend.queue.withdraw_takeover(tenant, "job_1", "takeover:y")  # not the ask
+    assert asked is not None and (asked.holder, asked.step_id) == ("takeover:x", "s")
+    async with backend.work.transaction(tenant):
+        await backend.queue.withdraw_takeover(tenant, "job_1", "takeover:x")
+        assert await backend.queue.takeover_asked(tenant, "job_1") is None
+    assert await ask(backend, tenant, "takeover:y"), "withdrawn: another may ask"
+
+
+async def test_a_passed_claim_is_held_by_the_takeover_whatever_the_lease(
+    backend: Backend,
+) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    assert not await pass_on(backend, tenant, held("a", 1), "takeover:x"), "nothing asked"
+    assert await ask(backend, tenant, "takeover:x")
+    assert not await pass_on(backend, tenant, held("a", 1), "takeover:y"), "not the ask"
+    assert not await pass_on(backend, tenant, held("b", 1), "takeover:x"), "not the claim"
+    assert await pass_on(backend, tenant, held("a", 1), "takeover:x")
+    assert not await fence(backend, tenant, held("a", 1)), "the runner writes nothing more"
+    assert await fence(backend, tenant, held("takeover:x", 2)), "the take-over's claim"
+    async with backend.work.transaction(tenant):
+        assert not await backend.queue.extend(tenant, "job_1", "a")
+        assert await backend.queue.takeover_asked(tenant, "job_1") is None, "served"
+    await backend.expire(tenant, "job_1")
+    assert await claim(backend, tenant, "b") == [], "held until its time, not its lease"
+    assert not await ask(backend, tenant, "takeover:y"), "held: no second take-over"
+    async with backend.work.transaction(tenant):
+        await backend.queue.release(tenant, "job_1", "takeover:x")
+    async with backend.work.transaction(tenant):
+        (again,) = await backend.queue.claim(tenant, "b", 1)
+    assert (again.attempts, again.deferrals) == (3, 2), "only the last claim is an attempt"
+
+
+async def test_a_takeover_s_claim_ends_at_its_time(backend: Backend) -> None:
+    tenant = await backend.tenant()
+    await enqueue(backend, tenant, job(1))
+    assert await claim(backend, tenant, "a") == ["job_1"]
+    assert await ask(backend, tenant, "takeover:x")
+    assert await pass_on(backend, tenant, held("a", 1), "takeover:x", seconds=0.3)
+    await backend.expire(tenant, "job_1")
+    assert await claim(backend, tenant, "b") == []
+    await asyncio.sleep(0.5)
+    assert await fence(backend, tenant, held("takeover:x", 2)), "over, but nobody claimed it"
+    assert await claim(backend, tenant, "b") == ["job_1"], "a runner takes it back"
+    assert not await fence(backend, tenant, held("takeover:x", 2)), "a late hand-back is refused"

@@ -14,6 +14,14 @@ told to shut down, or the work failed for a reason another attempt may not share
 (ADR-0037) — the job is *deferred*: claimable again only after a delay, and the claim it ends
 is not counted as a failed attempt.
 
+A person can take over the step a runner is executing (ADR-0128). The take-over is *asked* on
+the run's job, by the first asker only, while a runner holds it. The runner reads the ask with
+each renewal, stops the step at its boundary, and *passes* its claim to the take-over: a new
+claim of the job, held until the take-over's lease ends, not counted as a failed attempt. No
+runner claims the job before then. The person's hand-back is written under that claim, fenced
+as a runner's write is, and releases the job. A lease that ends without a hand-back makes the
+job claimable again.
+
 Every call happens inside a unit of work of the same persistence and names its tenant
 (`ports/persistence.py`); the claim and the state it changes commit with the transaction. Two
 instances claiming at the same moment never receive the same job: that is the adapter's promise,
@@ -54,6 +62,15 @@ class Claim(Value):
     job_id: str = Field(min_length=1)
     claimant: str = Field(min_length=1)
     attempt: int = Field(ge=1)
+
+
+class TakeoverAsked(Value):
+    """A take-over asked on a run's job and not yet served: who will hold the claim, and of
+    which step (ADR-0128)."""
+
+    holder: str = Field(min_length=1)
+    """The claimant the claim passes to: it names the take-over, never a person."""
+    step_id: str = Field(min_length=1)
 
 
 class Queue(Protocol):
@@ -97,4 +114,29 @@ class Queue(Protocol):
     async def complete(self, tenant: Tenant, job_id: str, claimant: str) -> None:
         """The work is done; the job is removed. A no-op when the claim is not the
         claimant's any more."""
+        ...
+
+    async def ask_takeover(self, tenant: Tenant, run_id: str, step_id: str, holder: str) -> bool:
+        """Ask on the job that executes the run that its step be taken over by `holder`. True
+        for the first ask while a runner holds the job; False when no runner holds a job of the
+        run, or a take-over of it is asked or held already."""
+        ...
+
+    async def takeover_asked(self, tenant: Tenant, job_id: str) -> TakeoverAsked | None:
+        """The take-over asked on the job and not yet served or withdrawn, if any."""
+        ...
+
+    async def withdraw_takeover(self, tenant: Tenant, job_id: str, holder: str) -> None:
+        """The take-over `holder` asked will not be served; a later ask may be made. A no-op
+        when it is not the one asked."""
+        ...
+
+    async def pass_claim(self, tenant: Tenant, claim: Claim, holder: str, seconds: float) -> bool:
+        """Pass `claim` to the take-over `holder` asked: the job's next claim is the holder's,
+        held for `seconds`, so that the attempt the holder's fence compares is
+        `claim.attempt + 1`. Neither the claim that ends nor the holder's counts as a failed
+        attempt: both ended without a failure, as a deferred claim does, and a run taken over
+        any number of times keeps its attempts. Called inside the transaction that
+        fenced `claim`. False, and nothing changed, when `claim` is not the job's current
+        claim or `holder` is not the take-over asked."""
         ...

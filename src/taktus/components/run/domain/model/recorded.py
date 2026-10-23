@@ -10,6 +10,9 @@ An entry of a kind this table does not name changes no state: `step.assigned`,
 `step.reserved`, `step.waited`, `budget.set`, `run.triggered`, `run.ended`, `run.lowered` and
 every kind outside the run component. A step a person rejected (`step.declined`) is planned
 again: resuming its run proposes it again (ADR-0110). Such an entry is not a change of state.
+A take-over asked or refused (`step.takeover_asked`, `step.takeover_refused`) changes nothing
+either; one served leads the step to wait for the person (`step.taken_over`), and one whose
+lease lapsed gives it back to its worker at the checkpoint (`step.takeover_lapsed`, ADR-0128).
 """
 
 from __future__ import annotations
@@ -50,6 +53,8 @@ STEP_KINDS: dict[str, StepState] = {
     "step.confirmed": StepState.PLANNED,
     "step.performed": StepState.SUCCEEDED,
     "step.declined": StepState.PLANNED,
+    "step.taken_over": StepState.WAITING_HUMAN,
+    "step.takeover_lapsed": StepState.STOPPED,
 }
 """A step's entries whose kind alone says the state. `step.finished` and `step.decided` need
 their outcome as well (`led_to`)."""

@@ -53,7 +53,9 @@ to is published beside the state machine that owns it: the run component
 (`components/run/domain/model/recorded.py`) and the decision component
 (`components/decision/domain/model/recorded.py`). A representation reads the state from the
 change and never derives it a second time. A step a person rejected is `step.declined`: it is planned
-again, and its run halts (ADR-0110).
+again, and its run halts (ADR-0110). A step a person took over is `step.taken_over`: it waits for
+the person. One whose take-over lapsed is `step.takeover_lapsed`: it is stopped at its worker's
+checkpoint and continues there (ADR-0128).
 
 **A change carries no content, no figure and no person.** The entry's actor, its consumption,
 its model, its adapter and its digest are left out. What a run has consumed is read from the

@@ -18,8 +18,9 @@ of its administration key (ADR-0104), and the intake of other instances' signed 
 the operator opened it (ADR-0118), and each process's level with its correction rates and this
 instance's own findings with their review (ADR-0122), the reads of what keeps the operation
 running — incidents, alerts, the backup, signals (ADR-0121), and the web app's sign-in, which
-exchanges an account key once for a session cookie accepted wherever the key is (ADR-0119). No
-other write, no UI. An answer the owner writes in the thread of a report arrives through the
+exchanges an account key once for a session cookie accepted wherever the key is (ADR-0119), and
+a running step taken over by a person and its result handed back (ADR-0128). No other write, no
+UI. An answer the owner writes in the thread of a report arrives through the
 webhook intake. A browser that opens an old link to a report without a key is sent to the
 report's page in the web app (ADR-0120).
 
@@ -53,6 +54,7 @@ from taktus.adapters.driving.rest import (
     proposals,
     review,
     session,
+    takeover,
     tenants,
 )
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
@@ -151,6 +153,7 @@ def build_app(
         app.include_router(findings.router(services), prefix=base)
         app.include_router(review.router(services, _authenticated), prefix=base)
         app.include_router(autonomy.router(services, _authenticated), prefix=base)
+        app.include_router(takeover.router(services, _authenticated), prefix=base)
         if web is not None and (web / "index.html").is_file():
             levels.mount_web(app, base, web)
         # The web app's session cookie is accepted wherever the account key is (ADR-0119).
