@@ -325,6 +325,17 @@ residency_rule = Table(
 )
 """One row per tenant that set its residency rule (ADR-0116)."""
 
+source_declaration = Table(
+    "source_declaration",
+    metadata,
+    _tenant(),
+    Column("id", Text, nullable=False),
+    _at("configured_at"),
+    Column("declaration", JSONB, nullable=False),
+    PrimaryKeyConstraint("tenant", "id"),
+)
+"""One row per tenant that declared its sources (ADR-0130)."""
+
 trigger_state = Table(
     "trigger_state",
     metadata,
@@ -609,6 +620,7 @@ provenance = Table(
     Column("adapter", Text),
     Column("adapter_version", Text),
     Column("route", JSONB),
+    Column("scope", JSONB),
     Column("inputs", JSONB, nullable=False),
     Column("outputs", JSONB, nullable=False),
     Column("result_digest", Text),

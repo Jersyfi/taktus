@@ -61,6 +61,7 @@ class PostgresProvenanceStore:
             adapter=document.get("adapter"),
             adapter_version=document.get("adapter_version"),
             route=document.get("route"),
+            scope=document.get("scope"),
             inputs=document["inputs"],
             outputs=document["outputs"],
             result_digest=document.get("result_digest"),
@@ -104,7 +105,16 @@ def _record(row: Row[Any]) -> Provenance:
         "ledger_seq": row.ledger_seq,
         "recorded_at": recorded_at,
     }
-    names = ("exactness", "model", "prompt", "adapter", "adapter_version", "route", "result_digest")
+    names = (
+        "exactness",
+        "model",
+        "prompt",
+        "adapter",
+        "adapter_version",
+        "route",
+        "scope",
+        "result_digest",
+    )
     for name in names:
         value = getattr(row, name)
         if value is not None:

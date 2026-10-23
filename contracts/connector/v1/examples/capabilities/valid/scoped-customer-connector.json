@@ -1,0 +1,46 @@
+{
+  "contract": "connector/v1",
+  "version": "0.1.0",
+  "capabilities": [
+    "customers.accounts",
+    "channel.mail"
+  ],
+  "operations": [
+    {
+      "name": "customers.accounts.read",
+      "capability": "customers.accounts",
+      "effect": "read",
+      "demand": {
+        "quota_units": 1
+      },
+      "summary": "Read one customer's account; a scoped call reads the scope's subject only."
+    },
+    {
+      "name": "channel.mail.send",
+      "capability": "channel.mail",
+      "effect": "delivery",
+      "idempotency": "marked",
+      "demand": {
+        "quota_units": 1
+      },
+      "summary": "Send one message."
+    }
+  ],
+  "credentials": [
+    {
+      "name": "CUSTOMERS_TOKEN",
+      "purpose": "actions"
+    }
+  ],
+  "consumption": {
+    "kinds": [
+      "quota"
+    ],
+    "unit": "requests",
+    "window_seconds": 60
+  },
+  "permissions": "passthrough",
+  "scoped": [
+    "customers.accounts"
+  ]
+}

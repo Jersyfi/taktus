@@ -44,6 +44,7 @@ from taktus.shared.v1.provenance import (
     Provenance,
     ProvenanceInput,
     ProvenanceRoute,
+    ProvenanceScope,
     RouteSkip,
 )
 from taktus.shared.v1.step import Fallback, Rejected, Step, StepId
@@ -99,6 +100,7 @@ __all__ = [
     "Provenance",
     "ProvenanceInput",
     "ProvenanceRoute",
+    "ProvenanceScope",
     "RaisedBy",
     "Reference",
     "Rejected",

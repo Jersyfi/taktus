@@ -53,6 +53,17 @@ work may carry three keys of its own, read by `control_of` and never part of the
 - `on_escalation: true` — the step is no part of the run's sequence. It runs only when the run
   escalates, after the step that failed and before the run ends, and only when every step it
   depends on succeeded; a run that finishes skips it (ADR-0097).
+
+**What a step may see** (ADR-0130). Two more keys set the frame the step runs in:
+
+- `scope: {subject: {"$input": "<name>"}}` — the step serves a case, and the case is about this
+  subject. The subject is one of the run's inputs, as its intake gave it, never what a step
+  produced: a `$from`, a `$run` or an `$otherwise` in it is refused. Every connector call of
+  the step carries the scope;
+- `analytic: {source: "<capability>"}` — the step analyses. It reaches no capability but its
+  source, through reads only, no host at all, and reads only what analytic steps produced. Its
+  source is one the tenant declares free of personal fields. `analytic: true` is a step that
+  reads no source of its own.
 """
 
 from __future__ import annotations
@@ -69,8 +80,9 @@ from typing import Annotated, Any, Literal
 from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
 from taktus.components.run.domain.model.errors import UnsupportedWork
+from taktus.ports.connector import CaseScope
 from taktus.ports.worker import CredentialReference, Host, Task, Workspace
-from taktus.shared.v1 import Method, Step, StepId, Value
+from taktus.shared.v1 import Capability, Method, Step, StepId, Value
 
 FROM = "$from"
 INPUT = "$input"
@@ -637,7 +649,9 @@ WHEN = "when"
 ASK = "ask"
 ON_ESCALATION = "on_escalation"
 EMPTY_WHEN_SKIPPED = "empty_when_skipped"
-CONTROL_KEYS = frozenset({WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED})
+SCOPE = "scope"
+ANALYTIC = "analytic"
+CONTROL_KEYS = frozenset({WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED, SCOPE, ANALYTIC})
 
 
 class Ask(Value):
@@ -654,9 +668,21 @@ class Ask(Value):
     on_decline: Literal["halt", "continue"] = "halt"
 
 
+class Analytic(Value):
+    """The step analyses (ADR-0130). `source` is the one capability it reads, which the tenant
+    declares free of personal fields; None for a step that reads no source of its own."""
+
+    source: Capability | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _true_reads_no_source(cls, given: Any) -> Any:
+        return {} if given is True else given
+
+
 class Control(Value):
-    """When a step runs and whom it asks first: the keys of a step's work that are not what the
-    step does (ADR-0088, ADR-0097)."""
+    """When a step runs, whom it asks first and what it may see: the keys of a step's work that
+    are not what the step does (ADR-0088, ADR-0097, ADR-0130)."""
 
     when: tuple[Condition, ...] = ()
     ask: Ask | None = None
@@ -666,9 +692,15 @@ class Control(Value):
     empty_when_skipped: bool = False
     """A run that finished with this step skipped, because its `when` did not hold, found
     nothing to do: it ends `empty`, not `ok` (ADR-0107 §2)."""
+    scope: CaseScope | None = None
+    """The case the step serves, with its subject resolved from the run's inputs (ADR-0130)."""
+    analytic: Analytic | None = None
+    """The step analyses, and its frame holds nothing outward (ADR-0130)."""
 
     @model_validator(mode="after")
     def _a_step_on_escalation_asks_nobody(self) -> Control:
+        if self.scope is not None and self.analytic is not None:
+            raise ValueError("a step serves a case or analyses, never both")
         if self.on_escalation and self.ask is not None:
             raise ValueError("a step that runs on escalation asks nobody")
         if self.empty_when_skipped and not self.when:
@@ -690,10 +722,13 @@ class Control(Value):
 def control_of(
     step: Step, work: Mapping[str, Any] | None, inputs: Mapping[str, Any] | None = None
 ) -> Control:
-    """The step's `when` and `ask`, with `$input` references resolved, or UnsupportedWork."""
+    """The step's `when`, `ask` and frame, with `$input` references resolved, or
+    UnsupportedWork."""
     given = {key: work[key] for key in CONTROL_KEYS if key in work} if work else {}
     if not given:
         return Control()
+    if SCOPE in given and (why := not_from_intake(given[SCOPE])) is not None:
+        raise UnsupportedWork(step.id, f"work.scope: {why}")
     try:
         return Control.model_validate(resolve_inputs(given, inputs or {}))
     except ValidationError as error:
@@ -702,6 +737,30 @@ def control_of(
         raise UnsupportedWork(step.id, f"work.{where}: {first['msg']}") from error
     except KeyError as error:
         raise UnsupportedWork(step.id, f"work: the run has no input {error.args[0]!r}") from error
+
+
+def not_from_intake(scope: Any) -> str | None:
+    """Why a step's `scope` does not name its subject from the run's inputs, or None. The
+    subject is exactly one `$input` reference, with a `$select` at most: a `$from`, a `$run` or
+    an `$otherwise` would let a step's output, or a default, choose whose data is seen
+    (ADR-0130)."""
+    if not isinstance(scope, Mapping) or set(scope) != {"subject"}:
+        return "a scope names its subject, and nothing else: {subject: {$input: <name>}}"
+    subject = scope["subject"]
+    if (
+        not isinstance(subject, Mapping)
+        or INPUT not in subject
+        or not set(subject)
+        <= {
+            INPUT,
+            SELECT,
+        }
+    ):
+        return (
+            "the subject is one of the run's inputs, as its intake gave it — {$input: <name>} "
+            "— never a step's result, the run's record or a default"
+        )
+    return None
 
 
 _RULE: TypeAdapter[RuleWork] = TypeAdapter(RuleWork)

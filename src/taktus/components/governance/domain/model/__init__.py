@@ -32,6 +32,10 @@ from taktus.components.governance.domain.model.incident import (
     shipped_watch,
 )
 from taktus.components.governance.domain.model.residency import ResidencyRule, shipped_rule
+from taktus.components.governance.domain.model.sources import (
+    SourceDeclaration,
+    shipped_declaration,
+)
 
 __all__ = [
     "AnchorConfiguration",
@@ -54,10 +58,12 @@ __all__ = [
     "ResultRef",
     "RunActivity",
     "RunSeen",
+    "SourceDeclaration",
     "Status",
     "StorageStore",
     "Unit",
     "WatchConfiguration",
+    "shipped_declaration",
     "shipped_default",
     "shipped_limits",
     "shipped_rule",

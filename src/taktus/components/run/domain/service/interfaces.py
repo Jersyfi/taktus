@@ -17,9 +17,9 @@ Two kinds of failure speak about the interface:
   reached (`unreachable`). A retry is their remedy, and only a retry that fails as well says
   that the interface stopped working (`reporting`'s rule reads that).
 
-Every other cause — `forbidden`, `not_found`, `invalid`, `conflict` — is the service answering
-about the input or the state, as the contract foresees and the adapter expects. It says nothing
-about the interface.
+Every other cause — `forbidden`, `not_found`, `invalid`, `conflict`, `out_of_scope` — is the
+service answering about the input or the state, as the contract foresees and the adapter
+expects. It says nothing about the interface.
 
 Every failure that speaks about the interface is written to the ledger as `interface.failed`,
 beside the step's own entry: the run and the step, the adapter, and the cause token as its
@@ -53,6 +53,7 @@ _OF_CAUSE: dict[Cause, str | None] = {
     Cause.NOT_FOUND: None,
     Cause.INVALID: None,
     Cause.CONFLICT: None,
+    Cause.OUT_OF_SCOPE: None,
 }
 
 

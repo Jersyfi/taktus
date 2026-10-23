@@ -14,6 +14,7 @@ from taktus.components.run.ports.maturity import Maturities, Standing
 from taktus.components.run.ports.models import ModelPool
 from taktus.components.run.ports.replay import Replay
 from taktus.components.run.ports.residency import Residency
+from taktus.components.run.ports.sources import Sources
 from taktus.components.run.ports.workers import WorkerPool
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "ProposalDecided",
     "Replay",
     "Residency",
+    "Sources",
     "Standing",
     "Verdict",
     "WorkerPool",

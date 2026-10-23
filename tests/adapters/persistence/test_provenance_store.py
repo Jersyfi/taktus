@@ -84,6 +84,7 @@ async def test_records_come_back_per_run_in_ledger_order_with_every_field(
             "data_class": "personal",
             "skipped": [{"adapter": "model.first", "reason": "cooling_down"}],
         },
+        scope={"subject": "cust-17"},
     )
     first = record("prov_1", "r1", "a", 3, outputs=("result",), result=1)
     other = record("prov_0", "r0", "z", 1, outputs=("art",))

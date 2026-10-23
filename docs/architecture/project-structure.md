@@ -258,7 +258,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   proposes among it (`composition/alerts.py`, ADR-0106, ADR-0110). The run reaches the
   governance component's `Corrections` through `composition/decisions.py`, and `taktusctl
   corrections` reads and configures it. It reaches the tenant's residency rule,
-  `TenantResidency`, the same way, and `taktusctl residency` shows and sets it. The models
+  `TenantResidency`, the same way, and `taktusctl residency` shows and sets it. The run and
+  registration reach the tenant's declaration of its sources, `TenantSources`, the same way,
+  and `taktusctl sources` shows and changes it (ADR-0130). The models
   configured in `TAKTUS_MODELS` reach the run as one pool in chain order
   (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the
   model contract's suite with its own endpoint (`composition/conformance.py`); deadlines and

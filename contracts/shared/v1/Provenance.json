@@ -53,6 +53,10 @@
       "description": "Digest of the value the step produced, where it produced one.",
       "$ref": "Artifact.json#/$defs/digest"
     },
+    "scope": {
+      "description": "For a step that served a case: the case's scope, the subject whose data the result was built from, as the run's intake named it (ADR-0130). An identifier, never a field of the subject's data.",
+      "$ref": "#/$defs/scope"
+    },
     "route": {
       "description": "For a step on a model: the route it took through its purpose's chain (ADR-0116). The member that produced the result, the location the step permitted, its data class where it declared one, and every member passed over with the reason. Identifiers and tokens only.",
       "$ref": "#/$defs/route"
@@ -85,6 +89,15 @@
     }
   ],
   "$defs": {
+    "scope": {
+      "title": "ProvenanceScope",
+      "type": "object",
+      "properties": {
+        "subject": { "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "required": ["subject"],
+      "additionalProperties": false
+    },
     "route": {
       "title": "ProvenanceRoute",
       "type": "object",

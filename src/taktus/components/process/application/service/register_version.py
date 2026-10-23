@@ -28,6 +28,10 @@ are read as they are.
 Registering is where a step on a trained model must carry its model's evaluation on held-out
 cases, of the very file it pins: a version without it, or with one that failed, is refused
 (UC-8.4 §2, ADR-0114, `domain.service.evaluation`).
+
+Registering is where a step's frame must hold: a scope names its subject from the run's
+inputs, and an analytic step reaches its source only, which the tenant declares free of
+personal fields (UC-7.7, ADR-0130, `domain.service.frame`).
 """
 
 from __future__ import annotations
@@ -54,9 +58,9 @@ from taktus.components.process.domain.model.exactness import (
     ExactnessStatement,
     InvalidStatement,
 )
-from taktus.components.process.domain.service import autonomy, evaluation, exactness
+from taktus.components.process.domain.service import autonomy, evaluation, exactness, frame
 from taktus.components.process.domain.service.quality import QUALITY
-from taktus.components.process.ports import LoweredLevels, LoweredVersions
+from taktus.components.process.ports import FreeSources, LoweredLevels, LoweredVersions
 from taktus.ports.administration import Administration
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
@@ -99,7 +103,11 @@ class RegisterProcessVersionHandler:
         administration: Administration | None = None,
         clock: Clock | None = None,
         lowered: LoweredVersions | None = None,
+        sources: FreeSources | None = None,
     ) -> None:
+        self._sources = sources
+        """Which sources the tenant declares free of personal fields (ADR-0130). None: the run
+        alone asks, at every call of an analytic step."""
         self._lowered = lowered
         """The levels a version was lowered to by rule (ADR-0110): a version above them raises
         a level. None: no level was lowered."""
@@ -124,6 +132,9 @@ class RegisterProcessVersionHandler:
                     tenant, version, "process.refused", "administers", command, actor=command.by
                 )
             raise InvalidProcess(tuple(refusals))
+        undeclared = await self._undeclared(tenant, version)
+        if undeclared:
+            raise InvalidProcess(tuple(undeclared))
         refused: autonomy.RaiseVerdict | None = None
         lowerings = await self._lowerings(tenant, version)
         async with self._work.transaction(tenant):
@@ -173,6 +184,19 @@ class RegisterProcessVersionHandler:
         if refused is not None:
             raise RaiseRefused(version.ref, refused.findings)
         return stored if same and stored is not None else version
+
+    async def _undeclared(self, tenant: Tenant, version: ProcessVersion) -> list[str]:
+        """Every analytic step whose source the tenant does not declare free of personal
+        fields (UC-7.7 §2)."""
+        if self._sources is None:
+            return []
+        return [
+            f"step {step_id!r}: an analytic step reads a source the tenant declares free of "
+            f"personal fields, and the tenant does not declare {source} so "
+            "(taktusctl sources declare --free)"
+            for step_id, source in frame.sources(version.work).items()
+            if not await self._sources.free_of_personal_fields(tenant, source)
+        ]
 
     async def _lowerings(self, tenant: Tenant, version: ProcessVersion) -> dict[str, LoweredLevels]:
         """The lowered levels of every version the new one would replace, read before the
@@ -322,6 +346,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
         raise InvalidProcess(tuple(_describe("bundle", error))) from error
     refused = exactness.findings(version.steps)
     refused.extend(evaluation.findings(version.steps, version.work))
+    refused.extend(frame.findings(version.steps, version.work, version.inputs))
     try:
         exactness.statement(version.ref, version.name, version.steps)
     except InvalidStatement as error:

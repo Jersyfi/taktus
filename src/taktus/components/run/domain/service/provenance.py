@@ -29,6 +29,7 @@ from taktus.shared.v1 import (
     Provenance,
     ProvenanceInput,
     ProvenanceRoute,
+    ProvenanceScope,
     StepId,
     Value,
 )
@@ -48,6 +49,8 @@ BYTES_PER_OUTPUT = 80
 ROUTE_BYTES = 320
 BYTES_PER_SKIP = 112
 """What a route adds to the bound (ADR-0116 §7): a fixed part, and each member passed over."""
+SCOPE_BYTES = 288
+"""What a case scope adds to the bound (ADR-0130): a subject of at most 256 characters."""
 
 
 class ChainVerification(Value):
@@ -68,6 +71,7 @@ def record(
     adapter_version: str | None,
     at: datetime,
     route: ProvenanceRoute | None = None,
+    scope: str | None = None,
 ) -> Provenance:
     """The provenance of a step run that just finished, bound to the ledger entry that says
     so. Everything the ledger entry also carries is taken from the step run, so that the two
@@ -85,6 +89,7 @@ def record(
         adapter=step_run.adapter,
         adapter_version=adapter_version if step_run.adapter is not None else None,
         route=route if step_run.adapter is not None else None,
+        scope=None if scope is None else ProvenanceScope(subject=scope),
         inputs=tuple(inputs),
         outputs=tuple(artifact.id for artifact in step_run.artifacts),
         result_digest=None if checkpoint is None else checkpoint.result_digest,
@@ -116,6 +121,7 @@ def size_bound(provenance: Provenance) -> int:
         + BYTES_PER_INPUT * len(provenance.inputs)
         + BYTES_PER_OUTPUT * len(provenance.outputs)
         + (0 if route is None else ROUTE_BYTES + BYTES_PER_SKIP * len(route.skipped))
+        + (0 if provenance.scope is None else SCOPE_BYTES)
     )
 
 

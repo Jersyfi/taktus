@@ -468,6 +468,7 @@ async def wire(
                     decisions=decisions.requests,
                     levels=decisions.levels,
                     residency=decisions.residency,
+                    sources=decisions.sources,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -618,6 +619,7 @@ async def wire(
                 administration=settings.administration,
                 clock=clock,
                 lowered=decisions.lowered,
+                sources=decisions.sources,
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),
