@@ -40,8 +40,19 @@ from taktus.components.run.application.query.measures import StepCases, StepMeas
 from taktus.components.run.application.service.execute_run import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState
 from taktus.components.run.domain.service import maturation, prediction
-from taktus.components.run.domain.service.maturation import Case, Evidence, Proposal
-from taktus.components.run.ports import Decisions, Draft, DraftOption, NotRaised
+from taktus.components.run.domain.service.maturation import (
+    Case,
+    Evidence,
+    Proposal,
+    StepScore,
+)
+from taktus.components.run.ports import (
+    Decisions,
+    Draft,
+    DraftOption,
+    EvaluationScores,
+    NotRaised,
+)
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Fact, Ledger
 from taktus.ports.model import PriceTable, price_compute
@@ -133,7 +144,11 @@ class ProposeMovesHandler:
         decisions: Decisions | None,
         prices: PriceTable | None,
         decision_days: int = 3,
+        scores: EvaluationScores | None = None,
     ) -> None:
+        """`scores` reads a step's score on its process's evaluation cases, which a proposal
+        names (ADR-0141 §2); None: it names none."""
+        self._scores = scores
         self._engine = engine
         self._cases = cases
         self._objects = objects
@@ -244,6 +259,7 @@ class ProposeMovesHandler:
             model=model_ref,
             training_run=training.id,
             trial_run=trial.id,
+            score=await self._score(command.tenant, step),
         )
         request_id = proposal.request_id(command.tenant)
         options = proposal.options()
@@ -278,6 +294,15 @@ class ProposeMovesHandler:
         return outcome.model_copy(
             update={"proposed": True, "request_id": request_id, "proposal": proposal}
         )
+
+    async def _score(self, tenant: Tenant, step: StepCases) -> StepScore | None:
+        """The step's score on its process's evaluation cases; None where no scorer scores it."""
+        if self._scores is None:
+            return None
+        for found in await self._scores.scores(tenant):
+            if (found.process_version, found.step_id) == (step.process_version, step.step_id):
+                return found
+        return None
 
     async def _train(
         self, command: ProposeMoves, step: StepCases, train: Sequence[Case], features: Any

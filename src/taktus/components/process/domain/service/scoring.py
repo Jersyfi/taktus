@@ -8,6 +8,10 @@
 - **The verdict.** A change is `incomplete`, `regressed` or `passed`; a drift evaluation is
   `incomplete`, `first`, `drift` or `steady`. The tenant's tolerance is the only threshold.
 - **Which proposals are evaluated.** One whose difference touches a step.
+- **The comparison.** A scored evaluation's cases, each with its sides beside each other and
+  the difference of their scores, as the web app and the owner's conversation show it.
+- **A step's score.** The mean score of one step on one side, which maturation reads as
+  evidence (ADR-0141).
 - **A case from a correction.** The run's inputs, reduced to those the version's steps read;
   and the inputs a step's scope names as its subject, which are personal by declaration
   (ADR-0130 §2).
@@ -25,6 +29,7 @@ from typing import Any
 
 from taktus.components.process.domain.model.evaluation import (
     CaseResult,
+    Evaluation,
     ScoringRule,
     Side,
     SideResult,
@@ -122,6 +127,61 @@ def drift(current: SideResult, previous: float | None, tolerance: float) -> Verd
     if current.score < previous - tolerance - 1e-9:
         return Verdict.DRIFT
     return Verdict.STEADY
+
+
+def comparison(evaluation: Evaluation) -> tuple[dict[str, Any], ...]:
+    """Every case of an evaluation, in the order it was run, with its sides beside each other:
+    each side's score, run, duration, tokens, the models that answered and every scorer's
+    score; and the proposal's score less the active version's where both have one. A side not
+    run yet is None. Nothing here names a person."""
+    found: dict[str, dict[Side, CaseResult]] = {}
+    for result in evaluation.results:
+        found.setdefault(result.case, {})[result.side] = result
+    sides = (Side.ACTIVE, Side.PROPOSED) if evaluation.candidate is not None else (Side.ACTIVE,)
+    shown: list[dict[str, Any]] = []
+    for case in evaluation.cases:
+        mine = found.get(case.id, {})
+        row: dict[str, Any] = {"case": case.id}
+        for which in sides:
+            ran = mine.get(which)
+            row[which.value] = None if ran is None else _shown_side(ran)
+        active, proposed = mine.get(Side.ACTIVE), mine.get(Side.PROPOSED)
+        row["change"] = (
+            None
+            if active is None or proposed is None or active.score is None or proposed.score is None
+            else round(proposed.score - active.score, 6)
+        )
+        shown.append(row)
+    return tuple(shown)
+
+
+def _shown_side(result: CaseResult) -> dict[str, Any]:
+    return {
+        "score": result.score,
+        "run_id": result.run_id,
+        "run_state": result.run_state,
+        "seconds": result.seconds,
+        "tokens": result.tokens_in + result.tokens_out,
+        "models": dict(result.models),
+        "left_out": result.left_out,
+        "scores": [
+            {"step": s.step, "method": s.method.value, "score": s.score, "how": s.how}
+            for s in result.scores
+        ],
+    }
+
+
+def step_score(evaluation: Evaluation, step_id: str, side: Side = Side.ACTIVE) -> float | None:
+    """One step's score on one side of a scored evaluation: the mean of every score its scorers
+    gave over the cases run. None where one is None — a judge fell back to a person — or no
+    scorer scored the step (ADR-0141 §1)."""
+    return mean(
+        score.score
+        for result in evaluation.results
+        if result.side is side and result.left_out is None
+        for score in result.scores
+        if score.step == step_id
+    )
 
 
 def evaluated(difference: Difference) -> bool:

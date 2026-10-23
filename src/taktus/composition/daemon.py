@@ -169,7 +169,7 @@ from taktus.composition.levels import RepositoryLevelRecords
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
-from taktus.composition.maturation import InstanceMaturation, maturation_wiring
+from taktus.composition.maturation import InstanceMaturation, RepositoryScores, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities
 from taktus.composition.moves import MethodMoves
 from taktus.composition.operation import OperationRecords
@@ -645,6 +645,13 @@ async def wire(
                         clock=clock,
                         decisions=decisions.requests,
                         prices=prices,
+                        # A step's score on its process's cases, as evidence (ADR-0141).
+                        scores=RepositoryScores(
+                            PostgresRepository(persistence, ProcessVersion),
+                            PostgresRepository(persistence, Evaluation),
+                            PostgresRepository(persistence, WatchConfiguration),
+                            persistence,
+                        ),
                     )
                 ),
                 # A change in dialogue, which S-07 runs (ADR-0091 §2).
@@ -734,6 +741,7 @@ async def wire(
                     deliveries=owner.deliveries,
                     secrets=owner.secrets,
                     clock=clock,
+                    evaluations=evaluations,
                 )
             )
             # A running step taken over and handed back there too (ADR-0128 §7).

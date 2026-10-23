@@ -333,6 +333,39 @@ export interface Proposal {
 	difference: { steps?: StepChange[]; triggers_changed?: boolean; inputs_changed?: boolean };
 	created_at: string;
 	rehearsal_run?: string;
+	/** The evaluation on the process's cases the proposal is held to (ADR-0134 §4). */
+	evaluation?: string | null;
+	/** That evaluation, on the view of one proposal (ADR-0134 §9). */
+	evaluated?: Evaluated;
+}
+
+/** One side of one evaluation case: what the version produced, and its score. */
+export interface EvaluatedSide {
+	score: number | null;
+	run_id: string | null;
+	run_state: string | null;
+	seconds: number | null;
+	tokens: number;
+	models: Record<string, string>;
+	left_out: string | null;
+	scores: { step: string; method: string; score: number | null; how: string }[];
+}
+
+/** A proposal's evaluation as the surface hands it: the verdict, each side's score, and every
+ * case with its sides beside each other. An override carries its reason, never who gave it
+ * (principle 14). */
+export interface Evaluated {
+	id: string;
+	purpose: 'change' | 'drift';
+	state: 'running' | 'judging' | 'scored';
+	verdict: 'passed' | 'regressed' | 'incomplete' | 'first' | 'steady' | 'drift' | null;
+	tolerance: number | null;
+	sides: { side: 'active' | 'proposed'; version: string; score: number | null; cases: number; unscored: number }[];
+	override: { reason: string; at: string } | null;
+	started_at: string;
+	scored_at: string | null;
+	scorers: { step: string; method: string; exactness: string; rule: string | null }[];
+	cases: { case: string; active: EvaluatedSide | null; proposed?: EvaluatedSide | null; change: number | null }[];
 }
 
 /** A group's response times, or why they are withheld (ADR-0015). */
