@@ -32,8 +32,10 @@ from taktus.shared.v1 import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-BUNDLES = sorted((ROOT / "examples" / "processes").glob("*.yaml")) + sorted(
-    (ROOT / "blueprints").glob("*/processes/*.yaml")
+BUNDLES = (
+    sorted((ROOT / "examples" / "processes").glob("*.yaml"))
+    + sorted((ROOT / "blueprints").glob("*/processes/*.yaml"))
+    + sorted((ROOT / "blueprints" / "gallery").glob("*/processes/*.yaml"))  # ADR-0136
 )
 SHARED_EXAMPLES = ROOT / "contracts" / "shared" / "v1" / "examples" / "step"
 

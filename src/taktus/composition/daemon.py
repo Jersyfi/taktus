@@ -162,6 +162,7 @@ from taktus.composition.findings import (
     intake_of,
     sending_of,
 )
+from taktus.composition.gallery import Gallery
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
 from taktus.composition.levels import RepositoryLevelRecords
@@ -272,6 +273,9 @@ class Wired:
     evaluations: Evaluations
     """A change held to the process's evaluation cases, and drift measured on them, which the
     scheduler advances (ADR-0134)."""
+    gallery: Gallery
+    """The gallery a person chooses a first process from, read from its directory on every
+    request (UC-10.4, ADR-0136)."""
     agent: AgentSurface
     traces: StepTraces
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
@@ -810,6 +814,12 @@ async def wire(
                 proposals=proposals,
                 proposal_acts=proposal_acts,
                 evaluations=evaluations,
+                gallery=Gallery(
+                    settings.gallery_directory,
+                    proposals,
+                    PostgresRepository(persistence, ProcessVersion),
+                    persistence,
+                ),
                 agent=AgentSurface(
                     processes=PostgresRepository(persistence, Process),
                     versions=PostgresRepository(persistence, ProcessVersion),

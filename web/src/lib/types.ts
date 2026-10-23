@@ -326,13 +326,44 @@ export interface StepChange {
 export interface Proposal {
 	id: string;
 	process_id: string;
-	base_version: string;
+	/** Absent for a process's first version, made against none (ADR-0136 §4). */
+	base_version?: string;
 	version: string;
 	request?: string;
 	state: 'proposed' | 'rehearsed' | 'commissioned' | 'discarded';
 	difference: { steps?: StepChange[]; triggers_changed?: boolean; inputs_changed?: boolean };
 	created_at: string;
 	rehearsal_run?: string;
+	/** The bundle it proposes; the page reads only its name. */
+	bundle?: { name?: string };
+}
+
+/** One choice a gallery process offers: a declared input its schedule gives (ADR-0136 §2). */
+export interface GalleryChoice {
+	name: string;
+	label: string;
+	value: unknown;
+}
+
+/** A gallery process: offered with its steps and choices, or refused with why. */
+export interface GalleryProcess {
+	id: string;
+	name: string;
+	reason: string;
+	level?: number;
+	level_reason?: string;
+	steps?: { id: string; method: string; reason: string }[];
+	choices?: GalleryChoice[];
+	refused?: string[];
+}
+
+/** `GET /gallery`: the gallery blueprints a person chooses a first process from. */
+export interface GalleryBlueprint {
+	id: string;
+	title: string;
+	for: string;
+	summary: string;
+	processes: GalleryProcess[];
 }
 
 /** A group's response times, or why they are withheld (ADR-0015). */

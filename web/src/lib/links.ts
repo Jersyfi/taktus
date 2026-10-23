@@ -28,6 +28,11 @@ export function changeLink(processId: string): string {
 	return `#/changes/${encodeURIComponent(processId)}`;
 }
 
+/** The gallery a person chooses a first process from (ADR-0136 §5). */
+export function galleryLink(): string {
+	return '#/gallery';
+}
+
 /** A report to the owner: where every link a channel carries to it leads (ADR-0120). The
  * control plane builds the same route (`rendering.py`'s `view_url`). */
 export function reportLink(reportId: string): string {

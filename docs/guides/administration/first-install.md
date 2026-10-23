@@ -7,7 +7,7 @@ printed.
 
 An installation of Taktus is called an **instance**. An instance is the program Taktus and the
 database it keeps its records in. Nothing in this page connects the instance to anyone else:
-it runs on your machine, under your control, and sends nothing out (section 7).
+it runs on your machine, under your control, and sends nothing out (section 8).
 
 ## 1. Choose how to install
 
@@ -70,14 +70,26 @@ Every later command of this page runs in this directory.
 ### 2.3 Start it
 
 ```bash
-make up
+make start
 ```
 
-This one command does five things. It writes a random database password, and the address of the
-database that carries it, into two files under `deploy/docker/secrets/`. It builds the image of
-Taktus, which takes several minutes the first time. It starts two containers: PostgreSQL, the
-database, and Taktus. Taktus brings the database to its schema when it starts. The command
-returns once Taktus answers that it is ready.
+This one command installs Taktus and makes it ready to use from the web app. It writes a random
+database password, and the address of the database that carries it, into two files under
+`deploy/docker/secrets/`. It builds the image of Taktus, which takes several minutes the first
+time. It starts two containers: PostgreSQL, the database, and Taktus. Taktus brings the
+database to its schema when it starts. Once Taktus answers that it is ready, the command creates
+your tenant and your identity in it (sections 4 and 5), and prints your **account key** once,
+with the address of the web app. Keep the key like a password.
+
+The command then keeps a clock running, until your first rehearsal has finished (section 6.1).
+It prints how long that took from the moment you typed `make start`, and writes what it measured
+to `deploy/docker/first-process.json`. That file holds times and the kind of machine, and
+nothing about you; it is never committed. `Ctrl-C` stops the clock; Taktus keeps running.
+
+`make start NAME="Example Software"` gives your tenant a name; without it, the tenant is called
+*My organisation*. Run on an instance that has a tenant already, the command creates nothing.
+`make up` does the same install without the tenant, the identity and the clock: sections 4 and
+5 are then done by hand.
 
 Check it yourself:
 
@@ -113,7 +125,7 @@ To set one, write it into `deploy/docker/taktus.env`, one `NAME=value` per line,
 exists. A secret never goes into it. A secret is a file the setting points at, as the page
 *Configuring* describes.
 
-Continue with section 4.
+With `make start`, continue with section 6; with `make up`, with section 4.
 
 ## 3. A cluster, with the Helm chart
 
@@ -227,6 +239,9 @@ deploy/taktus-all -- taktusctl …`.
 
 ## 4. Create the tenant
 
+`make start` did this and section 5 for you, on one machine. They are here for a cluster, and for
+an instance brought up with `make up`.
+
 A **tenant** is one organisation on an instance. Every run, record and person belongs to exactly
 one tenant, and no tenant sees another's. Create yours with a name you choose:
 
@@ -265,13 +280,40 @@ not `127.0.0.1`: the browser keeps the sign-in only for `localhost` or for an ad
 over HTTPS. Paste the account key and sign in. The start page shows what your tenant holds,
 which is nothing yet. The sign-in lasts twelve hours in every tab, or until *Sign out*.
 
-## 6. Register a process and run it
+## 6. A first process
+
+### 6.1 From the gallery
+
+The web app's **gallery** offers first processes for typical situations: a family, a club and a
+small business. Each is a **blueprint**: a set of open files in the repository, under
+`blueprints/gallery/`. Open *Gallery* at the top of the web app, or follow the start page's
+link to it.
+
+Each process is shown with its steps, the method of each step, and the **autonomy level** it
+starts at: how much Taktus may do on its own, from 1 to 4. A gallery process starts at level 2,
+where a person confirms every step before it starts. Each process offers a few **choices**, such
+as your family's name or your payment term. Change them, and choose *Make this my first
+process*.
+
+The web app then shows your process as a **proposal**: a version that does not run yet. Choose
+*Rehearse*. A **rehearsal** runs the process once and acts on nothing outside Taktus. The page
+shows each step as the rehearsal reaches it. Once the rehearsal has finished, `make start`'s
+clock stops and prints the time. *Commission version 1* makes the process live: from then on it
+runs on its schedule, and you confirm each step.
+
+A gallery process reaches nothing outside Taktus: it writes a text you read in the web app.
+Connecting your own systems comes afterwards (section 7.2). The gallery is never required:
+section 7.2 registers a process from its own file. An operator removes a blueprint from the
+gallery by removing its directory; `TAKTUS_GALLERY_DIRECTORY` names the gallery's directory, and
+the image sets it to the gallery it carries.
+
+## 7. Register a process and run it
 
 A **process** is a description of recurring work: its steps, and for each step the method that
 does it. It is written in a file called a **bundle**. **Registering** a process stores its bundle
 as a version on the instance; a **run** is one execution of that version.
 
-### 6.1 The first process
+### 7.1 The example process
 
 The image carries a first process that needs nothing outside Taktus:
 `examples/processes/first-process.yaml`. It has three steps: a fixed value, a pause of two
@@ -297,7 +339,7 @@ Each command prints the run's state and identifier, and nothing about the step. 
 in the web app is where you see it move. After the third confirmation the process's page lists
 the run as `finished`. The instance works.
 
-### 6.2 Your own processes
+### 7.2 Your own processes
 
 A process of your own is registered the same way: copy its bundle into the instance and submit
 it. On one machine:
@@ -313,7 +355,7 @@ where `<pod>` is the name `kubectl -n taktus get pods -l taktus-role=all` prints
 `taktusctl bundle check` holds the bundle to the rules registration holds it to, and changes
 nothing. It also names three rules it does not check; registration checks those. The third
 command registers the process and starts a run. A process at level 2 then waits at its first
-step, and is confirmed as in section 6.1, with `--process /tmp/<your-bundle>.yaml`.
+step, and is confirmed as in section 7.1, with `--process /tmp/<your-bundle>.yaml`.
 
 The processes of a business domain come as a **blueprint**: a set of bundles under
 `blueprints/<domain>/processes/`. The blueprint `software-operations` describes the operation
@@ -323,7 +365,7 @@ your other systems — the repository service, the error tracker, a chat — and
 **connector** for each: a separate program through which Taktus reaches that system. The page
 *Configuring* names the settings for connectors and their credentials.
 
-## 7. What leaves this instance
+## 8. What leaves this instance
 
 Nothing, until you configure it. An instance installed by this page:
 
@@ -338,7 +380,7 @@ Nothing, until you configure it. An instance installed by this page:
 - gives the Taktus project no access. The project holds no account, key or address of your
   instance, and no part of Taktus asks for one.
 
-## 8. Stop it, and start it again
+## 9. Stop it, and start it again
 
 On one machine, `make down` stops both containers, removes them and keeps every volume. A **volume** is where
 a container keeps its data. `make up` starts them again, and every run continues at the step

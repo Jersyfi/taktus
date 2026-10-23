@@ -180,6 +180,13 @@ up: need-docker ## Bring Taktus up: two containers, migrations applied, ready
 	deploy/docker/secrets.sh
 	docker compose -f $(COMPOSE) up --build --detach --wait
 
+# The one command of a first install on one machine (UC-10.4, ADR-0136 §6): what `up` does,
+# then the first tenant and its administrator, then a clock that runs until the first rehearsal
+# has finished, and the time it measured (deploy/docker/start.py). NAME= names the tenant.
+.PHONY: start
+start: need-docker ## Install on one machine in one command: up, the first tenant and its key, and the clock to a first rehearsed process
+	python3 deploy/docker/start.py $(if $(NAME),--name "$(NAME)")
+
 .PHONY: up-dev
 up-dev: need-docker ## The same, plus the reference worker in its own image, for development
 	deploy/docker/secrets.sh
@@ -192,6 +199,10 @@ down: need-docker ## Stop the containers, with or without the reference worker; 
 .PHONY: verify-compose
 verify-compose: need-docker ## From nothing: up with the reference worker, the control plane image checked for worker code, a run end to end, the container killed and restarted, the run resumed
 	deploy/docker/verify.sh
+
+.PHONY: verify-first-process
+verify-first-process: need-docker ## From nothing, without a person: install, gallery, proposal, rehearsal; fails above ten minutes (deploy/docker/first-process.sh)
+	deploy/docker/first-process.sh
 
 .PHONY: verify-upgrade
 verify-upgrade: need-docker ## The previous release with a run in every state, upgraded to this checkout; every run resumes at its boundary (TAKTUS_UPGRADE_FROM, _IMAGE, _WORKER_IMAGE; ADR-0124)

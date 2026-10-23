@@ -5,15 +5,17 @@
 	in words, because a proposal is not a level and `reporting` hands no glyph for it. A proposal
 	is rehearsed, then commissioned or discarded; the rehearsal's result is shown with it, read from
 	the rehearsal's run, and commissioning is offered once that run has finished. The versions are listed, each earlier one with a
-	rollback. The page sends what the person chose and shows what the surface answers; it decides
-	nothing, and computes nothing.
+	rollback. A process with no version yet — one chosen from the gallery — shows its proposal as its
+	first version, with no request in words and no versions (ADR-0136 §4). The page sends what the
+	person chose and shows what the surface answers; it decides nothing, and computes nothing.
 -->
 <script lang="ts">
-	import { processLink, runLink } from './links';
+	import { galleryLink, processLink, runLink } from './links';
 	import type { ProcessLevel, Proposal, RunLevel, StepChange } from './types';
 
 	let {
 		level,
+		processId = '',
 		proposals,
 		rehearsals = {},
 		busy = false,
@@ -24,7 +26,10 @@
 		onDiscard,
 		onRollback
 	}: {
-		level: ProcessLevel;
+		/** The process's level; null for a process with no version yet. */
+		level: ProcessLevel | null;
+		/** The process, where it has no level to name it. */
+		processId?: string;
 		proposals: Proposal[];
 		/** The run level of each proposal's rehearsal, by proposal; absent where it cannot be read. */
 		rehearsals?: Record<string, RunLevel>;
@@ -37,8 +42,9 @@
 		onRollback: (version: string) => void;
 	} = $props();
 
-	const process = $derived(level.process);
-	const active = $derived(process.versions.find((v) => v.active)?.version);
+	const process = $derived(level?.process ?? null);
+	const active = $derived(process?.versions.find((v) => v.active)?.version);
+	const named = $derived(process?.name ?? proposals.find((p) => p.bundle?.name)?.bundle?.name ?? processId);
 	const open = $derived(proposals.filter((p) => p.state === 'proposed' || p.state === 'rehearsed'));
 	let request = $state('');
 
@@ -58,27 +64,41 @@
 </script>
 
 <section class="change" aria-labelledby="change-title">
-	<p class="eyebrow"><a href={processLink(process.id)}>{process.name}</a> · change in dialogue</p>
+	{#if process}
+		<p class="eyebrow"><a href={processLink(process.id)}>{process.name}</a> · change in dialogue</p>
+	{:else}
+		<p class="eyebrow">{named} · a new process</p>
+	{/if}
 	<h1 id="change-title">
 		{open.length === 0
-			? 'Say what should change.'
+			? process
+				? 'Say what should change.'
+				: 'Nothing waits here.'
 			: `${open.length} ${open.length === 1 ? 'proposal waits' : 'proposals wait'} for you.`}
 	</h1>
-	<p class="muted">Nothing changes until you commission a rehearsed proposal. Every version stays.</p>
-
-	<form class="ask" onsubmit={ask}>
-		<label>
-			What should change, in your own words
-			<textarea rows="3" bind:value={request}></textarea>
-		</label>
-		<button type="submit" disabled={busy || !request.trim()}>Ask Taktus</button>
-	</form>
+	{#if process}
+		<p class="muted">Nothing changes until you commission a rehearsed proposal. Every version stays.</p>
+		<form class="ask" onsubmit={ask}>
+			<label>
+				What should change, in your own words
+				<textarea rows="3" bind:value={request}></textarea>
+			</label>
+			<button type="submit" disabled={busy || !request.trim()}>Ask Taktus</button>
+		</form>
+	{:else}
+		<p class="muted" data-new-process>
+			This process does not run yet. Rehearse it to see what it does; nothing leaves the system. It runs
+			for real only once you commission it. Other choices: <a href={galleryLink()}>back to the gallery</a>.
+		</p>
+	{/if}
 	{#if message}<p class="message" aria-live="polite">{message}</p>{/if}
 
 	{#each open as proposal (proposal.id)}
 		<article class="proposal" data-proposal={proposal.id}>
 			<header>
-				<strong>Version {proposal.version}</strong>, against {proposal.base_version}
+				<strong>Version {proposal.version}</strong>{proposal.base_version
+					? `, against ${proposal.base_version}`
+					: ', its first version'}
 				<span class="state" data-state={proposal.state}>{proposal.state}</span>
 			</header>
 			{#if proposal.request}<p class="request">“{proposal.request}”</p>{/if}
@@ -144,6 +164,7 @@
 		</article>
 	{/each}
 
+	{#if process}
 	<section class="versions" aria-label="Versions">
 		<h2>Versions — and how to go back</h2>
 		<ul>
@@ -162,6 +183,7 @@
 			deleted; a run under way finishes on its version.
 		</p>
 	</section>
+	{/if}
 </section>
 
 <style>

@@ -1,0 +1,74 @@
+# The club's first process from the gallery (UC-10.4, ADR-0136): the reminder of the next meeting.
+#
+# Two rule steps. A rule step produces its value by a fixed rule; none of them needs a worker, a
+# connector or a language model, so the process runs on an instance straight after its install
+# and its rehearsal runs to its end. Its choices are the inputs its monthly trigger gives.
+
+id: meeting-reminder
+version: "1"
+name: The reminder of the next meeting
+autonomy:
+  level: 2
+  reason: >
+    it is a first process: a person confirms each step before it starts, and sees what it does
+  toward_next: >
+    a few months of reminders a person read and did not have to correct
+author: the repository
+reason: every month, the reminder of a club's next meeting, with when and where it is
+
+limits:
+  compute: { seconds: 10, resource_class: cpu.small }
+
+inputs:
+  club:
+    description: The name of your club
+    example: the chess club
+  when:
+    description: When the meeting is
+    example: the first Monday of the month, at seven in the evening
+  place:
+    description: Where the meeting is
+    example: the clubhouse
+
+triggers:
+  - schedule: monthly
+    inputs:
+      club: the chess club
+      when: the first Monday of the month, at seven in the evening
+      place: the clubhouse
+
+steps:
+  - id: check
+    method: rule
+    reason: whether the reminder says when and where is a fact of its text; nothing needs judgement
+    rejected:
+      - method: llm
+        why: a fact of a text needs no language model
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: that the reminder says when and where }
+    work:
+      rule: check
+      conditions:
+        - value: { $input: when }
+          not_matches: '^\s*$'
+        - value: { $input: place }
+          not_matches: '^\s*$'
+
+  - id: write
+    method: rule
+    reason: the reminder is a fixed form of words filled in with the club's choices
+    rejected:
+      - method: llm
+        why: a fixed form of words needs no language model, and says the same every month
+    exactness: exact
+    checks:
+      - { kind: recomputation, subject: the reminder }
+    depends_on: [check]
+    work:
+      rule: template
+      text: "For the members of ${club}: the next meeting is ${when}, at ${place}. Please say if you cannot come."
+      values:
+        club: { $input: club }
+        when: { $input: when }
+        place: { $input: place }
