@@ -9,6 +9,9 @@
   person who commissions it. Every check registration applies holds. The ledger records
   `process.commissioned`. A proposal made against a version that is no longer active is not
   commissioned.
+- **Evaluate.** A proposal that changes a step, of a process with evaluation cases, is run on
+  them beside the active version when it is rehearsed, and commissioned only once that
+  evaluation passed, or against its verdict with a person's reason (ADR-0134 §4).
 - **Roll back.** An earlier version's bundle is registered again as a new version, through the
   same registration, and the ledger records `process.rolled_back`; the new version's reason names
   the version it restores. Nothing is deleted.
@@ -45,6 +48,7 @@ from taktus.components.process.domain.model import (
 from taktus.components.process.domain.service.bundle import bundle_of, next_version
 from taktus.components.run.application.service import RunEngine, StartRun
 from taktus.components.run.domain.model import Run, RunState
+from taktus.composition.evaluations import Evaluations
 from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.identity import IdentityResolver
 from taktus.ports.ledger import Fact, Ledger
@@ -73,12 +77,15 @@ class ProposalActs:
         clock: Clock,
         ids: Identifiers,
         change_process: str | None = None,
+        evaluations: Evaluations | None = None,
     ) -> None:
         """`change_process` is the process that turns a request in words into a proposal, as
         the operator names it (`TAKTUS_CHANGE_PROCESS`); None, the default: no request in words
         is taken, and a changed bundle is handed over instead. Which process does it is a
-        tenant's bundle, never the product's default (ADR-0092)."""
+        tenant's bundle, never the product's default (ADR-0092). `evaluations` holds a change
+        to the process's evaluation cases (ADR-0134); None holds it to none."""
         self._proposals = proposals
+        self._evaluations = evaluations
         self._change_process = change_process
         self._processes = processes
         self._versions = versions
@@ -213,7 +220,19 @@ class ProposalActs:
                 actions=version.autonomy.action_levels,
             )
         )
-        return await self._proposals.rehearsed(tenant, process_id, proposal_id, run.id), run
+        evaluation = (
+            None
+            if self._evaluations is None
+            else await self._evaluations.start_change(tenant, proposal, placed.identity)
+        )
+        rehearsed = await self._proposals.rehearsed(
+            tenant,
+            process_id,
+            proposal_id,
+            run.id,
+            evaluation=None if evaluation is None else evaluation.id,
+        )
+        return rehearsed, run
 
     async def commission(
         self,
@@ -222,8 +241,11 @@ class ProposalActs:
         proposal_id: str,
         by: str,
         approved_by: str | None = None,
+        override: str | None = None,
     ) -> ProcessVersion:
-        """The proposal registered as the active version, once its rehearsal finished."""
+        """The proposal registered as the active version, once its rehearsal finished and, where
+        it is held to the process's evaluation cases, once its evaluation passed. `override` is
+        a person's reason for commissioning it against the evaluation's verdict (ADR-0134 §4)."""
         proposal = await self._proposals.get(tenant, process_id, proposal_id)
         if proposal.state is not ProposalState.REHEARSED or proposal.rehearsal_run is None:
             raise ProposalError(
@@ -245,6 +267,8 @@ class ProposalActs:
                 f"the proposal was made against {proposal.base_version}, and the active "
                 f"version is {None if process is None else process.active_version}: ask again",
             )
+        if self._evaluations is not None:
+            await self._evaluations.hold(tenant, proposal, by, override)
         version = await self._register.execute(
             RegisterProcessVersion(proposal.bundle, tenant=tenant, by=by, approved_by=approved_by)
         )

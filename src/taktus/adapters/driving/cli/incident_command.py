@@ -169,6 +169,20 @@ def configure(
             help="How often a step's model may answer in a run; the next call is stopped.",
         ),
     ] = None,
+    evaluation_tolerance: Annotated[
+        float | None,
+        typer.Option(
+            "--evaluation-tolerance",
+            help="How far a score on the evaluation cases may fall before it is a regression.",
+        ),
+    ] = None,
+    evaluation_subjects: Annotated[
+        bool | None,
+        typer.Option(
+            "--evaluation-subjects/--no-evaluation-subjects",
+            help="Whether an evaluation case may keep an input a step's scope names.",
+        ),
+    ] = None,
     tenant: Tenant = DEFAULT_TENANT,
     by: By = "operator",
     state_dir: StateDir = Path(DEFAULT_STATE_DIR),
@@ -182,6 +196,8 @@ def configure(
         empty_minimum=empty_minimum,
         repeated_calls=repeated_calls,
         repeated_model_calls=repeated_model_calls,
+        evaluation_tolerance=evaluation_tolerance,
+        evaluation_subjects=evaluation_subjects,
     )
     changes = (
         grace,
@@ -190,6 +206,8 @@ def configure(
         empty_minimum,
         repeated_calls,
         repeated_model_calls,
+        evaluation_tolerance,
+        evaluation_subjects,
     )
 
     async def act(watch: ExpectedRuns) -> dict[str, Any]:

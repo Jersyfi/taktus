@@ -17,9 +17,13 @@ The third source is a step stopped for repeating itself (ADR-0132 §5): the same
 with the same arguments, or its model asked again without a new tool result, more often than
 the tenant's limit allows within one run. Its facts name the action, the count and the limit.
 
+The fourth source is a drift (ADR-0134 §5): a process that sends outward scored on its
+evaluation cases, with no change, below its last score by more than the tenant's tolerance. Its
+facts name both scores, the tolerance and the models that answered.
+
 A **watch configuration** is one tenant's grace period and its threshold for a watcher that never
-finds anything, and its limits on repetition. A tenant that configured nothing holds the shipped
-default (NTC-0212, NTC-0226).
+finds anything, its limits on repetition, and its tolerance and allowance for evaluation cases.
+A tenant that configured nothing holds the shipped default (NTC-0212, NTC-0226, NTC-0228).
 """
 
 from __future__ import annotations
@@ -50,6 +54,9 @@ class IncidentKind(StrEnum):
     REPEATED = "step.repeated"
     """A step would have repeated the same outward call, or its model's answer, beyond the
     tenant's limit within one run; the rule stopped it at its boundary (ADR-0132 §5)."""
+    DRIFT = "evaluation.drift"
+    """A process that sends outward scored on its evaluation cases, with no change, below its
+    last score by more than the tenant's tolerance (ADR-0134 §5)."""
 
 
 class IncidentState(StrEnum):
@@ -153,6 +160,7 @@ EMPTY_WINDOW = timedelta(days=30)
 EMPTY_MINIMUM = 10
 REPEATED_CALLS = 3
 REPEATED_MODEL_CALLS = 3
+EVALUATION_TOLERANCE = 0.05
 
 
 class WatchConfiguration(Value):
@@ -174,6 +182,12 @@ class WatchConfiguration(Value):
     repeated_model_calls: int = Field(default=REPEATED_MODEL_CALLS, ge=1)
     """How often a step's model may answer within one run without a tool result between; the
     next call is stopped at the step's boundary."""
+    evaluation_tolerance: float = Field(default=EVALUATION_TOLERANCE, ge=0, le=1)
+    """How far a process's score on its evaluation cases may fall before a change is held as a
+    regression, or a run with no change reported as drift (ADR-0134 §8, NTC-0228)."""
+    evaluation_subjects: bool = False
+    """Whether an evaluation case may keep an input that a step's scope names as its subject:
+    personal data by declaration (ADR-0134 §7, NTC-0228)."""
     configured_at: datetime | None = None
     """When it was configured; None for the shipped default, which nobody configured."""
 

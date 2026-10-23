@@ -398,6 +398,17 @@ in one transaction with its entry (`deadline.lead`, `deadline.reached`). No work
 outside timer keeps a deadline. `taktusctl deadline list` lists the open ones, by when they fall
 due.
 
+**A change is held to its evaluation cases, and drift is measured on them** (ADR-0134,
+UC-4.18). A version may declare `evaluation`: cases — a run's inputs with a target per step —
+scorers, each a rule or, where no rule can score, a language model as judge with a fallback, and
+a schedule. A proposal that changes a step is run on the process's cases beside the active
+version when it is rehearsed, every case a rehearsal. It is commissioned only once its
+evaluation passed, or against a regression with a person's reason, recorded as
+`evaluation.overridden`. On the schedule the active version runs on the same cases with no
+change; a score below the last one by more than the tenant's tolerance is a drift, and an
+incident of kind `evaluation.drift` where the process sends outward. A corrected draft is
+proposed as a case, and enters the set once a person confirmed its target.
+
 The model above handles failures. Result defects need a record that this version writes and a
 detection that `0.5.0` adds; the record is the provenance chain of §6.1.
 

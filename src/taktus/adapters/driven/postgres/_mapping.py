@@ -186,6 +186,7 @@ class ProcessVersionMapper:
                 "limits": document.get("limits"),
                 "open_work": document.get("open_work") or None,
                 "deadlines": document.get("deadlines") or None,
+                "evaluation": document.get("evaluation"),
                 "inputs": document.get("inputs", {}),
                 "author": document.get("author"),
                 "reason": document.get("reason"),
@@ -232,6 +233,7 @@ class ProcessVersionMapper:
                 "limits": row.limits,
                 "open_work": row.open_work,
                 "deadlines": row.deadlines,
+                "evaluation": row.evaluation,
                 "inputs": row.inputs,
                 "author": row.author,
                 "reason": row.reason,
@@ -1260,6 +1262,70 @@ class ProposalMapper:
         return [dict(row.proposal) for row in rows]
 
 
+class EvaluationMapper:
+    """One row per evaluation of a process on its cases (ADR-0134 §3): the evaluation as a
+    document, and beside it the columns a list of a process's evaluations is read by."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.evaluation, tenant, id)
+        return None if row is None else dict(row.evaluation)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.evaluation,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "process_id": document["process_id"],
+                "state": document.get("state", "running"),
+                "started_at": _at(document["started_at"]),
+                "evaluation": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection, s.evaluation, tenant, s.evaluation.c.started_at, s.evaluation.c.id
+        )
+        return [dict(row.evaluation) for row in rows]
+
+
+class CorrectedCaseMapper:
+    """One row per case proposed from a correction (ADR-0134 §7), as a document. A row is never
+    deleted: its state moves on."""
+
+    async def get(self, connection: AsyncConnection, tenant: Tenant, id: str) -> Document | None:
+        row = await _one(connection, s.corrected_case, tenant, id)
+        return None if row is None else dict(row.corrected_case)
+
+    async def put(self, connection: AsyncConnection, tenant: Tenant, document: Document) -> None:
+        await _upsert(
+            connection,
+            s.corrected_case,
+            ("tenant", "id"),
+            {
+                "tenant": tenant,
+                "id": document["id"],
+                "process_id": document["process_id"],
+                "state": document.get("state", "proposed"),
+                "proposed_at": _at(document["proposed_at"]),
+                "corrected_case": document,
+            },
+        )
+
+    async def list(self, connection: AsyncConnection, tenant: Tenant) -> list[Document]:
+        rows = await _all(
+            connection,
+            s.corrected_case,
+            tenant,
+            s.corrected_case.c.proposed_at,
+            s.corrected_case.c.id,
+        )
+        return [dict(row.corrected_case) for row in rows]
+
+
 class PendingActMapper:
     """One row per commissioning or rollback asked for in the owner's conversation and read
     back, as a document (ADR-0091 §6). A row is never deleted: its state moves on."""
@@ -1518,6 +1584,8 @@ MAPPERS: dict[str, Mapper] = {
     "report": ReportMapper(),
     "proposal": ProposalMapper(),
     "pending_act": PendingActMapper(),
+    "evaluation": EvaluationMapper(),
+    "corrected_case": CorrectedCaseMapper(),
     "incident": IncidentMapper(),
     "watch_configuration": WatchConfigurationMapper(),
     "corridor": CorridorMapper(),

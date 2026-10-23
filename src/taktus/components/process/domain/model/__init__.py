@@ -1,4 +1,12 @@
 from taktus.components.process.domain.model.errors import InvalidProcess, RaiseRefused
+from taktus.components.process.domain.model.evaluation import (
+    CaseState,
+    CorrectedCase,
+    Evaluation,
+    EvaluationCase,
+    EvaluationSpec,
+    Scorer,
+)
 from taktus.components.process.domain.model.event import (
     KINDS,
     Condition,
@@ -31,12 +39,17 @@ from taktus.components.process.domain.model.trigger_state import Firing, Trigger
 
 __all__ = [
     "KINDS",
+    "CaseState",
     "Condition",
+    "CorrectedCase",
     "DeadlineAction",
     "DeadlineDeclaration",
     "Difference",
     "Each",
     "Edge",
+    "Evaluation",
+    "EvaluationCase",
+    "EvaluationSpec",
     "Event",
     "Expect",
     "Fields",
@@ -51,6 +64,7 @@ __all__ = [
     "Proposal",
     "ProposalState",
     "RaiseRefused",
+    "Scorer",
     "Slo",
     "StepChange",
     "Trigger",

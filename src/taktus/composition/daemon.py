@@ -78,6 +78,7 @@ from taktus.components.decision.application.service import (
 from taktus.components.decision.domain.model import Request
 from taktus.components.governance.application.service import (
     Corrections,
+    Drifts,
     ExpectedRuns,
     ReportCapacity,
     ReportCapacityHandler,
@@ -99,7 +100,14 @@ from taktus.components.process.application.service.register_version import (
     RegisterProcessVersionHandler,
 )
 from taktus.components.process.application.service.triggers import TriggersHandler
-from taktus.components.process.domain.model import Process, ProcessVersion, Proposal, TriggerState
+from taktus.components.process.domain.model import (
+    CorrectedCase,
+    Evaluation,
+    Process,
+    ProcessVersion,
+    Proposal,
+    TriggerState,
+)
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerts,
@@ -134,6 +142,7 @@ from taktus.composition.change_in_channel import ChangeInChannel
 from taktus.composition.conformance import InstanceSuites, worker_suites
 from taktus.composition.deadlines import Deadlines
 from taktus.composition.decisions import DecisionWiring, decision_wiring
+from taktus.composition.evaluations import Evaluations, evaluations_tick, outward_by
 from taktus.composition.execution import (
     connector_pool,
     memory_demand,
@@ -257,6 +266,9 @@ class Wired:
     """A person's proposals for a changed process, never versions (ADR-0091)."""
     proposal_acts: ProposalActs
     """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
+    evaluations: Evaluations
+    """A change held to the process's evaluation cases, and drift measured on them, which the
+    scheduler advances (ADR-0134)."""
     agent: AgentSurface
     """What the MCP surface needs beyond the HTTP surface's services (ADR-0131)."""
     moves: MethodMoves | None = None
@@ -643,6 +655,30 @@ async def wire(
                 objects=objects,
                 work=persistence,
             )
+            # A change held to its evaluation cases, and drift measured on them (ADR-0134).
+            evaluations = Evaluations(
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                evaluations=PostgresRepository(persistence, Evaluation),
+                cases=PostgresRepository(persistence, CorrectedCase),
+                runs=runs,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                drifts=Drifts(
+                    PostgresRepository(persistence, Incident),
+                    PostgresRepository(persistence, WatchConfiguration),
+                    ledger,
+                    persistence,
+                    clock,
+                ),
+                ledger=ledger,
+                objects=objects,
+                work=persistence,
+                clock=clock,
+                ids=ids,
+                outward=outward_by(pools),
+            )
             proposal_acts = ProposalActs(
                 proposals=proposals,
                 processes=PostgresRepository(persistence, Process),
@@ -657,6 +693,7 @@ async def wire(
                 clock=clock,
                 ids=ids,
                 change_process=settings.change_process,
+                evaluations=evaluations,
             )
             # A change in dialogue read in the owner's conversation too (ADR-0091 §6).
             owner.answers.change_with(
@@ -753,6 +790,7 @@ async def wire(
                 levels=levels,
                 proposals=proposals,
                 proposal_acts=proposal_acts,
+                evaluations=evaluations,
                 agent=AgentSurface(
                     processes=PostgresRepository(persistence, Process),
                     versions=PostgresRepository(persistence, ProcessVersion),
@@ -1023,6 +1061,9 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
         # And it judges every signal against its corridor, and raises the daily report
         # (ADR-0109).
         judge_signals = signals_tick(wired.signals, wired.tenants, wired.clock)
+        # And it measures drift on every process's evaluation cases, moves every evaluation on,
+        # and proposes a case for every corrected draft (ADR-0134).
+        evaluate = evaluations_tick(wired.evaluations, wired.tenants, wired.clock)
 
         async def scheduled() -> None:
             await wired.triggers.tick()
@@ -1034,6 +1075,7 @@ def _start_roles(wired: Wired, stop: asyncio.Event) -> list[asyncio.Task[None]]:
             await report_interfaces()
             await report_alerts()
             await judge_signals()
+            await evaluate()
 
         tasks.append(
             asyncio.create_task(

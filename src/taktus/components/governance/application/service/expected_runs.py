@@ -86,6 +86,8 @@ class ConfigureWatch:
     empty_minimum: int | None = None
     repeated_calls: int | None = None
     repeated_model_calls: int | None = None
+    evaluation_tolerance: float | None = None
+    evaluation_subjects: bool | None = None
 
 
 class UnknownIncident(LookupError):
@@ -129,6 +131,8 @@ class ExpectedRuns:
                 ("empty_minimum", command.empty_minimum),
                 ("repeated_calls", command.repeated_calls),
                 ("repeated_model_calls", command.repeated_model_calls),
+                ("evaluation_tolerance", command.evaluation_tolerance),
+                ("evaluation_subjects", command.evaluation_subjects),
             )
             if value is not None
         }

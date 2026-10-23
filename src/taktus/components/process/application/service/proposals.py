@@ -147,11 +147,23 @@ class Proposals:
         return discarded
 
     async def rehearsed(
-        self, tenant: Tenant, process_id: str, proposal_id: str, run_id: str
+        self,
+        tenant: Tenant,
+        process_id: str,
+        proposal_id: str,
+        run_id: str,
+        evaluation: str | None = None,
     ) -> Proposal:
-        """The proposal, with the rehearsal run that was started for it (ADR-0091 §3)."""
+        """The proposal, with the rehearsal run that was started for it (ADR-0091 §3), and the
+        evaluation on the process's cases started beside it, where it needs one (ADR-0134 §4).
+        A rehearsal again replaces both."""
         return await self._move(
-            tenant, process_id, proposal_id, ProposalState.REHEARSED, rehearsal_run=run_id
+            tenant,
+            process_id,
+            proposal_id,
+            ProposalState.REHEARSED,
+            rehearsal_run=run_id,
+            evaluation=evaluation,
         )
 
     async def commissioned(self, tenant: Tenant, process_id: str, proposal_id: str) -> Proposal:

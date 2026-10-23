@@ -59,6 +59,8 @@ def bundle_of(
             if value is not None:
                 expect[name] = value.total_seconds()
         bundle["expect"] = expect
+    if version.evaluation is not None:
+        bundle["evaluation"] = version.evaluation.document()
     return bundle
 
 

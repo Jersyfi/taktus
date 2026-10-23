@@ -37,6 +37,10 @@ cases, of the very file it pins: a version without it, or with one that failed, 
 Registering is where a step's frame must hold: a scope names its subject from the run's
 inputs, and an analytic step reaches its source only, which the tenant declares free of
 personal fields (UC-7.7, ADR-0130, `domain.service.frame`).
+
+Registering is where a declared evaluation must hold: its scorers score steps that produce a
+result, each by a rule or by a judge that says why no rule can and names its fallback, and its
+cases give the inputs the version requires (UC-4.18, ADR-0134 §1).
 """
 
 from __future__ import annotations
@@ -51,6 +55,7 @@ from pydantic import ValidationError
 
 from taktus.components.process.domain.model import (
     DeadlineDeclaration,
+    EvaluationSpec,
     Expect,
     InputDeclaration,
     InvalidProcess,
@@ -388,6 +393,7 @@ def parse_bundle(bundle: Document) -> ProcessVersion:
             inputs=_inputs(bundle.get("inputs")),
             open_work=_open_work(bundle.get("open_work")),
             deadlines=_deadlines(bundle.get("deadlines")),
+            evaluation=_evaluation(bundle.get("evaluation")),
             author=bundle.get("author"),
             reason=bundle.get("reason"),
         )
@@ -566,6 +572,18 @@ def _action(raw: Any, where: str) -> dict[str, Any] | None:
     if not isinstance(target, str):
         raise InvalidProcess((f"`{where}.{kind}` names a role, never a person",))
     return {"kind": kind, "role": target}
+
+
+def _evaluation(raw: Any) -> EvaluationSpec | None:
+    """`evaluation`: the cases, the scorers and the schedule (ADR-0134 §1)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise InvalidProcess(("`evaluation` is not a mapping",))
+    try:
+        return EvaluationSpec.model_validate(raw)
+    except ValidationError as error:
+        raise InvalidProcess(tuple(_describe("evaluation", error))) from error
 
 
 def _slo(raw: Any) -> Slo | None:

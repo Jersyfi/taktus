@@ -22,7 +22,12 @@ from taktus.components.governance.application.service import Corrections
 from taktus.components.governance.domain.model import Incident
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.process.application.service.proposals import Proposals
-from taktus.components.process.domain.model import ProcessVersion, Proposal
+from taktus.components.process.domain.model import (
+    CorrectedCase,
+    Evaluation,
+    ProcessVersion,
+    Proposal,
+)
 from taktus.components.reporting.application.query import LevelQueries, ReportQueries
 from taktus.components.reporting.application.service import (
     Alerted,
@@ -94,6 +99,7 @@ class ProposalActs(Protocol):
         proposal_id: str,
         by: str,
         approved_by: str | None = None,
+        override: str | None = None,
     ) -> ProcessVersion: ...
 
     async def rollback(
@@ -105,6 +111,26 @@ class ProposalActs(Protocol):
         as_version: str | None = None,
         approved_by: str | None = None,
     ) -> ProcessVersion: ...
+
+
+class EvaluationActs(Protocol):
+    """A process's evaluations and the cases proposed from corrections (ADR-0134): the
+    composition root's, because an evaluation crosses the process, command, run and governance
+    components."""
+
+    async def get(self, tenant: Tenant, process_id: str, evaluation_id: str) -> Evaluation: ...
+
+    async def of_process(self, tenant: Tenant, process_id: str) -> list[Evaluation]: ...
+
+    async def cases_of(self, tenant: Tenant, process_id: str) -> list[CorrectedCase]: ...
+
+    async def confirm(
+        self, tenant: Tenant, process_id: str, case_id: str, by: str, target: Any = None
+    ) -> CorrectedCase: ...
+
+    async def reject(
+        self, tenant: Tenant, process_id: str, case_id: str, by: str
+    ) -> CorrectedCase: ...
 
 
 class Takeovers(Protocol):
@@ -272,6 +298,12 @@ class RestServices(Protocol):
     @property
     def proposal_acts(self) -> ProposalActs:
         """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
+        ...
+
+    @property
+    def evaluations(self) -> EvaluationActs:
+        """A process's evaluations on its cases, and the cases proposed from corrections
+        (ADR-0134)."""
         ...
 
     async def decided(

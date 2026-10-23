@@ -268,7 +268,16 @@ role it would tie the core to a model stack and the removal test would be lost.
   through `DeadlinesOfTheVersion`, in the same module, and its `DeadlineKeeper` keeps them;
   the scheduler takes their actions in `composition/deadlines.py`, which starts a process
   through the command component as a trigger does, and `taktusctl deadline` lists them and sets
-  the tenant's working time (ADR-0133). The models
+  the tenant's working time (ADR-0133).
+  While it leads it also looks at every process's evaluation cases
+  once a minute (`composition/evaluations.py`, ADR-0134): `Evaluations` starts a drift
+  evaluation at every slot of a version's evaluation schedule, moves every evaluation on — its
+  case runs, then its judges' runs, then its score — and proposes a case for every corrected
+  draft. A drift of a process that sends outward reaches the governance component's `Drifts`
+  as an incident. `ProposalActs` (`composition/proposals.py`) starts a proposal's evaluation
+  beside its rehearsal and holds commissioning to its verdict; the HTTP surface reads the
+  evaluations and confirms the cases (`adapters/driving/rest/evaluations.py`), and `taktusctl
+  incident configure` sets the tenant's tolerance. The models
   configured in `TAKTUS_MODELS` reach the run as one pool in chain order
   (`composition/execution.py`, `composition/settings.py`, ADR-0116), and each is held to the
   model contract's suite with its own endpoint (`composition/conformance.py`); deadlines and
