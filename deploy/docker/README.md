@@ -9,6 +9,7 @@
 | `verify.sh` | the end-to-end check: from nothing, the image checked for worker code, a run, the container killed, restarted, the run resumed |
 | `upgrade.sh` | the upgrade test (ADR-0124): the previous release from its tag's compose files and published images, a run in each of five states, upgraded to this checkout; every run continues at its boundary and no completed step runs again (`make verify-upgrade`, and the workflow `upgrade` on every release tag) |
 | `taktus.env` | not in the repository: the operator's own settings, `TAKTUS_NAME=value` per line, read by `compose.yml` when it exists; never a secret value (ignored by git) |
+| `.env` | not in the repository: what Docker Compose itself reads every time, the host port `TAKTUS_HTTP_PORT` above all, so that a port chosen once is kept by every later `make up` (ignored by git). `TAKTUS_HTTP_PORT` in `taktus.env` changes nothing: inside the container the port is always 8080 |
 | `compose.dev.yml` | the development database: PostgreSQL alone, bound to `127.0.0.1`, trusting local connections, for `uv run taktusctl run` and the tests |
 
 The reference worker's image is `workers/script/Dockerfile`; the coding worker's is

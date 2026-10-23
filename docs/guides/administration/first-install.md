@@ -48,13 +48,21 @@ without a password of its own: whoever can run it is the instance's administrato
 
 ### 2.2 Get the release
 
-A **release** is a version of Taktus, named by a tag such as `v0.4.0`. Take the newest:
+A **release** is a version of Taktus, named by a tag such as `v0.4.0`. A tag that ends in
+`-rc.` and a number, such as `v0.4.0-rc.2`, is a release candidate: a trial version before the
+release. List the newest tags, newest first:
 
 ```bash
 git clone https://github.com/Jersyfi/taktus.git
 cd taktus
-git tag --sort=-creatordate | head -1
-git checkout <the tag it printed>
+git tag --sort=-creatordate | head -5
+```
+
+Take the newest tag without `-rc`. Where every tag listed is a release candidate, there is no
+release yet, and the newest candidate is the one to try. Check it out:
+
+```bash
+git checkout <the tag you chose>
 ```
 
 Every later command of this page runs in this directory.
@@ -78,8 +86,18 @@ curl -fsS http://127.0.0.1:8080/ready
 ```
 
 It answers `{"status":"ready",…}`. The instance listens on `127.0.0.1` only, so no other
-machine reaches it. Where port 8080 is taken on the machine, start it with another one,
-`TAKTUS_HTTP_PORT=8090 make up`, and use that port wherever this page says 8080.
+machine reaches it.
+
+**Where port 8080 is taken on the machine**, choose another one and write it into the file
+`deploy/docker/.env`, which Docker Compose reads every time:
+
+```bash
+echo TAKTUS_HTTP_PORT=8090 > deploy/docker/.env
+make up
+```
+
+Use that port wherever this page says 8080. The file is never committed. The port belongs in
+this file and in no other: in `deploy/docker/taktus.env` (section 2.4) it would change nothing.
 
 **Keep the two files under `deploy/docker/secrets/`.** The database keeps the password it was
 created with. A new password in those files would lock Taktus out of its own database.
@@ -90,7 +108,8 @@ A first install needs no setting. Every setting of Taktus is a variable whose na
 `TAKTUS_`; the file `.env.example` lists each of them with what it does.
 
 To set one, write it into `deploy/docker/taktus.env`, one `NAME=value` per line, and run
-`make up` again. That file is yours: it is never committed, and `make up` reads it when it
+`make up` again. Those settings are read by Taktus inside its container. The port of section
+2.3 is the one exception: it is read by Docker Compose, from `deploy/docker/.env`. That file is yours: it is never committed, and `make up` reads it when it
 exists. A secret never goes into it. A secret is a file the setting points at, as the page
 *Configuring* describes.
 
@@ -113,7 +132,7 @@ Continue with section 4.
 
 Take the release as in section 2.2. Then build the image of Taktus from it and push it to your
 registry. `<registry>` is your registry's address with its path, for example
-`registry.example.com/taktus`; `<version>` is the tag without its leading `v`:
+`registry.example.com/acme`; `<version>` is the tag without its leading `v`:
 
 ```bash
 docker build -f deploy/docker/Dockerfile -t <registry>/taktus:<version> .
@@ -157,7 +176,8 @@ rm db-password db-url
 
 ### 3.4 Write your values and install
 
-Write a file `taktus-values.yaml` outside the repository:
+Write a file `taktus-values.yaml` beside the repository's directory, not inside it, so that
+it is never committed. From the repository's directory it is `../taktus-values.yaml`:
 
 ```yaml
 profile: small
@@ -181,7 +201,7 @@ needs one more: `image.pullSecret`, the name of a pull Secret you created in the
 Install:
 
 ```bash
-.tools/bin/helm install taktus deploy/k8s/chart --namespace taktus -f taktus-values.yaml --wait --timeout 10m
+.tools/bin/helm install taktus deploy/k8s/chart --namespace taktus -f ../taktus-values.yaml --wait --timeout 10m
 ```
 
 The chart starts the database, brings it to its schema with a one-time job, and starts Taktus.
@@ -215,20 +235,30 @@ docker compose -f deploy/docker/compose.yml exec taktus taktusctl tenant create 
 ```
 
 It prints the tenant's identifier, which Taktus generated, in the form `tnt_…`. Write it down:
-it is `<tenant>` from here on. `taktusctl tenant list` prints it again.
+it is `<tenant>` from here on. The instance also holds a tenant named `default`, which it
+creates itself; leave it unused. This command lists every tenant, its creation time and its
+name:
+
+```bash
+docker compose -f deploy/docker/compose.yml exec taktus taktusctl tenant list
+```
 
 ## 5. Add yourself and sign in to the web app
 
-An **identity** is a person as Taktus knows them. Add yours to the tenant:
+An **identity** is a person as Taktus knows them. Its name begins with `idn_`, and the rest
+is yours to choose; this page uses `idn_admin`. Add yours to the tenant:
 
 ```bash
 docker compose -f deploy/docker/compose.yml exec taktus taktusctl identity add idn_admin --tenant <tenant>
 ```
 
-It prints an **account key**, which begins with `tka_`, once. Taktus keeps only a digest of it
-and cannot show it again. Keep it like a password. If it is lost,
-`taktusctl identity key idn_admin --tenant <tenant>` issues a new one, and the old one stops
-working.
+It prints the tenant the identity was added in, and an **account key**, which begins with
+`tka_`, once. Taktus keeps only a digest of it
+and cannot show it again. Keep it like a password. If it is lost, this command issues a new one, and the old one stops working:
+
+```bash
+docker compose -f deploy/docker/compose.yml exec taktus taktusctl identity key idn_admin --tenant <tenant>
+```
 
 Open `http://localhost:8080/app/` in a browser on the same machine. Use the name `localhost`,
 not `127.0.0.1`: the browser keeps the sign-in only for `localhost` or for an address served
@@ -244,16 +274,18 @@ as a version on the instance; a **run** is one execution of that version.
 ### 6.1 The first process
 
 The image carries a first process that needs nothing outside Taktus:
-`examples/processes/first-process.yaml`. It has three steps, and a person confirms each before
-it starts. Register it and start a run of it, in one command:
+`examples/processes/first-process.yaml`. It has three steps: a fixed value, a pause of two
+seconds, and a second fixed value. It runs at **autonomy level 2**, written `L2` in the web
+app. The autonomy level says how much Taktus may do on its own, from 1 to 4; at level 2 a
+person confirms every step, the pause included, before it starts. Register it and start a run of it, in one command:
 
 ```bash
 docker compose -f deploy/docker/compose.yml exec taktus taktusctl submit --process examples/processes/first-process.yaml --identity idn_admin --tenant <tenant>
 ```
 
-It prints the run's identifier, in the form `run_…`; that is `<run>`. In the web app, the
-process *First process* appears with its run, which waits for you before its first step.
-Confirm the steps one after the other:
+It prints the run's identifier, in the form `run_…`; that is `<run>`. In the web app, open the
+process *First process* and its run. The run's page names the step that waits for you. Confirm
+the steps one after the other, each once the run's page shows it waiting:
 
 ```bash
 docker compose -f deploy/docker/compose.yml exec taktus taktusctl submit --process examples/processes/first-process.yaml --identity idn_admin --tenant <tenant> --resume <run> --approve greet
@@ -261,8 +293,9 @@ docker compose -f deploy/docker/compose.yml exec taktus taktusctl submit --proce
 docker compose -f deploy/docker/compose.yml exec taktus taktusctl submit --process examples/processes/first-process.yaml --identity idn_admin --tenant <tenant> --resume <run> --approve confirm
 ```
 
-Wait a few seconds between them: each step must have reached its turn. The web app shows the run
-moving, and after the third confirmation it shows the run as finished. The instance works.
+Each command prints the run's state and identifier, and nothing about the step. The run's page
+in the web app is where you see it move. After the third confirmation the process's page lists
+the run as `finished`. The instance works.
 
 ### 6.2 Your own processes
 
@@ -278,7 +311,9 @@ docker compose -f deploy/docker/compose.yml exec taktus taktusctl submit --proce
 On a cluster, `kubectl -n taktus cp <your-bundle>.yaml <pod>:/tmp/<your-bundle>.yaml` copies it,
 where `<pod>` is the name `kubectl -n taktus get pods -l taktus-role=all` prints.
 `taktusctl bundle check` holds the bundle to the rules registration holds it to, and changes
-nothing.
+nothing. It also names three rules it does not check; registration checks those. The third
+command registers the process and starts a run. A process at level 2 then waits at its first
+step, and is confirmed as in section 6.1, with `--process /tmp/<your-bundle>.yaml`.
 
 The processes of a business domain come as a **blueprint**: a set of bundles under
 `blueprints/<domain>/processes/`. The blueprint `software-operations` describes the operation
@@ -292,8 +327,11 @@ your other systems — the repository service, the error tracker, a chat — and
 
 Nothing, until you configure it. An instance installed by this page:
 
-- reaches no address outside the machine or the cluster. Each connector, model, worker,
-  telemetry collector and backup store is an address you configure, and none is configured;
+- reaches no address outside the machine or the cluster. Each of the following is an address
+  you configure, and none is configured: a connector; a language model; a **worker**, a
+  separate program that carries out a step Taktus does not do itself, such as running a
+  command; a telemetry collector, which receives a record of how long each step took; and a
+  backup store;
 - sends no product finding. A **product finding** is what a run met that Taktus lacks. Whether
   it may leave the instance is the setting `TAKTUS_FINDINGS_LEVEL`, which is `off` unless you
   change it;
@@ -302,11 +340,16 @@ Nothing, until you configure it. An instance installed by this page:
 
 ## 8. Stop it, and start it again
 
-On one machine, `make down` stops both containers and keeps every volume. A **volume** is where
+On one machine, `make down` stops both containers, removes them and keeps every volume. A **volume** is where
 a container keeps its data. `make up` starts them again, and every run continues at the step
 where it stopped. No command of this repository removes a volume; that is always a person's
 own act.
 
+`make up` names the image it builds `taktus:local`. A second installation on the same machine
+would build the same name over it; run only one per machine.
+
 On a cluster, the database's and the state's volumes stay when the release is uninstalled.
 
-The next page, *Upgrading*, takes the instance to a newer release.
+The next page, *Upgrading* (`docs/guides/administration/upgrading.md`), takes the instance to
+a newer release. *Configuring* and *Restoring* are the pages of the same guide that list every
+setting and credential, and bring an instance back from a backup.

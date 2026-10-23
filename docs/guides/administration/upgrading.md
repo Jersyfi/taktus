@@ -14,11 +14,20 @@ A **backup** is a copy of the instance's data from which it can be brought back.
 before every upgrade. It is the way back if the upgrade fails.
 
 **On one machine**, from the directory of the repository, write the database and the stored
-files into two files of this directory:
+files into two files of this directory, readable by you alone:
 
 ```bash
+umask 077
 docker compose -f deploy/docker/compose.yml exec -T postgres pg_dump -U taktus --format=custom taktus > taktus-before-upgrade.dump
 docker compose -f deploy/docker/compose.yml exec -T taktus tar -czf - -C /var/lib/taktus . > taktus-before-upgrade-state.tar.gz
+```
+
+Check that both hold something: the first lists the dump's contents, the second the stored
+files.
+
+```bash
+docker compose -f deploy/docker/compose.yml exec -T postgres pg_restore --list < taktus-before-upgrade.dump | head -5
+tar -tzf taktus-before-upgrade-state.tar.gz | head -5
 ```
 
 Move both files off the machine. The page *Restoring* says how they are brought back.
@@ -42,16 +51,17 @@ kubectl -n taktus exec statefulset/taktus-database -- pg_dump -U taktus --format
 
 ```bash
 git fetch --tags
-git tag --sort=-creatordate | head -1
-git checkout <the tag it printed>
+git tag --sort=-creatordate | head -5
+git checkout <the tag you chose>
 make up
 ```
 
 `make up` builds the new image and replaces the Taktus container. Before it stops, the old
 container lets each running step reach its boundary, within five minutes at most. The new one
 brings the database to the new schema when it starts. The command returns once the new release
-answers that it is ready. Your files under `deploy/docker/secrets/` and `deploy/docker/taktus.env`
-stay as they were.
+answers that it is ready. The tag is chosen as in *Installing from nothing*, section 2.2. Your
+files under `deploy/docker/secrets/`, `deploy/docker/.env` and `deploy/docker/taktus.env` stay as
+they were, and with them the port.
 
 ## 3. On a cluster
 
@@ -61,7 +71,7 @@ new `<version>`. Change `image.tag` in your `taktus-values.yaml` to it, and upgr
 ```bash
 git fetch --tags
 git checkout <the new tag>
-.tools/bin/helm upgrade taktus deploy/k8s/chart --namespace taktus -f taktus-values.yaml --wait --timeout 10m
+.tools/bin/helm upgrade taktus deploy/k8s/chart --namespace taktus -f ../taktus-values.yaml --wait --timeout 10m
 ```
 
 Helm first runs the job that brings the database to the new schema, and starts the new release
@@ -70,7 +80,8 @@ failed; `kubectl -n taktus logs job/taktus-migrate` says why.
 
 ## 4. After the upgrade
 
-Check that the instance is ready and that its runs are where they were:
+Check that the instance is ready and that its runs are where they were. `<tenant>` is the
+identifier `taktusctl tenant list` prints, as *Installing from nothing*, section 4, says:
 
 ```bash
 curl -fsS http://127.0.0.1:8080/ready
@@ -82,10 +93,20 @@ verify --tenant <tenant>`. It checks that the tenant's record of everything that
 unbroken.
 
 The web app shows every run where it was before. A run that waits for a person still waits for
-the same step. A run that halted at its money limit continues when a person raises the limit
-(`taktusctl resume --run <run> --raise <amount> --reason "<why>"`). A run that escalated
-continues from the step that failed, once its cause is removed
-(`taktusctl run --process <bundle> --resume <run>`). A run in a long wait wakes at its time.
+the same step. A run in a long wait wakes at its time. A run that halted at its money limit
+continues when a person raises the limit:
+
+```bash
+docker compose -f deploy/docker/compose.yml exec taktus taktusctl resume --run <run> --raise <amount> --reason "<why>" --identity idn_admin --tenant <tenant>
+```
+
+A run that escalated, because a step failed, continues from that step once its cause is removed:
+
+```bash
+docker compose -f deploy/docker/compose.yml exec taktus taktusctl run --process <bundle> --resume <run> --identity idn_admin --tenant <tenant>
+```
+
+`<bundle>` is the path of the process's bundle inside the instance.
 
 Each release carries the test of exactly this: `deploy/docker/upgrade.sh` starts the previous
 release, leaves a run finished, one waiting for a person, one in a long wait, one halted at its
