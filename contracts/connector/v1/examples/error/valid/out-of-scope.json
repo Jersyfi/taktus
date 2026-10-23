@@ -1,0 +1,10 @@
+{
+  "class": "failure",
+  "cause": "out_of_scope",
+  "effect": "none",
+  "retryable": false,
+  "detail": "the account asked for is not the subject of the call's scope",
+  "consumption": {
+    "quota_units": 1
+  }
+}

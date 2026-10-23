@@ -78,6 +78,12 @@ class ProvenanceRoute(Value):
     skipped: tuple[RouteSkip, ...]
 
 
+class ProvenanceScope(Value):
+    """The case a step served: the subject whose data its result was built from (ADR-0130)."""
+
+    subject: str = Field(min_length=1, max_length=256)
+
+
 class Provenance(Value):
     id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
@@ -90,6 +96,7 @@ class Provenance(Value):
     adapter: str | None = Field(default=None, min_length=1)
     adapter_version: str | None = Field(default=None, min_length=1)
     route: ProvenanceRoute | None = None
+    scope: ProvenanceScope | None = None
     inputs: tuple[ProvenanceInput, ...]
     outputs: tuple[str, ...]
     result_digest: Digest | None = None

@@ -36,12 +36,14 @@ from taktus.components.governance.application.service import (
     Corrections,
     DecisionMade,
     TenantResidency,
+    TenantSources,
 )
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
     CorrectionLimits,
     Incident,
     ResidencyRule,
+    SourceDeclaration,
 )
 from taktus.components.identity.application.service import IdentityDirectory
 from taktus.components.process.ports import LoweredLevels as VersionLowered
@@ -218,6 +220,9 @@ class DecisionWiring:
     """Registration's port for them."""
     residency: TenantResidency
     """A tenant's residency rule, and the run's port `Residency` over it (ADR-0116)."""
+    sources: TenantSources
+    """A tenant's declaration of its sources, and the run's and registration's port over it
+    (ADR-0130)."""
 
 
 def decision_wiring(
@@ -245,4 +250,5 @@ def decision_wiring(
         levels=LevelsOfTheRun(corrections),
         lowered=LoweredOfTheVersion(corrections),
         residency=TenantResidency(of(ResidencyRule), ledger, work, clock),
+        sources=TenantSources(of(SourceDeclaration), ledger, work, clock),
     )

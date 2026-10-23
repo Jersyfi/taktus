@@ -306,6 +306,15 @@
         },
         "wrapped": {
           "$ref": "#/$defs/Wrapped"
+        },
+        "scoped": {
+          "description": "The capabilities whose operations serve a subject's data and honour a call's scope (ADR-0130): a call whose context carries a scope is answered with that subject's data only, and a call for another subject is refused with cause out_of_scope. Each is one of capabilities. A capability not named here does not honour a scope.",
+          "type": "array",
+          "items": {
+            "$ref": "../../shared/v1/Capability.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         }
       },
       "required": [
@@ -446,6 +455,9 @@
         },
         "autonomy_level": {
           "$ref": "../../shared/v1/AutonomyLevel.json"
+        },
+        "scope": {
+          "$ref": "#/$defs/CaseScope"
         }
       },
       "required": [
@@ -456,6 +468,22 @@
         "attempt",
         "idempotency_key",
         "credentials"
+      ],
+      "additionalProperties": false
+    },
+    "CaseScope": {
+      "title": "CaseScope",
+      "description": "The case a step serves (ADR-0130): the subject it is about, as the run's intake named it, never as a model produced it. An identifier the source system understands. A connector serving a scoped capability answers only this subject's data.",
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "subject"
       ],
       "additionalProperties": false
     },
@@ -587,7 +615,7 @@
     },
     "Cause": {
       "title": "Cause",
-      "description": "Why a call failed, as one token. unauthenticated: no usable credential for the requesting identity. forbidden: the identity may not do this in the target system — the source system's permission stands. not_found: the record does not exist or the identity cannot see it. invalid: the input is not acceptable to the target. conflict: the state of the target does not admit the operation, for example a record that already exists and is not ours. unavailable: the target did not answer, or answered that it cannot right now. unexpected: the target answered with a status or a body the connector does not foresee, so the interface it serves may have changed; nothing was acted on. unknown: the call was made and the answer did not arrive, or arrived and could not be read, so the effect may or may not have happened.",
+      "description": "Why a call failed, as one token. unauthenticated: no usable credential for the requesting identity. forbidden: the identity may not do this in the target system — the source system's permission stands. not_found: the record does not exist or the identity cannot see it. invalid: the input is not acceptable to the target. conflict: the state of the target does not admit the operation, for example a record that already exists and is not ours. unavailable: the target did not answer, or answered that it cannot right now. unexpected: the target answered with a status or a body the connector does not foresee, so the interface it serves may have changed; nothing was acted on. unknown: the call was made and the answer did not arrive, or arrived and could not be read, so the effect may or may not have happened. out_of_scope: the call carried a case scope and asked for another subject's data, which a connector serving a scoped capability refuses; nothing was answered (ADR-0130).",
       "type": "string",
       "enum": [
         "unauthenticated",
@@ -597,7 +625,8 @@
         "conflict",
         "unavailable",
         "unexpected",
-        "unknown"
+        "unknown",
+        "out_of_scope"
       ]
     },
     "Error": {

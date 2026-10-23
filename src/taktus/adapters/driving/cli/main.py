@@ -36,10 +36,11 @@ the tenant's watch (ADR-0107). `signal` configures a signal's corridor, as a per
 lists every signal judged against its corridor now (ADR-0109). `corrections` prints the
 correction rate per process and action class, the levels that fell by rule, and configures
 the tenant's limits (ADR-0110). `residency` shows and sets where the tenant's data may be
-processed, narrowed per data class (ADR-0116). The others need services, which the composition root
-provides as the typer context object (see `wiring`); the console script `taktusctl`
-therefore starts in `taktus.composition.taktusctl`, and this module exposes the
-application for it.
+processed, narrowed per data class (ADR-0116). `sources` shows and declares which capabilities
+serve data free of personal fields and which serve personal data (ADR-0130). The others need
+services, which the composition root provides as the typer context object (see `wiring`); the
+console script `taktusctl` therefore starts in `taktus.composition.taktusctl`, and this module
+exposes the application for it.
 """
 
 from __future__ import annotations
@@ -76,6 +77,7 @@ from taktus.adapters.driving.cli import (
     resume_command,
     run_command,
     signal_command,
+    sources_command,
     submit_command,
     tenant_command,
 )
@@ -119,6 +121,7 @@ app.add_typer(incident_command.incident, name="incident")
 app.add_typer(signal_command.signal, name="signal")
 app.add_typer(corrections_command.corrections, name="corrections")
 app.add_typer(residency_command.residency, name="residency")
+app.add_typer(sources_command.sources, name="sources")
 app.add_typer(owner_channel_command.owner_channel, name="owner-channel")
 app.add_typer(guides_command.guides, name="guides")
 app.add_typer(maturation_command.maturation, name="maturation")

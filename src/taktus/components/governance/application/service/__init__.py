@@ -31,6 +31,10 @@ from taktus.components.governance.application.service.signal_incidents import (
     RaiseRed,
     SignalIncidents,
 )
+from taktus.components.governance.application.service.sources import (
+    DeclareSources,
+    TenantSources,
+)
 
 __all__ = [
     "AnchorsInForce",
@@ -45,12 +49,14 @@ __all__ = [
     "Corrections",
     "DatabaseStore",
     "DecisionMade",
+    "DeclareSources",
     "ExpectedRuns",
     "RaiseRed",
     "ReportCapacity",
     "ReportCapacityHandler",
     "SignalIncidents",
     "TenantResidency",
+    "TenantSources",
     "UnknownIncident",
     "Verdict",
     "Watch",

@@ -223,6 +223,7 @@ from taktus.components.run.domain.service import (
     anchoring,
     autonomy,
     blocked,
+    frame,
     interfaces,
     prediction,
     provenance,
@@ -251,6 +252,7 @@ from taktus.components.run.ports import (
     ProposalDecided,
     Replay,
     Residency,
+    Sources,
     Verdict,
     WorkerPool,
 )
@@ -259,6 +261,7 @@ from taktus.ports.clock import Clock, Identifiers
 from taktus.ports.connector import (
     CallContext,
     CallFailed,
+    CaseScope,
     ConnectorError,
     ContractBroken,
     EffectReport,
@@ -629,6 +632,7 @@ class RunEngine:
         replay: Replay | None = None,
         levels: Levels | None = None,
         residency: Residency | None = None,
+        sources: Sources | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -651,6 +655,10 @@ class RunEngine:
         self._residency = residency
         """Where a step on a model learns the location its tenant's rule permits. None: every
         tenant permits `anywhere` (ADR-0116 §3)."""
+        self._sources = sources
+        """What the tenant declares about the data behind a capability (ADR-0130). None: no
+        source is declared free of personal fields, and only a connector's own declaration says
+        that a capability serves personal data."""
         self._cooling: dict[str, datetime] = {}
         """Every model cooling down, by adapter, with when its cool-down ends: for every run and
         tenant this engine executes (ADR-0116 §5)."""
@@ -1764,18 +1772,27 @@ class RunEngine:
         """Every step has an executor and every `$from` names a dependency, before anything
         runs: a run never fails in the middle for a reason known at the start."""
         ancestors: dict[StepId, set[StepId]] = {}
+        parsed: dict[StepId, tuple[Work, Control, list[Any]]] = {}
         for step in run.steps:
             ancestors[step.id] = set()
             for dependency in step.dependencies:
                 ancestors[step.id] |= {dependency, *ancestors[dependency]}
             work = parse_work(step, run.work.get(step.id), run.inputs)
             control = control_of(step, run.work.get(step.id), run.inputs)
-            for value in [*referenced_values(work), *control.referenced()]:
+            values = [*referenced_values(work), *control.referenced()]
+            parsed[step.id] = (work, control, values)
+            for value in values:
                 for referenced in references(value):
                     if referenced not in ancestors[step.id]:
                         raise UnsupportedWork(
                             step.id, f"$from {referenced!r} is not a dependency of this step"
                         )
+        # What a step may see, as far as the process tells it (ADR-0130).
+        analytic = frame.analytic_steps({step: control for step, (_, control, _) in parsed.items()})
+        for step_id, (work, control, values) in parsed.items():
+            found = frame.findings(work, control, values, analytic)
+            if found:
+                raise UnsupportedWork(step_id, "; ".join(found))
         aside = run.on_escalation()
         for step in run.steps:
             if step.id not in aside and ancestors[step.id] & aside:
@@ -2061,6 +2078,10 @@ class RunEngine:
                 # does what the process itself asks (ADR-0088).
                 decided = step_run.anchoring is not None and step_run.anchoring.proceeds
                 anchors = () if decided else await self._applying(run, used)
+                if not decided and (framed := await self._outside_a_case(run, work, control)):
+                    # Personal data outside a specific case: the frame's own anchor, at every
+                    # level and whatever the tenant configured (ADR-0130).
+                    anchors = (*anchors, framed)
                 asked = None if decided else control.ask
                 if anchors or asked is not None:
                     return await self._anchor(run, step, step_run, held, anchors, asked)
@@ -2250,6 +2271,64 @@ class RunEngine:
             trace=Trace(inputs=read),
         )
         return run, settled
+
+    async def _outside_a_case(self, run: Run, work: Work, control: Control) -> Anchor | None:
+        """The frame's anchor where the step reads personal data outside a specific case: it
+        has no case scope, is not analytic, and calls a capability its connector declares
+        scoped or its tenant declares personal (ADR-0130). None otherwise."""
+        if control.scope is not None or control.analytic is not None:
+            return None
+        for capability in frame.capabilities_of(work):
+            pool = self._connector_pool(run)
+            resolved = None if pool is None else await pool.resolve(capability)
+            if frame.anchored(
+                control, capability, personal=await self._personal(run, resolved, capability)
+            ):
+                return frame.personal_data(capability)
+        return None
+
+    async def _personal(
+        self, run: Run, resolved: ResolvedConnector | None, capability: str
+    ) -> bool:
+        """Whether the capability serves personal data: its connector declares it scoped, or
+        the tenant declares it personal."""
+        if resolved is not None and resolved.declaration.honours_scope(capability):
+            return True
+        return self._sources is not None and await self._sources.personal(run.tenant, capability)
+
+    async def _frame(
+        self, run: Run, step_id: StepId, resolved: ResolvedConnector, operation: Operation
+    ) -> CaseScope | None:
+        """The case scope the call carries, once the frame admits the call; a refusal fails
+        the step before anything is called, and is recorded as `frame.refused` (ADR-0130)."""
+        control = control_of(run.step(step_id), run.work.get(step_id), run.inputs)
+        if control.scope is None and control.analytic is None:
+            return None
+        capability = operation.capability
+        free = (
+            control.analytic is not None
+            and self._sources is not None
+            and await self._sources.free_of_personal_fields(run.tenant, capability)
+        )
+        refused = frame.refusal(
+            control,
+            capability,
+            outward=operation.outward,
+            personal=await self._personal(run, resolved, capability),
+            honours_scope=resolved.declaration.honours_scope(capability),
+            free=free,
+        )
+        if refused is not None:
+            token, why = refused
+            raise _StepFailed(
+                reason=f"{operation.name} was not called: {why} (ADR-0130)",
+                retryable=False,
+                consumption=None,
+                adapter=resolved.adapter,
+                outcome="refused by the frame",
+                frame=token,
+            )
+        return control.scope
 
     async def _outward(self, run: Run, work: Work) -> bool | None:
         """Whether a connector call's operation is declared outward; None when it cannot be
@@ -2680,6 +2759,11 @@ class RunEngine:
                 step=step_run,
                 outcome="failed",
                 interface=failure.interface,
+                after=(
+                    ()
+                    if failure.frame is None
+                    else ({"kind": frame.REFUSED, "step": step_run, "outcome": failure.frame},)
+                ),
             )
             return run, step_run
         ended = self._ended(step_run.model_copy(update={"adapter": waited_on}), answered_by)
@@ -3291,9 +3375,12 @@ class RunEngine:
                 step_run.step_id, "only a reading carries an expectation; a write acts once"
             )
         span.set_attribute("adapter", resolved.adapter)
+        scope = await self._frame(run, step_run.step_id, resolved, operation)
         if run.rehearsal and operation.outward and not self._replaying(run):
             return await self._rehearsed(run, resolved, operation, read)
-        result = await self._call(run, step_run, resolved, operation, input, work.credentials, span)
+        result = await self._call(
+            run, step_run, resolved, operation, input, work.credentials, span, scope=scope
+        )
         document = result.document()
         unmet = [why for e in work.expect if (why := rules.unmet(e, document["output"]))]
         if unmet:
@@ -3372,6 +3459,8 @@ class RunEngine:
         input: Mapping[str, Any],
         credentials: tuple[Any, ...],
         span: Span,
+        *,
+        scope: CaseScope | None = None,
     ) -> Result:
         context = CallContext(
             tenant=run.tenant,
@@ -3382,6 +3471,7 @@ class RunEngine:
             idempotency_key=idempotency_key(run.id, step_run.step_id, step_run.attempt),
             credentials=credentials,
             autonomy_level=run.autonomy_level,
+            scope=scope,
         )
         attributes: dict[str, str | int] = {
             "run.id": run.id,
@@ -3398,6 +3488,18 @@ class RunEngine:
                     call.set_attribute("connector.replayed", result.effect.replayed)
         except CallFailed as failed:
             error = failed.error
+            if error.cause is ConnectorCause.OUT_OF_SCOPE:
+                # The connector refused data of another subject than the case's: the step
+                # fails, and the refusal is recorded (ADR-0130). It is never repeated.
+                raise _StepFailed(
+                    reason=f"{operation.name} was refused as out of the case's scope: "
+                    f"{error.detail}",
+                    retryable=False,
+                    consumption=error.consumption,
+                    adapter=resolved.adapter,
+                    outcome="out of scope",
+                    frame=frame.OUT_OF_SCOPE,
+                ) from failed
             reason = f"{operation.name} failed: {error.cause} — {error.detail}"
             if error.effect == "unknown" and not operation.repeatable:
                 reason += (
@@ -3536,6 +3638,7 @@ class RunEngine:
         if operation.outward:
             raise UnsupportedWork(step_run.step_id, "a wait reads an external state, never writes")
         (input,), _ = await self._resolved(run, [until.input])
+        scope = await self._frame(run, step_run.step_id, resolved, operation)
         step_run = step_run.model_copy(update={"adapter": resolved.adapter})
         used: dict[str, Any] = {}
         if before is not None:
@@ -3545,7 +3648,7 @@ class RunEngine:
         while True:
             try:
                 result = await self._call(
-                    run, step_run, resolved, operation, input, until.credentials, span
+                    run, step_run, resolved, operation, input, until.credentials, span, scope=scope
                 )
             except _StepFailed as refused:
                 # The record may not exist yet; any other refusal fails the step at once.
@@ -4634,6 +4737,7 @@ class RunEngine:
                             adapter_version=trace.adapter_version,
                             at=self._clock.now(),
                             route=trace.route,
+                            scope=self._subject(run, step.step_id),
                         ),
                     )
                     if trace.egress is not None:
@@ -4649,6 +4753,13 @@ class RunEngine:
                 for extra in after:
                     await self._record(run, **extra)
         return run
+
+    @staticmethod
+    def _subject(run: Run, step_id: StepId) -> str | None:
+        """The subject of the case the step served, for its provenance record; None for a step
+        that serves no case (ADR-0130)."""
+        scope = control_of(run.step(step_id), run.work.get(step_id), run.inputs).scope
+        return None if scope is None else scope.subject
 
     async def _fence(self, run: Run) -> None:
         """Inside a transaction that writes the run: refuse it unless the claim the run is
@@ -4788,6 +4899,9 @@ class _StepFailed(Exception):
     moves: bool = False
     """The call failed on one model of the purpose's chain, and another fits the step: it moves
     there at its boundary instead of escalating (ADR-0116 §6)."""
+    frame: str | None = None
+    """The call was refused by the step's frame, or by its connector as out of the case's
+    scope: the token `frame.refused` records (ADR-0130)."""
 
 
 def _no_model(routed: routing.Route) -> str:

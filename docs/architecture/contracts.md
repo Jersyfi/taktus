@@ -71,6 +71,7 @@ where an event from the outside becomes a command or is refused.
 | **Classify every error** — a failure with cause, effect and retryable | the run knows whether the effect happened and whether the same call may be repeated (ADR-0021) |
 | **Report consumption per call** | connector calls cost close to nothing and are counted, not ignored |
 | **Verify the signature of every incoming event before reading it**, then normalise it as far as the channel can | intake without a signature is not a valid declaration; the identity component completes the command |
+| **Declare which capabilities serve a subject's data, and answer a scoped call with that subject's data only** — `scoped`, cause `out_of_scope` | a step that serves a case sees only its case's data, whatever a model names (ADR-0130) |
 
 Full specification: [`contracts/connector/v1/README.md`](../../contracts/connector/v1/README.md).
 The connector port on the core's side (`src/taktus/ports/connector.py`, over MCP in
@@ -111,6 +112,15 @@ artifact and the digest the connector reported (ADR-0022 §4); an operation decl
 effect `unknown` ends the step failed and the run escalated, and the run's reason says that
 resuming repeats the call, so that the person who resumes has checked the target first
 (ADR-0024 §3). No call is retried automatically in this version; every retry is a resume.
+
+**What a step may see (ADR-0130).** A step that serves a case names its subject from the run's
+inputs (`scope`), and every connector call of it carries the scope. A connector that declares a
+capability `scoped` answers with the subject's data only and refuses another subject's with
+`out_of_scope`; the run records the refusal as `frame.refused`. A step that analyses
+(`analytic`) reaches its one source through reads only, and only a source its tenant declares
+free of personal fields (`taktusctl sources`). A step that reads a capability serving personal
+data — by its connector's declaration or its tenant's — without a scope waits for a person at
+every level (`components/run/domain/service/frame.py`, `tests/components/run/test_case_scope.py`).
 
 ### 2.3 Model
 

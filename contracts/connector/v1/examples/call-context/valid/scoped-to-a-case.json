@@ -1,0 +1,18 @@
+{
+  "tenant": "default",
+  "identity": "idn_7f3a2c",
+  "run_id": "run_01J8R3K5Q2N7VX9M4T6B0DPHWE",
+  "step_id": "read-account",
+  "attempt": 1,
+  "idempotency_key": "taktus:run_01J8R3K5Q2N7VX9M4T6B0DPHWE:read-account:1",
+  "credentials": [
+    {
+      "name": "CUSTOMERS_TOKEN",
+      "injected_as": "env"
+    }
+  ],
+  "autonomy_level": 3,
+  "scope": {
+    "subject": "placeholder-customer-17"
+  }
+}

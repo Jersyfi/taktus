@@ -30,6 +30,7 @@ from taktus.components.governance.domain.model import (
     IncidentKind,
     ResidencyRule,
     RunSeen,
+    SourceDeclaration,
     WatchConfiguration,
 )
 from taktus.components.identity.domain.model import (
@@ -608,6 +609,16 @@ def lowering_incident(tenant: str = "t") -> Incident:
 def residency_rule(tenant: str = "t") -> ResidencyRule:
     return ResidencyRule(
         id=tenant, tenant=tenant, location="eu", classes={"personal": "own"}, configured_at=AT
+    )
+
+
+def source_declaration(tenant: str = "t") -> SourceDeclaration:
+    return SourceDeclaration(
+        id=tenant,
+        tenant=tenant,
+        free=("analytics.cohorts",),
+        personal=("customers.accounts",),
+        configured_at=AT,
     )
 
 

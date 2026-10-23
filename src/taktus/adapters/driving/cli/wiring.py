@@ -23,6 +23,7 @@ from taktus.components.governance.application.service import (
     ExpectedRuns,
     ReportCapacityHandler,
     TenantResidency,
+    TenantSources,
 )
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.knowledge.application.service import PublishGuidesHandler
@@ -168,6 +169,9 @@ class Services:
     correction limits (`taktusctl corrections`, ADR-0110)."""
     residency: TenantResidency | None = None
     """The tenant's residency rule, shown and set (`taktusctl residency`, ADR-0116)."""
+    sources: TenantSources | None = None
+    """The tenant's declaration of its sources, shown and changed (`taktusctl sources`,
+    ADR-0130)."""
 
 
 @dataclass(frozen=True)

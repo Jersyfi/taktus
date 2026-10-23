@@ -123,6 +123,12 @@ parameter — what it is for, the permissions it needs, how it rotates, and how 
 `wrapped` is present when the connector serves a vendor's own MCP server rather than code of its
 own; §10 says what it holds.
 
+**Scoped** names the capabilities whose operations serve a subject's data — a customer's
+account, a person's request — and honour a call's scope (§5,
+[ADR-0130](../../../docs/adr/ADR-0130-a-step-sees-only-the-data-of-its-case-and-an-analysis-step-never-speaks-outward.md)).
+Each is one of `capabilities`. A capability not named here does not honour a scope, and the run
+never relies on it to.
+
 ---
 
 ## 4. Idempotency: the promise, tested against the outside
@@ -193,6 +199,12 @@ back on. A call that references no credential, or one whose value is absent, end
 cause `forbidden`. Whoever cannot see something in the source system does not see it through
 Taktus; whoever cannot do something there cannot do it through Taktus either.
 
+**A step that serves a case carries its scope.** `scope: {"subject": "…"}` names the subject the
+case is about — a customer number, for example — as the run's intake named it, never as a step
+produced it. A connector that declares the operation's capability `scoped` answers such a call
+with that subject's data only. A call that asks for another subject's data is refused with cause
+`out_of_scope`, and nothing is answered. A capability that is not scoped ignores the scope.
+
 The structured content of a successful call is the **result**:
 
 ```json
@@ -250,6 +262,7 @@ the call that produced it; and it never raises an incident, because that is the 
 | `unavailable` | the target did not answer, or answered that it cannot right now | `none` | yes, with the same key |
 | `unexpected` | the target answered with a status or a body the connector does not foresee; the interface it serves may have changed | `none` | no |
 | `unknown` | the call was made and the answer did not arrive, or arrived and could not be read | `unknown` | only if the operation's idempotency is `native` or `marked` |
+| `out_of_scope` | the call carried a scope and asked for another subject's data, which a scoped capability refuses (§5) | `none` | no |
 
 `effect` says whether the outward effect happened: `none`, or `unknown` when the answer did not
 arrive. `retryable` says whether the same call with the same key may be repeated without a second

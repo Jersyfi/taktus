@@ -134,6 +134,12 @@ See [methods.md](methods.md). The choice is measured continuously and Taktus pro
 A step of method `ml` registers only with its model's evaluation on held-out cases, for the
 file it pins (UC-8.4 §2, ADR-0114).
 
+A step's work may also set its **frame** (ADR-0130): `scope` names the subject of the case the
+step serves, from the run's inputs and never from a step's result, and every connector call of
+the step carries it; `analytic` names the one source an analytic step reads, which its tenant
+declares free of personal fields, and leaves it no outward operation and no host. Registration
+refuses a frame that cannot hold, and the run refuses it again at every call.
+
 ### 4.2 Versioning
 
 Every change creates a new **process version** with author, reason, diff and evaluation result.
@@ -478,6 +484,7 @@ The ledger says *what happened*. The **provenance record** says *what a result i
 | the adapter that executed and the version the worker declares for itself | the worker pool (`Capabilities.version` of the worker contract) |
 | the inputs: every result or artifact of an earlier step the step read — by run, step, artifact identifier and digest — and every external source, each with the moment it was read | the run engine, as it resolves `$from` and as a rule reads an artifact |
 | the outputs: the artifact identifiers the step run produced across its attempts; the digest of the value it produced | the step run |
+| the scope: the subject of the case a step served, where it served one (ADR-0130) | the step's work and the run's inputs |
 
 It references and never copies: identifiers, tokens and digests, no content. Its shape is the
 shared kernel's `Provenance.json`; the run component builds and verifies it

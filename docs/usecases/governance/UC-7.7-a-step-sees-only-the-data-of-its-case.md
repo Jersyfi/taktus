@@ -3,10 +3,10 @@ id: UC-7.7
 title: A step sees only the data of its case, and an analysis step never speaks outward
 component: governance
 serves: [P11, P12, P14]
-state: specified
+state: building
 version: 0.5.0
-tests: []
-adrs: {ADR-0007: 26804369941b, ADR-0024: 52ba89e4adec}
+tests: [tests/components/run/test_case_scope.py::test_every_call_of_a_scoped_step_carries_its_subject_and_the_record_names_it, tests/components/run/test_case_scope.py::test_a_scoped_step_asking_for_a_second_customer_is_refused_and_it_is_recorded, tests/components/run/test_case_scope.py::test_a_subject_taken_from_a_step_s_output_is_refused_before_the_run_starts, tests/components/process/test_frame.py::test_an_analytic_step_given_a_mail_capability_is_refused_at_registration, tests/components/run/test_case_scope.py::test_an_analytic_step_never_speaks_outward_even_through_its_source, tests/components/run/test_case_scope.py::test_an_analytic_step_on_a_source_not_declared_free_is_refused, tests/components/process/test_frame.py::test_an_analytic_step_on_a_source_the_tenant_does_not_declare_free_is_refused, tests/components/run/test_case_scope.py::test_reading_personal_data_outside_a_case_halts_a_level_4_process]
+adrs: {ADR-0007: 26804369941b, ADR-0024: 52ba89e4adec, ADR-0130: 8af76de77225}
 supersedes: null
 ---
 
@@ -54,3 +54,17 @@ defect (UC-4.10).
 Requirement 9 of the catalogue behind UC-03; UC-03 §6 (user data), B-3.02, B-3.08, B-9.02;
 DEC-0199; NTC-0210. Least privilege down to the worker (UC-7.3); the frame's allowed tools and
 hosts (ADR-0007); connector effects (ADR-0024).
+
+## 5. What is proven so far
+
+ADR-0130 builds it. The named tests prove every condition of §2 in the run and at
+registration: the subject taken from the run's inputs and refused from a step's result; the
+scope on every connector call; a second customer's account refused by a connector that honours
+the scope, and the refusal recorded as `frame.refused`; an analytic step given a mail
+capability refused at registration, and refused at the call when an operation leaves the
+system; a source the tenant does not declare free refused; a level-4 process halted before it
+reads personal data outside a case; the scope in the provenance record.
+
+Not built: the connector contract's conformance suite does not yet check that a connector
+serving a scoped capability refuses another subject's data, and no connector in this
+repository serves one yet.

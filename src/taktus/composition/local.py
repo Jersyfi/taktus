@@ -290,6 +290,7 @@ class LocalWiring:
                     decisions=decisions.requests,
                     levels=decisions.levels,
                     residency=decisions.residency,
+                    sources=decisions.sources,
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -390,6 +391,7 @@ class LocalWiring:
                 administration=administration,
                 clock=clock,
                 lowered=decisions.lowered,
+                sources=decisions.sources,
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
@@ -474,6 +476,7 @@ class LocalWiring:
                 signals=signals.watch,
                 corrections=decisions.corrections,
                 residency=decisions.residency,
+                sources=decisions.sources,
             )
             telemetry.shutdown()
 

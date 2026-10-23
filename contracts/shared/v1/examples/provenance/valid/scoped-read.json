@@ -1,0 +1,26 @@
+{
+  "id": "prov_01j8x9a1",
+  "run_id": "run_01j8x9a0",
+  "step_id": "read-account",
+  "process_version": "support-reply@2",
+  "method": "rule",
+  "exactness": "sourced",
+  "adapter": "connector.customers",
+  "adapter_version": "0.1.0",
+  "scope": {
+    "subject": "placeholder-customer-17"
+  },
+  "inputs": [
+    {
+      "kind": "source",
+      "capability": "customers.accounts",
+      "ref": "customers.accounts.read {\"account\": \"placeholder-customer-17\"}",
+      "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "observed_at": "2026-10-23T09:00:02Z"
+    }
+  ],
+  "outputs": ["result"],
+  "result_digest": "sha256:73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049",
+  "ledger_seq": 6,
+  "recorded_at": "2026-10-23T09:00:02Z"
+}

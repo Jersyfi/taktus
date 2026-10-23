@@ -16,6 +16,11 @@ operation — `read`, `write`, `delivery` — is a field, so that the run record
 `delivery` as egress entries (ADR-0022) without a judgement; and the idempotency of every
 outward operation says whether the run may repeat a call whose outcome it does not know
 (`native`, `marked`) or never may (`none`; ADR-0024).
+
+A step that serves a case carries the case's **scope** on every call: the subject the case is
+about, as the run's intake named it. A connector that declares a capability `scoped` answers a
+call that carries a scope with the subject's data only, and refuses a call for another subject
+with `out_of_scope` (ADR-0130).
 """
 
 from __future__ import annotations
@@ -176,10 +181,21 @@ class Capabilities(Value):
     consumption: ConsumptionDeclaration
     permissions: Literal["passthrough"]
     wrapped: Wrapped | None = None
+    scoped: tuple[Capability, ...] | None = Field(default=None, min_length=1)
+    """The capabilities whose operations serve a subject's data and honour a call's scope: a
+    call that carries one is answered with that subject's data only, and a call for another
+    subject is refused with `out_of_scope` (ADR-0130). A capability not named here does not
+    honour a scope, and the run never relies on it to."""
 
     @model_validator(mode="after")
     def _operations_belong_to_declared_capabilities(self) -> Capabilities:
         declared = set(self.capabilities)
+        scoped = self.scoped or ()
+        if len(set(scoped)) != len(scoped):
+            raise ValueError("a capability is declared scoped twice")
+        for capability in scoped:
+            if capability not in declared:
+                raise ValueError(f"{capability!r} is declared scoped, and not as a capability")
         names = [op.name for op in self.operations]
         if len(set(names)) != len(names):
             raise ValueError("an operation is declared twice")
@@ -196,6 +212,11 @@ class Capabilities(Value):
                 )
         return self
 
+    def honours_scope(self, capability: str) -> bool:
+        """Whether the connector declares that it answers a scoped call to the capability with
+        the subject's data only (ADR-0130)."""
+        return capability in (self.scoped or ())
+
     def operation(self, name: str) -> Operation | None:
         for op in self.operations:
             if op.name == name:
@@ -206,10 +227,18 @@ class Capabilities(Value):
 # --- a call (§5, §6) ----------------------------------------------------------------------------
 
 
+class CaseScope(Value):
+    """The case a step serves: the subject it is about, as the run's intake named it — never
+    as a model produced it (ADR-0130). An identifier the source system understands."""
+
+    subject: str = Field(min_length=1, max_length=256)
+
+
 class CallContext(Value):
     """Who acts, for which attempt of which step of which run, and with whose credentials — by
     name. The idempotency key is chosen by the run for one attempt, stable across a resume of
-    that attempt after a restart, and never reused."""
+    that attempt after a restart, and never reused. `scope` is the case the step serves, where
+    it serves one (ADR-0130)."""
 
     tenant: str = Field(min_length=1)
     identity: str = Field(min_length=1)
@@ -219,6 +248,7 @@ class CallContext(Value):
     idempotency_key: str = Field(pattern=IDEMPOTENCY_KEY_PATTERN)
     credentials: tuple[CredentialReference, ...]
     autonomy_level: AutonomyLevel | None = None
+    scope: CaseScope | None = None
 
 
 def idempotency_key(run_id: str, step_id: str, attempt: int) -> str:
@@ -285,6 +315,9 @@ class Cause(StrEnum):
     """The target answered with a status or a body the connector does not foresee: the
     interface it serves may have changed (ADR-0047)."""
     UNKNOWN = "unknown"
+    OUT_OF_SCOPE = "out_of_scope"
+    """The call carried a case scope and asked for data of another subject: a connector serving
+    a scoped capability refuses it, and nothing is answered (ADR-0130)."""
 
 
 class Error(Value):
