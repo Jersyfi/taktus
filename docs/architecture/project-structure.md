@@ -225,7 +225,13 @@ role it would tie the core to a model stack and the removal test would be lost.
   check, so a wait for time or for an outside system holds no place (ADR-0103). A wait for an outside state reads a `not_found` answer of its read as a state not reached yet and checks again (ADR-0103 §6). A worker step's assignment is named in the ledger
   before it is posted; a runner that recovers the run asks the worker about it and adopts it
   instead of handing over another, and a runner that loses its claim leaves it running for the
-  next (ADR-0038, `tests/integration/test_handover.py`).
+  next (ADR-0038, `tests/integration/test_handover.py`). A run is recovered only when its
+  runner died. A step whose worker cannot be reached ends failed with that cause, and the run
+  escalates. An exception out of the engine releases the job, and the next claim recovers the
+  run, so a cause that raises again is recovered again until the queue's attempts run out
+  (#589). Every job's outcome goes to the log through `roles.said`. A run that did not finish
+  is logged with the step it ended at, its cause and its reason. An exception is logged with
+  the step it was raised in.
 - **`scheduler`** leads through the leadership port — a session-level advisory lock — and ticks
   while it leads; a second instance keeps trying and takes over when the leader's lead is
   gone, including when the leader was killed. While it leads, every tick fires the schedule

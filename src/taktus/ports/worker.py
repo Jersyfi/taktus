@@ -558,6 +558,18 @@ class AssignmentExists(WorkerError):
     (ADR-0038)."""
 
 
+class UnaskedWorker(WorkerError):
+    """A configured worker could not be asked what it offers, so its pool could not tell
+    whether it serves a step: its endpoint did not answer, or its execution unit did not start.
+    It names the worker's adapter configuration and keeps what went wrong as `cause`; a cause
+    of WorkerAtCapacity is a platform without room for the unit that would answer (#589)."""
+
+    def __init__(self, adapter: str, cause: WorkerError) -> None:
+        super().__init__(f"the worker {adapter} could not be asked what it offers: {cause}")
+        self.adapter = adapter
+        self.cause = cause
+
+
 class Worker(Protocol):
     """One execution unit behind the worker contract, as the core uses it."""
 

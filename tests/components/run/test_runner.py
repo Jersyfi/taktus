@@ -17,6 +17,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+import structlog
 from fakes import FakeIdentifiers, FakeWorker, HeldObjects, InnerStep
 from fakes.identity import FixedTenants
 from fakes.maturity import VERIFIED
@@ -33,11 +34,13 @@ from taktus.adapters.driven.memory import (
 )
 from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
+from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.application.service import (
     CLAIM_LOST,
     EngineOptions,
+    Outcome,
     ResumeRun,
     RunEngine,
     Runner,
@@ -46,10 +49,11 @@ from taktus.components.run.application.service import (
 )
 from taktus.components.run.domain.model import Cause, Run, RunExists, RunState, StepState
 from taktus.components.run.domain.service import provenance
+from taktus.composition.roles import said
 from taktus.ports.identity import ServedTenants
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.queue import RUN_EXECUTE, Job
-from taktus.ports.worker import ComputeLimit, Limits
+from taktus.ports.worker import ComputeLimit, Limits, Worker
 from taktus.shared.v1 import (
     Commissioned,
     ExactnessClass,
@@ -124,9 +128,11 @@ class World:
         worker: FakeWorker | None = None,
         model: FakeModel | None = None,
         park_after: float | None = None,
+        workers: list[tuple[str, Worker]] | None = None,
     ) -> None:
         self.park_after = park_after
         self.worker = worker or FakeWorker()
+        self.workers: list[tuple[str, Worker]] = workers or [("worker.fake", self.worker)]
         self.model = model or FakeModel(answer="yes")
         self.clock = SystemClock()
         self.ids = FakeIdentifiers()
@@ -150,7 +156,7 @@ class World:
             objects=objects,
             ledger=self.ledger,
             provenance=self.provenance,
-            workers=StaticWorkerPool([("worker.fake", self.worker)]),
+            workers=StaticWorkerPool(self.workers),
             models=StaticModelPool([("model.fake", ["reasoning"], self.model, "fake-model@1")]),
             clock=self.clock,
             ids=self.ids,
@@ -193,6 +199,7 @@ class World:
         wait_cap: float = 0.1,
         tenants: ServedTenants | None = None,
         poll: float = 0.02,
+        on_outcome: Callable[[Outcome], None] | None = None,
     ) -> Runner:
         runner = Runner(
             engine=engine or self.engine,
@@ -207,6 +214,7 @@ class World:
                 heartbeat_seconds=heartbeat,
                 wait_first_seconds=wait_first,
                 wait_cap_seconds=wait_cap,
+                on_outcome=on_outcome,
             ),
         )
         self.tasks.append(asyncio.create_task(runner.run()))
@@ -733,3 +741,60 @@ async def test_a_run_that_ends_wakes_the_runner_and_four_places_drain_more_than_
     took = asyncio.get_running_loop().time() - begun
     await world.stop(runner)
     assert len(runs) / took > 4, f"{len(runs)} runs in {took:.2f}s with a poll of a second"
+
+
+# --- a worker that answers nothing (issue #589) ---------------------------------------------------
+
+
+async def test_a_worker_step_whose_endpoint_answers_nothing_fails_with_its_cause_unrecovered() -> (
+    None
+):
+    """The worker's endpoint accepts the connection and never answers. The step fails with that
+    cause, the run escalates and its job is completed: no runner died, so the run is recovered
+    not once. Before #589 the engine raised, the job went back to the queue, and every claim of
+    it recorded `run.recovered` until the queue's attempts ran out, the run still `running`."""
+
+    async def silent(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await reader.read()  # until the client gives up; nothing is ever answered
+        writer.close()
+
+    server = await asyncio.start_server(silent, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    async with server, HttpWorker(f"http://127.0.0.1:{port}", timeout=0.2) as unreachable:
+        world = World(workers=[("worker.silent", unreachable)], max_attempts=3)
+        run = await world.submit(work("do"))
+        with structlog.testing.capture_logs() as logs:
+            runner = world.runner("r1", on_outcome=said)
+            await until(lambda: len(runner.outcomes) >= 1)
+            await asyncio.sleep(0.5)  # time for the loop of #589 to claim the job again
+            await world.stop(runner)
+    assert [(o.disposition, o.error) for o in runner.outcomes] == [("completed", None)]
+    escalated = await world.stored(run.id)
+    assert escalated.state is RunState.ESCALATED and escalated.cause is Cause.FAILURE
+    failed = escalated.step_run("do")
+    assert failed.state is StepState.FAILED and failed.adapter == "worker.silent"
+    assert "worker.silent" in (failed.reason or "") and "ReadTimeout" in (failed.reason or "")
+    kinds = await world.kinds(run.id)
+    assert "run.recovered" not in kinds, kinds
+    assert await world.claimable() == [], "what waits for a person stays with the person"
+    said_it = [line for line in logs if line.get("run") == run.id]
+    assert [(line["log_level"], line["step"], line["cause"]) for line in said_it] == [
+        ("warning", "do", "failure")
+    ], logs
+    assert "worker.silent" in said_it[0]["reason"] and "ReadTimeout" in said_it[0]["reason"]
+
+
+async def test_a_step_the_engine_raises_in_is_named_in_the_runner_s_outcome() -> None:
+    """Whatever still raises out of a step is said with the step it came from (#589)."""
+
+    class Broken(FakeWorker):
+        async def estimate(self, request: Any) -> Any:
+            raise RuntimeError("an adapter bug")
+
+    world = World(worker=Broken(), max_attempts=1)
+    run = await world.submit(work("do"))
+    runner = world.runner("r1")
+    await until(lambda: len(runner.outcomes) >= 1)
+    await world.stop(runner)
+    error = runner.outcomes[0].error or ""
+    assert "an adapter bug" in error and f"in step do of run {run.id}" in error, error

@@ -41,7 +41,9 @@ The core's side of it is the worker port (`src/taktus/ports/worker.py`): the con
 as frozen types and the protocol the run component calls. `tests/contract` holds those types to
 `Worker.json` and its examples, so that the port and the contract cannot drift apart. A worker's
 `503` to a new assignment reaches the core as `WorkerAtCapacity`, on which the step waits
-(ADR-0037). How a
+(ADR-0037). A worker that cannot be asked for its capabilities reaches the core as
+`UnaskedWorker`, which names the worker's configuration and keeps the cause. The step fails with
+that cause, or waits when the cause is `WorkerAtCapacity` (#589). How a
 worker comes to exist for a job — as a process, as a container — is the execution port's
 business (§2.4), and a worker that is already running is reached by endpoint.
 

@@ -13,5 +13,5 @@ class WorkerPool(Protocol):
     async def resolve(self, required: Sequence[Capability]) -> ResolvedWorker | None:
         """A worker that offers every required capability, with the identifier of its adapter
         configuration and the version it declares. None when no configured worker offers them
-        all."""
+        all. UnaskedWorker when a worker it had to ask what it offers could not be asked."""
         ...

@@ -33,9 +33,14 @@ What happens when a run ends decides the job:
   the step's block names. A wait for time or for an outside system holds no place meanwhile,
   as a wait for a person does not either (ADR-0103);
 - the engine raised — the job is *released* and counted as an attempt; after the queue's limit
-  of attempts the job stays for a person;
+  of attempts the job stays for a person. The next claim recovers the run, so a cause that
+  raises again is recovered again: a step whose adapter fails ends the step instead, with its
+  cause, and never raises (#589);
 - the claim was lost — the job is another runner's and stays untouched; the loss is recorded as
   `run.claim_lost` in the run's chain, so that a person hears of it (ADR-0106).
+
+Every outcome is handed to `on_outcome`, which the daemon writes to its log: a run that did not
+finish names the step it ended at and why (#589).
 
 The same holds for a run that had already ended when its job was claimed: a runner that died
 after the run's last state was committed and before it completed the job leaves exactly that.
@@ -50,11 +55,12 @@ through the clock port.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+import contextlib
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from taktus.components.run.application.service.execute_run import ResumeRun, RunEngine
-from taktus.components.run.domain.model import Cause, ClaimLost, Run, RunState
+from taktus.components.run.domain.model import Cause, ClaimLost, Run, RunState, StepState
 from taktus.components.run.domain.service import waiting
 from taktus.ports.clock import Clock
 from taktus.ports.identity import ServedTenants
@@ -79,6 +85,9 @@ class RunnerOptions:
     time; every further answer of the same wait doubles it (ADR-0037)."""
     wait_cap_seconds: float = 60.0
     """The longest delay between two tries of a waiting run."""
+    on_outcome: Callable[[Outcome], None] | None = None
+    """Told of every job this runner finished with, for the log (#589). What it raises is
+    swallowed: telling must never take the runner down."""
 
 
 @dataclass
@@ -90,6 +99,18 @@ class Outcome:
     run: Run | None = None
     disposition: str = "unknown"  # completed | released | deferred | lost
     error: str | None = None
+
+    @property
+    def step(self) -> str | None:
+        """The step the run ended at when it did not finish: the first that failed or was
+        refused, else the first that stopped. None for a finished run or no run."""
+        if self.run is None or self.run.state is RunState.FINISHED:
+            return None
+        for states in ((StepState.FAILED, StepState.REJECTED), (StepState.STOPPED,)):
+            for step_run in self.run.step_runs:
+                if step_run.state in states:
+                    return step_run.step_id
+        return None
 
 
 @dataclass
@@ -232,7 +253,9 @@ class Runner:
                 await self._note_lost(executing, outcome)
                 return outcome
             except Exception as error:  # every failure of one run is one outcome, not a crash
-                outcome.error = f"{type(error).__name__}: {error}"
+                # The engine notes the step it raised in (#589).
+                notes = "".join(f"; {note}" for note in getattr(error, "__notes__", ()))
+                outcome.error = f"{type(error).__name__}: {error}{notes}"
                 await self._release(executing)
                 outcome.disposition = "released"
                 return outcome
@@ -264,6 +287,9 @@ class Runner:
                 # A later claim of the same job by this runner is another entry; it stays.
                 del self._executing[executing.job.id]
             self._outcomes.append(outcome)
+            if self.options.on_outcome is not None:
+                with contextlib.suppress(Exception):
+                    self.options.on_outcome(outcome)
             # A place is free: the loop claims again now, not after its poll interval.
             self._woken.set()
 

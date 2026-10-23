@@ -4,14 +4,16 @@ Configuration maps a capability to a worker; the ledger records the configuratio
 and never a product. This pool is the simplest such configuration: a list of (identifier,
 worker), the first whose declared capabilities cover what a step requires wins. Capabilities
 are read once and kept, and so is the version the worker declares, which the provenance of
-every result the worker produces carries.
+every result the worker produces carries. A worker that cannot be asked is not passed over
+for the next one: the pool raises UnaskedWorker naming it, and the step that needed it fails or
+waits with that cause (#589).
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from taktus.ports.worker import ResolvedWorker, Worker
+from taktus.ports.worker import ResolvedWorker, UnaskedWorker, Worker, WorkerError
 from taktus.shared.v1 import Capability
 
 
@@ -42,7 +44,10 @@ class StaticWorkerPool:
         needed = set(required)
         for adapter, worker in self._workers:
             if adapter not in self._declared:
-                declared = await worker.capabilities()
+                try:
+                    declared = await worker.capabilities()
+                except WorkerError as error:
+                    raise UnaskedWorker(adapter, error) from error
                 self._declared[adapter] = (frozenset(declared.capabilities), declared.version)
             capabilities, version = self._declared[adapter]
             if needed <= capabilities:
