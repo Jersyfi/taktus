@@ -20,6 +20,7 @@ from .test_time_triggers import (
     SETTLE,
     Daemon,
     ManualClock,
+    _armed,
     daemons,
     eventually,
     registered,
@@ -56,11 +57,13 @@ async def test_a_deadline_started_before_a_restart_escalates_once_at_its_limit(
     first = await daemons("first", clock, TAKTUS_ROLES="scheduler,runner").start()
     await until(lambda: first.leading)
     assert first.wired is not None
-    version = await registered(first.wired, tenant, bundle)
-    await asyncio.sleep(SETTLE)
+    wired = first.wired
+    version = await registered(wired, tenant, bundle)
+    # The trigger arms when the scheduler first sees it, at the time it sees it: the clock
+    # moves to the slot only once it has, or the slot falls before the arming and never fires.
+    await eventually(lambda: _armed(wired, tenant))
 
     clock.current = datetime(2026, 10, 21, 11, 0, 30, tzinfo=UTC)
-    wired = first.wired
 
     async def started() -> bool:
         return [e.kind for e in await deadline_entries(wired, tenant)] == ["deadline.started"]
