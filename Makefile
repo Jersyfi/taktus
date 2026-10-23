@@ -141,6 +141,13 @@ gate-web: ## The web app under web/: packages from the lock file, types, tests, 
 gate-usecases: env ## Every use case has a state, a verification condition and a principle; built names tests, verified ones are green; no ADR moved under one unchecked; no requirement changed where it is implemented
 	$(UV) run python tools/check_usecases.py $(if $(BASE),--base $(BASE))
 
+# Every documentation, register and architecture gate is fed a deliberate violation in a copy
+# of the working tree, and must go red for it (ADR-0096 §6, #395). CI's lane `selftest` runs it
+# when a gate's code changes, and on every push to `main`. GATE=gate-adrs runs one gate's cases.
+.PHONY: gate-selftest
+gate-selftest: env ## Each documentation, register and architecture gate, fed a deliberate violation, goes red for it; fails if one stays green (GATE= one gate)
+	$(UV) run python tools/gate_selftest.py $(if $(GATE),--gate $(GATE))
+
 backlog: need-uv ## Print the backlog in the order a session takes it, every unready issue with its reasons; NEXT=1 the next one, ANSWERS=1 the owner's answers to record first (DEC-0051)
 	$(UV) run tools/backlog.py $(if $(NEXT),--next) $(if $(ANSWERS),--answers)
 
@@ -236,4 +243,4 @@ reserve: need-uv need-git ## Reserve a record number on the remote before writin
 	@$(UV) run tools/reserve.py $(if $(ID),--id $(ID),--kind $(KIND))
 
 .PHONY: gates
-gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web test timing rehearse ## Everything CI runs
+gates: lint gate-contracts gate-arch gate-conformance gate-governance gate-exactness gate-docs gate-secrets gate-decisions gate-adrs gate-status gate-vision gate-usecases gate-web gate-selftest test timing rehearse ## Everything CI runs

@@ -37,6 +37,11 @@ import lanes  # noqa: E402 — a script under tools/, found through the line abo
             ["static", "decisions", "test", "rehearse", "timing"],
         ),
         (["tools/record_rehearsal.py"], ["static", "decisions", "test", "rehearse"]),
+        (["tools/check_status.py"], ["static", "decisions", "test", "selftest"]),
+        (
+            ["tests/architecture/test_core_is_technology_free.py"],
+            ["static", "decisions", "test", "selftest", "timing"],
+        ),
         (["tests/components/run/test_engine.py"], ["static", "decisions", "test", "timing"]),
         (
             ["workers/claudecode/worker.py"],

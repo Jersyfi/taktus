@@ -43,6 +43,7 @@ jobs:
       conformance: ${{ steps.lanes.outputs.conformance }}
       test: ${{ steps.lanes.outputs.test }}
       rehearse: ${{ steps.lanes.outputs.rehearse }}
+      selftest: ${{ steps.lanes.outputs.selftest }}
       timing: ${{ steps.lanes.outputs.timing }}
     steps:
       - uses: actions/checkout@v4
@@ -281,6 +282,22 @@ jobs:
           TAKTUS_REQUIRE_DATABASE: "1"
         run: make rehearse
 
+  # Every documentation, register and architecture gate fed a deliberate violation (#395,
+  # ADR-0096 §6): each must go red for it, in a copy of the tree. A pull request runs it when it
+  # changes a gate's code, so that a gate made blind is red before it merges; a push to `main`
+  # runs it with every other lane. The named tests of a verified use case need the database.
+  selftest:
+    needs: select
+    if: needs.select.outputs.selftest == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: make install
+      - name: gate self-test
+        run: make gate-selftest
+
   # The one check the ruleset requires. It needs every job above, fails unless each one
   # succeeded, and always reports — a job that failed, was cancelled or timed out fails it.
   # On a pull request its last step is the guard (ADR-0096 §5, #391): while the newest run on
@@ -289,7 +306,7 @@ jobs:
   gates:
     name: ${{ (github.event_name == 'pull_request' && github.event.pull_request.draft) && 'gates (draft)' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'taktus/')) && 'gates (checked on push)' || 'gates' }}
     if: always()
-    needs: [select, contracts, decisions, web, static, conformance, test, timing, rehearse]
+    needs: [select, contracts, decisions, web, static, conformance, test, timing, rehearse, selftest]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
