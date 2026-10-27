@@ -1,0 +1,8 @@
+{
+  "request_id": "rly_7f3a9c21",
+  "method": "GET",
+  "path": "/v1/assignments/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/events?after=12",
+  "headers": {
+    "Accept": "text/event-stream"
+  }
+}

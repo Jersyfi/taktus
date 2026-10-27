@@ -168,9 +168,18 @@ def conformance_run(
             "--endpoint",
             help="Where the adapter listens: the base URL of a worker, the MCP URL of a "
             "connector (for example http://localhost:9100/mcp), the base URL that serves "
-            "/chat/completions for a model.",
+            "/chat/completions for a model. Not with --listen.",
         ),
-    ],
+    ] = "",
+    listen: Annotated[
+        str | None,
+        typer.Option(
+            "--listen",
+            help="worker/v1 only, instead of --endpoint: host:port where the suite serves the "
+            "outbound binding at /relay and waits for the worker to connect to it "
+            "(contracts/worker/v1/README.md §8).",
+        ),
+    ] = None,
     json_path: Annotated[
         Path | None,
         typer.Option("--json", help="Write the machine-readable report to this file."),
@@ -255,6 +264,14 @@ def conformance_run(
             f"unknown contract {contract!r}; known: {', '.join(sorted(CONTRACTS))}", err=True
         )
         raise typer.Exit(code=2)
+    if listen is not None and (contract != "worker/v1" or endpoint):
+        typer.echo(
+            "--listen serves the worker/v1 outbound binding, and replaces --endpoint", err=True
+        )
+        raise typer.Exit(code=2)
+    if listen is None and not endpoint:
+        typer.echo("--endpoint is needed, or --listen for a worker that connects", err=True)
+        raise typer.Exit(code=2)
     report: Report
     if contract == "model/v1":
         if model is None:
@@ -311,6 +328,7 @@ def conformance_run(
             worker_log=adapter_log,
             timeout=timeout,
             idle_timeout=idle_timeout,
+            listen=listen,
         )
         report = asyncio.run(run_suite(options))
     if json_path is not None:

@@ -9,6 +9,12 @@ limits do not fit, a halt at the next boundary when the running total would cros
 artifacts, health — in one file that needs nothing but Python's standard library. Run it:
 `python3 workers/script/worker.py --port 9000`.
 
+It offers the contract's three optional extensions too (ADR-0139). A message to a running
+assignment is received at the next boundary, and the commands after it find the messages in
+`TAKTUS_STEERING`. A handover stops at the next boundary with a document from which this worker,
+on any instance, continues. And `--connect BASE` connects to a host of the outbound binding
+instead of listening: it opens no port, and answers every relayed request with the same handler.
+
 Two profiles (`--profile`):
 
 - `quick` — seconds of runtime, four steps, cpu consumption only. The everyday shape.
@@ -36,6 +42,8 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import http.client
+import io
 import json
 import math
 import os
@@ -49,13 +57,13 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 from urllib.parse import parse_qs, urlparse
 
 type Json = dict[str, Any]
 
 CONTRACT = "worker/v1"
-VERSION = "1.2.0"  # this worker's own version, recorded in the provenance of what it produces
+VERSION = "1.3.0"  # this worker's own version, recorded in the provenance of what it produces
 TOOL = "shell.script"
 CAPABILITIES = [TOOL, "shell.sandboxed", "workspace.isolated"]
 """What this worker offers; the release's list of what it ships reads it (ADR-0118)."""
@@ -85,6 +93,12 @@ FAULTS: dict[str, str] = {
     "W-17": "an assignment whose id is held is accepted again as a second one instead of 409",
     "W-18": "the task's commands before and after the work are ignored: they never run and "
     "nothing is published",
+    "W-19": "a steering message is received at once, inside the running step, instead of at "
+    "its boundary",
+    "W-19-undeclared": "steering is not declared, and a message is accepted all the same",
+    "W-20": "a handover stops at the boundary without the handover.state artifact",
+    "W-20-undeclared": "handover is not declared, and a handover is carried out all the same",
+    "W-21": "connected outbound, every answer to a relayed request is posted twice",
 }
 
 
@@ -285,6 +299,17 @@ class Produced:
     def digest(self) -> str:
         return sha256(self.content)
 
+    def reference(self) -> Json:
+        """The artifact as a handover document lists it: what it is, without where its bytes
+        were."""
+        return {
+            "id": self.artifact_id,
+            "kind": self.kind,
+            "digest": self.digest,
+            "media_type": self.media_type,
+            "size_bytes": len(self.content),
+        }
+
     def describe(self, assignment_id: str) -> Json:
         return {
             "id": self.artifact_id,
@@ -312,6 +337,16 @@ class Assignment:
     events: list[Json] = field(default_factory=list)
     produced: list[Produced] = field(default_factory=list)
     stop_requested: bool = False
+    handover_requested: bool = False
+    earlier: list[Json] = field(default_factory=list)
+    """What the assignments this one continues produced and this worker holds no bytes of:
+    the artifacts a handover document listed, carried on through every checkpoint after it."""
+    pending: list[Json] = field(default_factory=list)
+    """Steering messages accepted and not yet received: they are received at the next
+    boundary (W-19)."""
+    received: list[Json] = field(default_factory=list)
+    seen: set[str] = field(default_factory=set)
+    """Every message id accepted, so that a message posted again is received once."""
     seq: int = 0
     lock: threading.Lock = field(default_factory=threading.Lock)
     changed: threading.Condition = field(init=False)
@@ -365,6 +400,8 @@ class Worker:
             "consumption": {"kinds": kinds, "resource_classes": [self.resource_class]},
             "supports": {
                 "native_pause": False,
+                "steering": self.fault != "W-19-undeclared",
+                "handover": self.fault != "W-20-undeclared",
                 "step_boundary_signal": True,
                 "streaming_events": True,
                 "estimate": True,
@@ -412,7 +449,12 @@ class Worker:
 
     def estimate(self, request: Json) -> Json:
         plan = plan_for(request.get("task", {}), self.profile, self.options)
-        start = self._resume_index(request.get("context", {}).get("checkpoint_ref"), plan)
+        context = request.get("context", {})
+        handover = context.get("handover")
+        if isinstance(handover, dict):
+            start = handover_index(handover, plan) or 0
+        else:
+            start = self._resume_index(context.get("checkpoint_ref"), plan)
         remaining = plan[start:]
         seconds = round(sum(self.expected(s) for s in remaining), 3)
         return {
@@ -435,6 +477,7 @@ class Worker:
             "assignment_id": assignment.id,
             "index": index,
             "plan": [s.step_id for s in assignment.plan],
+            "earlier": assignment.earlier,
             "produced": [
                 {
                     "artifact_id": p.artifact_id,
@@ -479,10 +522,21 @@ class Worker:
             if running >= self.options.max_concurrent and self.fault != "W-15":
                 return 503, {"title": "at capacity", "status": 503}
             ref = body.get("context", {}).get("checkpoint_ref")
+            handover = body.get("context", {}).get("handover")
             inherited: list[Produced] = []
+            earlier: list[Json] = []
             start = 0
             rejection: str | None = None
-            if ref:
+            if isinstance(handover, dict):
+                # Continued from a handover: everything needed is in the document, nothing in
+                # this worker's state directory (ADR-0139 §4).
+                index = handover_index(handover, plan)
+                if index is None:
+                    rejection = "the handover belongs to a different plan or another contract"
+                else:
+                    start = index
+                    earlier = [dict(a) for a in handover.get("artifacts", [])]
+            elif ref:
                 record = self._load_checkpoint(ref)
                 if record is None:
                     rejection = f"unknown checkpoint {ref}"
@@ -499,7 +553,8 @@ class Worker:
                         )
                         for p in record["produced"]
                     ]
-            assignment = Assignment(body, plan, start, inherited)
+                    earlier = list(record.get("earlier", []))
+            assignment = Assignment(body, plan, start, inherited, earlier=earlier)
             if rejection is None:
                 rejection = self._does_not_fit(body, plan[start:])
             self.assignments[assignment_id] = assignment
@@ -557,6 +612,92 @@ class Worker:
                 assignment.status = "stopping"
             return assignment.state()
 
+    def hand_over(self, assignment: Assignment, request: Json) -> Json:
+        """A stop that leaves a handover document (W-20): the assignment stops at its next
+        boundary, as for a stop, and the document is produced there."""
+        with assignment.lock:
+            if assignment.status != "finished":
+                assignment.stop_requested = True
+                assignment.handover_requested = True
+                assignment.status = "stopping"
+            return assignment.state()
+
+    def steer(self, assignment: Assignment, body: Any) -> tuple[int, Json]:
+        """Accept a steering message (W-19). It waits for the next boundary, where it is
+        received; the commands of the steps after it find every message received so far in
+        `TAKTUS_STEERING`, as a JSON list of texts. A message is an input: it changes neither
+        the frame nor the limits."""
+        if (
+            not isinstance(body, dict)
+            or not isinstance(body.get("message_id"), str)
+            or not re.match(r"^msg_[A-Za-z0-9_-]{4,}$", body["message_id"])
+            or not isinstance(body.get("text"), str)
+            or not 1 <= len(body["text"]) <= 8000
+        ):
+            return 400, {"title": "invalid message", "status": 400}
+        with assignment.lock:
+            if assignment.status == "finished":
+                return 409, {
+                    "title": "assignment finished",
+                    "status": 409,
+                    "detail": "a finished assignment receives no message",
+                }
+            message_id = str(body["message_id"])
+            if message_id in assignment.seen:
+                return 202, assignment.state()
+            assignment.seen.add(message_id)
+            message = {"message_id": message_id, "text": str(body["text"])}
+            if self.fault == "W-19":
+                # the W-19 fault: received at once, inside the step that is running
+                state = assignment.state()
+                assignment.received.append(message)
+                self._emit(assignment, {"type": "message.received", "message_id": message_id})
+                return 202, state
+            assignment.pending.append(message)
+            return 202, assignment.state()
+
+    def _receive(self, assignment: Assignment, step_id: str | None) -> None:
+        """Receive every message accepted since the last boundary, at this one. Caller holds
+        the assignment's lock."""
+        for message in assignment.pending:
+            event: Json = {"type": "message.received", "message_id": message["message_id"]}
+            if step_id is not None:
+                event["step_id"] = step_id
+            self._emit(assignment, event)
+            assignment.received.append(message)
+        assignment.pending.clear()
+
+    def _hand_over(self, assignment: Assignment, index: int, checkpoint: str) -> str:
+        """Produce the handover document at the boundary of step `index` and return its
+        artifact id. It stands on its own: a person reads what was done and what remains, and
+        this worker, anywhere, continues from `resume` (ADR-0139 §4). Caller holds the lock."""
+        plan = assignment.plan
+        done = plan[: index + 1]
+        remaining = plan[index + 1 :]
+        summary = f"{len(done)} of {len(plan)} step(s) done: " + ", ".join(s.step_id for s in done)
+        summary += (
+            ". Remaining: " + ", ".join(s.step_id for s in remaining) + "."
+            if remaining
+            else ". Nothing remains."
+        )
+        document = {
+            "contract": CONTRACT,
+            "assignment_id": assignment.id,
+            "checkpoint_ref": checkpoint,
+            "task": assignment.body["task"],
+            "summary": summary,
+            "steps": [{"step_id": s.step_id, "kind": s.kind, "summary": s.summary} for s in done],
+            "artifacts": assignment.earlier
+            + [p.reference() for p in assignment.inherited + assignment.produced],
+            "messages": [m["message_id"] for m in assignment.received],
+            "resume": {"plan": [s.step_id for s in plan], "next": index + 1},
+        }
+        content = json.dumps(document, indent=2).encode()
+        produced = Produced("handover", "handover.state", "application/json", content)
+        assignment.produced.append(produced)
+        self._emit(assignment, self._artifact_event(assignment, produced, plan[index].step_id))
+        return produced.artifact_id
+
     # -- the run --
 
     def _emit(self, assignment: Assignment, event: Json) -> Json:
@@ -587,6 +728,13 @@ class Worker:
             step = assignment.plan[index]
             began = time.monotonic()
             with assignment.lock:
+                # A message accepted since the last boundary is received here, before the step
+                # starts, so that the step has it (W-19).
+                previous = (
+                    assignment.plan[index - 1].step_id if index > assignment.start_index else None
+                )
+                self._receive(assignment, previous)
+                steering = [str(m["text"]) for m in assignment.received]
                 self._emit(
                     assignment,
                     {
@@ -644,7 +792,7 @@ class Worker:
                 if step.argv is not None:
                     output, failure = run_program(step.argv, before=step.before)
                 else:
-                    output, failure = run_command(step.command)
+                    output, failure = run_command(step.command, steering)
                 if self.fault == "W-08-log" and credential:
                     log(f"credential {credential[0]}={credential[1]}")  # the W-08-log fault
             if step.progress and not refused:
@@ -689,7 +837,11 @@ class Worker:
                     deferred.append(consumption)
                 else:
                     self._emit(assignment, consumption)
-                skip_boundary = self.fault == "W-06" and assignment.stop_requested
+                skip_boundary = (
+                    self.fault == "W-06"
+                    and assignment.stop_requested
+                    and not assignment.handover_requested
+                )
                 checkpoint = self._write_checkpoint(assignment, index, step)
                 if self.fault != "W-05" and not skip_boundary:
                     self._emit(
@@ -702,6 +854,7 @@ class Worker:
                     )
                 if not skip_boundary:
                     last_checkpoint = checkpoint
+                    self._receive(assignment, step.step_id)
                 if failure is not None:
                     self._finish(assignment, "failed", reason=failure)
                     return
@@ -711,7 +864,12 @@ class Worker:
                         self._finish(assignment, "failed", reason=excess)
                         return
                 if assignment.stop_requested:
-                    self._finish(assignment, "stopped", checkpoint_ref=last_checkpoint)
+                    handover = None
+                    if assignment.handover_requested and last_checkpoint and self.fault != "W-20":
+                        handover = self._hand_over(assignment, index, last_checkpoint)
+                    self._finish(
+                        assignment, "stopped", checkpoint_ref=last_checkpoint, handover=handover
+                    )
                     return
                 following = index + 1 < len(assignment.plan)
                 if following and self.fault != "W-14":
@@ -794,9 +952,15 @@ class Worker:
         checkpoint_ref: str | None = None,
         summary: str | None = None,
         limit: str | None = None,
+        handover: str | None = None,
     ) -> None:
-        """Caller holds the assignment's lock."""
+        """Caller holds the assignment's lock. A message still waiting is received first: it
+        was accepted while the assignment ran (W-19)."""
+        if outcome != "rejected":
+            self._receive(assignment, None)
         event: Json = {"type": "assignment.finished", "outcome": outcome}
+        if handover is not None:
+            event["handover"] = handover
         if reason is not None:
             event["reason"] = reason
         if checkpoint_ref is not None:
@@ -826,8 +990,25 @@ class Worker:
         return None
 
 
-def run_command(command: str) -> tuple[bytes, str | None]:
-    """Run one shell command. This worker exists to run commands; that is its capability."""
+def handover_index(handover: Json, plan: list[PlannedStep]) -> int | None:
+    """Where an assignment continues that carries a handover document: the step after the last
+    one done. None when the document is not this worker's for this plan: another contract, or
+    another plan."""
+    if handover.get("contract") != CONTRACT:
+        return None
+    resume = handover.get("resume") or {}
+    if resume.get("plan") != [s.step_id for s in plan]:
+        return None
+    following = resume.get("next")
+    if not isinstance(following, int) or not 0 <= following <= len(plan):
+        return None
+    return following
+
+
+def run_command(command: str, steering: list[str] | None = None) -> tuple[bytes, str | None]:
+    """Run one shell command. This worker exists to run commands; that is its capability. The
+    steering messages received so far reach it as `TAKTUS_STEERING`, a JSON list of texts."""
+    environment = {**os.environ, "TAKTUS_STEERING": json.dumps(steering or [])}
     try:
         completed = subprocess.run(  # noqa: S602 — a shell wrapper runs shell commands by design
             command,
@@ -835,6 +1016,7 @@ def run_command(command: str) -> tuple[bytes, str | None]:
             capture_output=True,
             timeout=COMMAND_TIMEOUT,
             check=False,
+            env=environment,
         )
     except subprocess.TimeoutExpired:
         return b"", f"command exceeded {COMMAND_TIMEOUT}s"
@@ -1001,6 +1183,17 @@ class Handler(BaseHTTPRequestHandler):
             if (assignment := self._assignment(parts[2])) is not None:
                 request = body if isinstance(body, dict) else {}
                 self._json(202, self.worker.stop(assignment, request))
+        elif len(parts) == 4 and parts[:2] == ["v1", "assignments"] and parts[3] == "handover":
+            if (assignment := self._assignment(parts[2])) is not None:
+                request = body if isinstance(body, dict) else {}
+                self._json(202, self.worker.hand_over(assignment, request))
+        elif len(parts) == 4 and parts[:2] == ["v1", "assignments"] and parts[3] == "messages":
+            if (assignment := self._assignment(parts[2])) is not None:
+                status, response = self.worker.steer(assignment, body)
+                if status == 202:
+                    self._json(202, response)
+                else:
+                    self._json(status, response, "application/problem+json")
         else:
             self._problem(404, "no such route")
 
@@ -1048,6 +1241,154 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
+# --- the outbound binding ---------------------------------------------------------------------
+
+RELAY_POLLERS = 2
+"""How many requests for the next relayed request are open at once: one more is asked for as
+soon as one is taken, so a long stream holds none back."""
+RELAY_RETRY_SECONDS = 1.0
+
+
+class _RelayedConnection:
+    """What the request handler takes for its connection when the request came over the
+    outbound binding: the request's bytes to read, and a pipe its answer is written into."""
+
+    def __init__(self, request: bytes, answer: BinaryIO) -> None:
+        self._request = request
+        self._answer = answer
+
+    def makefile(self, mode: str, *args: Any, **kwargs: Any) -> io.BytesIO:
+        return io.BytesIO(self._request)
+
+    def sendall(self, data: bytes) -> None:
+        self._answer.write(data)
+
+    def settimeout(self, value: float | None) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+class _AnswerPipe:
+    """What `http.client.HTTPResponse` reads the handler's answer from: the pipe's other end."""
+
+    def __init__(self, reader: BinaryIO) -> None:
+        self._reader = reader
+
+    def makefile(self, mode: str, *args: Any, **kwargs: Any) -> BinaryIO:
+        return self._reader
+
+
+class Relay:
+    """The worker's side of the outbound binding (contracts/worker/v1 §8, ADR-0139): it asks
+    the host at `base` for the next request, has the same handler answer it that answers at an
+    endpoint, and posts the answer back — a stream in chunks, while it lasts. It opens no port."""
+
+    def __init__(self, base: str, fault: str | None) -> None:
+        url = urlparse(base)
+        if url.scheme not in ("http", "https") or not url.hostname:
+            raise ValueError(f"--connect takes an http or https address, not {base!r}")
+        self.secure = url.scheme == "https"
+        self.host = url.hostname
+        self.port = url.port or (443 if self.secure else 80)
+        self.prefix = url.path.rstrip("/")
+        self.fault = fault
+
+    def _connection(self, timeout: float | None) -> http.client.HTTPConnection:
+        if self.secure:
+            return http.client.HTTPSConnection(self.host, self.port, timeout=timeout)
+        return http.client.HTTPConnection(self.host, self.port, timeout=timeout)
+
+    def serve_forever(self) -> None:
+        for _ in range(RELAY_POLLERS):
+            threading.Thread(target=self._poll, daemon=True).start()
+        while True:
+            time.sleep(1.0)
+
+    def _poll(self) -> None:
+        while True:
+            try:
+                connection = self._connection(timeout=60.0)
+                connection.request(
+                    "POST",
+                    self.prefix + "/next",
+                    body=b"{}",
+                    headers={"Content-Type": "application/json"},
+                )
+                response = connection.getresponse()
+                data = response.read()
+                connection.close()
+            except (OSError, http.client.HTTPException):
+                time.sleep(RELAY_RETRY_SECONDS)
+                continue
+            if response.status == 204:
+                continue
+            if response.status != 200:
+                log(f"the host answered {response.status} to a request for work")
+                time.sleep(RELAY_RETRY_SECONDS)
+                continue
+            try:
+                request = json.loads(data)
+            except ValueError:
+                log("the host sent a request that is not JSON")
+                continue
+            threading.Thread(target=self._serve, args=(request,), daemon=True).start()
+
+    def _serve(self, request: Json) -> None:
+        read_end, write_end = os.pipe()
+        reader = os.fdopen(read_end, "rb")
+        writer = os.fdopen(write_end, "wb", buffering=0)
+        raw = relayed_request_bytes(request)
+
+        def handle() -> None:
+            try:
+                Handler(_RelayedConnection(raw, writer), ("relay", 0), None)  # type: ignore[arg-type]
+            except OSError:
+                pass  # the host stopped reading: the answer is not wanted any more
+            finally:
+                writer.close()
+
+        threading.Thread(target=handle, daemon=True).start()
+        path = f"{self.prefix}/answers/{request.get('request_id')}"
+        try:
+            answer = http.client.HTTPResponse(_AnswerPipe(reader))  # type: ignore[arg-type]
+            answer.begin()
+            headers = {"Relay-Status": str(answer.status)}
+            content_type = answer.getheader("Content-Type")
+            if content_type:
+                headers["Content-Type"] = content_type
+
+            def body() -> Any:
+                while chunk := answer.read1(65536):
+                    yield chunk
+
+            connection = self._connection(timeout=None)
+            connection.request("POST", path, body=body(), headers=headers)
+            connection.getresponse().read()
+            connection.close()
+            if self.fault == "W-21":
+                # the W-21 fault: the same request answered a second time
+                again = self._connection(timeout=30.0)
+                again.request("POST", path, body=b"", headers=headers)
+                again.getresponse().read()
+                again.close()
+        except (OSError, http.client.HTTPException) as error:
+            log(f"the answer to {request.get('request_id')} did not reach the host: {error!r}")
+        finally:
+            reader.close()
+
+
+def relayed_request_bytes(request: Json) -> bytes:
+    """A relayed request as the bytes it would have arrived as at the worker's endpoint."""
+    body = str(request.get("body") or "").encode()
+    lines = [f"{request.get('method', 'GET')} {request.get('path', '/')} HTTP/1.1", "Host: relay"]
+    for name, value in (request.get("headers") or {}).items():
+        lines.append(f"{name}: {value}")
+    lines.append(f"Content-Length: {len(body)}")
+    return ("\r\n".join(lines) + "\r\n\r\n").encode() + body
+
+
 # --- main -------------------------------------------------------------------------------------
 
 
@@ -1060,6 +1401,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=port)
+    parser.add_argument(
+        "--connect",
+        metavar="BASE",
+        help="connect outbound to a host of the binding at BASE instead of listening; no port "
+        "is opened (contracts/worker/v1 §8)",
+    )
     parser.add_argument("--profile", choices=["quick", "longrun"], default="quick")
     parser.add_argument("--fault", choices=sorted(FAULTS), help="violate exactly one check")
     parser.add_argument("--list-faults", action="store_true", help="print the faults and exit")
@@ -1100,6 +1447,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{name}\t{check_of(name)}\t{description}")
         return 0
     Handler.worker = Worker(args)
+    if args.connect:
+        fault = f", fault {args.fault}" if args.fault else ""
+        log(f"connecting to {args.connect}, no port opened, profile {args.profile}{fault}")
+        try:
+            Relay(args.connect, args.fault).serve_forever()
+        except KeyboardInterrupt:
+            pass
+        return 0
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.daemon_threads = True
     fault = f", fault {args.fault}" if args.fault else ""

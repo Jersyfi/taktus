@@ -27,11 +27,16 @@ Where this text and the schema disagree, the schema is the finding and this text
 | `GET` | `/v1/assignments/{id}/events` | event stream (SSE, resumable) |
 | `GET` | `/v1/assignments/{id}` | current state |
 | `POST` | `/v1/assignments/{id}/stop` | request a stop at the next step boundary |
+| `POST` | `/v1/assignments/{id}/messages` | send a message, received at the next step boundary (only with `supports.steering`) |
+| `POST` | `/v1/assignments/{id}/handover` | hand the assignment over at the next step boundary (only with `supports.handover`) |
 | `GET` | `/v1/assignments/{id}/artifacts` | list result artifacts |
 | `GET` | `/v1/assignments/{id}/artifacts/{artifact_id}` | fetch one artifact's bytes |
 | `GET` | `/v1/health` | readiness |
 
 Errors are RFC 9457 problem details. A rejected assignment is not an error; see section 3.
+
+A worker is reached at its endpoint, or it connects to the control plane and fetches the same
+requests from there: the outbound binding of section 8.
 
 ---
 
@@ -83,9 +88,11 @@ asks again later, and nothing on the control plane's side counts the worker's as
 (ADR-0037). Check W-15 holds as many assignments as the worker declares and expects that answer
 to one more.
 
-Of the four `supports` flags only `native_pause` varies. `step_boundary_signal`, `streaming_events`
-and `estimate` are constant `true`: without them sections 4 to 6 cannot be satisfied. They are
-declared so that a reader of the response sees the obligation.
+Of the four required `supports` flags only `native_pause` varies. `step_boundary_signal`,
+`streaming_events` and `estimate` are constant `true`: without them sections 4 to 6 cannot be
+satisfied. They are declared so that a reader of the response sees the obligation. Two more are
+optional: `steering` and `handover` say that the worker offers what section 6 describes under
+those names. Absent, they mean `false` (ADR-0139).
 
 ---
 
@@ -126,7 +133,8 @@ worker to these two answers. An assignment the worker accepted keeps running whe
 that posted it goes away; whoever holds the id may read its
 stream from any `seq` and stop it (ADR-0038). `context.checkpoint_ref` is present only when the
 assignment resumes an earlier one; the worker continues after that checkpoint and produces no
-artifact it produced before it.
+artifact it produced before it. `context.handover` is present only when the assignment continues
+one that was handed over (section 6); it never comes with `checkpoint_ref`.
 
 **A command after the work.** `task.after` names a command the worker runs once the work is
 done, as the assignment's last step, in its workspace: `command` is a program and its arguments,
@@ -191,12 +199,14 @@ everything after it. A worker honours both.
 | `reach.stated` | `tools` — every capability a call of this assignment can be made under; optionally `hosts` — every host a call can name. Optional, at most once, before the first `step.started` |
 | `step.started` | `step_id`, `kind`, `summary` — `kind` names the class of work in one token: `plan`, `edit`, `test`, `shell`, `epoch` |
 | `step.progress` | `step_id`, `message`; optionally `progress: {current, total, unit}` for work measured in units such as epochs |
-| `tool.called` | `tool` (a capability), `arguments_digest` (**`sha256:` + hex, never in clear**); `host` when the call reaches a host over the network; `refused: true` with a `reason` when the tool or the host lies outside the frame |
+| `tool.called` | `tool` (a capability), `arguments_digest` (**`sha256:` + hex, never in clear**); `host` when the call reaches a host over the network; `refused: true` with a `reason` when the tool or the host lies outside the frame; optionally `effect` — `local` or `outward` |
+| `model.called` | `step_id` — one answer of a language model the worker received inside the step. Optional |
+| `message.received` | `message_id`, optionally `step_id` — a steering message received at that step's boundary (section 6) |
 | `decision.made` | `rationale` — why this path |
 | `consumption.reported` | `step_id`, and any of `tokens_in` / `tokens_out` / `currency` / `quota_units` / `compute_seconds` with `resource_class` |
 | `step.boundary` | `step_id`, `checkpoint_ref` — **a stop may take effect here** |
 | `artifact.produced` | `artifact_id`, `kind`, `digest` |
-| `assignment.finished` | `outcome`: `succeeded` · `failed` · `stopped` · `rejected`; `checkpoint_ref` when stopped, `reason` when failed or rejected; `limit` — one of `currency`, `quota`, `compute`, `tokens` — when a limit halted the assignment (section 6) |
+| `assignment.finished` | `outcome`: `succeeded` · `failed` · `stopped` · `rejected`; `checkpoint_ref` when stopped, `reason` when failed or rejected; `limit` — one of `currency`, `quota`, `compute`, `tokens` — when a limit halted the assignment (section 6); `handover` — the `handover.state` artifact — when the assignment was handed over (section 6) |
 
 `consumption.reported` comes **per step**, not at the end. A worker that only settles up at the end
 makes admission control impossible. `currency` is a map by ISO 4217 code in lowercase,
@@ -222,6 +232,14 @@ optional: a worker that offers every tool and refuses at the call states nothing
 host the frame does not allow, left out of the statement and called nowhere, is how checks
 W-07 and W-13 see a frame enforced by not offering. The suite cannot see a statement that is
 false about a call never made (ADR-0098).
+
+**A call may say what it acts on.** `effect: "local"` says that the call changes nothing outside
+the assignment's workspace: a read, an edit of the workspace's files, a test run. `effect:
+"outward"` says that it changes something outside, such as a record written or a message
+delivered. A call without `effect` says nothing about it. `model.called` reports each answer of a
+language model the worker received inside a step. Both are optional, and both are the worker's
+own statements. With them the control plane can count a worker's outward calls and its model
+answers without a tool call between them, as it counts its own (ADR-0132, ADR-0139 §5).
 
 ---
 
@@ -269,7 +287,7 @@ an assignment admitted at a lower estimate would be rejected.
 
 ---
 
-## 6. Stopping
+## 6. Stopping, steering and handing over
 
 `POST /stop` requests a stop at the **next** step boundary. The running step may finish up to a hard
 ceiling — `ceiling_seconds` in the request, or the worker's own. The worker emits `step.boundary`,
@@ -302,6 +320,69 @@ A worker that learns a quantity only at the end of an assignment — money, for 
 on it while running. It holds what it learns per step and says in its own documentation which
 quantity that is.
 
+**Steering: a message received at a boundary.** A worker that declares `supports.steering`
+accepts `POST /v1/assignments/{id}/messages` while the assignment runs:
+
+```json
+{ "message_id": "msg_01J8R6V2D9", "text": "Use the second endpoint; the first one is retired." }
+```
+
+It answers `202` with the assignment's state. A message whose `message_id` it holds already is
+answered `202` again and received once: the control plane may post a message again when it does
+not know whether the first post arrived. A finished assignment answers `409`, an unknown one
+`404`, both with a problem body.
+
+At the next step boundary the worker emits `message.received` with the `message_id`, once. The
+running step finishes with the inputs it started with: a message is never received inside a
+step. The steps after that boundary have the message as an input of their work. A message
+accepted after the last step's boundary is received before `assignment.finished`, and no step
+has it.
+
+A message is an input like the task's inputs, and nothing more. It cannot widen
+`allowed_tools` or `allowed_hosts`, raise a limit, add a step beyond `max_steps` or move the
+deadline. A call it prompts outside the frame is refused as any other is (W-07, W-13). What a
+person may send, and how the message is recorded, is the control plane's (ADR-0139 §3).
+
+A worker that does not declare `steering` answers a message with a problem — any status of 400
+or above — and changes nothing: no `message.received`, and the assignment runs on. Check W-19
+holds a worker to both.
+
+**Handover: a stop that leaves a document to continue from.** A worker that declares
+`supports.handover` accepts `POST /v1/assignments/{id}/handover`, with a body of the shape
+`HandoverRequest` — `reason` and `ceiling_seconds`, as for a stop. It answers `202` with the
+state, `stopping`; an assignment that has finished already is answered `202` with its final
+state, as for a stop, and is not handed over. At the next step boundary it stops as for a stop. After `step.boundary` it
+produces one artifact of kind `handover.state`, as `application/json`, whose bytes are a
+document of the shape `Handover`. Then it emits `assignment.finished` with `outcome: "stopped"`,
+the boundary's `checkpoint_ref`, and `handover` naming the artifact.
+
+```json
+{
+  "contract": "worker/v1",
+  "assignment_id": "asg_01J8R3K5Q2N7VX9M4T6B0DPHWE",
+  "checkpoint_ref": "ckpt/asg_01J8R3K5Q2N7VX9M4T6B0DPHWE/prepare",
+  "task": { "goal": "…", "acceptance": ["…"] },
+  "summary": "2 of 4 steps done: inspect, prepare. Remaining: run, report.",
+  "steps": [ { "step_id": "inspect", "kind": "shell", "summary": "inspect the host" }, … ],
+  "artifacts": [ { "id": "plan", "kind": "plan", "digest": "sha256:…" } ],
+  "messages": [],
+  "resume": { "plan": ["inspect", "prepare", "run", "report"], "next": 2 }
+}
+```
+
+The document stands on its own. `summary`, `steps` and `artifacts` are for a person, who can
+continue the work from them; what the work changed in its workspace is among the artifacts.
+`resume` is the worker's own. A worker of the same kind continues from it without anything the
+first instance kept: its state directory, its memory, its checkpoint store.
+
+A new assignment whose `context.handover` carries the document continues the work, at the same
+worker or at another instance of it. It repeats no step the document lists in `steps`, and it
+produces no artifact the document lists in `artifacts`. A worker that cannot hand its workspace
+over does not declare `handover`.
+
+A worker that does not declare `handover` answers the request with a problem — any status of
+400 or above — and the assignment runs on. Check W-20 holds a worker to all of this.
+
 ---
 
 ## 7. Conformance
@@ -330,10 +411,14 @@ uv run taktusctl conformance run --contract worker/v1 --endpoint http://localhos
 | W-16 | `GET /v1/assignments/{id}` of an id the worker never received answers `404` with a problem body |
 | W-17 | a `POST /v1/assignments` whose id the worker already holds, running or finished, answers `409` with a problem body and starts nothing: the assignment of that id stays the first |
 | W-18 | a task's command after the work runs as the last step, after every step of the work; its standard output is the artifact the task names, byte for byte; a command that exits with anything but 0 fails the assignment without that artifact. A task's command before the work runs as the first step, before every step of the work; its output is the artifact the task names; a command that exits with anything but 0 fails the assignment, and no step of the work starts |
+| W-19 | a worker that declares `steering` answers a message `202`, a repeat of it `202` again, and emits `message.received` for it exactly once, after it was accepted, at a step boundary and never inside a step; a worker that does not declare it refuses the message and emits nothing for it |
+| W-20 | a worker that declares `handover` ends a handed-over assignment `stopped` at a boundary, with one `handover.state` artifact after that boundary whose bytes validate as `Handover` and name the assignment and the checkpoint, and `handover` naming it; an assignment that continues from the document repeats no step and no artifact it lists; a worker that does not declare it refuses the request and the assignment runs on |
+| W-21 | over the outbound binding, every relayed request is answered exactly once, under its `request_id`, with a `Relay-Status` |
 
-The suite runs W-01 to W-11 and W-13 to W-18 against a live worker and reports W-12 as *pending*: the removal test
+The suite runs W-01 to W-11 and W-13 to W-20 against a live worker and reports W-12 as *pending*: the removal test
 takes the adapter out of running processes, which a suite talking to one endpoint cannot do, and
-which needs processes to exist (DEC-0005). W-14 can only be provoked in a worker whose actual
+which needs processes to exist (DEC-0005). It runs W-21 when it serves the outbound binding itself
+(`--listen`, section 8), and reports it *pending* when it calls an endpoint. W-14 can only be provoked in a worker whose actual
 consumption exceeds its own estimate: a limit the estimate fits is otherwise never crossed, and
 the suite reports W-14 *inconclusive* with the numbers. W-15 can only be provoked while
 the assignments it holds still run, and the suite fills at most sixteen places; otherwise the
@@ -346,18 +431,54 @@ a failure tells you to fix: [CONFORMANCE.md](CONFORMANCE.md).
 
 **Fixtures.** `examples/<definition>/valid/` holds what a conforming worker produces;
 `examples/<definition>/invalid/W-NN-*.json` holds one violation per check. Checks that concern a
-whole stream — W-03 to W-07, W-10, W-11, W-13, W-14, W-18 — use the `Transcript` shape: the assignment, the estimate
-the worker gave for it, and every event in order. The stream rules that judge them live in the
+whole stream — W-03 to W-07, W-10, W-11, W-13, W-14, W-18 to W-20 — use the `Transcript` shape: the assignment, the estimate
+the worker gave for it, every event in order, the messages posted and whether a handover was
+requested. The stream rules that judge them live in the
 suite (`src/taktus/conformance/rules.py`) and are applied to the fixtures by `tests/conformance`
 and to a live worker by `uv run taktusctl conformance run`. W-15 concerns no stream: its fixtures
 use the `CapacityProbe` shape — the places declared, the assignments held, the answer to one
 more — and fail the capacity rule in the same file. W-16 and W-17 concern an assignment's id.
 Their fixtures use the `UnknownIdProbe` shape — an id never posted and the answer to its state —
 and the `RepeatedIdProbe` shape — the state held, the answer to the repeat, the state after it —
-and fail the two id rules there. `tools/validate_contracts.py` checks that
-every fixture is schema-valid and that every check has one.
+and fail the two id rules there. W-21 concerns the binding: its fixtures use the `RelayProbe`
+shape — the requests relayed and every answer posted — and fail the binding rule.
+`tools/validate_contracts.py` checks that every fixture is schema-valid and that every check has
+one.
 
-## 8. Two proof cases
+## 8. The outbound binding
+
+A worker in a network that admits no inbound connection cannot be reached at an endpoint. It
+connects to the control plane instead and fetches the same requests from there. The binding
+carries the messages of sections 1 to 6 unchanged, the other way round (ADR-0139 §2).
+
+The worker is given a *base*, an HTTP address of the control plane, and opens no port:
+
+| Method | Path at the base | Purpose |
+|---|---|---|
+| `POST` | `/next` | the next request for this worker: `200` with a `RelayRequest`, or `204` when none arrived within the host's wait of at most 30 seconds |
+| `POST` | `/answers/{request_id}` | the answer to one request: the header `Relay-Status` carries its status code, `Content-Type` its type, and the body is the answer's body. `204`; `404` for a request never relayed; `409` for one answered already |
+
+```json
+{ "request_id": "rly_7f3a9c21", "method": "GET",
+  "path": "/v1/assignments/asg_01J8R3K5Q2N7VX9M4T6B0DPHWE/events?after=12",
+  "headers": { "Accept": "text/event-stream" } }
+```
+
+The worker handles each request exactly as if it had arrived at its endpoint, and answers it
+exactly once. Its answer to `GET /v1/assignments/{id}/events` is the stream itself: the worker
+posts it in chunks while it lasts, and the host reads each event as it arrives. A worker asks
+for the next request while it answers others, so that a stream does not hold the rest back.
+Every rule of sections 1 to 6 holds across the binding, and the suite runs whole over it:
+
+```
+uv run taktusctl conformance run --contract worker/v1 --listen 127.0.0.1:9100
+```
+
+The suite then serves the binding at `http://127.0.0.1:9100/relay` and waits for the worker to
+connect. Check W-21 holds the worker to the binding itself. The binding names no
+authentication of its own yet: a host of the control plane decides it when it is built (#625).
+
+## 9. Two proof cases
 
 The contract must be fully satisfiable by two very different workers. If it is not, the contract is
 what needs changing, not the worker.

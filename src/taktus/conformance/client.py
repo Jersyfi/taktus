@@ -49,13 +49,23 @@ class Stream:
 
 
 class WorkerClient:
-    def __init__(self, endpoint: str, *, timeout: float, idle_timeout: float) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        timeout: float,
+        idle_timeout: float,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        """`transport` carries every request another way than to `endpoint` directly: over
+        the outbound binding, to a worker that connected to the suite (`relay.py`)."""
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout
         self._http = httpx.AsyncClient(
             base_url=self.endpoint,
             timeout=httpx.Timeout(idle_timeout, connect=10.0),
             headers={"Accept": "application/json"},
+            transport=transport,
         )
 
     async def __aenter__(self) -> Self:

@@ -22,6 +22,9 @@ from taktus.conformance.rules import CHECKS
 from .conftest import StartWorker, faults, record_worker
 
 FAULTS = faults()
+# A fault of the outbound binding shows only over the binding; `test_worker_v1_outbound.py`
+# runs it there.
+AT_THE_ENDPOINT = [(f, c) for f, c in FAULTS if c != "W-21"]
 
 
 def test_every_runtime_check_has_a_fault() -> None:
@@ -29,7 +32,7 @@ def test_every_runtime_check_has_a_fault() -> None:
     assert broken == set(CHECKS) - {"W-12"}, "W-12 is the only check without a runtime fault"
 
 
-@pytest.mark.parametrize(("fault", "check"), FAULTS, ids=[f for f, _ in FAULTS])
+@pytest.mark.parametrize(("fault", "check"), AT_THE_ENDPOINT, ids=[f for f, _ in AT_THE_ENDPOINT])
 async def test_fault_fails_exactly_its_check(
     start_worker: StartWorker, fault: str, check: str, tmp_path: Path
 ) -> None:

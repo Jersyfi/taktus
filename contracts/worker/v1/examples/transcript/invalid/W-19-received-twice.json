@@ -1,0 +1,242 @@
+{
+  "assignment": {
+    "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+    "task": {
+      "goal": "Run the four steps of the default work.",
+      "acceptance": [
+        "the stream ends with assignment.finished"
+      ]
+    },
+    "context": {
+      "workspace": {
+        "kind": "none"
+      }
+    },
+    "frame": {
+      "autonomy_level": 2,
+      "allowed_tools": [
+        "shell.script"
+      ],
+      "allowed_hosts": [],
+      "max_steps": 10
+    },
+    "limits": {
+      "compute": {
+        "seconds": 60,
+        "resource_class": "cpu.small"
+      }
+    },
+    "callback": {
+      "events": "sse"
+    }
+  },
+  "estimate": {
+    "confidence": "low",
+    "compute_seconds": 1.2,
+    "resource_class": "cpu.small",
+    "wall_seconds": 2,
+    "steps": 4
+  },
+  "events": [
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 1,
+      "ts": "2026-10-23T10:00:01Z",
+      "type": "step.started",
+      "step_id": "inspect",
+      "kind": "shell",
+      "summary": "inspect the host"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 2,
+      "ts": "2026-10-23T10:00:02Z",
+      "type": "tool.called",
+      "step_id": "inspect",
+      "tool": "shell.script",
+      "arguments_digest": "sha256:b10667e09306f5780c2b12cac9aabb5a21bf75f58885c3e0089cc4366280ba74",
+      "effect": "local"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 3,
+      "ts": "2026-10-23T10:00:03Z",
+      "type": "consumption.reported",
+      "step_id": "inspect",
+      "compute_seconds": 0.3,
+      "resource_class": "cpu.small"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 4,
+      "ts": "2026-10-23T10:00:04Z",
+      "type": "step.boundary",
+      "step_id": "inspect",
+      "checkpoint_ref": "ckpt/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/inspect"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 5,
+      "ts": "2026-10-23T10:00:05Z",
+      "type": "step.started",
+      "step_id": "prepare",
+      "kind": "shell",
+      "summary": "write the plan"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 6,
+      "ts": "2026-10-23T10:00:06Z",
+      "type": "tool.called",
+      "step_id": "prepare",
+      "tool": "shell.script",
+      "arguments_digest": "sha256:e74b51dfe36f9a4c83bfecdb7ad9f597fd228fff4c1b96c117602ab686148e1a",
+      "effect": "local"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 7,
+      "ts": "2026-10-23T10:00:07Z",
+      "type": "artifact.produced",
+      "step_id": "prepare",
+      "artifact_id": "plan",
+      "kind": "plan",
+      "digest": "sha256:ed87dd0c3489106c00695b74686b177186c1238c3fbd97c7be049edfc3a89769",
+      "media_type": "text/plain",
+      "size_bytes": 36,
+      "uri": "/v1/assignments/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/artifacts/plan"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 8,
+      "ts": "2026-10-23T10:00:08Z",
+      "type": "consumption.reported",
+      "step_id": "prepare",
+      "compute_seconds": 0.3,
+      "resource_class": "cpu.small"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 9,
+      "ts": "2026-10-23T10:00:09Z",
+      "type": "step.boundary",
+      "step_id": "prepare",
+      "checkpoint_ref": "ckpt/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/prepare"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 10,
+      "ts": "2026-10-23T10:00:10Z",
+      "type": "message.received",
+      "step_id": "prepare",
+      "message_id": "msg_01J8RS9A0B2C4D"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 11,
+      "ts": "2026-10-23T10:00:11Z",
+      "type": "step.started",
+      "step_id": "run",
+      "kind": "shell",
+      "summary": "compute the answer"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 12,
+      "ts": "2026-10-23T10:00:12Z",
+      "type": "tool.called",
+      "step_id": "run",
+      "tool": "shell.script",
+      "arguments_digest": "sha256:1e7cbde0e53f0e27f4c23d2ea4717044b8e7fea4b5dea3caa976fa3e8f763785",
+      "effect": "local"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 13,
+      "ts": "2026-10-23T10:00:13Z",
+      "type": "consumption.reported",
+      "step_id": "run",
+      "compute_seconds": 0.3,
+      "resource_class": "cpu.small"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 14,
+      "ts": "2026-10-23T10:00:14Z",
+      "type": "step.boundary",
+      "step_id": "run",
+      "checkpoint_ref": "ckpt/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/run"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 15,
+      "ts": "2026-10-23T10:00:15Z",
+      "type": "message.received",
+      "step_id": "run",
+      "message_id": "msg_01J8RS9A0B2C4D"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 16,
+      "ts": "2026-10-23T10:00:16Z",
+      "type": "step.started",
+      "step_id": "report",
+      "kind": "shell",
+      "summary": "write the result"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 17,
+      "ts": "2026-10-23T10:00:17Z",
+      "type": "tool.called",
+      "step_id": "report",
+      "tool": "shell.script",
+      "arguments_digest": "sha256:67b1356d878c73cf007a1432c5ba6abbaff775c15d715226d0acb7804fe02ba9",
+      "effect": "local"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 18,
+      "ts": "2026-10-23T10:00:18Z",
+      "type": "artifact.produced",
+      "step_id": "report",
+      "artifact_id": "result",
+      "kind": "report",
+      "digest": "sha256:030550eacb3582998a3b9c4657a0bf21dcf24efce95fcc9716b4b070cdbc42f1",
+      "media_type": "text/plain",
+      "size_bytes": 11,
+      "uri": "/v1/assignments/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/artifacts/result"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 19,
+      "ts": "2026-10-23T10:00:19Z",
+      "type": "consumption.reported",
+      "step_id": "report",
+      "compute_seconds": 0.3,
+      "resource_class": "cpu.small"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 20,
+      "ts": "2026-10-23T10:00:20Z",
+      "type": "step.boundary",
+      "step_id": "report",
+      "checkpoint_ref": "ckpt/asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE/report"
+    },
+    {
+      "assignment_id": "asg_01J8RS7T2V4W6X8Y0Z2A4B6C8DE",
+      "seq": 21,
+      "ts": "2026-10-23T10:00:21Z",
+      "type": "assignment.finished",
+      "outcome": "succeeded",
+      "summary": "4 step(s) completed"
+    }
+  ],
+  "messages": [
+    {
+      "message_id": "msg_01J8RS9A0B2C4D",
+      "accepted_at_seq": 7
+    }
+  ]
+}
