@@ -8,13 +8,14 @@
 	import { read, send, surface } from '../../../lib/api';
 	import ChangeView from '../../../lib/ChangeView.svelte';
 	import SignInForm from '../../../lib/SignInForm.svelte';
-	import type { ProcessLevel, Proposal, RunLevel } from '../../../lib/types';
+	import type { Evaluated, ProcessLevel, Proposal, RunLevel } from '../../../lib/types';
 
 	let signedIn = $state(true);
 	let absent = $state(false);
 	let level: ProcessLevel | null = $state(null);
 	let proposals: Proposal[] = $state([]);
 	let rehearsals: Record<string, RunLevel> = $state({});
+	let evaluations: Record<string, Evaluated> = $state({});
 	let message: string | null = $state(null);
 	let busy = $state(false);
 
@@ -46,6 +47,18 @@
 				})
 		);
 		rehearsals = seen;
+		// A proposal held to the process's cases is read on its own, which carries the comparison
+		// (ADR-0134 §9): an open one, and a commissioned one that may carry an override's reason.
+		const held: Record<string, Evaluated> = {};
+		await Promise.all(
+			proposals
+				.filter((p) => p.evaluation && p.state !== 'discarded')
+				.map(async (p) => {
+					const one = await read<Proposal>(base(), path(`/proposals/${encodeURIComponent(p.id)}`));
+					if (one.ok && one.body.evaluated) held[p.id] = one.body.evaluated;
+				})
+		);
+		evaluations = held;
 	}
 
 	$effect(() => {
@@ -55,7 +68,10 @@
 	// A rehearsal under way is read again until it ends, so the result appears without a reload.
 	const ended = ['finished', 'failed', 'escalated', 'halted', 'cancelled', 'stopped'];
 	$effect(() => {
-		const under = Object.values(rehearsals).some((r) => !ended.includes(r.run.state));
+		// So is an evaluation on the cases until it is scored.
+		const under =
+			Object.values(rehearsals).some((r) => !ended.includes(r.run.state)) ||
+			Object.values(evaluations).some((e) => e.state !== 'scored');
 		if (!signedIn || !under) return;
 		const timer = setInterval(() => void reload(), 3000);
 		return () => clearInterval(timer);
@@ -83,14 +99,19 @@
 		{level}
 		{proposals}
 		{rehearsals}
+		{evaluations}
 		{busy}
 		{message}
 		onAsk={(request) =>
 			act('/proposals', { request }, (a) => `S-07 is working out your change in run ${a['run']}. The proposal appears here.`)}
 		onRehearse={(id) =>
 			act(`/proposals/${encodeURIComponent(id)}/rehearse`, {}, (a) => `Rehearsing in run ${a['run']}; nothing leaves the system.`)}
-		onCommission={(id) =>
-			act(`/proposals/${encodeURIComponent(id)}/commission`, {}, (a) => `Version ${a['version']} is registered and active.`)}
+		onCommission={(id, override) =>
+			act(`/proposals/${encodeURIComponent(id)}/commission`, override ? { override } : {}, (a) =>
+				override
+					? `Version ${a['version']} is registered and active, against the verdict; your reason is recorded.`
+					: `Version ${a['version']} is registered and active.`
+			)}
 		onDiscard={(id) => act(`/proposals/${encodeURIComponent(id)}/discard`, {}, () => 'Discarded.')}
 		onRollback={(version) =>
 			act('/rollback', { version }, (a) => `Version ${version} is current again, as version ${a['version']}.`)}

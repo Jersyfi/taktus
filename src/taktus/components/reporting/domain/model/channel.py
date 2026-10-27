@@ -30,6 +30,10 @@ PLACEHOLDERS: dict[str, frozenset[str]] = {
     "rehearsing": frozenset({"proposal", "run"}),
     "commission_read": frozenset({"proposal", "process", "version"}),
     "rollback_read": frozenset({"process", "version"}),
+    "evaluation_passed": frozenset({"cases", "active", "proposed", "tolerance"}),
+    "evaluation_regressed": frozenset({"cases", "active", "proposed", "tolerance"}),
+    "evaluation_incomplete": frozenset({"cases", "unscored"}),
+    "evaluation_running": frozenset({"cases"}),
     "commissioned": frozenset({"process", "version"}),
     "rolled_back": frozenset({"process", "version", "new"}),
     "intervene": frozenset({"process"}),
@@ -132,6 +136,17 @@ class Phrasebook(Value):
     act_refused: str | None = Field(default=None, min_length=1)
     """Said when a change, a rehearsal, a commissioning or a rollback cannot be done; the web
     app's page of the process says why."""
+    evaluation_passed: str | None = Field(default=None, min_length=1)
+    """Read with a commissioning whose proposal passed its evaluation on the process's cases
+    (ADR-0134 §9): the cases, both scores and the tolerance. None, with the three below: the
+    reading names no verdict — a phrasebook configured before there were any."""
+    evaluation_regressed: str | None = Field(default=None, min_length=1)
+    """Said instead of a reading when the proposal regressed: it is commissioned only with a
+    person's reason, which the process's page takes."""
+    evaluation_incomplete: str | None = Field(default=None, min_length=1)
+    """Said instead of a reading when a case has no score; the same holds."""
+    evaluation_running: str | None = Field(default=None, min_length=1)
+    """Said instead of a reading while the cases are being run or judged."""
     signals: str | None = Field(default=None, min_length=1)
     """The heading of the daily report of signals (ADR-0109). None: the title alone."""
     intervene: str | None = Field(default=None, min_length=1)
@@ -236,6 +251,20 @@ class Phrasebook(Value):
             problems.append(
                 "a phrasebook that reads a change in dialogue names every one of its eleven "
                 "entries, from change_words to act_refused (ADR-0091 §6)"
+            )
+        verdicts = (
+            self.evaluation_passed,
+            self.evaluation_regressed,
+            self.evaluation_incomplete,
+            self.evaluation_running,
+        )
+        if any(x is not None for x in verdicts) and (
+            any(x is None for x in verdicts) or self.commission_read is None
+        ):
+            problems.append(
+                "a phrasebook that reads an evaluation's verdict names all four of its entries, "
+                "from evaluation_passed to evaluation_running, and reads a change in dialogue "
+                "(ADR-0134 §9)"
             )
         taking = (
             self.takeover_words,

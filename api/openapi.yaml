@@ -1653,8 +1653,10 @@ paths:
       tags:
       - proposals
       summary: One proposal, with its difference
-      description: The proposal, and where it was rehearsed beside the active version on the process's
-        evaluation cases, that evaluation's state, verdict and scores under `evaluated` (ADR-0134).
+      description: 'The proposal, and where it was rehearsed beside the active version on the process''s
+        evaluation cases, that evaluation under `evaluated`: its state, verdict, tolerance and the score
+        of each side, every case with its sides beside each other, and an override''s reason. Who overrode
+        is the ledger''s, never the view''s (ADR-0134 §9, principle 14).'
       operationId: one_processes__process_id__proposals__proposal_id__get
       parameters:
       - name: process_id

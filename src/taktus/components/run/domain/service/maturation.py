@@ -300,6 +300,11 @@ def percent(share: float) -> str:
     return f"{share * 100:.1f} %"
 
 
+def two(score: float | None) -> str:
+    """A score as it is said: two decimals, or `unscored`."""
+    return "unscored" if score is None else f"{score:.2f}"
+
+
 def money(amount: float | None, currency: str | None) -> str:
     if amount is None:
         return "unpriced"
@@ -310,6 +315,35 @@ def model_ref(step_id: str, digest: str) -> str:
     """The candidate pinned as `name@version`: named after the step, versioned by the first
     twelve digits of its digest, so the version names the file (until UC-8.6's hub)."""
     return f"{step_id}-clf@{digest.removeprefix('sha256:')[:12]}"
+
+
+class StepScore(Value):
+    """A step's score on its process's evaluation cases (ADR-0134, ADR-0141 §1): the mean of
+    its scorers' scores in the newest scored evaluation that ran its version and scored it.
+    A score of the step, never of a person."""
+
+    process_version: str = Field(min_length=1)
+    step_id: str = Field(min_length=1)
+    score: float | None = Field(default=None, ge=0, le=1)
+    """None while no evaluation of the version scored the step."""
+    cases: int = Field(default=0, ge=0)
+    """The cases that evaluation ran the version on."""
+    evaluation: str | None = None
+    scheduled: bool = False
+    """Whether the version declares a schedule its cases run on: a score will come without a
+    change."""
+
+
+def worse(now: StepScore | None, before: StepScore | None, tolerance: float) -> bool:
+    """Whether the step scores lower on the cases than before, by more than the tenant's
+    tolerance: the same comparison a change is held to (ADR-0134 §4)."""
+    return (
+        now is not None
+        and before is not None
+        and now.score is not None
+        and before.score is not None
+        and now.score < before.score - tolerance - 1e-9
+    )
 
 
 class Proposal(Value):
@@ -330,6 +364,9 @@ class Proposal(Value):
     allowed: ExactnessClass = ALLOWED
     training_run: str
     trial_run: str
+    score: StepScore | None = None
+    """The language model's score on the process's evaluation cases, where a scorer scores
+    the step: what the move is measured against afterwards (ADR-0141 §2)."""
 
     def situation(self) -> str:
         classes = ", ".join(f"{label} ({n})" for label, n in self.classes.items())
@@ -349,7 +386,22 @@ class Proposal(Value):
             f"{money(e.ml_cost_per_case, e.currency)}. Trained twice on the same cases, the "
             f"model has the same digest. It reads {', '.join(self.features)}.{left_out} The "
             f"model is {self.model}, digest {e.digest}, kept by run {self.training_run}; the "
-            f"trial is run {self.trial_run}."
+            f"trial is run {self.trial_run}.{self._scored()}"
+        )
+
+    def _scored(self) -> str:
+        s = self.score
+        if s is None:
+            return ""
+        if s.score is None:
+            return (
+                " The process's evaluation cases score this step, and no evaluation has "
+                "scored it yet."
+            )
+        return (
+            f" On the process's {s.cases} evaluation cases the language model's answers "
+            f"score {two(s.score)} (evaluation {s.evaluation}). After a move, the moved step "
+            f"is held to that score."
         )
 
     def question(self) -> str:
@@ -517,7 +569,7 @@ class Move(Value):
         return self.process_version.split("@", 1)[0]
 
 
-type Verdict = Literal["measuring", "cheaper", "not_cheaper", "unpriced"]
+type Verdict = Literal["measuring", "worse", "cheaper", "not_cheaper", "unpriced"]
 
 
 class MoveReview(Value):
@@ -536,23 +588,40 @@ class MoveReview(Value):
     replaced_cost_per_case: float | None = None
     currency: str | None = None
     unpriced: tuple[str, ...] = ()
+    score: StepScore | None = None
+    """The moved step's score on the process's evaluation cases (ADR-0141 §3)."""
+    replaced_score: StepScore | None = None
+    """The step's score on the same cases in the version the move replaced."""
+    tolerance: float | None = Field(default=None, ge=0, le=1)
+    """The tenant's tolerance the two scores were compared within; None without both."""
     verdict: Verdict
-    """`measuring` until `MOVE_CASES` cases ran; then `cheaper` or `not_cheaper` by the cost
-    per case, or `unpriced` where either cost could not be priced."""
+    """`measuring` until `MOVE_CASES` cases ran and, where the replaced version was scored on
+    the cases, until the moved version is too; then `worse` where its score fell by more than
+    the tolerance; otherwise `cheaper` or `not_cheaper` by the cost per case, or `unpriced`
+    where either cost could not be priced."""
     rollback_request: str | None = None
-    """The proposal to roll the move back, raised when it is `not_cheaper`."""
+    """The proposal to roll the move back, raised when it is `worse` or `not_cheaper`."""
 
     def situation(self) -> str:
         m = self.move
-        return (
+        cost = (
             f"Step {m.step_id} was moved to the trained model {m.model} in {m.process_version} "
             f"on the proposal {m.request_id}. Over its first {self.cases} cases it cost "
             f"{money(self.cost_per_case, self.currency)} per case, and "
             f"{percent(self.fallback_share or 0.0)} of them went back to the language model. "
             f"{m.replaced}, the version it replaced, cost "
             f"{money(self.replaced_cost_per_case, self.currency)} per case over "
-            f"{self.replaced_cases} cases. The move did not make the step cheaper."
+            f"{self.replaced_cases} cases."
         )
+        if self.verdict == "worse" and self.score is not None and self.replaced_score is not None:
+            return (
+                f"{cost} On the process's evaluation cases the step now scores "
+                f"{two(self.score.score)} (evaluation {self.score.evaluation}), where it scored "
+                f"{two(self.replaced_score.score)} before (evaluation "
+                f"{self.replaced_score.evaluation}): more than the tolerance of "
+                f"{self.tolerance or 0.0:.2f} lower. The move made the step worse."
+            )
+        return f"{cost} The move did not make the step cheaper."
 
     def question(self) -> str:
         m = self.move
@@ -571,7 +640,12 @@ class MoveReview(Value):
                     f"there. {m.process_version} stays registered and unchanged."
                 ),
                 "recommended": True,
-                "reason": "the move was proposed because it would be cheaper, and it is not",
+                "reason": (
+                    "the move scores lower on the process's evaluation cases than the language "
+                    "model did"
+                    if self.verdict == "worse"
+                    else "the move was proposed because it would be cheaper, and it is not"
+                ),
             },
             {
                 "id": "B",
@@ -591,18 +665,36 @@ class MoveReview(Value):
 
 
 def review(
-    move: Move, cases: Sequence[Case], replaced: Sequence[Case], currency: str | None
+    move: Move,
+    cases: Sequence[Case],
+    replaced: Sequence[Case],
+    currency: str | None,
+    scores: tuple[StepScore | None, StepScore | None] = (None, None),
+    tolerance: float = 0.0,
 ) -> MoveReview:
     """A move's measures: the first `MOVE_CASES` cases of the new version in the order they
     started, their cost per case and the share that fell back, beside the cost per case of the
-    replaced version over its cases. The verdict is a rule over the two costs."""
+    replaced version over its cases; and, where the process's evaluation cases score the step,
+    the moved version's score beside the replaced version's (`scores`: now, before). The
+    verdict is a rule: a score that fell beyond the tolerance first, then the two costs
+    (ADR-0141 §3)."""
     first = sorted(cases, key=lambda c: (c.started_at or datetime.min, c.run_id))[:MOVE_CASES]
     now = measure(move.process_version, move.step_id, Method.ML, first, currency)
     before = measure(move.replaced, move.step_id, Method.LLM, replaced, currency)
     fell = sum(1 for c in first if c.fell_back)
+    scored_now, scored_before = scores
+    awaited = (
+        scored_before is not None
+        and scored_before.score is not None
+        and scored_now is not None
+        and scored_now.score is None
+        and scored_now.scheduled
+    )
     verdict: Verdict
-    if len(first) < MOVE_CASES:
+    if len(first) < MOVE_CASES or awaited:
         verdict = "measuring"
+    elif worse(scored_now, scored_before, tolerance):
+        verdict = "worse"
     elif now.cost_per_case is None or before.cost_per_case is None:
         verdict = "unpriced"
     elif now.cost_per_case < before.cost_per_case:
@@ -619,5 +711,8 @@ def review(
         replaced_cost_per_case=before.cost_per_case,
         currency=currency,
         unpriced=tuple(sorted({*now.unpriced, *before.unpriced})),
+        score=scored_now,
+        replaced_score=scored_before,
+        tolerance=tolerance if scored_now is not None and scored_before is not None else None,
         verdict=verdict,
     )

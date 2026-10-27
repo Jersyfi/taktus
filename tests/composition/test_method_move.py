@@ -414,5 +414,103 @@ async def test_rolling_back_makes_the_predecessor_current_again_as_a_new_version
     assert run.step("classify").method is Method.LLM
 
 
+# --- the scores on the process's evaluation cases are evidence (ADR-0141) ------------------------
+
+
+class Scores:
+    """The step's score on the process's evaluation cases, by version, as a test sets it."""
+
+    def __init__(self, **by_version: float | None) -> None:
+        self.by_version = by_version
+
+    async def scores(self, tenant: str) -> tuple[maturation.StepScore, ...]:
+        return tuple(
+            maturation.StepScore(
+                process_version=version.replace("_", "@"),
+                step_id="classify",
+                score=score,
+                cases=4,
+                evaluation=None if score is None else f"evl_{version}",
+                scheduled=True,
+            )
+            for version, score in self.by_version.items()
+        )
+
+    async def tolerance(self, tenant: str) -> float:
+        return 0.05
+
+
+def scored_review(w: Moving, scores: Scores) -> ReviewMovesHandler:
+    return ReviewMovesHandler(
+        w.measures,
+        w.objects,
+        w.ledger,
+        w.persistence,
+        w.clock,
+        w.decisions.requests,
+        PRICES,
+        scores=scores,
+    )
+
+
+async def test_a_cheaper_move_that_scores_lower_on_the_cases_is_proposed_for_rolling_back() -> None:
+    w, _, version = await moved()
+    await cases_on(w, version, maturation.MOVE_CASES, unsure_every=10)
+    (review,) = await scored_review(w, Scores(triage_1=0.9, triage_2=0.8)).execute(TENANT)
+    assert review.verdict == "worse", "a score that fell beyond the tolerance outranks the cost"
+    assert review.cost_per_case is not None and review.replaced_cost_per_case is not None
+    assert review.cost_per_case < review.replaced_cost_per_case
+    assert review.score is not None and review.score.score == 0.8
+    assert review.replaced_score is not None and review.replaced_score.score == 0.9
+    assert review.tolerance == 0.05 and review.rollback_request is not None
+    async with w.persistence.transaction(TENANT):
+        request = await w.requests.get(TENANT, review.rollback_request)
+    assert request is not None
+    assert "now scores 0.80" in request.request.situation
+    assert "made the step worse" in request.request.situation
+    assert _entry(await w.entries(), maturation.MEASURED).outcome == "worse"
+
+
+async def test_a_move_waits_for_its_score_on_the_cases_and_one_within_the_tolerance_holds() -> None:
+    w, _, version = await moved()
+    await cases_on(w, version, maturation.MOVE_CASES, unsure_every=10)
+    (waiting,) = await scored_review(w, Scores(triage_1=0.9, triage_2=None)).execute(TENANT)
+    assert waiting.verdict == "measuring", "the moved version's cases run on its schedule"
+    assert maturation.MEASURED not in [e.kind for e in await w.entries()]
+    (review,) = await scored_review(w, Scores(triage_1=0.9, triage_2=0.86)).execute(TENANT)
+    assert review.verdict == "cheaper" and review.rollback_request is None
+
+
+def test_a_proposal_names_the_language_model_s_score_on_the_cases() -> None:
+    proposal = maturation.Proposal(
+        process_version="triage@1",
+        step_id="classify",
+        exactness=None,
+        cases=540,
+        classes={"k0": 180, "k1": 180, "k2": 180},
+        features=("a", "b"),
+        left_out=(),
+        evidence=maturation.Evidence(
+            held_out=108,
+            agreement=0.99,
+            below_threshold=0.0,
+            llm_cost_per_case=0.001,
+            ml_cost_per_case=0.00001,
+            currency="eur",
+            digests=("sha256:" + "a" * 64,) * 2,
+        ),
+        model="classify-clf@aaaaaaaaaaaa",
+        training_run="run_t",
+        trial_run="run_p",
+        score=maturation.StepScore(
+            process_version="triage@1", step_id="classify", score=0.9, cases=4, evaluation="evl_1"
+        ),
+    )
+    assert "On the process's 4 evaluation cases" in proposal.situation()
+    assert "score 0.90 (evaluation evl_1)" in proposal.situation()
+    unscored = proposal.model_copy(update={"score": None})
+    assert "evaluation cases" not in unscored.situation()
+
+
 def _entry(entries: list[LedgerEntry], kind: str) -> LedgerEntry:
     return next(e for e in reversed(entries) if e.kind == kind)
