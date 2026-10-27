@@ -39,7 +39,9 @@ lists every signal judged against its corridor now (ADR-0109). `corrections` pri
 correction rate per process and action class, the levels that fell by rule, and configures
 the tenant's limits (ADR-0110). `residency` shows and sets where the tenant's data may be
 processed, narrowed per data class (ADR-0116). `sources` shows and declares which capabilities
-serve data free of personal fields and which serve personal data (ADR-0130). `deadline` lists
+serve data free of personal fields and which serve personal data (ADR-0130). `messages` shows
+and sets the tenant's rules for outward messages, and `case answered` records that a person
+answered in a case, which then gets no more messages (ADR-0142). `deadline` lists
 a tenant's open deadlines, ordered by when they fall due, and shows and sets its working time
 (ADR-0133). `trace retention` shows and sets how long the tenant keeps the trace inside a step
 (ADR-0135). `stop` stops every step an adapter serves and prints the confirmation once it
@@ -80,6 +82,7 @@ from taktus.adapters.driving.cli import (
     interfaces_command,
     ledger_command,
     maturation_command,
+    messages_command,
     owner_channel_command,
     prices_command,
     residency_command,
@@ -135,6 +138,8 @@ app.add_typer(signal_command.signal, name="signal")
 app.add_typer(corrections_command.corrections, name="corrections")
 app.add_typer(residency_command.residency, name="residency")
 app.add_typer(sources_command.sources, name="sources")
+app.add_typer(messages_command.messages, name="messages")
+app.add_typer(messages_command.case, name="case")
 app.add_typer(deadline_command.deadline, name="deadline")
 app.add_typer(stop_command.stop, name="stop")
 app.add_typer(trace_command.trace, name="trace")

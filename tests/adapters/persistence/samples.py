@@ -24,16 +24,19 @@ from taktus.components.command.domain.model import IntakeEvent
 from taktus.components.decision.domain.model import RegisterEntry, Request
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
+    CaseAnswer,
     CorrectionLimits,
     Happening,
     Incident,
     IncidentKind,
+    MessageRules,
     ResidencyRule,
     RunSeen,
     SourceDeclaration,
     Stage,
     StagePlan,
     WatchConfiguration,
+    case_key,
 )
 from taktus.components.identity.domain.model import (
     BrowserSession,
@@ -699,6 +702,30 @@ def source_declaration(tenant: str = "t") -> SourceDeclaration:
         free=("analytics.cohorts",),
         personal=("customers.accounts",),
         configured_at=AT,
+    )
+
+
+def message_rules(tenant: str = "t") -> MessageRules:
+    return MessageRules(
+        id=tenant,
+        tenant=tenant,
+        label="Written by an AI system; a person reads every answer.",
+        delay_seconds=900,
+        quiet_begins=time(22, 0),
+        quiet_ends=time(7, 0),
+        zone="Europe/Berlin",
+        recipient_limit=5,
+        configured_at=AT,
+    )
+
+
+def case_answer(tenant: str = "t") -> CaseAnswer:
+    return CaseAnswer(
+        id=case_key("support-reply", "ticket-17"),
+        tenant=tenant,
+        process="support-reply",
+        case="ticket-17",
+        answered_at=AT,
     )
 
 

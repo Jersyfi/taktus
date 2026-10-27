@@ -43,13 +43,16 @@ from taktus.components.governance.application.service import (
     DecisionMade,
     Repetitions,
     RepetitionSeen,
+    TenantMessages,
     TenantResidency,
     TenantSources,
 )
 from taktus.components.governance.domain.model import (
     AnchorConfiguration,
+    CaseAnswer,
     CorrectionLimits,
     Incident,
+    MessageRules,
     ResidencyRule,
     SourceDeclaration,
     WatchConfiguration,
@@ -74,10 +77,12 @@ from taktus.components.run.ports import (
     LoweredLevels,
     NotRaised,
     ProposalDecided,
+    QuietHours,
     Repeated,
     RepetitionLimits,
     Verdict,
 )
+from taktus.components.run.ports import MessageRules as RunMessageRules
 from taktus.ports.clock import Clock
 from taktus.ports.ledger import Ledger
 from taktus.ports.persistence import Repository, Stored, Tenant, UnitOfWork
@@ -319,6 +324,33 @@ class RepetitionOfTheRun:
         return None if incident is None else incident.id
 
 
+class MessagesOfTheRun:
+    """The run's port `Messages`, answered from the governance component (ADR-0142)."""
+
+    def __init__(self, messages: TenantMessages) -> None:
+        self.tenant = messages
+        """The use case itself, for the command line that shows and changes it."""
+
+    async def rules(self, tenant: Tenant) -> RunMessageRules:
+        configured = await self.tenant.rules(tenant)
+        quiet = (
+            None
+            if configured.quiet_begins is None or configured.quiet_ends is None
+            else QuietHours(
+                begins=configured.quiet_begins, ends=configured.quiet_ends, zone=configured.zone
+            )
+        )
+        return RunMessageRules(
+            label=configured.label,
+            delay_seconds=configured.delay_seconds,
+            quiet=quiet,
+            recipient_limit=configured.recipient_limit,
+        )
+
+    async def answered(self, tenant: Tenant, process: str, case: str) -> bool:
+        return await self.tenant.answered(tenant, process, case)
+
+
 @dataclass(frozen=True)
 class DecisionWiring:
     """Everything an entry point needs of anchors and decisions, built once."""
@@ -349,6 +381,9 @@ class DecisionWiring:
     deadlines: DeadlineKeeper
     """Where a run's deadlines are started, met and acted on, and the tenant's working time
     (ADR-0133)."""
+    messages: MessagesOfTheRun
+    """A tenant's rules for outward messages and the cases a person answered in, and the run's
+    port over them (ADR-0142)."""
 
 
 def decision_wiring(
@@ -388,5 +423,8 @@ def decision_wiring(
             work,
             clock,
             DeadlinesOfTheVersion(of(ProcessVersion), work),
+        ),
+        messages=MessagesOfTheRun(
+            TenantMessages(of(MessageRules), of(CaseAnswer), ledger, work, clock)
         ),
     )

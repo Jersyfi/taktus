@@ -223,6 +223,11 @@ def _said(text: str, output: Any) -> str:
     return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", value, text)
 
 
+def violated(condition: Condition, value: Any) -> str | None:
+    """Why the condition does not hold over the value, or None when it holds."""
+    return _violated(condition, value)
+
+
 def _violated(condition: Condition, value: Any) -> str | None:
     if condition.equals is not None and value != condition.equals:
         return f"expected {_short(condition.equals)}, found {_short(value)}"

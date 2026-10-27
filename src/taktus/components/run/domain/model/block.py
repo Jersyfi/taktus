@@ -83,6 +83,9 @@ WAITING_ON_CLOCK = "waiting_on_clock"
 AT_OPEN_WORK_CAP = "at_open_work_cap"
 """The process's open outcomes of a kind are at its cap: the run starts nothing until one
 closes (ADR-0132). Booked to `wait.external`: what the run waits for happens outside."""
+HOLDING_MESSAGE = "holding_message"
+"""An approved outward message waits for its tenant's sending delay or quiet hours to pass
+(ADR-0142 §8). Booked to `wait.external`: the clock it waits for is the recipients'."""
 HELD_BACK = "held_back"
 """The step depends on a step that waits, and cannot start before it ends."""
 NO_WORKER = "no_worker"
