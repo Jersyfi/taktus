@@ -6,6 +6,8 @@
 | `compose.reference-worker.yml` | **development only**, layered over `compose.yml`: the reference worker in its own image, reached by endpoint, for trying a bundle out and for `verify.sh` (`make up-dev`) |
 | `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011). The web app is built in a stage of its own with Node, and only its static build is carried over; the runtime holds no Node (ADR-0063). `npm ci` gives up a request that stalls after 30 s and retries it, so that a stalled download is retried rather than stopping the build (#360). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names |
 | `secrets.sh` | writes the two secret files `compose.yml` reads, once, under `secrets/` (ignored by git); the directory is closed to other host users and the files are readable, because the containers read them as their own user |
+| `start.py` | `make start`, the one command of a first install (ADR-0136 §6): what `make up` does, then `taktusctl first start` — the first tenant, its administrator and the account key, printed once — and a clock that runs until the tenant's first rehearsal has finished; it writes what it measured to `first-process.json`, which is never committed |
+| `first-process.sh` | `make verify-first-process` (ADR-0136 §7): `start.py` from nothing under a compose project of its own, then the gallery, a proposal and its rehearsal through the HTTP surface; fails where the rehearsal did not finish within ten minutes of the install's start |
 | `verify.sh` | the end-to-end check: from nothing, the image checked for worker code, a run, the container killed, restarted, the run resumed |
 | `upgrade.sh` | the upgrade test (ADR-0124): the previous release from its tag's compose files and published images, a run in each of five states, upgraded to this checkout; every run continues at its boundary and no completed step runs again (`make verify-upgrade`, and the workflow `upgrade` on every release tag) |
 | `taktus.env` | not in the repository: the operator's own settings, `TAKTUS_NAME=value` per line, read by `compose.yml` when it exists; never a secret value (ignored by git) |
@@ -124,6 +126,11 @@ otherwise is not supported: Taktus cannot show which model answered or keep a re
 providers on its own, and compresses prompts. Each of these breaks the provenance or the
 residency rule above. It also reaches models through consumer subscriptions in ways a
 provider's terms may forbid (`docs/research/2026-10-12-market-review.md`, part 3).
+
+A person new to Taktus types `make start` instead (ADR-0136 §6). It does the same, then creates
+the first tenant and its administrator, prints the account key once with the web app's address,
+and keeps a clock running until the first rehearsal has finished: the installation guide,
+section 2.3.
 
 ## Verifying the promise
 

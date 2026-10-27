@@ -1,7 +1,8 @@
 <!--
 	A process changed in dialogue, and rolled back (UC-4.15, ADR-0091 §6). Reads the process level
 	for its versions and the process's proposals; sends only the writes ADR-0091 §6 names, as the
-	signed-in reader (ADR-0119).
+	signed-in reader (ADR-0119). A process with no version yet has no level: its proposals are shown
+	alone, as its first version (ADR-0136 §4).
 -->
 <script lang="ts">
 	import { page } from '$app/state';
@@ -12,6 +13,7 @@
 
 	let signedIn = $state(true);
 	let absent = $state(false);
+	let unversioned = $state(false);
 	let level: ProcessLevel | null = $state(null);
 	let proposals: Proposal[] = $state([]);
 	let rehearsals: Record<string, RunLevel> = $state({});
@@ -28,14 +30,19 @@
 			read<ProcessLevel>(base(), `levels/${path('')}`),
 			read<{ proposals: Proposal[] }>(base(), path('/proposals'))
 		]);
+		proposals = listed.ok ? listed.body.proposals : [];
 		if (!found.ok) {
 			if (found.problem.status === 401) {
 				signedIn = false;
-			} else absent = true;
-			return;
-		}
-		level = found.body;
-		proposals = listed.ok ? listed.body.proposals : [];
+				return;
+			}
+			// No level: a process with no version yet is still shown by its proposals.
+			if (proposals.length === 0) {
+				absent = true;
+				return;
+			}
+			unversioned = true;
+		} else level = found.body;
 		const seen: Record<string, RunLevel> = {};
 		await Promise.all(
 			proposals
@@ -78,9 +85,10 @@
 	<SignInForm onSignedIn={() => (signedIn = true)} />
 {:else if absent}
 	<p>No process {processId} you may see.</p>
-{:else if level}
+{:else if level || unversioned}
 	<ChangeView
 		{level}
+		{processId}
 		{proposals}
 		{rehearsals}
 		{busy}

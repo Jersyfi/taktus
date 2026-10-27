@@ -239,8 +239,8 @@ class Evaluations:
     async def needed(self, tenant: Tenant, proposal: Proposal) -> bool:
         """Whether a proposal is held to the cases: it changes a step, and the set of the
         version it was made against is not empty (ADR-0134 §4)."""
-        if not scoring.evaluated(proposal.difference):
-            return False
+        if proposal.base_ref is None or not scoring.evaluated(proposal.difference):
+            return False  # a first version has none to be compared with (ADR-0136 §4)
         async with self._work.transaction(tenant):
             base = await self._versions.get(tenant, proposal.base_ref)
         if base is None:
@@ -252,7 +252,7 @@ class Evaluations:
 
     async def start_change(self, tenant: Tenant, proposal: Proposal, by: str) -> Evaluation | None:
         """The proposal's evaluation beside the active version; None where it needs none."""
-        if not await self.needed(tenant, proposal):
+        if proposal.base_ref is None or not await self.needed(tenant, proposal):
             return None
         async with self._work.transaction(tenant):
             base = await self._versions.get(tenant, proposal.base_ref)

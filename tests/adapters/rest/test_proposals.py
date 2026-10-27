@@ -2,7 +2,7 @@
 
 A changed bundle becomes a proposal with its difference; the active version is unchanged; a
 bundle that would not register gives every finding; a process of another tenant, or none, is
-answered alike; a key is needed; an open proposal is discarded once.
+answered alike, as a first version; a key is needed; an open proposal is discarded once.
 """
 
 from __future__ import annotations
@@ -76,6 +76,9 @@ async def test_a_bundle_that_would_not_register_gives_every_finding(client: Clie
 async def test_another_tenants_process_or_none_is_answered_alike_and_a_key_is_needed(
     client: Client,
 ) -> None:
+    """Another tenant's process is none of this tenant's: a bundle for it, as one for a process
+    nobody has, becomes a first version made against no version (ADR-0136 §4), and shows
+    nothing of the other tenant's."""
     http, given, base = client
     await register(given, bundle("1"), tenant=OTHER)
     key = await given.linked()
@@ -85,7 +88,10 @@ async def test_another_tenants_process_or_none_is_answered_alike_and_a_key_is_ne
             json={"bundle": {**bundle("2"), "id": process}},
             headers=bearer(key),
         )
-        assert response.status_code == 404, process
+        assert response.status_code == 201, process
+        made = response.json()
+        assert "base_version" not in made, process
+        assert {c["change"] for c in made["difference"]["steps"]} == {"added"}, process
     missing = await http.post(f"{base}/processes/invoices/proposals", json={"bundle": bundle("2")})
     assert missing.status_code == 401
     assert TENANT != OTHER

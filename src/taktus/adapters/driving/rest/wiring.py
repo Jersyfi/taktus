@@ -114,6 +114,27 @@ class ProposalActs(Protocol):
     ) -> ProcessVersion: ...
 
 
+class GalleryActs(Protocol):
+    """The gallery a person chooses a first process from (ADR-0136): the composition root's,
+    because it reads the gallery's files and acts on the process component."""
+
+    def listed(self) -> list[dict[str, Any]]:
+        """Every gallery blueprint, with its processes as the gallery offers them."""
+        ...
+
+    async def propose(
+        self,
+        tenant: Tenant,
+        blueprint_id: str,
+        process_id: str,
+        choices: Mapping[str, Any],
+        by: str,
+    ) -> Proposal:
+        """The chosen process as a proposal. ProposalError `unknown` for one the gallery does
+        not hold; InvalidProcess with every finding where it is refused."""
+        ...
+
+
 class EvaluationActs(Protocol):
     """A process's evaluations and the cases proposed from corrections (ADR-0134): the
     composition root's, because an evaluation crosses the process, command, run and governance
@@ -299,6 +320,11 @@ class RestServices(Protocol):
     @property
     def proposal_acts(self) -> ProposalActs:
         """A proposal rehearsed and commissioned, and a process rolled back (ADR-0091 §3 to §5)."""
+        ...
+
+    @property
+    def gallery(self) -> GalleryActs:
+        """The gallery of first processes (UC-10.4, ADR-0136)."""
         ...
 
     @property

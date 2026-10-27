@@ -171,15 +171,24 @@ async def test_a_proposal_never_writes_over_a_registered_version() -> None:
         await world.proposals.propose(Propose(TENANT, "invoices", again, by="idn_ada"))
 
 
-async def test_a_bundle_for_another_process_or_an_unknown_process_is_refused() -> None:
+async def test_a_bundle_for_another_process_is_refused() -> None:
     world = await given_registered()
     other = changed()
     other["id"] = "orders"
     with pytest.raises(InvalidProcess, match="not 'invoices'"):
         await world.proposals.propose(Propose(TENANT, "invoices", other, by="idn_ada"))
-    with pytest.raises(ProposalError) as unknown:
-        await world.proposals.propose(Propose(TENANT, "orders", other, by="idn_ada"))
-    assert unknown.value.kind == "unknown"
+
+
+async def test_a_process_with_no_version_gets_a_first_version_made_against_none() -> None:
+    """ADR-0136 §4: no version before it, every step added, no autonomy before."""
+    world = await given_registered()
+    other = changed()
+    other["id"] = "orders"
+    first = await world.proposals.propose(Propose(TENANT, "orders", other, by="idn_ada"))
+    assert first.base_version is None and first.base_ref is None
+    assert {c.change for c in first.difference.steps} == {"added"}
+    assert first.difference.autonomy_before is None
+    assert "base_version" not in first.document()
 
 
 async def test_an_open_proposal_is_discarded_once() -> None:

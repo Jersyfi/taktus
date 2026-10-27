@@ -49,7 +49,8 @@ class Difference(Value):
     """What the proposal changes against the version it was made against."""
 
     steps: tuple[StepChange, ...] = ()
-    autonomy_before: Autonomy
+    autonomy_before: Autonomy | None = None
+    """The autonomy of the version it was made against; None where it was made against none."""
     autonomy_after: Autonomy
     triggers_changed: bool = False
     inputs_changed: bool = False
@@ -68,8 +69,9 @@ class Proposal(Value):
     id: str = Field(min_length=1)
     tenant: str = Field(min_length=1)
     process_id: str = Field(min_length=1)
-    base_version: str = Field(min_length=1)
-    """The version the proposal was made against: the active one when it was made."""
+    base_version: str | None = Field(default=None, min_length=1)
+    """The version the proposal was made against: the active one when it was made. None for
+    a process that had no active version: the proposal is its first (ADR-0136 §4)."""
     version: str = Field(min_length=1)
     """The version the proposal would register as, if commissioned."""
     bundle: dict[str, Any]
@@ -86,5 +88,6 @@ class Proposal(Value):
     (ADR-0134 §4)."""
 
     @property
-    def base_ref(self) -> str:
-        return f"{self.process_id}@{self.base_version}"
+    def base_ref(self) -> str | None:
+        """The version it was made against, as `process@version`; None where there was none."""
+        return None if self.base_version is None else f"{self.process_id}@{self.base_version}"

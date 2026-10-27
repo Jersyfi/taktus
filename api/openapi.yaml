@@ -1925,6 +1925,102 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /gallery:
+    get:
+      tags:
+      - gallery
+      summary: The gallery of first processes
+      description: Every gallery blueprint the instance's gallery directory holds, each with its processes
+        as the gallery offers them, or why one is not offered (ADR-0136 §2). An instance with no gallery
+        answers an empty list.
+      operationId: listed_gallery_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The gallery.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /gallery/{blueprint_id}/{process_id}/proposals:
+    post:
+      tags:
+      - gallery
+      summary: Propose a process from the gallery
+      description: 'The process, with your choices written into its schedule triggers, becomes a proposal:
+        against its active version where the tenant has one, against none otherwise (ADR-0136 §3, §4).
+        Rehearse it and commission it as any proposal.'
+      operationId: propose_gallery__blueprint_id___process_id__proposals_post
+      parameters:
+      - name: blueprint_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Blueprint Id
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChooseBody'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '201':
+          description: The proposal.
+        '400':
+          description: Not offered, or refused; every finding.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such blueprint or process in the gallery.
+          content:
+            application/problem+json: {}
+        '409':
+          description: The proposal cannot be made in the process's state.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
   /processes/{process_id}/evaluations:
     get:
       tags:
@@ -2717,6 +2813,16 @@ components:
           description: Free text, as you would write it.
       type: object
       title: AnswerBody
+    ChooseBody:
+      properties:
+        choices:
+          additionalProperties: true
+          type: object
+          title: Choices
+          description: The value of each choice the process offers, by its name; a choice left out keeps
+            the value the gallery shows.
+      type: object
+      title: ChooseBody
     CommissionBody:
       properties:
         approve_raise:
