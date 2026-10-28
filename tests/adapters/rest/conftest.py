@@ -206,6 +206,9 @@ class Services:
     chosen: Any = None
     """The gallery (ADR-0136); a test that reaches it sets it. What it does is held by
     `tests/composition/test_gallery.py`."""
+    views: Any = None
+    """The register, the dependencies and the variants (ADR-0147); a test that reaches them
+    sets them. What they gather is held by `tests/composition/test_acting.py`."""
     evaluated: Any = None
     """A process's evaluations and its proposed cases (ADR-0134); a test that reaches them sets
     them. What they do is held by `tests/composition/test_evaluations.py`."""
@@ -337,6 +340,11 @@ class Services:
     def evaluations(self) -> Any:
         assert self.evaluated is not None, "this test sets the evaluations it reaches"
         return self.evaluated
+
+    @property
+    def acting(self) -> Any:
+        assert self.views is not None, "this test sets the views it reaches"
+        return self.views
 
     @property
     def gallery(self) -> Any:

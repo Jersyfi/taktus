@@ -21,11 +21,12 @@ running — incidents, alerts, the backup, signals (ADR-0121), and the web app's
 exchanges an account key once for a session cookie accepted wherever the key is (ADR-0119), and
 a running step taken over by a person and its result handed back (ADR-0128), and the agent key a
 person creates for their own agent, and the gallery a person chooses a first process from
-(ADR-0136). The same role serves MCP at `/mcp` for that agent, which
-reads and acts as the person within the rights of their roles (ADR-0131). No other write, no
-UI. An answer the owner writes in the thread of a report arrives through the
-webhook intake. A browser that opens an old link to a report without a key is sent to the
-report's page in the web app (ADR-0120).
+(ADR-0136), and the register of what acts for a tenant with its stop, what depends on an
+adapter or a result, and how a process really runs (ADR-0147). The same role serves MCP at
+`/mcp` for that agent, which reads and acts as the person within the rights of their roles
+(ADR-0131). No other write, no UI. An answer the owner writes in the thread of a report
+arrives through the webhook intake. A browser that opens an old link to a report without a
+key is sent to the report's page in the web app (ADR-0120).
 
 The prefix is applied to every route literally, so that an instance placed under a sub-path by
 the platform works whether or not the platform strips the prefix before forwarding, and every
@@ -51,6 +52,7 @@ from starlette.exceptions import HTTPException
 from starlette.routing import Route
 
 from taktus.adapters.driving.rest import (
+    acting,
     agent_surface,
     autonomy,
     evaluations,
@@ -164,6 +166,7 @@ def build_app(
         app.include_router(review.router(services, _authenticated), prefix=base)
         app.include_router(autonomy.router(services, _authenticated), prefix=base)
         app.include_router(takeover.router(services, _authenticated), prefix=base)
+        app.include_router(acting.router(services, _authenticated), prefix=base)
         # A person's own agent, over MCP, with a key of its own (ADR-0131).
         app.router.routes.append(
             Route(
