@@ -37,6 +37,7 @@ from taktus.adapters.driven.connectors.serving import (
     Outcome,
     TargetError,
     invalid,
+    out_of_scope,
     unavailable,
 )
 
@@ -62,6 +63,7 @@ STATUSES = frozenset(
     }
 )
 IDENTIFIER = re.compile(r"^sub_[A-Za-z0-9]+$")
+CUSTOMER = re.compile(r"^cus_[A-Za-z0-9]+$")
 
 
 @dataclass(frozen=True)
@@ -204,4 +206,38 @@ async def read(config: Config, call: Call, input: Json) -> Outcome:
     return Outcome(output=_subscription(record), effect={"kind": "read"})
 
 
-OPERATIONS = {"payments.subscriptions.list": list_, "payments.subscriptions.read": read}
+async def customer_subscriptions(config: Config, call: Call, input: Json) -> Outcome:
+    """The subscriptions of one customer. A call that serves a case names its subject; another
+    customer is refused before the provider is asked (ADR-0130)."""
+    customer = input.get("customer")
+    if not isinstance(customer, str) or CUSTOMER.match(customer) is None:
+        raise invalid("customer must be a customer identifier, cus_ and letters or digits")
+    if call.scope is not None and customer != call.scope:
+        raise out_of_scope("the customer is not the subject of the case this call serves")
+    read: list[Json] = []
+    after: str | None = None
+    more = True
+    for _ in range(MAX_PAGES):
+        params: Json = {"customer": customer, "status": "all", "limit": PAGE}
+        if after is not None:
+            params["starting_after"] = after
+        page = await _get(config, call, "/v1/subscriptions", params)
+        data = page.get("data")
+        if page.get("object") != "list" or not isinstance(data, list):
+            raise _unexpected("the answer is not a list")
+        read.extend(_subscription(record) for record in data)
+        more = bool(page.get("has_more"))
+        if not more or not data:
+            break
+        after = read[-1]["id"]
+    if any(record["customer"] != customer for record in read):
+        raise _unexpected("the provider answered a subscription of another customer")
+    output = {"customer": customer, "subscriptions": read, "complete": not more}
+    return Outcome(output=output, effect={"kind": "read"})
+
+
+OPERATIONS = {
+    "payments.subscriptions.list": list_,
+    "payments.subscriptions.read": read,
+    "payments.customers.subscriptions": customer_subscriptions,
+}

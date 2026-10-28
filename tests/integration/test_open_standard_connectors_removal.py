@@ -62,7 +62,7 @@ SERVES = {
     "model-costs": ["models.costs"],
     "cost-report": ["models.costs"],
     "errors": ["errors.issues"],
-    "payments": ["payments.subscriptions"],
+    "payments": ["payments.customers", "payments.subscriptions"],
 }
 
 

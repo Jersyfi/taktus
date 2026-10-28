@@ -192,6 +192,7 @@ from taktus.components.run.domain.model import (
     MlWork,
     NoConnector,
     NoWorker,
+    ParticipantWork,
     ReadyRule,
     RoadmapRule,
     RuleFailed,
@@ -223,7 +224,7 @@ from taktus.components.run.domain.model import (
     resolve,
     select,
 )
-from taktus.components.run.domain.model.block import Account, OpenBlock
+from taktus.components.run.domain.model.block import Account, Awaited, OpenBlock
 from taktus.components.run.domain.model.run import IN_FLIGHT, TAKEOVER_RESULT, TAKEOVER_STATE
 from taktus.components.run.domain.model.work import PREDICT
 from taktus.components.run.domain.service import (
@@ -235,6 +236,7 @@ from taktus.components.run.domain.service import (
     interfaces,
     messages,
     open_work,
+    participants,
     prediction,
     provenance,
     repetition,
@@ -517,6 +519,34 @@ class HandBack:
     """The step's result, as one JSON value."""
     actor: str
     tenant: Tenant
+
+
+@dataclass(frozen=True)
+class AnswerParticipant:
+    """A participant outside the organisation wrote in the thread a `human` step waits for an
+    answer in (ADR-0155). Matched by the channel and the thread, never by an identity: the
+    account is the channel's own name for whoever wrote."""
+
+    run_id: str
+    step_id: StepId
+    tenant: Tenant
+    channel: str
+    account: str
+    text: str
+    enqueue: bool = False
+    """The run continues on the runner that claims the job it is given; otherwise here."""
+
+
+@dataclass(frozen=True)
+class ParticipantAnswered:
+    """What became of a participant's message — `read`, `unread`, `withdrawn`, `recorded`, or
+    `other` for a message from another account than the one that answered first, of which
+    nothing is kept — and what Taktus says back in the thread."""
+
+    taken: bool
+    outcome: str
+    say: str | None
+    run: Run
 
 
 PROPOSAL_DECIDED = "proposal.decided"
@@ -1146,6 +1176,11 @@ class RunEngine:
             raise RunError(f"run {run.id!r} has no step {step_id!r}") from None
         if step_run.state is not StepState.WAITING_HUMAN:
             raise RunError(f"step {step_id!r} is {step_run.state}; it does not wait for a person")
+        if step_run.block is not None and step_run.block.awaited is not None:
+            raise RunError(
+                f"step {step_id!r} waits for its participant, {step_run.block.role}, to answer in "
+                "their own channel: the answer is theirs, and nobody answers it here (ADR-0155)"
+            )
         if step_run.anchoring is not None and not step_run.anchoring.proceeds:
             raise RunError(
                 f"step {step_id!r} is anchored and waits for the decision request(s) "
@@ -2291,6 +2326,10 @@ class RunEngine:
                 asked = None if decided else control.ask
                 if anchors or asked is not None:
                     return await self._anchor(run, step, step_run, held, anchors, asked)
+            if isinstance(work, ParticipantWork) and step_run.state is StepState.PLANNED:
+                # Asked of a participant outside the organisation, who answers in its own
+                # channel; no level asks a person of the tenant about it (ADR-0155).
+                return await self._participant(run, step, step_run, work, span)
             if asks and step_run.state is StepState.PLANNED:
                 # The step boundary: what the level asks of a person, before anything starts.
                 acting = held.level == 1 and autonomy.acts(work, await self._outward(run, work))
@@ -2811,6 +2850,214 @@ class RunEngine:
         )
         return run, step_run
 
+    # --- an outside participant (ADR-0155) -------------------------------------------------------
+
+    async def _participant(
+        self, run: Run, step: Step, step_run: StepRun, work: ParticipantWork, span: Span
+    ) -> tuple[Run, StepRun]:
+        """The step waits for its participant to answer in the thread the step before it
+        opened. A rehearsal asks nobody: the step ends rehearsed."""
+        if run.rehearsal:
+            return await self._settle(
+                run, step_run, {"participant": work.participant, "rehearsed": True}, REHEARSED
+            )
+        try:
+            (thread,), _ = await self._resolved(run, [work.thread])
+        except RuleFailed as failure:
+            return await self._failed_before(run, step_run, span, str(failure), None, None)
+        if not isinstance(thread, str) or not thread.strip():
+            return await self._failed_before(
+                run,
+                step_run,
+                span,
+                f"the thread {work.participant} answers in resolved to {thread!r}, not a text "
+                "(ADR-0155)",
+                None,
+                None,
+            )
+        run, step_run = await self._open_block(
+            run,
+            step_run,
+            "wait.external",
+            block.AWAITING_PARTICIPANT,
+            role=work.participant,
+            awaited=Awaited(channel=work.channel, thread=thread.strip()),
+        )
+        step_run = step_run.to(
+            StepState.WAITING_HUMAN,
+            reason=f"waits for {work.participant} to answer in {work.channel} (ADR-0155)",
+        )
+        run = await self._commit(
+            self._hold_back(run.with_step_run(step_run), step.id),
+            "step.awaiting",
+            step=step_run,
+            outcome=participants.OUTCOME,
+        )
+        return run, step_run
+
+    async def answer_participant(self, command: AnswerParticipant) -> ParticipantAnswered:
+        """A participant's message in the thread a step waits in: read and said back, withdrawn,
+        or — the same account's `yes` to a reading — recorded as the step's result, and the run
+        continues (ADR-0155, ADR-0008). Refused, changing nothing, when the step does not wait
+        for a participant in that channel."""
+        async with self._telemetry.span("run", {"run.id": command.run_id}) as span:
+            async with self._work.transaction(command.tenant):
+                run = await self._runs.get(command.tenant, command.run_id)
+            if run is None:
+                raise UnknownRun(command.run_id)
+            try:
+                step_run = run.step_run(command.step_id)
+            except KeyError:
+                raise RunError(f"run {run.id!r} has no step {command.step_id!r}") from None
+            opened = step_run.block
+            awaited = None if opened is None else opened.awaited
+            if (
+                opened is None
+                or awaited is None
+                or step_run.state is not StepState.WAITING_HUMAN
+                or awaited.channel != command.channel
+            ):
+                raise RunError(
+                    f"step {command.step_id!r} of run {run.id!r} does not wait for a participant "
+                    f"in {command.channel}"
+                )
+            if command.enqueue and self._queue is None:
+                raise RunError("no queue is wired; a run is handed to a runner through one")
+            account = participants.account_digest(command.channel, command.account)
+            if awaited.account is not None and awaited.account != account:
+                return ParticipantAnswered(taken=False, outcome="other", say=None, run=run)
+            role = opened.role or "participant"
+            actor = f"participant:{role}"
+            label = None
+            if self._messages is not None:
+                label = (await self._messages.rules(run.tenant)).label
+            step = run.step(command.step_id)
+            work = parse_work(step, run.work.get(command.step_id), run.inputs)
+            options = work.options if isinstance(work, ParticipantWork) else ()
+            said = participants.said(command.text)
+            if said == "yes" and awaited.reading is not None:
+                return await self._participant_recorded(
+                    run, step_run, awaited, role, actor, command, label, span
+                )
+            if said == "no" and awaited.reading is not None:
+                kept = awaited.model_copy(update={"reading": None})
+                step_run = step_run.model_copy(
+                    update={"block": opened.model_copy(update={"awaited": kept})}
+                )
+                run = await self._commit(
+                    run.with_step_run(step_run),
+                    participants.ANSWER_READ,
+                    step=step_run,
+                    outcome=participants.WITHDRAWN,
+                    actor=actor,
+                )
+                say = participants.labelled(participants.withdrawn(), label)
+                return ParticipantAnswered(
+                    taken=True, outcome=participants.WITHDRAWN, say=say, run=run
+                )
+            reading = participants.read(command.text, options)
+            if reading is None:
+                kept = awaited.model_copy(update={"account": account, "reading": None})
+                step_run = step_run.model_copy(
+                    update={"block": opened.model_copy(update={"awaited": kept})}
+                )
+                run = await self._commit(
+                    run.with_step_run(step_run),
+                    participants.ANSWER_READ,
+                    step=step_run,
+                    outcome=participants.UNREAD,
+                    actor=actor,
+                )
+                say = participants.labelled(participants.asked_back(options), label)
+                return ParticipantAnswered(
+                    taken=True, outcome=participants.UNREAD, say=say, run=run
+                )
+            document = {
+                "participant": role,
+                "answer": reading.answer,
+                "option": reading.option,
+                "answered_by": {"channel": command.channel, "account": command.account},
+            }
+            digest = await self._objects.put(_canonical(document))
+            kept = awaited.model_copy(update={"account": account, "reading": digest})
+            step_run = step_run.model_copy(
+                update={"block": opened.model_copy(update={"awaited": kept})}
+            )
+            run = await self._commit(
+                run.with_step_run(step_run),
+                participants.ANSWER_READ,
+                step=step_run,
+                outcome=participants.READ,
+                actor=actor,
+                digest=digest,
+            )
+            say = participants.labelled(participants.reflected(reading), label)
+            return ParticipantAnswered(taken=True, outcome=participants.READ, say=say, run=run)
+
+    async def _participant_recorded(
+        self,
+        run: Run,
+        step_run: StepRun,
+        awaited: Awaited,
+        role: str,
+        actor: str,
+        command: AnswerParticipant,
+        label: str | None,
+        span: Span,
+    ) -> ParticipantAnswered:
+        """The reading the participant confirmed becomes the step's result; the step succeeds
+        with method `human`, and the run continues."""
+        reading = awaited.reading
+        if reading is None:  # unreachable: only a pending reading is confirmed
+            raise RunError("there is no reading to confirm")
+        content = await self._objects.get(reading) or b""
+        run, step_run = await self._close_block(run, step_run)
+        step_run = step_run.model_copy(update={"block": None})
+        now = self._clock.now()
+        result = Artifact(
+            id="result",
+            kind="result",
+            digest=reading,
+            media_type="application/json",
+            size_bytes=len(content),
+            created_at=now,
+        )
+        done = step_run.to(
+            StepState.SUCCEEDED,
+            method=Method.HUMAN,
+            adapter=None,
+            artifacts=(result,),
+            confirmed_by=actor,
+            reason=f"answered by {role} in {command.channel}, and confirmed there (ADR-0155)",
+            started_at=step_run.started_at or now,
+            finished_at=now,
+            checkpoint=Checkpoint(
+                ref=f"ckpt/{run.id}/{step_run.step_id}",
+                step_id=step_run.step_id,
+                taken_at=now,
+                artifact_ids=(result.id,),
+                result_digest=reading,
+            ),
+        )
+        job = (
+            Job(id=self._ids.new("job"), kind=RUN_EXECUTE, payload={"run_id": run.id})
+            if command.enqueue
+            else None
+        )
+        run = await self._commit(
+            run.with_step_run(done),
+            "step.finished",
+            step=done,
+            outcome="succeeded",
+            actor=actor,
+            enqueue=job,
+        )
+        say = participants.labelled(participants.recorded(), label)
+        if not command.enqueue and run.state is RunState.WAITING_HUMAN and not run.waiting():
+            run = await self._commit(run.to(RunState.RUNNING), "run.resumed", actor=actor)
+            run = await self._execute(run, None, span)
+        return ParticipantAnswered(taken=True, outcome="recorded", say=say, run=run)
+
     async def _unverified(
         self, run: Run, step: Step, adapter: str | None, held: autonomy.Held
     ) -> str | None:
@@ -3205,6 +3452,7 @@ class RunEngine:
         on: StepId | None = None,
         role: str | None = None,
         lacking: str | None = None,
+        awaited: Awaited | None = None,
     ) -> tuple[Run, StepRun]:
         """The step is blocked from now — or from `since` — for this cause, unless it is
         already. A block it is in for another cause, or for another lack, ends first, with its
@@ -3224,6 +3472,7 @@ class RunEngine:
             on=on,
             role=role,
             lacking=lacking,
+            awaited=awaited,
         )
         return run, step_run.model_copy(update={"block": opened})
 

@@ -182,6 +182,7 @@ from taktus.composition.owner_channel import (
     known_secrets,
     owner_channel_wiring,
 )
+from taktus.composition.participants import ParticipantAnswers
 from taktus.composition.proposals import InstanceChanges, ProposalActs
 from taktus.composition.reactions import Reactions, capacity_condition
 from taktus.composition.replies import ConnectorReplies
@@ -854,7 +855,11 @@ async def wire(
                     identities,
                     telemetry,
                     ConnectorReplies(pools.connectors),
-                    owner.answers,
+                    # An outside participant's answer in its thread, before the owner-facing
+                    # channel reads the message (ADR-0155).
+                    ParticipantAnswers(
+                        runs, persistence, engine, ConnectorReplies(pools.connectors), owner.answers
+                    ),
                     outbox,
                     clock=clock,
                     offer_window=timedelta(seconds=settings.offer_window_seconds),

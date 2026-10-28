@@ -86,6 +86,9 @@ closes (ADR-0132). Booked to `wait.external`: what the run waits for happens out
 HOLDING_MESSAGE = "holding_message"
 """An approved outward message waits for its tenant's sending delay or quiet hours to pass
 (ADR-0142 §8). Booked to `wait.external`: the clock it waits for is the recipients'."""
+AWAITING_PARTICIPANT = "awaiting_participant"
+"""A `human` step waits for a participant outside the organisation to answer in its own
+channel (ADR-0155). Booked to `wait.external`: the one who answers is outside."""
 HELD_BACK = "held_back"
 """The step depends on a step that waits, and cannot start before it ends."""
 NO_WORKER = "no_worker"
@@ -134,6 +137,17 @@ class Takeover(Value):
     """The identifier of the step's artifact that holds the state the step was taken over in."""
 
 
+class Awaited(Value):
+    """Where a participant's answer is expected, and how far it has come (ADR-0155): the
+    channel and the thread, the digest of the account that answered first, and the digest of
+    the reading it was told. Names no person: the account only by its digest."""
+
+    channel: str = Field(min_length=1)
+    thread: str = Field(min_length=1)
+    account: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    reading: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+
+
 class OpenBlock(Value):
     """A block that has not ended: what the step run carries while it waits."""
 
@@ -158,3 +172,6 @@ class OpenBlock(Value):
     takeover: Takeover | None = None
     """For a step a person took over: the take-over they hold (ADR-0128). None for every other
     block."""
+    awaited: Awaited | None = None
+    """For a step that waits for a participant outside the organisation: where the answer is
+    expected (ADR-0155). None for every other block."""

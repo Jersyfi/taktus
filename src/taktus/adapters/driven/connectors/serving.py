@@ -53,6 +53,11 @@ COMMON_FAULTS: dict[str, str] = {
 """The faults every connector here offers. `C-05` is offered only where an operation leaves
 the system, and the intake faults only where there is an intake."""
 
+SCOPE_FAULTS: dict[str, str] = {
+    "C-11": "a scoped call is answered with another subject's data: the scope is ignored",
+}
+"""The fault a connector offers where it declares a scoped capability (ADR-0130)."""
+
 
 @dataclass(eq=False)
 class TargetError(Exception):
@@ -82,6 +87,11 @@ def invalid(detail: str) -> TargetError:
     return TargetError("invalid", "none", False, detail)
 
 
+def out_of_scope(detail: str) -> TargetError:
+    """A scoped call asked for another subject's data; nothing is answered (ADR-0130)."""
+    return TargetError("out_of_scope", "none", False, detail)
+
+
 def unavailable(detail: str) -> TargetError:
     return TargetError("unavailable", "none", True, detail)
 
@@ -102,6 +112,10 @@ class Call:
     token: str
     key: str
     requests: int = 0
+    scope: str | None = None
+    """The subject of the case the call serves, from the context's `scope` (ADR-0130). An
+    operation of a scoped capability answers that subject's data only, and refuses another's
+    with `out_of_scope`; None for a call that carries no scope."""
 
     def count(self, n: int = 1) -> None:
         self.requests += n
@@ -211,7 +225,11 @@ class Served:
                 "under the referenced name; the connector has none of its own",
             )
             return envelope(refusal.envelope(0), True)
-        call = Call(token=token, key=key)
+        scope = context.get("scope")
+        subject = scope.get("subject") if isinstance(scope, dict) else None
+        if self.fault == "C-11":
+            subject = None
+        call = Call(token=token, key=key, scope=subject if isinstance(subject, str) else None)
         try:
             outcome = await self.operations[name](self.config, call, input)
         except TargetError as error:

@@ -6,7 +6,7 @@ know whether it satisfies the contract. You do not need to know anything else ab
 follow it.
 
 The *conformance suite* is a program that talks to your connector exactly as Taktus would, and
-reports, for each of ten numbered checks, whether your connector did what the contract requires.
+reports, for each of eleven numbered checks, whether your connector did what the contract requires.
 The contract itself is in [README.md](README.md) in this directory; the checks are its section 8.
 
 ---
@@ -75,6 +75,7 @@ open a pull request from. You tell it, in a *scenario*: one JSON file in the sha
 | `intake.signature.timestamp` | only when your declaration names `hmac-sha256-timestamped`: the header your target sends the moment of sending in, and the version token that opens the signed string. The suite then writes that header itself — the moment it says the payload arrived, in whole seconds since the epoch — and signs `<version>:<moment>:<body>`. |
 | `intake.supported` | one recorded event of a kind your declaration lists, without its signature header. `headers`/`body` inline, or `headers_file`/`body_file` relative to the scenario. |
 | `intake.unsupported`, `intake.own_action` | optional: an event you do not normalise, and an event caused by your connector's own earlier action. |
+| `scoped` | only when you declare a capability `scoped`: `operation`, one of its operations; `subject`, a subject your target knows; `own`, an input that asks for that subject's data; `other`, an input that asks for another subject's. |
 | `intake.handshake` | optional, only when your target checks an address before it sends events there: `payload`, one recorded check in the shape of `supported`, and `answer`, the media type and body your connector must answer it with once it verified the signature. |
 
 Recorded payloads: take a real delivery from your target and replace every identifier, name,
@@ -118,6 +119,7 @@ connector against it, run the suite with the connector's own scenario.
 | `invalid` | the scenario's invalid call | the error is a classified failure with the expected cause |
 | `signed`, `unsigned`, `wrongly signed`, `stale`, `unsupported`, `own action` | the recorded payloads through the `intake` tool; `stale` only under `hmac-sha256-timestamped`, signed correctly an hour before the moment it arrives | a signed event becomes a well-formed intake command; everything else is refused with its reason |
 | `handshake`, `handshake unsigned`, `handshake wrongly signed`, `handshake stale` | the scenario's handshake, signed and then as every unverified case | the signed one is refused as `unsupported_event` with exactly the scenario's answer; every other one is refused with its reason and no answer |
+| `scoped`, `scoped for another subject` | the scenario's scoped call, twice, with a context whose `scope` names its subject | the subject's own data is answered; another subject's is refused as `out_of_scope` |
 | scan | everything above plus your log | no credential value appears anywhere |
 
 Every call carries a context (`Connector.json#/$defs/CallContext`) with a tenant, an identity, a
@@ -126,7 +128,7 @@ none of it but the key and the credential; the rest is what Taktus will send.
 
 ---
 
-## 5. The ten checks in plain words
+## 5. The eleven checks in plain words
 
 | Check | In plain words | If it fails, fix this |
 |---|---|---|
@@ -140,6 +142,7 @@ none of it but the key and the credential; the rest is what Taktus will send.
 | **C-08** | A payload without a signature is refused as `unsigned`; one with a wrong signature as `bad_signature`; under `hmac-sha256-timestamped`, one whose moment lies more than 300 seconds from its arrival as `bad_signature` too; an event you do not normalise as `unsupported_event`; your own earlier action as `own_action`. Refused means: returned as `{"refused": …}`, and not processed. Where the scenario names a handshake, the signed one is refused as `unsupported_event` with exactly the answer the scenario names, and an unverified one carries no answer. | Verify the signature over the raw bytes before reading the body, and the moment against `received_at` where your scheme signs one. Never accept a delivery you could not verify, and never answer a handshake you could not verify. |
 | **C-09** | Every result carries `consumption` with at least one quantity of a kind you declared: a read of one record is one request, not nothing. | Count what each call used and report it in the declared kind. |
 | **C-10** | Removing your connector from a running Taktus changes quality or cost but breaks no process. | Nothing yet: this check is not run by the suite. See section 7. |
+| **C-11** | Where you declare a capability `scoped`, a call whose context names a case's subject is answered with that subject's data, and a call that asks for another subject's data is refused with cause `out_of_scope` and no effect. A connector without a scoped capability passes as not applicable. | Compare what the call asks for with `scope.subject` before you ask your target, and refuse a mismatch. Do not filter afterwards: what is not read cannot leak. |
 
 A schema violation is attributed to the check that owns the document: an invalid declaration is
 C-01, an invalid result is C-02 (or C-09 when the fault is in `consumption`), an invalid error is

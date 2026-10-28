@@ -381,6 +381,11 @@ role it would tie the core to a model stack and the removal test would be lost.
   the process level, every run level and the overview, and `VersionStatements` answers the run's
   port `Statements` for a report step's `{"$run": "exactness"}`; `composition/local.py`,
   `composition/daemon.py` and `composition/replay.py` wire it into their engines.
+- **An outside participant's answer** (ADR-0155) is taken from a channel's intake by
+  `composition/participants.py`: `ParticipantAnswers` stands ahead of `OwnerAnswers` in the
+  daemon's intake, finds the waiting `human` step of the tenant by the intake's channel and
+  thread, hands the message to `RunEngine.answer_participant`, and says the engine's reply in
+  the thread through `ConnectorReplies`. A message it does not match goes on to `OwnerAnswers`.
 - **A first process from the gallery** (ADR-0136) is read and proposed by
   `composition/gallery.py`: `Gallery` reads the directory `TAKTUS_GALLERY_DIRECTORY` names
   (`composition/settings.py`) on every request, offers a bundle that `parse_bundle` accepts at

@@ -42,8 +42,8 @@ def checks(violations: list[rules.Violation]) -> set[str]:
 
 
 def test_the_catalogue_is_complete_and_findable() -> None:
-    assert list(CATALOGUE) == [f"C-{n:02d}" for n in range(1, 11)]
-    assert CATALOGUE.runnable == [f"C-{n:02d}" for n in range(1, 10)]
+    assert list(CATALOGUE) == [f"C-{n:02d}" for n in range(1, 12)]
+    assert CATALOGUE.runnable == [*(f"C-{n:02d}" for n in range(1, 10)), "C-11"]
     for check in CHECKS:
         assert catalogue_of(check) is CATALOGUE
         assert CATALOGUE.where(check).startswith("contracts/connector/v1/README.md §")

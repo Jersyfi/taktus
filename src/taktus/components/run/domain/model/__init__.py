@@ -1,4 +1,10 @@
-from taktus.components.run.domain.model.block import ACCOUNTS, Account, OpenBlock, Takeover
+from taktus.components.run.domain.model.block import (
+    ACCOUNTS,
+    Account,
+    Awaited,
+    OpenBlock,
+    Takeover,
+)
 from taktus.components.run.domain.model.deadline import (
     ActionKind,
     Deadline,
@@ -67,6 +73,7 @@ from taktus.components.run.domain.model.work import (
     Message,
     MlWork,
     ModelFile,
+    ParticipantWork,
     ReadyRule,
     RoadmapRule,
     RuleWork,
@@ -109,6 +116,7 @@ __all__ = [
     "AdapterStop",
     "Anchoring",
     "Ask",
+    "Awaited",
     "BacklogRule",
     "Cause",
     "CheckRead",
@@ -139,6 +147,7 @@ __all__ = [
     "NoConnector",
     "NoWorker",
     "OpenBlock",
+    "ParticipantWork",
     "ReadyRule",
     "RoadmapRule",
     "RuleFailed",

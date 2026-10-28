@@ -20,6 +20,8 @@ from taktus.conformance.connector.rules import CHECKS
 from .conftest import BUSINESS, CONNECTORS, RunningConnector, open_standard_faults
 
 type Start = Callable[..., RunningConnector]
+SCOPED = frozenset({"stripe"})
+"""The business connectors that declare a scoped capability (C-11)."""
 FAULTS = [
     (module, fault, check)
     for module in sorted(BUSINESS)
@@ -47,12 +49,30 @@ async def test_a_business_connector_passes(module: str, start_business_connector
 
 @pytest.mark.parametrize("module", sorted(BUSINESS))
 def test_every_runtime_check_has_a_fault(module: str) -> None:
+    unscoped = set() if module in SCOPED else {"C-11"}
     assert {check for _, check in open_standard_faults(module)} == set(CHECKS) - {
         "C-05",
         "C-07",
         "C-08",
         "C-10",
-    }, "C-05 needs an outward operation and C-07, C-08 an intake; C-10 has no runtime fault"
+        *unscoped,
+    }, (
+        "C-05 needs an outward operation, C-07 and C-08 an intake, C-11 a scoped capability; "
+        "C-10 has no runtime fault"
+    )
+
+
+async def test_the_payment_connector_answers_a_case_only_its_own_customer(
+    start_business_connector: Start,
+) -> None:
+    """The scoped capability under C-11 (ADR-0130, UC-7.7): the subject's own subscriptions are
+    answered, another customer's refused as out_of_scope, and the scope ignored is caught."""
+    report = await start_business_connector("stripe").run_suite()
+    c11 = next(c for c in report.checks if c.id == "C-11")
+    assert c11.status is Status.PASSED, report.render()
+    assert "refused another with out_of_scope" in c11.observed + " ".join(c11.details)
+    broken = await start_business_connector("stripe", fault="C-11").run_suite()
+    assert {c.id for c in broken.failed} == {"C-11"}, broken.render()
 
 
 @pytest.mark.parametrize(

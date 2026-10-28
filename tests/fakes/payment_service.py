@@ -14,7 +14,8 @@ What it enforces, because the connector's checks depend on it:
   that forgets to pin it fails.
 - **The list.** `status` is one of the API's or `all` (default: every status but `canceled`,
   as the API does); `limit` is 1 to 100; `starting_after` names a known subscription. Anything
-  else is 400 `invalid_request_error`. `has_more` says whether more follow.
+  else is 400 `invalid_request_error`. `has_more` says whether more follow. `customer` narrows
+  it to one customer's subscriptions.
 - **One subscription.** An unknown identifier is 404 `resource_missing`.
 
 The subscriptions: five, `sub_fake1` to `sub_fake5`, four `active` and one `canceled`, each
@@ -171,6 +172,9 @@ def handler(state: State) -> type[BaseHTTPRequestHandler]:
                 return
             with state.lock:
                 every = list(state.subscriptions)
+            customer = query.get("customer", [None])[0]
+            if customer is not None:
+                every = [s for s in every if s["customer"]["id"] == customer]
             if status == "all":
                 chosen = every
             elif status is None:

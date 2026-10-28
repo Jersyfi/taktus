@@ -1,6 +1,6 @@
 # ADR-0130 — A step sees only the data of its case, and an analysis step never speaks outward
 
-**Status:** accepted · extends ADR-0007 (the frame's allowed tools and hosts), ADR-0024 (connector effects), ADR-0021 (provenance) and ADR-0008 (anchors) · issue #432, UC-7.7
+**Status:** accepted · amended 2026-10-28 (#432): conformance check C-11 · extends ADR-0007 (the frame's allowed tools and hosts), ADR-0024 (connector effects), ADR-0021 (provenance) and ADR-0008 (anchors) · issue #432, UC-7.7
 
 ## Context
 
@@ -150,10 +150,11 @@ source, and only a connector's own declaration says that a capability serves per
 ## Where this promise ends
 
 - **The connector keeps the scope; the core cannot check it.** A connector that declares a
-  capability `scoped` and answers another subject's data all the same breaks the promise. The
-  conformance suite does not yet check it: a check that sends a scoped call for another subject
-  and expects `out_of_scope` is still to be written, and no connector in this repository yet
-  serves a scoped capability.
+  capability `scoped` and answers another subject's data all the same breaks the promise.
+  Conformance check C-11 sends one scoped call for the subject and one for another subject, and
+  fails a connector that answers the second. It proves the two calls its scenario names, not
+  every input an operation accepts. *(Amended 2026-10-28, #432: C-11 was still to be written,
+  and the payment connector's `payments.customers` is the first scoped capability here.)*
 - **Personal data is known only where it is declared.** A capability that serves personal data
   and that neither its connector nor the tenant declares is treated as data that is not
   personal. No step is then anchored on it, and an analytic step may read it once the tenant

@@ -3,7 +3,7 @@
 The connector contract v1 ([`contracts/connector/v1`](../../../../../../contracts/connector/v1/README.md))
 over the subscriptions of the Stripe REST API. This directory, this file and the configuration
 that points at it are the only places that name the product. Everywhere else it is the
-capability `payments.subscriptions` (ADR-0150).
+capabilities `payments.subscriptions` and `payments.customers` (ADR-0150).
 
 It is proof and example, not a requirement: the control plane runs with it removed.
 
@@ -14,7 +14,8 @@ uv run python -m taktus.adapters.driven.connectors.stripe --port 9111
 serves MCP over streamable HTTP at `/mcp` and readiness at `GET /health`. `--target` is the
 API's address, `https://api.stripe.com` by default; point it at the fake under
 `tests/fakes/payment_service.py` to run without a network. Added to an instance by one entry
-of `TAKTUS_CONNECTORS`: `payments.subscriptions=http://payments-connector:9111/mcp`.
+of `TAKTUS_CONNECTORS` per capability: `payments.subscriptions=http://payments-connector:9111/mcp`,
+and `payments.customers` at the same address.
 
 ## Why not the vendor's own server
 
@@ -41,6 +42,13 @@ The output is `subscriptions` and `complete`, which says whether every subscript
 
 `payments.subscriptions.read` takes `id`, a subscription's identifier `sub_…`, and answers one
 subscription.
+
+`payments.customers.subscriptions` takes `customer`, a customer's identifier `cus_…`, and
+answers `customer`, every `subscriptions` of that customer in every status, and `complete`. Its
+capability is declared `scoped` (ADR-0130): a step that serves one customer's case carries the
+customer as its scope, and a call that names another customer is refused as `out_of_scope`
+before the provider is asked. Conformance check C-11 proves it against the fake.
+`payments.subscriptions` is not scoped: a reconciliation reads every subscription.
 
 Each subscription is reduced to these fields:
 
