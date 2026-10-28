@@ -30,12 +30,13 @@ Four facts shape the decision.
 
 ## Decision
 
-### 1. Four connectors, each named by capability
+### 1. Five connectors, each named by capability
 
 | Capability | Operations | Product | Directory |
 |---|---|---|---|
 | `billing.costs` | `billing.costs.daily` | AWS Cost Explorer | `connectors/aws/` |
 | `models.costs` | `models.costs.daily` | OpenAI organisation costs | `connectors/openai/` |
+| `models.costs` | `models.costs.daily` | Anthropic Admin API cost report | `connectors/anthropic/` |
 | `errors.issues` | `errors.issues.list`, `errors.issues.read` | Sentry | `connectors/sentry/` |
 | `payments.subscriptions` | `payments.subscriptions.list`, `payments.subscriptions.read` | Stripe | `connectors/stripe/` |
 
@@ -51,7 +52,8 @@ The product's name stands only in the directory, its README and the fake's docst
 first, each day with its `groups`, `{group, amount}`, and its `total`, and `complete`. Every
 amount is the decimal text the provider gave. A day's total is the exact sum of its groups,
 computed in decimal arithmetic. A day in more than one currency is `unexpected`, because no rule
-here converts. One statistic reads both (ADR-0151).
+here converts. A provider that reports cents is turned into the main unit by moving the
+decimal point, which loses no digit. One statistic reads them all (ADR-0151).
 
 ### 3. A direct connector where the vendor's server answers in text
 
@@ -59,8 +61,8 @@ here converts. One statistic reads both (ADR-0151).
 instead, for three reasons. The payment provider's and the error tracker's servers answer in
 text meant for a language model; a match held `exact` needs the records as fields. The cloud
 provider's server runs beside the caller with the caller's own profile, not with the requesting
-identity's credential per call, which the contract requires (C-03). The model provider ships no
-server for its costs. Where a vendor's server comes to answer with structured fields and a
+identity's credential per call, which the contract requires (C-03). The model providers ship no
+server for their costs. Where a vendor's server comes to answer with structured fields and a
 credential per call, it becomes the candidate again, behind a manifest.
 
 ### 4. A key pair is one credential value
@@ -91,25 +93,26 @@ e-mail or payment method: matching an entitlement needs none of them.
 
 ## Consequences
 
-- `src/taktus/adapters/driven/connectors/{aws,openai,sentry,stripe}/`; the fakes
-  `tests/fakes/cloud_billing_service.py`, `model_costs_service.py`, `error_tracking_service.py`
-  and `payment_service.py`; `tests/conformance/test_connector_v1_business.py` runs the suite
+- `src/taktus/adapters/driven/connectors/{aws,openai,anthropic,sentry,stripe}/`; the fakes
+  `tests/fakes/cloud_billing_service.py`, `model_costs_service.py`, `cost_report_service.py`,
+  `error_tracking_service.py` and `payment_service.py`; `tests/conformance/test_connector_v1_business.py` runs the suite
   and every fault against each.
 - `CREDENTIALS.md`: `BILLING_KEY`, `MODEL_COSTS_TOKEN`, `ERRORS_TOKEN`, `PAYMENTS_TOKEN`.
   NEED-0035 and NEED-0036 ask for the first two on the project's own instance.
 - Each is added to an instance by one entry of `TAKTUS_CONNECTORS`. S-01 tests each like any
   connector.
-- `composition/shipped.json` lists the four, so a lack is classified against them (ADR-0118).
+- `composition/shipped.json` lists the five, so a lack is classified against them (ADR-0118).
 
 ## Where this promise ends
 
 Each connector is proven against a fake of its product's API that its tests own. No real
-provider has been reached by them yet; NEED-0035 and NEED-0036 open that for two of them. A
+provider has been reached by them yet; NEED-0035 and NEED-0036 open that for two of them, the cost report first. A
 change of a provider's API is found by a live run, not by these tests. The cloud billing
 connector reads at most ten pages, the error tracker ten, the payment provider a hundred, and
 each says `complete: false` where it stopped early. The cloud billing figures of the newest day
-may still change: the provider marks such a day `estimated`. The model provider does not say
-whether a day is closed, so its days are never marked. A reading in more than one currency is
+may still change: the provider marks such a day `estimated`. The model providers do not say
+whether a day is closed, so their days are never marked. That the cost report gives cents is
+read from its documentation and checked against the fake; a live run confirms it. A reading in more than one currency is
 refused, not converted. The payment connector reads subscriptions only; payment reconciliation
 also needs the product's entitlements, which no connector here reads yet. The connectors read;
 none acts on a provider.
