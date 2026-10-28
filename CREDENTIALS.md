@@ -24,7 +24,11 @@ software reads it at the moment of use and keeps nothing.
 the variable that holds that file's path is `TAKTUS_<KEY>_FILE`, the configuration key in
 capitals (CLAUDE.md §9). For a credential the key is `credential.<name>`, so the variable is
 `TAKTUS_CREDENTIAL_<NAME>_FILE` — the same variable whoever reads it: the composition root, the
-execution adapter that starts a unit, a worker started by endpoint, `tools/first_run.sh`. One
+execution adapter that starts a unit, a worker started by endpoint, `tools/first_run.sh`. A
+connector the instance deploys gets the same variable. On a cluster each entry of
+`connectors.others` maps a credential's name to a key of an existing Secret
+(`deploy/k8s/README.md` §2). On one server each entry of `connectors.json` maps it to a file
+under `deploy/docker/secrets/` (`deploy/docker/README.md`, *Connectors*). One
 credential has one variable. A second name for the same credential was a defect, corrected in
 DEC-0018.
 

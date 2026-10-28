@@ -59,7 +59,9 @@ that path from nothing without a person, failing above ten minutes. `make up` br
 containers (`deploy/docker/compose.yml`: writes the secret files once, builds the image,
 applies the migrations, waits for readiness), `make up-dev` does the same with the reference
 worker layered in from its own image (`compose.reference-worker.yml`, development only),
-`make down` stops either and keeps every volume, and `make verify-compose` runs
+`make down` stops either and keeps every volume; all three, and `make start`, lay the
+operator's further connectors over it, written from `connectors.json` by
+`deploy/docker/connectors.py`; and `make verify-compose` runs
 `deploy/docker/verify.sh` — from nothing, through a check that the control plane image holds
 no worker code, to a run that survives a killed container. `make verify-upgrade` runs
 `deploy/docker/upgrade.sh`: the previous release, holding a run in each of five states, upgraded
