@@ -163,6 +163,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 from taktus.components.run.application.query.recordings import RecordedResponses
+from taktus.components.run.application.service.bound_models import BoundModels
 from taktus.components.run.application.service.deadlines import DeadlineKeeper
 from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import (
@@ -424,6 +425,9 @@ class StartRun:
     """The levels of the process's tool actions (`Autonomy.action_levels`): a step that uses one
     runs at the lowest level that applies to it (ADR-0039). Every caller that starts a run from
     a process version passes them."""
+    bindings: Mapping[str, str] = field(default_factory=dict)
+    """Purposes bound to one configured model for this run alone (`Run.bindings`): a model
+    trial's case run (ADR-0149 §1). Empty for every other run."""
 
     @property
     def identity(self) -> str:
@@ -889,6 +893,7 @@ class RunEngine:
             if self._deadlines is None
             else await self._deadlines.declared(command.tenant, command.process_version),
             rehearsal=command.rehearsal,
+            bindings=dict(command.bindings),
             created_at=now,
             updated_at=now,
         )
@@ -1912,7 +1917,11 @@ class RunEngine:
         return self._connectors
 
     def _model_pool(self, run: Run) -> ModelPool | None:
-        return self._replay.models if self._replay is not None and run.rehearsal else self._models
+        if self._replay is not None and run.rehearsal:
+            return self._replay.models
+        if self._models is None or not run.bindings:
+            return self._models
+        return BoundModels(self._models, run.bindings)
 
     # --- end of replay -----------------------------------------------------------------------
 

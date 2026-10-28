@@ -57,6 +57,14 @@ class StaticModelPool:
             if purpose in purposes or EVERY_PURPOSE in purposes
         ]
 
+    async def bound(self, adapter: str) -> ResolvedModel | None:
+        """The member under the identifier, whatever purposes it serves: a model trial binds a
+        purpose to it for one run (ADR-0149 §1)."""
+        for configured, _, model, version in self._models:
+            if configured == adapter:
+                return self._resolved(adapter, model, version)
+        return None
+
     def members(self) -> list[tuple[str, tuple[str, ...], str | None]]:
         """Every configured model with the purposes it serves and its pinned version — what
         the removal test reads to know what is configured, and records its verdict under."""

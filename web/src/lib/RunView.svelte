@@ -10,6 +10,7 @@
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
 	import { originLink, processLink, requestsLink } from './links';
+	import { spendLink } from './spend';
 	import type { Snippet } from 'svelte';
 	import type { Figure, RunLevel } from './types';
 
@@ -53,6 +54,7 @@
 			<p class="meta">
 				Process <a href={processLink(level.run.process_version)}>{level.run.process_version}</a
 				>{#if level.run.rehearsal}&#32;· a rehearsal{/if}
+				· <a href={spendLink(level.run.id)}>where it spent</a>
 			</p>
 		</div>
 	</header>

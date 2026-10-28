@@ -50,6 +50,16 @@ origin.
   with the newest daily report, each a page of its own, and a line for each on the start page
   saying how many are open or red (ADR-0121). Each page is read once on opening.
 
+- **Where a process spends** (#449, ADR-0148) — a run step by step: money at its own price
+  table and tokens split by price kind, each charted on one axis from zero, with turns, what a
+  compression saved and Takte; another run of the same task beside it, on one shared axis, with
+  whether each step produced the same result; a process over 7, 30 or 90 days. The run and the
+  process pages link there. What could not be priced is said, never drawn as nothing.
+- **Model trials** (#448, ADR-0149) — the trials offered now, each startable with the
+  candidates it names, a trial started by hand, and each trial's report: per candidate the
+  cases passed, money, tokens and wall time charted, and each case's results side by side. The
+  report is read again while its runs have not settled. Starting a trial binds no model.
+
 ## How it is built
 
 - SvelteKit and TypeScript, built to static files (`npm run build` writes `build/`).
@@ -84,6 +94,9 @@ origin.
 | `src/lib/OriginView.svelte` | the origin of a result, and its text equivalent |
 | `src/lib/ProcessView.svelte` | the process level, its autonomy statement, its runs and versions, and its text equivalent |
 | `src/lib/links.ts` | where each level lives in the web app |
+| `src/lib/spend.ts`, `StepBars.svelte` | the spend per step and the model trials: their shapes, links, sentences and the bars of their charts — one measure per axis from zero, a legend for two series and for the price kinds |
+| `src/lib/SpendView.svelte`, `ComparisonView.svelte`, `ProcessSpendView.svelte` | a run's spend, two runs side by side, a process over a window |
+| `src/lib/TrialsView.svelte`, `TrialView.svelte` | the trials and the offers, and one trial's report |
 | `src/lib/motion.svelte.ts` | whether motion is allowed |
 | `src/lib/session.ts`, `SignInForm.svelte` | signing in with the key, once, and signing out |
 | `src/lib/generated/fixtures.json` | written by `make generate`, never by hand: what the tests draw |

@@ -9,8 +9,9 @@ Three things are generated today, each never edited by hand:
 - `web/src/lib/generated/fixtures.json`, what the web app's tests draw: the visual vocabulary
   and a run level drawn by `reporting` from example facts that use every method kind, every
   exactness class and every motion, the process level of the same steps, an overview, the
-  origin of a result, and what the routes of what keeps the operation running answer (ADR-0063,
-  ADR-0064, ADR-0067, ADR-0068, ADR-0121). The web app's tests hold what it
+  origin of a result, what the routes of what keeps the operation running answer, and the
+  spend per step and a model trial as their routes answer (ADR-0063, ADR-0064, ADR-0067,
+  ADR-0068, ADR-0121, ADR-0148, ADR-0149). The web app's tests hold what it
   draws to these glyphs; `tests/components/reporting/test_run_level.py` fails when the file
   differs from what this script writes. The web app itself reads the vocabulary and every
   level from the surface.
@@ -268,6 +269,7 @@ def web_fixtures() -> str:
         "governance": governance_fixtures(at, process_level(process).process),
         "operation": operation_fixtures(),
         "acting": acting_fixtures(at),
+        "spend": spend_fixtures(),
     }
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
@@ -807,6 +809,192 @@ def operation_fixtures() -> dict[str, object]:
         "backup": backup_view(watched),
         "signals": {"signals": [signal_view(c, j) for c, j in signals]},
         "daily_report": report_view(daily, "idn_owner"),
+    }
+
+
+def spend_fixtures() -> dict[str, object]:
+    """What the routes of spend per step and of model trials answer (ADR-0148, ADR-0149), as
+    the documents of the types they answer with: a run of three steps, the same task run with
+    another model beside it, the process over a window, a trial of two candidates with one
+    case whose results differ, and the trials offered."""
+    from datetime import UTC, datetime, timedelta
+
+    from taktus.components.accounting.application.service import (
+        CandidateReport,
+        CaseOutcome,
+        Offer,
+        ProcessSpend,
+        RunComparison,
+        RunSpend,
+        StepDifference,
+        StepSpend,
+        Trial,
+        TrialCase,
+        TrialRead,
+        TrialReport,
+    )
+    from taktus.components.accounting.domain.service import Meter
+    from taktus.shared.v1 import Compression, PriceKinds
+
+    at = datetime(2026, 10, 28, 9, 0, tzinfo=UTC)
+
+    def step(
+        step_id: str,
+        method: str,
+        amount: float | None,
+        takte: float,
+        kinds: dict[str, int],
+        result: str,
+        turns: int = 0,
+        compression: Compression | None = None,
+    ) -> StepSpend:
+        tokens = {"draft-model-20261001": PriceKinds(**kinds)} if kinds else {}
+        return StepSpend(
+            step_id=step_id,
+            method=method,
+            finished=1,
+            meter=Meter(
+                tokens=tokens,
+                steps={method: 1},
+                turns=turns,
+                compression=compression,
+                compute_seconds={} if kinds else {"cpu.small": 1.5},
+            ),
+            amount=amount,
+            takte=takte,
+            outcome="succeeded",
+            result="sha256:" + result * 64,
+        )
+
+    left = RunSpend(
+        run_id="run_replies_1",
+        process_version="replies@3",
+        currency="usd",
+        table="2026-10",
+        steps=(
+            step("read", "rule", 0.0, 1.0, {}, "a"),
+            step(
+                "draft",
+                "llm",
+                0.0184,
+                12.4,
+                {"input": 1200, "cache_read": 8000, "cache_write": 400, "output": 310},
+                "b",
+                turns=3,
+                compression=Compression(before=12000, after=9600),
+            ),
+            step("check", "llm", 0.0021, 1.6, {"input": 420, "output": 12}, "c", turns=1),
+        ),
+        amount=0.0205,
+        takte=15.0,
+        calibration="uncalibrated",
+    )
+    right = left.model_copy(
+        update={
+            "run_id": "run_replies_2",
+            "steps": (
+                left.steps[0],
+                step("draft", "llm", 0.0071, 5.2, {"input": 1180, "output": 280}, "d", turns=2),
+                left.steps[2],
+            ),
+            "amount": 0.0092,
+            "takte": 7.8,
+        }
+    )
+    comparison = RunComparison(
+        left=left,
+        right=right,
+        steps=(
+            StepDifference(
+                step_id="read", amount=0.0, tokens_in=0, tokens_out=0, turns=0, same_result=True
+            ),
+            StepDifference(
+                step_id="draft",
+                amount=-0.0113,
+                tokens_in=-8420,
+                tokens_out=-30,
+                turns=-1,
+                same_result=False,
+            ),
+            StepDifference(
+                step_id="check", amount=0.0, tokens_in=0, tokens_out=0, turns=0, same_result=True
+            ),
+        ),
+        amount=-0.0113,
+    )
+    process = ProcessSpend(
+        process_id="replies",
+        since=at - timedelta(days=30),
+        until=at,
+        runs=14,
+        steps=tuple(s.model_copy(update={"finished": 14}) for s in left.steps),
+        amounts={"usd": 0.287},
+    )
+    candidates = ("model.fast", "model.careful")
+    outcome = {
+        "model.fast": CaseOutcome(
+            case="replies/late",
+            run_id="trl_1-0-0",
+            state="finished",
+            passed=True,
+            amount=0.0071,
+            tokens_in=1180,
+            tokens_out=280,
+            wall_seconds=4.2,
+            results={"draft": "sha256:" + "d" * 64},
+        ),
+        "model.careful": CaseOutcome(
+            case="replies/late",
+            run_id="trl_1-1-0",
+            state="finished",
+            passed=True,
+            amount=0.0184,
+            tokens_in=9600,
+            tokens_out=310,
+            wall_seconds=9.8,
+            results={"draft": "sha256:" + "b" * 64},
+        ),
+    }
+    trial = Trial(
+        id="trl_1",
+        purpose="drafting",
+        candidates=candidates,
+        occasion="introduced",
+        started_at=at,
+        cases=(TrialCase(key="replies/late", process_version="replies@3", case="late"),),
+        runs={m: {"replies/late": outcome[m].run_id} for m in candidates},
+    )
+    report = TrialReport(
+        purpose="drafting",
+        candidates=tuple(
+            CandidateReport(
+                model=m,
+                cases=(outcome[m],),
+                passed=1,
+                amount=outcome[m].amount,
+                currency="usd",
+                tokens_in=outcome[m].tokens_in,
+                tokens_out=outcome[m].tokens_out,
+                wall_seconds=outcome[m].wall_seconds or 0.0,
+            )
+            for m in candidates
+        ),
+        differing=("replies/late",),
+    )
+    offer = Offer(
+        purpose="triage",
+        occasion="changed",
+        model="model.fast",
+        candidates=candidates,
+        reason="model.fast answered as fast-20261001 and answers as fast-20261101 since then",
+        since=at - timedelta(days=2),
+    )
+    return {
+        "run": left.document(),
+        "comparison": comparison.document(),
+        "process": process.document(),
+        "trial": TrialRead(trial=trial, report=report, settled=True).document(),
+        "trials": {"trials": [trial.document()], "offers": [offer.document()]},
     }
 
 

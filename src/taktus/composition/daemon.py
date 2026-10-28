@@ -60,6 +60,7 @@ from taktus.adapters.driven.postgres import (
 from taktus.adapters.driven.postgres.url import described
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
+from taktus.components.accounting.application.service import SpendHandler, TrialReports
 from taktus.components.catalog.application.service import (
     RecordRemovalResultHandler,
     RunConformanceHandler,
@@ -187,10 +188,12 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
+from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
 from taktus.composition.stops import StopsConfirmed
 from taktus.composition.takeover_in_channel import TakeoverInChannel
 from taktus.composition.traces import traces_tick
+from taktus.composition.trials import Trials
 from taktus.composition.triggers import Triggers
 from taktus.ports.clock import Clock
 from taktus.ports.configuration import Configuration, ConfigurationError, Secret
@@ -284,6 +287,10 @@ class Wired:
     evaluations: Evaluations
     """A change held to the process's evaluation cases, and drift measured on them, which the
     scheduler advances (ADR-0134)."""
+    spend: SpendHandler
+    """Where a run and a process spend, per step, and two runs side by side (ADR-0148)."""
+    trials: Trials
+    """A model tried on fixed cases, and the trials offered (ADR-0149)."""
     gallery: Gallery
     """The gallery a person chooses a first process from, read from its directory on every
     request (UC-10.4, ADR-0136)."""
@@ -740,6 +747,24 @@ async def wire(
                 ids=ids,
                 outward=outward_by(pools),
             )
+            # Where a process spends, and a model tried on fixed cases (ADR-0148, ADR-0149).
+            spend = SpendHandler(ledger, objects, persistence)
+            trials = Trials(
+                processes=PostgresRepository(persistence, Process),
+                versions=PostgresRepository(persistence, ProcessVersion),
+                runs=runs,
+                evaluations=evaluations,
+                commission=commission,
+                engine=engine,
+                identities=identities,
+                models=pools.models,
+                reports=TrialReports(ledger, spend, persistence),
+                ledger=ledger,
+                objects=objects,
+                work=persistence,
+                clock=clock,
+                ids=ids,
+            )
             proposal_acts = ProposalActs(
                 proposals=proposals,
                 processes=PostgresRepository(persistence, Process),
@@ -764,6 +789,18 @@ async def wire(
                     work=persistence,
                     acts=proposal_acts,
                     proposals=proposals,
+                    deliveries=owner.deliveries,
+                    secrets=owner.secrets,
+                    clock=clock,
+                )
+            )
+            # Where a run or a process spends, asked there too (ADR-0148).
+            owner.answers.spend_with(
+                SpendInChannel(
+                    channels=PostgresRepository(persistence, OwnerChannel),
+                    runs=runs,
+                    work=persistence,
+                    spend=spend,
                     deliveries=owner.deliveries,
                     secrets=owner.secrets,
                     clock=clock,
@@ -859,6 +896,8 @@ async def wire(
                 proposals=proposals,
                 proposal_acts=proposal_acts,
                 evaluations=evaluations,
+                spend=spend,
+                trials=trials,
                 gallery=Gallery(
                     settings.gallery_directory,
                     proposals,

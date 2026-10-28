@@ -19,12 +19,30 @@ from taktus.components.accounting.application.service.takt_rate import (
     TaktRateHandler,
     TaktRateOf,
 )
+from taktus.components.accounting.application.service.trials import (
+    OCCASIONS,
+    CandidateReport,
+    CaseOutcome,
+    Offer,
+    ReportTrial,
+    Trial,
+    TrialCase,
+    TrialError,
+    TrialRead,
+    TrialReport,
+    TrialReports,
+)
 
 __all__ = [
+    "OCCASIONS",
+    "CandidateReport",
+    "CaseOutcome",
     "CompareRuns",
     "CostOfRun",
     "CostOfRunHandler",
+    "Offer",
     "ProcessSpend",
+    "ReportTrial",
     "RunComparison",
     "RunCost",
     "RunSpend",
@@ -36,4 +54,10 @@ __all__ = [
     "TaktRate",
     "TaktRateHandler",
     "TaktRateOf",
+    "Trial",
+    "TrialCase",
+    "TrialError",
+    "TrialRead",
+    "TrialReport",
+    "TrialReports",
 ]

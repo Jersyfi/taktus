@@ -754,7 +754,7 @@
             ],
             "text": "Process Example (example@1) at autonomy level 2: 1 run working, 1 waiting; running now: score in run_example, draft in run_example, review in run_example.",
             "exactness": {
-              "process_version": "six-times-seven@1",
+              "process_version": "six-times-seven@2",
               "name": "Six times seven, checked",
               "parts": [
                 {
@@ -1278,7 +1278,7 @@
     ],
     "summary": "1 of 10 steps completed. Now: score (statistics), draft (language model), review (person), pipeline (wait). It waits for a person.",
     "exactness": {
-      "process_version": "six-times-seven@1",
+      "process_version": "six-times-seven@2",
       "name": "Six times seven, checked",
       "parts": [
         {
@@ -1755,7 +1755,7 @@
     ],
     "summary": "10 steps: 6 reproducible, 2 variable, 1 with a person, 1 waiting. 3 steps running now.",
     "exactness": {
-      "process_version": "six-times-seven@1",
+      "process_version": "six-times-seven@2",
       "name": "Six times seven, checked",
       "parts": [
         {
@@ -3175,6 +3175,546 @@
         }
       ],
       "summary": "12 runs ended in 3 variants; 58 % took the designed path."
+    }
+  },
+  "spend": {
+    "run": {
+      "run_id": "run_replies_1",
+      "process_version": "replies@3",
+      "currency": "usd",
+      "table": "2026-10",
+      "steps": [
+        {
+          "step_id": "read",
+          "method": "rule",
+          "finished": 1,
+          "meter": {
+            "tokens": {},
+            "tokens_unattributed": 0,
+            "compute_seconds": {
+              "cpu.small": 1.5
+            },
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "rule": 1
+            },
+            "currency_reported": {},
+            "turns": 0
+          },
+          "amount": 0.0,
+          "unpriced": [],
+          "takte": 1.0,
+          "outcome": "succeeded",
+          "result": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "step_id": "draft",
+          "method": "llm",
+          "finished": 1,
+          "meter": {
+            "tokens": {
+              "draft-model-20261001": {
+                "input": 1200,
+                "output": 310,
+                "cache_read": 8000,
+                "cache_write": 400
+              }
+            },
+            "tokens_unattributed": 0,
+            "compute_seconds": {},
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "llm": 1
+            },
+            "currency_reported": {},
+            "turns": 3,
+            "compression": {
+              "before": 12000,
+              "after": 9600
+            }
+          },
+          "amount": 0.0184,
+          "unpriced": [],
+          "takte": 12.4,
+          "outcome": "succeeded",
+          "result": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "step_id": "check",
+          "method": "llm",
+          "finished": 1,
+          "meter": {
+            "tokens": {
+              "draft-model-20261001": {
+                "input": 420,
+                "output": 12
+              }
+            },
+            "tokens_unattributed": 0,
+            "compute_seconds": {},
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "llm": 1
+            },
+            "currency_reported": {},
+            "turns": 1
+          },
+          "amount": 0.0021,
+          "unpriced": [],
+          "takte": 1.6,
+          "outcome": "succeeded",
+          "result": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "amount": 0.0205,
+      "unpriced": [],
+      "takte": 15.0,
+      "calibration": "uncalibrated"
+    },
+    "comparison": {
+      "left": {
+        "run_id": "run_replies_1",
+        "process_version": "replies@3",
+        "currency": "usd",
+        "table": "2026-10",
+        "steps": [
+          {
+            "step_id": "read",
+            "method": "rule",
+            "finished": 1,
+            "meter": {
+              "tokens": {},
+              "tokens_unattributed": 0,
+              "compute_seconds": {
+                "cpu.small": 1.5
+              },
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "rule": 1
+              },
+              "currency_reported": {},
+              "turns": 0
+            },
+            "amount": 0.0,
+            "unpriced": [],
+            "takte": 1.0,
+            "outcome": "succeeded",
+            "result": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "step_id": "draft",
+            "method": "llm",
+            "finished": 1,
+            "meter": {
+              "tokens": {
+                "draft-model-20261001": {
+                  "input": 1200,
+                  "output": 310,
+                  "cache_read": 8000,
+                  "cache_write": 400
+                }
+              },
+              "tokens_unattributed": 0,
+              "compute_seconds": {},
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "llm": 1
+              },
+              "currency_reported": {},
+              "turns": 3,
+              "compression": {
+                "before": 12000,
+                "after": 9600
+              }
+            },
+            "amount": 0.0184,
+            "unpriced": [],
+            "takte": 12.4,
+            "outcome": "succeeded",
+            "result": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            "step_id": "check",
+            "method": "llm",
+            "finished": 1,
+            "meter": {
+              "tokens": {
+                "draft-model-20261001": {
+                  "input": 420,
+                  "output": 12
+                }
+              },
+              "tokens_unattributed": 0,
+              "compute_seconds": {},
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "llm": 1
+              },
+              "currency_reported": {},
+              "turns": 1
+            },
+            "amount": 0.0021,
+            "unpriced": [],
+            "takte": 1.6,
+            "outcome": "succeeded",
+            "result": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ],
+        "amount": 0.0205,
+        "unpriced": [],
+        "takte": 15.0,
+        "calibration": "uncalibrated"
+      },
+      "right": {
+        "run_id": "run_replies_2",
+        "process_version": "replies@3",
+        "currency": "usd",
+        "table": "2026-10",
+        "steps": [
+          {
+            "step_id": "read",
+            "method": "rule",
+            "finished": 1,
+            "meter": {
+              "tokens": {},
+              "tokens_unattributed": 0,
+              "compute_seconds": {
+                "cpu.small": 1.5
+              },
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "rule": 1
+              },
+              "currency_reported": {},
+              "turns": 0
+            },
+            "amount": 0.0,
+            "unpriced": [],
+            "takte": 1.0,
+            "outcome": "succeeded",
+            "result": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "step_id": "draft",
+            "method": "llm",
+            "finished": 1,
+            "meter": {
+              "tokens": {
+                "draft-model-20261001": {
+                  "input": 1180,
+                  "output": 280
+                }
+              },
+              "tokens_unattributed": 0,
+              "compute_seconds": {},
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "llm": 1
+              },
+              "currency_reported": {},
+              "turns": 2
+            },
+            "amount": 0.0071,
+            "unpriced": [],
+            "takte": 5.2,
+            "outcome": "succeeded",
+            "result": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          {
+            "step_id": "check",
+            "method": "llm",
+            "finished": 1,
+            "meter": {
+              "tokens": {
+                "draft-model-20261001": {
+                  "input": 420,
+                  "output": 12
+                }
+              },
+              "tokens_unattributed": 0,
+              "compute_seconds": {},
+              "quota_units": 0.0,
+              "storage_bytes": 0,
+              "steps": {
+                "llm": 1
+              },
+              "currency_reported": {},
+              "turns": 1
+            },
+            "amount": 0.0021,
+            "unpriced": [],
+            "takte": 1.6,
+            "outcome": "succeeded",
+            "result": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ],
+        "amount": 0.0092,
+        "unpriced": [],
+        "takte": 7.8,
+        "calibration": "uncalibrated"
+      },
+      "steps": [
+        {
+          "step_id": "read",
+          "amount": 0.0,
+          "tokens_in": 0,
+          "tokens_out": 0,
+          "turns": 0,
+          "same_result": true
+        },
+        {
+          "step_id": "draft",
+          "amount": -0.0113,
+          "tokens_in": -8420,
+          "tokens_out": -30,
+          "turns": -1,
+          "same_result": false
+        },
+        {
+          "step_id": "check",
+          "amount": 0.0,
+          "tokens_in": 0,
+          "tokens_out": 0,
+          "turns": 0,
+          "same_result": true
+        }
+      ],
+      "amount": -0.0113,
+      "comparable": []
+    },
+    "process": {
+      "process_id": "replies",
+      "since": "2026-09-28T09:00:00Z",
+      "until": "2026-10-28T09:00:00Z",
+      "runs": 14,
+      "steps": [
+        {
+          "step_id": "read",
+          "method": "rule",
+          "finished": 14,
+          "meter": {
+            "tokens": {},
+            "tokens_unattributed": 0,
+            "compute_seconds": {
+              "cpu.small": 1.5
+            },
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "rule": 1
+            },
+            "currency_reported": {},
+            "turns": 0
+          },
+          "amount": 0.0,
+          "unpriced": [],
+          "takte": 1.0,
+          "outcome": "succeeded",
+          "result": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "step_id": "draft",
+          "method": "llm",
+          "finished": 14,
+          "meter": {
+            "tokens": {
+              "draft-model-20261001": {
+                "input": 1200,
+                "output": 310,
+                "cache_read": 8000,
+                "cache_write": 400
+              }
+            },
+            "tokens_unattributed": 0,
+            "compute_seconds": {},
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "llm": 1
+            },
+            "currency_reported": {},
+            "turns": 3,
+            "compression": {
+              "before": 12000,
+              "after": 9600
+            }
+          },
+          "amount": 0.0184,
+          "unpriced": [],
+          "takte": 12.4,
+          "outcome": "succeeded",
+          "result": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "step_id": "check",
+          "method": "llm",
+          "finished": 14,
+          "meter": {
+            "tokens": {
+              "draft-model-20261001": {
+                "input": 420,
+                "output": 12
+              }
+            },
+            "tokens_unattributed": 0,
+            "compute_seconds": {},
+            "quota_units": 0.0,
+            "storage_bytes": 0,
+            "steps": {
+              "llm": 1
+            },
+            "currency_reported": {},
+            "turns": 1
+          },
+          "amount": 0.0021,
+          "unpriced": [],
+          "takte": 1.6,
+          "outcome": "succeeded",
+          "result": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "amounts": {
+        "usd": 0.287
+      },
+      "unpriced": []
+    },
+    "trial": {
+      "trial": {
+        "id": "trl_1",
+        "purpose": "drafting",
+        "candidates": [
+          "model.fast",
+          "model.careful"
+        ],
+        "occasion": "introduced",
+        "started_at": "2026-10-28T09:00:00Z",
+        "cases": [
+          {
+            "key": "replies/late",
+            "process_version": "replies@3",
+            "case": "late"
+          }
+        ],
+        "runs": {
+          "model.fast": {
+            "replies/late": "trl_1-0-0"
+          },
+          "model.careful": {
+            "replies/late": "trl_1-1-0"
+          }
+        },
+        "left_out": {}
+      },
+      "report": {
+        "purpose": "drafting",
+        "candidates": [
+          {
+            "model": "model.fast",
+            "cases": [
+              {
+                "case": "replies/late",
+                "run_id": "trl_1-0-0",
+                "state": "finished",
+                "passed": true,
+                "amount": 0.0071,
+                "tokens_in": 1180,
+                "tokens_out": 280,
+                "wall_seconds": 4.2,
+                "results": {
+                  "draft": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                }
+              }
+            ],
+            "passed": 1,
+            "amount": 0.0071,
+            "currency": "usd",
+            "tokens_in": 1180,
+            "tokens_out": 280,
+            "wall_seconds": 4.2,
+            "unpriced": []
+          },
+          {
+            "model": "model.careful",
+            "cases": [
+              {
+                "case": "replies/late",
+                "run_id": "trl_1-1-0",
+                "state": "finished",
+                "passed": true,
+                "amount": 0.0184,
+                "tokens_in": 9600,
+                "tokens_out": 310,
+                "wall_seconds": 9.8,
+                "results": {
+                  "draft": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                }
+              }
+            ],
+            "passed": 1,
+            "amount": 0.0184,
+            "currency": "usd",
+            "tokens_in": 9600,
+            "tokens_out": 310,
+            "wall_seconds": 9.8,
+            "unpriced": []
+          }
+        ],
+        "differing": [
+          "replies/late"
+        ]
+      },
+      "settled": true
+    },
+    "trials": {
+      "trials": [
+        {
+          "id": "trl_1",
+          "purpose": "drafting",
+          "candidates": [
+            "model.fast",
+            "model.careful"
+          ],
+          "occasion": "introduced",
+          "started_at": "2026-10-28T09:00:00Z",
+          "cases": [
+            {
+              "key": "replies/late",
+              "process_version": "replies@3",
+              "case": "late"
+            }
+          ],
+          "runs": {
+            "model.fast": {
+              "replies/late": "trl_1-0-0"
+            },
+            "model.careful": {
+              "replies/late": "trl_1-1-0"
+            }
+          },
+          "left_out": {}
+        }
+      ],
+      "offers": [
+        {
+          "purpose": "triage",
+          "occasion": "changed",
+          "model": "model.fast",
+          "candidates": [
+            "model.fast",
+            "model.careful"
+          ],
+          "reason": "model.fast answered as fast-20261001 and answers as fast-20261101 since then",
+          "since": "2026-10-26T09:00:00Z"
+        }
+      ]
     }
   }
 }

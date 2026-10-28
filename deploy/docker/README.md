@@ -5,6 +5,7 @@
 | `compose.yml` | **the deployment shape**: Taktus and PostgreSQL, two containers for the control plane (ADR-0002). No worker: a worker is configured by endpoint, or started by the execution port (`TAKTUS_EXECUTION`) |
 | `compose.reference-worker.yml` | **development only**, layered over `compose.yml`: the reference worker in its own image, reached by endpoint, for trying a bundle out and for `verify.sh` (`make up-dev`) |
 | `Dockerfile` | the control plane image, every role, selected at start by `TAKTUS_ROLES`; carries no worker code (DEC-0011). The web app is built in a stage of its own with Node, and only its static build is carried over; the runtime holds no Node (ADR-0063). `npm ci` gives up a request that stalls after 30 s and retries it, so that a stalled download is retried rather than stopping the build (#360). It runs as user 999, pinned by number because the chart runs it as that number (`deploy/k8s/`). On a version tag, `.github/workflows/images.yml` builds it and each worker's image for the registry the repository names |
+| `connectors.py` | writes `compose.connectors.yml` from the operator's `connectors.json` — a service per further connector, its credentials as secret files, and `TAKTUS_CONNECTORS` on the `taktus` service — which `make up`, `make up-dev` and `make start` lay over `compose.yml` (see *Connectors*). Both files are the operator's, ignored by git; `connectors.example.json` is the shape |
 | `secrets.sh` | writes the two secret files `compose.yml` reads, once, under `secrets/` (ignored by git); the directory is closed to other host users and the files are readable, because the containers read them as their own user |
 | `start.py` | `make start`, the one command of a first install (ADR-0136 §6): what `make up` does, then `taktusctl first start` — the first tenant, its administrator and the account key, printed once — and a clock that runs until the tenant's first rehearsal has finished; it writes what it measured to `first-process.json`, which is never committed |
 | `first-process.sh` | `make verify-first-process` (ADR-0136 §7): `start.py` from nothing under a compose project of its own, then the gallery, a proposal and its rehearsal through the HTTP surface; fails where the rehearsal did not finish within ten minutes of the install's start |
@@ -95,6 +96,31 @@ up-dev` layers the reference worker in its own image over the deployment:
 ```bash
 make up-dev
 ```
+
+## Connectors
+
+A connector serves a capability over MCP, such as payments or a cloud bill (ADR-0150). On one
+server each runs in a container of its own, as on a cluster (`deploy/k8s/README.md` §2,
+`connectors.others`). Compose cannot repeat a service for each entry of a list, so
+`connectors.py` writes the services from the operator's list.
+
+1. Copy `connectors.example.json` to `connectors.json` and keep the entries you use. Each names
+   the connector (`name`), its `capability` — its label in `TAKTUS_CONNECTORS` — either a
+   `module` run from the control plane's image or an `image` by version, its `port`, `args`,
+   and each credential as `{name, file}`. Optional: `healthPath` (`/health`; empty for none).
+2. Write each credential's value into the file it names under `secrets/`. `CREDENTIALS.md`
+   says what each parameter needs. The value never enters `connectors.json`.
+3. `make up`, as always.
+
+`make up`, `make up-dev` and `make start` run `connectors.py` first. It writes
+`compose.connectors.yml` and lays it over `compose.yml`. Each connector becomes the service
+`connector-<name>`, publishes no port, and reads each credential as a compose secret, its
+path in `TAKTUS_CREDENTIAL_<NAME>_FILE`. The `taktus` service receives `TAKTUS_CONNECTORS`
+naming every connector and starts after them. Both files are the operator's, and git ignores
+them. A list that names a connector, a capability or a credential twice, a module and an image
+at once, or no port is refused before anything starts. So is `TAKTUS_CONNECTORS` set in
+`taktus.env` beside the list: the list alone names the connectors. Without `connectors.json`
+nothing is added, and a `compose.connectors.yml` it wrote earlier is removed.
 
 ## Models, and a gateway in front of them
 

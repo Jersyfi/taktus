@@ -273,6 +273,10 @@ class ReplayModelPool:
         resolved = await self.resolve(purpose)
         return [] if resolved is None else [resolved]
 
+    async def bound(self, adapter: str) -> ResolvedModel | None:
+        """A replay binds nothing: it answers every purpose from its recording."""
+        return None
+
 
 # --- worker ---------------------------------------------------------------------------------
 
