@@ -509,6 +509,8 @@ PROPOSAL_DECIDED = "proposal.decided"
 """A person's decision on a step proposed at level 1 or 2 (ADR-0110)."""
 RUN_LOWERED = "run.lowered"
 """A run took on a level its version was lowered to by rule (ADR-0110)."""
+RETRIED = "step.retried"
+"""A step admitted again after it failed: a retry, as a fact of its own (ADR-0147 §4)."""
 
 
 @dataclass(frozen=True)
@@ -3704,7 +3706,9 @@ class RunEngine:
         refuse it: for want of an estimate, or because the reservation does not fit. What is
         reserved is the estimate scaled by the measured error of its adapter; the ledger
         carries the estimate on `step.admitted` and, where the two differ, the reservation on
-        `step.reserved`."""
+        `step.reserved`. A step admitted again after it failed is a retry, recorded as
+        `step.retried` in the same transaction (ADR-0147 §4)."""
+        retried = step_run.state is StepState.FAILED
         adapter = demand.adapter or step_run.adapter
         unpriced = None if demand.quantities is None else self._unpriced(run, demand.quantities)
         if unpriced is not None:
@@ -3808,7 +3812,16 @@ class RunEngine:
             reason=None,
             **changes,
         )
-        run = await self._commit(run.with_step_run(step_run), "step.admitted", step=step_run)
+        run = await self._commit(
+            run.with_step_run(step_run),
+            "step.admitted",
+            step=step_run,
+            before=(
+                ({"kind": RETRIED, "step": step_run, "outcome": "after_failure"},)
+                if retried
+                else ()
+            ),
+        )
         if reservation != demand.quantities:
             run = await self._commit(
                 run, "step.reserved", step=step_run, outcome="capped" if capped else "calibrated"

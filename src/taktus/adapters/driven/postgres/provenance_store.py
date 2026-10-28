@@ -36,6 +36,28 @@ CHAIN = text(
 )
 
 
+# Forward from one step run, in one statement: every record an input of which names the step
+# run, then — recursively — every record that read one of those. UNION, so that a record
+# reached on two paths appears once; oldest ledger entry first.
+DERIVED = text(
+    """
+    WITH RECURSIVE walk AS (
+        SELECT p.* FROM provenance p
+        WHERE p.tenant = :tenant
+          AND p.inputs @> jsonb_build_array(
+                jsonb_build_object('run_id', CAST(:run_id AS text),
+                                   'step_id', CAST(:step_id AS text)))
+        UNION
+        SELECT p.* FROM provenance p
+        JOIN walk w ON p.tenant = w.tenant
+        WHERE p.inputs @> jsonb_build_array(
+                jsonb_build_object('run_id', w.run_id, 'step_id', w.step_id))
+    )
+    SELECT * FROM walk ORDER BY ledger_seq
+    """
+)
+
+
 class PostgresProvenanceStore:
     """The provenance store port over `provenance`. Written once, twice over: the application
     role may not update or delete, and a trigger rejects it for everyone but a superuser
@@ -88,6 +110,13 @@ class PostgresProvenanceStore:
         connection = self._persistence.connection(tenant)
         rows = await connection.execute(
             CHAIN, {"tenant": tenant, "run_id": run_id, "artifact_id": artifact_id}
+        )
+        return [_record(row) for row in rows]
+
+    async def derived(self, tenant: Tenant, run_id: str, step_id: str) -> Sequence[Provenance]:
+        connection = self._persistence.connection(tenant)
+        rows = await connection.execute(
+            DERIVED, {"tenant": tenant, "run_id": run_id, "step_id": step_id}
         )
         return [_record(row) for row in rows]
 

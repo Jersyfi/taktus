@@ -581,7 +581,10 @@ role, a trigger against everything else, one record per step run by unique key
 (`migrations/versions/0002_provenance.py`).
 
 Following inputs from the record that produced an artifact leads back through every step run
-that contributed to it, across runs. That walk is one query (`ProvenanceQuery.chain`), and
+that contributed to it, across runs. That walk is one query (`ProvenanceQuery.chain`). The
+walk forward — every record that read a step run's result, and every record that read one of
+those — is one query too (`ProvenanceStore.derived`), which the view of where a wrong result
+went reads (ADR-0147 §3). And
 `ProvenanceQuery.verify` holds a run's records against the run and against the ledger: every
 completed step has exactly one record, every input names a record that lists what was read,
 every record agrees with the entry it names. Growth is bounded and measured: one record per
