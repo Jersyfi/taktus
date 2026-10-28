@@ -143,3 +143,22 @@ async def test_without_a_build_no_web_app_is_served(prefix: str, tmp_path: Path)
         transport=httpx.ASGITransport(app=app), base_url="http://taktus.test"
     ) as http:
         assert (await http.get(f"{base}/app/")).status_code == 404
+
+
+async def test_the_stage_view_answers_a_run_as_stages_and_an_unseen_run_as_absent(
+    client: Client,
+) -> None:
+    http, given, base = client
+    run = await a_run(given)
+    elsewhere = run.model_copy(update={"id": "run_2", "tenant": "other"})
+    async with given.persistence.transaction("other"):
+        await given.runs.put("other", elsewhere)
+    assert (await http.get(f"{base}/levels/runs/run_1/stages")).status_code == 401
+    _, key = await given.identity.person(TENANT, "idn_ada")
+    seen = await http.get(f"{base}/levels/runs/run_1/stages", headers=bearer(key))
+    assert seen.status_code == 200
+    body = seen.json()
+    assert [s["name"] for s in body["stages"]] == ["a"]
+    assert body["link"] == "/levels/runs/run_1"
+    unseen = await http.get(f"{base}/levels/runs/run_2/stages", headers=bearer(key))
+    assert unseen.status_code == 404
