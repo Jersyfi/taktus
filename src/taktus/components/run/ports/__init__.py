@@ -23,6 +23,7 @@ from taktus.components.run.ports.repetition import (
 from taktus.components.run.ports.replay import Replay
 from taktus.components.run.ports.residency import Residency
 from taktus.components.run.ports.sources import Sources
+from taktus.components.run.ports.statements import Statements
 from taktus.components.run.ports.workers import WorkerPool
 
 __all__ = [
@@ -52,6 +53,7 @@ __all__ = [
     "Residency",
     "Sources",
     "Standing",
+    "Statements",
     "Verdict",
     "WorkerPool",
 ]

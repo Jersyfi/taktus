@@ -159,7 +159,7 @@ import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 from taktus.components.run.application.query.recordings import RecordedResponses
@@ -175,6 +175,7 @@ from taktus.components.run.domain.model import (
     BacklogRule,
     Cause,
     Checkpoint,
+    CheckRead,
     CheckRule,
     ClaimLost,
     ClassificationRule,
@@ -228,6 +229,7 @@ from taktus.components.run.domain.service import (
     anchoring,
     autonomy,
     blocked,
+    checking,
     frame,
     interfaces,
     messages,
@@ -256,6 +258,7 @@ from taktus.components.run.ports import (
     Cap,
     ConnectorPool,
     Decisions,
+    Draft,
     Levels,
     Maturities,
     MessageRules,
@@ -269,6 +272,7 @@ from taktus.components.run.ports import (
     Replay,
     Residency,
     Sources,
+    Statements,
     Verdict,
     WorkerPool,
 )
@@ -345,6 +349,8 @@ from taktus.shared.v1 import (
     Anchor,
     Artifact,
     AutonomyLevel,
+    Check,
+    CheckKind,
     Consumption,
     ConsumptionQuantities,
     Digest,
@@ -671,6 +677,7 @@ class RunEngine:
         masking: Masking | None = None,
         stops: Stops | None = None,
         messages: Messages | None = None,
+        statements: Statements | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -714,6 +721,9 @@ class RunEngine:
         """The tenant's stops of adapters (ADR-0138). None: no adapter is stopped, and a stop
         reaches a run only by its own identifier."""
         self._messages = messages
+        self._statements = statements
+        """Where `{"$run": "exactness"}` reads the statement of the run's version (UC-6.9). None:
+        a step that names it fails, as a reference that cannot be resolved does."""
         """The tenant's rules for outward messages and the cases a person answered in
         (ADR-0142). None: the shipped rules, and no case was answered."""
         """What masks every secret value the instance holds in a line. None: a trace is kept
@@ -2359,6 +2369,7 @@ class RunEngine:
         held: autonomy.Held,
         anchors: tuple[Anchor, ...],
         asked: Ask | None = None,
+        drafted: Callable[[int, date], Sequence[Draft]] | None = None,
     ) -> tuple[Run, StepRun]:
         """The step's act is anchored: one decision request per anchor, and one more where the
         process asks itself (ADR-0088), and the step waits before anything of it starts. A
@@ -2368,6 +2379,13 @@ class RunEngine:
         due = self._clock.now().date() + timedelta(days=self._options.decision_days)
         drafts = [anchoring.draft(run, step, held, a, round=round, due=due) for a in anchors]
         named = "; ".join(f"{a.class_} anchor {a.id}: {a.act}" for a in anchors)
+        if drafted is not None:
+            # A value above an approval's threshold, held for its role (ADR-0152).
+            approvals = list(drafted(round, due))
+            drafts.extend(approvals)
+            named = "; ".join(
+                filter(None, [named, *(f"approval by the role {d.decider}" for d in approvals)])
+            )
         try:
             if self._decisions is None:
                 raise NotRaised("no decision requests can be raised here")
@@ -3445,6 +3463,9 @@ class RunEngine:
                 answered_by = adapter
                 if adapter is not None:
                     step_run = step_run.model_copy(update={"adapter": adapter})
+                if step.checks:
+                    # The value counts only when the checks it declares pass (ADR-0152).
+                    trace = await self._checked(run, step, step_run, work, value, trace, span)
                 content = json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
                 result_digest = await self._objects.put(content)
                 artifacts = (
@@ -3477,6 +3498,27 @@ class RunEngine:
                 run.with_step_run(step_run), "step.finished", step=step_run, outcome="failed"
             )
             return run, step_run
+        except _ChecksFailed as failure:
+            # A check disagreed: nothing counts, no dependent step reads the value, and the
+            # run escalates with the check, its parameters and what it compared (ADR-0014).
+            span.record_failure("check failed")
+            run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
+            step_run = step_run.to(
+                StepState.FAILED,
+                reason=failure.reason,
+                consumption=consumption,
+                finished_at=self._clock.now(),
+            )
+            run = await self._commit(
+                run.with_step_run(step_run), "step.finished", step=step_run, outcome=CHECK_FAILED
+            )
+            return run, step_run
+        except _ToApprove as approval:
+            # The value is above an approval's threshold: it counts once a person of the role
+            # confirms it, and the step waits at its boundary until then (UC-4.13).
+            run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
+            step_run = step_run.model_copy(update={"consumption": consumption})
+            return await self._anchor(run, step, step_run, held, (), drafted=approval.drafts)
         except _StepFailed as failure:
             span.record_failure(failure.outcome)
             run, step_run = await self._close_block(run, step_run, **self._ended(step_run))
@@ -3537,8 +3579,220 @@ class RunEngine:
             outcome=REHEARSED if trace.rehearsed else "succeeded",
             trace=trace,
         )
+        if step.checks and not run.rehearsal:
+            run = await self._sample(run, step, step_run)
         _measured(span, step_run)
         return run, step_run
+
+    async def _checked(
+        self,
+        run: Run,
+        step: Step,
+        step_run: StepRun,
+        work: Work,
+        value: Any,
+        trace: Trace,
+        span: Span,
+    ) -> Trace:
+        """The step's declared checks, applied to its value before it counts (ADR-0152). Every
+        check a rule decides runs; one that fails raises `_ChecksFailed` naming every failure.
+        Once all of them pass, an approval whose threshold the value exceeds raises `_ToApprove`
+        unless a person already confirmed this very value. What a check read through a
+        connector joins the step's trace, so that its provenance record names it with the
+        moment it was read (ADR-0021)."""
+        control = control_of(step, run.work.get(step.id), run.inputs)
+        given = control.checking.select if control.checking is not None else None
+        reads = control.checking.reads if control.checking is not None else {}
+        digest = _digest(_canonical(value))
+        try:
+            judged = select(value, given)
+        except KeyError:
+            raise _ChecksFailed(
+                f"step {step.id}: its checks judge the part {given!r} of its result, which it "
+                "does not carry. Nothing counts (ADR-0014)"
+            ) from None
+        findings: list[checking.Finding] = []
+        inputs = list(trace.inputs)
+        approvals: list[tuple[int, Check]] = []
+        for position, check in enumerate(step.checks or (), start=1):
+            match check.kind:
+                case CheckKind.BOUNDS:
+                    findings.append(checking.bounds(position, check, judged))
+                case CheckKind.RECONCILIATION | CheckKind.AGREEMENT:
+                    read = await self._check_read(run, step_run, check, reads, span)
+                    if isinstance(read, str):
+                        findings.append(checking.Finding(position, check, False, read))
+                        continue
+                    other, source = read
+                    inputs.append(source)
+                    if check.kind is CheckKind.RECONCILIATION:
+                        findings.append(checking.reconciliation(position, check, judged, other))
+                    else:
+                        findings.append(checking.agreement(position, check, judged, other))
+                case CheckKind.RECOMPUTATION:
+                    findings.append(
+                        await self._recomputed(
+                            run, step_run, work, position, check, value, trace, span
+                        )
+                    )
+                case CheckKind.APPROVAL:
+                    approvals.append((position, check))
+                case CheckKind.SAMPLING:
+                    pass  # after the fact: `_sample`, once the result counts
+        failed = [finding for finding in findings if not finding.passed]
+        if failed:
+            raise _ChecksFailed(
+                f"step {step.id}: "
+                + "; ".join(finding.describe() for finding in failed)
+                + ". Nothing counts: the value reaches no step after it (ADR-0014)"
+            )
+        if approvals and not run.rehearsal:
+            self._approved_or_asked(run, step, step_run, judged, digest, approvals)
+        return dataclasses.replace(trace, inputs=tuple(inputs))
+
+    async def _recomputed(
+        self,
+        run: Run,
+        step_run: StepRun,
+        work: Work,
+        position: int,
+        check: Check,
+        value: Any,
+        trace: Trace,
+        span: Span,
+    ) -> checking.Finding:
+        """A recomputation (DEC-0173, provisional): a rule or a statistic is evaluated again over
+        the same inputs. A call is never made twice; its value is held to what the call
+        answered, as the step's provenance records the reading by digest."""
+        digest = _digest(_canonical(value))
+        if isinstance(work, ConnectorRule):
+            if not isinstance(value, Mapping) or "output" not in value:
+                return checking.Finding(
+                    position, check, False, "the call's value carries no answer to compare"
+                )
+            answered = _digest(_canonical(value["output"]))
+            read = [i.digest for i in trace.inputs if i.kind is InputKind.SOURCE and i.digest]
+            recorded = read[-1] if read else answered  # a write records no reading
+            return checking.recomputation(position, check, recorded, answered)
+        if isinstance(work, LlmWork | WaitWork):
+            return checking.Finding(
+                position,
+                check,
+                False,
+                "a recomputation evaluates a rule or a statistic again; this step's value comes "
+                "from a model, which does not give the same value again",
+            )
+        again, _, _, _ = await self._evaluate(run, step_run, work, span)
+        return checking.recomputation(position, check, digest, _digest(_canonical(again)))
+
+    async def _check_read(
+        self,
+        run: Run,
+        step_run: StepRun,
+        check: Check,
+        reads: Mapping[str, CheckRead],
+        span: Span,
+    ) -> tuple[Any, ProvenanceInput] | str:
+        """What a reconciliation or an agreement reads through its source at the moment of the
+        check, with the source as a provenance input; or why it could not be read."""
+        source = str(check.source)
+        read = reads.get(source)
+        if read is None:
+            return (
+                f"the step's work names no read for {source} under `checking.reads`; a check "
+                "that cannot read its source passes nothing"
+            )
+        resolved = await self._connector(run, step_run.step_id, read.capability)
+        operation = resolved.declaration.operation(read.operation)
+        if operation is None:
+            return f"{read.operation} is not an operation the connector for {source} declares"
+        if operation.outward:
+            return f"{read.operation} acts outward; a check only reads"
+        document, done, _, _ = await self._connector_call(
+            run,
+            step_run,
+            ConnectorRule(rule="connector", operation=read.operation, input=read.input),
+            span,
+        )
+        try:
+            answered = select(document["output"], read.select)
+        except KeyError:
+            return f"{read.operation} answered without the part {read.select!r}"
+        sources = [i for i in done.inputs if i.kind is InputKind.SOURCE]
+        return answered, sources[-1]
+
+    def _approved_or_asked(
+        self,
+        run: Run,
+        step: Step,
+        step_run: StepRun,
+        value: Any,
+        digest: str,
+        approvals: Sequence[tuple[int, Check]],
+    ) -> None:
+        """Nothing where no approval's threshold is exceeded, or a person of its role confirmed
+        this value; `_ToApprove` with the requests to raise otherwise."""
+        held = step_run.anchoring
+        asking: list[tuple[int, Check]] = []
+        for position, check in approvals:
+            above = checking.above_threshold(check, value)
+            if above is None:
+                raise _ChecksFailed(
+                    f"step {step.id}: check {position} ({checking.parameters(check)}) failed: "
+                    f"the value {checking.text(value)[:120]} is not a number a threshold "
+                    "judges. Nothing counts (ADR-0014)"
+                )
+            if not above:
+                continue
+            key = checking.approval_key(position, digest)
+            if (
+                held is not None
+                and held.proceeds
+                and anchoring.request_id(run.id, step.id, key, held.round) in held.requests
+            ):
+                continue
+            asking.append((position, check))
+        if not asking:
+            return
+
+        def drafts(round: int, due: date) -> list[Draft]:
+            return [
+                anchoring.approval(
+                    run,
+                    step,
+                    check,
+                    checking.text(value),
+                    checking.approval_key(position, digest),
+                    round=round,
+                    due=due,
+                )
+                for position, check in asking
+            ]
+
+        raise _ToApprove(drafts)
+
+    async def _sample(self, run: Run, step: Step, step_run: StepRun) -> Run:
+        """After the result counts: each sampling check that chooses it puts it to a person of
+        its role, and the ledger records the sample as `check.sampled` naming the request
+        (UC-4.13, the row *sampling*). Nothing waits: the run goes on, and the verdict is read
+        later."""
+        if self._decisions is None:
+            return run
+        due = self._clock.now().date() + timedelta(days=self._options.decision_days)
+        for position, check in enumerate(step.checks or (), start=1):
+            if check.kind is not CheckKind.SAMPLING:
+                continue
+            if not checking.sampled(check, run.id, step.id):
+                continue
+            draft = anchoring.sample(run, step, check, checking.sample_key(position), due=due)
+            try:
+                await self._decisions.raise_request(run.tenant, draft)
+            except NotRaised:
+                continue  # the result counted; a sample not put is one sample less, not a failure
+            run = await self._commit(
+                run, SAMPLED, step=step_run, outcome=f"check_{position}", decision=draft.id
+            )
+        return run
 
     async def _evaluate(
         self, run: Run, step_run: StepRun, work: Work, span: Span
@@ -4527,8 +4781,13 @@ class RunEngine:
             contents[f"{step_id}/{artifact_id}"] = await self._artifact_content(
                 run, step_id, artifact_id
             )
+        record = run.record()
+        if self._statements is not None and any(_names_exactness(v) for v in values):
+            # The statement as the process component renders it, unchanged (UC-6.9).
+            rendered = await self._statements.rendered(run.tenant, run.process_version)
+            if rendered is not None:
+                record[EXACTNESS] = rendered
         try:
-            record = run.record()
             return [resolve(value, results, contents, record) for value in values], read
         except KeyError as missing:
             raise RuleFailed(f"reference to {missing.args[0]!r} cannot be resolved") from missing
@@ -5741,6 +6000,44 @@ class RunEngine:
                 rehearsal=True if run.rehearsal else None,  # ADR-0030
             ),
         )
+
+
+EXACTNESS = "exactness"
+"""The part of a `$run` reference that is the exactness statement of the run's version."""
+
+
+def _names_exactness(value: Any) -> bool:
+    """Whether a value carries `{"$run": "exactness"}` anywhere inside it."""
+    if isinstance(value, Mapping):
+        if value.get("$run") == EXACTNESS:
+            return True
+        return any(_names_exactness(v) for v in value.values())
+    if isinstance(value, list | tuple):
+        return any(_names_exactness(v) for v in value)
+    return False
+
+
+class _ChecksFailed(Exception):
+    """A check the step declares disagreed with its value (ADR-0152)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class _ToApprove(Exception):
+    """The value is above an approval's threshold, and no person of its role has confirmed it
+    yet (ADR-0152)."""
+
+    def __init__(self, drafts: Callable[[int, date], Sequence[Draft]]) -> None:
+        super().__init__("to approve")
+        self.drafts = drafts
+
+
+CHECK_FAILED = "check_failed"
+"""The outcome of `step.finished` for a step whose value a check refused."""
+SAMPLED = "check.sampled"
+"""The ledger entry of a result a sampling check put to a person after the fact."""
 
 
 class _Recount(Exception):

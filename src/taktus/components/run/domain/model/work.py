@@ -31,7 +31,8 @@ connector call's `input`, the values of a template, a check or a prompt — an o
   or null while none has (ADR-0097) — and `keys.<step-id>`, the idempotency key that step's
   current attempt carries to a connector, the first attempt's while it has not started, so
   that an earlier step can ask whether what a later one will write is already its own
-  (ADR-0099);
+  (ADR-0099) — and `exactness`, the exactness statement of the run's version as the process
+  component renders it, which a report carries unchanged (UC-6.9, ADR-0152);
 - `{"$input": "<name>", "$otherwise": <value>}` — that input where the run was given it, and
   the value otherwise. The value may itself be a `$from` reference: an input the bundle
   declares `required: false` can then stand in for what a step produces, so that whoever
@@ -76,6 +77,13 @@ work may carry three keys of its own, read by `control_of` and never part of the
   one of the run's inputs; `text` the field of the input the label is added to;
 - `recipients` — whom an outward step addresses, as a list, a text or a count: more than the
   tenant's limit waits for a person, at every level.
+
+**How a step's checks are carried out** (ADR-0152). The checks a step declares from the
+catalogue (`Step.checks`, UC-4.13) run when its value is computed, before it counts:
+
+- `checking: {select?, reads?: {<capability>: {operation, input?, select?}}}` — `select` the
+  part of the result the checks judge; `reads` the operation through which a reconciliation
+  reads its total, or an agreement the second system's value, at the moment of the check.
 """
 
 from __future__ import annotations
@@ -684,8 +692,9 @@ SCOPE = "scope"
 ANALYTIC = "analytic"
 MESSAGE = "message"
 RECIPIENTS = "recipients"
+CHECKING = "checking"
 CONTROL_KEYS = frozenset(
-    {WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED, SCOPE, ANALYTIC, MESSAGE, RECIPIENTS}
+    {WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED, SCOPE, ANALYTIC, MESSAGE, RECIPIENTS, CHECKING}
 )
 
 
@@ -740,6 +749,41 @@ class Message(Value):
         return self
 
 
+class CheckRead(Value):
+    """How a check reads its source at the moment of the check (ADR-0152): the operation under
+    the check's `source` capability, its input with references, and the part of the output
+    that is the total or the second system's value."""
+
+    operation: str = Field(pattern=r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}$")
+    input: dict[str, Any] = Field(default_factory=dict)
+    select: str | None = Field(default=None, min_length=1)
+
+    @property
+    def capability(self) -> str:
+        return self.operation.rsplit(".", 1)[0]
+
+
+class Checking(Value):
+    """What the checks a step declares are applied to, and how they read (ADR-0152). `select`
+    names the part of the step's result the checks judge, the whole result without it; `reads`
+    names, per capability a reconciliation or an agreement reads through, the operation that
+    reads it. The declaration of the checks themselves is the step's (`Step.checks`); this is
+    only how the run carries them out."""
+
+    select: str | None = Field(default=None, min_length=1)
+    reads: dict[Capability, CheckRead] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _under_its_capability(self) -> Checking:
+        for capability, read in self.reads.items():
+            if read.capability != capability:
+                raise ValueError(
+                    f"the read for {capability!r} calls {read.operation!r}, an operation of "
+                    "another capability"
+                )
+        return self
+
+
 class Control(Value):
     """When a step runs, whom it asks first and what it may see: the keys of a step's work that
     are not what the step does (ADR-0088, ADR-0097, ADR-0130, ADR-0142)."""
@@ -760,6 +804,8 @@ class Control(Value):
     """The step sends a message under the frame of ADR-0142."""
     recipients: Any = None
     """Whom an outward step addresses, with references; None: one recipient (ADR-0142 §6)."""
+    checking: Checking | None = None
+    """What the step's declared checks judge, and how they read their sources (ADR-0152)."""
 
     @model_validator(mode="after")
     def _a_step_on_escalation_asks_nobody(self) -> Control:
@@ -786,6 +832,8 @@ class Control(Value):
             found.extend(check.value for check in self.message.checks.values())
         if self.recipients is not None:
             found.append(self.recipients)
+        if self.checking is not None:
+            found.extend(read.input for read in self.checking.reads.values())
         return found
 
 

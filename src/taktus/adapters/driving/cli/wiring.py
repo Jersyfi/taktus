@@ -26,6 +26,7 @@ from taktus.components.governance.application.service import (
     Corrections,
     ExpectedRuns,
     ReportCapacityHandler,
+    ResultDefects,
     Stages,
     TenantMessages,
     TenantResidency,
@@ -178,6 +179,9 @@ class Services:
     corrections: Corrections | None = None
     """The decisions on proposals counted per process and action class, and the tenant's
     correction limits (`taktusctl corrections`, ADR-0110)."""
+    defects: ResultDefects | None = None
+    """A result reported wrong, bounded, decided on by rule and planned for (`taktusctl
+    defect`, ADR-0153)."""
     residency: TenantResidency | None = None
     """The tenant's residency rule, shown and set (`taktusctl residency`, ADR-0116)."""
     sources: TenantSources | None = None

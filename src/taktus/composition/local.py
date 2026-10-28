@@ -77,8 +77,9 @@ from taktus.components.catalog.application.service import (
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.decision.domain.model import Request
-from taktus.components.governance.application.service import ExpectedRuns
+from taktus.components.governance.application.service import ExpectedRuns, ResultDefects
 from taktus.components.governance.domain.model import Incident, WatchConfiguration
+from taktus.components.governance.domain.model.anchors import AnchorConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import (
     BrowserSession,
@@ -120,7 +121,7 @@ from taktus.composition.execution import (
 from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
-from taktus.composition.levels import RepositoryLevelRecords
+from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
@@ -321,6 +322,7 @@ class LocalWiring:
                     masking=known_secrets(os.environ),
                     stops=stops,
                     messages=decisions.messages,
+                    statements=VersionStatements(stores.work, stores.of(ProcessVersion)),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -520,6 +522,15 @@ class LocalWiring:
                 corridors=signals.corridors,
                 signals=signals.watch,
                 corrections=decisions.corrections,
+                defects=ResultDefects(
+                    stores.provenance_store,
+                    ledger,
+                    stores.of(Incident),
+                    stores.of(WatchConfiguration),
+                    stores.of(AnchorConfiguration),
+                    stores.work,
+                    clock,
+                ),
                 residency=decisions.residency,
                 sources=decisions.sources,
                 messages=decisions.messages.tenant,

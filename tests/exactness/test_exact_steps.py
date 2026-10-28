@@ -116,9 +116,8 @@ def test_every_example_bundle_keeps_exact_results_with_admissible_methods(
 
 @pytest.mark.parametrize("bundle_path", BUNDLES, ids=lambda p: p.name)
 def test_an_exact_step_s_value_comes_from_a_rule_at_run_time(bundle_path: Path) -> None:
-    """What executes an exact step is a rule or a statistic of the run component, never a
-    worker: its work parses as rule or statistic work (ADR-0151), and a rule that reads a
-    worker's artifact is the check pattern."""
+    """What executes an exact step is a rule of the run component, never a worker: its work
+    parses as rule work, and a rule that reads a worker's artifact is the check pattern."""
     with bundle_path.open(encoding="utf-8") as handle:
         version = parse_bundle(yaml.safe_load(handle))
     for step in version.steps:
@@ -126,8 +125,9 @@ def test_an_exact_step_s_value_comes_from_a_rule_at_run_time(bundle_path: Path) 
             continue
         examples = {name: declared.example for name, declared in version.inputs.items()}
         work = parse_work(step, version.work.get(step.id), examples)
+        # A statistic is computed in the run as a rule is (ADR-0151).
         assert type(work).__name__.endswith(("Rule", "Statistic")), (
-            f"{step.id} would run neither as a rule nor as a statistic"
+            f"{step.id} would not run as a rule or a statistic"
         )
         assert not step.required_capabilities, f"{step.id} would need an adapter"
 

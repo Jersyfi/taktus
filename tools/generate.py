@@ -62,6 +62,7 @@ def web_fixtures() -> str:
         RunCount,
         RunFacts,
         RunningStep,
+        Statement,
         StepFacts,
         VersionRef,
         Wait,
@@ -76,6 +77,12 @@ def web_fixtures() -> str:
     from taktus.shared.v1 import Autonomy, ConsumptionQuantities, DecisionStatus, Provenance
 
     at = datetime(2026, 10, 10, 9, 0, tzinfo=UTC)
+    # The exactness statement every level shows, generated from an example bundle as the
+    # process component generates it for any version (UC-6.9).
+    from taktus.components.process.application.service.register_version import statement_of
+
+    example = yaml.safe_load((ROOT / "examples/processes/six-times-seven.yaml").read_text())
+    statement = Statement.model_validate(statement_of(example).as_document())
 
     def step(
         name: str, method: str, exactness: str | None, state: str, **more: object
@@ -127,6 +134,7 @@ def web_fixtures() -> str:
         ),
         created_at=at,
         updated_at=at,
+        exactness=statement,
     )
     process = ProcessFacts(
         id="example",
@@ -163,6 +171,7 @@ def web_fixtures() -> str:
                 created_at=at,
             ),
         ),
+        exactness=statement,
     )
     overview = OverviewFacts(
         tenant="default",
@@ -178,6 +187,7 @@ def web_fixtures() -> str:
                     )
                     for s in facts.steps
                 ),
+                exactness=statement,
             ),
             ProcessSummary(id="quiet", name="Quiet", active_version="3", autonomy_level=4),
         ),

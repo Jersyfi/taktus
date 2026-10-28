@@ -46,6 +46,7 @@ from taktus.components.reporting.domain.model.levels import (
     RunCount,
     RunFacts,
     RunningStep,
+    Statement,
     StepFacts,
     TakeoverFacts,
     VersionRef,
@@ -155,6 +156,8 @@ class RunLevel(Value):
     steps: tuple[StepElement, ...]
     summary: str = Field(min_length=1)
     """One sentence: how far the run is, and what it does now."""
+    exactness: Statement | None = None
+    """The exactness statement of the version the run executes, as generated (UC-6.9)."""
 
 
 def figures(quantities: ConsumptionQuantities | None) -> tuple[Figure, ...]:
@@ -278,6 +281,7 @@ def run_level(facts: RunFacts) -> RunLevel:
         ),
         steps=steps,
         summary=_run_summary(facts.state, steps),
+        exactness=facts.exactness,
     )
 
 
@@ -346,6 +350,8 @@ class ProcessLevel(Value):
     runs: tuple[RunAtVersionElement, ...]
     summary: str = Field(min_length=1)
     """One sentence: how its steps work, and how many run now."""
+    exactness: Statement | None = None
+    """The exactness statement of the version, as generated (UC-6.9)."""
 
 
 AT_REST = "planned"
@@ -441,6 +447,7 @@ def process_level(facts: ProcessFacts) -> ProcessLevel:
         steps=tuple(_process_step(step, runs) for step in facts.steps),
         runs=tuple(_run_at_version(run) for run in runs),
         summary=_process_summary(facts.steps, runs),
+        exactness=facts.exactness,
     )
 
 
@@ -480,6 +487,8 @@ class ProcessSummaryElement(Value):
     cells: tuple[CellElement, ...] = ()
     """The steps of its active version, so that the overview draws every process as one body."""
     text: str = Field(min_length=1)
+    exactness: Statement | None = None
+    """The exactness statement of its active version, as generated (UC-6.9)."""
 
 
 class AreaElement(Value):
@@ -538,6 +547,7 @@ def _summary(
         running=running,
         cells=_cells(process, runs),
         text=f"Process {process.name} ({process.id}{version}){level}: {busy}{steps}.",
+        exactness=process.exactness,
     )
 
 
