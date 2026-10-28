@@ -166,6 +166,70 @@ seccompProfile:
 {{- printf "http://%s-connector-chat:%v/mcp" (include "taktus.fullname" .) .Values.connectors.chat.port -}}
 {{- end -}}
 
+{{/*
+Every connector of `connectors.others`, checked: renders nothing and fails on the first entry
+that cannot be deployed as written (README §2). A name is the deployment's suffix and a
+capability its label in TAKTUS_CONNECTORS: each is unique, and neither repeats a built-in one.
+*/}}
+{{- define "taktus.checkConnectors" -}}
+{{- $names := list "repository" "chat" -}}
+{{- $labels := list -}}
+{{- if .Values.connectors.repository.enabled }}{{- $labels = append $labels "channel.repo" -}}{{- end -}}
+{{- if .Values.connectors.chat.enabled }}{{- $labels = append $labels "channel.chat" -}}{{- end -}}
+{{- range .Values.connectors.others -}}
+{{- $name := required "connectors.others[].name is required" .name -}}
+{{- if not (regexMatch "^[a-z][a-z0-9]*(-[a-z0-9]+)*$" $name) -}}
+{{- fail (printf "connectors.others: %q is not a connector name: lowercase letters and digits, words joined by hyphens" $name) -}}
+{{- end -}}
+{{- if gt (len $name) 40 -}}
+{{- fail (printf "connectors.others: %q is longer than 40 characters" $name) -}}
+{{- end -}}
+{{- if has $name $names -}}
+{{- fail (printf "connectors.others: %q is named twice, or is a built-in connector's name" $name) -}}
+{{- end -}}
+{{- $names = append $names $name -}}
+{{- $label := required (printf "connectors.others %s: capability is required: its label in TAKTUS_CONNECTORS" $name) .capability -}}
+{{- if not (regexMatch "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$" $label) -}}
+{{- fail (printf "connectors.others %s: capability %q is not a dotted lowercase label" $name $label) -}}
+{{- end -}}
+{{- if has $label $labels -}}
+{{- fail (printf "connectors.others %s: capability %q is another connector's label already" $name $label) -}}
+{{- end -}}
+{{- $labels = append $labels $label -}}
+{{- if and .module .image -}}
+{{- fail (printf "connectors.others %s: give module or image, not both" $name) -}}
+{{- end -}}
+{{- if not (or .module .image) -}}
+{{- fail (printf "connectors.others %s: module or image is required" $name) -}}
+{{- end -}}
+{{- if .image -}}
+{{- $_ := include "taktus.imageRef" (dict "what" (printf "connectors.others %s image" $name) "ref" .image) -}}
+{{- end -}}
+{{- $port := required (printf "connectors.others %s: port is required" $name) .port -}}
+{{- if or (lt (int $port) 1) (gt (int $port) 65535) -}}
+{{- fail (printf "connectors.others %s: port %v is not a port" $name $port) -}}
+{{- end -}}
+{{- $credentials := list -}}
+{{- range .credentials -}}
+{{- $credential := required (printf "connectors.others %s: credentials[].name is required" $name) .name -}}
+{{- if not (regexMatch "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$" $credential) -}}
+{{- fail (printf "connectors.others %s: credential %q is not a parameter name such as PAYMENTS_TOKEN" $name $credential) -}}
+{{- end -}}
+{{- if has $credential $credentials -}}
+{{- fail (printf "connectors.others %s: credential %s is named twice" $name $credential) -}}
+{{- end -}}
+{{- $credentials = append $credentials $credential -}}
+{{- $_ := required (printf "connectors.others %s: credential %s needs secret" $name $credential) .secret -}}
+{{- $_ := required (printf "connectors.others %s: credential %s needs key" $name $credential) .key -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* A connector of `connectors.others` as TAKTUS_CONNECTORS names it: `label=url`. Call with (dict "root" $ "c" .). */}}
+{{- define "taktus.otherConnectorEntry" -}}
+{{- printf "%s=http://%s-connector-%s:%v/mcp" .c.capability (include "taktus.fullname" .root) .c.name .c.port -}}
+{{- end -}}
+
 {{- /* The profile: `standard` or `small`; anything else fails the render. */ -}}
 {{- define "taktus.profile" -}}
 {{- $p := .Values.profile | default "standard" -}}

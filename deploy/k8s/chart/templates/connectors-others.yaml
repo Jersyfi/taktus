@@ -1,0 +1,200 @@
+{{- /*
+Every further connector (`connectors.others`, README §2): one deployment each, from the control
+plane's image running the connector's module, or from an image of its own. The roles reach it,
+nothing else does; it reaches the name service and its service outside the cluster on the ports
+it names. Each credential it reads is a key of an existing Secret, mounted as a file whose path
+is in TAKTUS_CREDENTIAL_<NAME>_FILE (CREDENTIALS.md), and it mounts no service-account token.
+*/ -}}
+{{- include "taktus.checkConnectors" . -}}
+{{- $root := . -}}
+{{- $v4 := list -}}
+{{- $v6 := list -}}
+{{- range .Values.execution.egress.exceptCidrs -}}
+{{- if contains ":" . -}}{{- $v6 = append $v6 . -}}{{- else -}}{{- $v4 = append $v4 . -}}{{- end -}}
+{{- end }}
+{{- range $c := .Values.connectors.others }}
+{{- $component := printf "connector-%s" $c.name -}}
+{{- $name := printf "%s-%s" (include "taktus.fullname" $root) $component -}}
+{{- $health := "/health" -}}
+{{- if hasKey $c "healthPath" }}{{- $health = $c.healthPath -}}{{- end -}}
+{{- $resources := $c.resources | default $root.Values.connectors.chat.resources -}}
+{{- $egressPorts := list 443 -}}
+{{- if hasKey $c "egressPorts" }}{{- $egressPorts = $c.egressPorts -}}{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" $root }}
+  labels:
+    {{- include "taktus.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" $root "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "taktus.labels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+    spec:
+      serviceAccountName: {{ include "taktus.serviceAccount" $root }}
+      automountServiceAccountToken: false
+      {{- with $root.Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ $root.Values.securityContext.runAsUser }}
+        runAsGroup: {{ $root.Values.securityContext.runAsGroup }}
+        fsGroup: {{ $root.Values.securityContext.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: connector
+          {{- if $c.module }}
+          image: {{ include "taktus.image" (dict "what" "image" "image" $root.Values.image) }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - {{ $c.module | quote }}
+            - --host
+            - "0.0.0.0"
+            - --port
+            - {{ $c.port | quote }}
+            {{- range $c.args }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- else }}
+          image: {{ include "taktus.imageRef" (dict "what" (printf "connectors.others %s image" $c.name) "ref" $c.image) }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          {{- with $c.command }}
+          command:
+            {{- range . }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- with $c.args }}
+          args:
+            {{- range . }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- end }}
+          {{- with $c.credentials }}
+          env:
+            {{- range . }}
+            - name: {{ printf "TAKTUS_CREDENTIAL_%s_FILE" .name }}
+              value: {{ printf "/run/secrets/taktus/%s/%s" (.name | lower | replace "_" "-") .key | quote }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: mcp
+              containerPort: {{ $c.port }}
+          {{- if $health }}
+          readinessProbe:
+            httpGet:
+              path: {{ $health }}
+              port: mcp
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: {{ $health }}
+              port: mcp
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          {{- end }}
+          resources:
+            {{- toYaml $resources | nindent 12 }}
+          securityContext:
+            {{- include "taktus.containerSecurity" $root | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- range $c.credentials }}
+            - name: {{ printf "credential-%s" (.name | lower | replace "_" "-") }}
+              mountPath: {{ printf "/run/secrets/taktus/%s" (.name | lower | replace "_" "-") }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- range $c.credentials }}
+        - name: {{ printf "credential-%s" (.name | lower | replace "_" "-") }}
+          secret:
+            secretName: {{ .secret }}
+            defaultMode: 0440
+            items:
+              - key: {{ .key }}
+                path: {{ .key }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" $root }}
+  labels:
+    {{- include "taktus.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  selector:
+    {{- include "taktus.selector" (dict "root" $root "component" $component) | nindent 4 }}
+  ports:
+    - name: mcp
+      port: {{ $c.port }}
+      targetPort: mcp
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "taktus.controlPlaneNamespace" $root }}
+  labels:
+    {{- include "taktus.labels" $root | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "taktus.selector" (dict "root" $root "component" $component) | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "taktus.selector" (dict "root" $root "component" "control-plane") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: {{ $c.port }} }
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $root.Values.networkPolicy.dns.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $root.Values.networkPolicy.dns.podLabels | nindent 14 }}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    {{- if $egressPorts }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with $v4 }}
+            except: {{ toJson . }}
+            {{- end }}
+        - ipBlock:
+            cidr: ::/0
+            {{- with $v6 }}
+            except: {{ toJson . }}
+            {{- end }}
+      ports:
+        {{- range $egressPorts }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
+    {{- end }}
+{{- end }}
