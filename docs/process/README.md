@@ -61,7 +61,7 @@ comment, and adds no label (issue #70).
 
 Development is handed to Taktus in stages, each earned by measured results (DEC-0197). In
 stage 0 Taktus takes only single small tasks, handed to it explicitly. **A task is handed to
-Taktus when it carries the label `to-taktus`.** The owner adds it, or P-01 once it is allowed to;
+Taktus when it carries the label `to-taktus`.** The owner or a session adds it (M1.26, DEC-0222), or P-01 once it is allowed to;
 the label `ready` alone hands nothing over. A session skips an issue labelled `to-taktus`, as it
 skips a claimed one: `make backlog` lists it with the claimed ones.
 

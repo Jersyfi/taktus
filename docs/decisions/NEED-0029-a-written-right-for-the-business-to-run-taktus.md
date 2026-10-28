@@ -49,3 +49,10 @@ ls ~/Dev/taktus-private/ | grep -ci permission
 ```
 
 The command prints a count greater than zero once the copy is in place.
+
+## Outcome
+
+**Provided:** 2026-10-28
+**Confirmed by:** the command of section 7 printed `1`. The private note it finds records the owner's statement that the permission exists; the permission's text is not held there (DEC-0222).
+**How it was provided:** settled between the owner and the business outside the repository, as the owner said in conversation on 2026-10-28.
+**Recorded in:** this pull request

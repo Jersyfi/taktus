@@ -37,8 +37,12 @@ language model to a rule — shows only in a real operation (DEC-0195,
 catalogue has 96 use cases in eleven areas; development is one of them. The rest is support,
 billing, cost, compliance and the steering of the agents. `docs/usecases/AF-03-software-operations.md`
 (UC-03) maps every one to a process and a target level, and places its six stages of
-introduction on the milestones below: stage 0 at `0.4.0`, stage 1 at `0.5.0`, stages 2 and 3 at
-`0.6.0`, stage 4 at `0.7.0`, stage 5 at `1.0.0`. **`1.0.0` is not complete without it.**
+introduction on the milestones that build what each needs: stage 0 at `0.4.0`, stage 1 at
+`0.5.0`, stages 2 and 3 at `0.6.0`, stage 4 at `0.7.0`, stage 5 at `1.0.0`. **The stages are the
+business's introduction, not a condition of a release** (DEC-0222). They run on its own instance
+once it installs Taktus, and no milestone waits for them; the issues that carry them (#400,
+#437, #401, #438, #439, #440) are in the milestone `introduction`. What the business installs is
+`1.0.0-beta` (*The road to 1.0.0*); what its operation finds comes back as findings (DEC-0217).
 
 The second tenant starts at autonomy level 1–2 (advise and propose only) for the first weeks, and
 rises only on evidence.
@@ -213,9 +217,8 @@ chat, and you can see your own share of the waiting time. Creating one from a de
 maturation with change proposals (#216, #217, #218, #229, #230) · model hub for in-house models · second coding worker, so that
 the removal test can say *changed* through an adapter, not only a person (#154, #208, #209) · model routing:
 an ordered chain per purpose switched at the step boundary, and a price list imported into the
-versioned table (#327, #328) · `dev-orchestration` blueprint · **second tenant onboarded at stage 0
-of UC-03**: a software business's daily report and first routines at level 1–2 (#400,
-DEC-0199) —, an expected run that does not happen as an incident, signals against corridors,
+versioned table (#327, #328) · `dev-orchestration` blueprint · what stage 0 of UC-03 needs, a
+software business's daily report and first routines at level 1–2 (DEC-0199) —, an expected run that does not happen as an incident, signals against corridors,
 corrections counted and a level that falls by rule (#427, #428, #429), connectors over open
 standards and vendors' own connector servers (#441, #410), the business installing and upgrading
 its own instance from the documentation, and its findings reaching this repository (#445,
@@ -229,10 +232,8 @@ the self-development bundles, tests selected by component, a nightly ring that i
 dialogue (#329) · skills as `SKILL.md`, `AGENTS.md` read, bundles checked without an instance (#407) · **a process
 created from a description**, from the web app and chat (UC-4.1, moved from `0.3.0`, DEC-0209)
 
-**Complete when** a step moves from a language model to a trained model on Taktus's own proposal —
-measurably cheaper and reproducible, a step of the second tenant where its cases suffice — and stage 0 of the
-second tenant has held four weeks: its daily report ran every day, and every proposal was
-decided by a person and its correction counted (UC-03 §5).
+**Complete when** a step moves from a language model to a trained model on Taktus's own proposal,
+measurably cheaper and reproducible.
 
 ### `0.5.0` — value and dependency measurable
 Value ledger with revert analysis · role-based views · principle 14 enforced in the data model:
@@ -250,14 +251,13 @@ if an adapter goes, how a process really runs (#332, #333, #334) · a stage view
 visible steps, outside participants through their own channel (#335, #336, #337) · a running step
 taken over under a lease (#404) · a first process in ten minutes (#405) · Taktus as an MCP server
 with rights per role (#406) · evaluation cases per process (#408) · the trace inside a step, live
-(#409) · **stage 1 of the second tenant**, operation without handwork (#437), with deadlines as
+(#409) · what stage 1 of the second tenant needs, operation without handwork: deadlines as
 rules of the process, evaluations as a gate and against drift, data scoped to the case, a cap
 on open work, the introduction path in stages and a stop per adapter (#430, #431, #432, #433,
 #434, #436), and connectors for the systems the business names (#447)
 
 **Complete when** principles 6 and 13 are measured rather than asserted, limit recommendations
-come with numbers, a person new to Taktus reaches a first rehearsed process in ten minutes, and
-stage 1 of the second tenant holds.
+come with numbers, and a person new to Taktus reaches a first rehearsed process in ten minutes.
 
 ### `0.6.0` — level 4
 Autonomy level 4 · skill lifecycle, with a floor for the number of passed evaluations before a
@@ -266,25 +266,22 @@ skill is approved automatically, its value set from the evaluation data of `0.5.
 role-based agents · recurring decisions become rules on proposal · the organisation seen as value
 streams (#338) · what a person may ask Taktus for (#340) · the worker contract's outbound-only binding,
 steering and handover, before it freezes (#403) · a software factory as a worker (#411) · outward messages labelled, checked
-independently and held (#435) · stages 2 and 3 of the second tenant: its customer contact on its
-own and its releases without people (#401, #438)
+independently and held (#435)
 
 **Complete when** Taktus maintains its own repository for **14 days** with no intervention in
 execution — stage 3 of DEC-0197, moved here from `0.2.0` (DEC-0207) — a release happens end to
-end without intervention, and stages 2 and 3 of the second tenant hold: its customer contact runs at level 3 with an enforced anchor (#401), and its
-releases run without people (#438).
+end without intervention.
 
 ### `0.7.0` — second domain
 `invoice-to-payment` blueprint: an incoming invoice read, matched, its amount `exact`, a payment
-released by a person, at the second tenant (#402, DEC-0029 first) · stage 4 of the second
-tenant: development end to end (#439) · connectors for documents and accounting · autonomy per action
+released by a person (#402, DEC-0029 first) · connectors for documents and accounting · autonomy per action
 class in production use · one ledger chain per run, before the contracts freeze (#341) · **more
 than one node**: an object store port and a highly available profile (#342) · fairness and quotas
 per department inside a tenant (#343) · role profiles derived from the processes (#344) · BPMN in
 as a plan draft and out as an export (#345)
 
-**Complete when** the second domain runs in production at the second tenant, and its stage 4
-holds.
+**Complete when** the second domain runs end to end against real connectors, its amount `exact`
+and its payment released by a person.
 
 ### `1.0.0` — contracts, licence, opening
 Contracts frozen and versioned · **licence decided, contributions opened** · accounting formula
@@ -292,8 +289,7 @@ calibrated from real data across both use cases · community adapters in their o
 found in a catalogue with signatures and three tiers (#348) · GDPR tooling and generated
 compliance evidence · point-in-time recovery and recovery targets per install profile (#346) ·
 images scanned, signed and pinned (#347) · an A2A binding for the worker contract (#349) · a lane that fails a breaking change of a
-published contract (#396) · **stage 5 of the second tenant: the software business runs on
-Taktus** (#440, DEC-0199)
+published contract (#396)
 
 **Complete when** a stranger builds an adapter without asking, and every condition of *The road
 to 1.0.0* below holds.
@@ -325,6 +321,19 @@ the freeze is `v2` under a new `$id` (ADR-0019). Freezing is proposed as a decis
 (M3.5) with the evidence that no open use case needs a change, and the freeze holds through
 the stabilisation phase before the tag.
 
+**`1.0.0-beta` comes first** (DEC-0222). It is tagged when every feature item of the milestones
+up to `1.0.0` is built and four conditions hold, so that a business can run Taktus for its own
+operation:
+
+| Beta condition | Checked by |
+|---|---|
+| **A stage-1 process against real connectors** | payment reconciliation or the cost watcher of UC-03 runs on Taktus's own instance against the real service, through connectors that pass the conformance suite |
+| **A budget that holds during a run** | a run is halted at the step boundary where its budget is spent, not only at its end (ADR-0005); a test and an instance run show it |
+| **One server, no Kubernetes** | Taktus installs, upgrades and runs on a single machine with containers from the guide alone (#445) |
+| **The right to run it** | settled with the business outside the repository |
+
+The conditions below make the beta `1.0.0`.
+
 | Condition | Checked by |
 |---|---|
 | **Contracts frozen, verified** | the freeze record exists; the gate fails on a frozen schema's change; both conformance suites pass against every reference adapter at the frozen version |
@@ -339,7 +348,7 @@ the stabilisation phase before the tag.
 | **Versioning and deprecation rules** | written: what a minor and a major change to the product and to a contract mean, how long a deprecated `v1` is served, and how an installation learns of it |
 | **Documentation a stranger can follow** | a person who has never seen the repository installs Taktus, registers a process and runs it from the documentation alone, and the places they stopped are fixed |
 | **The licence and a contributor agreement** | ADR-0012 decided (M4.1), the agreement in the repository, before the first outside contribution |
-| **The software business runs on Taktus** | every condition of UC-03 §9 holds: every process in production at its target level or its raise proposed with the evidence, stage 5 reached, every anchor enforced, a step matured (#440, DEC-0199) |
+| **A beta a business runs** | `1.0.0-beta` installed by a business on its own instance; the findings it sends in the stabilisation phase answered (DEC-0222). Its stages (UC-03) are its introduction and hold no tag back |
 | **The Takt calibrated from real data** | ADR-0010 accepted with weights derived from the ledgers of both reference use cases, the derivation recomputable |
 
 Two obligations hold on this road and after it, and are enforced rather than hoped for

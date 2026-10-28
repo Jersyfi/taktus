@@ -149,7 +149,11 @@ raising it. A situation in neither list is decided by the session according to t
 vision and the existing anchors provide, and recorded as an `unlisted` notice that states **how
 the decision follows that source** and proposes its entry; where two options are both
 consistent with the sources, **strict in substance, sparing in ceremony**. A question is raised
-only where the vision gives no direction. Mode 3 and mode 4 stay the owner's. After every
+only where the vision gives no direction, or where it is **strategic**: it sets where the
+project goes — what Taktus is and for whom, the roadmap, money, its legal position. Every other
+open question is thought through, answered with a worked solution from the project's sources,
+and the work goes on; the owner may overrule the answer in the pull request (DEC-0222). Mode 3
+and mode 4 stay the owner's. After every
 twenty `unlisted` notices, a request carrying the rate at which the owner overrode them is raised
 to him, and the gate fails until it is (DEC-0039, DEC-0040, DEC-0042). Bringing a use case up to
 what the vision and the owner's definition already require is mode 2, a `restoration` notice;
@@ -200,8 +204,19 @@ generated (`make status`) and never stored in the file (DEC-0026).
   The backlog is the repository's issues; a session takes the top ready, unclaimed one, and
   never invents work outside it (DEC-0051). An issue labelled `to-taktus` is handed to Taktus,
   and a session never takes it (DEC-0197).
-- **One pull request per change.** Conventional Commits. Pull requests are squash-merged; the pull
-  request title becomes the commit on `main` and follows Conventional Commits.
+- **One pull request per change**, unless the owner says *concept mode*. Conventional Commits.
+  Pull requests are squash-merged; the pull request title becomes the commit on `main` and
+  follows Conventional Commits.
+- **Concept mode.** On the owner's word — "build package X" or "milestone X in concept mode" — a
+  session builds a whole milestone, or a concept, on one branch `concept/<name>` and lands it in
+  one pull request: one commit on `main`. Nothing goes to `main` on the way. The bar does not
+  move: every gate, the use cases with their tests, an ADR before architectural code, notices
+  and needs as they arise. Commits on the branch are by concern, pushed when `make check` is
+  green, so the next session continues where a limit stopped this one. `make verify` runs once
+  before *ready*, CI once on it. A finding met on the way is fixed on the branch in its own
+  commit and named in the description; it becomes an issue only when it is clearly bigger than
+  one step. When one session cannot hold the whole, the branch is split by area, never by a
+  cross-cutting theme. Outside the owner's word the default above holds (DEC-0222).
 - **No secret value** ever enters this repository, a file, a log or a message. Configuration
   references a secret by its **parameter** — a configuration key, or the name a call names;
   the operator creates the secret and maps it. `CREDENTIALS.md` describes each parameter:
@@ -281,7 +296,8 @@ generated (`make status`) and never stored in the file (DEC-0026).
   the owner already accepted — the vision, a feature, the roadmap — which is a `restoration`
   notice the owner may veto within seven days; how it is described, its state and its test
   references are mode 1; `docs/vision/` is mode 4 (`docs/decisions/anchors.taktus.md`,
-  DEC-0189).
+  DEC-0189). In concept mode a use case that is *new* may be written beside its
+  implementation; one that already exists changes only as above (DEC-0222).
 - **What future work needs belongs in the repository. What concerned only one person stays in
   the channel.** The test is not "is it confidential" but "will someone working here in a year
   need it". A decision and its reasoning: yes. That the owner asked about it on a Tuesday: no.

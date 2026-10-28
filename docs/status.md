@@ -13,8 +13,10 @@ against the code and the tests, not against what earlier descriptions claimed.
 
 ## 1. Where the project is
 
-**Being worked: `0.2.0` and `0.3.0`.** `0.1.0` has met its completion criterion and has no
-open issue. Which issues of a milestone are open is the host's milestone, not a list here.
+**Being worked: `0.4.0` to `1.0.0-beta`**, in concept mode where the owner says so: a session
+builds a milestone whole and lands it in one pull request (DEC-0222). `0.1.0` and `0.3.0` have
+met their completion criteria. Which issues of a milestone are open is the host's milestone, not
+a list here.
 
 Each milestone keeps where it stands in a file of its own, so that two pull requests on
 different milestones never edit the same paragraph (#392):

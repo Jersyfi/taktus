@@ -71,3 +71,10 @@ test -s ~/Dev/taktus-private/second-tenant.md && echo present
 ```
 
 The command prints `present` without printing the content.
+
+## Outcome
+
+**Provided:** 2026-10-28
+**Confirmed by:** the command of section 7 printed `present`.
+**How it was provided:** the owner forwarded the business's answers in conversation; the session wrote them into the private note of section 4. Two volumes and the accounting system are still open on the business's side; the note says which. Nothing of the answers is in this repository.
+**Recorded in:** this pull request
