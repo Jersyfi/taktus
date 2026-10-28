@@ -310,7 +310,10 @@ worker's own answer decides whether it has a free place; no runner counts a work
 assignments, so runners that share one worker never place more on it than it declares. A wait
 beyond the step's ceiling, one hour unless the step names one, escalates the run with cause
 `capacity`. The ledger carries `step.waiting` for each answer and `step.waited` with the wait's
-duration (ADR-0037; `tests/integration/test_capacity_wait.py`).
+duration (ADR-0037; `tests/integration/test_capacity_wait.py`). A launched worker's platform
+is its capacity: a cluster without room for its unit, or one still creating it — pulling its
+image, `ContainerCreating`, `Pending` — when the unit's health bound passes, makes the step wait
+the same way, and a unit that runs and answers nothing still fails (ADR-0037 §6, ADR-0145).
 
 **A provider at its rate limit.** A model provider that answers `429` is treated the same way:
 nothing was produced, the step goes back to its boundary, the run halts with cause `capacity`,

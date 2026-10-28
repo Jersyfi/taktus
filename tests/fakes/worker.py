@@ -137,6 +137,9 @@ class FakeWorker:
     capacity: int | None = None
     full_for: int = 0
     estimate_full_for: int = 0
+    creating_for: int = 0
+    """The next so many reads of its capabilities find its unit still being created, as a
+    launched worker on a cluster that is pulling the unit's image does (ADR-0145)."""
     inner_seconds: float = 0.0
     estimate_usd: float | None = None
     steering: bool = False
@@ -162,6 +165,13 @@ class FakeWorker:
     _held: set[str] = field(default_factory=set)
 
     async def capabilities(self) -> Capabilities:
+        if self.creating_for > 0:
+            self.creating_for -= 1
+            raise WorkerAtCapacity(
+                "the execution unit could not be placed: the unit is still being created: the "
+                "execution unit did not answer health within 120s; the cluster says: "
+                "ContainerCreating"
+            )
         return Capabilities(
             contract="worker/v1",
             version=self.version,
