@@ -140,6 +140,12 @@ class ProcessStepFacts(Value):
     fallback: Method | None = None
     """Where the step goes when its method is not good enough."""
     depends_on: tuple[str, ...] = ()
+    role: str | None = None
+    """For a human step: the role that performs it. Never a person (ADR-0146)."""
+    expertise: tuple[str, ...] = ()
+    """What the person of the role, or of the fallback's role, needs to know."""
+    fallback_role: str | None = None
+    """For a fallback to a person: the role that takes the step over (ADR-0146)."""
 
 
 class RunAtVersion(Value):

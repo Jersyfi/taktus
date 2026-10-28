@@ -147,6 +147,9 @@ def web_fixtures() -> str:
                 exactness=s.exactness,
                 reason=f"the {s.method} suits {s.id}",
                 depends_on=s.depends_on,
+                # A person's step names its role, never a person (ADR-0146).
+                role="reviewer" if s.method == "human" else None,
+                expertise=("the release's scope",) if s.method == "human" else (),
             )
             for s in facts.steps
         ),

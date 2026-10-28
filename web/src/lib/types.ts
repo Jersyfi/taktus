@@ -142,6 +142,12 @@ export interface ProcessStepElement {
 	rejected?: string[];
 	fallback?: string;
 	depends_on?: string[];
+	/** For a human step: the role that performs it, never a person (ADR-0146). */
+	role?: string;
+	/** What the person of the role, or of the fallback's role, needs to know. */
+	expertise?: string[];
+	/** For a fallback to a person: the role that takes the step over. */
+	fallback_role?: string;
 	/** The runs this step is running in right now; absent at rest. */
 	running_in?: string[];
 	drawn: Drawn;

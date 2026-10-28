@@ -1264,6 +1264,7 @@
         "reason": "the rule suits load",
         "rejected": [],
         "depends_on": [],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1300,6 +1301,7 @@
         "depends_on": [
           "load"
         ],
+        "expertise": [],
         "running_in": [
           "run_example"
         ],
@@ -1338,6 +1340,7 @@
         "depends_on": [
           "load"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1374,6 +1377,7 @@
         "depends_on": [
           "load"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1410,6 +1414,7 @@
         "depends_on": [
           "score"
         ],
+        "expertise": [],
         "running_in": [
           "run_example"
         ],
@@ -1448,6 +1453,7 @@
         "depends_on": [
           "draft"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1483,6 +1489,10 @@
         "depends_on": [
           "draft"
         ],
+        "role": "reviewer",
+        "expertise": [
+          "the release's scope"
+        ],
         "running_in": [
           "run_example"
         ],
@@ -1510,7 +1520,7 @@
             "text": "step review: person, a person; no result of its own; running."
           }
         },
-        "text": "step review: person, a person; no result of its own; running. Why this method: the human suits review. After draft. Running in run_example."
+        "text": "step review: person, a person; no result of its own; running. Why this method: the human suits review. Performed by the role reviewer. Needs: the release's scope. After draft. Running in run_example."
       },
       {
         "id": "pipeline",
@@ -1520,6 +1530,7 @@
         "depends_on": [
           "review"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1556,6 +1567,7 @@
         "depends_on": [
           "pipeline"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {
@@ -1592,6 +1604,7 @@
         "depends_on": [
           "check"
         ],
+        "expertise": [],
         "running_in": [],
         "drawn": {
           "moving": {

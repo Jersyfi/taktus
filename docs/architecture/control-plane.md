@@ -137,6 +137,10 @@ process is shown; a bundle with a bare level does not register. A registered ver
 - a **fallback** for any method that can vary
 - an **exactness class** — `exact`, `sourced`, `tolerant`, `free` — limiting which methods may
   produce the result; on every step that produces one, never on `wait` or `human` (ADR-0018)
+- a **role**, on a `human` step and on a fallback to a person: the role of the tenant's
+  structure that acts there, never a named person, with the **expertise** the work needs.
+  Registration requires it once an identity of the tenant holds a role, and refuses a role no
+  identity holds (ADR-0146)
 
 See [methods.md](methods.md). The choice is measured continuously and Taktus proposes changes.
 A step of method `ml` registers only with its model's evaluation on held-out cases, for the

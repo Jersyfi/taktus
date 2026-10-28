@@ -121,6 +121,10 @@ class RepositoryLevelRecords:
                     rejected=tuple(r.method for r in step.rejected),
                     fallback=None if step.fallback is None else step.fallback.to,
                     depends_on=step.dependencies,
+                    role=step.role,
+                    expertise=step.expertise
+                    or (() if step.fallback is None else step.fallback.expertise or ()),
+                    fallback_role=None if step.fallback is None else step.fallback.role,
                 )
                 for step in found.steps
             ),

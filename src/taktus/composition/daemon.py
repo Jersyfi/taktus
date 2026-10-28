@@ -696,6 +696,7 @@ async def wire(
                 lowered=decisions.lowered,
                 sources=decisions.sources,
                 stages=staged.ceilings,
+                structure=identities,
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),
