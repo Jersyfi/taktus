@@ -1,0 +1,20 @@
+{
+  "credentials": {
+    "actions": "PAYMENTS_TOKEN"
+  },
+  "read": {
+    "operation": "payments.subscriptions.list",
+    "input": {
+      "status": "active",
+      "limit": 10
+    }
+  },
+  "writes": [],
+  "invalid": {
+    "operation": "payments.subscriptions.read",
+    "input": {
+      "id": "sub_unknown"
+    },
+    "expected_cause": "invalid"
+  }
+}
