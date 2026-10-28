@@ -47,7 +47,7 @@ def drawn(level: dict[str, object], key: str) -> list[tuple[Step, Glyph]]:
 async def test_a_registered_process_is_found_at_the_process_level_and_moves_with_its_runs(
     instances: Callable[..., Instance], chosen: str
 ) -> None:
-    async with instances("process", TAKTUS_ROLES="api,runner", TAKTUS_TENANTS=chosen) as one:
+    async with instances("process", TAKTUS_ROLES="api,runner") as one:
         assert one.wired is not None
         wired = one.wired
         key = await reader_key(wired, chosen)
@@ -89,7 +89,7 @@ async def test_a_registered_process_is_found_at_the_process_level_and_moves_with
             assert all(s["drawn"]["moving"]["motion"] == "none" for s in after["steps"])
 
             changed = copy.deepcopy(document)
-            changed["version"] = "2"
+            changed["version"] = str(int(document["version"]) + 1)
             changed["steps"].append(
                 {
                     "id": "three",
@@ -104,7 +104,7 @@ async def test_a_registered_process_is_found_at_the_process_level_and_moves_with
             )
             await wired.register_version.execute(RegisterProcessVersion(changed, tenant=chosen))
             newer = (await http.get(path, headers=headers)).json()
-            assert newer["process"]["version"] == "2"
+            assert newer["process"]["version"] == changed["version"]
             assert [s["id"] for s in newer["steps"]] == ["one", "two", "three"]
             assert newer.get("runs", []) == [], "the runs of version 1 are not version 2's"
             earlier = (

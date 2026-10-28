@@ -317,10 +317,10 @@ follows (#447).
 | repository service: issues, pull requests, pipelines | §4.7, §4.8, B-1.11, B-1.12 | yes (`github` connector) |
 | chat | the report, decision requests, steering | yes |
 | mail and helpdesk: receive, draft, send | §4.3, B-10.03 | mail received and sent over IMAP and SMTP (`mail` connector); drafts and a helpdesk: no |
-| cloud billing export, monitoring and logs | §4.1 | metrics by query (`prometheus` connector) and an HTTP check (`httpcheck` connector); billing export and logs: no |
-| error tracking | B-1.04, B-1.05, B-7.01 | no |
-| payment providers and the product's entitlements | B-3.04, §4.6 | no |
-| model providers' credit and use | B-2.01 | no |
+| cloud billing export, monitoring and logs | §4.1 | metrics by query (`prometheus` connector), an HTTP check (`httpcheck` connector) and the daily cost by service (`billing.costs`); logs: no |
+| error tracking | B-1.04, B-1.05, B-7.01 | issues read (`errors.issues`) |
+| payment providers and the product's entitlements | B-3.04, §4.6 | subscriptions read (`payments.subscriptions`); the product's entitlements: no |
+| model providers' credit and use | B-2.01 | the cost per day (`models.costs`); the credit left: no |
 | app stores: reviews, submission, beta, staged rollout | B-3.09, §4.8 | no |
 | deployment targets with rollback | B-8.05, B-8.06 | no |
 | customer system and feedback portal | B-5.05, B-3.07, B-9.04 | no |

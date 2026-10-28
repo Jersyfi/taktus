@@ -1,8 +1,11 @@
 """Write the recording of one run, from an instance's database, for the replay of the
 self-development bundles (ADR-0108).
 
-    python3 record_rehearsal.py --tenant TENANT --run RUN_ID --out DIRECTORY
+    python3 record_rehearsal.py --tenant TENANT (--run RUN_ID | --process PROCESS) --out DIRECTORY
         [--objects DIRECTORY] [--taken instance|local]
+
+`--process` names the process instead of the run: the tool takes the run of its highest version
+that ended and is not a rehearsal, the newest of them, and says which it took.
 
 It reads the run from the database the instance is configured with — `TAKTUS_DATABASE_URL_FILE`,
 or `TAKTUS_DATABASE_URL` on a developer's machine, the way every Taktus command reads it; a
@@ -401,6 +404,41 @@ async def export(
     return document, exported.files
 
 
+def version_of(process_version: str) -> int:
+    """The number of a version reference `process@N`; 0 where it carries none."""
+    _, _, number = process_version.rpartition("@")
+    return int(number) if number.isdigit() else 0
+
+
+def chosen(runs: list[Run], process: str) -> Run | None:
+    """The run to record of a process: of its highest version, ended and not a rehearsal, the
+    newest. None where no run qualifies."""
+    candidates = [
+        run
+        for run in runs
+        if run.process_version.rpartition("@")[0] == process
+        and not run.rehearsal
+        and run.state in ENDED
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda run: (version_of(run.process_version), run.created_at))
+
+
+async def latest(database: str, tenant: str, process: str) -> str:
+    """The identifier of the run `chosen` takes, read from the instance's database."""
+    postgres = PostgresPersistence(database)
+    try:
+        async with postgres.transaction(tenant):
+            runs = list(await PostgresRepository(postgres, Run).list(tenant))
+    finally:
+        await postgres.close()
+    run = chosen(runs, process)
+    if run is None:
+        raise Refused(f"no run of {process} in tenant {tenant} has ended outside a rehearsal")
+    return run.id
+
+
 def write(directory: Path, document: dict[str, Any], files: Mapping[str, bytes]) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     for name, content in sorted(files.items()):
@@ -413,7 +451,11 @@ def write(directory: Path, document: dict[str, Any], files: Mapping[str, bytes])
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--tenant", required=True, help="the tenant the run is in")
-    parser.add_argument("--run", required=True, help="the run's identifier")
+    named = parser.add_mutually_exclusive_group(required=True)
+    named.add_argument("--run", help="the run's identifier")
+    named.add_argument(
+        "--process", help="the process: its newest ended run of its highest version is taken"
+    )
     parser.add_argument("--out", required=True, type=Path, help="an empty or new directory")
     parser.add_argument("--objects", type=Path, help="the object store's directory")
     parser.add_argument("--taken", choices=("instance", "local"), default="instance")
@@ -436,8 +478,9 @@ def main(argv: list[str] | None = None) -> int:
         "uncalibrated_margin": budget.uncalibrated_margin,
     }
     try:
+        run_id = args.run or asyncio.run(latest(secret.reveal(), args.tenant, args.process))
         document, files = asyncio.run(
-            export(secret.reveal(), args.tenant, args.run, objects, args.taken, held)
+            export(secret.reveal(), args.tenant, run_id, objects, args.taken, held)
         )
         everything = {**files, RECORDING: _json_file(document)}
         check_secrets(everything, [*known_secrets(os.environ), secret.reveal()])
@@ -445,7 +488,7 @@ def main(argv: list[str] | None = None) -> int:
         print(str(refused), file=sys.stderr)
         return 1
     write(args.out, document, files)
-    print(f"{args.out}: run {args.run} of {document['process_version']}, {len(files)} files")
+    print(f"{args.out}: run {run_id} of {document['process_version']}, {len(files)} files")
     return 0
 
 

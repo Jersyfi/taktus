@@ -91,11 +91,20 @@ export interface RunElement {
 	text: string;
 }
 
+/** The exactness statement of a process version, as generated (UC-6.9): four parts. */
+export interface ExactnessStatement {
+	process_version: string;
+	name: string;
+	parts: { title: string; lines: string[] }[];
+}
+
 export interface RunLevel {
 	run: RunElement;
 	steps: StepElement[];
 	/** One sentence: how far the run is and what it does now. */
 	summary: string;
+	/** The exactness statement of the version the run executes. */
+	exactness?: ExactnessStatement | null;
 }
 
 export interface SnapshotRun {
@@ -142,6 +151,12 @@ export interface ProcessStepElement {
 	rejected?: string[];
 	fallback?: string;
 	depends_on?: string[];
+	/** For a human step: the role that performs it, never a person (ADR-0146). */
+	role?: string;
+	/** What the person of the role, or of the fallback's role, needs to know. */
+	expertise?: string[];
+	/** For a fallback to a person: the role that takes the step over. */
+	fallback_role?: string;
 	/** The runs this step is running in right now; absent at rest. */
 	running_in?: string[];
 	drawn: Drawn;
@@ -173,6 +188,8 @@ export interface ProcessLevel {
 	runs?: RunAtVersionElement[];
 	/** One sentence: how its steps work, and how many run now. */
 	summary: string;
+	/** The exactness statement of this version. */
+	exactness?: ExactnessStatement | null;
 }
 
 export interface RunningStepElement {
@@ -208,6 +225,8 @@ export interface ProcessSummaryElement {
 	/** The steps of its active version, so that the overview draws every process as one body. */
 	cells?: CellElement[];
 	text: string;
+	/** The exactness statement of its active version. */
+	exactness?: ExactnessStatement | null;
 }
 
 /** `GET /levels/overview` (ADR-0067). */

@@ -9,6 +9,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from typing import Any, Protocol
 
+from taktus.components.accounting.application.service import (
+    Offer,
+    SpendHandler,
+    Trial,
+    TrialRead,
+)
 from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
@@ -45,8 +51,16 @@ from taktus.components.reporting.domain.model import (
     Scope,
     Snapshot,
 )
+from taktus.components.reporting.domain.model.acting import (
+    Register,
+    RemoveView,
+    ResidencyView,
+    WrongResultView,
+)
+from taktus.components.reporting.domain.service.variants import VariantsView
 from taktus.components.run.application.service import HandBack, TakeOver
 from taktus.components.run.domain.model import Run
+from taktus.ports.clock import Clock
 from taktus.ports.configuration import Secret
 from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Ledger
@@ -155,6 +169,26 @@ class EvaluationActs(Protocol):
     ) -> CorrectedCase: ...
 
 
+class TrialActs(Protocol):
+    """A model tried on fixed cases (ADR-0149): the composition root's, because a trial crosses
+    the process, command, run and accounting components."""
+
+    async def start(
+        self,
+        tenant: Tenant,
+        purpose: str,
+        candidates: Sequence[str],
+        by: str,
+        occasion: str = "asked",
+    ) -> Trial: ...
+
+    async def of_tenant(self, tenant: Tenant) -> list[Trial]: ...
+
+    async def read(self, tenant: Tenant, trial_id: str) -> TrialRead: ...
+
+    async def offers(self, tenant: Tenant) -> list[Offer]: ...
+
+
 class Takeovers(Protocol):
     """A running step taken over and handed back (ADR-0128): the run engine's."""
 
@@ -224,6 +258,31 @@ class OperationReads(Protocol):
     async def signals(self, tenant: Tenant) -> Sequence[tuple[Corridor, Judged]]:
         """Every signal in force, judged now against its corridor."""
         ...
+
+
+class ActingViews(Protocol):
+    """What acts for a tenant, what depends on it, and how a process really runs (ADR-0147):
+    the composition root's, because the facts cross the catalog, process, governance, run and
+    identity components. `visible` names the processes the reader may see."""
+
+    async def register(self, tenant: Tenant, visible: frozenset[str]) -> Register: ...
+
+    async def inventory(self, tenant: Tenant, visible: frozenset[str]) -> dict[str, Any]: ...
+
+    async def stop(self, tenant: Tenant, adapter: str, actor: str) -> Any:
+        """ADR-0138's stop of the adapter, by the person. `NotStoppable` for one no step halts
+        at."""
+        ...
+
+    async def remove(self, tenant: Tenant, adapter: str, visible: frozenset[str]) -> RemoveView: ...
+
+    async def residency(self, tenant: Tenant, visible: frozenset[str]) -> ResidencyView: ...
+
+    async def wrong_result(
+        self, tenant: Tenant, run_id: str, step_id: str, visible: frozenset[str]
+    ) -> WrongResultView | None: ...
+
+    async def variants(self, tenant: Tenant, process_id: str) -> VariantsView | None: ...
 
 
 class RestServices(Protocol):
@@ -343,6 +402,21 @@ class RestServices(Protocol):
         ...
 
     @property
+    def clock(self) -> Clock:
+        """The time a window of days ends at (ADR-0148)."""
+        ...
+
+    @property
+    def spend(self) -> SpendHandler:
+        """Where a run and a process spend, per step, and two runs side by side (ADR-0148)."""
+        ...
+
+    @property
+    def trials(self) -> TrialActs:
+        """A model tried on fixed cases, and the trials offered (ADR-0149)."""
+        ...
+
+    @property
     def takeovers(self) -> Takeovers:
         """A running step taken over and handed back (ADR-0128)."""
         ...
@@ -366,6 +440,11 @@ class RestServices(Protocol):
     @property
     def traces(self) -> StepTraces:
         """The trace inside a worker's step, read and shared by role (ADR-0135)."""
+        ...
+
+    @property
+    def acting(self) -> ActingViews:
+        """The register, the dependencies and the variants of a process (ADR-0147)."""
         ...
 
     @property

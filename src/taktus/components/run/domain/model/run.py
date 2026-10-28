@@ -402,6 +402,10 @@ class Run(Value):
     rehearsal: bool = False
     """A rehearsal (ADR-0030): no outward connector operation acts; each answers with the
     recorded response of an earlier real call, and every ledger entry of the run says so."""
+    bindings: Mapping[str, str] = Field(default_factory=dict)
+    """Purposes bound to one configured model for this run alone, `{purpose: model.<member>}`:
+    a model trial's case run (ADR-0149 §1). A bound purpose's chain is that model and no
+    other; every other purpose routes as configured. Empty for every other run."""
     state: RunState = RunState.PLANNED
     cause: Cause | None = None
     reason: str | None = None

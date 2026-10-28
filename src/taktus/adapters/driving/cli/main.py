@@ -73,6 +73,7 @@ from taktus.adapters.driving.cli import (
     cost_command,
     deactivate_command,
     deadline_command,
+    defect_command,
     exactness_command,
     findings_command,
     first_command,
@@ -136,6 +137,7 @@ app.add_typer(anchors_command.anchors, name="anchors")
 app.add_typer(incident_command.incident, name="incident")
 app.add_typer(signal_command.signal, name="signal")
 app.add_typer(corrections_command.corrections, name="corrections")
+app.add_typer(defect_command.defect, name="defect")
 app.add_typer(residency_command.residency, name="residency")
 app.add_typer(sources_command.sources, name="sources")
 app.add_typer(messages_command.messages, name="messages")

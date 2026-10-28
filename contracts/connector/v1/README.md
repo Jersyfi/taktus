@@ -418,8 +418,9 @@ uv run taktusctl conformance run --contract connector/v1 --endpoint http://local
 | C-08 | an unsigned or wrongly signed intake payload — or, under `hmac-sha256-timestamped`, one signed long before it arrived — is refused with its reason, never processed; where the scenario names a handshake, the verified one is answered exactly as expected and an unverified one not at all |
 | C-09 | every result reports consumption in a declared kind |
 | C-10 | the adapter passes the removal test: removing it breaks no process |
+| C-11 | where the declaration names a scoped capability, a call scoped to a subject is answered for that subject, and a call for another subject is refused with `out_of_scope` and no effect (§5, ADR-0130) |
 
-The suite runs C-01 to C-09 against a live connector and reports C-10 as *pending*, for the same
+The suite runs C-01 to C-09 and C-11 against a live connector and reports C-10 as *pending*, for the same
 reason W-12 of the worker contract is pending (DEC-0005): the removal test takes the adapter out
 of running processes, and no process uses a connector yet. A passed suite plus a passed removal
 test is maturity *verified*. Production processes at autonomy level 3 and above may only use
@@ -428,8 +429,9 @@ adapters at *verified* or above.
 The suite cannot know which input an operation needs. The connector's author states it in a
 **scenario** (`Connector.json#/$defs/Scenario`): one read, one or more writes whose idempotency
 is `native` or `marked` — none for a connector that only reads, whose C-05 then passes as not
-applicable (ADR-0111) — one call the target must refuse and with which cause, and recorded
-payloads for intake. A later write can name what an earlier one created (`{{shared}}`), so
+applicable (ADR-0111) — one call the target must refuse and with which cause, recorded
+payloads for intake, and — for a connector with a scoped capability — one scoped call with a
+subject, an input for the subject's own data and one for another subject's. A later write can name what an earlier one created (`{{shared}}`), so
 that the same scenario runs against a real target. How to write one, and what each check means in plain words:
 [CONFORMANCE.md](CONFORMANCE.md).
 

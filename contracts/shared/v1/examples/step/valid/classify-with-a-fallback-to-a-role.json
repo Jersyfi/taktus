@@ -1,0 +1,23 @@
+{
+  "id": "classify-ticket",
+  "method": "llm",
+  "reason": "the tickets are free text; a fixed rule misses new phrasings",
+  "rejected": [
+    {
+      "method": "rule",
+      "why": "keyword rules missed a third of the tickets in the sample"
+    }
+  ],
+  "exactness": "tolerant",
+  "fallback": {
+    "when": "confidence < 0.8",
+    "to": "human",
+    "role": "support-lead",
+    "expertise": [
+      "the product's ticket categories"
+    ]
+  },
+  "requires": [
+    "tickets.read"
+  ]
+}

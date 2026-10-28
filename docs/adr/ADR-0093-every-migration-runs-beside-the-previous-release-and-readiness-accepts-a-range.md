@@ -55,8 +55,30 @@ against the previous release's code (#330).
 ## Consequences
 - From this ADR on, a migration that renames or drops a column the previous release uses is
   refused in review until the range check exists, and by the test after it.
-- Until #330 lands, readiness still compares for equality. The rule of §1 makes the range check
-  safe to switch on when it arrives.
+- Until #330 landed, readiness compared for equality. Since then it reads the range of §2, as
+  the amendment below describes.
+
+## Amendment — how the two declarations meet (2026-10-28, #330)
+§2 left open how a build learns that a newer schema still serves it: the build does not hold the
+newer migrations. The schema says it. Migration 0083 creates the database function
+`taktus_oldest_code()`, which returns the newest revision of the oldest build the schema serves.
+A migration that only expands leaves it. A migration that contracts replaces it with its own
+revision and says so in its docstring.
+
+- **The build's side** is `OLDEST_SCHEMA` in `adapters/driven/postgres/migrate.py`; unset, it is
+  the build's head. A database at a revision of the build's history from there to the head is
+  ready; an older one asks for `make migrate`.
+- **The schema's side** is read only when the database is at a revision the build does not know.
+  The build is ready when the function names a revision of its own history. A schema without the
+  function is never taken for one that serves the build.
+- **Migrating on start** leaves a newer schema as it is; whether the build serves it is the
+  range's question.
+- **The test of §1** compares the schema before and after every migration from 0083 on: a
+  migration that drops, changes the type of, or tightens what existed, and does not move the
+  function to itself, fails (`tests/adapters/persistence/test_migrations_expand.py`).
+  `deploy/docker/upgrade.sh` runs the new migrations while the previous release still serves,
+  and holds that release's readiness once a release that reads the range is the previous one.
+- **The runbook of §3** is section 12 of `deploy/k8s/README.md`.
 
 ## Where this promise ends
 - The promise covers one release step: the previous release beside the next. An upgrade that skips
@@ -64,3 +86,7 @@ against the previous release's code (#330).
 - It covers the schema. It does not cover the meaning of data that two releases interpret
   differently; that needs its own migration plan.
 - A migration that declares itself breaking is outside the promise, and says so.
+- The comparison sees columns, their types and nullability, and constraints. It does not see a
+  function, a view or a policy an older build relies on, nor a change of what a value means.
+- A build released before #330 does not read the range; it stays unready against any newer
+  schema. The first release step the promise covers is from the first release that carries it.

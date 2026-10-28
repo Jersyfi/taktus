@@ -186,11 +186,11 @@ async def test_the_revision_check_names_what_is_missing(
     try:
         await check_schema(persistence.engine)
         head = head_revision()
-        assert await current_revision(persistence.engine) == head == "0074"
+        assert await current_revision(persistence.engine) == head == "0086"
         with sync_engine.begin() as connection:
-            connection.execute(text("UPDATE alembic_version SET version_num = '0000'"))
+            connection.execute(text("UPDATE alembic_version SET version_num = '0074'"))
         try:
-            with pytest.raises(SchemaOutOfDate, match=rf"at schema revision 0000.*needs {head}"):
+            with pytest.raises(SchemaOutOfDate, match=rf"at schema revision 0074.*needs {head}"):
                 await check_schema(persistence.engine)
         finally:
             # Restored to the head, whatever it is: the database is shared with every test of

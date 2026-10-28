@@ -6,8 +6,8 @@ epic: E6
 serves: [P7, P8, P12]
 state: building
 version: 0.5.0
-tests: [tests/exactness/test_exactness_statement.py::test_the_statement_of_every_bundle_renders_with_all_four_parts, tests/exactness/test_exactness_statement.py::test_a_statement_without_what_it_does_not_cover_does_not_render, tests/exactness/test_exactness_statement.py::test_a_changed_check_changes_the_statement, tests/exactness/test_exactness_statement.py::test_a_bundle_whose_statement_would_say_guaranteed_is_refused, tests/exactness/test_exactness_statement.py::test_no_model_writes_the_statement]
-adrs: {ADR-0014: 6611f7833deb, ADR-0023: 949c6f4e13af, ADR-0029: 37c061ef032a, ADR-0082: c64fba9bd04a}
+tests: [tests/exactness/test_exactness_statement.py::test_the_statement_of_every_bundle_renders_with_all_four_parts, tests/exactness/test_exactness_statement.py::test_a_statement_without_what_it_does_not_cover_does_not_render, tests/exactness/test_exactness_statement.py::test_a_changed_check_changes_the_statement, tests/exactness/test_exactness_statement.py::test_a_bundle_whose_statement_would_say_guaranteed_is_refused, tests/exactness/test_exactness_statement.py::test_no_model_writes_the_statement, tests/exactness/test_statement_in_reports.py::test_a_report_carries_the_statement_of_the_process_that_produced_it_unchanged, tests/exactness/test_statement_in_reports.py::test_the_statement_a_run_reads_is_the_one_its_version_generates, tests/adapters/rest/test_exactness_statement.py::test_the_process_level_carries_the_statement_of_its_version_unchanged, tests/adapters/rest/test_exactness_statement.py::test_a_run_carries_the_statement_of_the_version_it_executes, tests/adapters/rest/test_exactness_statement.py::test_the_overview_carries_the_statement_per_process]
+adrs: {ADR-0014: 6611f7833deb, ADR-0023: 949c6f4e13af, ADR-0029: 37c061ef032a, ADR-0082: c64fba9bd04a, ADR-0152: b3f4df1be26f}
 supersedes: null
 ---
 
@@ -72,6 +72,10 @@ Every process version carries its statement, generated from its steps' classes a
 is read, in four parts; the statement of every example and blueprint bundle renders with all four.
 One without what its checks do not cover is refused, and so is a bundle whose statement would say
 "guaranteed". A changed check changes the statement. The modules that write it reach no model.
-`taktusctl exactness` prints it (ADR-0082) — by the named tests. Not built: the statement in the
-dashboard, on the process page, in a run and in every report, the measured rate, and a model's
-explanation that names it (#224).
+`taktusctl exactness` prints it (ADR-0082). The process level, every run level and the overview
+carry the statement of the version they show, unchanged, and the web app shows it on the process
+page, on every run and per process on the overview. A report a process delivers carries it by
+`{"$run": "exactness"}`, as generated; until the value ledger measures the rate of corrections
+after the checks passed, the statement says it is not yet measured (ADR-0152) — by the named
+tests. Not built: the measured rate itself, which the value ledger does not count yet, and a
+model's explanation of the statement that names it.

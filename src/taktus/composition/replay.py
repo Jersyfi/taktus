@@ -68,6 +68,7 @@ from taktus.components.run.application.service import EngineOptions, RunEngine, 
 from taktus.components.run.domain.model import Cause, Run, RunState, StepState
 from taktus.components.run.domain.service.replay import RecordedEnd, RecordedStep, differences
 from taktus.composition.decisions import decision_wiring
+from taktus.composition.levels import VersionStatements
 from taktus.composition.local import Stores
 from taktus.ports.model import PriceTable
 from taktus.ports.persistence import Repository, Stored
@@ -222,6 +223,7 @@ async def replay(bundle: Mapping[str, Any] | Path, directory: Path, store: Store
         anchors=decisions.anchors,
         decisions=decisions.requests,
         replay=ReplayPools(recording, directory),
+        statements=VersionStatements(store.work, store.of(ProcessVersion)),
     )
     command = Command(
         id=ids.new("cmd"),

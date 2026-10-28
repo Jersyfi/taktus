@@ -79,3 +79,20 @@ async def test_a_step_whose_estimate_fits_is_admitted_with_what_is_left_reserved
     refused = await h.start(Limits(currency={"usd": 0.5}))
     assert refused.state is RunState.HALTED and refused.cause is Cause.LIMIT
     assert refused.step_run("do").state is StepState.REJECTED
+
+
+async def test_a_run_halts_at_the_step_boundary_where_its_money_is_spent_not_at_its_end() -> None:
+    """The beta condition "a budget that holds during a run" (docs/roadmap.md, ADR-0005): three
+    steps of 0.75 usd under 2 usd. The first two finish; the third does not fit what is left and
+    never starts. The run halts there with cause `limit`, before its last step, and the ledger
+    holds nothing of the third step but its refusal."""
+    fake = spending(0.75)
+    h = Harness(worker("a"), worker("b", after=("a",)), worker("c", after=("b",)), workers=[fake])
+    run = await h.start(Limits(currency={"usd": 2.0}))
+    assert run.state is RunState.HALTED and run.cause is Cause.LIMIT
+    assert [run.step_run(s).state for s in ("a", "b")] == [StepState.SUCCEEDED] * 2
+    assert run.step_run("c").state is StepState.REJECTED
+    assert len(fake.assignments) == 2, "the third step was never handed to the worker"
+    kinds = await h.kinds(run)
+    assert "step.started:c" not in kinds
+    assert kinds[-2:] == ["step.rejected:c:rejected_by_admission", "run.halted::limit"]

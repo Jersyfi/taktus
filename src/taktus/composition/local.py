@@ -65,7 +65,11 @@ from taktus.adapters.driving.cli.wiring import (
     NotOperable,
     Services,
 )
-from taktus.components.accounting.application.service import CostOfRunHandler, TaktRateHandler
+from taktus.components.accounting.application.service import (
+    CostOfRunHandler,
+    SpendHandler,
+    TaktRateHandler,
+)
 from taktus.components.catalog.application.service import (
     RecordRemovalResultHandler,
     RunConformanceHandler,
@@ -73,8 +77,9 @@ from taktus.components.catalog.application.service import (
 from taktus.components.catalog.domain.model import AdapterMaturity
 from taktus.components.command.application.service import CommissionPlanHandler
 from taktus.components.decision.domain.model import Request
-from taktus.components.governance.application.service import ExpectedRuns
+from taktus.components.governance.application.service import ExpectedRuns, ResultDefects
 from taktus.components.governance.domain.model import Incident, WatchConfiguration
+from taktus.components.governance.domain.model.anchors import AnchorConfiguration
 from taktus.components.identity.application.service import IdentityDirectory, TenantRegistry
 from taktus.components.identity.domain.model import (
     BrowserSession,
@@ -116,7 +121,7 @@ from taktus.composition.execution import (
 from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
-from taktus.composition.levels import RepositoryLevelRecords
+from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
@@ -136,7 +141,6 @@ from taktus.composition.settings import (
     load_model,
     load_models,
     load_telemetry,
-    load_tenants,
     load_workers,
 )
 from taktus.composition.shipped import load as load_shipped
@@ -210,7 +214,6 @@ class LocalWiring:
             shape = findings_shape.form()
             findings_connector = load_findings_connector(self._configuration)
             findings_sending = sending_of(findings_shape, findings_connector)
-            tenants = load_tenants(self._configuration)
             administration = load_administration(self._configuration)
             knowledge_directory = load_knowledge_directory(self._configuration)
             backup_expected_hours = load_backup_expected_hours(self._configuration)
@@ -230,7 +233,6 @@ class LocalWiring:
                 ledger=ledger,
                 clock=clock,
                 ids=ids,
-                narrowed_to=tenants,
             )
             identities = IdentityDirectory(
                 tenants=registry,
@@ -320,6 +322,7 @@ class LocalWiring:
                     masking=known_secrets(os.environ),
                     stops=stops,
                     messages=decisions.messages,
+                    statements=VersionStatements(stores.work, stores.of(ProcessVersion)),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)
@@ -434,6 +437,7 @@ class LocalWiring:
                 lowered=decisions.lowered,
                 sources=decisions.sources,
                 stages=staged.ceilings,
+                structure=identities,
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),
@@ -470,6 +474,7 @@ class LocalWiring:
                 cost=CostOfRunHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work
                 ),
+                spend=SpendHandler(ledger, MemoryObjectStore(state_dir / "objects"), stores.work),
                 takt_rate=TaktRateHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work, clock, weights
                 ),
@@ -517,6 +522,15 @@ class LocalWiring:
                 corridors=signals.corridors,
                 signals=signals.watch,
                 corrections=decisions.corrections,
+                defects=ResultDefects(
+                    stores.provenance_store,
+                    ledger,
+                    stores.of(Incident),
+                    stores.of(WatchConfiguration),
+                    stores.of(AnchorConfiguration),
+                    stores.work,
+                    clock,
+                ),
                 residency=decisions.residency,
                 sources=decisions.sources,
                 messages=decisions.messages.tenant,
@@ -547,7 +561,6 @@ class LocalWiring:
     async def capacity(self, *, state_dir: Path) -> AsyncIterator[CapacityServices]:
         try:
             settings = load_capacity(self._configuration)
-            tenants = load_tenants(self._configuration)
             configured = load_workers(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
@@ -559,7 +572,6 @@ class LocalWiring:
                 ledger=ChainedLedger(stores.ledger_store, clock, stores.projection_store),
                 clock=clock,
                 ids=SystemIdentifiers(),
-                narrowed_to=tenants,
             )
             yield CapacityServices(
                 report=capacity_report(

@@ -250,6 +250,7 @@ def test_every_secret_is_a_mounted_file_and_never_an_environment_variable() -> N
         "telemetry.otlp.endpoint=http://collector:4317",
         "telemetry.otlp.headersSecret=otlp",
         "telemetry.otlp.headersKey=headers",
+        *OTHERS,
     )
     variables = 0
     for name, spec in pod_specs(documents):
@@ -676,6 +677,136 @@ def test_the_repository_connector_is_reached_by_the_roles_alone_and_acts_as_the_
     off = render("connectors.repository.enabled=false", "connectors.chat.enabled=false")
     assert not [d for d in off if "connector" in d["metadata"]["name"]]
     assert "TAKTUS_CONNECTORS" not in of_kind(off, "ConfigMap")[0]["data"]
+
+
+OTHERS = (
+    "connectors.others[0].name=payments",
+    "connectors.others[0].capability=payments.subscriptions",
+    "connectors.others[0].module=taktus.adapters.driven.connectors.stripe",
+    "connectors.others[0].port=9111",
+    "connectors.others[0].credentials[0].name=PAYMENTS_TOKEN",
+    "connectors.others[0].credentials[0].secret=taktus-payments",
+    "connectors.others[0].credentials[0].key=token",
+    "connectors.others[1].name=errors",
+    "connectors.others[1].capability=errors.issues",
+    "connectors.others[1].image=errors-connector:1.2.0",
+    "connectors.others[1].port=9200",
+    "connectors.others[1].args={--target,https://errors.invalid}",
+    "connectors.others[1].healthPath=",
+)
+
+
+def _component(documents: list[dict[str, Any]], kind: str, component: str) -> dict[str, Any]:
+    [found] = [
+        d
+        for d in of_kind(documents, kind)
+        if d["metadata"]["labels"].get("app.kubernetes.io/component") == component
+    ]
+    return found
+
+
+def test_any_further_connector_deploys_from_values_reached_by_the_roles_alone() -> None:
+    """The beta runs connectors beyond the two channels (ADR-0150, docs/roadmap.md): each entry
+    of `connectors.others` is a deployment of its own — the module from the control plane's
+    image, or an image of its own — named in TAKTUS_CONNECTORS by its capability, reached from
+    the roles alone, its credentials mounted files and no token."""
+    documents = render(*OTHERS)
+    payments = _component(documents, "Deployment", "connector-payments")
+    spec = payments["spec"]["template"]["spec"]
+    assert payments["metadata"]["name"] == "taktus-connector-payments"
+    assert spec["automountServiceAccountToken"] is False
+    [container] = spec["containers"]
+    roles = {
+        d["spec"]["template"]["spec"]["containers"][0]["image"]
+        for d in of_kind(documents, "Deployment")
+        if d["metadata"]["labels"]["app.kubernetes.io/component"] == "control-plane"
+    }
+    assert {container["image"]} == roles
+    assert container["command"] == [
+        "python",
+        "-m",
+        "taktus.adapters.driven.connectors.stripe",
+        "--host",
+        "0.0.0.0",  # noqa: S104 — inside the connector's pod
+        "--port",
+        "9111",
+    ]
+    assert container["env"] == [
+        {
+            "name": "TAKTUS_CREDENTIAL_PAYMENTS_TOKEN_FILE",
+            "value": "/run/secrets/taktus/payments-token/token",
+        }
+    ]
+    mounts = {m["name"]: m for m in container["volumeMounts"]}
+    assert mounts["credential-payments-token"]["readOnly"] is True
+    [volume] = [v for v in spec["volumes"] if "secret" in v]
+    assert volume["secret"]["secretName"] == "taktus-payments"
+    assert container["readinessProbe"]["httpGet"]["path"] == "/health"
+
+    errors = _component(documents, "Deployment", "connector-errors")
+    [own] = errors["spec"]["template"]["spec"]["containers"]
+    assert own["image"] == "errors-connector:1.2.0"
+    assert "command" not in own
+    assert own["args"] == ["--target", "https://errors.invalid"]
+    assert "env" not in own
+    assert "readinessProbe" not in own, "an empty healthPath: no probes"
+
+    [config] = of_kind(documents, "ConfigMap")
+    entries = config["data"]["TAKTUS_CONNECTORS"].split(",")
+    assert "payments.subscriptions=http://taktus-connector-payments:9111/mcp" in entries
+    assert "errors.issues=http://taktus-connector-errors:9200/mcp" in entries
+    for name in ("taktus-connector-payments", "taktus-connector-errors"):
+        [policy] = [d for d in of_kind(documents, "NetworkPolicy") if d["metadata"]["name"] == name]
+        [allowed] = policy["spec"]["ingress"]
+        [peer] = allowed["from"]
+        assert peer["podSelector"]["matchLabels"]["app.kubernetes.io/component"] == "control-plane"
+        assert "namespaceSelector" not in peer
+    [roles_policy] = [
+        d
+        for d in of_kind(documents, "NetworkPolicy")
+        if d["spec"]["podSelector"].get("matchLabels", {}).get("app.kubernetes.io/component")
+        == "control-plane"
+        and "Egress" in d["spec"].get("policyTypes", [])
+    ]
+    reached = {
+        peer["podSelector"]["matchLabels"].get("app.kubernetes.io/component")
+        for rule in roles_policy["spec"]["egress"]
+        for peer in rule.get("to", [])
+        if "podSelector" in peer and "namespaceSelector" not in peer
+    }
+    assert {"connector-payments", "connector-errors"} <= reached
+
+
+@pytest.mark.parametrize(
+    ("sets", "message"),
+    [
+        ((*OTHERS, "connectors.others[1].name=payments"), "is named twice"),
+        ((*OTHERS, "connectors.others[1].name=chat"), "is named twice"),
+        (
+            (*OTHERS, "connectors.others[1].capability=payments.subscriptions"),
+            "another connector's label",
+        ),
+        (
+            (*OTHERS, "connectors.others[1].module=taktus.adapters.driven.connectors.sentry"),
+            "not both",
+        ),
+        (("connectors.others[0].name=a", "connectors.others[0].capability=a.b"), "module or image"),
+        (
+            (
+                "connectors.others[0].name=a",
+                "connectors.others[0].capability=a.b",
+                "connectors.others[0].module=m",
+            ),
+            "port is required",
+        ),
+        ((*OTHERS, "connectors.others[1].image=errors-connector:latest"), "is not a version"),
+        ((*OTHERS, "connectors.others[0].credentials[0].name=payments"), "not a parameter name"),
+    ],
+)
+def test_a_further_connector_that_cannot_be_deployed_is_refused(
+    sets: tuple[str, ...], message: str
+) -> None:
+    assert message in render_fails(*sets)
 
 
 def test_the_platform_and_each_credentials_declaration_are_configuration() -> None:

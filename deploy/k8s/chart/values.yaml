@@ -278,6 +278,29 @@ connectors:
       requests: { cpu: 50m, memory: 128Mi }
       limits: { memory: 256Mi }
 
+  # Every further connector, one deployment each (README §2): the cost, payment and error
+  # connectors (ADR-0150), the mail, metrics and check connectors (ADR-0111), or a connector of
+  # an image of its own. The roles reach each as `<capability>=<its address>` in
+  # TAKTUS_CONNECTORS; nothing else reaches it. Each credential it reads is a key of an existing
+  # Secret, mounted as a file whose path is in TAKTUS_CREDENTIAL_<NAME>_FILE (CREDENTIALS.md).
+  #   - name: payments                 # lowercase letters and digits, words joined by hyphens;
+  #                                    # not `repository` or `chat`; the deployment's suffix
+  #     capability: payments.subscriptions   # its label in TAKTUS_CONNECTORS, unique
+  #     module: taktus.adapters.driven.connectors.stripe   # run from the control plane's image,
+  #                                    # as `python -m <module> --host 0.0.0.0 --port <port>`
+  #     # image: <registry>/<image>:<version>   # or an image of its own, never both; its
+  #     # command: []                  # entrypoint unless `command` is given
+  #     port: 9111                     # where it serves MCP at /mcp
+  #     args: []                       # appended to the module's command, or the image's args
+  #     credentials:                   # each: the parameter, the Secret and the key holding it
+  #       - name: PAYMENTS_TOKEN
+  #         secret: ""
+  #         key: ""
+  #     healthPath: /health            # optional; "" for an image that serves no readiness
+  #     egressPorts: [443]             # optional; [] for one that reaches nothing outside
+  #     resources: {}                  # optional; the chat connector's by default
+  others: []
+
 ingress:
   enabled: true            # rendered only when `host` is given as well
   className: ""

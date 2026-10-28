@@ -39,7 +39,7 @@ same way (issue #70). The backlog's order — earliest milestone, then priority,
 number — is in the same module, `backlog()`, which `make backlog` prints from and P-01's rule
 `backlog` runs (issue #71).
 
-**P-01 Roadmap control** (version 4, autonomy 3, seven steps, no model, a quota of 60 units — DEC-0192): read the roadmap on `main`
+**P-01 Roadmap control** (version 5, autonomy 3, seven steps, no model, a quota of 60 units — DEC-0192): read the roadmap on `main`
 (`rule`, connector read, with the commit it was read at), read the open issues to the last page
 (a reading that stopped short fails) and the directory of open records (`rule`, connector
 reads), order the backlog (`rule` `backlog`, `exact` — the groups and the order `make backlog`
@@ -52,7 +52,7 @@ do not name it, read from the issue numbers each item names, `#N`), compose the 
 nothing, until its autonomy is raised (M3.9). The blueprint first described the reconciliation
 as a model's judgement; the owner chose the rule in DEC-0080 (M3.13).
 
-**P-02 Refinement** (version 5, autonomy 3, seven steps): read the issue and its comments (`rule`, connector
+**P-02 Refinement** (version 6, autonomy 3, seven steps): read the issue and its comments (`rule`, connector
 reads), check that P-02 has not commented on it already (`rule`, `exact`), find the sections of
 the standard the body lacks (`rule` `ready`, `exact` — an issue that is closed or a pull request
 is refused here; one that carries all three lacks none, and the three steps after this skip
@@ -64,7 +64,7 @@ ledger). P-02 never edits the issue and never adds the label `ready`: a person, 
 the sections into the issue and labels it, until P-02's autonomy is raised (M3.9). Run again on
 the same issue, it stops at the first check: nothing is written twice.
 
-**P-03 Implementation** (version 22, autonomy 4, thirty-two steps, three of them on escalation): it starts when an
+**P-03 Implementation** (version 23, autonomy 4, thirty-two steps, three of them on escalation): it starts when an
 issue is handed to Taktus, the label `to-taktus` added (DEC-0197), not on the label `ready`. Read the issue and its comments, compose
 the context, read the repository's open issues (every page, or the step fails) and the directory
 of open records on `main`, admit — the ready standard, and open, not a pull request, not

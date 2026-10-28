@@ -5,10 +5,12 @@
 	written out below the drawing, as its text equivalent. It leads to its process (ADR-0064).
 -->
 <script lang="ts">
+	import ExactnessStatement from './ExactnessStatement.svelte';
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
 	import { originLink, processLink, requestsLink } from './links';
+	import { spendLink } from './spend';
 	import type { Snippet } from 'svelte';
 	import type { Figure, RunLevel } from './types';
 
@@ -52,6 +54,7 @@
 			<p class="meta">
 				Process <a href={processLink(level.run.process_version)}>{level.run.process_version}</a
 				>{#if level.run.rehearsal}&#32;· a rehearsal{/if}
+				· <a href={spendLink(level.run.id)}>where it spent</a>
 			</p>
 		</div>
 	</header>
@@ -80,6 +83,10 @@
 	{/if}
 
 	{@render acts?.()}
+
+	{#if level.exactness}
+		<ExactnessStatement statement={level.exactness} />
+	{/if}
 
 	<section class="text" aria-label="The run as text">
 		<h2>As text</h2>

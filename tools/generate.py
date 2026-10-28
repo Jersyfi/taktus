@@ -9,8 +9,9 @@ Three things are generated today, each never edited by hand:
 - `web/src/lib/generated/fixtures.json`, what the web app's tests draw: the visual vocabulary
   and a run level drawn by `reporting` from example facts that use every method kind, every
   exactness class and every motion, the process level of the same steps, an overview, the
-  origin of a result, and what the routes of what keeps the operation running answer (ADR-0063,
-  ADR-0064, ADR-0067, ADR-0068, ADR-0121). The web app's tests hold what it
+  origin of a result, what the routes of what keeps the operation running answer, and the
+  spend per step and a model trial as their routes answer (ADR-0063, ADR-0064, ADR-0067,
+  ADR-0068, ADR-0121, ADR-0148, ADR-0149). The web app's tests hold what it
   draws to these glyphs; `tests/components/reporting/test_run_level.py` fails when the file
   differs from what this script writes. The web app itself reads the vocabulary and every
   level from the surface.
@@ -62,6 +63,7 @@ def web_fixtures() -> str:
         RunCount,
         RunFacts,
         RunningStep,
+        Statement,
         StepFacts,
         VersionRef,
         Wait,
@@ -76,6 +78,12 @@ def web_fixtures() -> str:
     from taktus.shared.v1 import Autonomy, ConsumptionQuantities, DecisionStatus, Provenance
 
     at = datetime(2026, 10, 10, 9, 0, tzinfo=UTC)
+    # The exactness statement every level shows, generated from an example bundle as the
+    # process component generates it for any version (UC-6.9).
+    from taktus.components.process.application.service.register_version import statement_of
+
+    example = yaml.safe_load((ROOT / "examples/processes/six-times-seven.yaml").read_text())
+    statement = Statement.model_validate(statement_of(example).as_document())
 
     def step(
         name: str, method: str, exactness: str | None, state: str, **more: object
@@ -127,6 +135,7 @@ def web_fixtures() -> str:
         ),
         created_at=at,
         updated_at=at,
+        exactness=statement,
     )
     process = ProcessFacts(
         id="example",
@@ -147,6 +156,9 @@ def web_fixtures() -> str:
                 exactness=s.exactness,
                 reason=f"the {s.method} suits {s.id}",
                 depends_on=s.depends_on,
+                # A person's step names its role, never a person (ADR-0146).
+                role="reviewer" if s.method == "human" else None,
+                expertise=("the release's scope",) if s.method == "human" else (),
             )
             for s in facts.steps
         ),
@@ -160,6 +172,7 @@ def web_fixtures() -> str:
                 created_at=at,
             ),
         ),
+        exactness=statement,
     )
     overview = OverviewFacts(
         tenant="default",
@@ -175,6 +188,7 @@ def web_fixtures() -> str:
                     )
                     for s in facts.steps
                 ),
+                exactness=statement,
             ),
             ProcessSummary(id="quiet", name="Quiet", active_version="3", autonomy_level=4),
         ),
@@ -254,6 +268,8 @@ def web_fixtures() -> str:
         "takeover": takeover_fixtures(at, step),
         "governance": governance_fixtures(at, process_level(process).process),
         "operation": operation_fixtures(),
+        "acting": acting_fixtures(at),
+        "spend": spend_fixtures(),
     }
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
@@ -447,6 +463,172 @@ def governance_fixtures(at: Any, process: Any) -> dict[str, Any]:
     }
 
 
+def acting_fixtures(at: Any) -> dict[str, Any]:
+    """What the pages of what acts, what depends on it and how a process really runs draw,
+    written by the reporting component's own functions (ADR-0147): the register and its
+    inventory, an adapter removed, a wrong result followed forward, where data goes, and the
+    variants of a process."""
+    from datetime import timedelta
+
+    from taktus.components.reporting.domain.model.acting import (
+        ActorFacts,
+        ActorUse,
+        RemovalSeen,
+        Used,
+    )
+    from taktus.components.reporting.domain.service import acting
+    from taktus.components.reporting.domain.service import variants as v
+    from taktus.shared.v1 import ExactnessClass, LedgerEntry, LedgerRefs, Provenance
+
+    def use(process: str, step: str, level: int, breaks: bool, role: str | None = None) -> Any:
+        return ActorUse(
+            process_id=process,
+            version="1",
+            step_id=step,
+            served="tickets.read" if not role else "purpose summary",
+            level=level,
+            exactness=ExactnessClass.SOURCED if not role else ExactnessClass.FREE,
+            without="breaks" if breaks else "degrades",
+            instead=None if breaks or role else "connector.mirror",
+            role=role,
+            reason="no other adapter serves tickets.read and the step names no fallback"
+            if breaks
+            else "another adapter, or a person of the role, takes the step",
+        )
+
+    tested = RemovalSeen(verdict="changed", tested_at=at - timedelta(days=3))
+    facts = [
+        ActorFacts(
+            adapter="connector.tickets",
+            family="connector",
+            serves=("tickets",),
+            maturity="verified",
+            removal=RemovalSeen(verdict="broke", tested_at=at - timedelta(days=3)),
+            uses=(use("billing", "fetch", 2, True), use("support", "read", 3, False)),
+            used=Used(days=28, steps=412, runs=206),
+        ),
+        ActorFacts(
+            adapter="model.writer",
+            family="model",
+            serves=("summary",),
+            maturity="verified",
+            removal=tested,
+            location="elsewhere",
+            uses=(use("support", "draft", 2, False, role="support-lead"),),
+            used=Used(days=28, steps=198, runs=198, tokens=241000, money={"eur": 3.12}),
+        ),
+        ActorFacts(
+            adapter="worker.coder",
+            family="worker",
+            serves=("vcs.write",),
+            maturity="verified",
+            removal=tested,
+            used=Used(days=28),
+        ),
+    ]
+    register = acting.register("default", facts, "eu")
+    entry = LedgerEntry.model_validate(
+        {
+            "seq": 9,
+            "ts": at,
+            "kind": "egress.delivery",
+            "prev_hash": "sha256:" + "0" * 64,
+            "hash": "sha256:" + "1" * 64,
+            "refs": {"tenant": "default", "run_id": "run_remind", "step_id": "letter"},
+        }
+    )
+
+    def record(id: str, run: str, step: str, pv: str, reads: tuple[str, str] | None) -> Any:
+        return Provenance.model_validate(
+            {
+                "id": id,
+                "run_id": run,
+                "step_id": step,
+                "process_version": pv,
+                "method": "rule",
+                "exactness": "sourced",
+                "inputs": []
+                if reads is None
+                else [
+                    {
+                        "kind": "result",
+                        "run_id": reads[0],
+                        "step_id": reads[1],
+                        "digest": "sha256:" + "a" * 64,
+                        "observed_at": at,
+                    }
+                ],
+                "outputs": [],
+                "result_digest": "sha256:" + "b" * 64,
+                "ledger_seq": 3,
+                "recorded_at": at,
+            }
+        )
+
+    wrong = acting.wrong_result(
+        "run_bill",
+        "compute",
+        record("p0", "run_bill", "compute", "billing@1", None),
+        [
+            record("p1", "run_bill", "invoice", "billing@1", ("run_bill", "compute")),
+            record("p2", "run_remind", "letter", "reminders@2", ("run_bill", "invoice")),
+        ],
+        [entry],
+    )
+    travelled = v.Travelled()
+    seq = 0
+    for i in range(12):
+        run = f"run_{i:02d}"
+        path = (
+            [("step.awaiting", "classify", "fell_back")]
+            if i < 3
+            else [("step.retried", "book", "after_failure")]
+            if i < 5
+            else []
+        )
+        for kind, step, outcome in [*path, ("run.finished", None, None)]:
+            seq += 1
+            v.fold(
+                travelled,
+                LedgerEntry.model_validate(
+                    {
+                        "seq": seq,
+                        "ts": at,
+                        "kind": kind,
+                        "prev_hash": "sha256:" + "0" * 64,
+                        "hash": "sha256:" + "1" * 64,
+                        "refs": LedgerRefs(
+                            tenant="default",
+                            run_id=run,
+                            step_id=step,
+                            process_version="invoices@1",
+                        ).document(),
+                        **({} if outcome is None else {"outcome": outcome}),
+                    }
+                ),
+            )
+    variants = v.variants(
+        "invoices",
+        "1",
+        ("classify", "approve", "book"),
+        travelled,
+        [
+            v.WaitFact(step_id="approve", account="wait.human", cause="c", seconds=7200 * 6),
+            v.WaitFact(step_id="classify", account="limit.provider", cause="c", seconds=1800),
+        ],
+        {"accounts-approver": 3},
+        {"approve": "accounts-approver"},
+    )
+    return {
+        "register": register.document(),
+        "inventory": acting.inventory(register, at),
+        "remove": acting.remove_view("connector.tickets", facts[0]).document(),
+        "wrong_result": wrong.document(),
+        "residency": acting.residency_view(facts, "eu").document(),
+        "variants": variants.document(),
+    }
+
+
 def operation_fixtures() -> dict[str, object]:
     """What the surface answers on the routes of what keeps the operation running (ADR-0121),
     written by the same functions the routes answer with, from example records: an open
@@ -627,6 +809,192 @@ def operation_fixtures() -> dict[str, object]:
         "backup": backup_view(watched),
         "signals": {"signals": [signal_view(c, j) for c, j in signals]},
         "daily_report": report_view(daily, "idn_owner"),
+    }
+
+
+def spend_fixtures() -> dict[str, object]:
+    """What the routes of spend per step and of model trials answer (ADR-0148, ADR-0149), as
+    the documents of the types they answer with: a run of three steps, the same task run with
+    another model beside it, the process over a window, a trial of two candidates with one
+    case whose results differ, and the trials offered."""
+    from datetime import UTC, datetime, timedelta
+
+    from taktus.components.accounting.application.service import (
+        CandidateReport,
+        CaseOutcome,
+        Offer,
+        ProcessSpend,
+        RunComparison,
+        RunSpend,
+        StepDifference,
+        StepSpend,
+        Trial,
+        TrialCase,
+        TrialRead,
+        TrialReport,
+    )
+    from taktus.components.accounting.domain.service import Meter
+    from taktus.shared.v1 import Compression, PriceKinds
+
+    at = datetime(2026, 10, 28, 9, 0, tzinfo=UTC)
+
+    def step(
+        step_id: str,
+        method: str,
+        amount: float | None,
+        takte: float,
+        kinds: dict[str, int],
+        result: str,
+        turns: int = 0,
+        compression: Compression | None = None,
+    ) -> StepSpend:
+        tokens = {"draft-model-20261001": PriceKinds(**kinds)} if kinds else {}
+        return StepSpend(
+            step_id=step_id,
+            method=method,
+            finished=1,
+            meter=Meter(
+                tokens=tokens,
+                steps={method: 1},
+                turns=turns,
+                compression=compression,
+                compute_seconds={} if kinds else {"cpu.small": 1.5},
+            ),
+            amount=amount,
+            takte=takte,
+            outcome="succeeded",
+            result="sha256:" + result * 64,
+        )
+
+    left = RunSpend(
+        run_id="run_replies_1",
+        process_version="replies@3",
+        currency="usd",
+        table="2026-10",
+        steps=(
+            step("read", "rule", 0.0, 1.0, {}, "a"),
+            step(
+                "draft",
+                "llm",
+                0.0184,
+                12.4,
+                {"input": 1200, "cache_read": 8000, "cache_write": 400, "output": 310},
+                "b",
+                turns=3,
+                compression=Compression(before=12000, after=9600),
+            ),
+            step("check", "llm", 0.0021, 1.6, {"input": 420, "output": 12}, "c", turns=1),
+        ),
+        amount=0.0205,
+        takte=15.0,
+        calibration="uncalibrated",
+    )
+    right = left.model_copy(
+        update={
+            "run_id": "run_replies_2",
+            "steps": (
+                left.steps[0],
+                step("draft", "llm", 0.0071, 5.2, {"input": 1180, "output": 280}, "d", turns=2),
+                left.steps[2],
+            ),
+            "amount": 0.0092,
+            "takte": 7.8,
+        }
+    )
+    comparison = RunComparison(
+        left=left,
+        right=right,
+        steps=(
+            StepDifference(
+                step_id="read", amount=0.0, tokens_in=0, tokens_out=0, turns=0, same_result=True
+            ),
+            StepDifference(
+                step_id="draft",
+                amount=-0.0113,
+                tokens_in=-8420,
+                tokens_out=-30,
+                turns=-1,
+                same_result=False,
+            ),
+            StepDifference(
+                step_id="check", amount=0.0, tokens_in=0, tokens_out=0, turns=0, same_result=True
+            ),
+        ),
+        amount=-0.0113,
+    )
+    process = ProcessSpend(
+        process_id="replies",
+        since=at - timedelta(days=30),
+        until=at,
+        runs=14,
+        steps=tuple(s.model_copy(update={"finished": 14}) for s in left.steps),
+        amounts={"usd": 0.287},
+    )
+    candidates = ("model.fast", "model.careful")
+    outcome = {
+        "model.fast": CaseOutcome(
+            case="replies/late",
+            run_id="trl_1-0-0",
+            state="finished",
+            passed=True,
+            amount=0.0071,
+            tokens_in=1180,
+            tokens_out=280,
+            wall_seconds=4.2,
+            results={"draft": "sha256:" + "d" * 64},
+        ),
+        "model.careful": CaseOutcome(
+            case="replies/late",
+            run_id="trl_1-1-0",
+            state="finished",
+            passed=True,
+            amount=0.0184,
+            tokens_in=9600,
+            tokens_out=310,
+            wall_seconds=9.8,
+            results={"draft": "sha256:" + "b" * 64},
+        ),
+    }
+    trial = Trial(
+        id="trl_1",
+        purpose="drafting",
+        candidates=candidates,
+        occasion="introduced",
+        started_at=at,
+        cases=(TrialCase(key="replies/late", process_version="replies@3", case="late"),),
+        runs={m: {"replies/late": outcome[m].run_id} for m in candidates},
+    )
+    report = TrialReport(
+        purpose="drafting",
+        candidates=tuple(
+            CandidateReport(
+                model=m,
+                cases=(outcome[m],),
+                passed=1,
+                amount=outcome[m].amount,
+                currency="usd",
+                tokens_in=outcome[m].tokens_in,
+                tokens_out=outcome[m].tokens_out,
+                wall_seconds=outcome[m].wall_seconds or 0.0,
+            )
+            for m in candidates
+        ),
+        differing=("replies/late",),
+    )
+    offer = Offer(
+        purpose="triage",
+        occasion="changed",
+        model="model.fast",
+        candidates=candidates,
+        reason="model.fast answered as fast-20261001 and answers as fast-20261101 since then",
+        since=at - timedelta(days=2),
+    )
+    return {
+        "run": left.document(),
+        "comparison": comparison.document(),
+        "process": process.document(),
+        "trial": TrialRead(trial=trial, report=report, settled=True).document(),
+        "trials": {"trials": [trial.document()], "offers": [offer.document()]},
     }
 
 

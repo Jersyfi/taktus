@@ -17,3 +17,9 @@ class ModelPool(Protocol):
         """Every model configured for the purpose, in the order a step is routed through
         them (ADR-0116); empty when none is."""
         ...
+
+    async def bound(self, adapter: str) -> ResolvedModel | None:
+        """The configured model under the identifier, whatever purposes it serves: what a run
+        that binds a purpose to it routes that purpose to (ADR-0149 §1). None when no model of
+        the configuration has it."""
+        ...

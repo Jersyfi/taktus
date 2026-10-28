@@ -18,6 +18,8 @@ from taktus.adapters.driving.cli.cost_command import render, render_rate
 from taktus.components.accounting.application.service import (
     CostOfRun,
     CostOfRunHandler,
+    SpendHandler,
+    SpendOfRun,
     TaktRate,
     TaktRateHandler,
     TaktRateOf,
@@ -339,3 +341,18 @@ async def test_the_rate_over_days_equals_the_whole_ledgers_and_the_rebuilt_proje
     assert stored == rebuilt
     again = await handler.execute(TaktRateOf("t"))
     assert again.takte == rate.takte and again.runs == rate.runs
+
+
+async def test_the_takte_of_each_step_add_up_to_the_run_s() -> None:
+    """#449: the spend per step carries each step's Takte at the run's own weighting table, and
+    the steps' Takte together are the run's, with the word beside them."""
+    h = weighed(refine_and_do())
+    run = await h.start(LIMITS)
+    cost = await CostOfRunHandler(h.ledger, h.objects, h.persistence).execute(
+        CostOfRun(run.id, "t")
+    )
+    spend = await SpendHandler(h.ledger, h.objects, h.persistence).of_run(SpendOfRun(run.id, "t"))
+    assert cost.takt is not None
+    assert all(step.takte is not None for step in spend.steps)
+    assert spend.takte == pytest.approx(cost.takt.takte)
+    assert spend.calibration == cost.takt.calibration
