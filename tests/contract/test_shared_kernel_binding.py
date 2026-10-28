@@ -69,6 +69,25 @@ def properties_of(
     return properties, required
 
 
+def property_of(
+    schema: dict[str, Any], name: str, defs: dict[str, Any], base: Path
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The schema of one property, found where `properties_of` finds it: in the schema's own
+    properties or in an object shape an `allOf` refers to (Consumption.compression)."""
+    if name in schema.get("properties", {}):
+        return schema["properties"][name], defs
+    for item in schema.get("allOf", []):
+        ref = item.get("$ref")
+        if ref is None:
+            continue
+        target, target_defs = resolve(ref, defs, base)
+        try:
+            return property_of(target, name, target_defs, base)
+        except KeyError:
+            continue
+    raise KeyError(name)
+
+
 def resolve(ref: str, defs: dict[str, Any], base: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     """A `$ref` inside the same document or a relative path from `base`: the target and the
     `$defs` its own references resolve against."""
@@ -133,10 +152,9 @@ def assert_same_shape(
     assert set(fields) == properties, f"{where}: properties differ"
     assert {name for name, needed in fields.items() if needed} == required, f"{where}: required"
     for name, nested in nested_models(model).items():
-        sub = schema["properties"][name]
-        sub_defs = defs
+        sub, sub_defs = property_of(schema, name, defs, base)
         if "$ref" in sub:
-            sub, sub_defs = resolve(sub["$ref"], defs, base)
+            sub, sub_defs = resolve(sub["$ref"], sub_defs, base)
         values = sub.get("additionalProperties")
         if "properties" not in sub and isinstance(values, dict):
             # A map: its values are the nested shape (Autonomy.actions).

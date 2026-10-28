@@ -274,6 +274,8 @@ class Step:
     refused: bool = False
     call_id: str | None = None
     """The agent's id of the call, which its result names."""
+    turns: int = 0
+    """The agent's messages that led to this call: its turns (#449)."""
 
     @property
     def tokens_in(self) -> int:
@@ -294,6 +296,7 @@ class Call:
     tool: str
     arguments: Json
     by_model: dict[str, dict[str, int]]
+    turns: int = 0
 
 
 # --- the worker ---------------------------------------------------------------------------------
@@ -587,6 +590,8 @@ class _Run:
         # Tokens of messages whose usage arrived before a call to attribute them to: they go
         # to the next step, so that none is lost.
         self.unattributed: dict[str, dict[str, int]] = {}
+        # The messages seen since a call last claimed them: the turns of the next call.
+        self.turns_pending: set[str] = set()
         # What this assignment has consumed so far, per quantity the limits can bound; money
         # at this worker's price table (`prices.json`).
         self.used: dict[str, float] = {
@@ -988,6 +993,8 @@ class _Run:
         # A message is streamed in several lines; a line may carry text only. Until a call
         # claims them, the tokens wait.
         self.unattributed = _merged(self.unattributed, self._usage_of(message))
+        if message.get("id"):
+            self.turns_pending.add(str(message["id"]))
         for block in message.get("content") or []:
             if block.get("type") == "text" and isinstance(block.get("text"), str):
                 self.last_text = block["text"]
@@ -999,8 +1006,10 @@ class _Run:
                 tool=str(block.get("name")),
                 arguments=block.get("input") or {},
                 by_model=self.unattributed,
+                turns=len(self.turns_pending),
             )
             self.unattributed = {}  # the message's tokens go to its first call
+            self.turns_pending = set()
             if self.current is not None:
                 # A call made while another runs: the agent calls in parallel. It becomes a
                 # step once the running one has reached its boundary, so that every step
@@ -1028,6 +1037,7 @@ class _Run:
             began=time.monotonic(),
             by_model=call.by_model,
             call_id=call.call_id,
+            turns=call.turns,
         )
         summary = f"{tool}: {_summary_of(tool, arguments)}"
         with self.a.lock:
@@ -1205,6 +1215,7 @@ class _Run:
             "step_id": step.step_id,
             "tokens_in": step.tokens_in,
             "tokens_out": step.tokens_out,
+            "turns": step.turns,
         }
         if step.by_model:
             consumption["tokens_by_model"] = {

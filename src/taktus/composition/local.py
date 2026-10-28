@@ -65,7 +65,11 @@ from taktus.adapters.driving.cli.wiring import (
     NotOperable,
     Services,
 )
-from taktus.components.accounting.application.service import CostOfRunHandler, TaktRateHandler
+from taktus.components.accounting.application.service import (
+    CostOfRunHandler,
+    SpendHandler,
+    TaktRateHandler,
+)
 from taktus.components.catalog.application.service import (
     RecordRemovalResultHandler,
     RunConformanceHandler,
@@ -467,6 +471,7 @@ class LocalWiring:
                 cost=CostOfRunHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work
                 ),
+                spend=SpendHandler(ledger, MemoryObjectStore(state_dir / "objects"), stores.work),
                 takt_rate=TaktRateHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work, clock, weights
                 ),
