@@ -219,6 +219,8 @@ def render_spend(spend: RunSpend) -> str:
     lines.extend(_step_line(step, spend.currency) for step in spend.steps)
     if spend.amount is not None:
         lines.append(f"total    {spend.amount:.6f} {spend.currency}")
+    if spend.takte is not None:
+        lines.append(f"takte    {spend.takte:.6f} ({spend.calibration})")
     lines.extend(f"unpriced {missing}" for missing in spend.unpriced)
     return "\n".join(lines)
 

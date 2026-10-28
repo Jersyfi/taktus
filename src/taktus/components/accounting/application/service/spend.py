@@ -14,17 +14,19 @@ that a change is adopted only when it is shown to be better. No figure here name
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from pydantic import Field
 
 from taktus.components.accounting.application.service.cost_of_run import CostOfRunHandler
-from taktus.components.accounting.domain.service import Meter, combine
+from taktus.components.accounting.domain.service import Meter, combine, weigh
 from taktus.components.accounting.domain.service.metering import meter_by_step
 from taktus.ports.ledger import Ledger
-from taktus.ports.model import PriceTable, price, price_compute
+from taktus.ports.model import PriceTable, WeightingTable, price, price_compute
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import Tenant, UnitOfWork
 from taktus.shared.v1 import LedgerEntry, Value
@@ -41,6 +43,8 @@ class StepSpend(Value):
     amount: float | None = None
     """Money at the run's price table; None when there is none."""
     unpriced: tuple[str, ...] = ()
+    takte: float | None = None
+    """Its Takte at the run's weighting table; None when the run started without one."""
     outcome: str | None = None
     """The outcome of its last finish."""
     result: str | None = None
@@ -57,6 +61,10 @@ class RunSpend(Value):
     amount: float | None = None
     """The steps' money together; None when no step could be priced."""
     unpriced: tuple[str, ...] = ()
+    takte: float | None = None
+    """The steps' Takte together, at the run's weighting table; None without one."""
+    calibration: str | None = None
+    """`calibrated` or `uncalibrated`: the word beside every Takt figure (DEC-0132)."""
 
 
 class StepDifference(Value):
@@ -177,6 +185,7 @@ class SpendHandler:
         methods: dict[str, str | None] = {}
         amounts: dict[str, dict[str, float]] = {}
         totals: dict[str, float] = {}
+        takte: dict[str, float] = {}
         unpriced: set[str] = set()
         for run_id, entries in by_run.items():
             # The run's own table: its budget statement is among its entries, not among these.
@@ -189,6 +198,8 @@ class SpendHandler:
                 meters[step.step_id] = step.meter if held is None else combine(held, step.meter)
                 counts[step.step_id] = counts.get(step.step_id, 0) + step.finished
                 methods.setdefault(step.step_id, step.method)
+                if step.takte is not None:
+                    takte[step.step_id] = takte.get(step.step_id, 0.0) + step.takte
                 if step.amount is not None and spent.currency is not None:
                     per = amounts.setdefault(step.step_id, {})
                     per[spent.currency] = per.get(spent.currency, 0.0) + step.amount
@@ -201,6 +212,7 @@ class SpendHandler:
                 meter=used,
                 amount=_single(amounts.get(step)),
                 unpriced=_currencies(amounts.get(step)),
+                takte=None if step not in takte else round(takte[step], 9),
             )
             for step, used in meters.items()
         )
@@ -225,9 +237,10 @@ class SpendHandler:
         version = next(
             (e.refs.process_version for e in entries if e.refs.process_version is not None), None
         )
+        statement = await self._cost._statement_of(list(entries))
         if table is None:
-            statement = await self._cost._statement_of(list(entries))
             table, _ = await self._cost._table_of(statement)
+        weights, classes = await self._weights_of(statement)
         counted = list(only if only is not None else entries)
         per_step = meter_by_step(counted)
         last = {e.refs.step_id: e for e in counted if e.kind == "step.finished"}
@@ -242,6 +255,7 @@ class SpendHandler:
                 total += amount
                 priced_any = True
             finish = last.get(step_id)
+            takte = None if weights is None else weigh(used, weights, classes).takte
             steps.append(
                 StepSpend(
                     step_id=step_id,
@@ -250,6 +264,7 @@ class SpendHandler:
                     meter=used,
                     amount=amount,
                     unpriced=why,
+                    takte=takte,
                     outcome=None if finish is None else finish.outcome,
                     result=None
                     if finish is None or finish.content_digest is None
@@ -266,7 +281,25 @@ class SpendHandler:
             steps=tuple(steps),
             amount=round(total, 9) if priced_any else None,
             unpriced=tuple(sorted(missing)),
+            takte=None if weights is None else round(sum(s.takte or 0.0 for s in steps), 9),
+            calibration=None
+            if weights is None
+            else ("calibrated" if weights.calibrated else "uncalibrated"),
         )
+
+    async def _weights_of(
+        self, statement: Mapping[str, Any]
+    ) -> tuple[WeightingTable | None, Mapping[str, str]]:
+        """The weighting table the run's statement names, and the model classes recorded beside
+        it; None where the run started without one, or it cannot be read."""
+        reference = statement.get("weighting_table") or {}
+        if not reference:
+            return None, {}
+        document = await self._cost._objects.get(reference["digest"])
+        if document is None:
+            return None, {}
+        table = WeightingTable.model_validate(json.loads(document))
+        return table, dict(reference.get("model_classes") or {})
 
 
 def _priced(used: Meter, table: PriceTable | None) -> tuple[float | None, tuple[str, ...]]:
