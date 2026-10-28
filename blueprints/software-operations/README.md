@@ -13,7 +13,10 @@ Development at the tenant runs on [`dev-orchestration`](../dev-orchestration/REA
 
 ## State
 
-A description. No process is a bundle yet. [`stages.yaml`](stages.yaml) proposes UC-03's six
+A description, and the first bundle: [`processes/B-1.01-daily-cost.yaml`](processes/B-1.01-daily-cost.yaml),
+the cost watcher of stage 1. It reads the day's cost through `billing.costs`, measures it with
+the statistic `deviation` (ADR-0151), and leaves the judgement to the tenant's corridor on its
+`ratio`, which raises an incident when the day left it (ADR-0109). [`stages.yaml`](stages.yaml) proposes UC-03's six
 stages, each with the processes it adds, the level each may reach once the stage is open, and
 the condition under which it holds (ADR-0137, NTC-0232). A tenant declares its plan from them
 with `taktusctl stage declare --blueprint blueprints/software-operations/stages.yaml

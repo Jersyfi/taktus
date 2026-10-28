@@ -182,6 +182,7 @@ from taktus.components.run.domain.model import (
     ConnectorRule,
     ConstantRule,
     Control,
+    DeviationStatistic,
     Ended,
     ExtractRule,
     LlmWork,
@@ -236,6 +237,7 @@ from taktus.components.run.domain.service import (
     repetition,
     routing,
     rules,
+    statistics,
     waiting,
 )
 from taktus.components.run.domain.service import budget as budgeting
@@ -3511,6 +3513,9 @@ class RunEngine:
             )
             titled = rules.commit_title(work, title, number, labels, files, proposal)
             return titled, Trace(inputs=read), None, None
+        if isinstance(work, DeviationStatistic):
+            (days,), read = await self._resolved(run, [work.days])
+            return statistics.deviation(work, days), Trace(inputs=read), None, None
         if isinstance(work, ConnectorRule):
             return await self._connector_call(run, step_run, work, span)
         if isinstance(work, LlmWork):

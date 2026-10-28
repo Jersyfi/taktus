@@ -2,6 +2,15 @@
   "connectors": [
     {
       "capabilities": [
+        "billing.costs"
+      ],
+      "name": "aws",
+      "operations": [
+        "billing.costs.daily"
+      ]
+    },
+    {
+      "capabilities": [
         "knowledge.pages"
       ],
       "name": "bookstack",
@@ -112,12 +121,31 @@
     },
     {
       "capabilities": [
+        "models.costs"
+      ],
+      "name": "openai",
+      "operations": [
+        "models.costs.daily"
+      ]
+    },
+    {
+      "capabilities": [
         "metrics.series"
       ],
       "name": "prometheus",
       "operations": [
         "metrics.series.query",
         "metrics.series.range"
+      ]
+    },
+    {
+      "capabilities": [
+        "errors.issues"
+      ],
+      "name": "sentry",
+      "operations": [
+        "errors.issues.list",
+        "errors.issues.read"
       ]
     },
     {
@@ -132,6 +160,16 @@
         "chat.members.list",
         "chat.threads.post",
         "chat.threads.read"
+      ]
+    },
+    {
+      "capabilities": [
+        "payments.subscriptions"
+      ],
+      "name": "stripe",
+      "operations": [
+        "payments.subscriptions.list",
+        "payments.subscriptions.read"
       ]
     }
   ],
