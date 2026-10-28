@@ -6,8 +6,8 @@ epic: E4
 serves: [P2, P8, P12]
 state: building
 version: 0.5.0
-tests: [tests/exactness/test_exactness_statement.py::test_an_exact_step_without_a_check_does_not_register_and_the_finding_names_the_catalogue, tests/exactness/test_exactness_statement.py::test_only_exact_must_declare_a_check, tests/exactness/test_exactness_statement.py::test_every_sentence_about_a_check_is_its_rows_filled_in_with_its_parameters, tests/exactness/test_exactness_statement.py::test_every_exact_step_of_every_bundle_declares_a_check]
-adrs: {ADR-0004: ffdb1f1537f5, ADR-0014: 6611f7833deb, ADR-0018: 17c99e0eaa3c, ADR-0082: c64fba9bd04a}
+tests: [tests/exactness/test_exactness_statement.py::test_an_exact_step_without_a_check_does_not_register_and_the_finding_names_the_catalogue, tests/exactness/test_exactness_statement.py::test_only_exact_must_declare_a_check, tests/exactness/test_exactness_statement.py::test_every_sentence_about_a_check_is_its_rows_filled_in_with_its_parameters, tests/exactness/test_exactness_statement.py::test_every_exact_step_of_every_bundle_declares_a_check, tests/exactness/test_checks.py::test_bounds_pass_inside_and_fail_outside, tests/exactness/test_checks.py::test_reconciliation_sums_the_parts_against_the_total_read, tests/exactness/test_checks.py::test_agreement_holds_the_value_to_the_second_system, tests/exactness/test_checks.py::test_recomputation_passes_the_same_digest_and_fails_another, tests/exactness/test_checks.py::test_an_approval_holds_a_value_above_its_threshold_only, tests/exactness/test_checks.py::test_sampling_chooses_the_same_results_for_the_same_runs_and_about_its_share, tests/exactness/test_checks.py::test_a_wrong_value_inside_the_bounds_passes_and_the_statement_names_that_case, tests/exactness/test_checks.py::test_offsetting_errors_reconcile_and_the_statement_names_that_case, tests/exactness/test_checks.py::test_both_systems_wrong_alike_agree_and_the_statement_names_that_case, tests/exactness/test_checks.py::test_a_wrong_value_at_the_threshold_counts_unconfirmed_and_the_statement_names_it, tests/exactness/test_checks.py::test_a_wrong_value_outside_the_sample_counts_and_the_statement_names_that_case, tests/exactness/test_checks.py::test_wrong_inputs_recompute_alike_and_the_statement_names_that_case, tests/exactness/test_checks.py::test_no_model_chooses_or_evaluates_a_check, tests/exactness/test_checks.py::test_a_failed_check_reaches_no_dependent_step_and_the_run_escalates_with_it]
+adrs: {ADR-0004: ffdb1f1537f5, ADR-0014: 6611f7833deb, ADR-0018: 17c99e0eaa3c, ADR-0082: c64fba9bd04a, ADR-0152: f9c12d590d4a}
 supersedes: null
 ---
 
@@ -79,7 +79,10 @@ The catalogue is a schema of the shared kernel, with a sixth row, recomputation,
 DEC-0173. A bundle with an `exact` step and no check does not register, and the finding names the
 catalogue; a step of another class may declare none. A check is never presented as covering more
 than its row says: every sentence about it is its row's, filled in with its parameters. Every
-`exact` step of the example and blueprint bundles declares a check (ADR-0082) — by the named
-tests. Not built: a fixture that passes and one that fails per check, a wrong value slipped
-through each, and a check run as a `rule` or `statistics` step (#223); the conversation when
-Taktus proposes a process (UC-4.4).
+`exact` step of the example and blueprint bundles declares a check (ADR-0082). Every check of the
+catalogue has a fixture that passes and one that fails, and a wrong value slips through each
+exactly where the exactness statement names that step's residual risk. The checks run in the run
+as rules, before a value counts: one that fails stops the value and escalates the run with the
+check and what it compared; an approval holds a value above its threshold for its role; a sample
+goes to its role after the fact; and the module that judges reaches no model (ADR-0152) — by the
+named tests. Not built: the conversation when Taktus proposes a process (UC-4.4).

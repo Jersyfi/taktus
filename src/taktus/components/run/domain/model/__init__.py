@@ -51,6 +51,8 @@ from taktus.components.run.domain.model.stop import HELD, AdapterStop, StopState
 from taktus.components.run.domain.model.work import (
     Ask,
     BacklogRule,
+    Checking,
+    CheckRead,
     CheckRule,
     ClassificationRule,
     CommitTitleRule,
@@ -109,7 +111,9 @@ __all__ = [
     "Ask",
     "BacklogRule",
     "Cause",
+    "CheckRead",
     "CheckRule",
+    "Checking",
     "Checkpoint",
     "ClaimLost",
     "ClassificationRule",
