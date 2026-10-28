@@ -65,7 +65,11 @@ from taktus.adapters.driving.cli.wiring import (
     NotOperable,
     Services,
 )
-from taktus.components.accounting.application.service import CostOfRunHandler, TaktRateHandler
+from taktus.components.accounting.application.service import (
+    CostOfRunHandler,
+    SpendHandler,
+    TaktRateHandler,
+)
 from taktus.components.catalog.application.service import (
     RecordRemovalResultHandler,
     RunConformanceHandler,
@@ -136,7 +140,6 @@ from taktus.composition.settings import (
     load_model,
     load_models,
     load_telemetry,
-    load_tenants,
     load_workers,
 )
 from taktus.composition.shipped import load as load_shipped
@@ -210,7 +213,6 @@ class LocalWiring:
             shape = findings_shape.form()
             findings_connector = load_findings_connector(self._configuration)
             findings_sending = sending_of(findings_shape, findings_connector)
-            tenants = load_tenants(self._configuration)
             administration = load_administration(self._configuration)
             knowledge_directory = load_knowledge_directory(self._configuration)
             backup_expected_hours = load_backup_expected_hours(self._configuration)
@@ -230,7 +232,6 @@ class LocalWiring:
                 ledger=ledger,
                 clock=clock,
                 ids=ids,
-                narrowed_to=tenants,
             )
             identities = IdentityDirectory(
                 tenants=registry,
@@ -471,6 +472,7 @@ class LocalWiring:
                 cost=CostOfRunHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work
                 ),
+                spend=SpendHandler(ledger, MemoryObjectStore(state_dir / "objects"), stores.work),
                 takt_rate=TaktRateHandler(
                     ledger, MemoryObjectStore(state_dir / "objects"), stores.work, clock, weights
                 ),
@@ -548,7 +550,6 @@ class LocalWiring:
     async def capacity(self, *, state_dir: Path) -> AsyncIterator[CapacityServices]:
         try:
             settings = load_capacity(self._configuration)
-            tenants = load_tenants(self._configuration)
             configured = load_workers(self._configuration)
         except ConfigurationError as error:
             raise NotOperable(str(error)) from error
@@ -560,7 +561,6 @@ class LocalWiring:
                 ledger=ChainedLedger(stores.ledger_store, clock, stores.projection_store),
                 clock=clock,
                 ids=SystemIdentifiers(),
-                narrowed_to=tenants,
             )
             yield CapacityServices(
                 report=capacity_report(

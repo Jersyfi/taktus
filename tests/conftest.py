@@ -3,9 +3,10 @@
 PostgreSQL comes from testcontainers; when Docker is not available, every test that asks for
 the database skips and says why. `TAKTUS_TEST_DATABASE_URL` points the tests at an existing,
 empty database instead of a container — CI without Docker, or a developer's own instance.
-Tests keep apart through tenants (the adapter suite makes a fresh one per test; the
-integration tests run as `default` and identify their runs by id), so nothing is cleaned
-between them.
+The adapter suite keeps its tests apart through tenants, a fresh one per test, and cleans
+nothing between them. The integration tests start daemons that serve every tenant of the
+registry, so each takes a database of its own, copied from a migrated template
+(`tests/integration/conftest.py`, #517).
 
 A skip is for a developer's machine. Where the database tests must run — CI — the environment
 sets `TAKTUS_REQUIRE_DATABASE=1`, and a missing Docker is then a failure, not a skip: a gate
@@ -42,7 +43,8 @@ def docker_available() -> str | None:
 
 
 @pytest.fixture(scope="session")
-def postgres_url() -> Iterator[str]:
+def postgres_server() -> Iterator[str]:
+    """The session's migrated database: its URL, on a server where a test may create more."""
     from alembic import command
 
     from taktus.adapters.driven.postgres.migrate import configuration
@@ -64,6 +66,13 @@ def postgres_url() -> Iterator[str]:
         url = container.get_connection_url()
         command.upgrade(configuration(url), "head")
         yield url
+
+
+@pytest.fixture
+def postgres_url(postgres_server: str) -> str:
+    """The database a test runs against. Here the session's own; the integration tests
+    override it with one of each test's own."""
+    return postgres_server
 
 
 @pytest.fixture(scope="session")

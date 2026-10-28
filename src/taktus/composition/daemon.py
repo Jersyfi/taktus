@@ -3,8 +3,8 @@
 Startup, in order: read and validate the settings (a wrong one is one sentence on stderr and
 exit code 2); log the effective configuration with every secret masked; connect to the
 database and — with `TAKTUS_MIGRATE_ON_START` — bring it to the current schema; refuse to serve
-against a schema that is not at the revision this build needs (exit code 3: silent drift is
-worse than a refusal); wire the adapters to the ports, once, here; start the roles.
+against a schema outside the range this build runs against (ADR-0093 §2; exit code 3: silent
+drift is worse than a refusal); wire the adapters to the ports, once, here; start the roles.
 
 Shutdown, on SIGTERM or SIGINT: stop accepting work; let every running step reach its boundary
 — up to the hard ceiling `TAKTUS_SHUTDOWN_CEILING_SECONDS`, after which the process exits and
@@ -353,8 +353,9 @@ class Wired:
             await applied_move(self.moves, tenant, request_id)
 
     async def ready(self) -> str | None:
-        """None when the database answers and is at the schema this build needs; otherwise
-        the reason, in one sentence. Readiness is a question, not a memory."""
+        """None when the database answers and its schema lies in the range this build runs
+        against (ADR-0093 §2); otherwise the reason, in one sentence. Readiness is a question,
+        not a memory."""
         try:
             await check_schema(self.persistence.engine)
         except SchemaOutOfDate as error:
@@ -393,9 +394,12 @@ async def wire(
     if settings.migrate_on_start:
         log.info("migrating", database=described(url))
         try:
-            await upgrade(url)
+            migrated = await upgrade(url)
         except Exception as error:
             raise NotOperable(f"the migrations failed against {described(url)}: {error}") from error
+        if not migrated:
+            # A newer build migrated it; whether this one may serve it is the range's question.
+            log.info("not migrating: the schema is newer than this build", database=described(url))
     persistence = PostgresPersistence(
         url,
         pool_size=settings.runner_concurrency + 4,
@@ -422,7 +426,6 @@ async def wire(
             ledger=ledger,
             clock=clock,
             ids=ids,
-            narrowed_to=settings.tenants,
         )
         # Who a sender is, and who acts: the identity component, and nothing else (ADR-0040).
         identities = IdentityDirectory(
@@ -1019,11 +1022,13 @@ async def serve(
     configuration: Configuration | None = None,
     stop: asyncio.Event | None = None,
     on_wired: Callable[[Wired], None] | None = None,
+    on_serving: Callable[[], None] | None = None,
     clock: Clock | None = None,
 ) -> int:
     """Run the roles until `stop` — set by SIGTERM or SIGINT, or by the caller — and wind
     down. The exit code of the process. `on_wired` hands the wired services to a test that
-    runs the daemon in-process; `clock` lets such a test move time itself."""
+    runs the daemon in-process, and `on_serving` tells it that the HTTP server listens;
+    `clock` lets such a test move time itself."""
     stop = stop or asyncio.Event()
     _install_signal_handlers(stop)
     try:
@@ -1051,7 +1056,16 @@ async def serve(
             gc.collect()
             gc.freeze()
             tasks = _start_roles(wired, stop)
-            server = await _start_http(wired, stop)
+            try:
+                server = await _start_http(wired, stop)
+            except NotOperable:
+                # The roles started already: they wind down before the wiring closes under
+                # them, as at a stop.
+                stop.set()
+                await _wind_down(tasks, settings.shutdown_ceiling_seconds)
+                raise
+            if on_serving is not None:
+                on_serving()
             await stop.wait()
             log.info("taktusd stopping", ceiling_seconds=settings.shutdown_ceiling_seconds)
             # New work is refused first — the surface goes, the runner claims nothing more —
@@ -1098,7 +1112,16 @@ async def _start_http(wired: Wired, stop: asyncio.Event) -> uvicorn.Server:
             lifespan="off",
         )
     )
-    task = asyncio.create_task(server.serve(), name="http")
+
+    async def serving() -> None:
+        # The server exits the process when it cannot bind its port. Caught here, the daemon
+        # winds its roles down and says why, and a test that serves it in-process survives it.
+        try:
+            await server.serve()
+        except SystemExit as exit:
+            raise OSError(f"the server exited with {exit.code}") from None
+
+    task = asyncio.create_task(serving(), name="http")
     while not server.started:
         if task.done():
             error = task.exception()
@@ -1237,14 +1260,6 @@ def main() -> None:
         sys.exit(EXIT_CONFIGURATION)
     configure(settings.log_level)
     log_effective_configuration(settings)
-    if settings.tenants is not None:
-        # ADR-0104 §7: the registry is the list; the variable only narrows it, for one release.
-        log.warning(
-            "TAKTUS_TENANTS is deprecated and will be removed: this instance serves only the "
-            "tenants of its registry that the variable names. Create a tenant with "
-            "`taktusctl tenant create`, and unset the variable to serve every tenant",
-            tenants=list(settings.tenants),
-        )
     if not settings.administration.checked:
         # ADR-0052: without the platform named, ADR-0025's rule is the operator's alone.
         log.warning(

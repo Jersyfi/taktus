@@ -1,6 +1,6 @@
 """What a step does when it runs, typed per method, read from the bundle's `work` data.
 
-Five kinds are executable in this version. A `rule` step evaluates one of the built-in rules
+Six kinds are executable in this version. A `rule` step evaluates one of the built-in rules
 (`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
 of a backlog task, the backlog in its order, the roadmap held against the backlog, spam by
 fixed patterns, a contribution's class held to what may be answered, a text template, what a
@@ -9,7 +9,8 @@ calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits f
 through the clock, or for an external state read through a connector. A `worker`
 step hands a task to an execution unit behind the worker contract; an `ml` step does too, a
 prediction with its model pinned by digest, and goes to its fallback when the model is unsure
-(ADR-0076). An `llm` step asks a model through the model port. Every other method has no
+(ADR-0076). An `llm` step asks a model through the model port. A `statistics` step computes
+one of the built-in statistics (`domain.service.statistics`, ADR-0151). Every other method has no
 executor yet and is refused before the run starts, so that a run never stops in the middle for a
 reason that was known at the beginning.
 
@@ -412,6 +413,25 @@ type RuleWork = Annotated[
 ]
 
 
+class DeviationStatistic(Value):
+    """The newest day of a series against the median of the days before it, by group
+    (`domain.service.statistics`, ADR-0151). `days` is the series, usually a reference to a
+    costs reading: each day `{"date", "total"?, "groups": [{"group", "amount"}]}`, amounts as
+    decimal text. `window` is how many days before the newest the medians are taken over;
+    `minimum` how many there must be for a median to be computed at all. The result is exact:
+    the same series always gives the same figures, computed in decimal arithmetic."""
+
+    statistic: Literal["deviation"]
+    days: Any
+    window: int = Field(default=28, ge=1, le=366)
+    minimum: int = Field(default=7, ge=1, le=366)
+
+
+type StatisticsWork = DeviationStatistic
+"""What a `statistics` step computes. One statistic in this version; the next joins it as a
+union discriminated by `statistic`."""
+
+
 class WaitUntil(Value):
     """An external state, read through a connector operation until the selected part of its
     output is one of the expected values. Polling is bounded: past `timeout_seconds` the wait
@@ -654,7 +674,7 @@ def threshold(step: Step) -> Threshold:
     return Threshold(value=float(matched.group(2)), inclusive=matched.group(1) == "<=")
 
 
-type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork
+type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork | StatisticsWork
 
 WHEN = "when"
 ASK = "ask"
@@ -851,6 +871,10 @@ def parse_work(
             if given is None:
                 raise UnsupportedWork(step.id, "a rule step names its rule under `work`")
             return _RULE.validate_python(given)
+        if step.method is Method.STATISTICS:
+            if given is None:
+                raise UnsupportedWork(step.id, "a statistics step names its statistic under `work`")
+            return DeviationStatistic.model_validate(given)
         if step.method is Method.WAIT:
             return WaitWork.model_validate(given or {})
         if step.method is Method.WORKER:
@@ -1044,6 +1068,8 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.values]
     if isinstance(work, ExtractRule):
         return [work.values, work.excluding]
+    if isinstance(work, DeviationStatistic):
+        return [work.days]
     if isinstance(work, CommitTitleRule):
         return [work.title, work.number, work.labels, work.files, work.proposal]
     if isinstance(work, WaitWork) and work.until is not None:

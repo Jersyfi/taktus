@@ -1,5 +1,5 @@
 """What acts for a tenant, what depends on it, and how a process really runs, gathered from the
-records that exist (ADR-0147, UC-7.8, UC-6.15, UC-9.7).
+records that exist (ADR-0147, UC-7.8, UC-6.16, UC-9.7).
 
 Two processes over two connectors and three models, configured as the pools resolve them now:
 `billing` reads through `connector.fake` alone and drafts with `model.third`, falling back to a

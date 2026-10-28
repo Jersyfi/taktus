@@ -1,4 +1,4 @@
-"""What acts for a tenant and what depends on it, drawn from facts (UC-7.8, UC-6.15, ADR-0147).
+"""What acts for a tenant and what depends on it, drawn from facts (UC-7.8, UC-6.16, ADR-0147).
 
 The register puts the rows that need attention first, each with its reasons; the inventory says
 it is not legally reviewed; removing an adapter splits what breaks from what degrades; a wrong

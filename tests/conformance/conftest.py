@@ -1045,3 +1045,70 @@ async def record_connector(connector: RunningConnector, tmp_path: Path) -> Recor
         connectors={"channel.repo": connector.endpoint},
         state_dir=tmp_path,
     )
+
+
+# --- connectors for the systems a business names (ADR-0150, issue #447) ---------------------------
+
+
+@dataclass(frozen=True)
+class BusinessConnector:
+    """One connector to a product a business names, with the fake of the product's API it is
+    proven against. Every fake admits the values of `FAKE_TOKENS` and serves `/_fake/state`."""
+
+    module: str
+    fake: Path
+    credential: str
+    args: tuple[str, ...] = ()
+    pair: bool = False
+    """The credential is a key pair, `<id>:<secret>`, as a provider that signs takes one."""
+
+    def value(self) -> str:
+        if self.pair:
+            return f"key-{secrets.token_hex(6)}:sig-{secrets.token_hex(12)}"
+        return "tok-" + secrets.token_hex(12)
+
+
+FAKES = ROOT / "tests" / "fakes"
+BUSINESS: dict[str, BusinessConnector] = {
+    "anthropic": BusinessConnector(
+        "anthropic", FAKES / "cost_report_service.py", "MODEL_COSTS_TOKEN"
+    ),
+    "aws": BusinessConnector("aws", FAKES / "cloud_billing_service.py", "BILLING_KEY", pair=True),
+    "openai": BusinessConnector("openai", FAKES / "model_costs_service.py", "MODEL_COSTS_TOKEN"),
+    "sentry": BusinessConnector(
+        "sentry", FAKES / "error_tracking_service.py", "ERRORS_TOKEN", ("--organization", "example")
+    ),
+    "stripe": BusinessConnector("stripe", FAKES / "payment_service.py", "PAYMENTS_TOKEN"),
+}
+
+
+@pytest.fixture
+def start_business_connector(tmp_path: Path) -> Iterator[Callable[..., RunningConnector]]:
+    """The fake of a product's API and its connector, each a process of its own."""
+    started: list[subprocess.Popen[bytes]] = []
+
+    def start(module: str, *, fault: str | None = None) -> RunningConnector:
+        spec = BUSINESS[module]
+        value = spec.value()
+        name = f"{module}-{fault or 'honest'}"
+        port = free_port()
+        service_url = f"http://127.0.0.1:{port}"
+        fake_env = {**_clean_environment(), "FAKE_TOKENS": value}
+        _start_fake(
+            started, tmp_path, spec.fake, ["--port", str(port)], fake_env,
+            f"{service_url}/_fake/state", name,
+        )  # fmt: skip
+        env = {**_clean_environment(), **_secret_files(tmp_path, name, {spec.credential: value})}
+        args = ["--target", service_url, *spec.args] + (["--fault", fault] if fault else [])
+        endpoint, log = _start_connector(started, tmp_path, module, args, env, name)
+        return RunningConnector(
+            f"{endpoint}/mcp",
+            log,
+            service_url,
+            {spec.credential: value},
+            started[-1],
+            scenario=CONNECTORS / module / "scenario.json",
+        )
+
+    yield start
+    stop_all(started)

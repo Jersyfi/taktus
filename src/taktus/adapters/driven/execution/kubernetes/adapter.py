@@ -232,7 +232,15 @@ class ClusterJob:
             for condition in (pod.get("status") or {}).get("conditions") or []:
                 if condition.get("type") == "PodScheduled" and condition.get("status") != "True":
                     return f"not scheduled: {condition.get('message') or condition.get('reason')}"
+            if (pod.get("status") or {}).get("phase") == "Pending":
+                return f"{PENDING}: the pod is placed and its containers are not created yet"
         return None
+
+
+PENDING = "Pending"
+CREATING = frozenset({"ContainerCreating", "PodInitializing", PENDING})
+"""The reasons a placed pod gives while the cluster is still creating its unit: pulling its
+image, mounting its volumes, running its init containers (#634)."""
 
 
 def no_room(why: str) -> bool:
@@ -240,6 +248,14 @@ def no_room(why: str) -> bool:
     names an exhausted resource as `Insufficient <resource>`. A pod that no node may take at
     all — a taint, a selector — is not waiting for room, and fails as before."""
     return why.startswith("not scheduled:") and "Insufficient" in why
+
+
+def still_creating(why: str) -> bool:
+    """Whether the cluster is still creating the unit: it is placed, and its containers are
+    being created (ADR-0145). A unit whose image cannot be pulled (`ErrImagePull`,
+    `ImagePullBackOff`) or whose container cannot start is not being created; it fails as
+    before."""
+    return why.split(":", 1)[0].strip() in CREATING
 
 
 class KubernetesExecution:
@@ -339,6 +355,10 @@ class KubernetesExecution:
                 said = f"{error}; the cluster says: {why}" if why else str(error)
                 if why is not None and no_room(why):
                     raise ExecutionAtCapacity(said) from None
+                if why is not None and still_creating(why):
+                    # Not broken, not yet ready: the step waits as for a platform without
+                    # room, up to the same ceiling (ADR-0145).
+                    raise ExecutionAtCapacity(f"the unit is still being created: {said}") from None
                 raise ExecutionError(said) from None
             yield job
         finally:

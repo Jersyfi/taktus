@@ -21,7 +21,6 @@ __all__ = ["own_database"]
 
 def first(url: str, *arguments: str) -> subprocess.CompletedProcess[str]:
     environment = {**os.environ, **PLAIN, "TAKTUS_DATABASE_URL": url}
-    environment.pop("TAKTUS_TENANTS", None)
     return subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
         [taktusctl(), "first", *arguments],
         capture_output=True,

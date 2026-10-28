@@ -6,6 +6,10 @@ instances share one database, each with its own connection pool, engine and runn
 concurrency two, as two `taktusd` processes would: four runs at once against two places.
 Eight runs are submitted, each with one worker step.
 
+Two long assignments hold the worker's places when the runners start, and are stopped once a
+runner met the worker at capacity. Without them, a loaded machine served the runs one after the
+other, and no run ever met a full worker (#520).
+
 - every run finishes; none escalates;
 - some runs met the worker at capacity: `step.waiting` is in their ledger, their jobs were
   deferred, and their wait ended once with `step.waited`;
@@ -48,7 +52,16 @@ from taktus.components.ledger.application.service import ChainedLedger
 from taktus.components.run.application.service import RunEngine, Runner, RunnerOptions, StartRun
 from taktus.components.run.domain.model import Run, RunState
 from taktus.components.run.domain.service import provenance
-from taktus.ports.worker import ComputeLimit, Limits
+from taktus.ports.worker import (
+    Assignment,
+    Callback,
+    ComputeLimit,
+    Context,
+    Frame,
+    Limits,
+    StopRequest,
+    Task,
+)
 from taktus.shared.v1 import (
     Commissioned,
     ExactnessClass,
@@ -186,6 +199,39 @@ async def submit(engine: RunEngine) -> Run:
     )
 
 
+HOLDING_STEPS = 600
+"""The holders' commands: at the worker's 0.1 s a step, a minute, longer than any wait here."""
+
+
+async def hold(worker: HttpWorker) -> list[str]:
+    """Both of the worker's places, taken by assignments that run until they are stopped."""
+    held: list[str] = []
+    for n in range(CAPACITY):
+        assignment_id = f"asg_hold{os.urandom(3).hex()}{n}"
+        await worker.assign(
+            Assignment(
+                assignment_id=assignment_id,
+                task=Task(
+                    goal="hold a place",
+                    acceptance=["stopped"],
+                    inputs={"commands": ["true"] * HOLDING_STEPS},
+                ),
+                context=Context(),
+                frame=Frame(
+                    autonomy_level=3, allowed_tools=("shell.script",), max_steps=HOLDING_STEPS
+                ),
+                limits=Limits(compute=ComputeLimit(seconds=600, resource_class="cpu.small")),
+                callback=Callback(events="sse"),
+            )
+        )
+        held.append(assignment_id)
+    return held
+
+
+def outcomes_of(*instances: Instance) -> list[Any]:
+    return [o for i in instances for o in i.runner.outcomes]
+
+
 def most_at_once(spans: list[tuple[datetime, datetime]]) -> int:
     """The largest number of spans that overlap at one moment."""
     edges = sorted([(start, 1) for start, _ in spans] + [(end, -1) for _, end in spans])
@@ -201,9 +247,14 @@ async def test_runners_sharing_a_worker_of_two_wait_for_it_and_every_run_finishe
 ) -> None:
     a, b = instances
     run_ids = [(await submit(a.engine)).id for _ in range(RUNS)]
+    held = await hold(a.worker)
     tasks = [asyncio.create_task(i.runner.run()) for i in (a, b)]
     try:
         async with asyncio.timeout(90):
+            while not any(o.disposition == "deferred" for o in outcomes_of(a, b)):  # noqa: ASYNC110
+                await asyncio.sleep(0.05)
+            for assignment_id in held:
+                await a.worker.stop(assignment_id, StopRequest(reason="the places are free"))
             while True:
                 completed = [
                     o

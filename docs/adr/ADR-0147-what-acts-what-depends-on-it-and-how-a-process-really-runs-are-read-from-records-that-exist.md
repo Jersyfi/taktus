@@ -1,6 +1,6 @@
 # ADR-0147 — What acts, what depends on it, and how a process really runs are read from records that exist
 
-**Status:** accepted · extends ADR-0021 (provenance), ADR-0022 (egress), ADR-0023 (a stop by a rule or a person), ADR-0029 (views own no figure), ADR-0030 (the removal test), ADR-0105 (projections of the ledger), ADR-0116 (residency) and ADR-0138 (a stop of an adapter) · issues #332, #333, #334; UC-7.8, UC-6.15, UC-9.7
+**Status:** accepted · extends ADR-0021 (provenance), ADR-0022 (egress), ADR-0023 (a stop by a rule or a person), ADR-0029 (views own no figure), ADR-0030 (the removal test), ADR-0105 (projections of the ledger), ADR-0116 (residency) and ADR-0138 (a stop of an adapter) · issues #332, #333, #334; UC-7.8, UC-6.16, UC-9.7
 
 ## Context
 

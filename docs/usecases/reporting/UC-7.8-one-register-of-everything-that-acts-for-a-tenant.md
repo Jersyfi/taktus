@@ -7,7 +7,7 @@ serves: [P3, P7, P10, P11, P13, P14]
 state: building
 version: 0.5.0
 tests: [tests/components/reporting/test_acting.py::test_the_register_puts_what_needs_attention_first_each_with_its_reasons, tests/components/reporting/test_acting.py::test_a_row_says_how_far_it_acts_and_flags_a_level_above_2_on_an_unverified_adapter, tests/components/reporting/test_acting.py::test_a_held_stop_is_shown_first_among_the_reasons, tests/components/reporting/test_acting.py::test_the_inventory_is_generated_and_marked_not_legally_reviewed, tests/components/reporting/test_acting.py::test_what_an_adapter_used_is_a_projection_that_equals_the_full_computation, tests/composition/test_acting.py::test_the_register_lists_every_adapter_with_the_steps_it_acts_in, tests/composition/test_acting.py::test_a_process_the_reader_may_not_see_is_left_out_of_every_row, tests/composition/test_acting.py::test_the_stop_is_requested_by_the_person_through_the_adapter_stop, tests/adapters/rest/test_acting.py::test_every_view_needs_an_account_key, tests/adapters/rest/test_acting.py::test_the_register_is_read_for_the_processes_the_reader_may_see, tests/adapters/rest/test_acting.py::test_the_stop_is_requested_by_the_person_and_an_unknown_adapter_is_refused]
-adrs: {ADR-0003: d0268914fed9, ADR-0015: 3a42705e5561, ADR-0023: 949c6f4e13af, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a, ADR-0030: 232318604b2d, ADR-0044: 1087d01f9d8d, ADR-0116: fdaf116b5e47, ADR-0138: a950b2e0b871, ADR-0147: ab079615c776}
+adrs: {ADR-0003: d0268914fed9, ADR-0015: 3a42705e5561, ADR-0023: 949c6f4e13af, ADR-0026: ccc4bd1f5423, ADR-0029: 37c061ef032a, ADR-0030: 232318604b2d, ADR-0044: 1087d01f9d8d, ADR-0116: fdaf116b5e47, ADR-0138: a950b2e0b871, ADR-0147: c8a0fb9085c0}
 supersedes: null
 ---
 

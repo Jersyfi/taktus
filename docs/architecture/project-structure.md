@@ -83,7 +83,7 @@ taktus/
 │   ├── governance/                  # anchors hold, limits never breach, least privilege; test_anchors.py: anchors at the step boundary and decision requests; test_corrections.py: decisions on proposals counted, a level that falls by rule before the next step (ADR-0110)
 │   ├── exactness/                   # `exact` steps never take their final value from AI
 │   ├── contract/                    # the Python bindings match the schemas and their examples
-│   ├── components/ adapters/        # domain tables and application tests against fakes/; adapters/persistence and adapters/queue: one suite, both implementations; adapters/connectors: the reference connector against fakes/repository_service.py; adapters/rest: the surface under two prefixes; adapters/execution: the process adapter, and the container adapter checked from inside a job; adapters/telemetry: spans nested, the trace id on every entry, no person and no secret in an attribute
+│   ├── components/ adapters/        # domain tables and application tests against fakes/; adapters/persistence and adapters/queue: one suite, both implementations; adapters/connectors: the reference connector against fakes/repository_service.py, every other connector against a fake of its service; adapters/rest: the surface under two prefixes; adapters/execution: the process adapter, and the container adapter checked from inside a job; adapters/telemetry: spans nested, the trace id on every entry, no person and no secret in an attribute
 │   ├── composition/                 # the daemon's settings, and that no secret reaches a log line
 │   ├── integration/                 # the whole slice against the reference worker — by endpoint, as a process started per job, as a container started per job; the restart test; two runners, two schedulers, time triggers fired once per slot on a clock the test sets, a real SIGTERM, the daemon under a prefix; the control plane image built and inspected
 │   └── security/ resilience/
@@ -203,7 +203,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   prefix; the `api` role adds intake and the read API. A platform probes each process the same
   way. Readiness is a question asked every time — the database answers and is at the schema
   this build needs — never a memory of an earlier answer; health is the process answering at
-  all. A daemon refuses to start against a schema that does not match the binary.
+  all. A daemon refuses to start against a schema that does not match the binary. A daemon
+  that cannot bind its HTTP port winds down the roles it started and exits as not operable,
+  saying why; the server's own exit no longer ends the process past them (#520).
 - **`runner`** is the run component's `Runner` over the queue port: it claims due jobs for the
   tenants it serves, one transaction per claim, executes each through the engine's `resume`
   (which starts a submitted run, continues a halted one, or recovers one whose runner died),
@@ -398,8 +400,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   identity component owns (ADR-0104). An administrator adds to it with `taktusctl tenant
   create` or `POST /administration/tenants`, and Taktus generates the identifier. Every role
   reads the registry at every round, so a tenant created while the daemon runs is served
-  without a restart; the runner claims for each tenant in turn. `TAKTUS_TENANTS` is
-  deprecated: set, it narrows the registry to the tenants it names. An intake lands in the
+  without a restart; the runner claims for each tenant in turn. Nothing narrows the
+  registry: the variable that did is removed, and a daemon that still sets it refuses to start
+  (ADR-0104 §7). An intake lands in the
   tenant of the identity the sender's account is linked to, and nowhere when it is linked to
   none (ADR-0040); the oldest tenant is only where such a sender is answered from. Such a sender is answered only
   for what they wrote — an intake whose `intent.authored` is `false`, such as a label added, is

@@ -1,5 +1,5 @@
 """What acts for a tenant, what depends on it, and how a process really runs, on the HTTP
-surface (ADR-0147, UC-7.8, UC-6.15, UC-9.7).
+surface (ADR-0147, UC-7.8, UC-6.16, UC-9.7).
 
 Every route needs an account key; each hands the views the processes the reader may see, by the
 live representation's predicate; a run or a process the reader may not see is answered as one

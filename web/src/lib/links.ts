@@ -55,12 +55,12 @@ export function registerLink(): string {
 	return '#/register';
 }
 
-/** What breaks if an adapter goes (UC-6.15); without one, where data goes. */
+/** What breaks if an adapter goes (UC-6.16); without one, where data goes. */
 export function removeLink(adapter?: string): string {
 	return adapter ? `#/dependencies/remove/${encodeURIComponent(adapter)}` : '#/dependencies';
 }
 
-/** Where a wrong result of one step of one run went (UC-6.15, UC-4.11). */
+/** Where a wrong result of one step of one run went (UC-6.16, UC-4.11). */
 export function wrongResultLink(runId: string, stepId: string): string {
 	return `#/dependencies/wrong/${encodeURIComponent(runId)}/${encodeURIComponent(stepId)}`;
 }

@@ -152,7 +152,7 @@ restarted.
 **Tenants are created after the install, not configured** (ADR-0104). The migration creates
 `default`. Every other tenant is created with `taktusctl tenant create NAME`, run in a pod of
 the control plane, which prints the identifier Taktus generated. Every role serves the new
-tenant at its next round, without a restart. The chart sets no `TAKTUS_TENANTS` and mounts no
+tenant at its next round, without a restart. The chart mounts no
 administration key, so the administration of tenants on the HTTP surface stays off on a
 cluster.
 
@@ -652,3 +652,38 @@ steps against a fresh database.
 The restore of an encrypted backup without its private key is impossible, by design. Keep the
 key where a failure of the instance does not reach it.
 
+
+## 12. Rolling back an upgrade
+
+Nothing here needs Taktus (ADR-0013 C, ADR-0093 §3). It needs `helm` and `kubectl` against the
+cluster, and the release's name and namespace.
+
+**What a schema allows.** Every migration expands — it adds — unless its docstring says it
+contracts (ADR-0093 §1). The database names the oldest version of Taktus it still serves: the
+function `taktus_oldest_code()` returns that version's schema revision. A version whose own
+newest revision is that one, or later, runs against the database as it is, and its `/ready`
+says `ready`. An older version answers 503 and names both revisions.
+
+1. **Read where the database stands.** `kubectl exec <a control plane pod> -- ls
+   migrations/versions` lists the running version's revisions; the highest number is its
+   newest. In the database: `SELECT version_num FROM alembic_version;` and
+   `SELECT taktus_oldest_code();`.
+2. **Find the version to go back to**: `helm history <release>`. Its newest schema revision is
+   in the image, `migrations/versions/`, or in the release notes.
+3. **When the database serves that version** — its revision is `taktus_oldest_code()` or
+   later — roll back the images alone: `helm rollback <release> <revision>`. `helm rollback`
+   restores the chart's objects and images; it does not run a migration backwards, and the
+   pre-upgrade migration Job does not run on a rollback. Wait for `/ready` on every role.
+4. **When it does not** — a contracting migration ran — the schema must come back first. A
+   downgrade runs the release's own migrations backwards, with the *newer* image, which holds
+   them: `kubectl run taktus-downgrade --rm -it --image=<newer image> --env=... -- alembic -c
+   migrations/alembic.ini downgrade <revision>`, with the database URL the roles use. A
+   downgrade that drops a table or a column drops its data: it counts as a delete, and is run
+   only on a person's word (CLAUDE.md §9). Where data must stay, restore the backup taken
+   before the upgrade instead (section 11), and then roll back as in step 3.
+5. **Check**: `/ready` answers `ready` on every role, and `taktusctl ledger verify --tenant
+   <tenant>` passes for every tenant.
+
+The promise covers one release step: the previous release beside the next. A rollback across
+more than one release may need a downgrade even where every migration expanded, because the
+older version may predate the function and the range (#330).

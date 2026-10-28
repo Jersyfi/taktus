@@ -1,5 +1,5 @@
 """What acts for a tenant, what depends on it, and how a process really runs, on the HTTP
-surface (ADR-0147, UC-7.8, UC-6.15, UC-9.7).
+surface (ADR-0147, UC-7.8, UC-6.16, UC-9.7).
 
 Read with an account key in `Authorization: Bearer`, or the web app's session. A process the
 reader may not see is left out of every row and every count, and a run the reader may not see

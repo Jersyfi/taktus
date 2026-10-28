@@ -1,5 +1,5 @@
 <!--
-	What depends on what (UC-6.15, ADR-0147 §3), in one of three modes the surface answered:
+	What depends on what (UC-6.16, ADR-0147 §3), in one of three modes the surface answered:
 	*if it goes* — what breaks and what only degrades without one adapter; *where a wrong result
 	went* — the step runs it reached, forward, with what left the system; *where data goes* —
 	every adapter against the tenant's residency rule. It starts from one selected node and never

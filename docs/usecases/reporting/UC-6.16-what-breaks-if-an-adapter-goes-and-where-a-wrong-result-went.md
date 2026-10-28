@@ -1,5 +1,5 @@
 ---
-id: UC-6.15
+id: UC-6.16
 title: What breaks if an adapter goes, and where a wrong result went
 component: reporting
 epic: E6
@@ -7,11 +7,11 @@ serves: [P6, P11, P12, P13]
 state: building
 version: 0.5.0
 tests: [tests/components/reporting/test_acting.py::test_removing_an_adapter_splits_what_breaks_from_what_degrades, tests/components/reporting/test_acting.py::test_a_wrong_result_is_followed_forward_and_every_egress_is_marked, tests/components/reporting/test_acting.py::test_where_data_goes_is_held_against_the_rule, tests/composition/test_acting.py::test_removing_an_adapter_reads_the_configuration_as_it_is_now, tests/composition/test_acting.py::test_a_wrong_result_is_followed_forward_across_processes_to_what_left, tests/composition/test_acting.py::test_residency_is_held_against_the_tenant_s_rule, tests/adapters/persistence/test_provenance_store.py::test_what_was_built_on_a_step_run_walks_forward_across_runs_in_one_query, tests/adapters/rest/test_acting.py::test_dependencies_answer_and_a_run_one_may_not_see_is_none]
-adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0030: 232318604b2d, ADR-0055: 182c84e9cdbd, ADR-0116: fdaf116b5e47, ADR-0147: ab079615c776}
+adrs: {ADR-0021: dc801ddd1c47, ADR-0022: 69572977f46b, ADR-0030: 232318604b2d, ADR-0055: 182c84e9cdbd, ADR-0116: fdaf116b5e47, ADR-0147: c8a0fb9085c0}
 supersedes: null
 ---
 
-# UC-6.15 — What breaks if an adapter goes, and where a wrong result went
+# UC-6.16 — What breaks if an adapter goes, and where a wrong result went
 
 ## 1. What must be achieved
 

@@ -1,4 +1,5 @@
-"""The removal test of the connectors over open standards (S-01, ADR-0111, issue #441).
+"""The removal test of the connectors over open standards (S-01, ADR-0111, issue #441), and of
+the connectors for the systems a business names (ADR-0150, issue #447).
 
 Each connector is configured beside the loopback, as `TAKTUS_CONNECTORS` would configure it,
 and the removal test is run for it, exactly as for every other integration. No registered
@@ -15,13 +16,23 @@ from typing import Any
 import pytest
 
 from integration.test_removal_test import RECORDS, connector_services, result_of, run_removal
+from taktus.adapters.driven.connectors.anthropic.operations import Config as CostReportConfig
+from taktus.adapters.driven.connectors.anthropic.server import build_server as cost_report_server
+from taktus.adapters.driven.connectors.aws.operations import Config as BillingConfig
+from taktus.adapters.driven.connectors.aws.server import build_server as billing_server
 from taktus.adapters.driven.connectors.httpcheck.operations import Config as CheckConfig
 from taktus.adapters.driven.connectors.httpcheck.server import build_server as check_server
 from taktus.adapters.driven.connectors.mail.protocol import Config as MailConfig
 from taktus.adapters.driven.connectors.mail.server import build_server as mail_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
+from taktus.adapters.driven.connectors.openai.operations import Config as ModelCostsConfig
+from taktus.adapters.driven.connectors.openai.server import build_server as model_costs_server
 from taktus.adapters.driven.connectors.prometheus.operations import Config as MetricsConfig
 from taktus.adapters.driven.connectors.prometheus.server import build_server as metrics_server
+from taktus.adapters.driven.connectors.sentry.operations import Config as ErrorsConfig
+from taktus.adapters.driven.connectors.sentry.server import build_server as errors_server
+from taktus.adapters.driven.connectors.stripe.operations import Config as PaymentsConfig
+from taktus.adapters.driven.connectors.stripe.server import build_server as payments_server
 from taktus.components.run.domain.model import RunState
 
 # Nothing is reached: the removal test reads each declaration and calls no operation.
@@ -37,11 +48,21 @@ SERVERS: dict[str, Any] = {
     ),
     "metrics": lambda: metrics_server(MetricsConfig("http://127.0.0.1:9")),
     "check": lambda: check_server(CheckConfig("http://127.0.0.1:9")),
+    "billing": lambda: billing_server(BillingConfig("http://127.0.0.1:9")),
+    "model-costs": lambda: model_costs_server(ModelCostsConfig("http://127.0.0.1:9")),
+    "cost-report": lambda: cost_report_server(CostReportConfig("http://127.0.0.1:9")),
+    "errors": lambda: errors_server(ErrorsConfig("http://127.0.0.1:9", organization="example")),
+    "payments": lambda: payments_server(PaymentsConfig("http://127.0.0.1:9")),
 }
 SERVES = {
     "mail": ["channel.mail", "mail.messages"],
     "metrics": ["metrics.series"],
     "check": ["check.http"],
+    "billing": ["billing.costs"],
+    "model-costs": ["models.costs"],
+    "cost-report": ["models.costs"],
+    "errors": ["errors.issues"],
+    "payments": ["payments.subscriptions"],
 }
 
 
