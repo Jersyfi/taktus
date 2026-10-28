@@ -33,7 +33,7 @@ read (`domain/service/checking.py`):
 | bounds | the value is a number within `minimum` and `maximum`, and its text matches `pattern` |
 | reconciliation | the parts — a list of numbers, an object's numbers, or one number — sum to the total read |
 | agreement | the value equals the second system's value; numbers agree by value, anything else by text |
-| recomputation | the step's rule or statistic, evaluated again over the same inputs, gives a value of the same digest |
+| recomputation | the step's rule or statistic, evaluated again over the same inputs, gives a value of the same digest; a connector call is not made twice, and its value is held to the answer its provenance records by digest |
 | approval | a value above `threshold` waits for a person of `role` (§3) |
 | sampling | `share` of the results go to a person of `role` after they counted (§4) |
 
@@ -48,7 +48,7 @@ reads one, and the run escalates as for any failed step. The ledger records `ste
 with the outcome `check_failed`.
 
 A check that cannot be applied fails as well. Examples are a value that is not a number where a
-number is needed, a reading without the part it names, or a recomputation of a call. A value no
+number is needed, a reading without the part it names, or a recomputation of a model's answer. A value no
 check could judge does not count.
 
 ### 3. An approval holds the value at the step boundary
@@ -111,6 +111,8 @@ language model calls. A worker step's checks do not run yet; a worker step is ne
 not judge whether its total or its second system is right, which is what its row does not
 cover. A recomputation evaluates the rule again in the same instance, over the same resolved
 inputs; it finds a rule that does not repeat itself, not a rule that is wrong the same way twice.
+Of a connector call it finds only a value altered between the answer and the result: it does
+not call again, so a source that changed since is not its finding.
 An approval of a value from a variable method asks again when the method computes another value
 after the confirmation. A sample whose request cannot be raised is not taken, and the result
 still counts. The measured rate of corrections after the checks passed is the value ledger's

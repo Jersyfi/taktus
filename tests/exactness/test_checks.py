@@ -343,7 +343,7 @@ def test_the_part_a_check_judges_and_its_reads_are_work_of_the_step() -> None:
     assert {kind for kind in CheckKind} >= {RECONCILED.kind}
 
 
-async def test_a_recomputation_of_a_call_fails_instead_of_calling_twice() -> None:
+async def test_a_recomputation_of_a_call_holds_the_value_to_its_answer_and_calls_once() -> None:
     step = Step(
         id="book",
         method=Method.RULE,
@@ -354,6 +354,5 @@ async def test_a_recomputation_of_a_call_fails_instead_of_calling_twice() -> Non
     )
     w = await world((step, {"rule": "connector", "operation": READ, "input": {"id": "invoice"}}))
     run = await w.start()
-    assert run.step_run("book").state is StepState.FAILED
-    assert "not made twice" in (run.step_run("book").reason or "")
+    assert run.step_run("book").state is StepState.SUCCEEDED
     assert len(w.connector.calls) == 1

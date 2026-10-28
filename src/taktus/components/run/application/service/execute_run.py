@@ -3537,20 +3537,10 @@ class RunEngine:
                     else:
                         findings.append(checking.agreement(position, check, judged, other))
                 case CheckKind.RECOMPUTATION:
-                    if isinstance(work, ConnectorRule | LlmWork | WaitWork):
-                        findings.append(
-                            checking.Finding(
-                                position,
-                                check,
-                                False,
-                                "a recomputation evaluates a rule or a statistic again; this "
-                                "step's value comes from a call, which is not made twice",
-                            )
-                        )
-                        continue
-                    again, _, _, _ = await self._evaluate(run, step_run, work, span)
                     findings.append(
-                        checking.recomputation(position, check, digest, _digest(_canonical(again)))
+                        await self._recomputed(
+                            run, step_run, work, position, check, value, trace, span
+                        )
                     )
                 case CheckKind.APPROVAL:
                     approvals.append((position, check))
@@ -3566,6 +3556,41 @@ class RunEngine:
         if approvals and not run.rehearsal:
             self._approved_or_asked(run, step, step_run, judged, digest, approvals)
         return dataclasses.replace(trace, inputs=tuple(inputs))
+
+    async def _recomputed(
+        self,
+        run: Run,
+        step_run: StepRun,
+        work: Work,
+        position: int,
+        check: Check,
+        value: Any,
+        trace: Trace,
+        span: Span,
+    ) -> checking.Finding:
+        """A recomputation (DEC-0173, provisional): a rule or a statistic is evaluated again over
+        the same inputs. A call is never made twice; its value is held to what the call
+        answered, as the step's provenance records the reading by digest."""
+        digest = _digest(_canonical(value))
+        if isinstance(work, ConnectorRule):
+            if not isinstance(value, Mapping) or "output" not in value:
+                return checking.Finding(
+                    position, check, False, "the call's value carries no answer to compare"
+                )
+            answered = _digest(_canonical(value["output"]))
+            read = [i.digest for i in trace.inputs if i.kind is InputKind.SOURCE and i.digest]
+            recorded = read[-1] if read else answered  # a write records no reading
+            return checking.recomputation(position, check, recorded, answered)
+        if isinstance(work, LlmWork | WaitWork):
+            return checking.Finding(
+                position,
+                check,
+                False,
+                "a recomputation evaluates a rule or a statistic again; this step's value comes "
+                "from a model, which does not give the same value again",
+            )
+        again, _, _, _ = await self._evaluate(run, step_run, work, span)
+        return checking.recomputation(position, check, digest, _digest(_canonical(again)))
 
     async def _check_read(
         self,
