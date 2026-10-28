@@ -1,6 +1,6 @@
 """What a step does when it runs, typed per method, read from the bundle's `work` data.
 
-Five kinds are executable in this version. A `rule` step evaluates one of the built-in rules
+Six kinds are executable in this version. A `rule` step evaluates one of the built-in rules
 (`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
 of a backlog task, the backlog in its order, the roadmap held against the backlog, spam by
 fixed patterns, an input screened for injection or personal data, a contribution's class held to
@@ -10,7 +10,8 @@ calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits f
 through the clock, or for an external state read through a connector. A `worker`
 step hands a task to an execution unit behind the worker contract; an `ml` step does too, a
 prediction with its model pinned by digest, and goes to its fallback when the model is unsure
-(ADR-0076). An `llm` step asks a model through the model port. Every other method has no
+(ADR-0076). An `llm` step asks a model through the model port. A `statistics` step computes
+one of the built-in statistics (`domain.service.statistics`, ADR-0151). Every other method has no
 executor yet and is refused before the run starts, so that a run never stops in the middle for a
 reason that was known at the beginning.
 
@@ -31,7 +32,8 @@ connector call's `input`, the values of a template, a check or a prompt — an o
   or null while none has (ADR-0097) — and `keys.<step-id>`, the idempotency key that step's
   current attempt carries to a connector, the first attempt's while it has not started, so
   that an earlier step can ask whether what a later one will write is already its own
-  (ADR-0099);
+  (ADR-0099) — and `exactness`, the exactness statement of the run's version as the process
+  component renders it, which a report carries unchanged (UC-6.9, ADR-0152);
 - `{"$input": "<name>", "$otherwise": <value>}` — that input where the run was given it, and
   the value otherwise. The value may itself be a `$from` reference: an input the bundle
   declares `required: false` can then stand in for what a step produces, so that whoever
@@ -76,6 +78,18 @@ work may carry three keys of its own, read by `control_of` and never part of the
   one of the run's inputs; `text` the field of the input the label is added to;
 - `recipients` — whom an outward step addresses, as a list, a text or a count: more than the
   tenant's limit waits for a person, at every level.
+
+**An outside participant** (ADR-0155). A `human` step's work names a role outside the
+organisation that answers in its own channel: `participant`, the role; `channel`, the channel
+the answer arrives in; `thread`, the conversation it is expected in, usually a `$from` on the
+step that asked; `options`, the words the answer is read as, by rule, where it is not free text.
+
+**How a step's checks are carried out** (ADR-0152). The checks a step declares from the
+catalogue (`Step.checks`, UC-4.13) run when its value is computed, before it counts:
+
+- `checking: {select?, reads?: {<capability>: {operation, input?, select?}}}` — `select` the
+  part of the result the checks judge; `reads` the operation through which a reconciliation
+  reads its total, or an agreement the second system's value, at the moment of the check.
 """
 
 from __future__ import annotations
@@ -440,6 +454,25 @@ type RuleWork = Annotated[
 ]
 
 
+class DeviationStatistic(Value):
+    """The newest day of a series against the median of the days before it, by group
+    (`domain.service.statistics`, ADR-0151). `days` is the series, usually a reference to a
+    costs reading: each day `{"date", "total"?, "groups": [{"group", "amount"}]}`, amounts as
+    decimal text. `window` is how many days before the newest the medians are taken over;
+    `minimum` how many there must be for a median to be computed at all. The result is exact:
+    the same series always gives the same figures, computed in decimal arithmetic."""
+
+    statistic: Literal["deviation"]
+    days: Any
+    window: int = Field(default=28, ge=1, le=366)
+    minimum: int = Field(default=7, ge=1, le=366)
+
+
+type StatisticsWork = DeviationStatistic
+"""What a `statistics` step computes. One statistic in this version; the next joins it as a
+union discriminated by `statistic`."""
+
+
 class WaitUntil(Value):
     """An external state, read through a connector operation until the selected part of its
     output is one of the expected values. Polling is bounded: past `timeout_seconds` the wait
@@ -461,6 +494,31 @@ class WaitUntil(Value):
 class WaitWork(Value):
     seconds: float = Field(default=0, ge=0)
     until: WaitUntil | None = None
+
+
+class ParticipantWork(Value):
+    """A `human` step answered by a participant outside the organisation, in the thread a step
+    before it opened (ADR-0155). Names a role, never a person; the answer is reflected back and
+    confirmed in the thread before the step ends (ADR-0008)."""
+
+    participant: str = Field(pattern=r"^[a-z][a-z0-9_-]*$")
+    """The participant's role: `supplier`, `client`, `authority`."""
+    channel: Capability
+    """The channel whose intake carries the answer, and whose `<channel>.reply` reflects it."""
+    thread: Any
+    """The thread the answer is expected in: a text once resolved, typically
+    `{"$from": "<the step that asked>", "$select": "<its thread token>"}`."""
+    options: tuple[str, ...] = Field(default=(), max_length=20)
+    """Where given, the answer is read as exactly one of these words; otherwise as free text."""
+
+    @model_validator(mode="after")
+    def _options_are_words(self) -> ParticipantWork:
+        for option in self.options:
+            if not re.fullmatch(r"[^\s]{1,40}", option):
+                raise ValueError(f"an option is one word of at most 40 characters: {option!r}")
+        if len({o.casefold() for o in self.options}) != len(self.options):
+            raise ValueError("the options differ from each other, case-blind")
+        return self
 
 
 class WorkerWork(Value):
@@ -682,7 +740,7 @@ def threshold(step: Step) -> Threshold:
     return Threshold(value=float(matched.group(2)), inclusive=matched.group(1) == "<=")
 
 
-type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork
+type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork | StatisticsWork | ParticipantWork
 
 WHEN = "when"
 ASK = "ask"
@@ -692,8 +750,9 @@ SCOPE = "scope"
 ANALYTIC = "analytic"
 MESSAGE = "message"
 RECIPIENTS = "recipients"
+CHECKING = "checking"
 CONTROL_KEYS = frozenset(
-    {WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED, SCOPE, ANALYTIC, MESSAGE, RECIPIENTS}
+    {WHEN, ASK, ON_ESCALATION, EMPTY_WHEN_SKIPPED, SCOPE, ANALYTIC, MESSAGE, RECIPIENTS, CHECKING}
 )
 
 
@@ -748,6 +807,41 @@ class Message(Value):
         return self
 
 
+class CheckRead(Value):
+    """How a check reads its source at the moment of the check (ADR-0152): the operation under
+    the check's `source` capability, its input with references, and the part of the output
+    that is the total or the second system's value."""
+
+    operation: str = Field(pattern=r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*){2,}$")
+    input: dict[str, Any] = Field(default_factory=dict)
+    select: str | None = Field(default=None, min_length=1)
+
+    @property
+    def capability(self) -> str:
+        return self.operation.rsplit(".", 1)[0]
+
+
+class Checking(Value):
+    """What the checks a step declares are applied to, and how they read (ADR-0152). `select`
+    names the part of the step's result the checks judge, the whole result without it; `reads`
+    names, per capability a reconciliation or an agreement reads through, the operation that
+    reads it. The declaration of the checks themselves is the step's (`Step.checks`); this is
+    only how the run carries them out."""
+
+    select: str | None = Field(default=None, min_length=1)
+    reads: dict[Capability, CheckRead] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _under_its_capability(self) -> Checking:
+        for capability, read in self.reads.items():
+            if read.capability != capability:
+                raise ValueError(
+                    f"the read for {capability!r} calls {read.operation!r}, an operation of "
+                    "another capability"
+                )
+        return self
+
+
 class Control(Value):
     """When a step runs, whom it asks first and what it may see: the keys of a step's work that
     are not what the step does (ADR-0088, ADR-0097, ADR-0130, ADR-0142)."""
@@ -768,6 +862,8 @@ class Control(Value):
     """The step sends a message under the frame of ADR-0142."""
     recipients: Any = None
     """Whom an outward step addresses, with references; None: one recipient (ADR-0142 §6)."""
+    checking: Checking | None = None
+    """What the step's declared checks judge, and how they read their sources (ADR-0152)."""
 
     @model_validator(mode="after")
     def _a_step_on_escalation_asks_nobody(self) -> Control:
@@ -794,6 +890,8 @@ class Control(Value):
             found.extend(check.value for check in self.message.checks.values())
         if self.recipients is not None:
             found.append(self.recipients)
+        if self.checking is not None:
+            found.extend(read.input for read in self.checking.reads.values())
         return found
 
 
@@ -879,6 +977,10 @@ def parse_work(
             if given is None:
                 raise UnsupportedWork(step.id, "a rule step names its rule under `work`")
             return _RULE.validate_python(given)
+        if step.method is Method.STATISTICS:
+            if given is None:
+                raise UnsupportedWork(step.id, "a statistics step names its statistic under `work`")
+            return DeviationStatistic.model_validate(given)
         if step.method is Method.WAIT:
             return WaitWork.model_validate(given or {})
         if step.method is Method.WORKER:
@@ -913,6 +1015,10 @@ def parse_work(
             if given is None:
                 raise UnsupportedWork(step.id, "an llm step carries its prompt under `work`")
             return LlmWork.model_validate(given)
+        if step.method is Method.HUMAN and given is not None and "participant" in given:
+            # A person of the organisation is asked through a decision request or a level;
+            # a participant outside it answers in its own channel (ADR-0155).
+            return ParticipantWork.model_validate(given)
     except ValidationError as error:
         first = error.errors()[0]
         where = ".".join(str(p) for p in first["loc"])
@@ -1072,8 +1178,12 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.values]
     if isinstance(work, ExtractRule):
         return [work.values, work.excluding]
+    if isinstance(work, DeviationStatistic):
+        return [work.days]
     if isinstance(work, CommitTitleRule):
         return [work.title, work.number, work.labels, work.files, work.proposal]
     if isinstance(work, WaitWork) and work.until is not None:
         return [work.until.input]
+    if isinstance(work, ParticipantWork):
+        return [work.thread]
     return []

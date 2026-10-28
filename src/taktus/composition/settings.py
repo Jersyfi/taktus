@@ -952,13 +952,17 @@ def load_findings_connector(configuration: Configuration) -> str | None:
     return _Reader(configuration).url("findings.connector", "") or None
 
 
-def load_tenants(configuration: Configuration) -> tuple[str, ...] | None:
-    """`TAKTUS_TENANTS`, deprecated (ADR-0104 §7): the tenants of the registry an instance is
-    narrowed to. None, unset: every tenant of the registry. The command line reads it too."""
-    reader = _Reader(configuration)
-    if not reader.text("tenants", "").strip():
-        return None
-    return reader.names("tenants", ())
+def refuse_tenants(configuration: Configuration) -> None:
+    """`TAKTUS_TENANTS` is removed (ADR-0104 §7, #517): an instance serves every tenant of its
+    registry. A process that still sets it is refused with the way out, not quietly widened to
+    tenants its operator had left out. Empty, it narrowed nothing, and is ignored."""
+    if (configuration.get("tenants") or "").strip():
+        raise ConfigurationError(
+            configuration.name("tenants"),
+            "is removed: an instance serves every tenant of its registry (ADR-0104). Create "
+            "a tenant with `taktusctl tenant create`, list them with `taktusctl tenant list`, "
+            "and unset the variable",
+        )
 
 
 @dataclass(frozen=True)
@@ -1056,10 +1060,6 @@ class Settings:
     object_cache_mb: int
     """How many MiB of artifact bytes the object store keeps in memory at most: the objects used
     most recently. Every object stays readable from `state_dir`. 0 keeps none (#311)."""
-    tenants: tuple[str, ...] | None
-    """`TAKTUS_TENANTS`, deprecated: the tenants of the registry this instance is narrowed to.
-    None, the default: every tenant of the registry, read by every role on every round
-    (ADR-0104)."""
     administration_key: Secret | None
     """`TAKTUS_ADMINISTRATION_KEY_FILE`: the key that admits a request to the administration of
     tenants on the HTTP surface (ADR-0104 §4). None: those routes answer 404."""
@@ -1131,7 +1131,6 @@ class Settings:
             ),
             ("TAKTUS_STATE_DIR", str(self.state_dir)),
             ("TAKTUS_OBJECT_CACHE_MB", str(self.object_cache_mb)),
-            ("TAKTUS_TENANTS", ",".join(self.tenants or ())),
             (
                 "TAKTUS_ADMINISTRATION_KEY",
                 ""
@@ -1154,6 +1153,7 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
     """Read and validate every setting. `default_instance` is what the process calls itself
     when `TAKTUS_INSTANCE` is not set (the composition root passes host name and pid)."""
     reader = _Reader(configuration)
+    refuse_tenants(configuration)
     database = configuration.secret("database.url")
     if database is None:
         raise ConfigurationError(
@@ -1194,7 +1194,6 @@ def load(configuration: Configuration, *, default_instance: str) -> Settings:
         change_process=reader.text("change.process", "").strip() or None,
         state_dir=Path(reader.text("state.dir", "~/.cache/taktus/taktusd")).expanduser(),
         object_cache_mb=reader.integer("object.cache.mb", 64, low=0),
-        tenants=load_tenants(configuration),
         administration_key=configuration.secret("administration.key"),
         administration_key_source=configuration.source("administration.key"),
         instance=reader.text("instance", default_instance),

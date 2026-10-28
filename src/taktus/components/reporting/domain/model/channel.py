@@ -55,6 +55,11 @@ PLACEHOLDERS: dict[str, frozenset[str]] = {
     "takeover_handed": frozenset({"takeover", "step"}),
     "hand_back_read": frozenset({"takeover", "run", "step", "form"}),
     "handed_back": frozenset({"run", "step"}),
+    "spend_of_run": frozenset({"run"}),
+    "spend_against": frozenset({"run", "other"}),
+    "spend_of_process": frozenset({"process", "days", "runs"}),
+    "spend_line": frozenset({"step", "money", "takte", "tokens_in", "tokens_out", "turns"}),
+    "spend_compared": frozenset({"step", "left", "right", "result"}),
 }
 """The sentences that take values, and the values each must use — no more, no fewer."""
 
@@ -170,6 +175,24 @@ class Phrasebook(Value):
     """Said when a take-over or a hand-back cannot be done, or concerns nothing the person may
     see; the run's page in the web app says why."""
 
+    spend_words: tuple[str, ...] | None = None
+    """The words before `<run>`, or `<run> <other run>`, that ask where a run spent, step by
+    step, or two runs side by side (#449, ADR-0148). None: the channel reads no such request — a
+    phrasebook configured before there were any."""
+    spend_process_words: tuple[str, ...] | None = None
+    """The words before `<process>` that ask where a process spent over the last thirty days."""
+    spend_of_run: str | None = Field(default=None, min_length=1)
+    spend_against: str | None = Field(default=None, min_length=1)
+    spend_of_process: str | None = Field(default=None, min_length=1)
+    spend_line: str | None = Field(default=None, min_length=1)
+    """One step's figures: its money, its Takte, its tokens in and out, its turns."""
+    spend_compared: str | None = Field(default=None, min_length=1)
+    """One step of two runs: each side's figures, and whether the results are the same."""
+    not_priced: str | None = Field(default=None, min_length=1)
+    """Said where money or Takte could not be computed: never counted as nothing."""
+    same_result: str | None = Field(default=None, min_length=1)
+    other_result: str | None = Field(default=None, min_length=1)
+
     @model_validator(mode="after")
     def _readable(self) -> Phrasebook:
         problems: list[str] = []
@@ -195,6 +218,8 @@ class Phrasebook(Value):
             "takeover_words": self.takeover_words or (),
             "hand_back_words": self.hand_back_words or (),
             "takeover_show_words": self.takeover_show_words or (),
+            "spend_words": self.spend_words or (),
+            "spend_process_words": self.spend_process_words or (),
         }
         for name, listed in words.items():
             if any(w != w.strip().casefold() or not w for w in listed):
@@ -259,6 +284,25 @@ class Phrasebook(Value):
                 "a phrasebook that reads a take-over names every one of its fifteen entries, "
                 "from takeover_words to takeover_not_done (ADR-0128 §7)"
             )
+        spending = (
+            self.spend_words,
+            self.spend_process_words,
+            self.spend_of_run,
+            self.spend_against,
+            self.spend_of_process,
+            self.spend_line,
+            self.spend_compared,
+            self.not_priced,
+            self.same_result,
+            self.other_result,
+        )
+        if any(x is not None for x in spending) and any(not x for x in spending):
+            problems.append(
+                "a phrasebook that reads a request for spend names every one of its ten "
+                "entries, from spend_words to other_result (ADR-0148)"
+            )
+        if set(self.spend_words or ()) & set(self.spend_process_words or ()):
+            problems.append("a word cannot ask for the spend of a run and of a process")
         acting = [
             set(words or ())
             for words in (

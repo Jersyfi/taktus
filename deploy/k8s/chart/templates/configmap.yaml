@@ -145,6 +145,10 @@ data:
   {{- if .Values.connectors.chat.enabled }}
   {{- $channels = append $channels (printf "channel.chat=%s" (include "taktus.chatConnectorUrl" .)) }}
   {{- end }}
+  {{- include "taktus.checkConnectors" . }}
+  {{- range .Values.connectors.others }}
+  {{- $channels = append $channels (include "taktus.otherConnectorEntry" (dict "root" $ "c" .)) }}
+  {{- end }}
   {{- if $channels }}
   {{- if hasKey .Values.env "TAKTUS_CONNECTORS" }}
   {{- fail "env.TAKTUS_CONNECTORS: the deployed connectors set it" }}

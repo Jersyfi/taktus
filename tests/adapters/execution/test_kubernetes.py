@@ -574,6 +574,39 @@ async def test_a_unit_no_node_has_room_for_is_at_capacity(
     assert not isinstance(raised.value, ExecutionAtCapacity)
 
 
+async def test_a_unit_the_cluster_is_still_creating_is_at_capacity(
+    cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path
+) -> None:
+    """A placed pod whose containers are still being created — its image pulled, its volumes
+    mounted — is not broken: the step waits for it as for room (ADR-0145, #634). A unit that
+    runs and answers nothing still fails (#590)."""
+
+    def creating(pod: dict[str, Any]) -> None:
+        pod["status"]["phase"] = "Pending"
+        for status in pod["status"]["containerStatuses"]:
+            status["state"] = {"waiting": {"reason": "ContainerCreating"}}
+
+    def placed(pod: dict[str, Any]) -> None:
+        pod["status"]["phase"] = "Pending"
+        pod["status"]["containerStatuses"] = []
+
+    unit = ExecutionUnit(
+        name="reference", program="worker:1", port=1, limits=LIMITS, start_timeout_seconds=1
+    )
+    execution = execution_for(cluster, configuration, tmp_path)
+    for on_pod, said in ((creating, "ContainerCreating"), (placed, "Pending")):
+        cluster.on_pod = on_pod
+        with pytest.raises(ExecutionAtCapacity, match=f"still being created.*{said}"):
+            async with execution.launch(request_for(1, unit=unit, credentials=CREDENTIALS)):
+                pass
+        assert_all_deleted(cluster)
+    cluster.on_pod = None  # running, and nothing listens at its port
+    with pytest.raises(ExecutionError) as raised:
+        async with execution.launch(request_for(1, unit=unit, credentials=CREDENTIALS)):
+            pass
+    assert not isinstance(raised.value, ExecutionAtCapacity)
+
+
 async def test_the_units_log_is_kept_and_carries_no_credential(
     cluster: FakeCluster, configuration: EnvironmentConfiguration, tmp_path: Path, unit_port: int
 ) -> None:

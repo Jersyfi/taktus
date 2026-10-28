@@ -6,8 +6,19 @@ Each recording says where it was taken, in its own `recording.json` (`"taken"`):
 |---|---|---|
 | `p01-roadmap-control` | local | no run of P-01 on the instance yet |
 | `p02-refinement` | instance | `run_30ad9fcaf2fb24e441ba` of `p02-refinement@5`, on #528, 2026-10-18 |
-| `p03-implementation` | local | no run of the current version on the instance yet |
+| `p03-implementation` | local | no run of the current version on the instance yet; taken of version 22 and relabelled 23, which adds only a role to every fallback to a person (ADR-0146) |
 | `s07-change-in-dialogue` | local | S-07 is not installed on the instance yet |
+
+`tests/rehearsal/test_replay.py` holds this table to the `taken` of each recording.
+
+What makes each local recording one from the instance — one run on the instance, ended,
+recorded as below:
+
+| Process | The run that is needed |
+|---|---|
+| `p01-roadmap-control` | a finished run of `p01-roadmap-control@4`: its daily schedule starts one once that version is active on the instance |
+| `p03-implementation` | a finished run of `p03-implementation@22`: an issue it implements to the end, its pull request opened |
+| `s07-change-in-dialogue` | S-07 registered on the instance, at version 1, and one change asked in the owner's conversation that ends, applied or declined |
 
 A local recording was taken on a developer's machine against the repository's fakes — the
 repository service, the model endpoint, the coding agent. It proves the replay and the export
@@ -30,14 +41,17 @@ They are data, never code. They carry no secret value, and no person is named in
 
 ## Replacing a recording with one from the instance
 
-1. Pick a run of the process on the instance that ended — finished or escalated — and is not a
-   rehearsal. Note its tenant and its identifier.
+1. Note the tenant the process runs in. The tool takes the process's run itself: of its highest
+   version, ended — finished or escalated — and not a rehearsal, the newest. `--run <run id>`
+   names one instead.
 2. In a runner of the instance, which has the `taktus` package and its configuration, write the
    recording into an empty directory:
 
    ```
-   python3 record_rehearsal.py --tenant <tenant> --run <run id> --out /tmp/<process id>
+   python3 record_rehearsal.py --tenant <tenant> --process <process id> --out /tmp/<process id>
    ```
+
+   It prints the run it took. Check that its version is the bundle's in `blueprints/`.
 
    The tool is `tools/record_rehearsal.py`. It reads the database from
    `TAKTUS_DATABASE_URL_FILE` and the object store from `$TAKTUS_STATE_DIR/objects`, as the

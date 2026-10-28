@@ -323,6 +323,13 @@ class ProvenanceStore(Protocol):
         run lists the artifact. One query."""
         ...
 
+    async def derived(self, tenant: Tenant, run_id: str, step_id: str) -> Sequence[Provenance]:
+        """Forward from one step run: every record whose inputs name it, then every record
+        whose inputs name one of those, transitively, across runs of the tenant; each once,
+        oldest ledger entry first. The step run's own record is not among them. One query
+        (ADR-0147 §3)."""
+        ...
+
 
 class TenantEntry(Value):
     """One tenant of the instance's registry: its identifier, which Taktus generated, its

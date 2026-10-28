@@ -180,8 +180,8 @@ async def test_changes_recorded_through_another_process_arrive_within_5_seconds(
     instances: Callable[..., Instance], chosen: str
 ) -> None:
     async with (
-        instances("api-a", TAKTUS_ROLES="api", TAKTUS_TENANTS=chosen) as a,
-        instances("api-b", TAKTUS_ROLES="api,runner", TAKTUS_TENANTS=chosen) as b,
+        instances("api-a", TAKTUS_ROLES="api") as a,
+        instances("api-b", TAKTUS_ROLES="api,runner") as b,
     ):
         assert a.wired is not None and b.wired is not None
         key = await reader_key(b.wired, chosen)
@@ -221,8 +221,8 @@ async def test_with_the_notification_dropped_changes_arrive_within_the_same_boun
     instances: Callable[..., Instance], chosen: str, no_notification: Callable[[], Any]
 ) -> None:
     async with (
-        instances("api-a", TAKTUS_ROLES="api", TAKTUS_TENANTS=chosen) as a,
-        instances("api-b", TAKTUS_ROLES="api,runner", TAKTUS_TENANTS=chosen) as b,
+        instances("api-a", TAKTUS_ROLES="api") as a,
+        instances("api-b", TAKTUS_ROLES="api,runner") as b,
     ):
         assert a.wired is not None and b.wired is not None
         key = await reader_key(b.wired, chosen)
@@ -245,8 +245,8 @@ async def test_a_reader_that_reconnects_to_another_replica_misses_nothing_and_se
     instances: Callable[..., Instance], chosen: str
 ) -> None:
     async with (
-        instances("api-a", TAKTUS_ROLES="api", TAKTUS_TENANTS=chosen) as a,
-        instances("api-b", TAKTUS_ROLES="api,runner", TAKTUS_TENANTS=chosen) as b,
+        instances("api-a", TAKTUS_ROLES="api") as a,
+        instances("api-b", TAKTUS_ROLES="api,runner") as b,
     ):
         assert a.wired is not None and b.wired is not None
         key = await reader_key(b.wired, chosen)

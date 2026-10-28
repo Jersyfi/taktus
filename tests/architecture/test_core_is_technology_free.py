@@ -64,6 +64,9 @@ PRODUCT_NAMES = (
     "datadog",
     "sentry",
     "prometheus",
+    "aws",
+    "amazon",
+    "stripe",
     "litellm",
 )
 PRODUCT = re.compile(r"\b(" + "|".join(PRODUCT_NAMES) + r")\b", re.IGNORECASE)

@@ -25,6 +25,10 @@ message is received at the next boundary as `message.received` and kept in `mess
 `handover.state` artifact whose document an assignment continues from (`context.handover`);
 without `handover` it is refused.
 
+An inner step's `acts` are what its worker reports doing inside it, in order, before its
+artifacts: `MODEL` a model's answer (`model.called`), a `Call` a tool call (`tool.called`) with
+the digest of its arguments and, where it says so, its effect (ADR-0139 §5).
+
 The stream can be read again from any `seq` (`after`): the script is replayed and every event
 up to it skipped, without calling `on_event` for it. An assignment id the worker holds already
 is refused as the contract's 409 (`AssignmentExists`); one it never received is unknown to
@@ -60,6 +64,7 @@ from taktus.ports.worker import (
     HandoverRefused,
     HandoverRequest,
     MessageReceived,
+    ModelCalled,
     NoEstimator,
     Outcome,
     SteeringMessage,
@@ -69,11 +74,31 @@ from taktus.ports.worker import (
     StepStarted,
     StopRequest,
     Supports,
+    ToolCalled,
     UnknownAssignment,
     WorkerAtCapacity,
     WorkerError,
 )
 from taktus.shared.v1 import Artifact
+
+
+@dataclass(frozen=True)
+class Call:
+    """A tool call the worker reports: the tool, its arguments (only their digest is sent) and
+    what it acts on, where the worker says so."""
+
+    tool: str
+    arguments: str = ""
+    effect: str | None = None
+    refused: bool = False
+
+    @property
+    def digest(self) -> str:
+        return "sha256:" + hashlib.sha256(self.arguments.encode()).hexdigest()
+
+
+MODEL = "model"
+"""An act of an inner step: a language model answered the worker."""
 
 
 @dataclass(frozen=True)
@@ -85,6 +110,8 @@ class InnerStep:
     """The money the step reports, by a worker that consumes money (`estimate_usd`)."""
     said: str | None = None
     """What the worker says of the step as it works: a `step.progress` after it starts."""
+    acts: tuple[Call | str, ...] = ()
+    """What the worker reports doing in the step: `MODEL` or a `Call`, in order."""
 
 
 @dataclass
@@ -110,6 +137,9 @@ class FakeWorker:
     capacity: int | None = None
     full_for: int = 0
     estimate_full_for: int = 0
+    creating_for: int = 0
+    """The next so many reads of its capabilities find its unit still being created, as a
+    launched worker on a cluster that is pulling the unit's image does (ADR-0145)."""
     inner_seconds: float = 0.0
     estimate_usd: float | None = None
     steering: bool = False
@@ -135,6 +165,13 @@ class FakeWorker:
     _held: set[str] = field(default_factory=set)
 
     async def capabilities(self) -> Capabilities:
+        if self.creating_for > 0:
+            self.creating_for -= 1
+            raise WorkerAtCapacity(
+                "the execution unit could not be placed: the unit is still being created: the "
+                "execution unit did not answer health within 120s; the cluster says: "
+                "ContainerCreating"
+            )
         return Capabilities(
             contract="worker/v1",
             version=self.version,
@@ -275,6 +312,24 @@ class FakeWorker:
                         **base(), type="step.progress", step_id=inner.step_id, message=inner.said
                     )
                 )
+            for act in inner.acts:
+                if isinstance(act, Call):
+                    yield await emit(
+                        ToolCalled(
+                            **base(),
+                            type="tool.called",
+                            step_id=inner.step_id,
+                            tool=act.tool,
+                            arguments_digest=act.digest,
+                            effect=act.effect,  # type: ignore[arg-type]
+                            refused=act.refused or None,
+                            reason="refused as scripted" if act.refused else None,
+                        )
+                    )
+                else:
+                    yield await emit(
+                        ModelCalled(**base(), type="model.called", step_id=inner.step_id)
+                    )
             if self.fail_at == inner.step_id:
                 yield await emit(
                     AssignmentFinished(

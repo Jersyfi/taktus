@@ -40,6 +40,7 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
+from taktus.components.governance.domain.model.defects import SHIPPED, Rule, never_empty
 from taktus.shared.v1 import Value
 
 
@@ -64,6 +65,9 @@ class IncidentKind(StrEnum):
     STAGE = "stage.fell"
     """A stage of the tenant's introduction stopped holding, and a process it adds fell to the
     level the stage's absence allows (ADR-0137 §4)."""
+    RESULT_DEFECT = "result.defect"
+    """A result that counted is wrong: a person corrected it, or judged a sample of it wrong. Its
+    facts are what the rule of ADR-0023 read and decided (ADR-0153)."""
 
 
 class IncidentState(StrEnum):
@@ -193,6 +197,9 @@ class WatchConfiguration(Value):
     evaluation_tolerance: float = Field(default=EVALUATION_TOLERANCE, ge=0, le=1)
     """How far a process's score on its evaluation cases may fall before a change is held as a
     regression, or a run with no change reported as drift (ADR-0134 §8, NTC-0228)."""
+    defect_rules: tuple[Rule, ...] = SHIPPED
+    """The rules that decide whether a result defect escalates or stops (ADR-0023 §3, ADR-0153):
+    reducible, never empty. The shipped default by NTC-0242."""
     evaluation_subjects: bool = False
     """Whether an evaluation case may keep an input that a step's scope names as its subject:
     personal data by declaration (ADR-0134 §7, NTC-0228)."""
@@ -207,6 +214,7 @@ class WatchConfiguration(Value):
             raise ValueError("the grace period is no shorter than nothing")
         if self.empty_window <= timedelta(0):
             raise ValueError("the window of the empty share is longer than nothing")
+        never_empty(self.defect_rules)
         return self
 
 

@@ -84,7 +84,7 @@ Since ADR-0104 the table `tenant` is the instance's registry, and the identity c
 it. `default` is still created by migration 0001. Every other tenant is created by an
 administrator with `taktusctl tenant create` or on the HTTP surface, and Taktus generates its
 identifier. Every role reads the registry on every round, so an instance learns of a new tenant
-without a restart. `TAKTUS_TENANTS` only narrows the registry while it is still accepted.
+without a restart. Nothing narrows the registry: `TAKTUS_TENANTS` is removed (ADR-0104 §7).
 
 ## Where this promise ends
 

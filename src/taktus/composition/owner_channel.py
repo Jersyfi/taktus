@@ -13,8 +13,9 @@ writes. This module answers each from the other:
   handlers, and hands a confirmed decision to the run, which continues from its boundary;
 - `OwnerAnswers` is the intake's `ChannelAnswers`: a message written in the thread of a report
   goes to the reporting component and is no command, and so does a request for a live
-  representation in the owner's conversation (ADR-0069), the take-over of a running step and
-  its hand-back (ADR-0128 §7), and a change in dialogue (ADR-0091 §6);
+  representation in the owner's conversation (ADR-0069), a request for where a run or a
+  process spends (ADR-0148), the take-over of a running step and its hand-back (ADR-0128 §7),
+  and a change in dialogue (ADR-0091 §6);
 - `KnownSecrets` holds the values the instance was configured with, so that no message carries
   one;
 - `ShippedPhrasebooks` reads the phrasebooks Taktus ships (`phrasebooks/`), by language.
@@ -339,6 +340,12 @@ class OwnerAnswers(ChannelAnswers):
         self._showing = showing
         self._changing: Changer | None = None
         self._taking: Taker | None = None
+        self._spending: Taker | None = None
+
+    def spend_with(self, spending: Taker) -> None:
+        """Where a run or a process spends is read too (#449, ADR-0148), once the composition
+        root has the accounting component's spend."""
+        self._spending = spending
 
     def take_over_with(self, taking: Taker) -> None:
         """A take-over in dialogue is read too, once the composition root has the run engine
@@ -385,6 +392,19 @@ class OwnerAnswers(ChannelAnswers):
             )
             if shown is not None:
                 return Taken(outcome=shown.outcome, replied=shown.replied)
+        if self._spending is not None:
+            spent = await self._spending.take(
+                tenant,
+                intake.reply_to.channel,
+                intake.reply_to.address,
+                intake.reply_to.thread,
+                identity,
+                roles,
+                intake.intent.raw,
+                intake.event_id,
+            )
+            if spent is not None:
+                return Taken(outcome=spent.outcome, replied=spent.replied)
         if self._taking is not None:
             taken = await self._taking.take(
                 tenant,

@@ -51,6 +51,8 @@ def bundle() -> dict[str, Any]:
     with EXAMPLE.open(encoding="utf-8") as handle:
         document: dict[str, Any] = yaml.safe_load(handle)
     document["id"] = "restart"
+    # The test's own version, whatever the example's: the run is found as `restart@1`.
+    document["version"] = "1"
     # Unattended at level 3, which needs a verified worker: `Database.verified` records it
     # (ADR-0039). The example's own level 2 would wait for a person before every step.
     document["autonomy"] = {"level": 3, "reason": "a test of the restart", "toward_next": "-"}

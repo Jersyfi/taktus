@@ -96,9 +96,15 @@ async def test_a_connector_that_only_reads_passes(
 
 
 def test_every_runtime_check_has_a_fault() -> None:
-    assert {check for _, check in MAIL_FAULTS} == set(CHECKS) - {"C-10"}
+    assert {check for _, check in MAIL_FAULTS} == set(CHECKS) - {"C-10", "C-11"}
     for faults in (METRICS_FAULTS, CHECK_FAULTS):
-        assert {check for _, check in faults} == set(CHECKS) - {"C-05", "C-07", "C-08", "C-10"}, (
+        assert {check for _, check in faults} == set(CHECKS) - {
+            "C-05",
+            "C-07",
+            "C-08",
+            "C-10",
+            "C-11",
+        }, (
             "C-05 needs an outward operation and C-07, C-08 an intake, which a connector that "
             "only reads has not; C-10 has no runtime fault"
         )

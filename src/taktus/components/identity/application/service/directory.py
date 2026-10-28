@@ -496,6 +496,22 @@ class IdentityDirectory(IdentityResolver):
             )
         return changed
 
+    async def role_holders(self, tenant: Tenant) -> dict[str, int]:
+        """Per role the tenant's identities hold, how many hold it: the tenant's structure as
+        a count, never the names (ADR-0146). A figure by role is shown only where at least two
+        hold it (ADR-0015)."""
+        async with self._work.transaction(tenant):
+            identities = await self._identities.list(tenant)
+        held: dict[str, int] = {}
+        for identity in identities:
+            for role in identity.roles:
+                held[role] = held.get(role, 0) + 1
+        return dict(sorted(held.items()))
+
+    async def roles(self, tenant: Tenant) -> frozenset[str]:
+        """Every role an identity of the tenant holds: registration's port (ADR-0146)."""
+        return frozenset(await self.role_holders(tenant))
+
     async def issue_key(self, tenant: Tenant, identity: str, *, by: str | None = None) -> str:
         """A new account key for an identity; the old one stops working, and so does every
         browser session exchanged for it (ADR-0119)."""
