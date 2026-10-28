@@ -45,6 +45,13 @@ from taktus.components.reporting.domain.model import (
     Scope,
     Snapshot,
 )
+from taktus.components.reporting.domain.model.acting import (
+    Register,
+    RemoveView,
+    ResidencyView,
+    WrongResultView,
+)
+from taktus.components.reporting.domain.service.variants import VariantsView
 from taktus.components.run.application.service import HandBack, TakeOver
 from taktus.components.run.domain.model import Run
 from taktus.ports.configuration import Secret
@@ -226,6 +233,31 @@ class OperationReads(Protocol):
         ...
 
 
+class ActingViews(Protocol):
+    """What acts for a tenant, what depends on it, and how a process really runs (ADR-0147):
+    the composition root's, because the facts cross the catalog, process, governance, run and
+    identity components. `visible` names the processes the reader may see."""
+
+    async def register(self, tenant: Tenant, visible: frozenset[str]) -> Register: ...
+
+    async def inventory(self, tenant: Tenant, visible: frozenset[str]) -> dict[str, Any]: ...
+
+    async def stop(self, tenant: Tenant, adapter: str, actor: str) -> Any:
+        """ADR-0138's stop of the adapter, by the person. `NotStoppable` for one no step halts
+        at."""
+        ...
+
+    async def remove(self, tenant: Tenant, adapter: str, visible: frozenset[str]) -> RemoveView: ...
+
+    async def residency(self, tenant: Tenant, visible: frozenset[str]) -> ResidencyView: ...
+
+    async def wrong_result(
+        self, tenant: Tenant, run_id: str, step_id: str, visible: frozenset[str]
+    ) -> WrongResultView | None: ...
+
+    async def variants(self, tenant: Tenant, process_id: str) -> VariantsView | None: ...
+
+
 class RestServices(Protocol):
     @property
     def roles(self) -> Sequence[str]:
@@ -366,6 +398,11 @@ class RestServices(Protocol):
     @property
     def traces(self) -> StepTraces:
         """The trace inside a worker's step, read and shared by role (ADR-0135)."""
+        ...
+
+    @property
+    def acting(self) -> ActingViews:
+        """The register, the dependencies and the variants of a process (ADR-0147)."""
         ...
 
     @property

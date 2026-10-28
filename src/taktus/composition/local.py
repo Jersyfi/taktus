@@ -435,6 +435,7 @@ class LocalWiring:
                 lowered=decisions.lowered,
                 sources=decisions.sources,
                 stages=staged.ceilings,
+                structure=identities,
             )
             findings = ProductFindings(
                 RunBlocks(BlockedTime(ledger, objects, stores.work, runs)),

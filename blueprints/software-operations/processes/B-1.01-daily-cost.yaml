@@ -82,6 +82,7 @@ steps:
     fallback:
       when: the connector serving billing.costs is unavailable
       to: human
+      role: owner
     work:
       rule: connector
       operation: billing.costs.daily

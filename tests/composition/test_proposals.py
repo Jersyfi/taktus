@@ -286,7 +286,7 @@ async def test_a_change_asked_in_words_starts_s07_for_the_person() -> None:
     document = yaml.safe_load((S07 / "S-07-change-in-dialogue.yaml").read_text(encoding="utf-8"))
     await world.register.execute(RegisterProcessVersion(document, tenant=TENANT, by=WHO))
     run = await world.acts.ask(TENANT, "daily", "add a step", WHO)
-    assert run.process_version == "s07-change-in-dialogue@1"
+    assert run.process_version == "s07-change-in-dialogue@2"
     assert run.inputs == {"process": "daily", "request": "add a step"}
     assert not run.rehearsal and run.state is RunState.PLANNED
     with pytest.raises(ProposalError) as unknown:

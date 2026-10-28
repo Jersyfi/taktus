@@ -139,6 +139,7 @@ from taktus.components.run.application.service import (
 from taktus.components.run.application.service.stops import Stops
 from taktus.components.run.domain.model import AdapterStop, Run
 from taktus.composition import roles
+from taktus.composition.acting import ActingReads
 from taktus.composition.agent_surface import AgentSurface
 from taktus.composition.alerts import alerts, alerts_tick, say_who_hears
 from taktus.composition.capacity import capacity_report, capacity_tick, rules_of
@@ -172,7 +173,7 @@ from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener,
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
-from taktus.composition.maturity import CatalogMaturities
+from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
 from taktus.composition.moves import MethodMoves
 from taktus.composition.operation import OperationRecords
 from taktus.composition.owner_channel import (
@@ -286,6 +287,8 @@ class Wired:
     gallery: Gallery
     """The gallery a person chooses a first process from, read from its directory on every
     request (UC-10.4, ADR-0136)."""
+    acting: ActingReads
+    """The register, the dependencies and the variants of a process (ADR-0147)."""
     agent: AgentSurface
     traces: StepTraces
     """The trace inside a worker's step, read and shared by role, and erased by the scheduler
@@ -699,6 +702,7 @@ async def wire(
                 lowered=decisions.lowered,
                 sources=decisions.sources,
                 stages=staged.ceilings,
+                structure=identities,
             )
             moves = MethodMoves(
                 versions=PostgresRepository(persistence, ProcessVersion),
@@ -857,6 +861,27 @@ async def wire(
                     proposals,
                     PostgresRepository(persistence, ProcessVersion),
                     persistence,
+                ),
+                acting=ActingReads(
+                    processes=PostgresRepository(persistence, Process),
+                    versions=PostgresRepository(persistence, ProcessVersion),
+                    maturities=PostgresRepository(persistence, AdapterMaturity),
+                    runs=runs,
+                    catalogue=InstanceCatalogue(
+                        pools,
+                        CatalogMaturities(
+                            PostgresRepository(persistence, AdapterMaturity), persistence, pools
+                        ),
+                    ),
+                    pools=pools,
+                    residency=decisions.residency,
+                    stops=stops,
+                    blocked=BlockedTime(ledger, objects, persistence, runs),
+                    identities=identities,
+                    provenance=provenance_store,
+                    ledger=ledger,
+                    work=persistence,
+                    clock=clock,
                 ),
                 agent=AgentSurface(
                     processes=PostgresRepository(persistence, Process),

@@ -147,6 +147,9 @@ def web_fixtures() -> str:
                 exactness=s.exactness,
                 reason=f"the {s.method} suits {s.id}",
                 depends_on=s.depends_on,
+                # A person's step names its role, never a person (ADR-0146).
+                role="reviewer" if s.method == "human" else None,
+                expertise=("the release's scope",) if s.method == "human" else (),
             )
             for s in facts.steps
         ),
@@ -254,6 +257,7 @@ def web_fixtures() -> str:
         "takeover": takeover_fixtures(at, step),
         "governance": governance_fixtures(at, process_level(process).process),
         "operation": operation_fixtures(),
+        "acting": acting_fixtures(at),
     }
     return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
@@ -444,6 +448,172 @@ def governance_fixtures(at: Any, process: Any) -> dict[str, Any]:
                 ),
             ]
         },
+    }
+
+
+def acting_fixtures(at: Any) -> dict[str, Any]:
+    """What the pages of what acts, what depends on it and how a process really runs draw,
+    written by the reporting component's own functions (ADR-0147): the register and its
+    inventory, an adapter removed, a wrong result followed forward, where data goes, and the
+    variants of a process."""
+    from datetime import timedelta
+
+    from taktus.components.reporting.domain.model.acting import (
+        ActorFacts,
+        ActorUse,
+        RemovalSeen,
+        Used,
+    )
+    from taktus.components.reporting.domain.service import acting
+    from taktus.components.reporting.domain.service import variants as v
+    from taktus.shared.v1 import ExactnessClass, LedgerEntry, LedgerRefs, Provenance
+
+    def use(process: str, step: str, level: int, breaks: bool, role: str | None = None) -> Any:
+        return ActorUse(
+            process_id=process,
+            version="1",
+            step_id=step,
+            served="tickets.read" if not role else "purpose summary",
+            level=level,
+            exactness=ExactnessClass.SOURCED if not role else ExactnessClass.FREE,
+            without="breaks" if breaks else "degrades",
+            instead=None if breaks or role else "connector.mirror",
+            role=role,
+            reason="no other adapter serves tickets.read and the step names no fallback"
+            if breaks
+            else "another adapter, or a person of the role, takes the step",
+        )
+
+    tested = RemovalSeen(verdict="changed", tested_at=at - timedelta(days=3))
+    facts = [
+        ActorFacts(
+            adapter="connector.tickets",
+            family="connector",
+            serves=("tickets",),
+            maturity="verified",
+            removal=RemovalSeen(verdict="broke", tested_at=at - timedelta(days=3)),
+            uses=(use("billing", "fetch", 2, True), use("support", "read", 3, False)),
+            used=Used(days=28, steps=412, runs=206),
+        ),
+        ActorFacts(
+            adapter="model.writer",
+            family="model",
+            serves=("summary",),
+            maturity="verified",
+            removal=tested,
+            location="elsewhere",
+            uses=(use("support", "draft", 2, False, role="support-lead"),),
+            used=Used(days=28, steps=198, runs=198, tokens=241000, money={"eur": 3.12}),
+        ),
+        ActorFacts(
+            adapter="worker.coder",
+            family="worker",
+            serves=("vcs.write",),
+            maturity="verified",
+            removal=tested,
+            used=Used(days=28),
+        ),
+    ]
+    register = acting.register("default", facts, "eu")
+    entry = LedgerEntry.model_validate(
+        {
+            "seq": 9,
+            "ts": at,
+            "kind": "egress.delivery",
+            "prev_hash": "sha256:" + "0" * 64,
+            "hash": "sha256:" + "1" * 64,
+            "refs": {"tenant": "default", "run_id": "run_remind", "step_id": "letter"},
+        }
+    )
+
+    def record(id: str, run: str, step: str, pv: str, reads: tuple[str, str] | None) -> Any:
+        return Provenance.model_validate(
+            {
+                "id": id,
+                "run_id": run,
+                "step_id": step,
+                "process_version": pv,
+                "method": "rule",
+                "exactness": "sourced",
+                "inputs": []
+                if reads is None
+                else [
+                    {
+                        "kind": "result",
+                        "run_id": reads[0],
+                        "step_id": reads[1],
+                        "digest": "sha256:" + "a" * 64,
+                        "observed_at": at,
+                    }
+                ],
+                "outputs": [],
+                "result_digest": "sha256:" + "b" * 64,
+                "ledger_seq": 3,
+                "recorded_at": at,
+            }
+        )
+
+    wrong = acting.wrong_result(
+        "run_bill",
+        "compute",
+        record("p0", "run_bill", "compute", "billing@1", None),
+        [
+            record("p1", "run_bill", "invoice", "billing@1", ("run_bill", "compute")),
+            record("p2", "run_remind", "letter", "reminders@2", ("run_bill", "invoice")),
+        ],
+        [entry],
+    )
+    travelled = v.Travelled()
+    seq = 0
+    for i in range(12):
+        run = f"run_{i:02d}"
+        path = (
+            [("step.awaiting", "classify", "fell_back")]
+            if i < 3
+            else [("step.retried", "book", "after_failure")]
+            if i < 5
+            else []
+        )
+        for kind, step, outcome in [*path, ("run.finished", None, None)]:
+            seq += 1
+            v.fold(
+                travelled,
+                LedgerEntry.model_validate(
+                    {
+                        "seq": seq,
+                        "ts": at,
+                        "kind": kind,
+                        "prev_hash": "sha256:" + "0" * 64,
+                        "hash": "sha256:" + "1" * 64,
+                        "refs": LedgerRefs(
+                            tenant="default",
+                            run_id=run,
+                            step_id=step,
+                            process_version="invoices@1",
+                        ).document(),
+                        **({} if outcome is None else {"outcome": outcome}),
+                    }
+                ),
+            )
+    variants = v.variants(
+        "invoices",
+        "1",
+        ("classify", "approve", "book"),
+        travelled,
+        [
+            v.WaitFact(step_id="approve", account="wait.human", cause="c", seconds=7200 * 6),
+            v.WaitFact(step_id="classify", account="limit.provider", cause="c", seconds=1800),
+        ],
+        {"accounts-approver": 3},
+        {"approve": "accounts-approver"},
+    )
+    return {
+        "register": register.document(),
+        "inventory": acting.inventory(register, at),
+        "remove": acting.remove_view("connector.tickets", facts[0]).document(),
+        "wrong_result": wrong.document(),
+        "residency": acting.residency_view(facts, "eu").document(),
+        "variants": variants.document(),
     }
 
 

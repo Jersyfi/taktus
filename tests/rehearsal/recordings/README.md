@@ -6,7 +6,7 @@ Each recording says where it was taken, in its own `recording.json` (`"taken"`):
 |---|---|---|
 | `p01-roadmap-control` | local | no run of P-01 on the instance yet |
 | `p02-refinement` | instance | `run_30ad9fcaf2fb24e441ba` of `p02-refinement@5`, on #528, 2026-10-18 |
-| `p03-implementation` | local | no run of the current version on the instance yet |
+| `p03-implementation` | local | no run of the current version on the instance yet; taken of version 22 and relabelled 23, which adds only a role to every fallback to a person (ADR-0146) |
 | `s07-change-in-dialogue` | local | S-07 is not installed on the instance yet |
 
 A local recording was taken on a developer's machine against the repository's fakes — the

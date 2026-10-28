@@ -305,6 +305,11 @@ class ProcessStepElement(Value):
     rejected: tuple[Method, ...] = ()
     fallback: Method | None = None
     depends_on: tuple[str, ...] = ()
+    role: str | None = None
+    """For a human step: the role that performs it (ADR-0146)."""
+    expertise: tuple[str, ...] = ()
+    fallback_role: str | None = None
+    """For a fallback to a person: the role that takes the step over."""
     running_in: tuple[str, ...] = ()
     """The runs this step is running in right now; empty at rest."""
     drawn: Drawn
@@ -372,8 +377,13 @@ def _process_step(step: ProcessStepFacts, runs: tuple[RunAtVersion, ...]) -> Pro
     text = [drawn.moving.text, f"Why this method: {step.reason}."]
     if step.rejected:
         text.append(f"Considered and not chosen: {', '.join(str(m) for m in step.rejected)}.")
+    if step.role is not None:
+        text.append(f"Performed by the role {step.role}.")
     if step.fallback is not None:
-        text.append(f"Falls back to {step.fallback}.")
+        to = "" if step.fallback_role is None else f", the role {step.fallback_role}"
+        text.append(f"Falls back to {step.fallback}{to}.")
+    if step.expertise:
+        text.append(f"Needs: {'; '.join(step.expertise)}.")
     if step.depends_on:
         text.append(f"After {', '.join(step.depends_on)}.")
     text.append(f"Running in {', '.join(running_in)}." if running_in else "At rest.")
@@ -385,6 +395,9 @@ def _process_step(step: ProcessStepFacts, runs: tuple[RunAtVersion, ...]) -> Pro
         rejected=step.rejected,
         fallback=step.fallback,
         depends_on=step.depends_on,
+        role=step.role,
+        expertise=step.expertise,
+        fallback_role=step.fallback_role,
         running_in=running_in,
         drawn=drawn,
         text=" ".join(text),

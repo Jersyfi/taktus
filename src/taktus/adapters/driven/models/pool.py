@@ -62,6 +62,13 @@ class StaticModelPool:
         the removal test reads to know what is configured, and records its verdict under."""
         return [(adapter, purposes, version) for adapter, purposes, _, version in self._models]
 
+    def location(self, adapter: str) -> Location | None:
+        """Where the model under the identifier processes, as its operator declared it; None
+        when no model has it (ADR-0116, ADR-0147)."""
+        if not any(configured == adapter for configured, _, _, _ in self._models):
+            return None
+        return self._declared.get(adapter, Declared()).location
+
     def member(self, adapter: str) -> tuple[tuple[str, ...], Model, str | None] | None:
         """The purposes, the model and its pinned version under one identifier; None when no
         model has it."""

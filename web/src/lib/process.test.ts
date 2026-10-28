@@ -88,6 +88,15 @@ describe('the process level', () => {
 		expect(LEVEL.process.autonomy_text).toContain(LEVEL.process.autonomy.reason);
 	});
 
+	it('names the role a person acts in at a human step, never a person (ADR-0146)', () => {
+		const html = unescape(render(ProcessView, { props: { level: LEVEL, motionAllowed: true } }).body);
+		const human = LEVEL.steps.find((s) => s.method === 'human');
+		expect(human?.role).toBe('reviewer');
+		expect(html).toContain('role reviewer');
+		expect(human?.text).toContain('Performed by the role reviewer.');
+		expect(html).toContain('href="#/variants/example"');
+	});
+
 	it('leads down to its runs, and writes every element out as text', () => {
 		const html = unescape(render(ProcessView, { props: { level: LEVEL, motionAllowed: true } }).body);
 		for (const run of LEVEL.runs ?? []) expect(html).toContain(`href="${runLink(run.id)}"`);

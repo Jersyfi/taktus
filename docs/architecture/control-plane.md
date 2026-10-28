@@ -137,6 +137,10 @@ process is shown; a bundle with a bare level does not register. A registered ver
 - a **fallback** for any method that can vary
 - an **exactness class** — `exact`, `sourced`, `tolerant`, `free` — limiting which methods may
   produce the result; on every step that produces one, never on `wait` or `human` (ADR-0018)
+- a **role**, on a `human` step and on a fallback to a person: the role of the tenant's
+  structure that acts there, never a named person, with the **expertise** the work needs.
+  Registration requires it once an identity of the tenant holds a role, and refuses a role no
+  identity holds (ADR-0146)
 
 See [methods.md](methods.md). The choice is measured continuously and Taktus proposes changes.
 A step of method `ml` registers only with its model's evaluation on held-out cases, for the
@@ -585,7 +589,10 @@ role, a trigger against everything else, one record per step run by unique key
 (`migrations/versions/0002_provenance.py`).
 
 Following inputs from the record that produced an artifact leads back through every step run
-that contributed to it, across runs. That walk is one query (`ProvenanceQuery.chain`), and
+that contributed to it, across runs. That walk is one query (`ProvenanceQuery.chain`). The
+walk forward — every record that read a step run's result, and every record that read one of
+those — is one query too (`ProvenanceStore.derived`), which the view of where a wrong result
+went reads (ADR-0147 §3). And
 `ProvenanceQuery.verify` holds a run's records against the run and against the ledger: every
 completed step has exactly one record, every input names a record that lists what was read,
 every record agrees with the entry it names. Growth is bounded and measured: one record per
