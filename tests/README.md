@@ -13,11 +13,11 @@ for that. A gate is weakened only under a notice that demonstrates it had no val
 PostgreSQL comes from testcontainers, once per session, migrated to the current schema
 (`conftest.py`). Without Docker the tests that need it skip and name the reason; with
 `TAKTUS_REQUIRE_DATABASE` set — CI — they fail instead. `TAKTUS_TEST_DATABASE_URL` points them
-at an existing, empty database. Tests keep apart through tenants and never clean up. Every
-test tenant lands in the one registry of that database, so a daemon or command line an
-integration test starts serves `default` alone through the deprecated `TAKTUS_TENANTS`
-(`tests/integration/conftest.py`); a test of the registry itself takes a database of its own
-(`test_tenant_registry.py`, ADR-0104). The
+at an existing, empty database on a server where the tests may create databases. Outside
+`tests/integration/` tests keep apart through tenants and never clean up. A daemon serves every
+tenant of its registry (ADR-0104), so each integration test takes a database of its own: the
+fixture `postgres_url` there copies a template migrated once per session, and drops the copy
+when the test ends (`tests/integration/conftest.py`, #517). The
 container execution tests and the image tests need Docker the same way (`engine_socket`,
 `reference_worker_image` in `conftest.py`): they skip without it and fail under
 `TAKTUS_REQUIRE_DATABASE`, which in CI means "Docker is required here".

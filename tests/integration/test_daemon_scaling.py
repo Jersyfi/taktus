@@ -40,8 +40,6 @@ def settings(postgres_url: str, tmp_path: Path, **environment: str) -> Settings:
                 "TAKTUS_STATE_DIR": str(tmp_path / "state"),
                 "TAKTUS_POLL_SECONDS": "0.05",
                 "TAKTUS_LEASE_SECONDS": "5",
-                # One shared database: serve `default` unless a test says otherwise (conftest).
-                "TAKTUS_TENANTS": TENANT,
                 **environment,
             }
         ),

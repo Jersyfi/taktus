@@ -38,7 +38,6 @@ def test_defaults_are_the_self_hosting_shape() -> None:
     assert loaded.roles == ALL_ROLES
     assert loaded.http_host == "127.0.0.1" and loaded.http_port == 8080
     assert loaded.path_prefix == "/"
-    assert loaded.tenants is None, "every tenant of the registry (ADR-0104)"
     assert loaded.administration_key is None, "no administration of tenants on HTTP"
     assert loaded.instance == "host-1"
     assert loaded.migrate_on_start is False
@@ -75,7 +74,6 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
                 "TAKTUS_MODEL_PURPOSES": "reasoning,triage",
                 "TAKTUS_STATE_DIR": str(tmp_path / "state"),
                 "TAKTUS_OBJECT_CACHE_MB": "0",
-                "TAKTUS_TENANTS": "default,acme",
                 "TAKTUS_INSTANCE": "runner-7",
                 "TAKTUS_SHUTDOWN_CEILING_SECONDS": "30",
                 "TAKTUS_LEASE_SECONDS": "10",
@@ -107,7 +105,6 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
     assert loaded.model.purposes == ("reasoning", "triage") and loaded.model.credential is None
     assert loaded.state_dir == tmp_path / "state"
     assert loaded.object_cache_mb == 0
-    assert loaded.tenants == ("default", "acme")
     assert loaded.instance == "runner-7"
     assert loaded.shutdown_ceiling_seconds == 30 and loaded.lease_seconds == 10
     assert loaded.poll_seconds == 0.2 and loaded.runner_concurrency == 2
@@ -145,7 +142,7 @@ def test_every_setting_is_read_from_its_variable(tmp_path: Path) -> None:
         ("TAKTUS_CONNECTORS", "channel.repo=ftp://x", "not an http(s) URL"),
         ("TAKTUS_CONNECTORS", "channel.repo=http://x,channel.repo=http://y", "mapped twice"),
         ("TAKTUS_MODEL_ENDPOINT", "models:8000", "not an http(s) URL"),
-        ("TAKTUS_TENANTS", "a,a", "names an entry twice"),
+        ("TAKTUS_TENANTS", "default", "taktusctl tenant create"),
         ("TAKTUS_SHUTDOWN_CEILING_SECONDS", "0", "at least 1"),
         ("TAKTUS_LEASE_SECONDS", "1", "at least 5"),
         ("TAKTUS_POLL_SECONDS", "fast", "not a number"),
@@ -196,7 +193,7 @@ def test_the_effective_configuration_masks_every_secret() -> None:
     assert effective["TAKTUS_ROLES"] == "scheduler"
     assert "hunter2" not in json.dumps(effective)
     assert set(effective) == {name for name, _ in loaded.effective()}
-    assert len(effective) == 87, "every setting is in the startup log"
+    assert len(effective) == 86, "every setting is in the startup log"
 
 
 def test_the_administration_key_is_read_from_a_file_and_masked(tmp_path: Path) -> None:
@@ -210,11 +207,13 @@ def test_the_administration_key_is_read_from_a_file_and_masked(tmp_path: Path) -
     assert "adm-the-key-itself" not in json.dumps(effective)
 
 
-def test_tenants_unset_or_empty_serve_the_whole_registry() -> None:
-    """ADR-0104 §7: the variable only narrows the registry, and only while it is accepted."""
-    assert settings().tenants is None
-    assert settings(TAKTUS_TENANTS="").tenants is None
-    assert settings(TAKTUS_TENANTS="acme").tenants == ("acme",)
+def test_the_removed_tenant_list_refuses_the_start_and_names_the_way_out() -> None:
+    """ADR-0104 §7, #517: the registry is the list. Set, the variable stops the daemon with
+    the command that replaces it; empty, it narrowed nothing and is ignored."""
+    with pytest.raises(ConfigurationError, match="taktusctl tenant create") as raised:
+        settings(TAKTUS_TENANTS="acme")
+    assert raised.value.setting == "TAKTUS_TENANTS"
+    assert "TAKTUS_TENANTS" not in dict(settings(TAKTUS_TENANTS="").effective())
 
 
 def test_no_secret_value_reaches_a_log_line() -> None:

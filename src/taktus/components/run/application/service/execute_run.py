@@ -5809,6 +5809,12 @@ def _accumulate(used: dict[str, Any], event: ConsumptionQuantities) -> None:
             used[name] = used.get(name, 0) + value
     if event.resource_class is not None:
         used["resource_class"] = event.resource_class
+    # Beside the quantities: where the tokens went (#449), summed over the step's events.
+    if event.turns is not None:
+        used["turns"] = used.get("turns", 0) + event.turns
+    if event.compression is not None:
+        held = used.get("compression")
+        used["compression"] = event.compression if held is None else held.plus(event.compression)
 
 
 def _added(*parts: Consumption | None) -> Consumption | None:
