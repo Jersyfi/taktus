@@ -76,6 +76,11 @@ work may carry three keys of its own, read by `control_of` and never part of the
   one of the run's inputs; `text` the field of the input the label is added to;
 - `recipients` — whom an outward step addresses, as a list, a text or a count: more than the
   tenant's limit waits for a person, at every level.
+
+**An outside participant** (ADR-0155). A `human` step's work names a role outside the
+organisation that answers in its own channel: `participant`, the role; `channel`, the channel
+the answer arrives in; `thread`, the conversation it is expected in, usually a `$from` on the
+step that asked; `options`, the words the answer is read as, by rule, where it is not free text.
 """
 
 from __future__ import annotations
@@ -455,6 +460,31 @@ class WaitWork(Value):
     until: WaitUntil | None = None
 
 
+class ParticipantWork(Value):
+    """A `human` step answered by a participant outside the organisation, in the thread a step
+    before it opened (ADR-0155). Names a role, never a person; the answer is reflected back and
+    confirmed in the thread before the step ends (ADR-0008)."""
+
+    participant: str = Field(pattern=r"^[a-z][a-z0-9_-]*$")
+    """The participant's role: `supplier`, `client`, `authority`."""
+    channel: Capability
+    """The channel whose intake carries the answer, and whose `<channel>.reply` reflects it."""
+    thread: Any
+    """The thread the answer is expected in: a text once resolved, typically
+    `{"$from": "<the step that asked>", "$select": "<its thread token>"}`."""
+    options: tuple[str, ...] = Field(default=(), max_length=20)
+    """Where given, the answer is read as exactly one of these words; otherwise as free text."""
+
+    @model_validator(mode="after")
+    def _options_are_words(self) -> ParticipantWork:
+        for option in self.options:
+            if not re.fullmatch(r"[^\s]{1,40}", option):
+                raise ValueError(f"an option is one word of at most 40 characters: {option!r}")
+        if len({o.casefold() for o in self.options}) != len(self.options):
+            raise ValueError("the options differ from each other, case-blind")
+        return self
+
+
 class WorkerWork(Value):
     task: Task
     max_steps: int = Field(default=100, ge=1)
@@ -674,7 +704,7 @@ def threshold(step: Step) -> Threshold:
     return Threshold(value=float(matched.group(2)), inclusive=matched.group(1) == "<=")
 
 
-type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork | StatisticsWork
+type Work = RuleWork | WaitWork | WorkerWork | MlWork | LlmWork | StatisticsWork | ParticipantWork
 
 WHEN = "when"
 ASK = "ask"
@@ -909,6 +939,10 @@ def parse_work(
             if given is None:
                 raise UnsupportedWork(step.id, "an llm step carries its prompt under `work`")
             return LlmWork.model_validate(given)
+        if step.method is Method.HUMAN and given is not None and "participant" in given:
+            # A person of the organisation is asked through a decision request or a level;
+            # a participant outside it answers in its own channel (ADR-0155).
+            return ParticipantWork.model_validate(given)
     except ValidationError as error:
         first = error.errors()[0]
         where = ".".join(str(p) for p in first["loc"])
@@ -1074,4 +1108,6 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.title, work.number, work.labels, work.files, work.proposal]
     if isinstance(work, WaitWork) and work.until is not None:
         return [work.until.input]
+    if isinstance(work, ParticipantWork):
+        return [work.thread]
     return []
