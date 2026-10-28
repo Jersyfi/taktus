@@ -14,7 +14,7 @@
 # reaches itself (docs/architecture/contracts.md §4).
 
 id: s07-change-in-dialogue
-version: "1"
+version: "2"
 name: S-07 Change in dialogue
 autonomy:
   level: 3
@@ -52,6 +52,7 @@ steps:
     fallback:
       when: the loopback connector is unavailable
       to: human
+      role: owner
     work:
       rule: connector
       operation: orchestrator.changes.read
@@ -72,6 +73,7 @@ steps:
     fallback:
       when: the answer does not validate, or the model serving the purpose reasoning is unavailable
       to: human
+      role: owner
     depends_on: [read]
     work:
       purpose: reasoning
@@ -113,6 +115,7 @@ steps:
     fallback:
       when: the bundle would not register, or the loopback connector is unavailable
       to: human
+      role: owner
     depends_on: [propose]
     work:
       rule: connector
