@@ -2,6 +2,15 @@
   "connectors": [
     {
       "capabilities": [
+        "models.costs"
+      ],
+      "name": "anthropic",
+      "operations": [
+        "models.costs.daily"
+      ]
+    },
+    {
+      "capabilities": [
         "billing.costs"
       ],
       "name": "aws",

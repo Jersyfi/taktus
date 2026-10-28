@@ -23,9 +23,10 @@ processes/B-1.01-daily-cost.yaml`, is built for that. Its step `read-costs` call
 credential named `BILLING_KEY`. Without it the process is proven against a fake of the
 provider only, and the beta condition stays open.
 
-Where the project keeps no account at this provider, say so instead: NEED-0036 asks for the
-key that reads a model provider's costs, which the same process reads in the same shape, and
-one of the two is enough for the beta condition.
+NEED-0036 asks for the key that reads the model provider's costs, which the model cost watcher
+(B-2.01) reads in the same shape. The project already holds that account, so NEED-0036 is the
+recommended path; one of the two is enough for the beta condition. Where the project keeps no
+account at this cloud provider, say so, and this need is closed.
 
 ## 3. By when
 

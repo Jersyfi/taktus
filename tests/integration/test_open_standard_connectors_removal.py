@@ -16,6 +16,8 @@ from typing import Any
 import pytest
 
 from integration.test_removal_test import RECORDS, connector_services, result_of, run_removal
+from taktus.adapters.driven.connectors.anthropic.operations import Config as CostReportConfig
+from taktus.adapters.driven.connectors.anthropic.server import build_server as cost_report_server
 from taktus.adapters.driven.connectors.aws.operations import Config as BillingConfig
 from taktus.adapters.driven.connectors.aws.server import build_server as billing_server
 from taktus.adapters.driven.connectors.httpcheck.operations import Config as CheckConfig
@@ -48,6 +50,7 @@ SERVERS: dict[str, Any] = {
     "check": lambda: check_server(CheckConfig("http://127.0.0.1:9")),
     "billing": lambda: billing_server(BillingConfig("http://127.0.0.1:9")),
     "model-costs": lambda: model_costs_server(ModelCostsConfig("http://127.0.0.1:9")),
+    "cost-report": lambda: cost_report_server(CostReportConfig("http://127.0.0.1:9")),
     "errors": lambda: errors_server(ErrorsConfig("http://127.0.0.1:9", organization="example")),
     "payments": lambda: payments_server(PaymentsConfig("http://127.0.0.1:9")),
 }
@@ -57,6 +60,7 @@ SERVES = {
     "check": ["check.http"],
     "billing": ["billing.costs"],
     "model-costs": ["models.costs"],
+    "cost-report": ["models.costs"],
     "errors": ["errors.issues"],
     "payments": ["payments.subscriptions"],
 }
