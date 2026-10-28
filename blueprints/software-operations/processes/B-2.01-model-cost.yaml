@@ -1,0 +1,113 @@
+# B-2.01 Model cost — the use half of UC-03 B-2.01: what the organisation spent at a model
+# provider each day, read from the provider's own cost report, judged against the median of the
+# four weeks before it, the model and kind of usage behind a jump named, and an incident raised
+# when it left its corridor (UC-6.13, ADR-0109, ADR-0151).
+#
+# The reading is the provider's own figures, read through the capability `models.costs` (a
+# model costs connector, ADR-0150). The figures are computed by a `statistics` step in decimal
+# arithmetic: the day's total, the median of the totals before it, each line item's own median
+# and change, and the line item that rose most. They are `exact`: no model touches them, and
+# the same reading always gives the same figures (CLAUDE.md §4). It is the cost watcher of
+# B-1.01, reading a model provider instead of a cloud bill.
+#
+# Not built here: the other half of B-2.01, the credit left and the days until it runs out.
+# The providers' cost APIs give what was spent, not what is left; a balance would have to come
+# from elsewhere, and none is read yet.
+#
+# The judgement is the tenant's corridor, not this process. A person of the tenant configures
+# it once, on the step `measure` and its `ratio`: the day's total over the median of the 28
+# days before it, both from the provider's own history, so it judges from the first run:
+#
+#     uv run taktusctl signal configure cost.models_daily --process b-2-01-model-cost \
+#         --step measure --select ratio --bounds fixed --direction above \
+#         --yellow 1.5 --red 2.0 --fresh 26h \
+#         --role <role> --case <where a cost deviation is worked>
+#
+# A red value raises an incident of kind `signal.red` and a report to the role at once; a yellow
+# one waits for the daily report (ADR-0109 §4, §5). The line item behind the jump stands in the
+# result of `measure`, under `driver`. Topping up the credit and changing a budget stay with a
+# person (UC-03 B-2.01, B-2.02).
+#
+# By hand:
+#
+#     uv run taktusctl run --process blueprints/software-operations/processes/B-2.01-model-cost.yaml \
+#         --input days=29
+#
+# Switching this process off (`taktusctl deactivate --process b-2-01-model-cost`) changes
+# nothing at the provider: it only reads.
+
+id: b-2-01-model-cost
+version: "1"
+name: B-2.01 Model cost
+autonomy:
+  level: 2
+  reason: >
+    the process only reads the provider's cost report and computes figures by a fixed
+    statistic; nothing leaves the system; the judgement is the tenant's corridor, a rule, and a
+    red value reaches a person at once as an incident; UC-03 sets B-2.01's target at level 2
+  toward_next: >
+    UC-03 keeps B-2.01 at level 2; a higher level is a decision of the tenant, with four weeks
+    of daily runs whose incidents a person checked against the provider's console (UC-7.1)
+author: the repository
+reason: a model provider's daily spend watched without a person reading its console (UC-03 B-2.01)
+
+# Every day, 00:00 UTC, through the elected scheduler (ADR-0035). The newest day read is
+# yesterday; a day the provider is still counting only ever reads lower, so it can hide a jump
+# for a day but never invent one.
+triggers:
+  - schedule: daily
+    inputs:
+      days: 29
+
+inputs:
+  days:
+    description: >
+      how many days are read, ending yesterday: the day judged and the days before it whose
+      median it is judged against
+    example: 29
+
+# One reading is one request to the provider, or a few pages for a long range.
+limits:
+  quota: { units: 5 }
+
+steps:
+  - id: read-costs
+    method: rule
+    reason: the provider's cost report is read verbatim, each amount as exact decimal text
+    rejected:
+      - method: llm
+        why: a read needs no language model
+    exactness: sourced
+    fallback:
+      when: the connector serving models.costs is unavailable
+      to: human
+    work:
+      rule: connector
+      operation: models.costs.daily
+      input:
+        days: { $input: days }
+      credentials:
+        - { name: MODEL_COSTS_TOKEN, injected_as: env }
+      expect:
+        - { select: complete, matches: "^true$" }
+
+  - id: measure
+    method: statistics
+    reason: >
+      the day's total, the median of the days before it and each line item's change are fixed
+      arithmetic over the reading, in decimal; the same reading always gives the same figures,
+      and the check is to compute them again
+    rejected:
+      - method: llm
+        why: a figure held exact may not come from a language model (CLAUDE.md §4)
+      - method: rule
+        why: a median over a window is a statistic of a series, not a fixed rule over one value
+    exactness: exact
+    checks:   # provisional: DEC-0173
+      - { kind: recomputation, subject: "the day's total, the median and each line item's change" }
+    depends_on: [read-costs]
+    work:
+      statistic: deviation
+      days: { $from: read-costs, $select: output.days }
+      window: 28
+      minimum: 7

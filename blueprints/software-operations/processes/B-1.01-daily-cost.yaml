@@ -30,8 +30,8 @@
 #     uv run taktusctl run --process blueprints/software-operations/processes/B-1.01-daily-cost.yaml \
 #         --input days=29
 #
-# The same process reads a model provider's costs where `read-costs` names `models.costs.daily`
-# instead: its reading has the same shape (B-2.01 reads the same figures).
+# A model provider's costs are watched the same way by `B-2.01-model-cost.yaml`, which reads
+# `models.costs.daily`: its reading has the same shape, and the same statistic measures it.
 #
 # Switching this process off (`taktusctl deactivate --process b-1-01-daily-cost`) changes
 # nothing at the provider: it only reads.

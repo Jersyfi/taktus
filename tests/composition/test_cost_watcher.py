@@ -1,5 +1,5 @@
-"""The cost watcher of UC-03, B-1.01, end to end against a fake of the provider's billing
-(ADR-0150, ADR-0151, ADR-0109, UC-6.13).
+"""The cost watchers of UC-03, B-1.01 and B-2.01, end to end against fakes of the providers'
+billing (ADR-0150, ADR-0151, ADR-0109, UC-6.13).
 
 What is real: the bundle as shipped (`blueprints/software-operations/processes/
 B-1.01-daily-cost.yaml`), the run engine over memory stores, the cloud billing connector served
@@ -10,7 +10,9 @@ which recomputes every request's signature, and the owner's chat.
 What is proven: a day like the four weeks before it is measured and judged normal, and raises
 nothing; a day on which one service tripled is red, raises one incident of kind `signal.red`,
 reaches the role at once, and the step's result names that service as the driver; every
-figure is the exact decimal sum of what the provider gave.
+figure is the exact decimal sum of what the provider gave. B-2.01 does the same over a model
+provider's cost report (`tests/fakes/cost_report_service.py`), whose cents become dollars
+exactly, and names the line item behind a jump.
 """
 
 from __future__ import annotations
@@ -26,10 +28,12 @@ from typing import Any
 import httpx
 import pytest
 import yaml
-from fakes import FakeIdentifiers, FakeWorker, cloud_billing_service
+from fakes import FakeIdentifiers, FakeWorker, cloud_billing_service, cost_report_service
 from fakes.maturity import VERIFIED
 from fakes.owner_channel import OWNER, TENANT, owner_channel, people
 
+from taktus.adapters.driven.connectors.anthropic.operations import Config as ReportConfig
+from taktus.adapters.driven.connectors.anthropic.server import build_server as report_server
 from taktus.adapters.driven.connectors.aws.operations import Config
 from taktus.adapters.driven.connectors.aws.server import build_server
 from taktus.adapters.driven.connectors.mcp import McpActionConnector
@@ -52,14 +56,22 @@ from taktus.components.process.application.service.register_version import (
 from taktus.components.process.domain.model import Process, ProcessVersion
 from taktus.components.reporting.application.service import Changer, ConfigureCorridor
 from taktus.components.reporting.domain.model import Level
-from taktus.components.run.application.service import EngineOptions, RunEngine, StartRun
-from taktus.components.run.domain.model import Run, RunState
+from taktus.components.run.application.service import (
+    ConfirmSteps,
+    EngineOptions,
+    RunEngine,
+    StartRun,
+)
+from taktus.components.run.domain.model import Run, RunState, StepState
 from taktus.composition.signals import signal_wiring
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import Commissioned, Plan, PlanResult, PlanStatus
 
 ROOT = Path(__file__).resolve().parents[2]
-BUNDLE = ROOT / "blueprints" / "software-operations" / "processes" / "B-1.01-daily-cost.yaml"
+PROCESSES = ROOT / "blueprints" / "software-operations" / "processes"
+BUNDLE = PROCESSES / "B-1.01-daily-cost.yaml"
+MODEL_BUNDLE = PROCESSES / "B-2.01-model-cost.yaml"
+MODEL_KEY = "tok-" + secrets.token_hex(12)
 KEY_ID = "key-" + secrets.token_hex(6)
 SIGNING = "sig-" + secrets.token_hex(12)
 
@@ -76,9 +88,29 @@ def provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     server.server_close()
 
 
+@pytest.fixture
+def model_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    path = tmp_path / "model_costs_token"
+    path.write_text(MODEL_KEY, encoding="utf-8")
+    monkeypatch.setenv("TAKTUS_CREDENTIAL_MODEL_COSTS_TOKEN_FILE", str(path))
+    server = cost_report_service.make_server("127.0.0.1", 0, {MODEL_KEY})
+    threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+    server.server_close()
+
+
 class World:
-    def __init__(self, provider: str) -> None:
+    def __init__(
+        self,
+        provider: str,
+        bundle: Path = BUNDLE,
+        signal: str = "cost.cloud_daily",
+        models: bool = False,
+    ) -> None:
         self.provider = provider
+        self.bundle = bundle
+        self.signal = signal
         self.given = owner_channel()
         self.persistence = self.given.persistence
         self.clock = self.given.clock
@@ -86,7 +118,12 @@ class World:
         self.provenance = MemoryProvenanceStore(self.persistence)
         self.store = MemoryLedgerStore(self.persistence)
         self.ledger = self.given.identity.ledger
-        billing = McpActionConnector(build_server(Config(provider, timeout=5.0)), timeout=10.0)
+        server = (
+            report_server(ReportConfig(provider, timeout=5.0))
+            if models
+            else build_server(Config(provider, timeout=5.0))
+        )
+        billing = McpActionConnector(server, timeout=10.0)
         self.engine = RunEngine(
             maturities=VERIFIED,
             runs=self.of(Run),
@@ -133,14 +170,14 @@ class World:
     async def ready(self) -> None:
         await people(self.given)
         await self.given.configure(view_base="https://taktus.example")
-        bundle = yaml.safe_load(BUNDLE.read_text(encoding="utf-8"))
+        bundle = yaml.safe_load(self.bundle.read_text(encoding="utf-8"))
         self.version = await self.register.execute(RegisterProcessVersion(bundle, tenant=TENANT))
         await self.signals.corridors.configure(
             ConfigureCorridor(
                 tenant=TENANT,
-                signal="cost.cloud_daily",
+                signal=self.signal,
                 fields={
-                    "process": "b-1-01-daily-cost",
+                    "process": bundle["id"],
                     "step": "measure",
                     "select": "ratio",
                     "bounds": "fixed",
@@ -188,6 +225,14 @@ class World:
                 inputs=dict(trigger.inputs or {}),
             )
         )
+        # At level 2 no step starts before a person confirmed it (B-2.01); the owner does.
+        for _ in range(len(version.steps)):
+            if run.state is not RunState.WAITING_HUMAN:
+                break
+            waiting = tuple(s.step_id for s in run.step_runs if s.state is StepState.WAITING_HUMAN)
+            run = await self.engine.confirm(
+                ConfirmSteps(run_id=run.id, steps=waiting, actor=OWNER, tenant=TENANT)
+            )
         assert run.state is RunState.FINISHED, [(s.step_id, s.reason) for s in run.step_runs]
         return run
 
@@ -248,3 +293,33 @@ async def test_the_reading_is_sourced_and_the_figures_exact_in_their_provenance(
     assert records["measure"].method.value == "statistics"
     assert records["measure"].exactness is not None
     assert records["measure"].exactness.value == "exact"
+
+
+async def test_a_model_provider_s_jump_is_an_incident_naming_its_line_item(
+    model_provider: str,
+) -> None:
+    w = World(model_provider, MODEL_BUNDLE, "cost.models_daily", models=True)
+    await w.ready()
+
+    usual = await w.daily()
+    measured = await w.result(usual, "measure")
+    assert measured["total_text"] == "16.625", "412.5 + 1250 cents, in dollars, exactly"
+    assert measured["ratio"] == 1.0 and measured["driver"] is None
+    (judged,) = (await w.signals.watch.look(TENANT)).judged
+    assert judged.level is Level.NORMAL
+
+    yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
+    await w.costs(yesterday, {"Claude Sonnet output tokens": "5000"})
+    jump = await w.daily()
+    measured = await w.result(jump, "measure")
+    assert measured["total_text"] == "54.125"
+    assert measured["driver"] == {
+        "group": "Claude Sonnet output tokens",
+        "amount": "50.00",
+        "median": "12.50",
+        "change": "37.50",
+    }
+    (judged,) = (await w.signals.watch.look(TENANT)).judged
+    assert judged.level is Level.RED and judged.run_id == jump.id
+    (incident,) = await w.expected.incidents(TENANT)
+    assert incident.kind is IncidentKind.SIGNAL_RED and incident.run_id == jump.id
