@@ -2,7 +2,7 @@
 
 **Kind:** credential
 **Raised in:** the branch `concept/package-a` (package A, built in concept mode, DEC-0222), for issue #447
-**Issue:** to be opened with the label `needs-owner` when package A's pull request is opened; it serves #447
+**Issue:** [#637](https://github.com/Jersyfi/taktus/issues/637)
 **Needed by:** 2026-11-20
 **Foreseeable since:** the branch `concept/package-a`, where the model cost watcher (UC-03 B-2.01) first ran against a fake of the provider's cost report
 
