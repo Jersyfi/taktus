@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import socket
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +23,7 @@ from taktus.components.command.application.service import CommissionPlan
 from taktus.components.process.application.service.register_version import RegisterProcessVersion
 from taktus.components.run.application.service import StartRun
 from taktus.components.run.domain.model import Run, RunState
-from taktus.composition.daemon import Wired, serve
+from taktus.composition.daemon import EXIT_NOT_OPERABLE, Wired, serve
 from taktus.composition.settings import Settings, load
 from taktus.ports.worker import Limits
 from taktus.shared.v1 import Command, Intent, ReplyTo
@@ -59,17 +61,34 @@ class Instance:
         self.task: asyncio.Task[int] | None = None
 
     async def __aenter__(self) -> Instance:
-        started = asyncio.Event()
+        # The port `free_port()` gave can be taken by another process before the instance binds
+        # it, and the instance then exits (#520): it is started again on another port.
+        for _ in range(3):
+            serving = asyncio.Event()
+            self.stop = asyncio.Event()  # an instance that could not serve set its own
+            self.task = asyncio.create_task(
+                serve(
+                    self.settings,
+                    stop=self.stop,
+                    on_wired=self._wired,
+                    on_serving=serving.set,
+                ),
+                name=self.settings.instance,
+            )
+            listening = asyncio.create_task(serving.wait())
+            await asyncio.wait(
+                (listening, self.task), timeout=30, return_when=asyncio.FIRST_COMPLETED
+            )
+            listening.cancel()
+            if serving.is_set():
+                return self
+            assert self.task.done(), "the instance neither listened nor exited within 30s"
+            assert self.task.result() == EXIT_NOT_OPERABLE
+            self.settings = replace(self.settings, http_port=free_port())
+        raise AssertionError("three ports in a row were taken before the instance bound them")
 
-        def on_wired(wired: Wired) -> None:
-            self.wired = wired
-            started.set()
-
-        self.task = asyncio.create_task(
-            serve(self.settings, stop=self.stop, on_wired=on_wired), name=self.settings.instance
-        )
-        await asyncio.wait_for(started.wait(), timeout=30)
-        return self
+    def _wired(self, wired: Wired) -> None:
+        self.wired = wired
 
     async def __aexit__(self, *_: object) -> None:
         self.stop.set()
@@ -90,9 +109,7 @@ async def instances(postgres_url: str, tmp_path: Path) -> AsyncIterator[Callable
             settings(
                 postgres_url,
                 tmp_path,
-                TAKTUS_INSTANCE=name,
-                TAKTUS_HTTP_PORT=str(free_port()),
-                **environment,
+                **{"TAKTUS_INSTANCE": name, "TAKTUS_HTTP_PORT": str(free_port()), **environment},
             )
         )
         made.append(instance)
@@ -174,6 +191,20 @@ async def until(condition: Callable[[], bool], *, seconds: float = 30) -> None:
     async with asyncio.timeout(seconds):
         while not condition():  # noqa: ASYNC110 — polling another process's state
             await asyncio.sleep(0.05)
+
+
+async def test_an_instance_whose_port_was_taken_exits_and_starts_on_another(
+    instances: Callable[..., Instance],
+) -> None:
+    """The daemon cannot bind its port: it winds its roles down and exits as not operable, and
+    the test's instance starts again on another port (#520)."""
+    with socket.socket() as holder:
+        holder.bind(("127.0.0.1", 0))
+        holder.listen()
+        taken = holder.getsockname()[1]
+        async with instances("a", TAKTUS_HTTP_PORT=str(taken)) as a:
+            assert a.settings.http_port != taken
+            assert a.task is not None and not a.task.done()
 
 
 async def test_two_runners_execute_every_run_exactly_once(

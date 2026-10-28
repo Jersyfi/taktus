@@ -203,7 +203,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   prefix; the `api` role adds intake and the read API. A platform probes each process the same
   way. Readiness is a question asked every time — the database answers and is at the schema
   this build needs — never a memory of an earlier answer; health is the process answering at
-  all. A daemon refuses to start against a schema that does not match the binary.
+  all. A daemon refuses to start against a schema that does not match the binary. A daemon
+  that cannot bind its HTTP port winds down the roles it started and exits as not operable,
+  saying why; the server's own exit no longer ends the process past them (#520).
 - **`runner`** is the run component's `Runner` over the queue port: it claims due jobs for the
   tenants it serves, one transaction per claim, executes each through the engine's `resume`
   (which starts a submitted run, continues a halted one, or recovers one whose runner died),

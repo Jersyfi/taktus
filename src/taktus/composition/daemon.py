@@ -994,11 +994,13 @@ async def serve(
     configuration: Configuration | None = None,
     stop: asyncio.Event | None = None,
     on_wired: Callable[[Wired], None] | None = None,
+    on_serving: Callable[[], None] | None = None,
     clock: Clock | None = None,
 ) -> int:
     """Run the roles until `stop` — set by SIGTERM or SIGINT, or by the caller — and wind
     down. The exit code of the process. `on_wired` hands the wired services to a test that
-    runs the daemon in-process; `clock` lets such a test move time itself."""
+    runs the daemon in-process, and `on_serving` tells it that the HTTP server listens;
+    `clock` lets such a test move time itself."""
     stop = stop or asyncio.Event()
     _install_signal_handlers(stop)
     try:
@@ -1026,7 +1028,16 @@ async def serve(
             gc.collect()
             gc.freeze()
             tasks = _start_roles(wired, stop)
-            server = await _start_http(wired, stop)
+            try:
+                server = await _start_http(wired, stop)
+            except NotOperable:
+                # The roles started already: they wind down before the wiring closes under
+                # them, as at a stop.
+                stop.set()
+                await _wind_down(tasks, settings.shutdown_ceiling_seconds)
+                raise
+            if on_serving is not None:
+                on_serving()
             await stop.wait()
             log.info("taktusd stopping", ceiling_seconds=settings.shutdown_ceiling_seconds)
             # New work is refused first — the surface goes, the runner claims nothing more —
@@ -1073,7 +1084,16 @@ async def _start_http(wired: Wired, stop: asyncio.Event) -> uvicorn.Server:
             lifespan="off",
         )
     )
-    task = asyncio.create_task(server.serve(), name="http")
+
+    async def serving() -> None:
+        # The server exits the process when it cannot bind its port. Caught here, the daemon
+        # winds its roles down and says why, and a test that serves it in-process survives it.
+        try:
+            await server.serve()
+        except SystemExit as exit:
+            raise OSError(f"the server exited with {exit.code}") from None
+
+    task = asyncio.create_task(serving(), name="http")
     while not server.started:
         if task.done():
             error = task.exception()
