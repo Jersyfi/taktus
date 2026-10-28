@@ -6,8 +6,9 @@ support and development. Taktus runs its operation, process by process. In norma
 the business needs no staff for it. People set the goals, the limits and the budgets, carry the
 liability and sign.
 
-This is the second tenant and the case Taktus proves itself on (DEC-0199). `1.0.0` is complete
-only when it holds (§9).
+This is the second tenant and the case Taktus proves itself on (DEC-0199). The business
+introduces Taktus on its own instance once `1.0.0-beta` meets its conditions for going live; its
+stages run after that and hold no release back (DEC-0222, §9).
 
 ---
 
@@ -242,7 +243,7 @@ The business runs today without Taktus. Taktus is introduced into it in six stag
 opens only when the previous one measurably holds** (UC-9.6). A stage that stops holding is
 reported, and the processes it raised fall back by rule.
 
-| Stage | Name | What is added | What people still do | Opens when | Milestone |
+| Stage | Name | What is added | What people still do | Opens when | Built by |
 |---|---|---|---|---|---|
 | 0 | The control loop | the daily report (B-9.01); first routines for pull requests, errors and triage (B-7.01, B-7.04, B-1.05) | read every day and intervene | the tenant is created and its first processes registered at level 1–2 | `0.4.0` |
 | 1 | Operation without handwork | watchers for cost, errors, model credit, payment reconciliation, back office, deadlines (§4.1, §4.2, B-6.01, §4.5, B-10.01) | handle only deviations | stage 0 held for four weeks: the report ran every day, and every proposal was decided by a person | `0.5.0` |
@@ -332,7 +333,8 @@ follows (#447).
 
 ## 9. When this case holds
 
-`1.0.0` is complete only when all of the following hold (DEC-0199):
+The case holds when all of the following hold (DEC-0199). Since DEC-0222 they measure the
+business's introduction, which runs after `1.0.0-beta`; they are not a condition of a release:
 
 - the business installed its instance from the documentation, and upgraded it at every
   release since without losing a run and without the project's help (#445);

@@ -37,6 +37,8 @@ Checks, per use case:
    a use case requires — sections 1 to 3, or a use case that is new or removed — does not touch
    its implementation: its component's code under `src/taktus/components/<component>/`, its
    component's tests under `tests/components/<component>/`, or the files of the tests it names.
+   In concept mode — a branch named `concept/<name>`, on the owner's word (DEC-0222) — a use
+   case that is new may be written beside its implementation; a changed or removed one may not.
 
 `--print` prints every use case with its component, state and version (`make usecases`).
 `--digest ADR-NNNN` prints the digest to record. The last line is the duration.
@@ -46,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -516,8 +519,20 @@ def implementation(case: UseCase) -> list[str]:
     return paths
 
 
+def concept_branch(root: Path) -> str | None:
+    """The branch's name when it is a concept-mode branch (`concept/<name>`, DEC-0222)."""
+    name = os.environ.get("GITHUB_HEAD_REF") or ""
+    if not name:
+        try:
+            name = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        except RuntimeError:
+            name = ""
+    return name if name.startswith("concept/") else None
+
+
 def check_separation(root: Path, base: str | None, cases: list[UseCase], report: Report) -> None:
     print("requirement and implementation apart")
+    concept = concept_branch(root)
     resolved = resolve_base(root, base)
     if resolved is None:
         report.fail("base", f"{base or 'origin/main or main'} not found; cannot tell what changed")
@@ -543,7 +558,9 @@ def check_separation(root: Path, base: str | None, cases: list[UseCase], report:
         hits = sorted(
             path for path in changed for impl in implementation(case) if path.startswith(impl)
         )
-        if hits:
+        if hits and how == "new" and concept is not None:
+            report.ok(f"{case.id}: requirement new, built beside it in concept mode ({concept})")
+        elif hits:
             report.fail(
                 case.path.as_posix(),
                 f"requirement {how}, and its implementation too: "
