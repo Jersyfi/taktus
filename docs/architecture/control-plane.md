@@ -399,7 +399,12 @@ rule over these entries stops the step when the call it is about to make would b
 the tenant's limit within the run (`taktusctl incident configure --repeated-calls
 --repeated-model-calls`, three each by default). The step is rejected, `repetition.stopped`
 names the action, the count and the limit, the run halts with cause `repeated`, and an incident
-of kind `step.repeated` is raised.
+of kind `step.repeated` is raised. A worker's step is counted from what its worker reports
+(ADR-0144): a tool call marked `outward` is recorded as `connector.called`, a model's answer
+as `model.called`, and a tool call after an answer as `tool.result`, from which the answers
+are counted again. The worker reports a call after it made it, so a count that crossed the
+limit asks the worker to stop at its next boundary; the step stops there with its checkpoint,
+and the run halts with cause `repeated`.
 
 **A stop can be scoped to an adapter, and is confirmed once it holds** (ADR-0138, UC-7.2). A
 person stops a configured worker, connector or model with `taktusctl stop adapter NAME`,

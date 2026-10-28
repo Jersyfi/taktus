@@ -324,12 +324,14 @@ from taktus.ports.worker import (
     Frame,
     HandoverRequest,
     Limits,
+    ModelCalled,
     NoEstimator,
     Outcome,
     ResolvedWorker,
     StepBoundary,
     StopRequest,
     Task,
+    ToolCalled,
     UnaskedWorker,
     UnknownAssignment,
     Worker,
@@ -2051,6 +2053,8 @@ class RunEngine:
                 elif parked:
                     # A wait step parked: the runner defers the job to its next check (ADR-0103).
                     cause = Cause.PARKED
+                elif run.id in self._repeating:
+                    cause = Cause.REPEATED
                 elif run.id in self._limit_halts:
                     cause = Cause.LIMIT
                 elif run.id not in self._stop_requested and self._in_a_new_unit(run, step_run):
@@ -2060,6 +2064,7 @@ class RunEngine:
                 else:
                     cause = Cause.STOP
                 self._limit_halts.discard(run.id)
+                self._repeating.discard(run.id)
                 return await self._end(run, RunState.HALTED, cause, step_run.reason, span)
             completed_now += 1
             await self._breach(run, step, step_run)
@@ -3027,6 +3032,87 @@ class RunEngine:
                 "model_calls", f"purpose {work.purpose}", answered, limits.model_calls
             )
         return None
+
+    async def _watch(self, run: Run, step_run: StepRun) -> repetition.Watch | None:
+        """The rule over a worker's reports, seeded from the run's ledger (ADR-0144)."""
+        if self._repetition is None or run.rehearsal:
+            return None
+        limits = await self._repetition.limits(run.tenant)
+        return repetition.Watch.of(
+            await self._entries(run),
+            step_run.step_id,
+            calls_limit=limits.calls,
+            model_calls_limit=limits.model_calls,
+        )
+
+    async def _reported(
+        self,
+        run: Run,
+        step_run: StepRun,
+        watch: repetition.Watch,
+        event: ToolCalled | ModelCalled,
+    ) -> repetition.Stop | None:
+        """A worker reported a call: its entry goes into the run's ledger, and the rule counts
+        it. A local call, or one that says nothing of its effect, counts as a tool result only;
+        a refused call was not made."""
+        if isinstance(event, ModelCalled):
+            await self._record_fenced(run, repetition.MODEL_CALLED, step_run, "answered")
+            return watch.answered(f"worker {step_run.adapter or 'unnamed'}")
+        if event.refused:
+            return None
+        if watch.resulted():
+            await self._record_fenced(run, repetition.TOOL_RESULT, step_run, "returned")
+        if event.effect != "outward":
+            return None
+        identity = repetition.reported(event.tool, event.arguments_digest)
+        digest = await self._objects.put(_canonical(identity))
+        await self._record_fenced(run, repetition.CONNECTOR_CALLED, step_run, "called", digest)
+        return watch.called(digest, event.tool)
+
+    async def _record_fenced(
+        self, run: Run, kind: str, step_run: StepRun, outcome: str, digest: Digest | None = None
+    ) -> None:
+        async with self._work.transaction(run.tenant):
+            await self._fence(run)
+            await self._record(run, kind, step=step_run, outcome=outcome, digest=digest)
+
+    async def _stop_reporting(
+        self,
+        run: Run,
+        step_run: StepRun,
+        worker: Worker,
+        assignment_id: str,
+        stopped: repetition.Stop,
+    ) -> None:
+        """The rule fired on a worker's reports: the facts are recorded as
+        `repetition.stopped`, the stop raises an incident, and the worker is asked to stop at
+        its next boundary (ADR-0144). An assignment that ends before it keeps its end."""
+        document = stopped.document(
+            run_id=run.id, step_id=step_run.step_id, process_version=run.process_version
+        )
+        digest = await self._objects.put(_canonical(document))
+        await self._record_fenced(run, repetition.STOPPED, step_run, stopped.rule, digest)
+        if self._repetition is not None:
+            await self._repetition.stopped(
+                run.tenant,
+                Repeated(
+                    process_version=run.process_version,
+                    run_id=run.id,
+                    step_id=step_run.step_id,
+                    rule="calls" if stopped.rule == "calls" else "model_calls",
+                    action=stopped.action,
+                    count=stopped.count,
+                    limit=stopped.limit,
+                ),
+            )
+        with contextlib.suppress(WorkerError):
+            await worker.stop(
+                assignment_id,
+                StopRequest(
+                    reason=stopped.reason(step_run.step_id)[:200],
+                    ceiling_seconds=self._options.step_ceiling_seconds,
+                ),
+            )
 
     async def _entries(self, run: Run) -> Sequence[LedgerEntry]:
         async with self._work.transaction(run.tenant):
@@ -4969,11 +5055,18 @@ class RunEngine:
         )
         finished: AssignmentFinished | None = None
         last_seq = after
+        watch = await self._watch(run, step_run)
+        fired: repetition.Stop | None = None
         try:
             async for event in worker.events(assignment_id, after=after):
                 if event.seq <= last_seq:
                     continue  # its effect is held already
                 await self._traced(run, step_run, event)
+                if watch is not None and isinstance(event, ToolCalled | ModelCalled):
+                    stop = await self._reported(run, step_run, watch, event)
+                    if stop is not None and fired is None:
+                        fired = stop
+                        await self._stop_reporting(run, step_run, worker, assignment_id, stop)
                 if isinstance(event, ConsumptionReported):
                     _accumulate(used, event)
                 elif isinstance(event, ArtifactProduced):
@@ -5044,6 +5137,13 @@ class RunEngine:
             update={"assignment_open": False, "assignment_seq": last_seq}
         )
         if finished.outcome is Outcome.STOPPED:
+            if fired is not None:
+                # Stopped at its boundary by the rule on repetition: the run halts with cause
+                # `repeated`, and a resume continues from the checkpoint (ADR-0144).
+                self._repeating.add(run.id)
+                finished = finished.model_copy(
+                    update={"reason": fired.reason(step_run.step_id), "limit": None}
+                )
             if finished.limit is not None:
                 self._limit_halts.add(run.id)
             ref = finished.checkpoint_ref or checkpoint_ref
