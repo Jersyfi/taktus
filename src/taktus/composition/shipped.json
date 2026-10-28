@@ -173,10 +173,12 @@
     },
     {
       "capabilities": [
+        "payments.customers",
         "payments.subscriptions"
       ],
       "name": "stripe",
       "operations": [
+        "payments.customers.subscriptions",
         "payments.subscriptions.list",
         "payments.subscriptions.read"
       ]

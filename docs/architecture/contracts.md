@@ -299,7 +299,7 @@ Without it, "interchangeable" is an assertion.
 
 The suite lives in `src/taktus/conformance/` and imports nothing from the control plane; it talks
 to a worker over HTTP and SSE, and to a connector over MCP, as a foreign control plane would. It
-runs W-01 to W-11 and W-13 to W-20 against a live worker — W-21 too over the outbound binding — and C-01 to C-09 against a live connector, and reports
+runs W-01 to W-11 and W-13 to W-20 against a live worker — W-21 too over the outbound binding — and C-01 to C-09 and C-11 against a live connector, and reports
 W-12 and C-10, the removal test, as *pending*: a suite that talks to one adapter cannot remove
 it from processes. Its report states which half of *verified* it proves.
 
@@ -374,7 +374,7 @@ way the instance runs it, and recorded as not passed (NTC-0092).
 
 Before the suite runs against an adapter, `make gate-contracts` checks the contract itself: every
 schema is valid and carries the `$id` its path prescribes, every example validates, and every check
-W-01..W-21 and C-01..C-10 has a fixture (`tools/validate_contracts.py`).
+W-01..W-21 and C-01..C-11 has a fixture (`tools/validate_contracts.py`).
 
 Every schema is identified by `https://taktus.eu/contracts/<family>/v1/<Concept>.json` — its path
 under `contracts/` behind the project's domain. A released v1 schema is immutable; changes become
@@ -413,7 +413,7 @@ base branch gained meanwhile (#496). It creates references besides branches, `re
 | Connector | `openai` | a model provider's costs (ADR-0150): the capability `models.costs`, the organisation's cost per day by line item or project, in the shape `billing.costs` has. `read`; passes the suite against a fake of the API, fault for fault |
 | Connector | `anthropic` | a model provider's costs (ADR-0150): the capability `models.costs` over the Admin API's cost report, the organisation's cost per day by description or workspace, the report's cents turned into dollars by moving the decimal point. Same shape as `openai`. `read`; passes the suite against a fake of the report, fault for fault |
 | Connector | `sentry` | error tracking (ADR-0150): the capability `errors.issues`, the issues of a period and one issue, with their counts and links; no field that names a person. `read`; passes the suite against a fake of the API, fault for fault |
-| Connector | `stripe` | a payment provider (ADR-0150): the capability `payments.subscriptions`, the subscriptions of a status and one subscription, with their items and metadata; the customer by identifier only. A direct connector, not the vendor's own server, because a match held `exact` needs fields, not text (ADR-0150 §3). `read`; passes the suite against a fake of the API, fault for fault |
+| Connector | `stripe` | a payment provider (ADR-0150): the capability `payments.subscriptions`, the subscriptions of a status and one subscription, with their items and metadata; the customer by identifier only. `payments.customers` is scoped: one customer's subscriptions, refused for another customer under a case's scope (C-11, ADR-0130). A direct connector, not the vendor's own server, because a match held `exact` needs fields, not text (ADR-0150 §3). `read`; passes the suite against a fake of the API, fault for fault |
 | Connector | `vendor` | a vendor's own MCP server behind the contract (ADR-0117, #410). Exists (`src/taktus/adapters/driven/connectors/vendor/`): it reaches the vendor's server at the MCP URL its operator names, serves the tools a manifest (`Connector.json#/$defs/Manifest`) declares with their effect and idempotency, `native` or `none`, and sends the requesting identity's credential as a bearer token. Without a manifest it serves only the tools the vendor marks as reading, each a read, and its maturity stays `experimental`. A tool whose effect nobody declared is not served. It hosts no vendor's server. Passes the suite against the MCP project's reference time server, without a manifest and with one, and against a stand-in with tools that write under its manifest, fault for fault (`tests/conformance/test_connector_v1_vendor.py`); `taktusctl conformance list` shows each such connector with its maturity |
 | Model | `openai_compatible` | covers Ollama, vLLM and most vendors. Exists (`src/taktus/adapters/driven/models/openai_compatible/`), proven against a fake of the endpoint; the one model `llm` steps ask |
 | Model | `anthropic` | native capabilities the common denominator does not carry |

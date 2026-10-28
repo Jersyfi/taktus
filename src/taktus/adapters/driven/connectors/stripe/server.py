@@ -8,7 +8,7 @@ from taktus.adapters.driven.connectors import serving
 from taktus.adapters.driven.connectors.stripe import declaration, operations
 from taktus.adapters.driven.connectors.stripe.operations import Config
 
-FAULTS = dict(serving.COMMON_FAULTS)
+FAULTS = {**serving.COMMON_FAULTS, **serving.SCOPE_FAULTS}
 
 
 def served(config: Config, fault: str | None = None) -> serving.Served:

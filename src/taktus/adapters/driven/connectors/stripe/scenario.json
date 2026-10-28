@@ -16,5 +16,15 @@
       "id": "sub_unknown"
     },
     "expected_cause": "invalid"
+  },
+  "scoped": {
+    "operation": "payments.customers.subscriptions",
+    "subject": "cus_fake1",
+    "own": {
+      "customer": "cus_fake1"
+    },
+    "other": {
+      "customer": "cus_fake2"
+    }
   }
 }
