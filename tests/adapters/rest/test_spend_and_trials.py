@@ -107,7 +107,6 @@ class Trials:
             purpose="drafting",
             candidates=("model.fake", "model.other"),
             occasion="asked",
-            by="idn_ada",
             started_at=AT,
             runs={"model.fake": {"replies/late": "trl_1-0-0"}},
         )

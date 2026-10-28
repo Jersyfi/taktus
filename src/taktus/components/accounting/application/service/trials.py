@@ -180,8 +180,8 @@ class Trial(Value):
     purpose: str
     candidates: tuple[str, ...]
     occasion: str
-    by: str
-    """Who started it: whose act it was, never a measure (principle 14)."""
+    """Who started it is the actor of its `trial.started` entry, and nowhere beside a figure
+    (principle 14)."""
     started_at: datetime
     cases: tuple[TrialCase, ...] = ()
     runs: dict[str, dict[str, str]] = Field(default_factory=dict)
