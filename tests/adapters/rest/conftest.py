@@ -27,6 +27,7 @@ from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
 from taktus.adapters.driving.rest import build_app
 from taktus.adapters.driving.rest.wiring import ProposalActs
+from taktus.components.accounting.application.service import SpendHandler
 from taktus.components.command.application.service import (
     CommissionPlanHandler,
     CompleteIntakeHandler,
@@ -221,6 +222,11 @@ class Services:
     """A running step taken over and handed back (ADR-0128)."""
     queue: MemoryQueue | None = None
     """The queue a process started from the MCP surface is submitted to (ADR-0131)."""
+    objects: MemoryObjectStore = field(default_factory=MemoryObjectStore)
+    """The object store the spend reads budget statements from (ADR-0148)."""
+    tried: Any = None
+    """The model trials (ADR-0149); a test that reaches them sets them. What they do is held by
+    `tests/composition/test_trials.py`."""
     built_agent: AgentSurface | None = None
 
     @property
@@ -337,6 +343,16 @@ class Services:
     def evaluations(self) -> Any:
         assert self.evaluated is not None, "this test sets the evaluations it reaches"
         return self.evaluated
+
+    @property
+    def spend(self) -> SpendHandler:
+        """Where a run and a process spend, over this world's ledger (ADR-0148)."""
+        return SpendHandler(self.ledger, self.objects, self.persistence)
+
+    @property
+    def trials(self) -> Any:
+        assert self.tried is not None, "this test sets the trials it reaches"
+        return self.tried
 
     @property
     def gallery(self) -> Any:

@@ -9,6 +9,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from typing import Any, Protocol
 
+from taktus.components.accounting.application.service import (
+    Offer,
+    SpendHandler,
+    Trial,
+    TrialRead,
+)
 from taktus.components.command.application.service import (
     CompleteIntakeHandler,
     ReceiveIntakeHandler,
@@ -47,6 +53,7 @@ from taktus.components.reporting.domain.model import (
 )
 from taktus.components.run.application.service import HandBack, TakeOver
 from taktus.components.run.domain.model import Run
+from taktus.ports.clock import Clock
 from taktus.ports.configuration import Secret
 from taktus.ports.identity import Resolution
 from taktus.ports.ledger import Ledger
@@ -153,6 +160,26 @@ class EvaluationActs(Protocol):
     async def reject(
         self, tenant: Tenant, process_id: str, case_id: str, by: str
     ) -> CorrectedCase: ...
+
+
+class TrialActs(Protocol):
+    """A model tried on fixed cases (ADR-0149): the composition root's, because a trial crosses
+    the process, command, run and accounting components."""
+
+    async def start(
+        self,
+        tenant: Tenant,
+        purpose: str,
+        candidates: Sequence[str],
+        by: str,
+        occasion: str = "asked",
+    ) -> Trial: ...
+
+    async def of_tenant(self, tenant: Tenant) -> list[Trial]: ...
+
+    async def read(self, tenant: Tenant, trial_id: str) -> TrialRead: ...
+
+    async def offers(self, tenant: Tenant) -> list[Offer]: ...
 
 
 class Takeovers(Protocol):
@@ -340,6 +367,21 @@ class RestServices(Protocol):
         at, or halts there, as the decision says. Nothing happens while another request of
         the run waits. A proposal to move a step, or to roll a move back, that the request
         answers is applied (ADR-0114)."""
+        ...
+
+    @property
+    def clock(self) -> Clock:
+        """The time a window of days ends at (ADR-0148)."""
+        ...
+
+    @property
+    def spend(self) -> SpendHandler:
+        """Where a run and a process spend, per step, and two runs side by side (ADR-0148)."""
+        ...
+
+    @property
+    def trials(self) -> TrialActs:
+        """A model tried on fixed cases, and the trials offered (ADR-0149)."""
         ...
 
     @property

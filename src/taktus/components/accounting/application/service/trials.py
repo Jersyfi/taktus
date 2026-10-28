@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Literal
 
 from pydantic import Field
 
@@ -148,3 +150,60 @@ def _differing(candidates: Sequence[CandidateReport]) -> tuple[str, ...]:
     return tuple(
         sorted(case for case, results in by_case.items() if any(r != results[0] for r in results))
     )
+
+
+# --- a trial, as the composition root runs and offers it (ADR-0149 §1, §3) -----------------
+
+type Occasion = Literal["introduced", "proposed", "changed", "asked"]
+OCCASIONS: tuple[str, ...] = ("introduced", "proposed", "changed", "asked")
+
+
+class TrialError(Exception):
+    """A trial that cannot be started or read. `kind` is `unknown` for what does not exist or
+    may not be seen, `invalid` for what was asked wrongly, `empty` for a purpose without cases."""
+
+    def __init__(self, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+
+
+class TrialCase(Value):
+    key: str
+    """`<process>/<case>`: a case is named by its process, because two processes may each have
+    a case of the same name."""
+    process_version: str
+    case: str
+
+
+class Trial(Value):
+    id: str
+    purpose: str
+    candidates: tuple[str, ...]
+    occasion: str
+    by: str
+    """Who started it: whose act it was, never a measure (principle 14)."""
+    started_at: datetime
+    cases: tuple[TrialCase, ...] = ()
+    runs: dict[str, dict[str, str]] = Field(default_factory=dict)
+    """Per candidate, its run of each case: `{model: {case key: run_id}}`."""
+    left_out: dict[str, str] = Field(default_factory=dict)
+    """The cases that did not run, with why: a version without limits, a case left out of its
+    evaluation set."""
+
+
+class TrialRead(Value):
+    trial: Trial
+    report: TrialReport
+    settled: bool
+    """Whether every case run has gone as far as it can go without a person."""
+
+
+class Offer(Value):
+    purpose: str
+    occasion: str
+    model: str
+    """The model the occasion concerns: the one introduced, proposed or changed."""
+    candidates: tuple[str, ...]
+    """The models a trial would compare: the one concerned first, then every other configured."""
+    reason: str
+    since: datetime | None = None

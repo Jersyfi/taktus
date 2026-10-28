@@ -61,8 +61,10 @@ from taktus.adapters.driving.rest import (
     proposals,
     review,
     session,
+    spend,
     takeover,
     tenants,
+    trials,
 )
 from taktus.adapters.driving.rest.problems import on_http_exception, on_validation_error, problem
 from taktus.adapters.driving.rest.views import decision_view
@@ -164,6 +166,8 @@ def build_app(
         app.include_router(review.router(services, _authenticated), prefix=base)
         app.include_router(autonomy.router(services, _authenticated), prefix=base)
         app.include_router(takeover.router(services, _authenticated), prefix=base)
+        app.include_router(spend.router(services, _authenticated), prefix=base)
+        app.include_router(trials.router(services, _authenticated), prefix=base)
         # A person's own agent, over MCP, with a key of its own (ADR-0131).
         app.router.routes.append(
             Route(

@@ -19,9 +19,9 @@ from taktus.adapters.driven.memory import MemoryProvenanceStore
 from taktus.adapters.driven.models import StaticModelPool
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
-from taktus.components.accounting.application.service import SpendHandler, TrialReports
+from taktus.components.accounting.application.service import SpendHandler, TrialError, TrialReports
 from taktus.components.run.application.service import RunEngine
-from taktus.composition.trials import TrialError, Trials
+from taktus.composition.trials import Trials
 
 from .test_evaluations import SORRY, TENANT, WHO, Speaker, World
 

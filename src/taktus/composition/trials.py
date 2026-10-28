@@ -28,13 +28,16 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any, Literal, Protocol
-
-from pydantic import Field
+from typing import Any, Protocol
 
 from taktus.components.accounting.application.service import (
+    OCCASIONS,
+    Offer,
     ReportTrial,
-    TrialReport,
+    Trial,
+    TrialCase,
+    TrialError,
+    TrialRead,
     TrialReports,
 )
 from taktus.components.command.application.service import CommissionPlan, CommissionPlanHandler
@@ -49,25 +52,13 @@ from taktus.ports.model import ResolvedModel
 from taktus.ports.objectstore import ObjectStore
 from taktus.ports.persistence import Repository, Tenant, UnitOfWork
 from taktus.ports.worker import Limits
-from taktus.shared.v1 import Command, Intent, LedgerEntry, LedgerRefs, ReplyTo, Value
+from taktus.shared.v1 import Command, Intent, LedgerEntry, LedgerRefs, ReplyTo
 
 CHANNEL = "channel.web"
 STARTED = "trial.started"
 OFFERED = "trial.offered"
 """Taktus proposed another model for a purpose: the occasion `proposed` (ADR-0149 §3)."""
 STEP_FINISHED = "step.finished"
-
-type Occasion = Literal["introduced", "proposed", "changed", "asked"]
-OCCASIONS: tuple[str, ...] = ("introduced", "proposed", "changed", "asked")
-
-
-class TrialError(Exception):
-    """A trial that cannot be started or read. `kind` is `unknown` for what does not exist or
-    may not be seen, `invalid` for what was asked wrongly, `empty` for a purpose without cases."""
-
-    def __init__(self, kind: str, message: str) -> None:
-        super().__init__(message)
-        self.kind = kind
 
 
 class Models(Protocol):
@@ -78,48 +69,6 @@ class Models(Protocol):
     async def bound(self, adapter: str) -> ResolvedModel | None: ...
 
     def members(self) -> list[tuple[str, tuple[str, ...], str | None]]: ...
-
-
-class TrialCase(Value):
-    key: str
-    """`<process>/<case>`: a case is named by its process, because two processes may each have
-    a case of the same name."""
-    process_version: str
-    case: str
-
-
-class Trial(Value):
-    id: str
-    purpose: str
-    candidates: tuple[str, ...]
-    occasion: str
-    by: str
-    """Who started it: whose act it was, never a measure (principle 14)."""
-    started_at: datetime
-    cases: tuple[TrialCase, ...] = ()
-    runs: dict[str, dict[str, str]] = Field(default_factory=dict)
-    """Per candidate, its run of each case: `{model: {case key: run_id}}`."""
-    left_out: dict[str, str] = Field(default_factory=dict)
-    """The cases that did not run, with why: a version without limits, a case left out of its
-    evaluation set."""
-
-
-class TrialRead(Value):
-    trial: Trial
-    report: TrialReport
-    settled: bool
-    """Whether every case run has gone as far as it can go without a person."""
-
-
-class Offer(Value):
-    purpose: str
-    occasion: str
-    model: str
-    """The model the occasion concerns: the one introduced, proposed or changed."""
-    candidates: tuple[str, ...]
-    """The models a trial would compare: the one concerned first, then every other configured."""
-    reason: str
-    since: datetime | None = None
 
 
 class Trials:
@@ -491,4 +440,4 @@ def _canonical(document: Mapping[str, Any]) -> bytes:
     return json.dumps(document, sort_keys=True, separators=(",", ":"), default=str).encode()
 
 
-__all__ = ["Offer", "Trial", "TrialError", "TrialRead", "Trials"]
+__all__ = ["Trials"]

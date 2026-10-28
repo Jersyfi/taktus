@@ -2787,6 +2787,263 @@ paths:
           description: A parameter does not validate.
           content:
             application/problem+json: {}
+  /runs/{run_id}/spend:
+    get:
+      tags:
+      - spend
+      summary: Where one run spent, step by step
+      description: 'Each step''s tokens by price kind (plain input, cache writes, cache reads, output),
+        turns, the input before and after a compression, compute seconds, money at the run''s own price
+        table and Takte at its own weighting table, its outcome and the digest of its result. What cannot
+        be priced is named, never counted as free. With `against`, another run of the same task beside
+        it: both by step, per step the difference right less left and whether both produced the same result;
+        where the runs are of different processes or priced at different tables, the answer says so (ADR-0148).'
+      operationId: of_run_runs__run_id__spend_get
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: against
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          description: A second run to set beside this one.
+          title: Against
+        description: A second run to set beside this one.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The run's spend, or the two runs side by side.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such run or process that you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /processes/{process_id}/spend:
+    get:
+      tags:
+      - spend
+      summary: Where a process spent over a window, step by step
+      description: 'Every run of the process whose steps finished in the last `days` days, per step: what
+        it used, how often it finished, and its money summed per currency at each run''s own table (ADR-0148).'
+      operationId: of_process_processes__process_id__spend_get
+      parameters:
+      - name: process_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Process Id
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 366
+          minimum: 1
+          description: How many days back from now; 30 unless given.
+          default: 30
+          title: Days
+        description: How many days back from now; 30 unless given.
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The process's spend per step.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '404':
+          description: No such run or process that you may see.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /trials:
+    get:
+      tags:
+      - trials
+      summary: The model trials of your tenant, and those offered
+      description: Every trial, newest first, and the trials offered now (ADR-0149 §3).
+      operationId: trials_trials_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The trials and the offers.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+    post:
+      tags:
+      - trials
+      summary: Start a model trial
+      description: 'Every evaluation case of the processes whose active version asks for the purpose runs
+        once per candidate, as a rehearsal: nothing outside is acted on, and the purpose is bound to the
+        candidate for that run alone. Each run is held to its version''s limits. The ledger records `trial.started`
+        with you as its actor (ADR-0149).'
+      operationId: start_trials_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartBody'
+      responses:
+        '201':
+          description: The trial, its runs submitted.
+          content:
+            application/json:
+              schema:
+                title: Response Start Trials Post
+        '409':
+          description: No process asks for the purpose with cases.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /trials/offers:
+    get:
+      tags:
+      - trials
+      summary: The model trials offered now
+      description: A trial is offered when a purpose's model has answered no step yet and no trial included
+        it, when Taktus proposed another model for a purpose, and when the model a member answers as changed
+        its version since the purpose's last trial. An offer is never started on its own (ADR-0149 §3).
+      operationId: offers_trials_offers_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The offers.
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
+  /trials/{trial_id}:
+    get:
+      tags:
+      - trials
+      summary: One model trial, with its report
+      description: Per candidate the cases passed, money at each run's own price table, tokens in and
+        out, wall time, and each case's result digests beside the other candidates'; the cases whose results
+        differ are named. `settled` says whether every run has gone as far as it can. The report decides
+        nothing (ADR-0149 §2, §4).
+      operationId: read_trials__trial_id__get
+      parameters:
+      - name: trial_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Trial Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          description: The trial and its report.
+          content:
+            application/json:
+              schema:
+                title: Response Read Trials  Trial Id  Get
+        '404':
+          description: No such trial of your tenant.
+          content:
+            application/problem+json: {}
+        '401':
+          description: No account key, or one that proves no identity.
+          content:
+            application/problem+json: {}
+        '422':
+          description: A parameter does not validate.
+          content:
+            application/problem+json: {}
 components:
   schemas:
     Answer:
@@ -2981,6 +3238,33 @@ components:
       - role
       title: Share
       description: A field the surface does not know — a person among them — is refused.
+    StartBody:
+      properties:
+        purpose:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]*$
+          title: Purpose
+          description: The purpose the candidates are tried for.
+        candidates:
+          items:
+            type: string
+          type: array
+          maxItems: 8
+          minItems: 1
+          title: Candidates
+          description: The models to try, each a model of this instance's configuration, as `model.<member>`.
+        occasion:
+          type: string
+          title: Occasion
+          description: 'Why the trial runs: one of introduced, proposed, changed, asked; `asked` unless
+            it answers an offer.'
+          default: asked
+      additionalProperties: false
+      type: object
+      required:
+      - purpose
+      - candidates
+      title: StartBody
     Submitted:
       properties:
         key:
