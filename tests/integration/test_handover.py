@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 import httpx
@@ -37,6 +37,7 @@ from fakes.maturity import VERIFIED
 from sqlalchemy import text
 
 from taktus.adapters.driven.memory import MemoryObjectStore
+from taktus.adapters.driven.postgres import PostgresQueue
 from taktus.adapters.driven.telemetry import NoTelemetry
 from taktus.adapters.driven.workers.http import HttpWorker
 from taktus.adapters.driven.workers.pool import StaticWorkerPool
@@ -79,6 +80,7 @@ from taktus.shared.v1 import (
 from .test_runner_fence import Instance as FenceInstance
 
 TENANT = f"handover_{os.urandom(4).hex()}"
+B_LEASE_SECONDS = 3
 
 
 class Instance(FenceInstance):
@@ -217,6 +219,9 @@ class Recorder:
 @pytest.fixture
 async def instances(postgres_url: str) -> AsyncIterator[tuple[Instance, Instance]]:
     a, b = Instance.open(postgres_url), Instance.open(postgres_url)
+    # B claims A's job once A's lease of one second has run out. B's own lease is longer: with
+    # one second, a loaded machine delayed B's renewal past it, and B lost its claim (#520).
+    b = replace(b, queue=PostgresQueue(b.persistence, lease_seconds=B_LEASE_SECONDS))
     async with a.persistence.engine.begin() as connection:
         await connection.execute(
             text("SELECT set_config('taktus.tenant', :t, true)"), {"t": TENANT}
