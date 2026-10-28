@@ -156,6 +156,7 @@ async def test_a_request_that_cannot_be_answered_is_invalid(
         f"key-unknown:{SIGNING}",  # a key id the provider does not know
         "only-one-part",  # not a key pair at all
     ],
+    ids=["wrong-signature", "unknown-key", "not-a-pair"],
 )
 async def test_a_key_the_provider_does_not_admit_is_unauthenticated(
     provider: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
