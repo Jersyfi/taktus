@@ -36,6 +36,11 @@ from taktus.components.governance.application.service.residency import (
     ConfigureResidency,
     TenantResidency,
 )
+from taktus.components.governance.application.service.result_defects import (
+    Assessment,
+    ReportDefect,
+    ResultDefects,
+)
 from taktus.components.governance.application.service.signal_incidents import (
     RaiseRed,
     SignalIncidents,
@@ -53,6 +58,7 @@ from taktus.components.governance.application.service.stages import (
 __all__ = [
     "AnchorsInForce",
     "AnchorsRefused",
+    "Assessment",
     "BreachSeen",
     "CloseIncident",
     "ConfigureAnchors",
@@ -74,6 +80,8 @@ __all__ = [
     "Repetitions",
     "ReportCapacity",
     "ReportCapacityHandler",
+    "ReportDefect",
+    "ResultDefects",
     "SignalIncidents",
     "Stages",
     "StagesRefused",
