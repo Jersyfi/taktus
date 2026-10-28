@@ -64,7 +64,7 @@ def drawn(level: dict[str, Any], key: str) -> list[tuple[Step | Run, Glyph]]:
 async def test_a_registered_process_s_run_is_found_at_the_run_level(
     instances: Callable[..., Instance], chosen: str
 ) -> None:
-    async with instances("level", TAKTUS_ROLES="api,runner", TAKTUS_TENANTS=chosen) as one:
+    async with instances("level", TAKTUS_ROLES="api,runner") as one:
         assert one.wired is not None
         wired = one.wired
         key = await reader_key(wired, chosen)

@@ -152,7 +152,7 @@ restarted.
 **Tenants are created after the install, not configured** (ADR-0104). The migration creates
 `default`. Every other tenant is created with `taktusctl tenant create NAME`, run in a pod of
 the control plane, which prints the identifier Taktus generated. Every role serves the new
-tenant at its next round, without a restart. The chart sets no `TAKTUS_TENANTS` and mounts no
+tenant at its next round, without a restart. The chart mounts no
 administration key, so the administration of tenants on the HTTP surface stays off on a
 cluster.
 

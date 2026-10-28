@@ -1,14 +1,14 @@
 """Tenants are created by a command and kept in the database (ADR-0104, issue #318).
 
-A daemon runs every role against a database of this test's own, with no `TAKTUS_TENANTS`. An
+A daemon runs every role against a database of this test's own. An
 administrator creates one tenant on the HTTP surface and another with `taktusctl tenant
 create`, while the daemon runs. Without a restart, the new tenant is served by every role:
 the scheduler fires its time trigger, the runner executes the run, and the HTTP surface admits
 a reader of it. Each creation is the first entry of the new tenant's chain, and the identifier
 is the one Taktus generated.
 
-The database is the test's own because the shared one holds every other test's tenants, and
-an instance that serves its whole registry would serve them too.
+The database is the test's own, as every integration test's is: a shared one would hold every
+other test's tenants, and an instance that serves its whole registry would serve them too.
 """
 
 from __future__ import annotations
@@ -16,17 +16,12 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
-import psycopg
 import pytest
-from alembic import command
-from sqlalchemy.engine import make_url
 
-from taktus.adapters.driven.postgres.migrate import configuration
 from taktus.components.run.domain.model import RunState
 from taktus.composition.daemon import Wired
 
@@ -47,24 +42,14 @@ KEY = "adm-a-random-value-for-this-test"
 
 
 @pytest.fixture
-async def own_database(postgres_url: str) -> AsyncIterator[str]:
-    name = f"tenant_registry_{os.urandom(4).hex()}"
-    admin = make_url(postgres_url).set(drivername="postgresql")
-    plain = admin.render_as_string(hide_password=False)
-    async with await psycopg.AsyncConnection.connect(plain, autocommit=True) as connection:
-        await connection.execute(f'CREATE DATABASE "{name}"')
-    url = admin.set(database=name).render_as_string(hide_password=False)
-    command.upgrade(configuration(url), "head")
-    try:
-        yield url
-    finally:
-        async with await psycopg.AsyncConnection.connect(plain, autocommit=True) as connection:
-            await connection.execute(f'DROP DATABASE "{name}" WITH (FORCE)')
+def own_database(postgres_url: str) -> str:
+    """Every integration test has a database of its own (conftest, #517); the name says why
+    this test needs one."""
+    return postgres_url
 
 
 def tenant_command(url: str, *arguments: str) -> subprocess.CompletedProcess[str]:
     environment = {**os.environ, **PLAIN, "TAKTUS_DATABASE_URL": url}
-    environment.pop("TAKTUS_TENANTS", None)
     return subprocess.run(  # noqa: S603 — our own entry point, fixed arguments
         [taktusctl(), "tenant", *arguments],
         capture_output=True,
@@ -94,7 +79,6 @@ async def test_a_tenant_created_while_the_daemon_runs_is_served_by_every_role(
             TAKTUS_INSTANCE="registry",
             TAKTUS_HTTP_PORT=str(port),
             TAKTUS_ROLES="api,runner,scheduler,automation",
-            TAKTUS_TENANTS="",
             TAKTUS_ADMINISTRATION_KEY_FILE=str(key_file),
         ),
         clock,

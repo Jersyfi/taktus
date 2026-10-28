@@ -50,7 +50,7 @@ def busy(level: dict[str, Any], process_id: str) -> dict[str, Any]:
 async def test_a_working_run_is_counted_and_its_end_shows_the_process_idle_within_5_seconds(
     instances: Callable[..., Instance], chosen: str
 ) -> None:
-    async with instances("overview", TAKTUS_ROLES="api,runner", TAKTUS_TENANTS=chosen) as one:
+    async with instances("overview", TAKTUS_ROLES="api,runner") as one:
         assert one.wired is not None
         wired = one.wired
         key = await reader_key(wired, chosen)

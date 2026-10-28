@@ -419,7 +419,6 @@ async def wire(
             ledger=ledger,
             clock=clock,
             ids=ids,
-            narrowed_to=settings.tenants,
         )
         # Who a sender is, and who acts: the identity component, and nothing else (ADR-0040).
         identities = IdentityDirectory(
@@ -1212,14 +1211,6 @@ def main() -> None:
         sys.exit(EXIT_CONFIGURATION)
     configure(settings.log_level)
     log_effective_configuration(settings)
-    if settings.tenants is not None:
-        # ADR-0104 §7: the registry is the list; the variable only narrows it, for one release.
-        log.warning(
-            "TAKTUS_TENANTS is deprecated and will be removed: this instance serves only the "
-            "tenants of its registry that the variable names. Create a tenant with "
-            "`taktusctl tenant create`, and unset the variable to serve every tenant",
-            tenants=list(settings.tenants),
-        )
     if not settings.administration.checked:
         # ADR-0052: without the platform named, ADR-0025's rule is the operator's alone.
         log.warning(

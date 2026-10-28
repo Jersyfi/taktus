@@ -391,8 +391,9 @@ role it would tie the core to a model stack and the removal test would be lost.
   identity component owns (ADR-0104). An administrator adds to it with `taktusctl tenant
   create` or `POST /administration/tenants`, and Taktus generates the identifier. Every role
   reads the registry at every round, so a tenant created while the daemon runs is served
-  without a restart; the runner claims for each tenant in turn. `TAKTUS_TENANTS` is
-  deprecated: set, it narrows the registry to the tenants it names. An intake lands in the
+  without a restart; the runner claims for each tenant in turn. Nothing narrows the
+  registry: the variable that did is removed, and a daemon that still sets it refuses to start
+  (ADR-0104 §7). An intake lands in the
   tenant of the identity the sender's account is linked to, and nowhere when it is linked to
   none (ADR-0040); the oldest tenant is only where such a sender is answered from. Such a sender is answered only
   for what they wrote — an intake whose `intent.authored` is `false`, such as a label added, is
