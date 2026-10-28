@@ -86,5 +86,19 @@
   "as_json": "as JSON",
   "as_text": "as text, exactly as you wrote it",
   "handed_back": "Handed back: step {step} of run {run} is done, as yours, and the run continues.",
-  "takeover_not_done": "That cannot be taken over or handed back now; the run's page says why."
+  "takeover_not_done": "That cannot be taken over or handed back now; the run's page says why.",
+  "spend_words": [
+    "spend"
+  ],
+  "spend_process_words": [
+    "spend process"
+  ],
+  "spend_of_run": "Where run {run} spent, step by step:",
+  "spend_against": "Run {run} and run {other} side by side, step by step:",
+  "spend_of_process": "Where process {process} spent over {days} days, in {runs} runs, step by step:",
+  "spend_line": "{step}: {money}, {takte} Takte, {tokens_in} tokens in, {tokens_out} out, {turns} turns",
+  "spend_compared": "{step}: {left} | {right} | {result}",
+  "not_priced": "not priced",
+  "same_result": "same result",
+  "other_result": "different result"
 }

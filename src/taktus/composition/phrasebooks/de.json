@@ -86,5 +86,19 @@
   "as_json": "als JSON",
   "as_text": "als Text, genau wie du ihn geschrieben hast",
   "handed_back": "Zurückgegeben: Schritt {step} von Lauf {run} ist erledigt, als deiner, und der Lauf geht weiter.",
-  "takeover_not_done": "Das lässt sich gerade nicht übernehmen oder zurückgeben; die Seite des Laufs sagt, warum."
+  "takeover_not_done": "Das lässt sich gerade nicht übernehmen oder zurückgeben; die Seite des Laufs sagt, warum.",
+  "spend_words": [
+    "kosten"
+  ],
+  "spend_process_words": [
+    "kosten prozess"
+  ],
+  "spend_of_run": "Wofür Lauf {run} ausgegeben hat, Schritt für Schritt:",
+  "spend_against": "Lauf {run} und Lauf {other} nebeneinander, Schritt für Schritt:",
+  "spend_of_process": "Wofür Prozess {process} in {days} Tagen ausgegeben hat, in {runs} Läufen, Schritt für Schritt:",
+  "spend_line": "{step}: {money}, {takte} Takte, {tokens_in} Tokens hinein, {tokens_out} heraus, {turns} Runden",
+  "spend_compared": "{step}: {left} | {right} | {result}",
+  "not_priced": "nicht bepreist",
+  "same_result": "gleiches Ergebnis",
+  "other_result": "anderes Ergebnis"
 }

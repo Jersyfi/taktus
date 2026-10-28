@@ -187,6 +187,7 @@ from taktus.composition.replies import ConnectorReplies
 from taktus.composition.settings import Role, Settings, load
 from taktus.composition.shipped import load as load_shipped
 from taktus.composition.signals import CommandInterventions, signal_wiring, signals_tick
+from taktus.composition.spend_in_channel import SpendInChannel
 from taktus.composition.stages import stage_wiring, stages_tick
 from taktus.composition.stops import StopsConfirmed
 from taktus.composition.takeover_in_channel import TakeoverInChannel
@@ -781,6 +782,18 @@ async def wire(
                     work=persistence,
                     acts=proposal_acts,
                     proposals=proposals,
+                    deliveries=owner.deliveries,
+                    secrets=owner.secrets,
+                    clock=clock,
+                )
+            )
+            # Where a run or a process spends, asked there too (ADR-0148).
+            owner.answers.spend_with(
+                SpendInChannel(
+                    channels=PostgresRepository(persistence, OwnerChannel),
+                    runs=runs,
+                    work=persistence,
+                    spend=spend,
                     deliveries=owner.deliveries,
                     secrets=owner.secrets,
                     clock=clock,
