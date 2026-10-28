@@ -196,6 +196,7 @@ from taktus.components.run.domain.model import (
     RunError,
     RunExists,
     RunState,
+    ScreenRule,
     SpamRule,
     StepRun,
     StepState,
@@ -3493,6 +3494,9 @@ class RunEngine:
         if isinstance(work, SpamRule):
             (text,), read = await self._resolved(run, [work.text])
             return rules.spam(work, text), Trace(inputs=read), None, None
+        if isinstance(work, ScreenRule):
+            (text,), read = await self._resolved(run, [work.text])
+            return rules.screen(work, text), Trace(inputs=read), None, None
         if isinstance(work, ClassificationRule):
             (answer, screened, versions), read = await self._resolved(
                 run, [work.answer, work.screened, work.versions]

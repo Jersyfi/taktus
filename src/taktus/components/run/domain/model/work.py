@@ -3,7 +3,8 @@
 Five kinds are executable in this version. A `rule` step evaluates one of the built-in rules
 (`domain.service.rules`) — a constant, a verified artifact, a machine check, the ready standard
 of a backlog task, the backlog in its order, the roadmap held against the backlog, spam by
-fixed patterns, a contribution's class held to what may be answered, a text template, what a
+fixed patterns, an input screened for injection or personal data, a contribution's class held to
+what may be answered, a text template, what a
 pattern names in a list of texts, a title in the Conventional Commits form — or
 calls a connector operation (`rule: connector`, ADR-0024). A `wait` step waits for a duration
 through the clock, or for an external state read through a connector. A `worker`
@@ -234,6 +235,32 @@ class SpamRule(Value):
 CLASSES = ("defect", "feature", "spam")
 
 
+SCREENS = ("injection", "personal_data")
+"""The checks of the input screen, one row of the catalogue each (UC-7.8)."""
+
+
+class ScreenRule(Value):
+    """An input checked before a model or a worker reads it (UC-7.8): `text` is a string or a
+    list of strings, read as one; `checks` name which of `injection` and `personal_data` to run.
+
+    `injection` looks for fixed phrases that address a model instead of the process; `personal_data`
+    for email addresses, IBANs and long phone numbers. A hit fails the step: nothing leaves it,
+    the failure names the check and never the text found, and the run goes to a person. A text
+    no check finds is the step's result as `{"screened": [...]}`. The same text gives the same
+    verdict every time, but a pattern list is no guarantee: the step is `tolerant` at best,
+    never `exact`, and what no pattern names passes."""
+
+    rule: Literal["screen"]
+    text: Any
+    checks: tuple[Literal["injection", "personal_data"], ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _each_check_once(self) -> ScreenRule:
+        if len(set(self.checks)) != len(self.checks):
+            raise ValueError("checks lists a check twice")
+        return self
+
+
 class ClassificationRule(Value):
     """A contribution's class, read from a judgement and held to what may be answered
     (UC-1.9, ADR-0088). `answer` is a text of lines `class: …`, `version: …`, `summary: …`, or
@@ -403,6 +430,7 @@ type RuleWork = Annotated[
     | BacklogRule
     | RoadmapRule
     | SpamRule
+    | ScreenRule
     | ClassificationRule
     | TemplateRule
     | ExtractRule
@@ -1036,7 +1064,7 @@ def referenced_values(work: Work) -> list[Any]:
         return [work.issues, work.open_records]
     if isinstance(work, RoadmapRule):
         return [work.roadmap, work.issues]
-    if isinstance(work, SpamRule):
+    if isinstance(work, SpamRule | ScreenRule):
         return [work.text]
     if isinstance(work, ClassificationRule):
         return [work.answer, work.screened, work.versions]

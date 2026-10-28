@@ -22,6 +22,7 @@ from taktus.components.run.domain.model.work import (
     ExtractRule,
     ReadyRule,
     RoadmapRule,
+    ScreenRule,
     SpamRule,
     TemplateRule,
     VerifyArtifactRule,
@@ -249,6 +250,48 @@ def spam(rule: SpamRule, text: Any) -> dict[str, Any]:
         raise RuleFailed(f"the text to screen is not a text or a list of texts: {_short(text)}")
     matched = [p for p in rule.patterns if re.search(p, whole, re.IGNORECASE) is not None]
     return {"spam": bool(matched), "matched": matched}
+
+
+SCREENS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "injection": (
+        re.compile(
+            r"\bignore\b[^.\n]{0,40}\b(previous|prior|above|earlier|all)\b[^.\n]{0,40}"
+            r"\b(instructions?|prompts?|rules?)\b",
+            re.IGNORECASE,
+        ),
+        re.compile(r"\bdisregard\b[^.\n]{0,40}\b(instructions?|prompts?|rules?)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(reveal|print|show|repeat)\b[^.\n]{0,30}\b(system|hidden) (prompt|instructions?)\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\byou are now\b[^.\n]{0,40}\b(unrestricted|jailbroken|dan|free of)\b", re.IGNORECASE
+        ),
+        re.compile(r"^\s*(system|assistant)\s*:", re.IGNORECASE | re.MULTILINE),
+    ),
+    "personal_data": (
+        re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+"),
+        re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\b"),
+        re.compile(r"(?<!\w)\+?\d[\d ()/.-]{8,}\d(?!\w)"),
+    ),
+}
+"""What each check of the input screen looks for (UC-7.8). A pattern list names what it names:
+a text it does not match is passed, not declared safe."""
+
+
+def screen(rule: ScreenRule, text: Any) -> dict[str, Any]:
+    """The checks that ran, once none finds anything in the text; the first that does is the
+    failure. It names the check, never the text found."""
+    if isinstance(text, str):
+        whole = text
+    elif isinstance(text, list | tuple) and all(isinstance(part, str) for part in text):
+        whole = "\n".join(text)
+    else:
+        raise RuleFailed(f"the input to screen is not a text or a list of texts: {_short(text)}")
+    for name in rule.checks:
+        if any(pattern.search(whole) for pattern in SCREENS[name]):
+            raise RuleFailed(f"the input check {name!r} refused the input")
+    return {"screened": list(rule.checks)}
 
 
 ANSWER_LINE = re.compile(r"^\s*(class|version|summary)\s*:\s*(.*?)\s*$", re.IGNORECASE)
