@@ -1,4 +1,4 @@
-"""An input check is a visible step (UC-7.8): a `screen` rule step before an `llm` step refuses
+"""An input check is a visible step (UC-7.9): a `screen` rule step before an `llm` step refuses
 what it finds, and the model is never called."""
 
 from __future__ import annotations

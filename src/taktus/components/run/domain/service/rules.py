@@ -275,7 +275,7 @@ SCREENS: dict[str, tuple[re.Pattern[str], ...]] = {
         re.compile(r"(?<!\w)\+?\d[\d ()/.-]{8,}\d(?!\w)"),
     ),
 }
-"""What each check of the input screen looks for (UC-7.8). A pattern list names what it names:
+"""What each check of the input screen looks for (UC-7.9). A pattern list names what it names:
 a text it does not match is passed, not declared safe."""
 
 

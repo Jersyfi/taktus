@@ -250,11 +250,11 @@ CLASSES = ("defect", "feature", "spam")
 
 
 SCREENS = ("injection", "personal_data")
-"""The checks of the input screen, one row of the catalogue each (UC-7.8)."""
+"""The checks of the input screen, one row of the catalogue each (UC-7.9)."""
 
 
 class ScreenRule(Value):
-    """An input checked before a model or a worker reads it (UC-7.8): `text` is a string or a
+    """An input checked before a model or a worker reads it (UC-7.9): `text` is a string or a
     list of strings, read as one; `checks` name which of `injection` and `personal_data` to run.
 
     `injection` looks for fixed phrases that address a model instead of the process; `personal_data`

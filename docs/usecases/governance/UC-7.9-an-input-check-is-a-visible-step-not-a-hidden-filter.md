@@ -1,5 +1,5 @@
 ---
-id: UC-7.8
+id: UC-7.9
 title: An input check is a visible step, not a hidden filter
 component: governance
 serves: [P7, P8, P12]
@@ -10,7 +10,7 @@ adrs: {ADR-0004: ffdb1f1537f5, ADR-0014: 6611f7833deb}
 supersedes: null
 ---
 
-# UC-7.8 — An input check is a visible step, not a hidden filter
+# UC-7.9 — An input check is a visible step, not a hidden filter
 
 ## 1. What must be achieved
 

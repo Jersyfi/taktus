@@ -163,7 +163,7 @@ message waits for the tenant's delay and quiet hours at its boundary, the run pa
 is added to its text at the call, and `message.sent` names the message's record beside its
 egress entry.
 
-**An input check** is a step, never a hook (UC-7.8). Content from outside a process is checked
+**An input check** is a step, never a hook (UC-7.9). Content from outside a process is checked
 by a `rule` step of work `screen` before a model or a worker reads it: it names which of
 `injection` and `personal_data` to run over a text. A check that finds something fails the step,
 the failure names the check and never the text found, the steps after it do not start and the
