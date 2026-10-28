@@ -10,6 +10,7 @@
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
 	import { changeLink, processLink, runLink } from './links';
+	import { processSpendLink } from './spend';
 	import type { ProcessLevel } from './types';
 
 	let { level, motionAllowed }: { level: ProcessLevel; motionAllowed: boolean } = $props();
@@ -33,6 +34,7 @@
 		<h1 id="process-title">{level.summary}</h1>
 		<p class="meta">
 			{process.id}@{process.version} · <a href={changeLink(process.id)}>change in dialogue</a>
+			· <a href={processSpendLink(process.id)}>where it spends</a>
 			{#if process.versions.length > 1}
 				· versions:
 				{#each process.versions as v (v.version)}
