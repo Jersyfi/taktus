@@ -167,7 +167,7 @@ from taktus.composition.findings import (
 from taktus.composition.gallery import Gallery
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces, interfaces_tick
-from taktus.composition.levels import RepositoryLevelRecords
+from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.live import LiveHub, LiveOptions, Records, run_listener, state_of
 from taktus.composition.logging import configure, log_effective_configuration
 from taktus.composition.loopback import Loopback, Pools
@@ -535,6 +535,9 @@ async def wire(
                     masking=secrets,
                     stops=stops,
                     messages=decisions.messages,
+                    statements=VersionStatements(
+                        persistence, PostgresRepository(persistence, ProcessVersion)
+                    ),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

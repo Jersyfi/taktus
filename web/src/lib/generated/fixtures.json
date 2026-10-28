@@ -752,7 +752,48 @@
                 "text": "step close: rule, reproducible; exact; planned."
               }
             ],
-            "text": "Process Example (example@1) at autonomy level 2: 1 run working, 1 waiting; running now: score in run_example, draft in run_example, review in run_example."
+            "text": "Process Example (example@1) at autonomy level 2: 1 run working, 1 waiting; running now: score in run_example, draft in run_example, review in run_example.",
+            "exactness": {
+              "process_version": "six-times-seven@1",
+              "name": "Six times seven, checked",
+              "parts": [
+                {
+                  "title": "Which checks apply",
+                  "lines": [
+                    "`prepare-commands` (exact): recomputation — over the inputs the provenance record names.",
+                    "`compute` (tolerant): no check declared.",
+                    "`verify-answer` (exact): plausibility bounds — the answer matches the pattern `^42$`.",
+                    "`overreach` (tolerant): no check declared."
+                  ]
+                },
+                {
+                  "title": "What they cover",
+                  "lines": [
+                    "`prepare-commands` (exact): The list of commands is what the step's rule gives again over the inputs its provenance record names: a result that does not follow from its recorded inputs is found.",
+                    "`verify-answer` (exact): The answer counts only where it matches the pattern `^42$`."
+                  ]
+                },
+                {
+                  "title": "What they do not cover",
+                  "lines": [
+                    "`prepare-commands` (exact): The list of commands computed from inputs that were themselves wrong passes, and so does a rule that computes the wrong thing the same way every time.",
+                    "`compute` (tolerant): the step declares no check, so no wrong result of it is found by one.",
+                    "`verify-answer` (exact): A wrong value of the answer that matches the pattern `^42$` passes.",
+                    "`overreach` (tolerant): the step declares no check, so no wrong result of it is found by one."
+                  ]
+                },
+                {
+                  "title": "The residual risk",
+                  "lines": [
+                    "`prepare-commands` (exact): a wrong result slips through only where every check misses it at once — wrong inputs, or a rule that computes the wrong thing.",
+                    "`compute` (tolerant): every wrong result slips through; no check applies to it.",
+                    "`verify-answer` (exact): a wrong result slips through only where every check misses it at once — a wrong value that matches the pattern `^42$`.",
+                    "`overreach` (tolerant): every wrong result slips through; no check applies to it.",
+                    "The measured rate — how many results a person corrected after the checks passed, per hundred — is not yet measured: the value ledger does not count it yet."
+                  ]
+                }
+              ]
+            }
           },
           {
             "id": "quiet",
@@ -1235,7 +1276,48 @@
         "text": "step close: rule, reproducible; exact; planned."
       }
     ],
-    "summary": "1 of 10 steps completed. Now: score (statistics), draft (language model), review (person), pipeline (wait). It waits for a person."
+    "summary": "1 of 10 steps completed. Now: score (statistics), draft (language model), review (person), pipeline (wait). It waits for a person.",
+    "exactness": {
+      "process_version": "six-times-seven@1",
+      "name": "Six times seven, checked",
+      "parts": [
+        {
+          "title": "Which checks apply",
+          "lines": [
+            "`prepare-commands` (exact): recomputation — over the inputs the provenance record names.",
+            "`compute` (tolerant): no check declared.",
+            "`verify-answer` (exact): plausibility bounds — the answer matches the pattern `^42$`.",
+            "`overreach` (tolerant): no check declared."
+          ]
+        },
+        {
+          "title": "What they cover",
+          "lines": [
+            "`prepare-commands` (exact): The list of commands is what the step's rule gives again over the inputs its provenance record names: a result that does not follow from its recorded inputs is found.",
+            "`verify-answer` (exact): The answer counts only where it matches the pattern `^42$`."
+          ]
+        },
+        {
+          "title": "What they do not cover",
+          "lines": [
+            "`prepare-commands` (exact): The list of commands computed from inputs that were themselves wrong passes, and so does a rule that computes the wrong thing the same way every time.",
+            "`compute` (tolerant): the step declares no check, so no wrong result of it is found by one.",
+            "`verify-answer` (exact): A wrong value of the answer that matches the pattern `^42$` passes.",
+            "`overreach` (tolerant): the step declares no check, so no wrong result of it is found by one."
+          ]
+        },
+        {
+          "title": "The residual risk",
+          "lines": [
+            "`prepare-commands` (exact): a wrong result slips through only where every check misses it at once — wrong inputs, or a rule that computes the wrong thing.",
+            "`compute` (tolerant): every wrong result slips through; no check applies to it.",
+            "`verify-answer` (exact): a wrong result slips through only where every check misses it at once — a wrong value that matches the pattern `^42$`.",
+            "`overreach` (tolerant): every wrong result slips through; no check applies to it.",
+            "The measured rate — how many results a person corrected after the checks passed, per hundred — is not yet measured: the value ledger does not count it yet."
+          ]
+        }
+      ]
+    }
   },
   "process_level": {
     "process": {
@@ -1658,7 +1740,48 @@
         "text": "run run_example: running. Running score, draft, review."
       }
     ],
-    "summary": "10 steps: 6 reproducible, 2 variable, 1 with a person, 1 waiting. 3 steps running now."
+    "summary": "10 steps: 6 reproducible, 2 variable, 1 with a person, 1 waiting. 3 steps running now.",
+    "exactness": {
+      "process_version": "six-times-seven@1",
+      "name": "Six times seven, checked",
+      "parts": [
+        {
+          "title": "Which checks apply",
+          "lines": [
+            "`prepare-commands` (exact): recomputation — over the inputs the provenance record names.",
+            "`compute` (tolerant): no check declared.",
+            "`verify-answer` (exact): plausibility bounds — the answer matches the pattern `^42$`.",
+            "`overreach` (tolerant): no check declared."
+          ]
+        },
+        {
+          "title": "What they cover",
+          "lines": [
+            "`prepare-commands` (exact): The list of commands is what the step's rule gives again over the inputs its provenance record names: a result that does not follow from its recorded inputs is found.",
+            "`verify-answer` (exact): The answer counts only where it matches the pattern `^42$`."
+          ]
+        },
+        {
+          "title": "What they do not cover",
+          "lines": [
+            "`prepare-commands` (exact): The list of commands computed from inputs that were themselves wrong passes, and so does a rule that computes the wrong thing the same way every time.",
+            "`compute` (tolerant): the step declares no check, so no wrong result of it is found by one.",
+            "`verify-answer` (exact): A wrong value of the answer that matches the pattern `^42$` passes.",
+            "`overreach` (tolerant): the step declares no check, so no wrong result of it is found by one."
+          ]
+        },
+        {
+          "title": "The residual risk",
+          "lines": [
+            "`prepare-commands` (exact): a wrong result slips through only where every check misses it at once — wrong inputs, or a rule that computes the wrong thing.",
+            "`compute` (tolerant): every wrong result slips through; no check applies to it.",
+            "`verify-answer` (exact): a wrong result slips through only where every check misses it at once — a wrong value that matches the pattern `^42$`.",
+            "`overreach` (tolerant): every wrong result slips through; no check applies to it.",
+            "The measured rate — how many results a person corrected after the checks passed, per hundred — is not yet measured: the value ledger does not count it yet."
+          ]
+        }
+      ]
+    }
   },
   "origin": {
     "result": {

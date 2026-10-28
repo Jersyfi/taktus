@@ -31,7 +31,8 @@ connector call's `input`, the values of a template, a check or a prompt — an o
   or null while none has (ADR-0097) — and `keys.<step-id>`, the idempotency key that step's
   current attempt carries to a connector, the first attempt's while it has not started, so
   that an earlier step can ask whether what a later one will write is already its own
-  (ADR-0099);
+  (ADR-0099) — and `exactness`, the exactness statement of the run's version as the process
+  component renders it, which a report carries unchanged (UC-6.9, ADR-0152);
 - `{"$input": "<name>", "$otherwise": <value>}` — that input where the run was given it, and
   the value otherwise. The value may itself be a `$from` reference: an input the bundle
   declares `required: false` can then stand in for what a step produces, so that whoever

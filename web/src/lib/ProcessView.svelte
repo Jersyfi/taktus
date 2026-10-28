@@ -6,6 +6,7 @@
 	(ADR-0064).
 -->
 <script lang="ts">
+	import ExactnessStatement from './ExactnessStatement.svelte';
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
@@ -50,6 +51,10 @@
 		<p class="level">Autonomy level {process.autonomy.level}</p>
 		<p>{process.autonomy_text}</p>
 	</section>
+
+	{#if level.exactness}
+		<ExactnessStatement statement={level.exactness} />
+	{/if}
 
 	<Graph steps={level.steps} {motionAllowed} {notes} />
 

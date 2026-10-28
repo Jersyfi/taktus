@@ -1,7 +1,7 @@
 # ADR-0152 — The checks a step declares run before its value counts
 
 **Status:** accepted · builds on ADR-0014 ("`exact`, written out"), ADR-0082 (the catalogue of
-checks) and ADR-0042 (the decision request at a step boundary) · serves UC-4.13 · issue #223
+checks) and ADR-0042 (the decision request at a step boundary) · serves UC-4.13, UC-6.9 · issues #223, #224
 
 ## Context
 
@@ -78,6 +78,21 @@ operation is refused. `checking.select` names the part of the step's value the c
 What a check read joins the step's provenance record as a source input, with its digest and the
 moment it was read (ADR-0021).
 
+### 6. The statement of the checks travels to whoever reads the result
+
+What the checks cover and what they do not is the exactness statement of the process version
+(UC-6.9, ADR-0082). It reaches its reader in two ways, and in both it is the statement the
+process component generates, unchanged:
+
+- **The levels.** The process level, every run level and the overview's entry of each process
+  carry the statement of the version they show (`reporting.Statement`). The composition hands
+  it over; reporting draws it and edits nothing of it. The web app shows it on the process
+  page, on every run and, folded, per process on the overview.
+- **A report a process delivers.** A step names it by the reference `{"$run": "exactness"}`,
+  resolved through the run's port `Statements` to the rendered statement of the run's version.
+  A report step that names it where no statement can be read fails, as any reference that
+  cannot be resolved does: a report does not go out without the statement it promised.
+
 ## Alternatives
 
 - **The operation in the check's declaration.** The shared kernel's `Check` would grow
@@ -92,6 +107,9 @@ moment it was read (ADR-0021).
   ask again (see below).
 - **Sampling by a random draw.** A draw would choose different results each time a run is
   looked at. A digest chooses the same results, and a person can check that it did.
+- **The statement stored with the run.** A copy per run would grow with every run and could
+  drift from the version. The version is immutable, so the statement generated from it is the
+  same every time it is read.
 
 ## Consequences
 
@@ -102,6 +120,9 @@ moment it was read (ADR-0021).
 - The exactness statement is unchanged: what a check covers and what it does not was already
   stated per row. `tests/exactness/test_checks.py` holds each row to a fixture that passes, one
   that fails, and a wrong value that slips through it as the statement says.
+- `reporting.Statement` on `ProcessFacts`, `RunFacts` and `ProcessSummary`, and on the levels
+  drawn from them; `composition.levels.statement_of` and `VersionStatements`; the port
+  `run.ports.Statements` and the engine's `statements`; `web/src/lib/ExactnessStatement.svelte`.
 
 ## Where this promise ends
 
@@ -116,4 +137,7 @@ not call again, so a source that changed since is not its finding.
 An approval of a value from a variable method asks again when the method computes another value
 after the confirmation. A sample whose request cannot be raised is not taken, and the result
 still counts. The measured rate of corrections after the checks passed is the value ledger's
-(UC-6.9), not this one.
+(UC-6.9), not this one: until it measures it, the statement says that it is not yet measured.
+A report carries the statement only where its step names it; no report is rewritten to carry
+one, and a process's own reports name it as their authors write them. A model's explanation of
+the statement to a reader is not built here.

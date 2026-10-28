@@ -95,6 +95,24 @@ class StepFacts(Value):
     """The latest take-over the step was served for; None for a step never taken over."""
 
 
+class StatementPart(Value):
+    """One of the four parts of an exactness statement: its title and its sentences."""
+
+    title: str = Field(min_length=1)
+    lines: tuple[str, ...] = Field(min_length=1)
+
+
+class Statement(Value):
+    """The exactness statement of a process version, as the process component generates it
+    (UC-6.9, ADR-0082): which checks apply, what they cover, what they do not cover and the
+    residual risk. Reporting shows it as it is handed over; no level edits, shortens or rewrites
+    it, and no model writes it."""
+
+    process_version: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    parts: tuple[StatementPart, ...] = Field(min_length=4, max_length=4)
+
+
 class RunFacts(Value):
     """One run, as the run component records it, with its steps in their order."""
 
@@ -109,6 +127,9 @@ class RunFacts(Value):
     steps: tuple[StepFacts, ...] = Field(min_length=1)
     created_at: datetime
     updated_at: datetime
+    exactness: Statement | None = None
+    """The exactness statement of the version the run executes; None where the version is not
+    found (UC-6.9)."""
 
 
 class Figure(Value):
@@ -165,6 +186,8 @@ class ProcessFacts(Value):
     steps: tuple[ProcessStepFacts, ...] = Field(min_length=1)
     versions: tuple[VersionRef, ...] = Field(min_length=1)
     runs: tuple[RunAtVersion, ...] = ()
+    exactness: Statement | None = None
+    """The exactness statement of this version (UC-6.9)."""
 
     @property
     def ref(self) -> str:
@@ -189,6 +212,8 @@ class ProcessSummary(Value):
     active_version: str | None = None
     autonomy_level: int | None = None
     steps: tuple[PlannedStep, ...] = ()
+    exactness: Statement | None = None
+    """The exactness statement of the active version (UC-6.9)."""
 
 
 class RunningStep(Value):

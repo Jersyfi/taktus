@@ -91,11 +91,20 @@ export interface RunElement {
 	text: string;
 }
 
+/** The exactness statement of a process version, as generated (UC-6.9): four parts. */
+export interface ExactnessStatement {
+	process_version: string;
+	name: string;
+	parts: { title: string; lines: string[] }[];
+}
+
 export interface RunLevel {
 	run: RunElement;
 	steps: StepElement[];
 	/** One sentence: how far the run is and what it does now. */
 	summary: string;
+	/** The exactness statement of the version the run executes. */
+	exactness?: ExactnessStatement | null;
 }
 
 export interface SnapshotRun {
@@ -173,6 +182,8 @@ export interface ProcessLevel {
 	runs?: RunAtVersionElement[];
 	/** One sentence: how its steps work, and how many run now. */
 	summary: string;
+	/** The exactness statement of this version. */
+	exactness?: ExactnessStatement | null;
 }
 
 export interface RunningStepElement {
@@ -208,6 +219,8 @@ export interface ProcessSummaryElement {
 	/** The steps of its active version, so that the overview draws every process as one body. */
 	cells?: CellElement[];
 	text: string;
+	/** The exactness statement of its active version. */
+	exactness?: ExactnessStatement | null;
 }
 
 /** `GET /levels/overview` (ADR-0067). */

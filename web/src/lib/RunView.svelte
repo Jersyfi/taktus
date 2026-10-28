@@ -5,6 +5,7 @@
 	written out below the drawing, as its text equivalent. It leads to its process (ADR-0064).
 -->
 <script lang="ts">
+	import ExactnessStatement from './ExactnessStatement.svelte';
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
@@ -80,6 +81,10 @@
 	{/if}
 
 	{@render acts?.()}
+
+	{#if level.exactness}
+		<ExactnessStatement statement={level.exactness} />
+	{/if}
 
 	<section class="text" aria-label="The run as text">
 		<h2>As text</h2>

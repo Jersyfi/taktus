@@ -120,7 +120,7 @@ from taktus.composition.execution import (
 from taktus.composition.findings import RunBlocks, RunContent, sending_of
 from taktus.composition.guides import InstanceGuides, served_directory
 from taktus.composition.interfaces import broken_interfaces
-from taktus.composition.levels import RepositoryLevelRecords
+from taktus.composition.levels import RepositoryLevelRecords, VersionStatements
 from taktus.composition.loopback import Loopback, Pools
 from taktus.composition.maturation import InstanceMaturation, maturation_wiring
 from taktus.composition.maturity import CatalogMaturities, InstanceCatalogue
@@ -321,6 +321,7 @@ class LocalWiring:
                     masking=known_secrets(os.environ),
                     stops=stops,
                     messages=decisions.messages,
+                    statements=VersionStatements(stores.work, stores.of(ProcessVersion)),
                 )
 
             engine = engine_for(pools.workers, pools.connectors, pools.models)

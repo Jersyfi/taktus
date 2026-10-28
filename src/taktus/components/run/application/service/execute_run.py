@@ -272,6 +272,7 @@ from taktus.components.run.ports import (
     Replay,
     Residency,
     Sources,
+    Statements,
     Verdict,
     WorkerPool,
 )
@@ -672,6 +673,7 @@ class RunEngine:
         masking: Masking | None = None,
         stops: Stops | None = None,
         messages: Messages | None = None,
+        statements: Statements | None = None,
     ) -> None:
         self._runs = runs
         self._work = work
@@ -715,6 +717,9 @@ class RunEngine:
         """The tenant's stops of adapters (ADR-0138). None: no adapter is stopped, and a stop
         reaches a run only by its own identifier."""
         self._messages = messages
+        self._statements = statements
+        """Where `{"$run": "exactness"}` reads the statement of the run's version (UC-6.9). None:
+        a step that names it fails, as a reference that cannot be resolved does."""
         """The tenant's rules for outward messages and the cases a person answered in
         (ADR-0142). None: the shipped rules, and no case was answered."""
         """What masks every secret value the instance holds in a line. None: a trace is kept
@@ -4677,8 +4682,13 @@ class RunEngine:
             contents[f"{step_id}/{artifact_id}"] = await self._artifact_content(
                 run, step_id, artifact_id
             )
+        record = run.record()
+        if self._statements is not None and any(_names_exactness(v) for v in values):
+            # The statement as the process component renders it, unchanged (UC-6.9).
+            rendered = await self._statements.rendered(run.tenant, run.process_version)
+            if rendered is not None:
+                record[EXACTNESS] = rendered
         try:
-            record = run.record()
             return [resolve(value, results, contents, record) for value in values], read
         except KeyError as missing:
             raise RuleFailed(f"reference to {missing.args[0]!r} cannot be resolved") from missing
@@ -5877,6 +5887,21 @@ class RunEngine:
                 rehearsal=True if run.rehearsal else None,  # ADR-0030
             ),
         )
+
+
+EXACTNESS = "exactness"
+"""The part of a `$run` reference that is the exactness statement of the run's version."""
+
+
+def _names_exactness(value: Any) -> bool:
+    """Whether a value carries `{"$run": "exactness"}` anywhere inside it."""
+    if isinstance(value, Mapping):
+        if value.get("$run") == EXACTNESS:
+            return True
+        return any(_names_exactness(v) for v in value.values())
+    if isinstance(value, list | tuple):
+        return any(_names_exactness(v) for v in value)
+    return False
 
 
 class _ChecksFailed(Exception):

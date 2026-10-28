@@ -7,6 +7,7 @@
 	Written out below as its text equivalent.
 -->
 <script lang="ts">
+	import ExactnessStatement from './ExactnessStatement.svelte';
 	import Glyph from './Glyph.svelte';
 	import Graph from './Graph.svelte';
 	import { chosen } from './motion.svelte';
@@ -56,6 +57,9 @@
 										</li>
 									{/each}
 								</ul>
+							{/if}
+							{#if process.exactness}
+								<ExactnessStatement statement={process.exactness} compact />
 							{/if}
 						</li>
 					{/each}
