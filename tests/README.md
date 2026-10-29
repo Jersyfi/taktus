@@ -10,6 +10,10 @@ too, reported with its cost before and after: every gate prints its duration as 
 for that. A gate is weakened only under a notice that demonstrates it had no value
 (anchors.taktus.md M2.3); "it was slow" is a cost to report, not a reason to remove.
 
+`make check` runs the unit tests a change selects, and always the three tests that a file
+`make generate` writes is the one committed (`GENERATED_FRESH` in the Makefile, NTC-0243): a
+change anywhere can make one stale, and no lane selects them from the files that cause it.
+
 PostgreSQL comes from testcontainers, once per session, migrated to the current schema
 (`conftest.py`). Without Docker the tests that need it skip and name the reason; with
 `TAKTUS_REQUIRE_DATABASE` set — CI — they fail instead. `TAKTUS_TEST_DATABASE_URL` points them

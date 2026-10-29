@@ -9,6 +9,10 @@ question is raised only where the vision gives no direction, and only after the 
 ADRs, the anchors and the register were checked. `make status` shows how often the owner took
 the recommended option and how often a notice was overridden.
 
+**`make check` holds what `make generate` writes** (NTC-0243). P-03's run on #335 passed
+`make check` with a stale `api/openapi.yaml`, and its branch failed CI on it; the three
+freshness tests now run in every `make check`, in under a second.
+
 **`make gates` is green locally in one command again** (DEC-0036). On 2026-09-29 it ended with
 seven errors after 26 minutes on the owner's machine: two `docker build` runs hung silently for
 600 and 900 s, reported seven times. A test image is now built only when its content changed,

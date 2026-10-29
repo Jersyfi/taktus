@@ -46,7 +46,11 @@ PARALLEL ?= -n auto --maxprocesses=8
 # Without it, every test runs. `make verify` passes BASE; CI's lane `test` passes it on a pull
 # request and not on a push to `main`.
 GATES := architecture conformance governance exactness rehearsal
-TEST_TARGETS = $(if $(BASE),$(shell python3 tools/lanes.py --base $(BASE) --tests $(foreach g,$(GATES),--exclude tests/$(g))),tests)
+# The tests that a file `make generate` writes is the one committed; `make check` runs them always.
+GENERATED_FRESH := tests/adapters/rest/test_openapi.py \
+	tests/composition/test_shipped.py::test_the_list_of_what_the_release_ships_is_what_make_generate_writes \
+	tests/components/reporting/test_run_level.py::test_the_web_apps_fixtures_are_what_make_generate_writes
+TEST_TARGETS =$(if $(BASE),$(shell python3 tools/lanes.py --base $(BASE) --tests $(foreach g,$(GATES),--exclude tests/$(g))),tests)
 
 .PHONY: test
 test: env ## Unit and domain tests — everything under tests/ that is not a gate, or with BASE only what the change selects; PARALLEL= runs them in one process
@@ -248,6 +252,8 @@ status: need-uv ## Print what is needed from the owner, from the register: the l
 .PHONY: check
 check: need-uv ## The fast local check before a commit: lint, types, architecture, documentation and register gates, and the unit tests (under 60 s)
 	$(MAKE) lint gate-arch gate-docs gate-decisions gate-adrs gate-status
+	@# What `make generate` writes is committed, so its freshness is checked on every change (NTC-0243).
+	$(UV) run pytest -q -p no:randomly $(GENERATED_FRESH)
 	@targets="$$(python3 tools/lanes.py --base $(or $(BASE),origin/main) --tests --within tests/components --within tests/tools --within tests/contract)"; \
 	if [ -z "$$targets" ]; then echo "check: the change selects no unit test"; exit 0; fi; \
 	$(UV) run pytest -q -p no:randomly $$targets
